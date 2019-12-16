@@ -11,6 +11,8 @@ status](https://travis-ci.org/hongyuanjia/epwshiftr.svg?branch=master)](https://
 status](https://ci.appveyor.com/api/projects/status/github/hongyuanjia/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/hongyuanjia/epwshiftr)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
+[![Codecov test
+coverage](https://codecov.io/gh/hongyuanjia/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/hongyuanjia/epwshiftr?branch=master)
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data

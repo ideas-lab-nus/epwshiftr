@@ -25,4 +25,5 @@ BugReports: https://github.com/hongyuanjia/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.0.2
 Suggests:
-    testthat
+    testthat,
+    covr
