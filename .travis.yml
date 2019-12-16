@@ -29,7 +29,13 @@ matrix:
         - NOT_CRAN: false
 
 before_cache: Rscript -e 'remotes::install_cran("pkgdown")'
+before_deploy: Rscript -e 'pkgdown::build_site()'
 deploy:
-  provider: script
-  script: Rscript -e 'pkgdown::deploy_site_github()'
+  github_token: $GITHUB_PAT
+  provider: pages
+  local-dir: docs
+  target-branch: gh-pages
   skip_cleanup: true
+  on:
+    branch: master
+    condition: "$TRAVIS_OS_NAME = linux && $TRAVIS_R_VERSION_STRING = release"
