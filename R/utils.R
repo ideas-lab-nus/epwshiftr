@@ -1,5 +1,5 @@
-verbose <- function (..., sep = "\n") {
+verbose <- function (..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
-        cat(..., sep = sep)
+        cat(..., "\n", sep = sep)
     }
 }
