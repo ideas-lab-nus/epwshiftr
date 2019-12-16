@@ -123,47 +123,47 @@ is a list converted from json response. If no matched data is found, an empty
 data.table is returned. Otherwise, the columns of returned data varies based
 on the \code{type}:
 \itemize{
-\item If \code{"Dataset"}, returned columns are:\tabular{lll}{
-   Column \tab Type \tab Description \cr
-   \code{id} \tab Character \tab Dataset universal identifier \cr
-   \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
-   \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
-   \code{institution_id} \tab Character \tab Institution identifier \cr
-   \code{source_id} \tab Character \tab Model identifier \cr
-   \code{experiment_id} \tab Character \tab Root experiment identifier \cr
-   \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
-   \code{table_id} \tab Character \tab Table identifier \cr
-   \code{grid_label} \tab Character \tab Grid identifier \cr
-   \code{version} \tab Character \tab Approximate date of model output file \cr
-   \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
-   \code{variable_id} \tab Character \tab Variable identifier \cr
-   \code{variable_long_name} \tab Character \tab Variable long name \cr
-   \code{variable_units} \tab Character \tab Units of variable \cr
-   \code{data_node} \tab Character \tab Data node to download the model output file \cr
+\item If \code{"Dataset"}, returned columns are:\tabular{rlll}{
+   No. \tab Column \tab Type \tab Description \cr
+   1 \tab \code{id} \tab Character \tab Dataset universal identifier \cr
+   2 \tab \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
+   3 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
+   4 \tab \code{institution_id} \tab Character \tab Institution identifier \cr
+   5 \tab \code{source_id} \tab Character \tab Model identifier \cr
+   6 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
+   7 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
+   8 \tab \code{table_id} \tab Character \tab Table identifier \cr
+   9 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
+   10 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
+   11 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
+   12 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
+   13 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
+   14 \tab \code{variable_units} \tab Character \tab Units of variable \cr
+   15 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
 }
 
-\item If \code{"File"}, returned columns are:\tabular{lll}{
-   Column \tab Type \tab Description \cr
-   \code{id} \tab Character \tab Model output file universal identifier \cr
-   \code{dataset_id} \tab Character \tab Dataset universal identifier \cr
-   \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
-   \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
-   \code{institution_id} \tab Character \tab Institution identifier \cr
-   \code{source_id} \tab Character \tab Model identifier \cr
-   \code{experiment_id} \tab Character \tab Root experiment identifier \cr
-   \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
-   \code{table_id} \tab Character \tab Table identifier \cr
-   \code{grid_label} \tab Character \tab Grid identifier \cr
-   \code{version} \tab Character \tab Approximate date of model output file \cr
-   \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
-   \code{variable_id} \tab Character \tab Variable identifier \cr
-   \code{variable_long_name} \tab Character \tab Variable long name \cr
-   \code{variable_units} \tab Character \tab Units of variable \cr
-   \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
-   \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
-   \code{file_size} \tab Character \tab Model output file size in Bytes \cr
-   \code{data_node} \tab Character \tab Data node to download the model output file \cr
-   \code{url} \tab Character \tab Model output file download url from HTTP server \cr
+\item If \code{"File"}, returned columns are:\tabular{rlll}{
+   No. \tab Column \tab Type \tab Description \cr
+   1 \tab \code{id} \tab Character \tab Model output file universal identifier \cr
+   2 \tab \code{dataset_id} \tab Character \tab Dataset universal identifier \cr
+   3 \tab \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
+   4 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
+   5 \tab \code{institution_id} \tab Character \tab Institution identifier \cr
+   6 \tab \code{source_id} \tab Character \tab Model identifier \cr
+   7 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
+   8 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
+   9 \tab \code{table_id} \tab Character \tab Table identifier \cr
+   10 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
+   11 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
+   12 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
+   13 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
+   14 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
+   15 \tab \code{variable_units} \tab Character \tab Units of variable \cr
+   16 \tab \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
+   17 \tab \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
+   18 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
+   19 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
+   20 \tab \code{url} \tab Character \tab Model output file download url from HTTP server \cr
 }
 
 }

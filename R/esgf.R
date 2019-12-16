@@ -116,48 +116,48 @@
 #'
 #' * If `"Dataset"`, returned columns are:
 #'
-#'     | Column               | Type      | Description                                                          |
-#'     | -----                | -----     | -----                                                                |
-#'     | `id`                 | Character | Dataset universal identifier                                                                     |
-#'     | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
-#'     | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
-#'     | `institution_id`     | Character | Institution identifier                                               |
-#'     | `source_id`          | Character | Model identifier                                                     |
-#'     | `experiment_id`      | Character | Root experiment identifier                                           |
-#'     | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | `table_id`           | Character | Table identifier                                                     |
-#'     | `grid_label`         | Character | Grid identifier                                                      |
-#'     | `version`            | Character | Approximate date of model output file                                |
-#'     | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
-#'     | `variable_id`        | Character | Variable identifier                                                  |
-#'     | `variable_long_name` | Character | Variable long name                                                   |
-#'     | `variable_units`     | Character | Units of variable                                                    |
-#'     | `data_node`          | Character | Data node to download the model output file                          |
+#'     | No.  | Column               | Type      | Description                                                          |
+#'     | ---: | -----                | -----     | -----                                                                |
+#'     | 1    | `id`                 | Character | Dataset universal identifier                                         |
+#'     | 2    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
+#'     | 3    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
+#'     | 4    | `institution_id`     | Character | Institution identifier                                               |
+#'     | 5    | `source_id`          | Character | Model identifier                                                     |
+#'     | 6    | `experiment_id`      | Character | Root experiment identifier                                           |
+#'     | 7    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#'     | 8    | `table_id`           | Character | Table identifier                                                     |
+#'     | 9    | `grid_label`         | Character | Grid identifier                                                      |
+#'     | 10   | `version`            | Character | Approximate date of model output file                                |
+#'     | 11   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | 12   | `variable_id`        | Character | Variable identifier                                                  |
+#'     | 13   | `variable_long_name` | Character | Variable long name                                                   |
+#'     | 14   | `variable_units`     | Character | Units of variable                                                    |
+#'     | 15   | `data_node`          | Character | Data node to download the model output file                          |
 #'
 #' * If `"File"`, returned columns are:
 #'
-#'     | Column               | Type      | Description                                                          |
-#'     | -----                | -----     | -----                                                                |
-#'     | `id`                 | Character | Model output file universal identifier                               |
-#'     | `dataset_id`         | Character | Dataset universal identifier                                         |
-#'     | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
-#'     | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
-#'     | `institution_id`     | Character | Institution identifier                                               |
-#'     | `source_id`          | Character | Model identifier                                                     |
-#'     | `experiment_id`      | Character | Root experiment identifier                                           |
-#'     | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | `table_id`           | Character | Table identifier                                                     |
-#'     | `grid_label`         | Character | Grid identifier                                                      |
-#'     | `version`            | Character | Approximate date of model output file                                |
-#'     | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
-#'     | `variable_id`        | Character | Variable identifier                                                  |
-#'     | `variable_long_name` | Character | Variable long name                                                   |
-#'     | `variable_units`     | Character | Units of variable                                                    |
-#'     | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
-#'     | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
-#'     | `file_size`          | Character | Model output file size in Bytes                                      |
-#'     | `data_node`          | Character | Data node to download the model output file                          |
-#'     | `url`                | Character | Model output file download url from HTTP server                      |
+#'     | No.  | Column               | Type      | Description                                                          |
+#'     | ---: | -----                | -----     | -----                                                                |
+#'     | 1    | `id`                 | Character | Model output file universal identifier                               |
+#'     | 2    | `dataset_id`         | Character | Dataset universal identifier                                         |
+#'     | 3    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
+#'     | 4    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
+#'     | 5    | `institution_id`     | Character | Institution identifier                                               |
+#'     | 6    | `source_id`          | Character | Model identifier                                                     |
+#'     | 7    | `experiment_id`      | Character | Root experiment identifier                                           |
+#'     | 8    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#'     | 9    | `table_id`           | Character | Table identifier                                                     |
+#'     | 10   | `grid_label`         | Character | Grid identifier                                                      |
+#'     | 11   | `version`            | Character | Approximate date of model output file                                |
+#'     | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | 13   | `variable_id`        | Character | Variable identifier                                                  |
+#'     | 14   | `variable_long_name` | Character | Variable long name                                                   |
+#'     | 15   | `variable_units`     | Character | Units of variable                                                    |
+#'     | 16   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
+#'     | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
+#'     | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
+#'     | 19   | `data_node`          | Character | Data node to download the model output file                          |
+#'     | 20   | `url`                | Character | Model output file download url from HTTP server                      |
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
