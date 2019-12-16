@@ -28,6 +28,9 @@ matrix:
       env:
         - NOT_CRAN: false
 
+# Update code coverage
+after_success: if [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$TRAVIS_R_VERSION_STRING" = "release" ]; then Rscript -e 'covr::codecov()'; fi
+
 before_cache: Rscript -e 'remotes::install_cran("pkgdown")'
 before_deploy: Rscript -e 'pkgdown::build_site()'
 deploy:
