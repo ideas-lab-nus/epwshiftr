@@ -274,6 +274,10 @@ extract_query_file <- function (q) {
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "data_node", "size", "url")]
         l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
+        if (!length(l$url)) {
+            warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
+            l$url <- NA_character_
+        }
         lapply(l, unlist)
     }))[, c("datetime_start", "datetime_end") := {
         m <- regexpr("([0-9]{8})-([0-9]{8})", id)
