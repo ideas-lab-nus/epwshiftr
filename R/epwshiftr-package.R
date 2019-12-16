@@ -5,11 +5,17 @@
 #' (EPW) files adjusted from climate changes using data from Global Climate
 #' Model (GCM).
 #'
+#' @section Package options:
+#'
+#' * `epwshiftr.verbose`: If `TRUE`, more detailed message will be printed.
+#'   Default: `FALSE`.
+#'
 #' @author Hongyuan Jia
 "_PACKAGE"
 
-# The following block is used by usethis to automatically manage
-# roxygen namespace tags. Modify with care!
-## usethis namespace: start
-## usethis namespace: end
-NULL
+# set package options
+# reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
+.opts  <-  c("epwshiftr.verbose" = "FALSE")
+for (i in setdiff(names(.opts), names(options()))) {
+    eval(parse(text = paste0("options(",i,"=",.opts[i],")")))
+}
