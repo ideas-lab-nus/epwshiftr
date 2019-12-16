@@ -11,8 +11,7 @@ esgf_query(
   frequency = "day",
   experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
   source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM", "EC-Earth3",
-    "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8", "INM-CM5-0", "MPI-ESM1-2-HR",
-    "MRI-ESM2-0"),
+    "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8", "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"),
   replica = FALSE,
   latest = TRUE,
   resolution = c("100 km", "50 km"),
@@ -125,7 +124,7 @@ on the \code{type}:
 \itemize{
 \item If \code{"Dataset"}, returned columns are:\tabular{rlll}{
    No. \tab Column \tab Type \tab Description \cr
-   1 \tab \code{id} \tab Character \tab Dataset universal identifier \cr
+   1 \tab \code{dataset_id} \tab Character \tab Dataset universal identifier \cr
    2 \tab \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
    3 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
    4 \tab \code{institution_id} \tab Character \tab Institution identifier \cr
@@ -144,7 +143,7 @@ on the \code{type}:
 
 \item If \code{"File"}, returned columns are:\tabular{rlll}{
    No. \tab Column \tab Type \tab Description \cr
-   1 \tab \code{id} \tab Character \tab Model output file universal identifier \cr
+   1 \tab \code{file_id} \tab Character \tab Model output file universal identifier \cr
    2 \tab \code{dataset_id} \tab Character \tab Dataset universal identifier \cr
    3 \tab \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
    4 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr

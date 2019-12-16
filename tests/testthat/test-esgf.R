@@ -20,7 +20,7 @@ test_that("Query ESGF", {
     )
     expect_equal(names(qd),
         c(
-            "id", "mip_era", "activity_drs", "institution_id", "source_id",
+            "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
             "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "data_node"
@@ -49,7 +49,7 @@ test_that("Query ESGF", {
     )
     expect_equal(names(qf),
         c(
-            "id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+            "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "datetime_start", "datetime_end", "file_size",

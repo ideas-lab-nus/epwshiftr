@@ -118,7 +118,7 @@
 #'
 #'     | No.  | Column               | Type      | Description                                                          |
 #'     | ---: | -----                | -----     | -----                                                                |
-#'     | 1    | `id`                 | Character | Dataset universal identifier                                         |
+#'     | 1    | `dataset_id`         | Character | Dataset universal identifier                                         |
 #'     | 2    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
 #'     | 3    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
 #'     | 4    | `institution_id`     | Character | Institution identifier                                               |
@@ -138,7 +138,7 @@
 #'
 #'     | No.  | Column               | Type      | Description                                                          |
 #'     | ---: | -----                | -----     | -----                                                                |
-#'     | 1    | `id`                 | Character | Model output file universal identifier                               |
+#'     | 1    | `file_id`            | Character | Model output file universal identifier                               |
 #'     | 2    | `dataset_id`         | Character | Dataset universal identifier                                         |
 #'     | 3    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
 #'     | 4    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
@@ -252,13 +252,14 @@ esgf_query <- function (
 # extract_query_dataset {{{
 #' @importFrom data.table rbindlist
 extract_query_dataset <- function (q) {
-    data.table::rbindlist(lapply(q$response$docs, function (l) {
+    dt <- data.table::rbindlist(lapply(q$response$docs, function (l) {
         l <- l[c("id", "mip_era", "activity_drs", "institution_id", "source_id",
             "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "data_node")]
         lapply(l, unlist)
     }))
+    data.table::setnames(dt, "id", "dataset_id")
 }
 # }}}
 
@@ -279,9 +280,9 @@ extract_query_file <- function (q) {
         s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
         lapply(s, as.POSIXct, format = "%Y%m%d", tz = "UTC")
     }][, url := gsub("\\|.+$", "", url)]
-    data.table::setnames(dt_file, c("size"), c("file_size"))
+    data.table::setnames(dt_file, c("id", "size"), c("file_id", "file_size"))
     data.table::setcolorder(dt_file, c(
-        "id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
         "source_id", "experiment_id", "member_id", "table_id", "grid_label",
         "version", "nominal_resolution", "variable_id", "variable_long_name",
         "variable_units", "datetime_start", "datetime_end", "file_size",
