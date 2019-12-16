@@ -87,12 +87,12 @@
 #'
 #' @param source A character vector indicating model identifiers. Defaults are
 #'        set to 11 sources which give outputs of all 4 experiment of activity
-#'        ScenarioMIP with daily frequency. Default: `c("AWI-CM-1-1-MR",
-#'        "BCC-CSM2-MR", "CESM2", "CESM2-WACCM", "EC-Earth3", "EC-Earth3-Veg",
-#'        "GFDL-ESM4", "INM-CM4-8", "INM-CM5-0", "MPI-ESM1-2-HR",
-#'        "MRI-ESM2-0")`.
+#'        ScenarioMIP with daily frequency, i.e. `"AWI-CM-1-1-MR"`,
+#'        `"BCC-CSM2-MR"`, `"CESM2"`, `"CESM2-WACCM"`, `"EC-Earth3"`,
+#'        `"EC-Earth3-Veg"`, `"GFDL-ESM4"`, `"INM-CM4-8"`, `"INM-CM5-0"`,
+#'        `"MPI-ESM1-2-HR"` and `"MRI-ESM2-0"`.
 #'
-#' @param relica Whether the record is the "master" copy, or a replica. Use
+#' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
 #'        Default: `FALSE`.
 #'
@@ -109,7 +109,55 @@
 #' @param limit An integer indicating the maximum of matched records to return.
 #'        Should be <= 10,000. Default: `10000`.
 #'
-#' @return A list converted from json response.
+#' @return A [data.table::data.table] with an attribute named `response` which
+#' is a list converted from json response. If no matched data is found, an empty
+#' data.table is returned. Otherwise, the columns of returned data varies based
+#' on the `type`:
+#'
+#' * If `"Dataset"`, returned columns are:
+#'
+#'     | Column               | Type      | Description                                                          |
+#'     | -----                | -----     | -----                                                                |
+#'     | `id`                 | Character | Dataset universal identifier                                                                     |
+#'     | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
+#'     | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
+#'     | `institution_id`     | Character | Institution identifier                                               |
+#'     | `source_id`          | Character | Model identifier                                                     |
+#'     | `experiment_id`      | Character | Root experiment identifier                                           |
+#'     | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#'     | `table_id`           | Character | Table identifier                                                     |
+#'     | `grid_label`         | Character | Grid identifier                                                      |
+#'     | `version`            | Character | Approximate date of model output file                                |
+#'     | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | `variable_id`        | Character | Variable identifier                                                  |
+#'     | `variable_long_name` | Character | Variable long name                                                   |
+#'     | `variable_units`     | Character | Units of variable                                                    |
+#'     | `data_node`          | Character | Data node to download the model output file                          |
+#'
+#' * If `"File"`, returned columns are:
+#'
+#'     | Column               | Type      | Description                                                          |
+#'     | -----                | -----     | -----                                                                |
+#'     | `id`                 | Character | Model output file universal identifier                               |
+#'     | `dataset_id`         | Character | Dataset universal identifier                                         |
+#'     | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
+#'     | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
+#'     | `institution_id`     | Character | Institution identifier                                               |
+#'     | `source_id`          | Character | Model identifier                                                     |
+#'     | `experiment_id`      | Character | Root experiment identifier                                           |
+#'     | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#'     | `table_id`           | Character | Table identifier                                                     |
+#'     | `grid_label`         | Character | Grid identifier                                                      |
+#'     | `version`            | Character | Approximate date of model output file                                |
+#'     | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | `variable_id`        | Character | Variable identifier                                                  |
+#'     | `variable_long_name` | Character | Variable long name                                                   |
+#'     | `variable_units`     | Character | Units of variable                                                    |
+#'     | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
+#'     | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
+#'     | `file_size`          | Character | Model output file size in Bytes                                      |
+#'     | `data_node`          | Character | Data node to download the model output file                          |
+#'     | `url`                | Character | Model output file download url from HTTP server                      |
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
@@ -117,10 +165,13 @@
 #' @examples
 #' \dontrun{
 #' esgf_query(variable = "rss", experiment = "ssp126", resolution = "100 km", limit = 1)
+#'
+#' esgf_query(variable = "rss", experiment = "ssp126", type = "File", limit = 1)
 #' }
 #'
 #' @importFrom jsonlite read_json
 #' @importFrom checkmate assert_character assert_choice assert_count assert_flag assert_subset
+#' @importFrom data.table data.table setattr
 #' @export
 esgf_query <- function (
     activity = "ScenarioMIP",
@@ -181,6 +232,60 @@ esgf_query <- function (
                     "format=" ,           format
     )
 
-    jsonlite::read_json(q)
+    q <- jsonlite::read_json(q)
+
+    if (q$response$numFound == 0L) {
+        message("No matched data. Please examine the actual response using 'attr(x, \"response\")'.")
+        dt <- data.table::data.table()
+    } else if (type == "Dataset") {
+        dt <- extract_query_dataset(q)
+    } else if (type == "File") {
+        dt <- extract_query_file(q)
+    }
+
+    data.table::setattr(dt, "response", q)
+
+    dt
+}
+# }}}
+
+# extract_query_dataset {{{
+#' @importFrom data.table rbindlist
+extract_query_dataset <- function (q) {
+    data.table::rbindlist(lapply(q$response$docs, function (l) {
+        l <- l[c("id", "mip_era", "activity_drs", "institution_id", "source_id",
+            "experiment_id", "member_id", "table_id", "grid_label",
+            "version", "nominal_resolution", "variable_id", "variable_long_name",
+            "variable_units", "data_node")]
+        lapply(l, unlist)
+    }))
+}
+# }}}
+
+# extract_query_file {{{
+#' @importFrom data.table rbindlist setcolorder setnames tstrsplit
+extract_query_file <- function (q) {
+    dt_file <- data.table::rbindlist(lapply(q$response$docs, function (l) {
+        l <- l[c("id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+            "source_id", "experiment_id", "member_id", "table_id", "grid_label",
+            "version", "nominal_resolution", "variable_id", "variable_long_name",
+            "variable_units", "data_node", "size", "url")]
+        l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
+        lapply(l, unlist)
+    }))[, c("datetime_start", "datetime_end") := {
+        m <- regexpr("([0-9]{8})-([0-9]{8})", id)
+        s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
+        lapply(s, as.POSIXct, format = "%Y%m%d", tz = "UTC")
+    }][, url := gsub("\\|.+$", "", url)]
+    data.table::setnames(dt_file, c("size"), c("file_size"))
+    data.table::setcolorder(dt_file, c(
+        "id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "source_id", "experiment_id", "member_id", "table_id", "grid_label",
+        "version", "nominal_resolution", "variable_id", "variable_long_name",
+        "variable_units", "datetime_start", "datetime_end", "file_size",
+        "data_node", "url"
+    ))
+
+    dt_file
 }
 # }}}
