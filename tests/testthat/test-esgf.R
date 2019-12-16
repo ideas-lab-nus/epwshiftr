@@ -1,3 +1,4 @@
+# esgf_query {{{
 test_that("Query ESGF", {
     # Dataset query
     expect_silent(
@@ -61,3 +62,21 @@ test_that("Query ESGF", {
     expect_message(q <- esgf_query(variable = "NONSENSE"), "No matched data")
     expect_equivalent(q, data.table())
 })
+# }}}
+
+# build_smip_db {{{
+test_that("Build ESGF database", {
+    expect_warning(db <- build_cmip6_db(tempdir(), variable = "tas", source = "AWI-CM-1-1-MR", limit = 1, type = "File"),
+        "'type' argument will be ignored"
+    )
+    expect_equal(names(db),
+        c(
+            "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+            "source_id", "experiment_id", "member_id", "table_id", "grid_label",
+            "version", "nominal_resolution", "variable_id", "variable_long_name",
+            "variable_units", "datetime_start", "datetime_end", "file_size",
+            "data_node", "url"
+        )
+    )
+})
+# }}}

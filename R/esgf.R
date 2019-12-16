@@ -296,3 +296,137 @@ extract_query_file <- function (q) {
     dt_file
 }
 # }}}
+
+# build_cmip6_db {{{
+#' Build CMIP6 experiment output file index database
+#'
+#' @details
+#' `build_cmip6_db()` will search the CMIP6 model output file using [esgf_query()]
+#' and return a [data.table::data.table()] containing the actual NetCDF file url
+#' to download.
+#'
+#' @param dir A directory to save the database. It will be created if not exists.
+#' @param retry An integer indicating the maximum number of retries to match the
+#'        file query to dataset query, or collect all file query responses when
+#'        its number reaching the maximum limitation of ESGF search RESTful API
+#'        10,000. Default: `10`.
+#' @param ... All pass to [esgf_query()] except for [`type`][esgf_query()]. Note
+#'        that here `limit` argument will only limit the records for dataset
+#'        query, not the file query.
+#'
+#' @return A [data.table::data.table] with 20 columns:
+#'
+#' | No.  | Column               | Type      | Description                                                          |
+#' | ---: | -----                | -----     | -----                                                                |
+#' | 1    | `file_id             | Character | Model output file universal identifier                               |
+#' | 2    | `dataset_id`         | Character | Dataset universal identifier                                         |
+#' | 3    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
+#' | 4    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
+#' | 5    | `institution_id`     | Character | Institution identifier                                               |
+#' | 6    | `source_id`          | Character | Model identifier                                                     |
+#' | 7    | `experiment_id`      | Character | Root experiment identifier                                           |
+#' | 8    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#' | 9    | `table_id`           | Character | Table identifier                                                     |
+#' | 10   | `grid_label`         | Character | Grid identifier                                                      |
+#' | 11   | `version`            | Character | Approximate date of model output file                                |
+#' | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#' | 13   | `variable_id`        | Character | Variable identifier                                                  |
+#' | 14   | `variable_long_name` | Character | Variable long name                                                   |
+#' | 15   | `variable_units`     | Character | Units of variable                                                    |
+#' | 16   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
+#' | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
+#' | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
+#' | 19   | `data_node`          | Character | Data node to download the model output file                          |
+#' | 20   | `url`                | Character | Model output file download url from HTTP server                      |
+#'
+#' @examples
+#' \dontrun{
+#' build_smip_db(dir = tempdir())
+#' }
+#'
+#' @importFrom checkmate assert_directory_exists
+#' @importFrom data.table rbindlist set setcolorder
+#' @export
+build_cmip6_db <- function (dir, retry = 10L, ...) {
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+    assert_directory_exists(dir)
+
+    # get input argument
+    cl <- match.call(esgf_query, substitute(esgf_query(...)))
+    # warning if "type" is in the dots
+    ag <- as.list(cl[-1L])
+    if ("type" %in% names(ag)) {
+        warning("'type' argument will be ignored since both Dataset and File query will be performed.")
+        ag <- ag[names(ag) != "type"]
+    }
+
+    verbose("Querying CMIP6 Dataset Information...")
+    qd <- do.call(esgf_query, c(ag, type = "Dataset"))
+
+    # give a warning if dataset query response hits the limits
+    if (nrow(qd) == 10000L) {
+        warning("The dataset query returns 10,000 results which ",
+            "hits the maximum record limitation of a single query using ESGF search RESTful API. ",
+            "It is possible that the returned Dataset query responses are not complete. ",
+            "It is suggested to examine and refine your query."
+        )
+    }
+
+    dt <- data.table::set(qd, NULL, "url", NA_character_)
+
+    attempt <- 0L
+    retry <- 10L
+    while (nrow(nf <- dt[is.na(url)]) && attempt <= retry) {
+        attempt <- attempt + 1L
+        verbose("Querying CMIP6 File Information...[Attempt ", attempt, "]")
+
+        # to avoid No visible binding for global variable check NOTE
+        .SD <- NULL
+
+        # use qd to construction query for files
+        q <- unique(nf[, .SD, .SDcols = c("activity_drs", "source_id",
+            "experiment_id", "nominal_resolution", "table_id", "variable_id")])
+
+        qf <- do.call(esgf_query,
+            c(list(activity = unique(q$activity_drs),
+                   source = unique(q$source_id),
+                   experiment = unique(q$experiment_id),
+                   resolution = unique(q$nominal_resolution),
+                   variable = unique(q$variable_id),
+                   frequency = unique(q$table_id),
+                   type = "File"),
+               ag[!names(ag) %in% c("activity", "source", "experiment",
+                   "resolution", "variable", "frequency", "limit")] # remove limit
+            )
+        )
+
+        # remove all common columns in file query except for "dataset_id"
+        data.table::set(qf, NULL, value = NULL,
+            setdiff(intersect(names(qd), names(qf)), c("dataset_id", "url"))
+        )
+
+        # remove all common column in nf except for "dataset_id"
+        data.table::set(nf, NULL, value = NULL,
+            setdiff(intersect(names(qf), names(nf)), c("dataset_id"))
+        )
+
+        dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
+    }
+
+    if (anyNA(dt$url)) {
+        warning("There are still ", length(unique(dt$dataset_id[is.na(dt$url)])), " Dataset that ",
+            "did not find any matched output file after ", retry, " retries."
+        )
+    }
+
+    data.table::setcolorder(dt, c(
+        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "source_id", "experiment_id", "member_id", "table_id", "grid_label",
+        "version", "nominal_resolution", "variable_id", "variable_long_name",
+        "variable_units", "datetime_start", "datetime_end", "file_size",
+        "data_node", "url"
+    ))
+
+    dt
+}
+# }}}
