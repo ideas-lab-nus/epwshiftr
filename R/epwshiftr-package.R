@@ -15,7 +15,10 @@
 
 # set package options
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
-.opts  <-  c("epwshiftr.verbose" = "FALSE")
-for (i in setdiff(names(.opts), names(options()))) {
-    eval(parse(text = paste0("options(",i,"=",.opts[i],")")))
+.onLoad <- function (libname, pkgname) {
+    .opts  <-  c("epwshiftr.verbose" = "FALSE")
+    for (i in setdiff(names(.opts), names(options()))) {
+        eval(parse(text = paste0("options(",i,"=",.opts[i],")")))
+    }
+    invisible()
 }
