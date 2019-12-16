@@ -263,8 +263,10 @@ extract_query_dataset <- function (q) {
 # }}}
 
 # extract_query_file {{{
-#' @importFrom data.table rbindlist setcolorder setnames tstrsplit
+#' @importFrom data.table rbindlist setcolorder setnames tstrsplit ":="
 extract_query_file <- function (q) {
+    # to avoid No visible binding for global variable check NOTE
+    id <- NULL
     dt_file <- data.table::rbindlist(lapply(q$response$docs, function (l) {
         l <- l[c("id", "dataset_id", "mip_era", "activity_drs", "institution_id",
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
