@@ -3,6 +3,31 @@
 language: R
 cache: packages
 
+addons:
+  apt:
+    packages:
+      - libudunits2-dev
+  homebrew:
+    packages:
+      - udunits
+
+matrix:
+  include:
+    - os: linux
+      r: devel
+      env:
+        - NOT_CRAN: true
+
+    - os: linux
+      r: release
+      env:
+        - NOT_CRAN: false
+
+    - os: osx
+      r: release
+      env:
+        - NOT_CRAN: false
+
 before_cache: Rscript -e 'remotes::install_cran("pkgdown")'
 deploy:
   provider: script
