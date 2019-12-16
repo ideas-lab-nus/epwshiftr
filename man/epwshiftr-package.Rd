@@ -11,6 +11,14 @@ Intercomparison Project Phase 6) project and create futher EnergyPlus Weather
 (EPW) files adjusted from climate changes using data from Global Climate
 Model (GCM).
 }
+\section{Package options}{
+
+\itemize{
+\item \code{epwshiftr.verbose}: If \code{TRUE}, more detailed message will be printed.
+Default: \code{FALSE}.
+}
+}
+
 \seealso{
 Useful links:
 \itemize{
