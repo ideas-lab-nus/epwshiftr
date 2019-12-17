@@ -91,6 +91,14 @@
 #'        `"BCC-CSM2-MR"`, `"CESM2"`, `"CESM2-WACCM"`, `"EC-Earth3"`,
 #'        `"EC-Earth3-Veg"`, `"GFDL-ESM4"`, `"INM-CM4-8"`, `"INM-CM5-0"`,
 #'        `"MPI-ESM1-2-HR"` and `"MRI-ESM2-0"`.
+#' @param variant A character vector indicating label constructeds from 4
+#'        indices stored as global attributes in format r<k>i<l>p<m>f<n>
+#'        described below. Default: `"r1i1p1f1"`.
+#'
+#' * `r`: realization_index(<k>) = realization number (integer >0)
+#' * `i`: initialization_index(<l>) = index for variant of initialization method (integer >0)
+#' * `p`: physics_index(<m>) = index for model physics variant (integer >0)
+#' * `f`: forcing_index(<n>) = index for variant of forcing (integer >0)
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
@@ -181,6 +189,7 @@ esgf_query <- function (
     source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
                "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
                "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"),
+    variant = "r1i1p1f1",
     replica = FALSE,
     latest = TRUE,
     resolution = c("100 km", "50 km"),
@@ -201,6 +210,7 @@ esgf_query <- function (
     ))
     assert_character(experiment, any.missing = FALSE)
     assert_character(source, any.missing = FALSE)
+    assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+")
     assert_character(resolution, any.missing = FALSE)
     assert_flag(replica)
     assert_flag(latest)
@@ -213,7 +223,6 @@ esgf_query <- function (
                     gsub(" ", "+", resolution, fixed = TRUE))
 
     project <- "CMIP6"
-    variant <- "r1i1p1f1"
     format <- "application%2Fsolr%2Bjson"
 
     q <- paste0(url_base,

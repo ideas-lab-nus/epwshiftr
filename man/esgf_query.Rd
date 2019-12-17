@@ -12,6 +12,7 @@ esgf_query(
   experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
   source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM", "EC-Earth3",
     "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8", "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"),
+  variant = "r1i1p1f1",
   replica = FALSE,
   latest = TRUE,
   resolution = c("100 km", "50 km"),
@@ -98,6 +99,16 @@ ScenarioMIP with daily frequency, i.e. \code{"AWI-CM-1-1-MR"},
 \code{"BCC-CSM2-MR"}, \code{"CESM2"}, \code{"CESM2-WACCM"}, \code{"EC-Earth3"},
 \code{"EC-Earth3-Veg"}, \code{"GFDL-ESM4"}, \code{"INM-CM4-8"}, \code{"INM-CM5-0"},
 \code{"MPI-ESM1-2-HR"} and \code{"MRI-ESM2-0"}.}
+
+\item{variant}{A character vector indicating label constructeds from 4
+indices stored as global attributes in format r<k>i<l>p<m>f<n>
+described below. Default: \code{"r1i1p1f1"}.
+\itemize{
+\item \code{r}: realization_index(<k>) = realization number (integer >0)
+\item \code{i}: initialization_index(<l>) = index for variant of initialization method (integer >0)
+\item \code{p}: physics_index(<m>) = index for model physics variant (integer >0)
+\item \code{f}: forcing_index(<n>) = index for variant of forcing (integer >0)
+}}
 
 \item{replica}{Whether the record is the "master" copy, or a replica. Use
 \code{FALSE} to return only originals and \code{TRUE} to return only replicas.
