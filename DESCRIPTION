@@ -20,6 +20,7 @@ Imports:
     data.table,
     eplusr,
     jsonlite,
+    ncmeta,
     rappdirs
 URL: https://github.com/hongyuanjia/epwshiftr
 BugReports: https://github.com/hongyuanjia/epwshiftr/issues
@@ -32,3 +33,4 @@ Collate:
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
+    'netcdf.R'

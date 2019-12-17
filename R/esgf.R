@@ -389,6 +389,8 @@ init_cmip6_index <- function (
 
     dt <- data.table::set(qd, NULL, "file_url", NA_character_)
 
+    # to avoid No visible binding for global variable check NOTE
+    file_url <- NULL
     attempt <- 0L
     retry <- 10L
     while (nrow(nf <- dt[is.na(file_url)]) && attempt <= retry) {
