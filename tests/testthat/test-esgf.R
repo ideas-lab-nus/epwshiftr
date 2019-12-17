@@ -78,5 +78,9 @@ test_that("Build CMIP6 file index database", {
         )
     )
     expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
+
+    expect_message(idx1 <- load_cmip6_index())
+    expect_is(idx1 <- load_cmip6_index(), "data.table")
+    expect_equal(idx, idx1)
 })
 # }}}

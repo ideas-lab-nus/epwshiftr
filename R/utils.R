@@ -20,16 +20,16 @@ verbose <- function (..., sep = "") {
 #' @importFrom checkmate test_directory_exists
 #' @noRd
 .data_dir <- function (init = FALSE, force = TRUE) {
-    d <- normalizePath(rappdirs::user_data_dir(appauthor = packageName()), mustWork = FALSE)
+    d <- normalizePath(rappdirs::user_data_dir(appauthor = "epwshiftr"), mustWork = FALSE)
 
     if (init && !dir.exists(d)) {
-        verbose(sprintf("Creating %s package data storage directory '%s'...", packageName(), d))
+        verbose(sprintf("Creating %s package data storage directory '%s'...", "epwshiftr", d))
         dir.create(d)
     }
 
     if ((init || force) && !test_directory_exists(d, "rw")) {
         stop(sprintf("%s package data storage directory %s does not exists or writable.",
-            packageName(), d
+            "epwshiftr", d
         ))
     }
 

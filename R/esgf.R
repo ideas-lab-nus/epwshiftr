@@ -435,3 +435,42 @@ init_cmip6_index <- function (
     dt
 }
 # }}}
+
+# load_cmip6_index {{{
+#' Load previously stored CMIP6 experiment output file index database
+#'
+#' @return A [data.table::data.table] with 20 columns. For detail description on
+#' column, see [init_cmip6_index()].
+#'
+#' @examples
+#' \dontrun{
+#' load_cmip6_index()
+#' }
+#' @importFrom data.table fread
+#' @export
+load_cmip6_index <- function () {
+    f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
+    if (!file.exists(f)) {
+        message(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
+        return(invisible())
+    }
+
+    # load file info
+    idx <- tryCatch(
+        data.table::fread(f, colClasses = c("version" = "character")),
+        error = function (e) {
+            stop("Failed to parse CMIP6 experiment output file index database.\n", conditionMessage(e))
+        }
+    )
+    message("Loading CMIP6 experiment output file index database created at ", file.info(f)$mtime, ".")
+
+    # to avoid No visible binding for global variable check NOTE
+    datetime_start <- datetime_end <- NULL
+    # make sure datetime are POSIXct class
+    idx[, c("datetime_start", "datetime_end") :=
+        list(as.POSIXct(datetime_start, "UTC"), as.POSIXct(datetime_end, "UTC"))
+    ]
+
+    idx[]
+}
+# }}}
