@@ -91,6 +91,7 @@
 #'        `"BCC-CSM2-MR"`, `"CESM2"`, `"CESM2-WACCM"`, `"EC-Earth3"`,
 #'        `"EC-Earth3-Veg"`, `"GFDL-ESM4"`, `"INM-CM4-8"`, `"INM-CM5-0"`,
 #'        `"MPI-ESM1-2-HR"` and `"MRI-ESM2-0"`.
+#'
 #' @param variant A character vector indicating label constructeds from 4
 #'        indices stored as global attributes in format r<k>i<l>p<m>f<n>
 #'        described below. Default: `"r1i1p1f1"`.
@@ -167,7 +168,7 @@
 #'     | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
 #'     | 19   | `data_node`          | Character | Data node to download the model output file                          |
 #'     | 20   | `file_url`           | Character | Model output file download url from HTTP server                      |
-#'     | 21   | `file_pid`           | Character | A unique string that helps identify the output file                  |
+#'     | 21   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
@@ -283,7 +284,7 @@ extract_query_file <- function (q) {
         l <- l[c("id", "dataset_id", "mip_era", "activity_drs", "institution_id",
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node", "size", "url", "pid")]
+            "variable_units", "data_node", "size", "url", "tracking_id")]
         l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
         if (!length(l$url)) {
             warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
@@ -295,14 +296,14 @@ extract_query_file <- function (q) {
         s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
         lapply(s, as.POSIXct, format = "%Y%m%d", tz = "UTC")
     }][, url := gsub("\\|.+$", "", url)]
-    data.table::setnames(dt_file, c("id", "pid", "size", "url"),
-        c("file_id", "file_pid", "file_size", "file_url"))
+    data.table::setnames(dt_file, c("id", "size", "url"),
+        c("file_id", "file_size", "file_url"))
     data.table::setcolorder(dt_file, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
         "source_id", "experiment_id", "member_id", "table_id", "grid_label",
         "version", "nominal_resolution", "variable_id", "variable_long_name",
         "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "file_url", "file_pid"
+        "data_node", "file_url", "tracking_id"
     ))
 
     dt_file
@@ -347,7 +348,7 @@ extract_query_file <- function (q) {
 #' | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
 #' | 19   | `data_node`          | Character | Data node to download the model output file                          |
 #' | 20   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
-#' | 21   | `file_pid`           | Character | A unique string that helps identify the output file                  |
+#' | 21   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
 #'
 #' @examples
 #' \dontrun{
@@ -438,7 +439,7 @@ init_cmip6_index <- function (
         "source_id", "experiment_id", "member_id", "table_id", "grid_label",
         "version", "nominal_resolution", "variable_id", "variable_long_name",
         "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "file_url", "dataset_pid", "file_pid"
+        "data_node", "file_url", "dataset_pid", "tracking_id"
     ))
 
     # save database into the app data directory

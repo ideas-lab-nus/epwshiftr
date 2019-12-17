@@ -175,7 +175,7 @@ on the \code{type}:
    18 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
    19 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
    20 \tab \code{file_url} \tab Character \tab Model output file download url from HTTP server \cr
-   21 \tab \code{file_pid} \tab Character \tab A unique string that helps identify the output file \cr
+   21 \tab \code{tracking_id} \tab Character \tab A unique string that helps identify the output file \cr
 }
 
 }

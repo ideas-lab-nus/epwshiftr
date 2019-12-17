@@ -135,7 +135,7 @@ A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{
    18 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
    19 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
    20 \tab \code{dataset_pid} \tab Character \tab A unique string that helps identify the dataset \cr
-   21 \tab \code{file_pid} \tab Character \tab A unique string that helps identify the output file \cr
+   21 \tab \code{tracking_id} \tab Character \tab A unique string that helps identify the output file \cr
 }
 }
 \description{
