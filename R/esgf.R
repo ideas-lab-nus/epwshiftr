@@ -342,7 +342,7 @@ extract_query_file <- function (q) {
 #' }
 #'
 #' @importFrom checkmate assert_directory_exists
-#' @importFrom data.table fwrite rbindlist set setcolorder
+#' @importFrom data.table copy fwrite rbindlist set setcolorder
 #' @importFrom rappdirs user_data_dir
 #' @export
 init_cmip6_index <- function (
@@ -432,6 +432,7 @@ init_cmip6_index <- function (
     data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
     verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'...")
 
+    EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
     dt
 }
 # }}}
@@ -446,13 +447,12 @@ init_cmip6_index <- function (
 #' \dontrun{
 #' load_cmip6_index()
 #' }
-#' @importFrom data.table fread
+#' @importFrom data.table copy fread
 #' @export
 load_cmip6_index <- function () {
     f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
     if (!file.exists(f)) {
-        message(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
-        return(invisible())
+        stop(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
     }
 
     # load file info
@@ -471,6 +471,22 @@ load_cmip6_index <- function () {
         list(as.POSIXct(datetime_start, "UTC"), as.POSIXct(datetime_end, "UTC"))
     ]
 
-    idx[]
+    # udpate package internal stored file index database
+    EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
+
+    idx
+}
+# }}}
+
+# get_data_dir {{{
+#' Get the path of directory where epwshiftr data is stored
+#'
+#' @return A single string.
+#' @examples
+#' get_data_dir()
+#'
+#' @export
+get_data_dir <- function () {
+    .data_dir(force = TRUE)
 }
 # }}}

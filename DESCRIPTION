@@ -28,3 +28,7 @@ RoxygenNote: 7.0.2
 Suggests:
     testthat,
     covr
+Collate:
+    'utils.R'
+    'epwshiftr-package.R'
+    'esgf.R'
