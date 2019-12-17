@@ -297,23 +297,20 @@ extract_query_file <- function (q) {
 }
 # }}}
 
-# build_cmip6_db {{{
+# init_cmip6_index {{{
 #' Build CMIP6 experiment output file index database
 #'
-#' @details
-#' `build_cmip6_db()` will search the CMIP6 model output file using [esgf_query()]
-#' and return a [data.table::data.table()] containing the actual NetCDF file url
-#' to download.
+#' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
+#' , return a [data.table::data.table()] containing the actual NetCDF file url
+#' to download, and store it intro user data directory for futher use.
 #'
-#' @param dir A directory to save the database. It will be created if not exists.
-#' @param retry An integer indicating the maximum number of retries to match the
-#'        file query to dataset query, or collect all file query responses when
-#'        its number reaching the maximum limitation of ESGF search RESTful API
-#'        10,000. Default: `10`.
-#' @param ... All pass to [esgf_query()] except for [`type`][esgf_query()]. Note
-#'        that here `limit` argument will only limit the records for dataset
-#'        query, not the file query.
+#' For details on where the file index database is stored, see [rappdirs::user_data_dir()].
 #'
+#' @note
+#' Argument `limit` will only apply to `Dataset` query. `init_cmip6_index()` will
+#' try to get all model output files which match the dataset id.
+#'
+#' @inheritParams esgf_query
 #' @return A [data.table::data.table] with 20 columns:
 #'
 #' | No.  | Column               | Type      | Description                                                          |
@@ -341,27 +338,31 @@ extract_query_file <- function (q) {
 #'
 #' @examples
 #' \dontrun{
-#' build_smip_db(dir = tempdir())
+#' init_cmip6_index()
 #' }
 #'
 #' @importFrom checkmate assert_directory_exists
-#' @importFrom data.table rbindlist set setcolorder
+#' @importFrom data.table fwrite rbindlist set setcolorder
+#' @importFrom rappdirs user_data_dir
 #' @export
-build_cmip6_db <- function (dir, retry = 10L, ...) {
-    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
-    assert_directory_exists(dir)
-
-    # get input argument
-    cl <- match.call(esgf_query, substitute(esgf_query(...)))
-    # warning if "type" is in the dots
-    ag <- as.list(cl[-1L])
-    if ("type" %in% names(ag)) {
-        warning("'type' argument will be ignored since both Dataset and File query will be performed.")
-        ag <- ag[names(ag) != "type"]
-    }
-
+init_cmip6_index <- function (
+    activity = "ScenarioMIP",
+    variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rss", "rls", "psl", "sfcWind", "clt"),
+    frequency = "day",
+    experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
+    source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
+               "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
+               "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"),
+    replica = FALSE,
+    latest = TRUE,
+    resolution = c("100 km", "50 km"),
+    limit = 10000L
+)
+{
     verbose("Querying CMIP6 Dataset Information...")
-    qd <- do.call(esgf_query, c(ag, type = "Dataset"))
+    qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
+        experiment = experiment, source = source, replica = replica, latest = latest,
+        resolution = resolution, limit = limit, type = "Dataset")
 
     # give a warning if dataset query response hits the limits
     if (nrow(qd) == 10000L) {
@@ -387,17 +388,16 @@ build_cmip6_db <- function (dir, retry = 10L, ...) {
         q <- unique(nf[, .SD, .SDcols = c("activity_drs", "source_id",
             "experiment_id", "nominal_resolution", "table_id", "variable_id")])
 
-        qf <- do.call(esgf_query,
-            c(list(activity = unique(q$activity_drs),
-                   source = unique(q$source_id),
-                   experiment = unique(q$experiment_id),
-                   resolution = unique(q$nominal_resolution),
-                   variable = unique(q$variable_id),
-                   frequency = unique(q$table_id),
-                   type = "File"),
-               ag[!names(ag) %in% c("activity", "source", "experiment",
-                   "resolution", "variable", "frequency", "limit")] # remove limit
-            )
+        qf <- esgf_query(
+            activity = unique(q$activity_drs),
+            variable = unique(q$variable_id),
+            frequency = unique(q$table_id),
+            experiment = unique(q$experiment_id),
+            source = unique(q$source_id),
+            resolution = unique(q$nominal_resolution),
+            replica = replica,
+            latest = latest,
+            type = "File"
         )
 
         # remove all common columns in file query except for "dataset_id"
@@ -413,6 +413,7 @@ build_cmip6_db <- function (dir, retry = 10L, ...) {
         dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
     }
 
+    verbose("Checking if data is complete...")
     if (anyNA(dt$url)) {
         warning("There are still ", length(unique(dt$dataset_id[is.na(dt$url)])), " Dataset that ",
             "did not find any matched output file after ", retry, " retries."
@@ -426,6 +427,10 @@ build_cmip6_db <- function (dir, retry = 10L, ...) {
         "variable_units", "datetime_start", "datetime_end", "file_size",
         "data_node", "url"
     ))
+
+    # save database into the app data directory
+    data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'...")
 
     dt
 }

@@ -19,7 +19,8 @@ Imports:
     checkmate,
     data.table,
     eplusr,
-    jsonlite
+    jsonlite,
+    rappdirs
 URL: https://github.com/hongyuanjia/epwshiftr
 BugReports: https://github.com/hongyuanjia/epwshiftr/issues
 Roxygen: list(markdown = TRUE)

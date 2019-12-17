@@ -64,12 +64,11 @@ test_that("Query ESGF", {
 })
 # }}}
 
-# build_smip_db {{{
-test_that("Build ESGF database", {
-    expect_warning(db <- build_cmip6_db(tempdir(), variable = "tas", source = "AWI-CM-1-1-MR", limit = 1, type = "File"),
-        "'type' argument will be ignored"
-    )
-    expect_equal(names(db),
+# build_smip_index {{{
+test_that("Build CMIP6 file index database", {
+    expect_silent(idx <- init_cmip6_index(variable = "tas", source = "AWI-CM-1-1-MR", limit = 1))
+    expect_is(idx, "data.table")
+    expect_equal(names(idx),
         c(
             "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
@@ -78,5 +77,6 @@ test_that("Build ESGF database", {
             "data_node", "url"
         )
     )
+    expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
 })
 # }}}
