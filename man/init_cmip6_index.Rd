@@ -115,7 +115,7 @@ Should be <= 10,000. Default: \code{10000}.}
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{rlll}{
    No. \tab Column \tab Type \tab Description \cr
-   1 \tab `file_id \tab Character \tab Model output file universal identifier \cr
+   1 \tab \code{file_id} \tab Character \tab Model output file universal identifier \cr
    2 \tab \code{dataset_id} \tab Character \tab Dataset universal identifier \cr
    3 \tab \code{mip_era} \tab Character \tab Activity's associated CMIP cycle. Will always be \code{"CMIP6"} \cr
    4 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr

@@ -315,7 +315,7 @@ extract_query_file <- function (q) {
 #'
 #' | No.  | Column               | Type      | Description                                                          |
 #' | ---: | -----                | -----     | -----                                                                |
-#' | 1    | `file_id             | Character | Model output file universal identifier                               |
+#' | 1    | `file_id`            | Character | Model output file universal identifier                               |
 #' | 2    | `dataset_id`         | Character | Dataset universal identifier                                         |
 #' | 3    | `mip_era`            | Character | Activity's associated CMIP cycle. Will always be `"CMIP6"`           |
 #' | 4    | `activity_drs`       | Character | Activity DRS (Data Reference Syntax)                                 |
