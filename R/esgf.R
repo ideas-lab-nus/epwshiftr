@@ -372,7 +372,7 @@ init_cmip6_index <- function (
     limit = 10000L
 )
 {
-    verbose("Querying CMIP6 Dataset Information...")
+    verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
         experiment = experiment, source = source, replica = replica, latest = latest,
         resolution = resolution, limit = limit, type = "Dataset")
@@ -392,7 +392,7 @@ init_cmip6_index <- function (
     retry <- 10L
     while (nrow(nf <- dt[is.na(file_url)]) && attempt <= retry) {
         attempt <- attempt + 1L
-        verbose("Querying CMIP6 File Information...[Attempt ", attempt, "]")
+        verbose("Querying CMIP6 File Information [Attempt ", attempt, "]")
 
         # to avoid No visible binding for global variable check NOTE
         .SD <- NULL
@@ -426,7 +426,7 @@ init_cmip6_index <- function (
         dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
     }
 
-    verbose("Checking if data is complete...")
+    verbose("Checking if data is complete")
     if (anyNA(dt$file_url)) {
         warning("There are still ", length(unique(dt$dataset_id[is.na(dt$file_url)])), " Dataset that ",
             "did not find any matched output file after ", retry, " retries."
@@ -443,7 +443,7 @@ init_cmip6_index <- function (
 
     # save database into the app data directory
     data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'...")
+    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
 
     EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
     dt

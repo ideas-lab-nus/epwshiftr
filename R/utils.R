@@ -31,7 +31,7 @@ verbose <- function (..., sep = "") {
     }
 
     if (init && !dir.exists(d)) {
-        verbose(sprintf("Creating %s package data storage directory '%s'...", "epwshiftr", d))
+        verbose(sprintf("Creating %s package data storage directory '%s'", "epwshiftr", d))
         dir.create(d, recursive = TRUE)
     }
 
