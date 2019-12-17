@@ -150,6 +150,7 @@ on the \code{type}:
    13 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
    14 \tab \code{variable_units} \tab Character \tab Units of variable \cr
    15 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
+   16 \tab \code{dataset_pid} \tab Character \tab A unique string that helps identify the dataset \cr
 }
 
 \item If \code{"File"}, returned columns are:\tabular{rlll}{
@@ -173,7 +174,8 @@ on the \code{type}:
    17 \tab \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
    18 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
    19 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
-   20 \tab \code{url} \tab Character \tab Model output file download url from HTTP server \cr
+   20 \tab \code{file_url} \tab Character \tab Model output file download url from HTTP server \cr
+   21 \tab \code{file_pid} \tab Character \tab A unique string that helps identify the output file \cr
 }
 
 }

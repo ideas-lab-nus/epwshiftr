@@ -24,7 +24,7 @@ test_that("Query ESGF", {
             "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
             "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node"
+            "variable_units", "data_node", "dataset_pid"
         )
     )
 
@@ -54,7 +54,7 @@ test_that("Query ESGF", {
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "datetime_start", "datetime_end", "file_size",
-            "data_node", "url"
+            "data_node", "file_url", "file_pid"
         )
     )
 
@@ -74,7 +74,7 @@ test_that("Build CMIP6 file index database", {
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "datetime_start", "datetime_end", "file_size",
-            "data_node", "url"
+            "data_node", "file_url", "dataset_pid", "file_pid"
         )
     )
     expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))

@@ -141,6 +141,7 @@
 #'     | 13   | `variable_long_name` | Character | Variable long name                                                   |
 #'     | 14   | `variable_units`     | Character | Units of variable                                                    |
 #'     | 15   | `data_node`          | Character | Data node to download the model output file                          |
+#'     | 16   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
 #'
 #' * If `"File"`, returned columns are:
 #'
@@ -165,7 +166,8 @@
 #'     | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
 #'     | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
 #'     | 19   | `data_node`          | Character | Data node to download the model output file                          |
-#'     | 20   | `url`                | Character | Model output file download url from HTTP server                      |
+#'     | 20   | `file_url`           | Character | Model output file download url from HTTP server                      |
+#'     | 21   | `file_pid`           | Character | A unique string that helps identify the output file                  |
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
@@ -265,10 +267,10 @@ extract_query_dataset <- function (q) {
         l <- l[c("id", "mip_era", "activity_drs", "institution_id", "source_id",
             "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node")]
+            "variable_units", "data_node", "pid")]
         lapply(l, unlist)
     }))
-    data.table::setnames(dt, "id", "dataset_id")
+    data.table::setnames(dt, c("id", "pid"), c("dataset_id", "dataset_pid"))
 }
 # }}}
 
@@ -281,7 +283,7 @@ extract_query_file <- function (q) {
         l <- l[c("id", "dataset_id", "mip_era", "activity_drs", "institution_id",
             "source_id", "experiment_id", "member_id", "table_id", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node", "size", "url")]
+            "variable_units", "data_node", "size", "url", "pid")]
         l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
         if (!length(l$url)) {
             warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
@@ -293,13 +295,14 @@ extract_query_file <- function (q) {
         s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
         lapply(s, as.POSIXct, format = "%Y%m%d", tz = "UTC")
     }][, url := gsub("\\|.+$", "", url)]
-    data.table::setnames(dt_file, c("id", "size"), c("file_id", "file_size"))
+    data.table::setnames(dt_file, c("id", "pid", "size", "url"),
+        c("file_id", "file_pid", "file_size", "file_url"))
     data.table::setcolorder(dt_file, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
         "source_id", "experiment_id", "member_id", "table_id", "grid_label",
         "version", "nominal_resolution", "variable_id", "variable_long_name",
         "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "url"
+        "data_node", "file_url", "file_pid"
     ))
 
     dt_file
@@ -343,7 +346,8 @@ extract_query_file <- function (q) {
 #' | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
 #' | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
 #' | 19   | `data_node`          | Character | Data node to download the model output file                          |
-#' | 20   | `url`                | Character | Model output file download url from HTTP server                      |
+#' | 20   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
+#' | 21   | `file_pid`           | Character | A unique string that helps identify the output file                  |
 #'
 #' @examples
 #' \dontrun{
@@ -382,11 +386,11 @@ init_cmip6_index <- function (
         )
     }
 
-    dt <- data.table::set(qd, NULL, "url", NA_character_)
+    dt <- data.table::set(qd, NULL, "file_url", NA_character_)
 
     attempt <- 0L
     retry <- 10L
-    while (nrow(nf <- dt[is.na(url)]) && attempt <= retry) {
+    while (nrow(nf <- dt[is.na(file_url)]) && attempt <= retry) {
         attempt <- attempt + 1L
         verbose("Querying CMIP6 File Information...[Attempt ", attempt, "]")
 
@@ -411,7 +415,7 @@ init_cmip6_index <- function (
 
         # remove all common columns in file query except for "dataset_id"
         data.table::set(qf, NULL, value = NULL,
-            setdiff(intersect(names(qd), names(qf)), c("dataset_id", "url"))
+            setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url"))
         )
 
         # remove all common column in nf except for "dataset_id"
@@ -423,8 +427,8 @@ init_cmip6_index <- function (
     }
 
     verbose("Checking if data is complete...")
-    if (anyNA(dt$url)) {
-        warning("There are still ", length(unique(dt$dataset_id[is.na(dt$url)])), " Dataset that ",
+    if (anyNA(dt$file_url)) {
+        warning("There are still ", length(unique(dt$dataset_id[is.na(dt$file_url)])), " Dataset that ",
             "did not find any matched output file after ", retry, " retries."
         )
     }
@@ -434,7 +438,7 @@ init_cmip6_index <- function (
         "source_id", "experiment_id", "member_id", "table_id", "grid_label",
         "version", "nominal_resolution", "variable_id", "variable_long_name",
         "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "url"
+        "data_node", "file_url", "dataset_pid", "file_pid"
     ))
 
     # save database into the app data directory
