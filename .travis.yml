@@ -7,9 +7,11 @@ addons:
   apt:
     packages:
       - libudunits2-dev
+      - libnetcdf-dev
   homebrew:
     packages:
       - udunits
+      - netcdf
 
 matrix:
   include:
