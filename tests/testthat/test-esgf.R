@@ -84,3 +84,16 @@ test_that("Build CMIP6 file index database", {
     expect_equal(idx, idx1)
 })
 # }}}
+
+# get_data_dir {{{
+test_that("Get package data storage directory", {
+    options("epwshiftr.dir" = "a")
+    expect_error(get_data_dir(), "not exists")
+    options("epwshiftr.dir" = NULL)
+    if (.Platform$OS.type == "windows") {
+        expect_equal(get_data_dir(), user_data_dir(appauthor = "epwshiftr"))
+    } else {
+        expect_equal(get_data_dir(), user_data_dir(appname = "epwshiftr"))
+    }
+})
+# }}}

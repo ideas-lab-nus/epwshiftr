@@ -22,7 +22,16 @@ verbose <- function (..., sep = "") {
 .data_dir <- function (init = FALSE, force = TRUE) {
     d <- getOption("epwshiftr.dir", NULL)
     if (is.null(d)) {
-        d <- normalizePath(rappdirs::user_data_dir(appauthor = "epwshiftr"), mustWork = FALSE)
+        if (.Platform$OS.type == "windows") {
+            d <- normalizePath(rappdirs::user_data_dir(appauthor = "epwshiftr"), mustWork = FALSE)
+        } else {
+            d <- normalizePath(rappdirs::user_data_dir(appname = "epwshiftr"), mustWork = FALSE)
+        }
+
+        if (init && !dir.exists(d)) {
+            verbose(sprintf("Creating %s package data storage directory '%s'", "epwshiftr", d))
+            dir.create(d, recursive = TRUE)
+        }
     } else {
         # make sure user specified directory exists
         d <- normalizePath(d, mustWork = FALSE)
@@ -30,13 +39,8 @@ verbose <- function (..., sep = "") {
         force <- TRUE
     }
 
-    if (init && !dir.exists(d)) {
-        verbose(sprintf("Creating %s package data storage directory '%s'", "epwshiftr", d))
-        dir.create(d, recursive = TRUE)
-    }
-
     if ((init || force) && !test_directory_exists(d, "rw")) {
-        stop(sprintf("%s package data storage directory %s does not exists or writable.",
+        stop(sprintf("%s package data storage directory '%s' does not exists or is not writable.",
             "epwshiftr", d
         ))
     }
