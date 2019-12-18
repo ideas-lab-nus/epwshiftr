@@ -100,14 +100,14 @@ ScenarioMIP with daily frequency, i.e. \code{"AWI-CM-1-1-MR"},
 \code{"EC-Earth3-Veg"}, \code{"GFDL-ESM4"}, \code{"INM-CM4-8"}, \code{"INM-CM5-0"},
 \code{"MPI-ESM1-2-HR"} and \code{"MRI-ESM2-0"}.}
 
-\item{variant}{A character vector indicating label constructeds from 4
-indices stored as global attributes in format r<k>i<l>p<m>f<n>
+\item{variant}{A character vector indicating label constructed from 4
+indices stored as global attributes in format \verb{r<k>i<l>p<m>f<n>}
 described below. Default: \code{"r1i1p1f1"}.
 \itemize{
-\item \code{r}: realization_index(<k>) = realization number (integer >0)
-\item \code{i}: initialization_index(<l>) = index for variant of initialization method (integer >0)
-\item \code{p}: physics_index(<m>) = index for model physics variant (integer >0)
-\item \code{f}: forcing_index(<n>) = index for variant of forcing (integer >0)
+\item \code{r}: realization_index (<k>) = realization number (integer >0)
+\item \code{i}: initialization_index (<l>) = index for variant of initialization method (integer >0)
+\item \code{p}: physics_index (<m>) = index for model physics variant (integer >0)
+\item \code{f}: forcing_index (<n>) = index for variant of forcing (integer >0)
 }}
 
 \item{replica}{Whether the record is the "master" copy, or a replica. Use
@@ -142,7 +142,7 @@ on the \code{type}:
    5 \tab \code{source_id} \tab Character \tab Model identifier \cr
    6 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    7 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
-   8 \tab \code{table_id} \tab Character \tab Table identifier \cr
+   8 \tab \code{table_id} \tab Character \tab Table identifier, i.e. sampling frequency identifier \cr
    9 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
    10 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
    11 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
@@ -163,7 +163,7 @@ on the \code{type}:
    6 \tab \code{source_id} \tab Character \tab Model identifier \cr
    7 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    8 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
-   9 \tab \code{table_id} \tab Character \tab Table identifier \cr
+   9 \tab \code{table_id} \tab Character \tab Table identifier, i.e. sampling frequency identifier \cr
    10 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
    11 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
    12 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr

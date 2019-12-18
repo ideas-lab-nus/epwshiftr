@@ -92,14 +92,14 @@
 #'        `"EC-Earth3-Veg"`, `"GFDL-ESM4"`, `"INM-CM4-8"`, `"INM-CM5-0"`,
 #'        `"MPI-ESM1-2-HR"` and `"MRI-ESM2-0"`.
 #'
-#' @param variant A character vector indicating label constructeds from 4
-#'        indices stored as global attributes in format r<k>i<l>p<m>f<n>
+#' @param variant A character vector indicating label constructed from 4
+#'        indices stored as global attributes in format `r<k>i<l>p<m>f<n>`
 #'        described below. Default: `"r1i1p1f1"`.
 #'
-#' * `r`: realization_index(<k>) = realization number (integer >0)
-#' * `i`: initialization_index(<l>) = index for variant of initialization method (integer >0)
-#' * `p`: physics_index(<m>) = index for model physics variant (integer >0)
-#' * `f`: forcing_index(<n>) = index for variant of forcing (integer >0)
+#' * `r`: realization_index (<k>) = realization number (integer >0)
+#' * `i`: initialization_index (<l>) = index for variant of initialization method (integer >0)
+#' * `p`: physics_index (<m>) = index for model physics variant (integer >0)
+#' * `f`: forcing_index (<n>) = index for variant of forcing (integer >0)
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
@@ -134,7 +134,7 @@
 #'     | 5    | `source_id`          | Character | Model identifier                                                     |
 #'     | 6    | `experiment_id`      | Character | Root experiment identifier                                           |
 #'     | 7    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | 8    | `table_id`           | Character | Table identifier                                                     |
+#'     | 8    | `table_id`           | Character | Table identifier, i.e. sampling frequency identifier                 |
 #'     | 9    | `grid_label`         | Character | Grid identifier                                                      |
 #'     | 10   | `version`            | Character | Approximate date of model output file                                |
 #'     | 11   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
@@ -156,7 +156,7 @@
 #'     | 6    | `source_id`          | Character | Model identifier                                                     |
 #'     | 7    | `experiment_id`      | Character | Root experiment identifier                                           |
 #'     | 8    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | 9    | `table_id`           | Character | Table identifier                                                     |
+#'     | 9    | `table_id`           | Character | Table identifier, i.e. sampling frequency identifier                 |
 #'     | 10   | `grid_label`         | Character | Grid identifier                                                      |
 #'     | 11   | `version`            | Character | Approximate date of model output file                                |
 #'     | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
@@ -490,7 +490,7 @@ load_cmip6_index <- function () {
     # udpate package internal stored file index database
     EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
 
-    idx
+    idx[]
 }
 # }}}
 
