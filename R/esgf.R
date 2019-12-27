@@ -473,7 +473,7 @@ load_cmip6_index <- function () {
 
     # load file info
     idx <- tryCatch(
-        data.table::fread(f, colClasses = c("version" = "character")),
+        data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
         error = function (e) {
             stop("Failed to parse CMIP6 experiment output file index database.\n", conditionMessage(e))
         }
