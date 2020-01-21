@@ -8,7 +8,8 @@ summary_database(
   dir,
   by = c("activity", "experiment", "variant", "frequency", "variable", "source",
     "resolution"),
-  recursive = FALSE
+  recursive = FALSE,
+  update = TRUE
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ subeset of:
 
 \item{recursive}{If \code{TRUE}, scan recursively into directories. Default:
 \code{FALSE}.}
+
+\item{update}{If \code{TRUE}, the output file index database will be updated based
+on the matched NetCDF files in specified directory. Default: \code{TRUE}.}
 }
 \value{
 A \code{\link[data.table:data.table]{data.table::data.table()}} containing corresponding grouping

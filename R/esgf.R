@@ -54,8 +54,8 @@
 #' * `hursmax`: Maximum near-surface relative humidity, units: `%`.
 #' * `hursmin`: Minimum near-surface relative humidity, units: `%`.
 #' * `psl`: sea level pressure, units: `Pa`.
-#' * `rss`: Net downward shortwave radiation at the surface, units: `W m-2`.
-#' * `rls`: Net downward longware radiation at the surface, units: `W m-2`.
+#' * `rsds`: Surface downwelling shortwave radiation, units: `W m-2`.
+#' * `rlds`: Surface downwelling longware radiation, units: `W m-2`.
 #' * `sfcWind`: Near-surface (usually, 10 meters) wind speed, units: `m s-1`.
 #' * `pr`: Precipitation, units: `kg m-2 s-1`.
 #' * `clt`: Total cloud area fraction for the whole atmospheric column, as
@@ -186,7 +186,7 @@
 #' @export
 esgf_query <- function (
     activity = "ScenarioMIP",
-    variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rss", "rls", "psl", "sfcWind", "clt"),
+    variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
     frequency = "day",
     experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
     source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
@@ -361,7 +361,7 @@ extract_query_file <- function (q) {
 #' @export
 init_cmip6_index <- function (
     activity = "ScenarioMIP",
-    variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rss", "rls", "psl", "sfcWind", "clt"),
+    variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
     frequency = "day",
     experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
     source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
@@ -487,10 +487,38 @@ load_cmip6_index <- function () {
         list(as.POSIXct(datetime_start, "UTC"), as.POSIXct(datetime_end, "UTC"))
     ]
 
+    if ("file_mtime" %in% names(idx)) {
+        idx[file_mtime != "", file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
+    }
+
     # udpate package internal stored file index database
     EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
 
     idx[]
+}
+# }}}
+
+# set_cmip6_index {{{
+#' @importFrom checkmate assert_data_table
+set_cmip6_index <- function (index) {
+    checkmate::assert_data_table(index)
+    checkmate::assert_subset(names(index),
+        c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "source_id", "experiment_id", "member_id", "table_id", "grid_label", "version",
+        "nominal_resolution", "variable_id", "variable_long_name", "variable_units",
+        "datetime_start", "datetime_end", "file_size", "data_node", "file_url",
+        "dataset_pid", "tracking_id", "file_path", "file_realsize", "file_mtime",
+        "time_units", "time_calendar")
+    )
+
+    # save database into the app data directory
+    data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+
+    # udpate package internal stored file index database
+    EPWSHIFTR_ENV$index_db <- data.table::copy(index)
+
+    invisible(index)
 }
 # }}}
 
@@ -504,5 +532,22 @@ load_cmip6_index <- function () {
 #' @export
 get_data_dir <- function () {
     .data_dir(force = TRUE)
+}
+# }}}
+
+# update_index {{{
+update_index <- function (index, write = FALSE, verbose = FALSE) {
+    # udpate package internal stored file index database
+    EPWSHIFTR_ENV$index_db <- data.table::copy(index)
+
+    if (write) {
+        # save database into the app data directory
+        data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        if (verbose) {
+            verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        }
+    }
+
+    index
 }
 # }}}

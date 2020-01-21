@@ -6,8 +6,8 @@
 \usage{
 esgf_query(
   activity = "ScenarioMIP",
-  variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rss",
-    "rls", "psl", "sfcWind", "clt"),
+  variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds",
+    "rlds", "psl", "sfcWind", "clt"),
   frequency = "day",
   experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
   source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM", "EC-Earth3",
@@ -60,8 +60,8 @@ most related variables for EPW are set as defaults. Default: \code{c("tas", "tas
 \item \code{hursmax}: Maximum near-surface relative humidity, units: \verb{\%}.
 \item \code{hursmin}: Minimum near-surface relative humidity, units: \verb{\%}.
 \item \code{psl}: sea level pressure, units: \code{Pa}.
-\item \code{rss}: Net downward shortwave radiation at the surface, units: \verb{W m-2}.
-\item \code{rls}: Net downward longware radiation at the surface, units: \verb{W m-2}.
+\item \code{rsds}: Surface downwelling shortwave radiation, units: \verb{W m-2}.
+\item \code{rlds}: Surface downwelling longware radiation, units: \verb{W m-2}.
 \item \code{sfcWind}: Near-surface (usually, 10 meters) wind speed, units: \verb{m s-1}.
 \item \code{pr}: Precipitation, units: \verb{kg m-2 s-1}.
 \item \code{clt}: Total cloud area fraction for the whole atmospheric column, as

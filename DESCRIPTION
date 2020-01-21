@@ -12,13 +12,21 @@ Description:
     Intercomparison Project Phase 6) project and create futher EnergyPlus
     Weather (EPW) files adjusted from climate changes using data from Global
     Climate Model (GCM).
-Imports:
+Imports: 
+    RNetCDF,
     checkmate,
+    cli,
+    curl,
     data.table,
     eplusr,
+    fancycut,
+    fst,
     jsonlite,
     ncmeta,
-    rappdirs
+    progress,
+    rappdirs,
+    tidync,
+    units
 Suggests:
     testthat,
     covr
@@ -30,7 +38,9 @@ BugReports: https://github.com/hongyuanjia/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.0.2
 Collate:
+    'coord.R'
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
+    'morph.R'
     'netcdf.R'
