@@ -128,10 +128,11 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         meta <- dict[c("city", "state_province", "country", "latitude", "longitude")]
     }
 
+    index <- index[!J(""), on = "file_path"]
+
     p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
         total = nrow(index), clear = FALSE)
 
-    index <- index[!J(""), on = "file_path"]
     coords <- lapply(index$file_path, function (f) {
         p$message(paste0("Processing file ", f, "..."))
         p$tick()
