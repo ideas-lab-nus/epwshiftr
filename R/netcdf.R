@@ -125,26 +125,28 @@ summary_database <- function (
 
     p$message(paste0("", length(ncfiles), " NetCDF files found."))
 
-    if (!length(ncfiles)) return(invisible())
+    if (length(ncfiles)) {
+        ncmeta <- data.table::rbindlist(lapply(ncfiles, function (f) {
+            p$message(paste0("Processing file ", f, "..."))
+            p$tick()
+            get_nc_meta(f)
+        }))
 
-    ncmeta <- data.table::rbindlist(lapply(ncfiles, function (f) {
-        p$message(paste0("Processing file ", f, "..."))
-        p$tick()
-        get_nc_meta(f)
-    }))
-
-    ncmeta[, `:=`(file_path = ncfiles, file_size = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
+        ncmeta[, `:=`(file_path = ncfiles, file_size = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
+    }
 
     # reset existing columns
     idx[, `:=`(file_path = NA_character_, file_realsize = NA_real_,
                file_mtime = NA_real_, time_units = NA_character_,
                time_calendar = NA_character_)]
 
-    # add variable units, time units and file paths
-    idx[ncmeta, on = "tracking_id",
-        `:=`(file_path = i.file_path, file_realsize = i.file_size, file_mtime = i.file_mtime,
-             time_units = i.time_units, time_calendar = i.time_units)
-    ]
+    if (length(ncfiles)) {
+        # add variable units, time units and file paths
+        idx[ncmeta, on = "tracking_id",
+            `:=`(file_path = i.file_path, file_realsize = i.file_size, file_mtime = i.file_mtime,
+                 time_units = i.time_units, time_calendar = i.time_units)
+        ]
+    }
 
     # update index database
     EPWSHIFTR_ENV$index_db <- copy(idx)

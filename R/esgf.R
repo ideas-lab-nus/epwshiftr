@@ -545,20 +545,3 @@ get_data_dir <- function () {
     .data_dir(force = TRUE)
 }
 # }}}
-
-# update_index {{{
-update_index <- function (index, write = FALSE, verbose = FALSE) {
-    # udpate package internal stored file index database
-    EPWSHIFTR_ENV$index_db <- data.table::copy(index)
-
-    if (write) {
-        # save database into the app data directory
-        data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        if (verbose) {
-            verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
-        }
-    }
-
-    index
-}
-# }}}
