@@ -54,89 +54,40 @@ align_units <- function (dt, units) {
 }
 # }}}
 
-# morphing_from_max_mean_min {{{
-#' @importFrom units drop_units set_units
-#' @export
-morphing_from_max_mean_min <- function (var, data_epw, data_mean, data_max, data_min,
-                                        start_from = 2020L, cut_by = 10L) {
-    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by)
-    data_max <- preprocess_morphing(data_max, leapyear = FALSE, start_from, cut_by)
-    data_min <- preprocess_morphing(data_min, leapyear = FALSE, start_from, cut_by)
-
-    daily <- daily_mean(data_epw, var)
-
-    # set units
-    u <- units(data_epw[[var]])
-    data_mean <- align_units(data_mean, u)
-    data_max <- align_units(data_max, u)
-    data_min <- align_units(data_min, u)
-
-    # calculate changes of daily maximum, mean and minimum dry bulb temperature
-    data_mean[daily, on = c("month", "day"), value := value - i.val_mean]
-    data_max[daily, on = c("month", "day"), value := value - i.val_max]
-    data_min[daily, on = c("month", "day"), value := value - i.val_min]
-
-    # calculate scaling factor
-    alpha <- copy(data_max)[data_min, on = c(setdiff(names(data_max), "value")), alpha := value - i.value]
-    alpha[daily, on = c("month", "day"), alpha := alpha / (i.val_max - i.val_min)]
-    # in case tamax is equal to tamin
-    alpha[is.infinite(alpha), alpha := 1.0]
-    # remove units
-    alpha[, alpha := units::drop_units(alpha)]
-    # combine delta mean temp
-    alpha[data_mean, on = c(setdiff(names(alpha), c("value", "alpha"))), value := i.value]
-
-    data_ta <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)]
-    # add meta columns from CMIP6 and alpha components
-    data_ta <- data_ta[alpha, on = c("month", "day"), allow.cartesian = TRUE]
-    # add daily mean temperature
-    data_ta[daily, on = c("month", "day"), daily_mean := val_mean]
-    # calculate delta
-    data_ta[, delta := units::set_units(value + alpha * (get(var) - daily_mean), u, mode = "standard")]
-
-    # calcuate final projection
-    data_ta[, c(var) := get(var) + delta]
-
-    data_ta[, .SD, .SDcols = c(
-        # meta from CMIP6
-        "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
-        "table_id", "lon", "lat",
-        # interval
-        "interval",
-        # datetime
-        "datetime", "year", "month", "day", "hour", "minute",
-        # value
-        var, "delta"
-        )]
-}
-# }}}
-
 # morphing_from_mean {{{
-morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "stretch"),
-                                start_from = 2020L, cut_by = 10L) {
+morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "stretch", "combined"),
+                                start_from = 2020L, cut_by = 30L) {
+    type <- match.arg(type)
+    # add cut interval and average by lon, lat, month and day (i.e. daily
+    # avarage) in CMIP6 data
     data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by)
 
+    # calculate daily average of EPW data
     daily <- daily_mean(data_epw, var)
 
     # set units
     u <- units(data_epw[[var]])
+    # this will automatically do unit conversions like K --> C
     data_mean <- align_units(data_mean, u)
 
-    if (type == "shift") {
-        # calculate changes of daily mean
-        data_mean[daily, on = c("month", "day"), delta := value - i.val_mean]
-    } else if (type == "stretch") {
-        # calculate changes of daily mean
-        data_mean[daily, on = c("month", "day"), alpha := value / i.val_mean]
-    }
-
+    # add datetime columns from the original EPW data into the daily average of
+    # CMIP6 data
+    # after this every row in 'data' indicates a specific hour (as EPW has
+    # hourly data)
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
         data_mean, on = c("month", "day"), allow.cartesian = TRUE]
+
+    # calculate delta, alpha and add EPW daily average value
+    data[daily, on = c("month", "day"),
+        `:=`(delta = value - i.val_mean, alpha = value / i.val_mean, value_mean = i.val_mean)
+    ]
 
     if (type == "shift") {
         data[, c(var) := units::set_units(get(var) + delta, u, mode = "standard")]
     } else if (type == "stretch") {
         data[, c(var) := units::set_units(get(var) * alpha, u, mode = "standard")]
+    } else if (type == "combined") {
+        data[, c(var) := units::set_units(get(var) + delta + alpha * get(var), u, mode = "standard")]
     }
 
     data[, .SD, .SDcols = c(
@@ -148,8 +99,8 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
         # datetime
         "datetime", "year", "month", "day", "hour", "minute",
         # value
-        var, if (type == "shift") "delta" else "alpha"
-        )]
+        var, "delta", "alpha"
+    )]
 }
 # }}}
 
@@ -167,8 +118,15 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_tdb <- function (data_epw, tas, tasmax, tasmin, start_from = 2020L, cut_by = 10L) {
-    morphing_from_max_mean_min("dry_bulb_temperature", data_epw, tas, tasmax, tasmin, start_from, cut_by)
+morphing_tdb <- function (data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift") {
+    morphing_from_mean(
+        var = "dry_bulb_temperature",
+        data_epw = data_epw,
+        data_mean = tas,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = type
+    )
 }
 # }}}
 
@@ -181,8 +139,18 @@ morphing_tdb <- function (data_epw, tas, tasmax, tasmin, start_from = 2020L, cut
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_rh <- function (data_epw, hurs, hursmax, hursmin, start_from = 2020L, cut_by = 10L) {
-    morphing_from_max_mean_min("relative_humidity", data_epw, hurs, hursmax, hursmin, start_from, cut_by)
+morphing_rh <- function (data_epw, hurs, start_from = 2020L, cut_by = 10L, type = "shift") {
+    rh <- morphing_from_mean(
+        var = "relative_humidity",
+        data_epw = data_epw,
+        data_mean = hurs,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = type
+    )
+
+    # reset RH > 100% to 100%
+    rh[relative_humidity > units::set_units(100, "%"), relative_humidity := units::set_units(100, "%")]
 }
 # }}}
 
@@ -190,7 +158,7 @@ morphing_rh <- function (data_epw, hurs, hursmax, hursmin, start_from = 2020L, c
 morphing_tdew <- function (tdb, rh) {
     psychrolib::SetUnitSystem("SI")
     tdew <- data.table::copy(tdb)[
-        rh, on = c(setdiff(names(tdb), c("dry_bulb_temperature", "delta"))),
+        rh, on = c(setdiff(names(tdb), c("dry_bulb_temperature", "delta", "alpha"))),
         dew_point_temperature :=
             units::set_units(
                 psychrolib::GetTDewPointFromRelHum(
@@ -207,21 +175,40 @@ morphing_tdew <- function (tdb, rh) {
 
 # morphing_pa {{{
 morphing_pa <- function (data_epw, psl, start_from = 2020, cut_by = 10) {
-    morphing_from_mean("atmospheric_pressure", data_epw, psl, "stretch", start_from, cut_by)
+    morphing_from_mean(
+        var = "atmospheric_pressure",
+        data_epw = data_epw,
+        data_mean = psl,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = "stretch"
+    )
 }
 # }}}
 
 # morphing_hor_ir {{{
 morphing_hor_ir <- function (data_epw, rlds, start_from = 2020, cut_by = 10) {
-    morphing_from_mean("horizontal_infrared_radiation_intensity_from_sky", data_epw,
-        type = "stretch", rlds, start_from, cut_by)
+    morphing_from_mean(
+        var = "horizontal_infrared_radiation_intensity_from_sky",
+        data_epw = data_epw,
+        data_mean = rlds,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = "stretch"
+    )
 }
 # }}}
 
 # morphing_glob_rad {{{ 
 morphing_glob_rad <- function (data_epw, rsds, start_from = 2020, cut_by = 10) { 
-    morphing_from_mean("global_horizontal_radiation", data_epw, rsds,
-        type = "stretch", start_from, cut_by)
+    morphing_from_mean(
+        var = "global_horizontal_radiation",
+        data_epw = data_epw,
+        data_mean = rsds,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = "stretch"
+    )
 }
 # }}}
 
@@ -245,12 +232,21 @@ morphing_norm_rad <- function (glob_rad, diff_rad) {
     norm_rad[, day_of_year := lubridate::yday(datetime)]
     norm_rad[, solar_angle := solar_angle(lat, lon, day_of_year, hour, 8)]
     norm_rad[, direct_normal_radiation := (global_horizontal_radiation - diffuse_horizontal_radiation) * abs(solar_angle)]
+    norm_rad[, c("global_horizontal_radiation", "diffuse_horizontal_radiation",
+        "day_of_year", "solar_angle") := NULL]
 }
 # }}}
 
 # morphing_wind_speed {{{
 morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 10) {
-    morphing_from_mean("wind_speed", data_epw, sfcwind, type = "stretch", start_from, cut_by)
+    morphing_from_mean(
+        var = "wind_speed",
+        data_epw = data_epw,
+        data_mean = sfcwind,
+        cut_by = cut_by,
+        start_from = start_from,
+        type = "stretch"
+    )
 }
 # }}}
 
@@ -268,6 +264,7 @@ morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by =
     data.table::set(data, NULL, "value", units::drop_units(data$value))
 
     data[, `:=`(total_sky_cover = as.integer(round(pmax(0, pmin(10, value/10)))),
+                delta = round(pmax(0, pmin(10, value/10))) - total_sky_cover,
                 alpha = round(pmax(0, pmin(10, value/10))) / total_sky_cover
     )]
 
@@ -280,7 +277,7 @@ morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by =
         # datetime
         "datetime", "year", "month", "day", "hour", "minute",
         # value
-        var, "alpha"
+        var, "delta", "alpha"
         )]
 }
 # }}}
@@ -302,30 +299,21 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
         # datetime
         "datetime", "year", "month", "day", "hour", "minute",
         # value
-        "opaque_sky_cover", "alpha"
+        "opaque_sky_cover", "delta", "alpha"
         )]
 }
 # }}}
 
 # morphing_precipitation {{{
 morphing_precipitation <- function (data_epw, pr, start_from = 2020L, cut_by = 10L) {
-    morphing_from_mean("precipitable_water", data_epw, pr, type = "stretch", start_from, cut_by)
-}
-# }}}
-
-# clean_morphed {{{
-clean_morphed <- function (data, var) {
-    cols <- c("experiment_id", "interval", "datetime", "year", "month", "day", "hour", "minute")
-    data <- data[!J("[0, 2020)"), on = "interval"][, .SD, .SDcols = c(cols, var)][
-        , {x <- list(mean(get(var))); names(x) <- var; x}, by = cols]
-
-    if (var %in% c("total_sky_cover", "opaque_sky_cover")) {
-        data.table::set(data, NULL, var, as.integer(data[[var]]))
-    }
-
-    data.table::set(data, NULL, "interval", droplevels(data$interval))
-
-    data
+    morphing_from_mean(
+        var = "precipitable_water",
+        data_epw = data_epw,
+        data_mean = pr,
+        start_from = start_from,
+        cut_by = cut_by,
+        type = "stretch"
+    )
 }
 # }}}
 

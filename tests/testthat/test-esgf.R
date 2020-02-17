@@ -66,6 +66,7 @@ test_that("Query ESGF", {
 
 # build_smip_index {{{
 test_that("Build CMIP6 file index database", {
+    options("epwshiftr.dir" = tempdir())
     expect_silent(idx <- init_cmip6_index(variable = "tas", source = "AWI-CM-1-1-MR", limit = 1))
     expect_is(idx, "data.table")
     expect_equal(names(idx),

@@ -4,7 +4,7 @@
 \alias{morphing_tdb}
 \title{Morphing dry-bulb temperature}
 \usage{
-morphing_tdb(data_epw, tas, tasmax, tasmin, start_from = 2020L, cut_by = 10L)
+morphing_tdb(data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift")
 }
 \description{
 Use daily mean temperature, daily maximum temperature and daily minimum
