@@ -125,6 +125,8 @@ summary_database <- function (
 
     p$message(paste0("", length(ncfiles), " NetCDF files found."))
 
+    if (!length(ncfiles)) return(invisible())
+
     ncmeta <- data.table::rbindlist(lapply(ncfiles, function (f) {
         p$message(paste0("Processing file ", f, "..."))
         p$tick()
