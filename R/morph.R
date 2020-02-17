@@ -25,7 +25,8 @@ preprocess_morphing <- function (dt, leapyear = FALSE, start_from = 2020L, cut_b
         on.exit(data.table::set(dt, NULL, "interval", NULL))
     }
 
-    res <- location_mean(dt, c("datetime", "year", "hour", "minute", "second"))
+    # calculate monthly mean and average value for longitude and latitude
+    res <- location_mean(dt, c("datetime", "year", "day", "hour", "minute", "second"))
     data.table::set(res, NULL, "value", units::set_units(res$value, res$units[1], mode = "standard"))
 
     # remove non-useful columns
@@ -33,19 +34,19 @@ preprocess_morphing <- function (dt, leapyear = FALSE, start_from = 2020L, cut_b
 }
 # }}}
 
-# daily_mean {{{
-daily_mean <- function (data_epw, var, units = TRUE) {
-    # calculate daily maximum, mean, and minimum values from weather file
-    daily <- data_epw[,
+# monthly_mean {{{
+monthly_mean <- function (data_epw, var, units = TRUE) {
+    # calculate monthly maximum, mean, and minimum values from weather file
+    monthly <- data_epw[,
         list(val_mean = mean(get(var)), val_max = max(get(var)), val_min = min(get(var))),
-        by = c("month", "day")]
+        by = "month"]
 
     if (units) {
-        if (!inherits(data_epw[[var]], "units")) return(daily)
+        if (!inherits(data_epw[[var]], "units")) return(monthly)
 
         # get variable unit
         u <- units(data_epw[[var]])
-        daily[,
+        monthly[,
             # change units to K
             `:=`(val_mean = units::set_units(val_mean, u, mode = "standard"),
                  val_max = units::set_units(val_max, u, mode = "standard"),
@@ -53,7 +54,7 @@ daily_mean <- function (data_epw, var, units = TRUE) {
         )]
     }
 
-    daily
+    monthly
 }
 # }}}
 
@@ -67,27 +68,27 @@ align_units <- function (dt, units) {
 morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "stretch", "combined"),
                                 start_from = 2020L, cut_by = 30L, exact = TRUE) {
     type <- match.arg(type)
-    # add cut interval and average by lon, lat, month and day (i.e. daily
+    # add cut interval and average by lon, lat, month and day (i.e. monthly
     # avarage) in CMIP6 data
     data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by, exact)
 
-    # calculate daily average of EPW data
-    daily <- daily_mean(data_epw, var)
+    # calculate monthly average of EPW data
+    monthly <- monthly_mean(data_epw, var)
 
     # set units
     u <- units(data_epw[[var]])
     # this will automatically do unit conversions like K --> C
     data_mean <- align_units(data_mean, u)
 
-    # add datetime columns from the original EPW data into the daily average of
+    # add datetime columns from the original EPW data into the monthly average of
     # CMIP6 data
     # after this every row in 'data' indicates a specific hour (as EPW has
     # hourly data)
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
-        data_mean, on = c("month", "day"), allow.cartesian = TRUE]
+        data_mean, on = "month", allow.cartesian = TRUE]
 
-    # calculate delta, alpha and add EPW daily average value
-    data[daily, on = c("month", "day"),
+    # calculate delta, alpha and add EPW monthly average value
+    data[monthly, on = "month",
         `:=`(delta = value - i.val_mean, alpha = value / i.val_mean, value_mean = i.val_mean)
     ]
 
@@ -116,7 +117,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
 # morphing_tdb {{{
 #' Morphing dry-bulb temperature
 #'
-#' Use daily mean temperature, daily maximum temperature and daily minimum
+#' Use monthly mean temperature, monthly maximum temperature and monthly minimum
 #' temperature to chagne only two statistical paramters of the timeseries of
 #' temperature, namely the mean and the variance. This is achieved by shifting
 #' by the value for mean temperature and stretching by the diurnal range.
@@ -268,9 +269,9 @@ morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 
 morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by = 10, exact = TRUE) {
     var <- "total_sky_cover"
     data_mean <- preprocess_morphing(clt, leapyear = FALSE, start_from, cut_by, exact)
-    daily <- unique(data_epw[, .SD, .SDcols = c("month", "day")])
+    monthly <- unique(data_epw[, .SD, .SDcols = c("month", "day")])
 
-    data_mean <- data_mean[daily, on = c("month", "day")]
+    data_mean <- data_mean[monthly, on = c("month", "day")]
 
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
         data_mean, on = c("month", "day"), allow.cartesian = TRUE]
