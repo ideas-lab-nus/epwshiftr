@@ -456,6 +456,9 @@ init_cmip6_index <- function (
 # load_cmip6_index {{{
 #' Load previously stored CMIP6 experiment output file index database
 #'
+#' @param force If `TRUE`, read the index database file. Otherwise, return the
+#'        cached index database if exists. Default: `FALSE`.
+#'
 #' @return A [data.table::data.table] with 20 columns. For detail description on
 #' column, see [init_cmip6_index()].
 #'
@@ -465,20 +468,26 @@ init_cmip6_index <- function (
 #' }
 #' @importFrom data.table copy fread
 #' @export
-load_cmip6_index <- function () {
-    f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
-    if (!file.exists(f)) {
-        stop(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
-    }
+load_cmip6_index <- function (force = FALSE) {
+    if (is.null(EPWSHIFTR_ENV$index_db)) force <- TRUE
 
-    # load file info
-    idx <- tryCatch(
-        data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
-        error = function (e) {
-            stop("Failed to parse CMIP6 experiment output file index database.\n", conditionMessage(e))
+    if (!force) {
+        idx <- data.table::copy(EPWSHIFTR_ENV$index_db)
+    } else {
+        f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
+        if (!file.exists(f)) {
+            stop(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
         }
-    )
-    message("Loading CMIP6 experiment output file index database created at ", file.info(f)$mtime, ".")
+
+        # load file info
+        idx <- tryCatch(
+            data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
+            error = function (e) {
+                stop("Failed to parse CMIP6 experiment output file index database.\n", conditionMessage(e))
+            }
+        )
+        message("Loading CMIP6 experiment output file index database created at ", file.info(f)$mtime, ".")
+    }
 
     # to avoid No visible binding for global variable check NOTE
     datetime_start <- datetime_end <- NULL
@@ -500,7 +509,7 @@ load_cmip6_index <- function () {
 
 # set_cmip6_index {{{
 #' @importFrom checkmate assert_data_table
-set_cmip6_index <- function (index) {
+set_cmip6_index <- function (index, save = TRUE) {
     checkmate::assert_data_table(index)
     checkmate::assert_subset(names(index),
         c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
@@ -512,8 +521,10 @@ set_cmip6_index <- function (index) {
     )
 
     # save database into the app data directory
-    data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+    if (save) {
+        data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+    }
 
     # udpate package internal stored file index database
     EPWSHIFTR_ENV$index_db <- data.table::copy(index)
