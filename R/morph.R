@@ -413,32 +413,3 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
     sin(to_radian(latitude)) * sin(to_radian(decl)) + cos(to_radian(latitude)) * cos(to_radian(decl)) * cos(to_radian(h_ang))
 }
 # }}}
-
-# cor_factor_solar_dis {{{
-cor_factor_solar_dis <- function (day_of_year) {
-    d <- day_angle(day_of_year)
-    1 + 0.03344 * cos(to_radian(d - 2.8))
-}
-# }}}
-
-# extra_dir_norm_rad {{{
-extra_dir_norm_rad <- function (day_of_year) {
-    solar_constant <- 1367 # W/m2
-    cor_factor_solar_dis(day_of_year) * solar_constant
-}
-# }}}
-
-# extra_hor_rad {{{
-extra_hor_rad <- function (latitude, longitude, day_of_year, hour, timezone) {
-    sol_ang <- solar_angle(latitude, longitude, day_of_year, hour, timezone)
-    dir_norm <- extra_dir_norm_rad(day_of_year)
-
-    sol_ang * dir_norm
-}
-# }}}
-
-# hor_ir_intensity {{{
-hor_ir_intensity <- function (dry_bulb_temperature, cloud_cover) {
-    coloud_cover * 5.67 * 10^(-8) * (dry_bulb_temperature + 273.15)^4
-}
-# }}}
