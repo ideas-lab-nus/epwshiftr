@@ -1,29 +1,19 @@
 # preprocess_morphing {{{
-#' @importFrom fancycut wafflecut
 #' @importFrom checkmate assert_count
 #' @importFrom data.table set
-#' @export
-preprocess_morphing <- function (dt, leapyear = FALSE, start_from = 2020L, cut_by = 30L, exact = TRUE) {
+preprocess_morphing <- function (dt, leapyear = FALSE, start_from = 2020L, cut_by = 30L) {
     # TODO: handle leapyear in mean, max, min
     if (!leapyear) dt <- dt[!J(2L, 29L), on = c("month", "day")]
 
     assert_count(start_from, positive = TRUE)
     assert_count(cut_by, positive = TRUE)
 
-    if (exact) {
-        end <- max(dt$year)
-        cuts <- seq(start_from, end, cut_by)
-        if (cuts[length(cuts)] < end) cuts <- c(cuts, end)
+    end <- max(dt$year)
+    cuts <- seq(start_from, end, cut_by)
+    if (cuts[length(cuts)] < end) cuts <- c(cuts, end)
 
-        dt <- dt[J(cuts), on = "year"]
-        data.table::set(dt, NULL, "interval", as.factor(dt$year))
-    } else {
-        intervals <- cut_intervals(start_from, max(dt$year), cut_by)
-        cuts <- fancycut::wafflecut(dt$year, intervals)
-
-        data.table::set(dt, NULL, "interval", cuts)
-        on.exit(data.table::set(dt, NULL, "interval", NULL))
-    }
+    dt <- dt[J(cuts), on = "year"]
+    data.table::set(dt, NULL, "interval", as.factor(dt$year))
 
     # calculate monthly mean and average value for longitude and latitude
     res <- location_mean(dt, c("datetime", "year", "day", "hour", "minute", "second"))
@@ -66,11 +56,11 @@ align_units <- function (dt, units) {
 
 # morphing_from_mean {{{
 morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "stretch", "combined"),
-                                start_from = 2020L, cut_by = 30L, exact = TRUE) {
+                                start_from = 2020L, cut_by = 30L) {
     type <- match.arg(type)
     # add cut interval and average by lon, lat, month and day (i.e. monthly
     # avarage) in CMIP6 data
-    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by, exact)
+    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by)
 
     # calculate monthly average of EPW data
     monthly <- monthly_mean(data_epw, var)
@@ -128,14 +118,13 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_tdb <- function (data_epw, tas, start_from = 2020L, cut_by = 10L, exact = TRUE, type = "shift") {
+morphing_tdb <- function (data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift") {
     morphing_from_mean(
         var = "dry_bulb_temperature",
         data_epw = data_epw,
         data_mean = tas,
         start_from = start_from,
         cut_by = cut_by,
-        exact = exact,
         type = type
     )
 }
@@ -150,14 +139,13 @@ morphing_tdb <- function (data_epw, tas, start_from = 2020L, cut_by = 10L, exact
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_rh <- function (data_epw, hurs, start_from = 2020L, cut_by = 10L, exact = TRUE, type = "shift") {
+morphing_rh <- function (data_epw, hurs, start_from = 2020L, cut_by = 10L, type = "shift") {
     rh <- morphing_from_mean(
         var = "relative_humidity",
         data_epw = data_epw,
         data_mean = hurs,
         start_from = start_from,
         cut_by = cut_by,
-        exact = exact,
         type = type
     )
 
@@ -186,35 +174,33 @@ morphing_tdew <- function (tdb, rh) {
 # }}}
 
 # morphing_pa {{{
-morphing_pa <- function (data_epw, psl, start_from = 2020, cut_by = 10, exact = TRUE, type = "stretch") {
+morphing_pa <- function (data_epw, psl, start_from = 2020, cut_by = 10, type = "stretch") {
     morphing_from_mean(
         var = "atmospheric_pressure",
         data_epw = data_epw,
         data_mean = psl,
         start_from = start_from,
         cut_by = cut_by,
-        exact = exact,
         type = type
     )
 }
 # }}}
 
 # morphing_hor_ir {{{
-morphing_hor_ir <- function (data_epw, rlds, start_from = 2020, cut_by = 10, exact = TRUE, type = "stretch") {
+morphing_hor_ir <- function (data_epw, rlds, start_from = 2020, cut_by = 10, type = "stretch") {
     morphing_from_mean(
         var = "horizontal_infrared_radiation_intensity_from_sky",
         data_epw = data_epw,
         data_mean = rlds,
         start_from = start_from,
         cut_by = cut_by,
-        exact = exact,
         type = type
     )
 }
 # }}}
 
 # morphing_glob_rad {{{
-morphing_glob_rad <- function (data_epw, rsds, start_from = 2020, cut_by = 10, exact = TRUE, type = "stretch") {
+morphing_glob_rad <- function (data_epw, rsds, start_from = 2020, cut_by = 10, type = "stretch") {
     morphing_from_mean(
         var = "global_horizontal_radiation",
         data_epw = data_epw,
@@ -252,7 +238,7 @@ morphing_norm_rad <- function (glob_rad, diff_rad) {
 # }}}
 
 # morphing_wind_speed {{{
-morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 10, exact = TRUE, type = "stretch") {
+morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 10, type = "stretch") {
     morphing_from_mean(
         var = "wind_speed",
         data_epw = data_epw,
@@ -266,9 +252,9 @@ morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 
 # }}}
 
 # morphing_total_sky_cover {{{
-morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by = 10, exact = TRUE) {
+morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by = 10) {
     var <- "total_sky_cover"
-    data_mean <- preprocess_morphing(clt, leapyear = FALSE, start_from, cut_by, exact)
+    data_mean <- preprocess_morphing(clt, leapyear = FALSE, start_from, cut_by)
     monthly <- unique(data_epw[, .SD, .SDcols = c("month", "day")])
 
     data_mean <- data_mean[monthly, on = c("month", "day")]
@@ -320,36 +306,15 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 # }}}
 
 # morphing_precipitation {{{
-morphing_precipitation <- function (data_epw, pr, start_from = 2020L, cut_by = 10L, exact = TRUE, type = "stretch") {
+morphing_precipitation <- function (data_epw, pr, start_from = 2020L, cut_by = 10L, type = "stretch") {
     morphing_from_mean(
         var = "precipitable_water",
         data_epw = data_epw,
         data_mean = pr,
         start_from = start_from,
         cut_by = cut_by,
-        exact = exact,
         type = type
     )
-}
-# }}}
-
-# cut_intervals {{{
-cut_intervals <- function (start, end, by) {
-    pnt <- seq(start, end, by)
-    if (pnt[length(pnt)] < end) pnt <- c(pnt, end)
-
-    intervals <- paste0(pnt[-length(pnt)], ", ", pnt[-1], "]")
-    intervals[[1L]] <- paste0("[", intervals[[1L]])
-    intervals[-1L] <- paste0("(", intervals[-1L])
-    buckets <- paste0(pnt[-length(pnt)], "-", pnt[-1])
-
-    # create interval for values smaller than the start
-    intervals <- c(paste0("[0, ", start, ")"), intervals)
-    buckets <- c(paste0("<", start), buckets)
-
-    names(intervals) <- buckets
-
-    intervals
 }
 # }}}
 

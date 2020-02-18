@@ -4,14 +4,7 @@
 \alias{morphing_rh}
 \title{Morphing relative humidity}
 \usage{
-morphing_rh(
-  data_epw,
-  hurs,
-  start_from = 2020L,
-  cut_by = 10L,
-  exact = TRUE,
-  type = "shift"
-)
+morphing_rh(data_epw, hurs, start_from = 2020L, cut_by = 10L, type = "shift")
 }
 \description{
 Morphing relative humidity

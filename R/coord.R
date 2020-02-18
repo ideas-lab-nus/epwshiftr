@@ -1,5 +1,4 @@
 # extract_location_dict {{{
-#' @importFrom cli rule
 #' @importFrom checkmate assert_string
 #' @importFrom utils menu
 extract_location_dict <- function (pattern) {
@@ -11,9 +10,9 @@ extract_location_dict <- function (pattern) {
 
     mes_location <- function (index = NULL, title, country, state_province, location, wmo_number, source_type, longitude, latitude) {
         if (!is.null(index)) {
-            h <- cli::rule(paste0("[", index, "] ", title))
+            h <- paste0("[", index, "] ", title, " -----")
         } else {
-            h <- cli::rule(paste0(title))
+            h <- paste0(title, " -----")
         }
         country <- if (is.na(country)) NULL else paste0(" * Country: ", country)
         state_province <- if (is.na(state_province)) NULL else paste0(" * State or Province: ", state_province)

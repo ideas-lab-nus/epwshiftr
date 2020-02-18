@@ -289,9 +289,7 @@ download_nc <- function (url, dir, overwrite = FALSE) {
         f <- file.path(dir, basename(i))
         if (!overwrite && file.exists(f)) return(normalizePath(f))
         p$tick()
-        tryCatch(curl::curl_download(url, f, quiet = FALSE),
-            error = function (e) NULL
-        )
+        tryCatch(utils::download.file(url, f, quiet = FALSE, mode = "wb", method = "libcurl"), error = function (e) NULL)
         f
     })
 }

@@ -4,14 +4,7 @@
 \alias{morphing_tdb}
 \title{Morphing dry-bulb temperature}
 \usage{
-morphing_tdb(
-  data_epw,
-  tas,
-  start_from = 2020L,
-  cut_by = 10L,
-  exact = TRUE,
-  type = "shift"
-)
+morphing_tdb(data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift")
 }
 \description{
 Use monthly mean temperature, monthly maximum temperature and monthly minimum

@@ -553,6 +553,7 @@ load_cmip6_index <- function (force = FALSE) {
 
 # set_cmip6_index {{{
 #' @importFrom checkmate assert_data_table
+#' @export
 set_cmip6_index <- function (index, save = TRUE) {
     checkmate::assert_data_table(index)
     checkmate::assert_subset(names(index),
@@ -591,24 +592,53 @@ get_data_dir <- function () {
 # }}}
 
 # get_data_node {{{
-#' @importFrom xml2 read_html xml_find_first
-#' @importFrom rvest html_table
-#' @importFrom pingr ping
 #' @export
-get_data_node <- function (speed_test = TRUE) {
-    # read data node table
-    h <- xml2::read_html("https://esgf-node.llnl.gov/status/")
-    nodes <- rvest::html_table(xml2::xml_find_first(h, "/html/body/div[1]/div[2]/div[5]/table"))
-    nodes <- data.table::setnames(data.table::setDT(nodes)[, -1], c("data_node", "status"))
-    data.table::setorderv(nodes, "status", -1)
+get_data_node <- function (speed_test = FALSE) {
+    # read html page
+    f <- tempfile()
+    download.file("https://esgf-node.llnl.gov/status/", f, "libcurl", quiet = TRUE)
+    l <- readLines(f)
 
-    if (!speed_test) return(nodes)
+    # locate table
+    l_s <- grep("<!--load block main-->", l, fixed = TRUE)
+    if (!length(l_s)) stop("Internal Error: Failed to read data node table")
+    l <- l[l_s:length(l)]
+    l_s <- grep("<table>", l, fixed = TRUE)[1L]
+    l_e <- grep("</table>", l, fixed = TRUE)[1L]
+    if (!length(l_s) || !length(l_e)) stop("Internal Error: Failed to read data node table")
+    l <- l[l_s:l_e]
 
-    data.table::set(nodes, NULL, "ping", NA_real_)
+    # extract nodes
+    loc <- regexec("\\t<td>(.+)</td>", l)
+    nodes <- vapply(seq_along(l), function (i) {
+        if (all(loc[[i]][1] == -1L)) return(NA_character_)
+        substr(l[i], loc[[i]][2], loc[[i]][2] + attr(loc[[i]], "match.length")[2] - 1L)
+    }, NA_character_)
+    nodes <- nodes[!is.na(nodes)]
 
-    if (!length(nodes_up <- nodes[status == "UP", data_node])) {
+    # extract status
+    loc <- regexec('\\t\\t<font color="#\\S{6}"><b>(UP|DOWN)</b>', l)
+    status <- vapply(seq_along(l), function (i) {
+        if (all(loc[[i]][1] == -1L)) return(NA_character_)
+        substr(l[i], loc[[i]][2], loc[[i]][2] + attr(loc[[i]], "match.length")[2] - 1L)
+    }, NA_character_)
+    status <- status[!is.na(status)]
+
+    if (length(nodes) != length(status)) stop("Internal Error: Failed to read data node table")
+    res <- data.table::data.table(data_node = nodes, status = status)
+    data.table::setorderv(res, "status", -1)
+
+    if (!speed_test) return(res)
+
+    if (!requireNamespace("pingr", quietly = TRUE)) {
+        stop("'epwshiftr' relies on the package 'pingr' to perform speed test",
+            "please add this to your library with install.packages('pingr') and try again."
+        )
+    }
+
+    if (!length(nodes_up <- res[status == "UP", data_node])) {
         message("No working data nodes available now. Skip speed test")
-        return(nodes)
+        return(res)
     }
 
     p <- progress::progress_bar$new(
@@ -621,6 +651,6 @@ get_data_node <- function (speed_test = TRUE) {
         pingr::ping(node, count = 1)
     }, numeric(1))
 
-    nodes[status == "UP", ping := speed][order(ping)]
+    res[status == "UP", ping := speed][order(ping)]
 }
 # }}}

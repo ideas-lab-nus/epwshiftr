@@ -14,25 +14,20 @@ Description:
     Climate Model (GCM).
 Imports:
     checkmate,
-    cli,
-    curl,
     data.table,
     eplusr,
-    fancycut,
     fst,
     jsonlite,
     lubridate,
-    mcmeta,
-    pingr,
+    ncmeta,
     progress,
     rappdirs,
     RNetCDF,
-    rvest,
     tidync,
-    units,
-    xml2
+    units
 Suggests:
     testthat,
+    pingr,
     covr
 License: MIT + file LICENSE
 Encoding: UTF-8
