@@ -112,7 +112,7 @@ summary_database <- function (
               nominal_resolution = "resolution")
 
     assert_directory_exists(dir, "w")
-    assert_subset(by, empty.ok = FALSE, choices = dict)
+    assert_subset(by, choices = dict)
 
     # load index database
     idx <- load_cmip6_index()
