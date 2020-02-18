@@ -589,3 +589,38 @@ get_data_dir <- function () {
     .data_dir(force = TRUE)
 }
 # }}}
+
+# get_data_node {{{
+#' @importFrom xml2 read_html xml_find_first
+#' @importFrom rvest html_table
+#' @importFrom pingr ping
+#' @export
+get_data_node <- function (speed_test = TRUE) {
+    # read data node table
+    h <- xml2::read_html("https://esgf-node.llnl.gov/status/")
+    nodes <- rvest::html_table(xml2::xml_find_first(h, "/html/body/div[1]/div[2]/div[5]/table"))
+    nodes <- data.table::setnames(data.table::setDT(nodes)[, -1], c("data_node", "status"))
+    data.table::setorderv(nodes, "status", -1)
+
+    if (!speed_test) return(nodes)
+
+    data.table::set(nodes, NULL, "ping", NA_real_)
+
+    if (!length(nodes_up <- nodes[status == "UP", data_node])) {
+        message("No working data nodes available now. Skip speed test")
+        return(nodes)
+    }
+
+    p <- progress::progress_bar$new(
+        format = "[:current/:total][:bar] :percent [:elapsedfull]",
+        total = length(nodes_up), clear = FALSE)
+
+    # use the pingr package to test the connection speed
+    speed <- vapply(nodes_up, function (node) {
+        p$message(sprintf("Testing data node '%s'...", node))
+        pingr::ping(node, count = 1)
+    }, numeric(1))
+
+    nodes[status == "UP", ping := speed][order(ping)]
+}
+# }}}
