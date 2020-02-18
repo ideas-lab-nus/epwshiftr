@@ -368,7 +368,7 @@ extract_query_file <- function (q) {
 #' init_cmip6_index()
 #' }
 #'
-#' @importFrom checkmate assert_directory_exists
+#' @importFrom checkmate assert_directory_exists assert_integerish
 #' @importFrom data.table copy fwrite rbindlist set setcolorder
 #' @importFrom rappdirs user_data_dir
 #' @export
@@ -383,13 +383,17 @@ init_cmip6_index <- function (
     replica = FALSE,
     latest = TRUE,
     resolution = c("100 km", "50 km"),
-    limit = 10000L
+    limit = 10000L,
+    data_node = NULL,
+    years = NULL
 )
 {
+    assert_integerish(years, unique = TRUE, sorted = TRUE, any.missing = FALSE)
+
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
         experiment = experiment, source = source, replica = replica, latest = latest,
-        resolution = resolution, limit = limit, type = "Dataset")
+        resolution = resolution, limit = limit, type = "Dataset", data_node = data_node)
 
     # give a warning if dataset query response hits the limits
     if (nrow(qd) == 10000L) {
@@ -426,7 +430,8 @@ init_cmip6_index <- function (
             resolution = unique(q$nominal_resolution),
             replica = replica,
             latest = latest,
-            type = "File"
+            type = "File",
+            data_node = data_node
         )
 
         # remove all common columns in file query except for "dataset_id"
@@ -456,6 +461,15 @@ init_cmip6_index <- function (
         "variable_units", "datetime_start", "datetime_end", "file_size",
         "data_node", "file_url", "dataset_pid", "tracking_id"
     ))
+
+    # use non-equi join to extract matched rows
+    exp <- data.table::data.table(
+        expect_start = ISOdatetime(years, 1, 1, 0, 0, 0, "UTC"),
+        expect_end = ISOdatetime(years, 12, 31, 0, 0, 0, "UTC")
+    )
+    dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
+    dt <- dt[exp, on = c("expect_start<=expect_start", "expect_end>=expect_end")][
+        , `:=`(expect_start = NULL, expect_end = NULL)]
 
     # save database into the app data directory
     data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
