@@ -118,6 +118,9 @@
 #' @param limit An integer indicating the maximum of matched records to return.
 #'        Should be <= 10,000. Default: `10000`.
 #'
+#' @param data_node A character vector indicating data nodes to be queried.
+#'        Default to `NULL`, which means all possible data nodes.
+#'
 #' @return A [data.table::data.table] with an attribute named `response` which
 #' is a list converted from json response. If no matched data is found, an empty
 #' data.table is returned. Otherwise, the columns of returned data varies based
@@ -197,7 +200,8 @@ esgf_query <- function (
     latest = TRUE,
     resolution = c("100 km", "50 km"),
     type = "Dataset",
-    limit = 10000L
+    limit = 10000L,
+    data_node = NULL
 )
 {
     assert_subset(activity, empty.ok = FALSE, choices = c(
@@ -219,6 +223,7 @@ esgf_query <- function (
     assert_flag(latest)
     assert_count(limit, positive = TRUE)
     assert_choice(type, choices = c("Dataset", "File"))
+    assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
     url_base <- "http://esgf-node.llnl.gov/esg-search/search/?"
     or <- function (...) paste(..., sep = "%2C", collapse = "%2C") # %2C = ","
@@ -243,6 +248,10 @@ esgf_query <- function (
                      "limit=" ,            limit , "&" ,
                     "format=" ,           format
     )
+
+    if (!is.null(data_node)) {
+        q <- paste0(q, "&data_node=", or(data_node))
+    }
 
     q <- jsonlite::read_json(q)
 
@@ -324,6 +333,10 @@ extract_query_file <- function (q) {
 #' try to get all model output files which match the dataset id.
 #'
 #' @inheritParams esgf_query
+#' @param years An integer vector indicating the target years to be include in
+#'        the data file. All other years will be excluded. If `NULL`, no
+#'        subsetting on years will be performed. Default: `NULL`.
+#'
 #' @return A [data.table::data.table] with 20 columns:
 #'
 #' | No.  | Column               | Type      | Description                                                          |
