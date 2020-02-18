@@ -514,6 +514,23 @@ load_cmip6_index <- function (force = FALSE) {
             }
         )
         message("Loading CMIP6 experiment output file index database created at ", file.info(f)$mtime, ".")
+
+        # fix column types in case of empty values
+        if ("file_path" %in% names(idx)) {
+            data.table::set(idx, NULL, "file_path", as.character(idx$file_path))
+        }
+        if ("file_realsize" %in% names(idx)) {
+            data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))
+        }
+        if ("file_mtime" %in% names(idx)) {
+            data.table::set(idx, NULL, "file_mtime", as.numeric(idx$file_mtime))
+        }
+        if ("time_units" %in% names(idx)) {
+            data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
+        }
+        if ("time_calendar" %in% names(idx)) {
+            data.table::set(idx, NULL, "time_calendar", as.character(idx$time_calendar))
+        }
     }
 
     # to avoid No visible binding for global variable check NOTE
