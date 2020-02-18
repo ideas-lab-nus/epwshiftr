@@ -7,10 +7,9 @@
 morphing_rh(
   data_epw,
   hurs,
-  hursmax,
-  hursmin,
   start_from = 2020L,
   cut_by = 10L,
+  exact = TRUE,
   type = "shift"
 )
 }

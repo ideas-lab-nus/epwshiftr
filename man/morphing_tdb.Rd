@@ -4,10 +4,17 @@
 \alias{morphing_tdb}
 \title{Morphing dry-bulb temperature}
 \usage{
-morphing_tdb(data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift")
+morphing_tdb(
+  data_epw,
+  tas,
+  start_from = 2020L,
+  cut_by = 10L,
+  exact = TRUE,
+  type = "shift"
+)
 }
 \description{
-Use daily mean temperature, daily maximum temperature and daily minimum
+Use monthly mean temperature, monthly maximum temperature and monthly minimum
 temperature to chagne only two statistical paramters of the timeseries of
 temperature, namely the mean and the variance. This is achieved by shifting
 by the value for mean temperature and stretching by the diurnal range.

@@ -17,7 +17,8 @@ esgf_query(
   latest = TRUE,
   resolution = c("100 km", "50 km"),
   type = "Dataset",
-  limit = 10000L
+  limit = 10000L,
+  data_node = NULL
 )
 }
 \arguments{
@@ -126,6 +127,9 @@ Should be either \code{"Dataset"} or \code{"File"}. Default: \code{"Dataset"}.}
 
 \item{limit}{An integer indicating the maximum of matched records to return.
 Should be <= 10,000. Default: \code{10000}.}
+
+\item{data_node}{A character vector indicating data nodes to be queried.
+Default to \code{NULL}, which means all possible data nodes.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with an attribute named \code{response} which

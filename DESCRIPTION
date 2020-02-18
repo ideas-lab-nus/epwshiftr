@@ -12,8 +12,7 @@ Description:
     Intercomparison Project Phase 6) project and create futher EnergyPlus
     Weather (EPW) files adjusted from climate changes using data from Global
     Climate Model (GCM).
-Imports: 
-    RNetCDF,
+Imports:
     checkmate,
     cli,
     curl,
@@ -22,11 +21,16 @@ Imports:
     fancycut,
     fst,
     jsonlite,
-    ncmeta,
+    lubridate,
+    mcmeta,
+    pingr,
     progress,
     rappdirs,
+    RNetCDF,
+    rvest,
     tidync,
-    units
+    units,
+    xml2
 Suggests:
     testthat,
     covr

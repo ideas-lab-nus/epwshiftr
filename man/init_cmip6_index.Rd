@@ -15,7 +15,9 @@ init_cmip6_index(
   replica = FALSE,
   latest = TRUE,
   resolution = c("100 km", "50 km"),
-  limit = 10000L
+  limit = 10000L,
+  data_node = NULL,
+  years = NULL
 )
 }
 \arguments{
@@ -111,6 +113,13 @@ resolution. Default: \code{c("50 km", "100 km")}.}
 
 \item{limit}{An integer indicating the maximum of matched records to return.
 Should be <= 10,000. Default: \code{10000}.}
+
+\item{data_node}{A character vector indicating data nodes to be queried.
+Default to \code{NULL}, which means all possible data nodes.}
+
+\item{years}{An integer vector indicating the target years to be include in
+the data file. All other years will be excluded. If \code{NULL}, no
+subsetting on years will be performed. Default: \code{NULL}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{rlll}{

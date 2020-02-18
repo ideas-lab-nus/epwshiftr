@@ -4,7 +4,11 @@
 \alias{load_cmip6_index}
 \title{Load previously stored CMIP6 experiment output file index database}
 \usage{
-load_cmip6_index()
+load_cmip6_index(force = FALSE)
+}
+\arguments{
+\item{force}{If \code{TRUE}, read the index database file. Otherwise, return the
+cached index database if exists. Default: \code{FALSE}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 20 columns. For detail description on
