@@ -146,6 +146,9 @@ summary_database <- function (
             `:=`(file_path = i.file_path, file_realsize = i.file_size, file_mtime = i.file_mtime,
                  time_units = i.time_units, time_calendar = i.time_units)
         ]
+
+        # change empty file path to NA
+        idx[J(""), on = "file_path", file_path := NA_character_]
     }
 
     # update index database

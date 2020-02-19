@@ -521,6 +521,7 @@ load_cmip6_index <- function (force = FALSE) {
         # fix column types in case of empty values
         if ("file_path" %in% names(idx)) {
             data.table::set(idx, NULL, "file_path", as.character(idx$file_path))
+            idx[J(""), on = "file_path", file_path := NA_character_]
         }
         if ("file_realsize" %in% names(idx)) {
             data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))

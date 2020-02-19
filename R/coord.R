@@ -112,7 +112,7 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         dict <- pattern$location()
     } else {
         assert_scalar(pattern)
-        if (tolower(tools::file_ext(epw)) == "epw") {
+        if (tolower(tools::file_ext(pattern)) == "epw") {
             dict <- eplusr::read_epw(pattern)$location()
         } else {
             dict <- extract_location_dict(pattern)
@@ -127,7 +127,8 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         meta <- dict[c("city", "state_province", "country", "latitude", "longitude")]
     }
 
-    index <- index[!J(""), on = "file_path"]
+    # remove empty
+    index <- index[!J(NA_character_), on = "file_path"]
 
     p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
         total = nrow(index), clear = FALSE)
@@ -139,7 +140,6 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
     })
 
     data.table::set(index, NULL, "coord", coords)
-    update_index(index)
 
     structure(list(epw = meta, coord = index), class = "epw_coords")
 }
