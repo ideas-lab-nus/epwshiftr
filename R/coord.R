@@ -59,48 +59,7 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
     assert_number(dict$longitude, lower = -180.0, upper = 180.0)
     assert_number(dict$latitude, lower = -90.0, upper = 90.0)
 
-    assert_list(threshold)
-    assert_names(names(threshold), must.include = c("lon", "lat"))
-    assert_number(threshold$lon, lower = 0, upper = 180.0)
-    assert_number(threshold$lat, lower = 0, upper = 90.0)
-
-    assert_count(max_num, positive = TRUE, null.ok = TRUE)
-
-    if (inherits(path, "NetCDF")) {
-        nc <- path
-    } else {
-        nc <- RNetCDF::open.nc(path)
-        on.exit(RNetCDF::close.nc(nc), add = TRUE)
-    }
-
-    # get latitude and longitude
-    dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
-    names(dim) <- c("lat", "lon")
-
-    # calculate distance
-    dis_lat <- abs(dim$lat - dict$latitude)
-    dis_lon <- abs(dim$lon - dict$longitude)
-
-    i_lat <- which(dis_lat <= threshold$lat)
-    i_lon <- which(dis_lon <= threshold$lon)
-
-    if (!length(i_lat)) {
-        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
-             "the minimum distance ('", round(min(dis_lat), 2), "') of current file resolution.")
-    }
-    if (!length(i_lon)) {
-        stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
-             "the minimum distance ('", round(min(dis_lon), 2), "') of current file resolution.")
-    }
-
-    if (!is.null(max_num)) {
-        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
-        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
-    }
-
-    list(latitude = data.table(index = seq_along(i_lat), lat = dim$lat[i_lat], dis = dis_lat[i_lat]),
-         longitude = data.table(index = seq_along(i_lon), lon = dim$lon[i_lon], dis = dis_lon[i_lon])
-    )
+    match_nc_coord(path, dict$latitude, dict$longitude, threshold, max_num)
 }
 # }}}
 

@@ -175,60 +175,72 @@ summary_database <- function (
 # }}}
 
 # get_nc_data {{{
-#' @importFrom tidync tidync hyper_tibble hyper_filter
-#' @importFrom data.table as.data.table set setattr setcolorder setDT
+#' @importFrom data.table as.data.table set setattr setcolorder
 #' @importFrom RNetCDF utcal.nc
-#' @importFrom ncmeta nc_att
 #' @importFrom units set_units
 #' @export
-get_nc_data <- function (path, lons, lats, unit = TRUE) {
+get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     assert_flag(unit)
 
-    dt <- tidync::hyper_tibble(tidync::hyper_filter(tidync::tidync(path),
-        lon = lon %in% lons, lat = lat %in% lats))
-    setDT(dt)
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
 
-    # get variables
-    vars <- setDT(get_nc_vars(path))
-    # get variable attributes
-    atts <- setDT(get_nc_atts(path))[variable %in% vars$name]
+    # get all attributes
+    atts <- get_nc_atts(nc)
 
-    # get time origin and units
-    ori <- atts[variable == "time" & name == "units", value[[1L]]]
+    # get variable name
+    var <- atts[J("NC_GLOBAL", "variable_id"), on = c("variable", "attribute"), value[[1L]]]
 
-    # add datetime and its components
-    set(dt, NULL, "datetime", RNetCDF::utcal.nc(ori, dt$time, "c"))
-    comp <- RNetCDF::utcal.nc(ori, dt$time, "n")
-    set(dt, NULL, dimnames(comp)[[2L]],
-        as.data.table(comp)[, lapply(.SD, as.integer)]
-    )
-    set(dt, NULL, "time", NULL)
+    # get variable long name
+    var_long <- atts[J(var, "long_name"), on = c("variable", "attribute"), value[[1L]]]
 
-    # extract meta attributes
-    glo_atts <- setDT(ncmeta::nc_atts(path, "NC_GLOBAL"))
+    # get variable units
+    units <- atts[variable == var & attribute == "units", value[[1L]]]
 
-    # get the variable name
-    var <- glo_atts[name == "variable_id", value[[1L]]]
-    # get long name
-    var_long <- atts[J(var, "long_name"), on = c("variable", "name"), value[[1L]]]
+    # match time
+    time <- match_nc_time(nc, years)
 
-    # assign units
-    units <- atts[variable == var & name == "units", value[[1L]]]
+    which_lat <- lats$which
+    which_lon <- lons$which
+    which_time <- time$which
+
+    dt <- rbindlist(lapply(seq_along(which_time), function (i) {
+        if (!length(which_time[[i]])) return(list())
+
+        # Awkwardness arises mainly from one thing: NetCDF data are written
+        # with the last dimension varying fastest, whereas R works opposite.
+        # Thus, the order of the dimensions according to the CDL conventions
+        # (e.g., time, latitude, longitude) is reversed in the R array (e.g.,
+        # longitude, latitude, time).
+        dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
+            c(min(which_lon), min(which_lat), min(which_time[[i]])),
+            c(length(which_lon), length(which_lat), length(which_time[[i]]))
+        ))
+
+        set(dt, NULL, "lon", lons$lon[dt$V1])
+        set(dt, NULL, "lat", lats$lat[dt$V2])
+        set(dt, NULL, "datetime", time$datetime[[i]][dt$V3])
+        set(dt, NULL, c("V1", "V2", "V3"), NULL)
+    }))
+
     if (unit) {
         set(dt, NULL, var, units::set_units(dt[[var]], units, mode = "standard"))
     }
 
     # change to tidy format
-    setnames(dt, var, "value")
     set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
 
     # change column order
-    setcolorder(dt, c("datetime", dimnames(comp)[[2L]], "lon", "lat"))
-    setcolorder(dt, setdiff(names(dt), c(var, var_long, "units", "value")))
+    setcolorder(dt, c("datetime", "lat", "lon", "variable", "description", "units", "value"))
 
     set(dt, NULL,
         c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"),
-        glo_atts[J(c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")), on = "name", value]
+        atts[J("NC_GLOBAL", c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")),
+            on = c("variable", "attribute"), value]
     )
     setcolorder(dt, c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"))
 
@@ -247,7 +259,7 @@ get_nc_data <- function (path, lons, lats, unit = TRUE) {
 #' @return A data.table
 #' @importFrom checkmate assert_class
 #' @export
-extract_data <- function (locations, unit = FALSE, dir = NULL, overwrite = FALSE) {
+extract_data <- function (locations, years = NULL, unit = FALSE, dir = NULL, overwrite = FALSE) {
     assert_class(locations, "epw_coords")
 
     loc <- locations$coord
@@ -267,7 +279,7 @@ extract_data <- function (locations, unit = FALSE, dir = NULL, overwrite = FALSE
                     return(normalizePath(f))
                 }
             }
-            d <- get_nc_data(path, lons = coord$longitude$lon, lats = coord$latitude$lat, unit = unit)
+            d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
             p$tick()
             if (is.null(dir)) return(d)
             fst::write_fst(d, f)
@@ -348,11 +360,145 @@ get_nc_vars <- function (x) {
     inq <- RNetCDF::file.inq.nc(nc)
 
     vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
-        RNetCDF::var.inq.nc(nc, i)
+        res <- RNetCDF::var.inq.nc(nc, i)
+        res <- res[names(res) != "dimids"]
+        res[vapply(res, length, integer(1)) > 0L]
     }))
-
-    set(vars, NULL, "dimids", NULL)
 
     vars
 }
 # }}}
+
+# get_nc_dims {{{
+get_nc_dims <- function (x) {
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # get file info
+    inq <- RNetCDF::file.inq.nc(nc)
+
+    rbindlist(lapply(seq_len(inq$ndims) - 1L, function (i) {
+        RNetCDF::dim.inq.nc(nc, i)
+    }))
+}
+# }}}
+
+# get_nc_axes {{{
+get_nc_axes <- function (x) {
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # wl wl get file info
+    inq <- RNetCDF::file.inq.nc(nc)
+
+    vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
+        RNetCDF::var.inq.nc(nc, i)
+    }))[, `:=`(axis = .I)]
+    set(vars, NULL, setdiff(names(vars), c("axis", "name", "dimids")), NULL)
+    setcolorder(vars, "axis")
+    setnames(vars, c("axis", "variable", "dimension"))
+
+    vars[]
+}
+# }}}
+
+# match_nc_time {{{
+match_nc_time <- function (x, years = NULL) {
+    assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    n <- get_nc_dims(nc)[J("time"), on = "name", length]
+
+    # get variable attributes
+    atts <- get_nc_atts(nc)
+
+    # get time origin and units
+    ori <- atts[variable == "time" & attribute == "units", value[[1L]]]
+
+    # get first time value
+    time_start <- RNetCDF::var.get.nc(nc, "time", 1, 1)
+
+    # get last time value
+    time_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
+
+    # create time sequences
+    time <- seq(RNetCDF::utcal.nc(ori, time_start, "c"),
+        RNetCDF::utcal.nc(ori, time_end, "c"),
+        length.out = n
+    )
+
+    if (is.null(years)) {
+        list(datetime = list(time), which = list(seq_len(n)))
+    } else {
+        y <- data.table::year(time)
+        i <- lapply(as.integer(years), function (x) which(y == x))
+
+        list(datetime = lapply(i, function (idx) time[idx]), which = i)
+    }
+}
+# }}}
+
+# match_nc_coord {{{
+match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0), max_num = NULL) {
+    assert_number(lat, lower = -90.0, upper = 90.0)
+    assert_number(lon, lower = -180.0, upper = 180.0)
+
+    assert_list(threshold)
+    assert_names(names(threshold), must.include = c("lon", "lat"))
+    assert_number(threshold$lon, lower = 0, upper = 180.0)
+    assert_number(threshold$lat, lower = 0, upper = 90.0)
+
+    assert_count(max_num, positive = TRUE, null.ok = TRUE)
+
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # get latitude and longitude
+    dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
+    names(dim) <- c("lat", "lon")
+
+    # calculate distance
+    dis_lat <- abs(dim$lat - lat)
+    dis_lon <- abs(dim$lon - lon)
+
+    i_lat <- which(dis_lat <= threshold$lat)
+    i_lon <- which(dis_lon <= threshold$lon)
+
+    if (!length(i_lat)) {
+        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
+             "the minimum distance ('", round(min(dis_lat), 2), "') of current file resolution.")
+    }
+    if (!length(i_lon)) {
+        stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
+             "the minimum distance ('", round(min(dis_lon), 2), "') of current file resolution.")
+    }
+
+    if (!is.null(max_num)) {
+        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
+        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
+    }
+
+    list(lat = list(index = seq_along(i_lat), lat = dim$lat[i_lat], dis = dis_lat[i_lat], which = i_lat),
+         lon = list(index = seq_along(i_lon), lon = dim$lon[i_lon], dis = dis_lon[i_lon], which = i_lon)
+    )
+}
+# }}}
+
