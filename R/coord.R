@@ -66,36 +66,40 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 
     assert_count(max_num, positive = TRUE, null.ok = TRUE)
 
-    nc <- tidync::tidync(path)
-    trans <- nc[["transforms"]]
-
-    dt_lat <- data.table::setDT(trans$lat)
-    data.table::set(dt_lat, NULL, "dis", abs(dt_lat$lat - dict$latitude))
-    data.table::setorderv(dt_lat, "dis")
-
-    dt_lon <- data.table::setDT(trans$lon)
-    data.table::set(dt_lon, NULL, "dis", abs(dt_lon$lon - dict$longitude))
-    data.table::setorderv(dt_lon, "dis")
-
-    res_lat <- dt_lat[dis <= threshold$lat]
-    res_lon <- dt_lon[dis <= threshold$lon]
-
-    if (!nrow(res_lat)) {
-        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
-             "the minimum distance ('", min(dt_lat$dis), "') of current file resolution.")
+    if (inherits(path, "NetCDF")) {
+        nc <- path
+    } else {
+        nc <- RNetCDF::open.nc(path)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
     }
-    if (!nrow(res_lon)) {
+
+    # get latitude and longitude
+    dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
+    names(dim) <- c("lat", "lon")
+
+    # calculate distance
+    dis_lat <- abs(dim$lat - dict$latitude)
+    dis_lon <- abs(dim$lon - dict$longitude)
+
+    i_lat <- which(dis_lat <= threshold$lat)
+    i_lon <- which(dis_lon <= threshold$lon)
+
+    if (!length(i_lat)) {
+        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
+             "the minimum distance ('", round(min(dis_lat), 2), "') of current file resolution.")
+    }
+    if (!length(i_lon)) {
         stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
-             "the minimum distance ('", min(dt_lon$dis), "') of current file resolution.")
+             "the minimum distance ('", round(min(dis_lon), 2), "') of current file resolution.")
     }
 
     if (!is.null(max_num)) {
-        if (max_num < nrow(res_lat)) res_lat <- res_lat[seq.int(as.integer(max_num))]
-        if (max_num < nrow(res_lon)) res_lon <- res_lon[seq.int(as.integer(max_num))]
+        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
+        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
     }
 
-    list(longitude = res_lon[, list(index = .I, lon, dis)],
-         latitude = res_lat[, list(index = .I, lat, dis)]
+    list(latitude = data.table(index = seq_along(i_lat), lat = dim$lat[i_lat], dis = dis_lat[i_lat]),
+         longitude = data.table(index = seq_along(i_lon), lon = dim$lon[i_lon], dis = dis_lon[i_lon])
     )
 }
 # }}}
