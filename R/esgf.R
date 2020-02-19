@@ -471,6 +471,9 @@ init_cmip6_index <- function (
     dt <- dt[exp, on = c("expect_start<=expect_start", "expect_end>=expect_end")][
         , `:=`(expect_start = NULL, expect_end = NULL)]
 
+    # remove duplications
+    dt <- unique(dt, by = "file_id")
+
     # save database into the app data directory
     data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
     verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
