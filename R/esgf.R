@@ -595,8 +595,28 @@ get_data_dir <- function () {
 # }}}
 
 # get_data_node {{{
+#' Get data nodes which store CMIP6 output
+#'
+#' @param speed_test If `TRUE`, use [pingr::ping()] to perform connection speed
+#'        test on each data node. A `ping` column is appended in returned
+#'        data.table which stores each data node response in milliseconds. This
+#'        feature needs pingr package already installed. Default: `FALSE`.
+#' @param timeout Timeout for a ping response in seconds. Default: `3`.
+#'
+#' @return A [data.table::data.table()] of 2 or 3 (when `speed_test` is `TRUE`)
+#' columns:
+#'
+#' | Column      | Type      | Description                                                                     |
+#' | -----       | -----     | -----                                                                           |
+#' | `data_node` | character | Web address of data node                                                        |
+#' | `status`    | character | Status of data node. `"UP"` means OK and `"DOWN"` means currently not available |
+#' | `ping`      | double    | Data node response in milliseconds during speed test                            |
+#'
+#' @examples
+#' get_data_dir()
+#'
 #' @export
-get_data_node <- function (speed_test = FALSE) {
+get_data_node <- function (speed_test = FALSE, timeout = 3) {
     # read html page
     f <- tempfile()
     download.file("https://esgf-node.llnl.gov/status/", f, "libcurl", quiet = TRUE)
@@ -651,7 +671,7 @@ get_data_node <- function (speed_test = FALSE) {
     # use the pingr package to test the connection speed
     speed <- vapply(nodes_up, function (node) {
         p$message(sprintf("Testing data node '%s'...", node))
-        pingr::ping(node, count = 1)
+        pingr::ping(node, count = 1, timeout = timeout)
     }, numeric(1))
 
     res[status == "UP", ping := speed][order(ping)]
