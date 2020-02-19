@@ -112,7 +112,7 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         dict <- pattern$location()
     } else {
         assert_scalar(pattern)
-        if (test_file_exists(pattern, "r", "epw")) {
+        if (tolower(tools::file_ext(epw)) == "epw") {
             dict <- eplusr::read_epw(pattern)$location()
         } else {
             dict <- extract_location_dict(pattern)
