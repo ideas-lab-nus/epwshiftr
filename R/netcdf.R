@@ -15,13 +15,12 @@
 #' @rdname get_nc_meta
 #' @export
 #' @importFrom data.table setDT setattr
-#' @importFrom ncmeta nc_atts
 get_nc_meta <- function (file) {
     # to avoid No visible binding for global variable check NOTE
     J <- value <- name <- NULL
     verbose("Parsing meta data of NetCDF file '", file, "'...")
     # get all attributes
-    atts <- data.table::setDT(ncmeta::nc_atts(file))
+    atts <- get_nc_atts(file)
 
     # get meta data
     meta <- as.list(atts[
@@ -30,14 +29,14 @@ get_nc_meta <- function (file) {
             "experiment_id", "variant_label", "table_id", "grid_label",
             "nominal_resolution", "variable_id", "tracking_id")
         ),
-        on = c("variable", "name"),
-        {v <- unlist(value); names(v) <- name; v}])
+        on = c("variable", "attribute"),
+        {v <- unlist(value); names(v) <- attribute; v}])
 
     # get variable long name and units
     meta <- c(
         meta,
-        data.table::setattr(
-            atts[J(meta$variable_id, c("standard_name", "units")), on = c("variable", "name"), value],
+        setattr(
+            atts[J(meta$variable_id, c("standard_name", "units")), on = c("variable", "attribute"), value],
             "names", c("standard_name", "units")
         )
     )
@@ -45,8 +44,8 @@ get_nc_meta <- function (file) {
     # get time origin and unit
     c(
         meta,
-        data.table::setattr(
-            atts[J("time", c("units", "calendar")), on = c("variable", "name"), value],
+        setattr(
+            atts[J("time", c("units", "calendar")), on = c("variable", "attribute"), value],
             "names", c("time_units", "time_calendar")
         )
     )
@@ -57,7 +56,7 @@ get_nc_meta <- function (file) {
 #' Summary CMIP6 model output file status
 #'
 #' `summary_database()` scan the directory specified and returns a
-#' [data.table::data.table()] containing summary information about all the CMIP6
+#' [data.table()] containing summary information about all the CMIP6
 #' files available against the output file index database loaded using
 #' [load_cmip6_index()].
 #'
@@ -81,7 +80,7 @@ get_nc_meta <- function (file) {
 #' @param update If `TRUE`, the output file index database will be updated based
 #'        on the matched NetCDF files in specified directory. Default: `TRUE`.
 #'
-#' @return A [data.table::data.table()] containing corresponding grouping
+#' @return A [data.table()] containing corresponding grouping
 #' columns plus:
 #'
 #' | Column           | Type           | Description                         |
@@ -126,7 +125,7 @@ summary_database <- function (
     p$message(paste0("", length(ncfiles), " NetCDF files found."))
 
     if (length(ncfiles)) {
-        ncmeta <- data.table::rbindlist(lapply(ncfiles, function (f) {
+        ncmeta <- rbindlist(lapply(ncfiles, function (f) {
             p$message(paste0("Processing file ", f, "..."))
             p$tick()
             get_nc_meta(f)
@@ -156,7 +155,7 @@ summary_database <- function (
 
     if (update) {
         # save database into the app data directory
-        data.table::fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
     }
 
     by_cols <- names(dict)[which(dict %in% by)]
@@ -187,26 +186,26 @@ get_nc_data <- function (path, lons, lats, unit = TRUE) {
 
     dt <- tidync::hyper_tibble(tidync::hyper_filter(tidync::tidync(path),
         lon = lon %in% lons, lat = lat %in% lats))
-    data.table::setDT(dt)
+    setDT(dt)
 
     # get variables
-    vars <- data.table::setDT(ncmeta::nc_vars(path))
+    vars <- setDT(get_nc_vars(path))
     # get variable attributes
-    atts <- data.table::setDT(ncmeta::nc_atts(path))[variable %in% vars$name]
+    atts <- setDT(get_nc_atts(path))[variable %in% vars$name]
 
     # get time origin and units
     ori <- atts[variable == "time" & name == "units", value[[1L]]]
 
     # add datetime and its components
-    data.table::set(dt, NULL, "datetime", RNetCDF::utcal.nc(ori, dt$time, "c"))
+    set(dt, NULL, "datetime", RNetCDF::utcal.nc(ori, dt$time, "c"))
     comp <- RNetCDF::utcal.nc(ori, dt$time, "n")
-    data.table::set(dt, NULL, dimnames(comp)[[2L]],
-        data.table::as.data.table(comp)[, lapply(.SD, as.integer)]
+    set(dt, NULL, dimnames(comp)[[2L]],
+        as.data.table(comp)[, lapply(.SD, as.integer)]
     )
-    data.table::set(dt, NULL, "time", NULL)
+    set(dt, NULL, "time", NULL)
 
     # extract meta attributes
-    glo_atts <- data.table::setDT(ncmeta::nc_atts(path, "NC_GLOBAL"))
+    glo_atts <- setDT(ncmeta::nc_atts(path, "NC_GLOBAL"))
 
     # get the variable name
     var <- glo_atts[name == "variable_id", value[[1L]]]
@@ -216,22 +215,22 @@ get_nc_data <- function (path, lons, lats, unit = TRUE) {
     # assign units
     units <- atts[variable == var & name == "units", value[[1L]]]
     if (unit) {
-        data.table::set(dt, NULL, var, units::set_units(dt[[var]], units, mode = "standard"))
+        set(dt, NULL, var, units::set_units(dt[[var]], units, mode = "standard"))
     }
 
     # change to tidy format
-    data.table::setnames(dt, var, "value")
-    data.table::set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
+    setnames(dt, var, "value")
+    set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
 
     # change column order
-    data.table::setcolorder(dt, c("datetime", dimnames(comp)[[2L]], "lon", "lat"))
-    data.table::setcolorder(dt, setdiff(names(dt), c(var, var_long, "units", "value")))
+    setcolorder(dt, c("datetime", dimnames(comp)[[2L]], "lon", "lat"))
+    setcolorder(dt, setdiff(names(dt), c(var, var_long, "units", "value")))
 
-    data.table::set(dt, NULL,
+    set(dt, NULL,
         c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"),
         glo_atts[J(c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")), on = "name", value]
     )
-    data.table::setcolorder(dt, c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"))
+    setcolorder(dt, c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"))
 
     dt
 }
@@ -276,7 +275,7 @@ extract_data <- function (locations, unit = FALSE, dir = NULL, overwrite = FALSE
         loc$file_path, loc$coord
     )
 
-    data.table::set(loc, NULL, "data", data)
+    set(loc, NULL, "data", data)
 
     loc
 }
@@ -295,5 +294,65 @@ download_nc <- function (url, dir, overwrite = FALSE) {
         tryCatch(utils::download.file(url, f, quiet = FALSE, mode = "wb", method = "libcurl"), error = function (e) NULL)
         f
     })
+}
+# }}}
+
+# get_nc_atts {{{
+get_nc_atts <- function(x) {
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # get file info
+    inq <- RNetCDF::file.inq.nc(nc)
+
+    # global attributes
+    glo <- rbindlist(lapply(seq_len(inq$ngatts), function (i) {
+        RNetCDF::att.inq.nc(nc, "NC_GLOBAL", i - 1L)
+    }))
+    # set global attribute id to -1
+    set(glo, NULL, "id", -1L)
+    set(glo, NULL, "variable", "NC_GLOBAL")
+    set(glo, NULL, c("length", "type"), NULL)
+    set(glo, NULL, "value",
+        lapply(seq_len(inq$ngatts), function (i) RNetCDF::att.get.nc(nc, "NC_GLOBAL", i - 1L))
+    )
+    setnames(glo, "name", "attribute")
+
+    # get variables
+    vars <- unique(get_nc_vars(nc)[natts > 0L, .SD, .SDcols = c("id", "name", "natts")])
+    vars <- vars[, by = list(idx = seq_len(nrow(vars))), {
+        nm <- lapply(seq_len(natts) - 1L, function (i) RNetCDF::att.inq.nc(nc, id, i)$name)
+        att <- lapply(seq_len(natts) - 1L, function (i) RNetCDF::att.get.nc(nc, id, i))
+        list(id = id, variable = rep(name, length(nm)), attribute = unlist(nm), value = att)
+    }]
+    set(vars, NULL, "idx", NULL)
+
+    rbindlist(list(vars, glo), use.names = TRUE)
+}
+# }}}
+
+# get_nc_vars {{{
+get_nc_vars <- function (x) {
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # get file info
+    inq <- RNetCDF::file.inq.nc(nc)
+
+    vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
+        RNetCDF::var.inq.nc(nc, i)
+    }))
+
+    set(vars, NULL, "dimids", NULL)
+
+    vars
 }
 # }}}
