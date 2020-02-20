@@ -410,10 +410,8 @@ get_nc_axes <- function (x) {
 }
 # }}}
 
-# match_nc_time {{{
-match_nc_time <- function (x, years = NULL) {
-    assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
-
+# get_nc_time {{{
+get_nc_time <- function (x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
     } else {
@@ -435,14 +433,30 @@ match_nc_time <- function (x, years = NULL) {
     # get last time value
     time_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
 
-    # create time sequences
-    time <- seq(RNetCDF::utcal.nc(ori, time_start, "c"),
-        RNetCDF::utcal.nc(ori, time_end, "c"),
-        length.out = n
-    )
+    if (range) {
+        c(
+            RNetCDF::utcal.nc(ori, time_start, "c"),
+            RNetCDF::utcal.nc(ori, time_end, "c")
+        )
+    } else {
+        # create time sequences
+        seq(
+            RNetCDF::utcal.nc(ori, time_start, "c"),
+            RNetCDF::utcal.nc(ori, time_end, "c"),
+            length.out = n
+        )
+    }
+}
+# }}}
+
+# match_nc_time {{{
+match_nc_time <- function (x, years = NULL) {
+    assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+
+    time <- get_nc_time(x)
 
     if (is.null(years)) {
-        list(datetime = list(time), which = list(seq_len(n)))
+        list(datetime = list(time), which = list(seq_along(time)))
     } else {
         y <- data.table::year(time)
         i <- lapply(as.integer(years), function (x) which(y == x))
@@ -501,4 +515,3 @@ match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0),
     )
 }
 # }}}
-
