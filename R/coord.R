@@ -97,7 +97,7 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         total = nrow(index), clear = FALSE)
 
     coords <- lapply(index$file_path, function (f) {
-        p$message(sprintf("Processing file '%s'..."))
+        p$message(sprintf("Processing file '%s'...", f))
         p$tick()
         match_location_coord(f, meta, threshold, max_num)
     })
