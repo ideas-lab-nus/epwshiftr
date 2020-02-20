@@ -287,7 +287,13 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     which_time <- time$which
 
     dt <- rbindlist(lapply(seq_along(which_time), function (i) {
-        if (!length(which_time[[i]])) return(list())
+        if (!length(which_time[[i]])) {
+            return(data.table(
+                value = double(),
+                lon = double(), lat = double(),
+                datetime = Sys.time()[0]
+            ))
+        }
 
         # Awkwardness arises mainly from one thing: NetCDF data are written
         # with the last dimension varying fastest, whereas R works opposite.
@@ -305,7 +311,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         set(dt, NULL, c("V1", "V2", "V3"), NULL)
     }))
 
-    if (unit) {
+    if (unit && nrow(dt)) {
         set(dt, NULL, var, units::set_units(dt[[var]], units, mode = "standard"))
     }
 
@@ -329,19 +335,23 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 # extract_data {{{
 #' Extract data
 #'
-#' @param locations Location data extracted using [match_location()]
+#' @param pattern XX
+#' @param years XX
+#' @param threshold XX
+#' @param max_num XX
 #' @param unit If `TRUE`, units will be added to values
-#' @param save If `TRUE`, a [fst][fst::write_fst()] file will be written
-#' @param overwrite If `TRUE`, overwrite the fst file if exists
 #'
 #' @return A data.table
+#'
 #' @importFrom checkmate assert_class
 #' @export
-extract_data <- function (locations, years = NULL, unit = FALSE, dir = NULL, overwrite = FALSE) {
-    assert_class(locations, "epw_coords")
+extract_data <- function (pattern, years, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL, unit = FALSE) {
+    loc <- match_location(pattern = pattern, threshold = threshold, max_num = max_num)
 
+    # get matched coords
     loc <- locations$coord
 
+    # initial progress bar
     p <- progress::progress_bar$new(
         format = "[:current/:total][:bar] :percent [:elapsedfull]",
         total = nrow(loc), clear = FALSE)
@@ -349,18 +359,9 @@ extract_data <- function (locations, years = NULL, unit = FALSE, dir = NULL, ove
     data <- Map(
         function (path, coord) {
             p$message(paste0("Processing file ", basename(path), "..."))
-            if (!is.null(dir)) {
-                f <- paste0(tools::file_path_sans_ext(path), ".fst")
-                p$message(paste0("Saving file ", f, "..."))
-                if (!overwrite && file.exists(f)) {
-                    p$message(paste0("File exists. Skip..."))
-                    return(normalizePath(f))
-                }
-            }
             d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
             p$tick()
-            if (is.null(dir)) return(d)
-            fst::write_fst(d, f)
+            d
         },
         loc$file_path, loc$coord
     )
