@@ -302,7 +302,8 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         # longitude, latitude, time).
         dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(which_lon), min(which_lat), min(which_time[[i]])),
-            c(length(which_lon), length(which_lat), length(which_time[[i]]))
+            c(length(which_lon), length(which_lat), length(which_time[[i]])),
+            collapse = FALSE
         ))
 
         set(dt, NULL, "lon", lons$lon[dt$V1])
@@ -312,7 +313,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     }))
 
     if (unit && nrow(dt)) {
-        set(dt, NULL, var, units::set_units(dt[[var]], units, mode = "standard"))
+        set(dt, NULL, "value", units::set_units(dt$value, units, mode = "standard"))
     }
 
     # change to tidy format
