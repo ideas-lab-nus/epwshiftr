@@ -128,26 +128,66 @@ summary_database <- function (
         ncmeta <- rbindlist(lapply(ncfiles, function (f) {
             p$message(paste0("Processing file ", f, "..."))
             p$tick()
-            get_nc_meta(f)
+            meta <- get_nc_meta(f)
+            time <- as.list(get_nc_time(f, range = TRUE))
+            names(time) <- c("datetime_start", "datetime_end")
+            c(meta, time)
         }))
 
-        ncmeta[, `:=`(file_path = ncfiles, file_size = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
+        ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
     }
 
-    # reset existing columns
-    idx[, `:=`(file_path = NA_character_, file_realsize = NA_real_,
-               file_mtime = NA_real_, time_units = NA_character_,
-               time_calendar = NA_character_)]
+    # remove existing file meta column
+    cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
+    if (length(cols_del <- cols[cols %in% names(idx)])) set(idx, NULL, cols_del, NULL)
+    # store original column names
+    cols_idx <- names(idx)
 
     if (length(ncfiles)) {
-        # add variable units, time units and file paths
-        idx[ncmeta, on = "tracking_id",
-            `:=`(file_path = i.file_path, file_realsize = i.file_size, file_mtime = i.file_mtime,
-                 time_units = i.time_units, time_calendar = i.time_units)
-        ]
+        # add index
+        idx[, index := .I]
 
-        # change empty file path to NA
-        idx[J(""), on = "file_path", file_path := NA_character_]
+        # add variable units, time units and file paths
+        # NOTE: Should use right join here instead of adding by reference. This
+        # is because for some GCMs, tracking id can be the same for multiple
+        # files. The most safe way is to add additional checking for datetime
+        # a) first match using tracking id
+        idx <- ncmeta[, .SD, .SDcols = c("tracking_id", "datetime_start", "datetime_end", cols)][idx, on = "tracking_id"]
+        # b) remove files that do not have any overlap in terms of datetime range
+        # but keep rows whose files have not yet been found
+        idx <- idx[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start) | is.na(file_path)]
+
+        # remove helper column
+        set(idx, NULL, c("i.datetime_start", "i.datetime_end"), NULL)
+
+        if (length(dup_idx <- unique(idx$index[duplicated(idx$index)]))) {
+            dup <- idx[J(dup_idx), on = "index"]
+
+            # construct error message:
+            dup[, index := data.table::rleid(index)]
+            mes <- dup[, by = "index", {
+                head <- sprintf("#%i | For case '%s':\n", .BY$index, gsub("\\|.+$", "", file_id[1]))
+                file <- sprintf("   --> [%i] '%s'", seq_along(file_path), file_path)
+                list(message = paste0(head, paste0(file, collapse = "\n")))
+            }]$message
+
+            ori <- options(warning.length = 8170L)
+            on.exit(options(warning.length = ori), add = TRUE)
+
+            warning("Case(s) shown below matches multiple NetCDF files in the database. ",
+                "Please check if there are duplicated NetCDF files in your database ",
+                "and check NetCDF global attributes of those files ",
+                "to see if there are any incorrect values.\n",
+                paste0(mes, collapse = "\n"), call. = FALSE)
+
+            # remove duplications
+            idx <- idx[!duplicated(index)]
+            # reset abnormal case status to non-matched
+            set(idx, dup_idx, cols, NA)
+        }
+
+        # remove index
+        set(idx, NULL, "index", NULL)
     }
 
     # update index database
