@@ -345,11 +345,11 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #'
 #' @importFrom checkmate assert_class
 #' @export
-extract_data <- function (pattern, years, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL, unit = FALSE) {
+extract_data <- function (pattern, years = NULL, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL, unit = FALSE) {
     loc <- match_location(pattern = pattern, threshold = threshold, max_num = max_num)
 
     # get matched coords
-    loc <- locations$coord
+    loc <- loc$coord
 
     # initial progress bar
     p <- progress::progress_bar$new(
