@@ -74,11 +74,22 @@ get_nc_meta <- function (file) {
 #' * `"variant"`: variant label
 #' * `"resolution"`: approximate horizontal resolution
 #'
+#' @param mult Actions when multiple files match a same case in the CMIP6
+#'        index database. If `"latest"`, the file with latest modification time
+#'        will be used. If `"skip"`, all matched files will be skip and this
+#'        case will be kept as unmatched. Default: `"skip"`.
+#'
 #' @param recursive If `TRUE`, scan recursively into directories. Default:
 #'        `FALSE`.
 #'
 #' @param update If `TRUE`, the output file index database will be updated based
-#'        on the matched NetCDF files in specified directory. Default: `TRUE`.
+#'        on the matched NetCDF files in specified directory. If `FALSE`, only
+#'        current loaded index database will be updated, but the actual index
+#'        database file saved in [rappdirs::app_dir()] will remain unchanged.
+#'        Default: `FALSE`.
+#'
+#' @param warning If `TRUE`, warning messages will show when multiple files
+#'        match a same case. Default: `TRUE`.
 #'
 #' @return A [data.table()] containing corresponding grouping
 #' columns plus:
@@ -103,7 +114,8 @@ get_nc_meta <- function (file) {
 summary_database <- function (
     dir,
     by = c("activity", "experiment", "variant", "frequency", "variable", "source", "resolution"),
-    recursive = FALSE, update = TRUE)
+    mult = c("skip", "latest"),
+    recursive = FALSE, update = FALSE, warning = TRUE)
 {
     # column names
     dict <- c(activity_drs = "activity", experiment_id = "experiment", member_id = "variant",
@@ -112,6 +124,8 @@ summary_database <- function (
 
     assert_directory_exists(dir, "w")
     assert_subset(by, choices = dict)
+
+    mult <- match.arg(mult)
 
     # load index database
     idx <- load_cmip6_index()
@@ -124,7 +138,14 @@ summary_database <- function (
 
     p$message(paste0("", length(ncfiles), " NetCDF files found."))
 
-    if (length(ncfiles)) {
+    # columns to be added
+    cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
+
+    if (!length(ncfiles)) {
+        # add empty columns
+        set(idx, NULL, cols, list(NA_character_, NA_real_, Sys.time()[NA], NA_character_, NA_character_))
+
+    } else {
         ncmeta <- rbindlist(lapply(ncfiles, function (f) {
             p$message(paste0("Processing file ", f, "..."))
             p$tick()
@@ -135,15 +156,12 @@ summary_database <- function (
         }))
 
         ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
-    }
 
-    # remove existing file meta column
-    cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
-    if (length(cols_del <- cols[cols %in% names(idx)])) set(idx, NULL, cols_del, NULL)
-    # store original column names
-    cols_idx <- names(idx)
+        # remove existing file meta column
+        if (length(cols_del <- cols[cols %in% names(idx)])) set(idx, NULL, cols_del, NULL)
+        # store original column names
+        cols_idx <- names(idx)
 
-    if (length(ncfiles)) {
         # add index
         idx[, index := .I]
 
@@ -163,31 +181,50 @@ summary_database <- function (
         if (length(dup_idx <- unique(idx$index[duplicated(idx$index)]))) {
             dup <- idx[J(dup_idx), on = "index"]
 
-            # construct error message:
-            dup[, index := data.table::rleid(index)]
-            mes <- dup[, by = "index", {
-                head <- sprintf("#%i | For case '%s':\n", .BY$index, gsub("\\|.+$", "", file_id[1]))
-                file <- sprintf("   --> [%i] '%s'", seq_along(file_path), file_path)
-                list(message = paste0(head, paste0(file, collapse = "\n")))
-            }]$message
+            if (mult == "skip") {
+                # remove duplications
+                idx <- idx[!duplicated(index)]
+                # reset abnormal case status to non-matched
+                set(idx, dup_idx, cols, NA)
+            } else {
+                # order by file mtime
+                data.table::setorderv(dup, c("index", "file_mtime"), c(1, -1))
+                # remove old files
+                idx <- idx[!dup[, by = "index", list(file_path = file_path[-1L])], on = c("index", "file_path")]
+            }
 
-            ori <- options(warning.length = 8170L)
-            on.exit(options(warning.length = ori), add = TRUE)
+            if (warning) {
+                # construct error message:
+                dup[, index_case := data.table::rleid(index)]
+                mes <- dup[, by = "index_case", {
+                    head <- sprintf("#%i | For case '%s':\n", .BY$index_case, gsub("\\|.+$", "", file_id[1]))
+                    file <- sprintf("   --> [%i] '%s'", seq_along(file_path), file_path)
+                    list(message = paste0(head, paste0(file, collapse = "\n")))
+                }]$message
 
-            warning("Case(s) shown below matches multiple NetCDF files in the database. ",
-                "Please check if there are duplicated NetCDF files in your database ",
-                "and check NetCDF global attributes of those files ",
-                "to see if there are any incorrect values.\n",
-                paste0(mes, collapse = "\n"), call. = FALSE)
+                ori <- getOption("warning.length")
+                options(warning.length = 8170L)
+                on.exit(options(warning.length = ori), add = TRUE)
 
-            # remove duplications
-            idx <- idx[!duplicated(index)]
-            # reset abnormal case status to non-matched
-            set(idx, dup_idx, cols, NA)
+                act <- if (mult == "skip") {
+                    "Those files will be skipped and the cases will remain unmatched."
+                } else {
+                    "The file with latest modification time, listed as the first, will be used. All other files will be skipped"
+                }
+
+                warning("Case(s) shown below matches multiple NetCDF files in the database. ",
+                    "Please check if there are duplicated NetCDF files in your database ",
+                    "and check NetCDF global attributes of those files ",
+                    "to see if there are any incorrect values. ", act, "\n",
+                    paste0(mes, collapse = "\n"), call. = FALSE)
+            }
         }
 
         # remove index
         set(idx, NULL, "index", NULL)
+
+        # keep the original order
+        setcolorder(idx, setdiff(cols_idx, "index"))
     }
 
     # update index database
@@ -196,6 +233,7 @@ summary_database <- function (
     if (update) {
         # save database into the app data directory
         fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        verbose("Data file index database updated and saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
     }
 
     by_cols <- names(dict)[which(dict %in% by)]
