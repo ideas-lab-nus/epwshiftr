@@ -229,7 +229,7 @@ morphing_norm_rad <- function (glob_rad, diff_rad) {
     norm_rad <- data.table::copy(glob_rad)
     norm_rad[, diffuse_horizontal_radiation := diff_rad$diffuse_horizontal_radiation]
     # calculate solar angle
-    norm_rad[, day_of_year := lubridate::yday(datetime)]
+    norm_rad[, day_of_year := data.table::yday(datetime)]
     norm_rad[, solar_angle := solar_angle(lat, lon, day_of_year, hour, 8)]
     norm_rad[, direct_normal_radiation := (global_horizontal_radiation - diffuse_horizontal_radiation) * abs(solar_angle)]
     norm_rad[, c("global_horizontal_radiation", "diffuse_horizontal_radiation",

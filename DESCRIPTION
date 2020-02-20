@@ -16,13 +16,10 @@ Imports:
     checkmate,
     data.table,
     eplusr,
-    fst,
     jsonlite,
-    lubridate,
     progress,
     rappdirs,
     RNetCDF,
-    tidync,
     units
 Suggests:
     testthat,
