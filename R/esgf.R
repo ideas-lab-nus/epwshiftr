@@ -527,7 +527,10 @@ load_cmip6_index <- function (force = FALSE) {
             data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))
         }
         if ("file_mtime" %in% names(idx)) {
-            data.table::set(idx, NULL, "file_mtime", as.numeric(idx$file_mtime))
+            # to avoid No visible binding for global variable check NOTE
+            file_mtim <- NULL
+            idx[J(""), on = "file_mtime", file_mtime := NA]
+            idx[, file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
         }
         if ("time_units" %in% names(idx)) {
             data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
@@ -535,17 +538,18 @@ load_cmip6_index <- function (force = FALSE) {
         if ("time_calendar" %in% names(idx)) {
             data.table::set(idx, NULL, "time_calendar", as.character(idx$time_calendar))
         }
-    }
-
-    # to avoid No visible binding for global variable check NOTE
-    datetime_start <- datetime_end <- NULL
-    # make sure datetime are POSIXct class
-    idx[, c("datetime_start", "datetime_end") :=
-        list(as.POSIXct(datetime_start, "UTC"), as.POSIXct(datetime_end, "UTC"))
-    ]
-
-    if ("file_mtime" %in% names(idx)) {
-        idx[file_mtime != "", file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
+        if ("datetime_start" %in% names(idx)) {
+            # to avoid No visible binding for global variable check NOTE
+            datetime_start <- NULL
+            idx[J(""), on = "datetime_start", datetime_start := NA]
+            data.table::set(idx, NULL, "datetime_start", as.POSIXct(idx$datetime_start, "UTC"))
+        }
+        if ("datetime_end" %in% names(idx)) {
+            # to avoid No visible binding for global variable check NOTE
+            datetime_end <- NULL
+            idx[J(""), on = "datetime_end", datetime_end := NA]
+            data.table::set(idx, NULL, "datetime_end", as.POSIXct(idx$datetime_end, "UTC"))
+        }
     }
 
     # udpate package internal stored file index database
