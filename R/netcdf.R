@@ -358,7 +358,7 @@ extract_data <- function (pattern, years, threshold = list(lon = 1.0, lat = 1.0)
 
     data <- Map(
         function (path, coord) {
-            p$message(paste0("Processing file ", basename(path), "..."))
+            p$message(sprintf("Processing file '%s'...", path))
             d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
             p$tick()
             d
