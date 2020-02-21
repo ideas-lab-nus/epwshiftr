@@ -463,12 +463,17 @@ init_cmip6_index <- function (
     ))
 
     # use non-equi join to extract matched rows
+    # NOTE: CMIP6 output uses temporal amounts for saving date and time, e.g.
+    # "days since 1900-01-01". In order to make sure corresponding UTC
+    # referenced date and time include input years, we include the year before and
+    # after also
     exp <- data.table::data.table(
-        expect_start = ISOdatetime(years, 1, 1, 0, 0, 0, "UTC"),
-        expect_end = ISOdatetime(years, 12, 31, 0, 0, 0, "UTC")
+        expect_start = ISOdatetime(years - 1L, 1, 1, 0, 0, 0, "UTC"),
+        expect_end = ISOdatetime(years + 1L, 12, 31, 0, 0, 0, "UTC")
     )
+
     dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
-    dt <- dt[exp, on = c("expect_start<=expect_start", "expect_end>=expect_end")][
+    dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][
         , `:=`(expect_start = NULL, expect_end = NULL)]
 
     # remove duplications
