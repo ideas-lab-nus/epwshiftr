@@ -259,6 +259,7 @@ summary_database <- function (
 #' @export
 get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     assert_flag(unit)
+    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
     if (inherits(x, "NetCDF")) {
         nc <- x

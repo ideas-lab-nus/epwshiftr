@@ -388,7 +388,7 @@ init_cmip6_index <- function (
     years = NULL
 )
 {
-    assert_integerish(years, unique = TRUE, sorted = TRUE, any.missing = FALSE)
+    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE)
 
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
