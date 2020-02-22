@@ -204,9 +204,21 @@ Hongyuan Jia
 
 ## License
 
-The project is released under the terms of MIT License.
+* **epwshiftr**
 
-Copyright © 2019 Hongyuan Jia
+  epwshiftr is released under the terms of MIT License.
+
+  Copyright © 2019 Hongyuan Jia
+
+* **CMIP6 data**
+
+  > To enable modeling groups and others who support CMIP6 to demonstrate its
+  > impact (and secure ongoing funding), you are required to cite and
+  > acknowledge those who have made CMIP6 possible. You also must abide by any
+  > licensing restrictions, which are recorded in each file as a global
+  > attribute (named “license”).
+  >
+  > Please carefully read and adhere to the [CMIP6 Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse).
 
 ## Contribute
 
