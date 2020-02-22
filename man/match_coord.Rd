@@ -14,16 +14,16 @@ match_coord(epw, threshold = list(lon = 1, lat = 1), max_num = NULL)
 \item A regular expression used to search locations in EnergyPlus Weather
 Database, e.g. "los angeles.*tmy3". You will be asked to select a matched
 EPW to download and read. It will be saved into \code{\link[=tempdir]{tempdir()}}. Note that the
-search is case-insensitive.
+search is case-insensitive
 }}
 
 \item{threshold}{A list of 2 elements \code{lon} and \code{lat} specifying the
 absolute distance threshold used when matching longitude and latitude.
-Default: \code{list(lon = 1.0, lat = 1.0)}.}
+Default: \code{list(lon = 1.0, lat = 1.0)}}
 
 \item{max_num}{The maximum number to be matched for both longitude and
 latitude when \code{threshold} is matched. Default is \code{NULL}, which means
-no limit.}
+no limit}
 }
 \value{
 An \code{epw_cmip6_coord} object, which is basically a list of 3 elements:

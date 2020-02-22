@@ -52,7 +52,7 @@ Each \code{\link[data.table:data.table]{data.table::data.table()}} listed above 
 Morphing Method.
 }
 \details{
-The EPW weather variables that get morphed are:
+The EPW weather variables that get morphed are listed in details.
 }
 \references{
 Belcher, S., Hacker, J., Powell, D., 2005. Constructing design weather data

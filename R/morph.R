@@ -158,7 +158,7 @@ load_cmip6_index <- function (force = FALSE) {
 #' [extract_data()] and calculates future core EPW weather variables using
 #' Morphing Method.
 #'
-#' The EPW weather variables that get morphed are:
+#' The EPW weather variables that get morphed are listed in details.
 #'
 #' @param data An `epw_cmip6_data`object generated using [extract_data()]
 #'
