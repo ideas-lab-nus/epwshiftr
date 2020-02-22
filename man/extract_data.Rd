@@ -4,20 +4,51 @@
 \alias{extract_data}
 \title{Extract data}
 \usage{
-extract_data(locations, unit = FALSE, dir = NULL, overwrite = FALSE)
+extract_data(
+  coord,
+  years = NULL,
+  threshold = list(lon = 1, lat = 1),
+  max_num = NULL,
+  unit = FALSE
+)
 }
 \arguments{
-\item{locations}{Location data extracted using \code{\link[=match_location]{match_location()}}}
+\item{coord}{An \code{epw_cmip6_coord} object created using \code{\link[=match_coord]{match_coord()}}}
 
-\item{unit}{If \code{TRUE}, units will be added to values}
+\item{years}{An integer vector indicating the target years to be included in
+the data file. All other years will be excluded. If \code{NULL}, no
+subsetting on years will be performed. Default: \code{NULL}.}
 
-\item{overwrite}{If \code{TRUE}, overwrite the fst file if exists}
-
-\item{save}{If \code{TRUE}, a \link[fst:write_fst]{fst} file will be written}
+\item{unit}{If \code{TRUE}, units will be added to values using
+\link[units:set_units]{units::set_units}.}
 }
 \value{
-A data.table
+An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
+\itemize{
+\item \code{epw}: An \link[eplusr:Epw]{eplusr::Epw} object whose longitude and latitute are used to
+extract CMIP6 data. It is the same object as created in \code{\link[=match_location]{match_location()}}
+\item \code{meta}: A list containing basic meta data of input EPW, including \code{city},
+\code{state_province}, \code{country}, \code{latitute} and \code{longitude}.
+\item \code{data}: A \code{\link[data.table:data.table]{data.table::data.table()}} of 12 columns:\tabular{rlll}{
+   No. \tab Column \tab Type \tab Description \cr
+   1 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
+   2 \tab \code{institution_id} \tab Character \tab Institution identifier \cr
+   3 \tab \code{source_id} \tab Character \tab Model identifier \cr
+   4 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
+   5 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
+   6 \tab \code{table_id} \tab Character \tab Table identifier \cr
+   7 \tab \code{lat} \tab Double \tab Latitude of extracted location \cr
+   8 \tab \code{lon} \tab Double \tab Latitude of extracted location \cr
+   9 \tab \code{variable} \tab Character \tab Variable identifier \cr
+   10 \tab \code{description} \tab Character \tab Variable long name \cr
+   11 \tab \code{units} \tab Character \tab Units of variable \cr
+   12 \tab \code{value} \tab Double \tab Start date and time of simulation \cr
+}
+
+}
 }
 \description{
-Extract data
+\code{extract_data()} takes an \code{epw_cmip6_coord} object generated using
+\code{\link[=match_location]{match_location()}} and extracts CMIP6 data using the coordinates and years of
+interest specified.
 }

@@ -1,18 +1,24 @@
 # preprocess_morphing {{{
 #' @importFrom checkmate assert_count
 #' @importFrom data.table set
-preprocess_morphing <- function (dt, leapyear = FALSE, start_from = 2020L, cut_by = 30L) {
+preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL) {
+    # add datetime components
+    data.table::set(dt, NULL, c("year", "month", "day", "hour", "minute"),
+        list(data.table::year(dt$datetime),
+             data.table::month(dt$datetime),
+             data.table::mday(dt$datetime),
+             data.table::hour(dt$datetime),
+             data.table::minute(dt$datetime)
+        )
+    )
+
     # TODO: handle leapyear in mean, max, min
     if (!leapyear) dt <- dt[!J(2L, 29L), on = c("month", "day")]
 
-    assert_count(start_from, positive = TRUE)
-    assert_count(cut_by, positive = TRUE)
+    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
-    end <- max(dt$year)
-    cuts <- seq(start_from, end, cut_by)
-    if (cuts[length(cuts)] < end) cuts <- c(cuts, end)
+    if (!is.null(years)) dt <- dt[J(years), on = "year"]
 
-    dt <- dt[J(cuts), on = "year"]
     data.table::set(dt, NULL, "interval", as.factor(dt$year))
 
     # calculate monthly mean and average value for longitude and latitude
@@ -54,21 +60,307 @@ align_units <- function (dt, units) {
 }
 # }}}
 
+# remove_units {{{
+remove_units <- function (data, var) {
+    # remove units
+    for (v in c(var, "delta", "alpha")) {
+        if (v %in% names(data) && inherits(data[[v]], "units")) {
+            set(data, NULL, v, units::drop_units(data[[v]]))
+        }
+    }
+
+    data
+}
+# }}}
+
+# load_cmip6_data {{{
+#' Load previously stored CMIP6 experiment output data
+#'
+#' @param force If `TRUE`, read the index file. Otherwise, return the
+#'        cached index if exists. Default: `FALSE`.
+#'
+#' @return A [data.table::data.table] with 20 columns. For detail description on
+#' column, see [init_cmip6_index()].
+#'
+#' @examples
+#' \dontrun{
+#' load_cmip6_index()
+#' }
+#' @importFrom data.table copy fread
+#' @export
+load_cmip6_index <- function (force = FALSE) {
+    if (is.null(EPWSHIFTR_ENV$index_db)) force <- TRUE
+
+    if (!force) {
+        idx <- data.table::copy(EPWSHIFTR_ENV$index_db)
+    } else {
+        f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
+        if (!file.exists(f)) {
+            stop(sprintf("CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."))
+        }
+
+        # load file info
+        idx <- tryCatch(
+            data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
+            error = function (e) {
+                stop("Failed to parse CMIP6 experiment output file index.\n", conditionMessage(e))
+            }
+        )
+        message("Loading CMIP6 experiment output file index created at ", file.info(f)$mtime, ".")
+
+        # fix column types in case of empty values
+        if ("file_path" %in% names(idx)) {
+            data.table::set(idx, NULL, "file_path", as.character(idx$file_path))
+            idx[J(""), on = "file_path", file_path := NA_character_]
+        }
+        if ("file_realsize" %in% names(idx)) {
+            data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))
+        }
+        if ("file_mtime" %in% names(idx)) {
+            # to avoid No visible binding for global variable check NOTE
+            file_mtime <- NULL
+            if (is.character(idx$file_mtime)) {
+                idx[J(""), on = "file_mtime", file_mtime := NA]
+            }
+            idx[, file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
+        }
+        if ("time_units" %in% names(idx)) {
+            data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
+        }
+        if ("time_calendar" %in% names(idx)) {
+            data.table::set(idx, NULL, "time_calendar", as.character(idx$time_calendar))
+        }
+        if ("datetime_start" %in% names(idx)) {
+            # to avoid No visible binding for global variable check NOTE
+            datetime_start <- NULL
+            idx[J(""), on = "datetime_start", datetime_start := NA]
+            data.table::set(idx, NULL, "datetime_start", as.POSIXct(idx$datetime_start, "UTC"))
+        }
+        if ("datetime_end" %in% names(idx)) {
+            # to avoid No visible binding for global variable check NOTE
+            datetime_end <- NULL
+            idx[J(""), on = "datetime_end", datetime_end := NA]
+            data.table::set(idx, NULL, "datetime_end", as.POSIXct(idx$datetime_end, "UTC"))
+        }
+    }
+
+    # udpate package internal stored file index
+    EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
+
+    idx[]
+}
+# }}}
+
+# morphing_epw {{{
+#' Morphing EPW weather variables
+#'
+#' `morphing_epw()` takes an `epw_cmip6_data` object generated using
+#' [extract_data()] and calculates future core EPW weather variables using
+#' Morphing Method.
+#'
+#' The EPW weather variables that get morphed are:
+#'
+#' @param data An `epw_cmip6_data`object generated using [extract_data()]
+#'
+#' @param years An integer vector indicating the target years to be considered.
+#'        If `NULL`, all years in input data will be considered. Default: `NULL`.
+#'
+#' @return An `epw_cmip6_morphed` object, which is basically a list of 12 elements:
+#'
+#' | No.  | Element        | Type                       | Morphing Method | Description                                                       |
+#' | ---: | -----          | -----                      | -----           | -----                                                             |
+#' | 1    | `epw`          | [eplusr::Epw]              | N/A             | The original EPW file used for morphing                           |
+#' | 2    | `tdb`          | [data.table::data.table()] | Stretch         | Data of dry-bulb temperature after morphing                       |
+#' | 3    | `tdew`         | [data.table::data.table()] | Derived         | Data of dew-point temperature after morphing                      |
+#' | 4    | `rh`           | [data.table::data.table()] | Stretch         | Data of relative humidity after morphing                          |
+#' | 5    | `p`            | [data.table::data.table()] | Stretch         | Data of atmospheric pressure after morphing                       |
+#' | 6    | `hor_ir`       | [data.table::data.table()] | Stretch         | Data of horizontal infrared radiation from the sky after morphing |
+#' | 7    | `glob_rad`     | [data.table::data.table()] | Stretch         | Data of global horizontal radiation after morphing                |
+#' | 8    | `norm_rad`     | [data.table::data.table()] | Derived         | Data of direct normal radiation after morphing                    |
+#' | 9    | `diff_rad`     | [data.table::data.table()] | Stretch         | Data of diffuse horizontal radiation after morphing               |
+#' | 10   | `wind`         | [data.table::data.table()] | Stretch         | Data of wind speed after morphing                                 |
+#' | 11   | `total_cover`  | [data.table::data.table()] | Derived         | Data of total sky cover after morphing                            |
+#' | 12   | `opaque_cover` | [data.table::data.table()] | Derived         | Data of opaque sky cover after morphing                           |
+#'
+#' Each [data.table::data.table()] listed above contains x columns
+#'
+#' | No.  | Column            | Type      | Description                                                                            |
+#' | ---: | -----             | -----     | -----                                                                                  |
+#' | 1    | `activity_drs`    | Character | Activity DRS (Data Reference Syntax)                                                   |
+#' | 2    | `institution_id`  | Character | Institution identifier                                                                 |
+#' | 3    | `source_id`       | Character | Model identifier                                                                       |
+#' | 4    | `experiment_id`   | Character | Root experiment identifier                                                             |
+#' | 5    | `member_id`       | Character | A compound construction from `sub_experiment_id` and `variant_label`                   |
+#' | 6    | `table_id`        | Character | Table identifier                                                                       |
+#' | 7    | `lat`             | Double    | The **averaged** values of input latitude                                              |
+#' | 8    | `lon`             | Double    | The **averaged** values of input longitude                                             |
+#' | 9    | `interval`        | Factor    | The year value of data morphed                                                         |
+#' | 10   | **Variable Name** | Double    | The morphed data, where `Variable Name` is the corresponding EPW weather variable name |
+#' | 11   | `delta`           | Double    | The shift factor. Will be `NA` for derivied values                                     |
+#' | 12   | `alpha`           | Double    | The stretch factor. Will be `NA` for derivied values                                   |
+#'
+#' @references
+#' Belcher, S., Hacker, J., Powell, D., 2005. Constructing design weather data
+#' for future climates. Building Services Engineering Research and Technology
+#' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
+#'
+#' @export
+morphing_epw <- function (data, years = NULL) {
+    assert_class(data, "epw_cmip6_data")
+
+    data_cmip <- data.table::setDT(data$data)
+    data_epw <- suppressMessages(data$epw$add_unit()$data())
+
+    # NODE 6: Ta
+    verbose("Morphing 'dry bulb temperature'...")
+    tas <- data_cmip[J("tas"), on = "variable", nomatch = NULL]
+    tasmax <- data_cmip[J("tasmax"), on = "variable", nomatch = NULL]
+    tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
+    if (!nrow(tasmax)) tasmax <- NULL
+    if (!nrow(tasmin)) tasmin <- NULL
+    tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, type = "stretch")
+
+    # NODE 8: RH
+    verbose("Morphing 'relative humidity'...")
+    hurs <- data_cmip[J("hurs"), on = "variable", nomatch = NULL]
+    hursmax <- data_cmip[J("hursmax"), on = "variable", nomatch = NULL]
+    hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
+    if (!nrow(hursmax)) hursmax <- NULL
+    if (!nrow(hursmin)) hursmin <- NULL
+    rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, type = "stretch")
+
+    # NODE 7: Tdew
+    verbose("Morphing 'dew point temperature'...")
+    tdew <- morphing_tdew(tdb, rh)
+
+    # NODE 9 Pa
+    verbose("Morphing 'atmospheric pressure'...")
+    psl <- data_cmip[J("psl"), on = "variable", nomatch = NULL]
+    p <- morphing_pa(data_epw, psl, years, type = "stretch")
+
+    # NODE 10: Extraterrestrial direct normal radiation [NOT USED in EnergyPlus]
+    # NODE 11: Extraterrestrial horizontal radiation [NOT USED in EnergyPlus]
+
+    # NODE 12: Horizontal infrared radiation from the sky
+    verbose("Morphing 'horizontal infrared radiation from the sky'...")
+    data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
+        units::set_units(units::drop_units(horizontal_infrared_radiation_intensity_from_sky), "W/m^2"
+    )]
+    rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
+    hor_ir <- morphing_hor_ir(data_epw, rlds, years, type = "stretch")
+
+    # NODE 13: Global horizontal radiation
+    verbose("Morphing 'global horizontal radiation'...")
+    data_epw[, global_horizontal_radiation :=
+        units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
+    )]
+    rsds <- data_cmip[J("rsds"), on = "variable", nomatch = NULL]
+    glob_rad <- morphing_glob_rad(data_epw, rsds, years, type = "stretch")
+
+    #!NODE 15: Diffuse horizontal radiation
+    # NOTE: Since the extraterrestrial horizontal radiation is not used in
+    # EnergyPlus. Here still use the original approach
+    verbose("Morphing 'diffuse horizontal radiation'...")
+    diff_rad <- morphing_diff_rad(data_epw, glob_rad)
+
+    # NODE 14: Direct normal radiation
+    verbose("Morphing 'direct normal radiation'...")
+    norm_rad <- morphing_norm_rad(glob_rad, diff_rad)
+
+    # NODE 16: Global horizontal illuminance [NOT USED in EnergyPlus]
+    # NODE 17: Direct normal illuminance [NOT USED in EnergyPlus]
+    # NODE 18: Diffuse horizontal illuminance [NOT USED in EnergyPlus]
+    # NODE 19: Zenith luminance [NOT USED in EnergyPlus]
+    # NODE 20: Wind direction [Keep the same]
+
+    # NODE 21: Wind speed
+    verbose("Morphing 'wind speed'...")
+    sfcWind <- data_cmip[J("sfcWind"), on = "variable", nomatch = NULL]
+    wind <- morphing_wind_speed(data_epw, sfcWind, years, type = "stretch")
+
+    # NODE 22: Total sky cover
+    verbose("Morphing 'total sky cover'...")
+    clt <- data_cmip[J("clt"), on = "variable", nomatch = NULL]
+    total_cover <- morphing_total_sky_cover(data_epw, clt, years)
+
+    # NODE 23: Opaque sky cover
+    # Instead, it was assumed that the relation between total sky cover and
+    # opaque sky cover remains the same under a changed climate. Therefore, the
+    # equation for generating future opaque sky cover is as follows:
+    verbose("Morphing 'opaque sky cover'...")
+    opaque_cover <- morphing_opaque_sky_cover(data_epw, total_cover)
+
+    res <- list(epw = data$epw, tdb = tdb, tdew = tdew, rh = rh, p = p, hor_ir = hor_ir,
+         glob_rad = glob_rad, norm_rad = norm_rad, diff_rad = diff_rad,
+         wind = wind, total_cover = total_cover, opaque_cover = opaque_cover)
+
+    # remove all units
+    data$epw$drop_unit()
+    for (l in res[-1L]) remove_units(l, intersect(names(l), names(data_epw)))
+
+    class(res) <- "epw_cmip6_morphed"
+    res
+}
+# }}}
+
 # morphing_from_mean {{{
-morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "stretch", "combined"),
-                                start_from = 2020L, cut_by = 30L) {
+morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_min = NULL,
+                                type = c("shift", "stretch", "combined"), years = NULL) {
     type <- match.arg(type)
-    # add cut interval and average by lon, lat, month and day (i.e. monthly
-    # avarage) in CMIP6 data
-    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, start_from, cut_by)
+
+    if (!nrow(data_mean)) return(data.table())
 
     # calculate monthly average of EPW data
     monthly <- monthly_mean(data_epw, var)
 
-    # set units
+    # get units
     u <- units(data_epw[[var]])
+
+    # add cut interval and average by lon, lat, month and day (i.e. monthly
+    # avarage) in CMIP6 data
+    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, years = years)
     # this will automatically do unit conversions like K --> C
     data_mean <- align_units(data_mean, u)
+
+    if (type == "combined" && !is.null(data_max) && !is.null(data_min)) {
+        data_max <- preprocess_morphing(data_max, leapyear = FALSE, years = years)
+        data_min <- preprocess_morphing(data_min, leapyear = FALSE, years = years)
+
+        # this will automatically do unit conversions like K --> C
+        data_max <- align_units(data_max, u)
+        data_min <- align_units(data_min, u)
+
+        # merge max and min CMIP6 values into mean data.table
+        data_mean[data_max, on = c("activity_drs", "experiment_id", "institution_id",
+            "source_id", "member_id", "table_id", "lat", "lon", "units", "month", "interval"),
+            value_max := i.value
+        ]
+        data_mean[data_min, on = c("activity_drs", "experiment_id", "institution_id",
+            "source_id", "member_id", "table_id", "lat", "lon", "units", "month", "interval"),
+            value_min := i.value
+        ]
+
+        # If tasmax and tasmin is missing for some GCMs, reset them to tas.
+        # Otherwise the final results will be NA
+        # NOTE: By doing so, alpha for those GCMS will be zero and 'shift'
+        # method is used. Warnings should be issued
+        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE]
+        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE]
+        i <- unique(c(i_min, i_max))
+
+        # construct case string
+        cases <- data_mean[i, unique(sprintf("CMIP6.%s.%s.%s.%s.%s.%s",
+            activity_drs, institution_id, source_id, experiment_id, member_id, table_id))]
+        cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
+        # issue warnings
+        warning(sprintf("Case(s) below does not contains max or min of '%s' data. ", gsub("_", " ", var)),
+            "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
+            call. = FALSE
+        )
+
+        set(data_mean, i_max, "value_max", data_mean$value[i_max])
+        set(data_mean, i_min, "value_min", data_mean$value[i_max])
+    }
 
     # add datetime columns from the original EPW data into the monthly average of
     # CMIP6 data
@@ -78,16 +370,26 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
         data_mean, on = "month", allow.cartesian = TRUE]
 
     # calculate delta, alpha and add EPW monthly average value
-    data[monthly, on = "month",
-        `:=`(delta = value - i.val_mean, alpha = value / i.val_mean, value_mean = i.val_mean)
-    ]
+    data[monthly, on = "month", `:=`(delta = value - i.val_mean,
+        epw_mean = i.val_mean, epw_max = i.val_max, epw_min = i.val_min
+    )]
+
+    if (type == "combined" && all(c("value_min", "value_max") %in% names(data))) {
+        data[, alpha := ((value_max - epw_max) - (value_min - epw_min)) / (epw_max - epw_min)]
+    } else {
+        data[, alpha := value / epw_mean]
+    }
 
     if (type == "shift") {
         data[, c(var) := units::set_units(get(var) + delta, u, mode = "standard")]
     } else if (type == "stretch") {
         data[, c(var) := units::set_units(get(var) * alpha, u, mode = "standard")]
     } else if (type == "combined") {
-        data[, c(var) := units::set_units(get(var) + delta + alpha * get(var), u, mode = "standard")]
+        if (all(c("value_min", "value_max") %in% names(data))) {
+            data[, c(var) := units::set_units(get(var) + delta + alpha * (get(var) - epw_mean), u, mode = "standard")]
+        } else {
+            data[, c(var) := units::set_units(get(var) + delta + alpha * get(var), u, mode = "standard")]
+        }
     }
 
     data[, .SD, .SDcols = c(
@@ -100,113 +402,107 @@ morphing_from_mean <- function (var, data_epw, data_mean, type = c("shift", "str
         "datetime", "year", "month", "day", "hour", "minute",
         # value
         var, "delta", "alpha"
+        # TODO: update units column
     )]
 }
 # }}}
 
 # morphing_tdb {{{
-#' Morphing dry-bulb temperature
-#'
-#' Use monthly mean temperature, monthly maximum temperature and monthly minimum
-#' temperature to chagne only two statistical paramters of the timeseries of
-#' temperature, namely the mean and the variance. This is achieved by shifting
-#' by the value for mean temperature and stretching by the diurnal range.
-#'
-#' @references
-#' Belcher, S., Hacker, J., Powell, D., 2005. Constructing design weather data
-#' for future climates. Building Services Engineering Research and Technology
-#' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
-#'
-#' @export
-morphing_tdb <- function (data_epw, tas, start_from = 2020L, cut_by = 10L, type = "shift") {
+morphing_tdb <- function (data_epw, tas, tasmax = NULL, tasmin = NULL, years = NULL, type = "combined") {
     morphing_from_mean(
         var = "dry_bulb_temperature",
         data_epw = data_epw,
         data_mean = tas,
-        start_from = start_from,
-        cut_by = cut_by,
+        data_max = tasmax,
+        data_min = tasmin,
+        years = years,
         type = type
     )
 }
 # }}}
 
 # morphing_rh {{{
-#' Morphing relative humidity
-#'
-#' @references
-#' Belcher, S., Hacker, J., Powell, D., 2005. Constructing design weather data
-#' for future climates. Building Services Engineering Research and Technology
-#' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
-#'
-#' @export
-morphing_rh <- function (data_epw, hurs, start_from = 2020L, cut_by = 10L, type = "shift") {
+morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years = NULL, type = "combined") {
     rh <- morphing_from_mean(
         var = "relative_humidity",
         data_epw = data_epw,
         data_mean = hurs,
-        start_from = start_from,
-        cut_by = cut_by,
+        data_max = hursmax,
+        data_min = hursmin,
+        years = years,
         type = type
     )
 
     # reset RH > 100% to 100%
     rh[relative_humidity > units::set_units(100, "%"), relative_humidity := units::set_units(100, "%")]
+    rh
 }
 # }}}
 
 # morphing_tdew {{{
 morphing_tdew <- function (tdb, rh) {
     psychrolib::SetUnitSystem("SI")
+
     tdew <- data.table::copy(tdb)[
         rh, on = c(setdiff(names(tdb), c("dry_bulb_temperature", "delta", "alpha"))),
-        dew_point_temperature :=
-            units::set_units(
-                psychrolib::GetTDewPointFromRelHum(
-                    units::drop_units(dry_bulb_temperature),
-                    units::drop_units(i.relative_humidity) / 100
-                ),
-                degree_Celsius
-            )
+        relative_humidity := i.relative_humidity
     ]
-    tdew[data_epw, on = c("datetime"), delta := dew_point_temperature - i.dew_point_temperature]
-    tdew[, c("dry_bulb_temperature") := NULL][]
+
+    # TODO: issue warnings if there are any NAs in tdb or RH
+
+    tdew[!is.na(dry_bulb_temperature) & !is.na(relative_humidity),
+        dew_point_temperature := units::set_units(
+            psychrolib::GetTDewPointFromRelHum(
+                units::drop_units(dry_bulb_temperature),
+                units::drop_units(relative_humidity) / 100
+            ),
+            degree_Celsius
+        )
+    ]
+
+    set(tdew, NULL, c("delta", "alpha"), NA_real_)
+    set(tdew, NULL, c("dry_bulb_temperature", "relative_humidity"), NULL)
+
+    setcolorder(tdew,
+        c(setdiff(names(tdew), c("dew_point_temperature", "delta", "alpha")),
+          "dew_point_temperature", "delta", "alpha")
+    )
+
+    tdew
 }
 # }}}
 
 # morphing_pa {{{
-morphing_pa <- function (data_epw, psl, start_from = 2020, cut_by = 10, type = "stretch") {
+morphing_pa <- function (data_epw, psl, years = NULL, type = "stretch") {
     morphing_from_mean(
         var = "atmospheric_pressure",
         data_epw = data_epw,
         data_mean = psl,
-        start_from = start_from,
-        cut_by = cut_by,
+        years = years,
         type = type
     )
 }
 # }}}
 
 # morphing_hor_ir {{{
-morphing_hor_ir <- function (data_epw, rlds, start_from = 2020, cut_by = 10, type = "stretch") {
+morphing_hor_ir <- function (data_epw, rlds, years = NULL, type = "stretch") {
     morphing_from_mean(
         var = "horizontal_infrared_radiation_intensity_from_sky",
         data_epw = data_epw,
         data_mean = rlds,
-        start_from = start_from,
-        cut_by = cut_by,
+        years = years,
         type = type
     )
 }
 # }}}
 
 # morphing_glob_rad {{{
-morphing_glob_rad <- function (data_epw, rsds, start_from = 2020, cut_by = 10, type = "stretch") {
+morphing_glob_rad <- function (data_epw, rsds, years = NULL, type = "stretch") {
     morphing_from_mean(
         var = "global_horizontal_radiation",
         data_epw = data_epw,
         data_mean = rsds,
-        start_from = start_from,
-        cut_by = cut_by,
+        years = years,
         type = type
     )
 }
@@ -215,6 +511,7 @@ morphing_glob_rad <- function (data_epw, rsds, start_from = 2020, cut_by = 10, t
 # morphing_diff_rad {{{
 morphing_diff_rad <- function (data_epw, glob_rad) {
     diff_rad <- data.table::copy(glob_rad)
+    if (!nrow(diff_rad)) return(data.table())
     diff_rad[data_epw[, .SD, .SDcols = c("month", "day", "hour", "diffuse_horizontal_radiation")],
         on = c("month", "day", "hour"),
         diffuse_horizontal_radiation := i.diffuse_horizontal_radiation * alpha]
@@ -227,6 +524,7 @@ morphing_diff_rad <- function (data_epw, glob_rad) {
 # morphing_norm_rad {{{
 morphing_norm_rad <- function (glob_rad, diff_rad) {
     norm_rad <- data.table::copy(glob_rad)
+    if (!nrow(glob_rad) || !nrow(diff_rad)) return(data.table())
     norm_rad[, diffuse_horizontal_radiation := diff_rad$diffuse_horizontal_radiation]
     # calculate solar angle
     norm_rad[, day_of_year := data.table::yday(datetime)]
@@ -238,29 +536,28 @@ morphing_norm_rad <- function (glob_rad, diff_rad) {
 # }}}
 
 # morphing_wind_speed {{{
-morphing_wind_speed <- function (data_epw, sfcwind, start_from = 2020, cut_by = 10, type = "stretch") {
+morphing_wind_speed <- function (data_epw, sfcWind, years = NULL, type = "stretch") {
     morphing_from_mean(
         var = "wind_speed",
         data_epw = data_epw,
-        data_mean = sfcwind,
-        cut_by = cut_by,
-        start_from = start_from,
-        cut_by = cut_by,
+        data_mean = sfcWind,
+        years = years,
         type = type
     )
 }
 # }}}
 
 # morphing_total_sky_cover {{{
-morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by = 10) {
+morphing_total_sky_cover <- function (data_epw, clt, years = NULL) {
     var <- "total_sky_cover"
-    data_mean <- preprocess_morphing(clt, leapyear = FALSE, start_from, cut_by)
-    monthly <- unique(data_epw[, .SD, .SDcols = c("month", "day")])
+    if (!nrow(clt)) return(data.table())
+    data_mean <- preprocess_morphing(clt, leapyear = FALSE, years = years)
+    monthly <- unique(data_epw[, .SD, .SDcols = c("month")])
 
-    data_mean <- data_mean[monthly, on = c("month", "day")]
+    data_mean <- data_mean[monthly, on = c("month")]
 
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
-        data_mean, on = c("month", "day"), allow.cartesian = TRUE]
+        data_mean, on = "month", allow.cartesian = TRUE]
 
     data.table::set(data, NULL, "value", units::drop_units(data$value))
 
@@ -285,6 +582,7 @@ morphing_total_sky_cover <- function (data_epw, clt, start_from = 2020, cut_by =
 
 # morphing_opaque_sky_cover {{{
 morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
+    if (!nrow(total_sky_cover)) return(data.table())
     data <- data.table::copy(total_sky_cover)[
         data_epw[, .SD, .SDcols = c("month", "day", "hour", "opaque_sky_cover")],
         on = c("month", "day", "hour"),
@@ -306,13 +604,12 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 # }}}
 
 # morphing_precipitation {{{
-morphing_precipitation <- function (data_epw, pr, start_from = 2020L, cut_by = 10L, type = "stretch") {
+morphing_precipitation <- function (data_epw, pr, years = NULL, type = "stretch") {
     morphing_from_mean(
         var = "precipitable_water",
         data_epw = data_epw,
         data_mean = pr,
-        start_from = start_from,
-        cut_by = cut_by,
+        years = years,
         type = type
     )
 }
@@ -377,5 +674,182 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
     decl <- declination(day_of_year)
     h_ang <- hour_angle(longitude, day_of_year, hour, timezone)
     sin(to_radian(latitude)) * sin(to_radian(decl)) + cos(to_radian(latitude)) * cos(to_radian(decl)) * cos(to_radian(h_ang))
+}
+# }}}
+
+# append_epw_data {{{
+# Append EPW data in each case for merely comparison purpose
+append_epw_data <- function (morphed) {
+    epw <- morphed$epw
+    epw$drop_unit()
+    epw <- epw$data()
+
+    mor <- morphed[names(morphed) != "epw"]
+
+    lapply(mor, function (dt) {
+        # get variable name
+        var <- intersect(names(dt), names(epw)[-(1:7)])
+
+        meta <- unique(dt[, .SD, .SDcols = c("experiment_id", "institution_id",
+            "source_id", "member_id", "table_id", "lat", "lon", "interval")])
+
+        base <- meta[, as.list(epw[, .SD, .SDcols = c(names(epw)[1:6], var)]), by = c(names(meta))]
+
+        set(base, NULL, "interval", "EPW")
+
+        # combine
+        rbindlist(list(dt, base), fill = TRUE)
+    })
+}
+# }}}
+
+# future_epw {{{
+#' Create future EPW files using morphed data
+#'
+#' @param morphed An `epw_cmip6_morphed` object created using [morphing_epw()].
+#' @param by A character vector of columns to be used as grouping variables when
+#'        creating EPW files
+#' @param dir The parent directory to save the generated EPW files. If not
+#'        exist, it will be created first. Default: `"."`, i.e., current working
+#'        directory.
+#' @param separate If `TRUE`, each EPW file will be saved into a separate folder
+#'        using grouping variables specified in `by`.
+#' @param overwrite If `TRUE`, overwrite existing files if they exist. Default:
+#'        `FALSE`.
+#'
+#' @return A list of generated [eplusr::Epw] objects
+#' @export
+future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"),
+                        dir = ".", separate = TRUE, overwrite = FALSE) {
+    assert_class(morphed, "epw_cmip6_morphed")
+    assert_string(dir)
+    assert_flag(separate)
+
+    epw <- morphed$epw
+
+    suppressMessages(epw$drop_unit())
+    data_epw <- epw$data()
+
+    morphed <- morphed[names(morphed) != "epw"]
+
+    # remove empty data
+    morphed <- morphed[sapply(morphed, nrow) != 0L]
+
+    if (!length(morphed)) {
+        stop("No morphed data found. Please run 'morphing_epw' first.")
+    }
+
+    # remove delta and alpha columns
+    morphed <- lapply(morphed,
+        function (dt) {
+            # copy the original first
+            data.table::set(data.table::copy(dt), NULL, c("delta", "alpha"), NULL)
+        }
+    )
+
+    # columns of meta
+    cols_by <- c(
+        "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
+        "table_id", "lon", "lat",
+        # interval
+        "interval"
+    )
+
+    assert_subset(by, cols_by)
+
+    # columns of datetime
+    cols_dt <- c("datetime", "year", "month", "day", "hour", "minute")
+
+    # merge into one
+    merged <- Reduce(function(...) merge(..., by = c(cols_by, cols_dt)), morphed)
+
+    # average by group
+    merged <- merged[, lapply(.SD, mean),
+        .SDcols = setdiff(intersect(names(data_epw), names(merged)), cols_dt),
+        by = c(cols_dt, by)]
+
+    # in case there are decimal numbers for sky cover
+    if ("total_sky_cover" %in% merged) {
+        set(merged, NULL, "total_sky_cover", as.integer(round(merged$total_sky_cover)))
+    }
+    if ("opaque_sky_cover" %in% merged) {
+        set(merged, NULL, "opaque_sky_cover", as.integer(round(merged$opaque_sky_cover)))
+    }
+
+    # add other variables in the original epw
+    cols_other <- setdiff(names(data_epw), names(merged))
+    complete <- merged[data_epw[, .SD, .SDcols = c("year", "month", "day", "hour", "minute", cols_other)],
+        on = c("year", "month", "day", "hour", "minute")]
+
+    # split data by grouping variables
+    spl <- split(complete, by = c(by))
+
+    # get base file name
+    prefix <- tools::file_path_sans_ext(basename(epw$path()))
+    # get default name suffix
+    suffix <- names(spl)
+    # combine
+    fn <- paste(prefix, suffix, "epw", sep = ".")
+
+    dir <- normalizePath(dir, mustWork = FALSE)
+    if (!dir.exists(dir)) dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+    if (!checkmate::test_directory(dir)) {
+        stop(sprintf("Failed to create output directory '%s'"),
+            normalizePath(dir, mustWork = FALSE)
+        )
+    }
+
+    if (separate) {
+        subdir <- vapply(spl, function (dt) dt[, do.call(file.path, .SD[1]), .SDcols = by], character(1))
+        output <- file.path(dir, subdir, fn)
+    } else {
+        output <- file.path(dir, fn)
+    }
+
+    lapply(seq_along(output), function (i) {
+        # clone the original EPW
+        new_epw <- epw$clone()
+
+        # construct the case string used in disclaimer comment
+        dash_sep <- function (...) paste0("'", paste(..., sep = "-"), "'")
+        case <- spl[[i]][, do.call(dash_sep, .SD[1]), .SDcols = by]
+        # set disclaimer comment
+        new_epw$comment1(disclaimer_comment(case))
+
+        # set data
+        new_epw$set(spl[[i]], warning = FALSE)
+
+        # save
+        new_dir <- dirname(output[i])
+        if (!dir.exists(new_dir)) dir.create(new_dir, showWarnings = FALSE, recursive = TRUE)
+        if (!checkmate::test_directory(new_dir)) {
+            stop(sprintf("Failed to create output directory '%s'"),
+                normalizePath(new_dir, mustWork = FALSE)
+            )
+        }
+        new_epw$save(output[i], overwrite = overwrite)
+
+        new_epw
+    })
+}
+# }}}
+
+# disclaimer_comment {{{
+disclaimer_comment <- function (case) {
+    cmt <- paste(
+    "This climate change adapted weather file, which bases on", case,
+    "ensemble data, has been generated using the epwshiftr tool V", packageVersion("epwshiftr"), ".",
+    "The original weather file used for generating this climate change",
+    "adapted weather data may be copyrighted material. Therefore, generated",
+    "weather files can only be used by persons or entities who possess the",
+    "corresponding licensed weather file.",
+    "DISCLAIMER OF WARRANTIES:",
+    "The data is provided 'as is' without warranty of any kind, either expressed or implied.",
+    "The entire risk as to the quality and performance of the calculated climate change",
+    "weather data in this file is with you. In no event will the authors of the",
+    "weather file generation tool be liable to you for any damages, including",
+    "without limitation any lost profits, lost savings, or other incidental or",
+    "consequential damages arising out of the use or inability to use this data."
+    )
 }
 # }}}

@@ -31,16 +31,16 @@ subeset of:
 }}
 
 \item{mult}{Actions when multiple files match a same case in the CMIP6
-index database. If \code{"latest"}, the file with latest modification time
+index. If \code{"latest"}, the file with latest modification time
 will be used. If \code{"skip"}, all matched files will be skip and this
 case will be kept as unmatched. Default: \code{"skip"}.}
 
 \item{recursive}{If \code{TRUE}, scan recursively into directories. Default:
 \code{FALSE}.}
 
-\item{update}{If \code{TRUE}, the output file index database will be updated based
+\item{update}{If \code{TRUE}, the output file index will be updated based
 on the matched NetCDF files in specified directory. If \code{FALSE}, only
-current loaded index database will be updated, but the actual index
+current loaded index will be updated, but the actual index
 database file saved in \code{\link[rappdirs:app_dir]{rappdirs::app_dir()}} will remain unchanged.
 Default: \code{FALSE}.}
 
@@ -66,7 +66,7 @@ For the meaning of grouping columns, see \code{\link[=init_cmip6_index]{init_cmi
 \description{
 \code{summary_database()} scan the directory specified and returns a
 \code{\link[=data.table]{data.table()}} containing summary information about all the CMIP6
-files available against the output file index database loaded using
+files available against the output file index loaded using
 \code{\link[=load_cmip6_index]{load_cmip6_index()}}.
 }
 \examples{

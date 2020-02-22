@@ -17,7 +17,7 @@ Model (GCM).
 \item \code{epwshiftr.verbose}: If \code{TRUE}, more detailed message will be printed.
 Default: \code{FALSE}.
 \item \code{epwshiftr.data_dir}: The directory to store package data, including CMIP6
-model output file index database and etc. If not set, the current user data
+model output file index and etc. If not set, the current user data
 directory will be used.
 }
 }

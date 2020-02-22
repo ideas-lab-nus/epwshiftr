@@ -63,23 +63,76 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 }
 # }}}
 
-# match_location {{{
+# match_coord {{{
+#' Match coordinates of input EPW in the CMIP6 output file database
+#'
+#' `match_coord` takes an EPW and uses its longitude and latitude to match
+#' corresponding values that meet specified threshold in NetCDF files.
+#'
+#' @param epw Possible values:
+#'
+#' * A file path of EPW file
+#' * An [eplusr::Epw] object
+#' * A regular expression used to search locations in EnergyPlus Weather
+#'   Database, e.g. "los angeles.*tmy3". You will be asked to select a matched
+#'   EPW to download and read. It will be saved into [tempdir()]. Note that the
+#'   search is case-insensitive.
+#'
+#' @param threshold A list of 2 elements `lon` and `lat` specifying the
+#'        absolute distance threshold used when matching longitude and latitude.
+#'        Default: `list(lon = 1.0, lat = 1.0)`.
+#'
+#' @param max_num The maximum number to be matched for both longitude and
+#'        latitude when `threshold` is matched. Default is `NULL`, which means
+#'        no limit.
+#'
+#' @return An `epw_cmip6_coord` object, which is basically a list of 3 elements:
+#'
+#' * `epw`: An [eplusr::Epw] object parsed from input `epw` argument
+#' * `meta`: A list containing basic meta data of input EPW, including `city`,
+#'   `state_province`, `country`, `latitute` and `longitude`.
+#' * `coord`: A [data.table::data.table()] which is basically CMIP6 index
+#'            database with an appending new list column `coord` that contains
+#'            matched latitudes and longitudes in each NetCDF file. Each element
+#'            in `coord` contains 2 elements `lat` and `lon`, in which contains
+#'            the 4 components describing the matched coordinates.
+#'     * `index`: the indices of matched coordinates
+#'     * `value`: the actual longitude or latitude in the NetCDF coordinate
+#'       grids
+#'     * `dis`: the distance between the coordinate values in NetCDF and input
+#'       EPW
+#'     * `which`: The value indices of longitude or latitude in the NetCDF
+#'       coordinate grids. These values are used to extract the corresponding
+#'       variable values
+#'
 #' @importFrom progress progress_bar
 #' @importFrom checkmate assert_scalar test_file_exists test_r6
 #' @importFrom eplusr read_epw
 #' @export
-match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL) {
-    # load file index database
+match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL) {
+    # load file index
     index <- load_cmip6_index()
-    if (test_r6(pattern, "Epw")) {
-        dict <- pattern$location()
+
+    # remove empty
+    if (!"file_path" %in% names(index)) {
+        stop("No NetCDF database has been identified. Please run 'summary_database()' first.", call. = FALSE)
+    }
+
+    index <- index[!J(NA_character_), on = "file_path"]
+
+    if (test_r6(epw, "Epw")) {
+        epw <- epw
+        dict <- epw$location()
     } else {
-        assert_scalar(pattern)
-        if (tolower(tools::file_ext(pattern)) == "epw") {
-            dict <- eplusr::read_epw(pattern)$location()
+        assert_scalar(epw)
+        if (tolower(tools::file_ext(epw)) == "epw") {
+            epw <- eplusr::read_epw(epw)
+            dict <- epw$location()
         } else {
-            dict <- extract_location_dict(pattern)
+            dict <- extract_location_dict(epw)
             if (is.null(dict)) return(invisible())
+            epw <- eplusr::read_epw(dict$epw_url)
+            epw$save(file.path(tempdir(), basename(dict$epw_url)))
         }
     }
 
@@ -90,9 +143,7 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
         meta <- dict[c("city", "state_province", "country", "latitude", "longitude")]
     }
 
-    # remove empty
-    index <- index[!J(NA_character_), on = "file_path"]
-
+    message("Start to match coordinates...")
     p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
         total = nrow(index), clear = FALSE)
 
@@ -104,6 +155,61 @@ match_location <- function (pattern, threshold = list(lon = 1.0, lat = 1.0), max
 
     data.table::set(index, NULL, "coord", coords)
 
-    structure(list(epw = meta, coord = index), class = "epw_coords")
+    structure(list(epw = epw, meta = meta, coord = index), class = "epw_cmip6_coord")
+}
+# }}}
+
+# match_nc_coord {{{
+match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0), max_num = NULL) {
+    assert_number(lat, lower = -90.0, upper = 90.0)
+    assert_number(lon, lower = -180.0, upper = 180.0)
+
+    assert_list(threshold)
+    assert_names(names(threshold), must.include = c("lon", "lat"))
+    assert_number(threshold$lon, lower = 0, upper = 180.0)
+    assert_number(threshold$lat, lower = 0, upper = 90.0)
+
+    assert_count(max_num, positive = TRUE, null.ok = TRUE)
+
+    if (inherits(x, "NetCDF")) {
+        nc <- x
+    } else {
+        nc <- RNetCDF::open.nc(x)
+        on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    }
+
+    # get latitude and longitude
+    dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
+    names(dim) <- c("lat", "lon")
+
+    # calculate distance
+    dis_lat <- dim$lat - lat
+
+    # change EPW longitude to [0, 360] range
+    if (all(dim$lon >= 0) && lon < 0) {
+        lon <- 180 -lon
+    }
+    dis_lon <- dim$lon - lon
+
+    i_lat <- which(abs(dis_lat) <= threshold$lat)
+    i_lon <- which(abs(dis_lon) <= threshold$lon)
+
+    if (!length(i_lat)) {
+        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
+             "the minimum distance ('", round(min(abs(dis_lat)), 2), "') of current file resolution.")
+    }
+    if (!length(i_lon)) {
+        stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
+             "the minimum distance ('", round(min(abs(dis_lon)), 2), "') of current file resolution.")
+    }
+
+    if (!is.null(max_num)) {
+        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
+        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
+    }
+
+    list(lat = list(index = seq_along(i_lat), value = dim$lat[i_lat], dis = dis_lat[i_lat], which = i_lat),
+         lon = list(index = seq_along(i_lon), value = dim$lon[i_lon], dis = dis_lon[i_lon], which = i_lon)
+    )
 }
 # }}}

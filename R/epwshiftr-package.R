@@ -10,7 +10,7 @@
 #' * `epwshiftr.verbose`: If `TRUE`, more detailed message will be printed.
 #'   Default: `FALSE`.
 #' * `epwshiftr.data_dir`: The directory to store package data, including CMIP6
-#'   model output file index database and etc. If not set, the current user data
+#'   model output file index and etc. If not set, the current user data
 #'   directory will be used.
 #'
 #' @include utils.R

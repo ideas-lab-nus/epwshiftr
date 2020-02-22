@@ -320,13 +320,13 @@ extract_query_file <- function (q) {
 # }}}
 
 # init_cmip6_index {{{
-#' Build CMIP6 experiment output file index database
+#' Build CMIP6 experiment output file index
 #'
 #' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
 #' , return a [data.table::data.table()] containing the actual NetCDF file url
 #' to download, and store it intro user data directory for futher use.
 #'
-#' For details on where the file index database is stored, see [rappdirs::user_data_dir()].
+#' For details on where the file index is stored, see [rappdirs::user_data_dir()].
 #'
 #' @note
 #' Argument `limit` will only apply to `Dataset` query. `init_cmip6_index()` will
@@ -481,7 +481,7 @@ init_cmip6_index <- function (
 
     # save database into the app data directory
     data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-    verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+    verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
 
     EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
     dt
@@ -489,10 +489,10 @@ init_cmip6_index <- function (
 # }}}
 
 # load_cmip6_index {{{
-#' Load previously stored CMIP6 experiment output file index database
+#' Load previously stored CMIP6 experiment output file index
 #'
-#' @param force If `TRUE`, read the index database file. Otherwise, return the
-#'        cached index database if exists. Default: `FALSE`.
+#' @param force If `TRUE`, read the index file. Otherwise, return the
+#'        cached index if exists. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table] with 20 columns. For detail description on
 #' column, see [init_cmip6_index()].
@@ -511,17 +511,17 @@ load_cmip6_index <- function (force = FALSE) {
     } else {
         f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
         if (!file.exists(f)) {
-            stop(sprintf("CMIP6 experiment output file index database does not exists. You may want to create one using 'init_cmip6_index()'."))
+            stop(sprintf("CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."))
         }
 
         # load file info
         idx <- tryCatch(
             data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
             error = function (e) {
-                stop("Failed to parse CMIP6 experiment output file index database.\n", conditionMessage(e))
+                stop("Failed to parse CMIP6 experiment output file index.\n", conditionMessage(e))
             }
         )
-        message("Loading CMIP6 experiment output file index database created at ", file.info(f)$mtime, ".")
+        message("Loading CMIP6 experiment output file index created at ", file.info(f)$mtime, ".")
 
         # fix column types in case of empty values
         if ("file_path" %in% names(idx)) {
@@ -557,7 +557,7 @@ load_cmip6_index <- function (force = FALSE) {
         }
     }
 
-    # udpate package internal stored file index database
+    # udpate package internal stored file index
     EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
 
     idx[]
@@ -565,6 +565,21 @@ load_cmip6_index <- function (force = FALSE) {
 # }}}
 
 # set_cmip6_index {{{
+#' Set CMIP6 index
+#'
+#' `set_cmip6_index()` takes a [data.table::data.table()] as input and set it as
+#' current index.
+#'
+#' `set_cmip6_index()` is useful when [init_cmip6_index()] may give you too much
+#' cases of which only some are of interest.
+#'
+#' @param index A [data.table::data.table()] containing the same column names
+#'        and types as the output of [init_cmip6_index()].
+#'
+#' @param save If `TRUE`, Besides loaded index, the index file saved to data
+#'        directory will be also updated. Default: `FALSE`.
+#'
+#' @return A [data.table::data.table()].
 #' @importFrom checkmate assert_data_table
 #' @export
 set_cmip6_index <- function (index, save = TRUE) {
@@ -581,10 +596,10 @@ set_cmip6_index <- function (index, save = TRUE) {
     # save database into the app data directory
     if (save) {
         data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index database saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
     }
 
-    # udpate package internal stored file index database
+    # udpate package internal stored file index
     EPWSHIFTR_ENV$index_db <- data.table::copy(index)
 
     invisible(index)

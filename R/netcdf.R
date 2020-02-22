@@ -1,19 +1,4 @@
 # get_nc_meta {{{
-#' Extract CMIP6 NetCDF file meta data
-#' @param file A file path of NetCDF file.
-#' @return OUTPUT_DESCRIPTION
-#' @details DETAILS
-#' @examples
-#' \dontrun{
-#' if(interactive()){
-#'  #EXAMPLE1
-#'  }
-#' }
-#' @seealso
-#'  \code{\link[data.table]{setDT}},\code{\link[data.table]{setattr}}
-#'  \code{\link[ncmeta]{nc_atts}}
-#' @rdname get_nc_meta
-#' @export
 #' @importFrom data.table setDT setattr
 get_nc_meta <- function (file) {
     # to avoid No visible binding for global variable check NOTE
@@ -57,7 +42,7 @@ get_nc_meta <- function (file) {
 #'
 #' `summary_database()` scan the directory specified and returns a
 #' [data.table()] containing summary information about all the CMIP6
-#' files available against the output file index database loaded using
+#' files available against the output file index loaded using
 #' [load_cmip6_index()].
 #'
 #' @param dir A single string indcating the directory where CMIP6 model output
@@ -75,16 +60,16 @@ get_nc_meta <- function (file) {
 #' * `"resolution"`: approximate horizontal resolution
 #'
 #' @param mult Actions when multiple files match a same case in the CMIP6
-#'        index database. If `"latest"`, the file with latest modification time
+#'        index. If `"latest"`, the file with latest modification time
 #'        will be used. If `"skip"`, all matched files will be skip and this
 #'        case will be kept as unmatched. Default: `"skip"`.
 #'
 #' @param recursive If `TRUE`, scan recursively into directories. Default:
 #'        `FALSE`.
 #'
-#' @param update If `TRUE`, the output file index database will be updated based
+#' @param update If `TRUE`, the output file index will be updated based
 #'        on the matched NetCDF files in specified directory. If `FALSE`, only
-#'        current loaded index database will be updated, but the actual index
+#'        current loaded index will be updated, but the actual index
 #'        database file saved in [rappdirs::app_dir()] will remain unchanged.
 #'        Default: `FALSE`.
 #'
@@ -127,7 +112,7 @@ summary_database <- function (
 
     mult <- match.arg(mult)
 
-    # load index database
+    # load index
     idx <- load_cmip6_index()
 
     # find all nc files in specified directory
@@ -227,13 +212,13 @@ summary_database <- function (
         setcolorder(idx, setdiff(cols_idx, "index"))
     }
 
-    # update index database
+    # update index
     EPWSHIFTR_ENV$index_db <- copy(idx)
 
     if (update) {
         # save database into the app data directory
         fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index database updated and saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        verbose("Data file index updated and saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
     }
 
     by_cols <- names(dict)[which(dict %in% by)]
@@ -256,7 +241,6 @@ summary_database <- function (
 #' @importFrom data.table as.data.table set setattr setcolorder
 #' @importFrom RNetCDF utcal.nc
 #' @importFrom units set_units
-#' @export
 get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     assert_flag(unit)
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
@@ -307,8 +291,8 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
             collapse = FALSE
         ))
 
-        set(dt, NULL, "lon", lons$lon[dt$V1])
-        set(dt, NULL, "lat", lats$lat[dt$V2])
+        set(dt, NULL, "lon", lons$value[dt$V1])
+        set(dt, NULL, "lat", lats$value[dt$V2])
         set(dt, NULL, "datetime", time$datetime[[i]][dt$V3])
         set(dt, NULL, c("V1", "V2", "V3"), NULL)
     }))
@@ -328,7 +312,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         atts[J("NC_GLOBAL", c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")),
             on = c("variable", "attribute"), value]
     )
-    setcolorder(dt, c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"))
+    setcolorder(dt, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))
 
     dt
 }
@@ -337,56 +321,69 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 # extract_data {{{
 #' Extract data
 #'
-#' @param pattern XX
-#' @param years XX
-#' @param threshold XX
-#' @param max_num XX
-#' @param unit If `TRUE`, units will be added to values
+#' `extract_data()` takes an `epw_cmip6_coord` object generated using
+#' [match_location()] and extracts CMIP6 data using the coordinates and years of
+#' interest specified.
 #'
-#' @return A data.table
+#' @param coord An `epw_cmip6_coord` object created using [match_coord()]
+#'
+#' @param years An integer vector indicating the target years to be included in
+#'        the data file. All other years will be excluded. If `NULL`, no
+#'        subsetting on years will be performed. Default: `NULL`.
+#'
+#' @param unit If `TRUE`, units will be added to values using
+#'        [units::set_units].
+#'
+#' @return An `epw_cmip6_data` object, which is basically a list of 3 elements:
+#'
+#' * `epw`: An [eplusr::Epw] object whose longitude and latitute are used to
+#'   extract CMIP6 data. It is the same object as created in [match_location()]
+#' * `meta`: A list containing basic meta data of input EPW, including `city`,
+#'   `state_province`, `country`, `latitute` and `longitude`.
+#' * `data`: A [data.table::data.table()] of 12 columns:
+#'
+#'     | No.  | Column           | Type      | Description                                                          |
+#'     | ---: | -----            | -----     | -----                                                                |
+#'     | 1    | `activity_drs`   | Character | Activity DRS (Data Reference Syntax)                                 |
+#'     | 2    | `institution_id` | Character | Institution identifier                                               |
+#'     | 3    | `source_id`      | Character | Model identifier                                                     |
+#'     | 4    | `experiment_id`  | Character | Root experiment identifier                                           |
+#'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label` |
+#'     | 6    | `table_id`       | Character | Table identifier                                                     |
+#'     | 7    | `lat`            | Double    | Latitude of extracted location                                       |
+#'     | 8    | `lon`            | Double    | Latitude of extracted location                                       |
+#'     | 9    | `variable`       | Character | Variable identifier                                                  |
+#'     | 10   | `description`    | Character | Variable long name                                                   |
+#'     | 11   | `units`          | Character | Units of variable                                                    |
+#'     | 12   | `value`          | Double    | Start date and time of simulation                                    |
 #'
 #' @importFrom checkmate assert_class
+#' @importFrom units set_units
 #' @export
-extract_data <- function (pattern, years = NULL, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL, unit = FALSE) {
-    loc <- match_location(pattern = pattern, threshold = threshold, max_num = max_num)
+extract_data <- function (coord, years = NULL, threshold = list(lon = 1.0, lat = 1.0),
+                          max_num = NULL, unit = FALSE) {
+    assert_class(coord, "epw_cmip6_coord")
 
     # get matched coords
-    loc <- loc$coord
+    m_coord <- coord$coord
 
     # initial progress bar
+    message("Start to extract CMIP6 data according to matched coordinates...")
     p <- progress::progress_bar$new(
         format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = nrow(loc), clear = FALSE)
+        total = nrow(m_coord), clear = FALSE)
 
-    data <- Map(
+    data <- rbindlist(Map(
         function (path, coord) {
             p$message(sprintf("Processing file '%s'...", path))
             d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
             p$tick()
             d
         },
-        loc$file_path, loc$coord
-    )
+        m_coord$file_path, m_coord$coord
+    ))
 
-    set(loc, NULL, "data", data)
-
-    loc
-}
-# }}}
-
-# download_nc {{{
-download_nc <- function (url, dir, overwrite = FALSE) {
-    p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = length(url), clear = FALSE)
-
-    lapply(url, function (i) {
-        p$message(paste0("Downloading file ", basename(i), "..."))
-        f <- file.path(dir, basename(i))
-        if (!overwrite && file.exists(f)) return(normalizePath(f))
-        p$tick()
-        tryCatch(utils::download.file(url, f, quiet = FALSE, mode = "wb", method = "libcurl"), error = function (e) NULL)
-        f
-    })
+    structure(list(epw = coord$epw, meta = coord$meta, data = data), class = "epw_cmip6_data")
 }
 # }}}
 
@@ -544,55 +541,5 @@ match_nc_time <- function (x, years = NULL) {
 
         list(datetime = lapply(i, function (idx) time[idx]), which = i)
     }
-}
-# }}}
-
-# match_nc_coord {{{
-match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0), max_num = NULL) {
-    assert_number(lat, lower = -90.0, upper = 90.0)
-    assert_number(lon, lower = -180.0, upper = 180.0)
-
-    assert_list(threshold)
-    assert_names(names(threshold), must.include = c("lon", "lat"))
-    assert_number(threshold$lon, lower = 0, upper = 180.0)
-    assert_number(threshold$lat, lower = 0, upper = 90.0)
-
-    assert_count(max_num, positive = TRUE, null.ok = TRUE)
-
-    if (inherits(x, "NetCDF")) {
-        nc <- x
-    } else {
-        nc <- RNetCDF::open.nc(x)
-        on.exit(RNetCDF::close.nc(nc), add = TRUE)
-    }
-
-    # get latitude and longitude
-    dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
-    names(dim) <- c("lat", "lon")
-
-    # calculate distance
-    dis_lat <- abs(dim$lat - lat)
-    dis_lon <- abs(dim$lon - lon)
-
-    i_lat <- which(dis_lat <= threshold$lat)
-    i_lon <- which(dis_lon <= threshold$lon)
-
-    if (!length(i_lat)) {
-        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
-             "the minimum distance ('", round(min(dis_lat), 2), "') of current file resolution.")
-    }
-    if (!length(i_lon)) {
-        stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
-             "the minimum distance ('", round(min(dis_lon), 2), "') of current file resolution.")
-    }
-
-    if (!is.null(max_num)) {
-        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
-        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
-    }
-
-    list(lat = list(index = seq_along(i_lat), lat = dim$lat[i_lat], dis = dis_lat[i_lat], which = i_lat),
-         lon = list(index = seq_along(i_lon), lon = dim$lon[i_lon], dis = dis_lon[i_lon], which = i_lon)
-    )
 }
 # }}}

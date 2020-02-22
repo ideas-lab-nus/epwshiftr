@@ -2,7 +2,7 @@
 % Please edit documentation in R/esgf.R
 \name{init_cmip6_index}
 \alias{init_cmip6_index}
-\title{Build CMIP6 experiment output file index database}
+\title{Build CMIP6 experiment output file index}
 \usage{
 init_cmip6_index(
   activity = "ScenarioMIP",
@@ -153,7 +153,7 @@ A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{
 to download, and store it intro user data directory for futher use.
 }
 \details{
-For details on where the file index database is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.
+For details on where the file index is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.
 }
 \note{
 Argument \code{limit} will only apply to \code{Dataset} query. \code{init_cmip6_index()} will
