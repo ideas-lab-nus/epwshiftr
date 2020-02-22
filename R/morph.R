@@ -440,6 +440,7 @@ morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years =
 # }}}
 
 # morphing_tdew {{{
+#' @importFrom psychrolib GetTDewPointFromRelHum SetUnitSystem
 morphing_tdew <- function (tdb, rh) {
     psychrolib::SetUnitSystem("SI")
 
@@ -838,7 +839,7 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
 disclaimer_comment <- function (case) {
     cmt <- paste(
     "This climate change adapted weather file, which bases on", case,
-    "ensemble data, has been generated using the epwshiftr tool V", packageVersion("epwshiftr"), ".",
+    "ensemble data, has been generated using the epwshiftr tool V", utils::packageVersion("epwshiftr"), ".",
     "The original weather file used for generating this climate change",
     "adapted weather data may be copyrighted material. Therefore, generated",
     "weather files can only be used by persons or entities who possess the",

@@ -4,13 +4,7 @@
 \alias{extract_data}
 \title{Extract data}
 \usage{
-extract_data(
-  coord,
-  years = NULL,
-  threshold = list(lon = 1, lat = 1),
-  max_num = NULL,
-  unit = FALSE
-)
+extract_data(coord, years = NULL, unit = FALSE)
 }
 \arguments{
 \item{coord}{An \code{epw_cmip6_coord} object created using \code{\link[=match_coord]{match_coord()}}}
@@ -20,13 +14,13 @@ the data file. All other years will be excluded. If \code{NULL}, no
 subsetting on years will be performed. Default: \code{NULL}.}
 
 \item{unit}{If \code{TRUE}, units will be added to values using
-\link[units:set_units]{units::set_units}.}
+\code{\link[units:set_units]{units::set_units()}}.}
 }
 \value{
 An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
 \itemize{
 \item \code{epw}: An \link[eplusr:Epw]{eplusr::Epw} object whose longitude and latitute are used to
-extract CMIP6 data. It is the same object as created in \code{\link[=match_location]{match_location()}}
+extract CMIP6 data. It is the same object as created in \code{\link[=match_coord]{match_coord()}}
 \item \code{meta}: A list containing basic meta data of input EPW, including \code{city},
 \code{state_province}, \code{country}, \code{latitute} and \code{longitude}.
 \item \code{data}: A \code{\link[data.table:data.table]{data.table::data.table()}} of 12 columns:\tabular{rlll}{
@@ -49,6 +43,6 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_locat
 }
 \description{
 \code{extract_data()} takes an \code{epw_cmip6_coord} object generated using
-\code{\link[=match_location]{match_location()}} and extracts CMIP6 data using the coordinates and years of
+\code{\link[=match_coord]{match_coord()}} and extracts CMIP6 data using the coordinates and years of
 interest specified.
 }

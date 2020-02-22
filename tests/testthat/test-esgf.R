@@ -1,5 +1,6 @@
 # esgf_query {{{
 test_that("Query ESGF", {
+    options(epwshiftr.verbose = FALSE)
     # Dataset query
     expect_silent(
         qd <- esgf_query(variable = "tas", source = "AWI-CM-1-1-MR", frequency = "day", limit = 1)
@@ -80,7 +81,7 @@ test_that("Build CMIP6 file index database", {
     )
     expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
 
-    expect_message(idx1 <- load_cmip6_index())
+    expect_silent(idx1 <- load_cmip6_index())
     expect_is(idx1 <- load_cmip6_index(), "data.table")
     expect_equal(idx, idx1)
 })

@@ -54,10 +54,10 @@ columns plus:\tabular{lll}{
    \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
    \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
    \code{file_num} \tab Integer \tab Total number of file per group \cr
-   \code{file_size} \tab Units \link{Mbytes} \tab Approximate total size of file \cr
+   \code{file_size} \tab Units (Mbytes) \tab Approximate total size of file \cr
    \code{dl_num} \tab Integer \tab Total number of file downloaded \cr
-   \code{dl_percent} \tab Units \link{\%} \tab Total percentage of file downloaded \cr
-   \code{dl_size} \tab Units \link{Mbytes} \tab Total size of file downloaded \cr
+   \code{dl_percent} \tab Units (\%) \tab Total percentage of file downloaded \cr
+   \code{dl_size} \tab Units (Mbytes) \tab Total size of file downloaded \cr
 }
 
 

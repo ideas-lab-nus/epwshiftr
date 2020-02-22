@@ -646,7 +646,7 @@ get_data_dir <- function () {
 get_data_node <- function (speed_test = FALSE, timeout = 3) {
     # read html page
     f <- tempfile()
-    download.file("https://esgf-node.llnl.gov/status/", f, "libcurl", quiet = TRUE)
+    utils::download.file("https://esgf-node.llnl.gov/status/", f, "libcurl", quiet = TRUE)
     l <- readLines(f)
 
     # locate table

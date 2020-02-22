@@ -84,10 +84,10 @@ get_nc_meta <- function (file) {
 #' | `datetime_start` | POSIXct        | Start date and time of simulation   |
 #' | `datetime_end`   | POSIXct        | End date and time of simulation     |
 #' | `file_num`       | Integer        | Total number of file per group      |
-#' | `file_size`      | Units [Mbytes] | Approximate total size of file      |
+#' | `file_size`      | Units (Mbytes) | Approximate total size of file      |
 #' | `dl_num`         | Integer        | Total number of file downloaded     |
-#' | `dl_percent`     | Units [%]      | Total percentage of file downloaded |
-#' | `dl_size`        | Units [Mbytes] | Total size of file downloaded       |
+#' | `dl_percent`     | Units (%)      | Total percentage of file downloaded |
+#' | `dl_size`        | Units (Mbytes) | Total size of file downloaded       |
 #'
 #' For the meaning of grouping columns, see [init_cmip6_index()].
 #'
@@ -322,7 +322,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' Extract data
 #'
 #' `extract_data()` takes an `epw_cmip6_coord` object generated using
-#' [match_location()] and extracts CMIP6 data using the coordinates and years of
+#' [match_coord()] and extracts CMIP6 data using the coordinates and years of
 #' interest specified.
 #'
 #' @param coord An `epw_cmip6_coord` object created using [match_coord()]
@@ -332,12 +332,12 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #'        subsetting on years will be performed. Default: `NULL`.
 #'
 #' @param unit If `TRUE`, units will be added to values using
-#'        [units::set_units].
+#'        [units::set_units()].
 #'
 #' @return An `epw_cmip6_data` object, which is basically a list of 3 elements:
 #'
 #' * `epw`: An [eplusr::Epw] object whose longitude and latitute are used to
-#'   extract CMIP6 data. It is the same object as created in [match_location()]
+#'   extract CMIP6 data. It is the same object as created in [match_coord()]
 #' * `meta`: A list containing basic meta data of input EPW, including `city`,
 #'   `state_province`, `country`, `latitute` and `longitude`.
 #' * `data`: A [data.table::data.table()] of 12 columns:
@@ -360,8 +360,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' @importFrom checkmate assert_class
 #' @importFrom units set_units
 #' @export
-extract_data <- function (coord, years = NULL, threshold = list(lon = 1.0, lat = 1.0),
-                          max_num = NULL, unit = FALSE) {
+extract_data <- function (coord, years = NULL, unit = FALSE) {
     assert_class(coord, "epw_cmip6_coord")
 
     # get matched coords
