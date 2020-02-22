@@ -770,10 +770,10 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
         by = c(cols_dt, by)]
 
     # in case there are decimal numbers for sky cover
-    if ("total_sky_cover" %in% merged) {
+    if ("total_sky_cover" %in% names(merged)) {
         set(merged, NULL, "total_sky_cover", as.integer(round(merged$total_sky_cover)))
     }
-    if ("opaque_sky_cover" %in% merged) {
+    if ("opaque_sky_cover" %in% names(merged)) {
         set(merged, NULL, "opaque_sky_cover", as.integer(round(merged$opaque_sky_cover)))
     }
 
