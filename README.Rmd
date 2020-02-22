@@ -11,6 +11,25 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+
+library(epwshiftr)
+options(epwshiftr.verbose = TRUE)
+
+# copy files in advance
+f <- c("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
+       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20500101-20501231.nc",
+       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20510101-20511231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20500101-20501231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20510101-20511231.nc",
+       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20790101-20791231.nc",
+       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20800101-20801231.nc",
+       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20810101-20811231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20790101-20791231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20800101-20801231.nc",
+       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20810101-20811231.nc"
+)
+file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 ```
 
 # epwshiftr
@@ -23,6 +42,21 @@ knitr::opts_chunk$set(
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data
+
+<!-- TOC GFM -->
+
+* [Installation](#installation)
+* [Get started](#get-started)
+    * [Build CMIP6 output file index](#build-cmip6-output-file-index)
+    * [Download CMIP6 output files](#download-cmip6-output-files)
+    * [Extract CMIP6 output data](#extract-cmip6-output-data)
+    * [Morphing EPW weather variables](#morphing-epw-weather-variables)
+    * [Create future EPW files](#create-future-epw-files)
+* [Author](#author)
+* [License](#license)
+* [Contribute](#contribute)
+
+<!-- /TOC -->
 
 ## Installation
 
@@ -37,6 +71,120 @@ You can install the development version from [GitHub](https://github.com/) with:
 ``` r
 # install.packages("remotes")
 remotes::install_github("hongyuanjia/epwshiftr")
+```
+
+## Get started
+
+### Build CMIP6 output file index
+
+* Build CMIP6 experiment output file index based on query using ESGF
+  search RESTful API
+
+```{r index}
+# set directory to store files
+options(epwshiftr.data_dir = tempdir())
+
+# get CMIP6 data nodes
+(nodes <- get_data_node())
+
+# create a CMIP6 output file index
+idx <- init_cmip6_index(
+    # only consider ScenarioMIP activity
+    activity = "ScenarioMIP",
+
+    # specify dry-bulb temperature and relative humidity
+    variable = c("tas", "hurs"),
+
+    # specify report frequent
+    frequency = "day",
+
+    # specify experiment name
+    experiment = c("ssp585"),
+
+    # specify GCM name
+    source = "EC-Earth3",
+
+    # only consider data nodes that are current working
+    data_node = nodes[status == "UP", data_node],
+
+    # specify years of interest
+    years = c(2050, 2080)
+)
+
+# the index has been automatically saved into directory specified using
+# `epwshiftr.dir` option and can be reloaded
+idx <- load_cmip6_index()
+
+str(head(idx))
+```
+
+### Download CMIP6 output files
+
+* Specify a directory where you store downloaded CMIP6 output data. The download
+  url can be found in the `file_url` column in the index.
+
+* Map the loaded files with index so that epwshiftr knows which case is complete
+  and can be used for the next step.
+
+```{r database}
+# Summary downloaded file by GCM and variable, use the latest downloaded file if
+# multiple matches are detected and save matched information into the index file
+sm <- summary_database(tempdir(), by = c("source", "variable"), mult = "latest", update = TRUE)
+knitr::kable(sm)
+```
+
+### Extract CMIP6 output data
+
+* Match coordinates of an EPW in the CMIP6 output file
+
+```{r coord}
+epw <- file.path(eplusr::eplus_config(8.8)$dir, "WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw")
+# match any coordinates with absolute distance less than 1 degree
+coord <- match_coord(epw, threshold = list(lon = 1, lat = 1), max_num = 1)
+
+class(coord)
+names(data)
+coord$meta
+coord$coord[, .(file_path, coord)]
+str(coord$coord$coord[[1]])
+```
+
+* Once we get the matched coordinates, we can extract corresponding data related
+  to input EPW file using `extract_data()`
+
+```{r data}
+data <- extract_data(coord, years = c(2050, 2080))
+
+class(data)
+names(data)
+knitr::kable(head(data$data))
+```
+
+### Morphing EPW weather variables
+
+* With all necessary information extracted above, now we can perform morphing on
+  out EPW
+
+```{r morph}
+morphed <- morphing_epw(data)
+
+class(morphed)
+names(morphed)
+
+knitr::kable(head(morphed$tdb))
+knitr::kable(head(morphed$rh))
+```
+
+### Create future EPW files
+
+* Once we get the morphed data using `morphing_epw()`, we can now create future
+  EPW files using `future_epw()`
+
+```{r epw}
+# create future EPWs grouped by GCM, experiment ID, interval (year)
+future_epw(morphed, by = c("source_id", "experiment_id", "interval"),
+    dir = tempdir(), separate = TRUE
+)
 ```
 
 ## Author
