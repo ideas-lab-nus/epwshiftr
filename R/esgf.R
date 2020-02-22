@@ -388,7 +388,7 @@ init_cmip6_index <- function (
     years = NULL
 )
 {
-    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE)
+    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
@@ -467,14 +467,16 @@ init_cmip6_index <- function (
     # "days since 1900-01-01". In order to make sure corresponding UTC
     # referenced date and time include input years, we include the year before and
     # after also
-    exp <- data.table::data.table(
-        expect_start = ISOdatetime(years - 1L, 1, 1, 0, 0, 0, "UTC"),
-        expect_end = ISOdatetime(years + 1L, 12, 31, 0, 0, 0, "UTC")
-    )
+    if (!is.null(years)) {
+        exp <- data.table::data.table(
+            expect_start = ISOdatetime(years - 1L, 1, 1, 0, 0, 0, "UTC"),
+            expect_end = ISOdatetime(years + 1L, 12, 31, 0, 0, 0, "UTC")
+        )
 
-    dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
-    dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][
-        , `:=`(expect_start = NULL, expect_end = NULL)]
+        dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
+        dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][
+            , `:=`(expect_start = NULL, expect_end = NULL)]
+    }
 
     # remove duplications
     dt <- unique(dt, by = "file_id")
