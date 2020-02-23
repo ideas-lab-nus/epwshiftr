@@ -13,7 +13,6 @@ knitr::opts_chunk$set(
 )
 
 library(epwshiftr)
-options(epwshiftr.verbose = TRUE)
 
 # copy files in advance
 f <- c("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
@@ -48,7 +47,7 @@ file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 * [Installation](#installation)
 * [Get started](#get-started)
     * [Build CMIP6 output file index](#build-cmip6-output-file-index)
-    * [Download CMIP6 output files](#download-cmip6-output-files)
+    * [Manage CMIP6 output files](#download-cmip6-output-files)
     * [Extract CMIP6 output data](#extract-cmip6-output-data)
     * [Morphing EPW weather variables](#morphing-epw-weather-variables)
     * [Create future EPW files](#create-future-epw-files)
@@ -77,12 +76,13 @@ remotes::install_github("hongyuanjia/epwshiftr")
 
 ### Build CMIP6 output file index
 
-* Build CMIP6 experiment output file index based on query using ESGF
-  search RESTful API
+* The first step is to build CMIP6 experiment output file index based on queries
+  using ESGF search RESTful API
 
 ```{r index}
 # set directory to store files
 options(epwshiftr.dir = tempdir())
+options(epwshiftr.verbose = TRUE)
 
 # get CMIP6 data nodes
 (nodes <- get_data_node())
@@ -118,13 +118,18 @@ idx <- load_cmip6_index()
 str(head(idx))
 ```
 
-### Download CMIP6 output files
+### Manage CMIP6 output files
 
-* Specify a directory where you store downloaded CMIP6 output data. The download
-  url can be found in the `file_url` column in the index.
+* You have to download CMIP6 output file by yourself using your preferable
+  methods or tools. The download url can be found in the `file_url` column in
+  the index.
 
-* Map the loaded files with index so that epwshiftr knows which case is complete
-  and can be used for the next step.
+* After you have downloaded CMIP6 output files of interest, you can use
+  `suumary_database()` to get a summary on files downloaded against the CMIP6
+  output file index.
+
+* This step is necessary as it map the loaded files against index so that
+  epwshiftr knows which case is complete and can be used for the next step.
 
 ```{r database}
 # Summary downloaded file by GCM and variable, use the latest downloaded file if
@@ -136,7 +141,8 @@ knitr::kable(sm)
 
 ### Extract CMIP6 output data
 
-* Match coordinates of an EPW in the CMIP6 output file
+* With previous step, now we can match coordinates of an EPW in the CMIP6 output
+  file
 
 ```{r coord}
 epw <- file.path(eplusr::eplus_config(8.8)$dir, "WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw")
@@ -145,7 +151,7 @@ coord <- match_coord(epw, threshold = list(lon = 1, lat = 1), max_num = 1)
 
 class(coord)
 
-names(data)
+names(coord)
 
 coord$meta
 
