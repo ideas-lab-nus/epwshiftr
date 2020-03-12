@@ -52,7 +52,8 @@ esgf_query(
 }}
 
 \item{variable}{A character vector indicating variable identifiers. The 12
-most related variables for EPW are set as defaults. Default: \code{c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rss", "rls", "sfcWind", "pr", "clt")}, where:
+most related variables for EPW are set as defaults. If \code{NULL}, all
+possible variables are returned. Default: \code{c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rss", "rls", "sfcWind", "pr", "clt")}, where:
 \itemize{
 \item \code{tas}: Near-surface (usually, 2 meter) air temperature, units: \code{K}.
 \item \code{tasmax}: Maximum near-surface (usually, 2 meter) air temperature, units: \code{K}.
@@ -69,7 +70,8 @@ most related variables for EPW are set as defaults. Default: \code{c("tas", "tas
 seen from the surface or the top of the atmosphere. Units: \verb{\%}.
 }}
 
-\item{frequency}{A character vector of sampling frequency. Default: \code{"day"}.
+\item{frequency}{A character vector of sampling frequency. If \code{NULL}, all
+possible frequencies are returned. Default: \code{"day"}.
 Possible values:
 \itemize{
 \item \code{"1hr"}: sampled hourly,
@@ -92,6 +94,7 @@ Possible values:
 
 \item{experiment}{A character vector indicating root experiment identifiers.
 The \strong{Tier-1} experiment of activity ScenarioMIP are set as defaults.
+If \code{NULL}, all possible experiment are returned.
 Default: \code{c("ssp126", "ssp245", "ssp370", "ssp585")}.}
 
 \item{source}{A character vector indicating model identifiers. Defaults are
@@ -99,11 +102,13 @@ set to 11 sources which give outputs of all 4 experiment of activity
 ScenarioMIP with daily frequency, i.e. \code{"AWI-CM-1-1-MR"},
 \code{"BCC-CSM2-MR"}, \code{"CESM2"}, \code{"CESM2-WACCM"}, \code{"EC-Earth3"},
 \code{"EC-Earth3-Veg"}, \code{"GFDL-ESM4"}, \code{"INM-CM4-8"}, \code{"INM-CM5-0"},
-\code{"MPI-ESM1-2-HR"} and \code{"MRI-ESM2-0"}.}
+\code{"MPI-ESM1-2-HR"} and \code{"MRI-ESM2-0"}.
+If \code{NULL}, all possible sources are returned.}
 
 \item{variant}{A character vector indicating label constructed from 4
 indices stored as global attributes in format \verb{r<k>i<l>p<m>f<n>}
 described below. Default: \code{"r1i1p1f1"}.
+If \code{NULL}, all possible variants are returned.
 \itemize{
 \item \code{r}: realization_index (<k>) = realization number (integer >0)
 \item \code{i}: initialization_index (<l>) = index for variant of initialization method (integer >0)
@@ -120,7 +125,8 @@ previous version. Use \code{TRUE} to return only the latest version of all
 records and \code{FALSE} to return previous versions. Default: \code{FALSE}.}
 
 \item{resolution}{A character vector indicating approximate horizontal
-resolution. Default: \code{c("50 km", "100 km")}.}
+resolution. Default: \code{c("50 km", "100 km")}.
+If \code{NULL}, all possible resolutions are returned.}
 
 \item{type}{A single string indicating the intrinsic type of the record.
 Should be either \code{"Dataset"} or \code{"File"}. Default: \code{"Dataset"}.}

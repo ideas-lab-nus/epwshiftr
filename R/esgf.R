@@ -43,7 +43,8 @@
 #' * `"VolMIP"`: Volcanic Forcings Model Intercomparison Project
 #'
 #' @param variable A character vector indicating variable identifiers. The 12
-#'        most related variables for EPW are set as defaults. Default: `c("tas",
+#'        most related variables for EPW are set as defaults. If `NULL`, all
+#'        possible variables are returned. Default: `c("tas",
 #'        "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rss", "rls",
 #'        "sfcWind", "pr", "clt")`, where:
 #'
@@ -61,7 +62,8 @@
 #' * `clt`: Total cloud area fraction for the whole atmospheric column, as
 #'   seen from the surface or the top of the atmosphere. Units: `%`.
 #'
-#' @param frequency A character vector of sampling frequency. Default: `"day"`.
+#' @param frequency A character vector of sampling frequency. If `NULL`, all
+#'        possible frequencies are returned. Default: `"day"`.
 #'        Possible values:
 #'
 #' * `"1hr"`: sampled hourly,
@@ -83,6 +85,7 @@
 #'
 #' @param experiment A character vector indicating root experiment identifiers.
 #'        The **Tier-1** experiment of activity ScenarioMIP are set as defaults.
+#'        If `NULL`, all possible experiment are returned.
 #'        Default: `c("ssp126", "ssp245", "ssp370", "ssp585")`.
 #'
 #' @param source A character vector indicating model identifiers. Defaults are
@@ -91,10 +94,12 @@
 #'        `"BCC-CSM2-MR"`, `"CESM2"`, `"CESM2-WACCM"`, `"EC-Earth3"`,
 #'        `"EC-Earth3-Veg"`, `"GFDL-ESM4"`, `"INM-CM4-8"`, `"INM-CM5-0"`,
 #'        `"MPI-ESM1-2-HR"` and `"MRI-ESM2-0"`.
+#'        If `NULL`, all possible sources are returned.
 #'
 #' @param variant A character vector indicating label constructed from 4
 #'        indices stored as global attributes in format `r<k>i<l>p<m>f<n>`
 #'        described below. Default: `"r1i1p1f1"`.
+#'        If `NULL`, all possible variants are returned.
 #'
 #' * `r`: realization_index (<k>) = realization number (integer >0)
 #' * `i`: initialization_index (<l>) = index for variant of initialization method (integer >0)
@@ -111,6 +116,7 @@
 #'
 #' @param resolution A character vector indicating approximate horizontal
 #'        resolution. Default: `c("50 km", "100 km")`.
+#'        If `NULL`, all possible resolutions are returned.
 #'
 #' @param type A single string indicating the intrinsic type of the record.
 #'        Should be either `"Dataset"` or `"File"`. Default: `"Dataset"`.
@@ -210,15 +216,15 @@ esgf_query <- function (
         "ISMIP6", "LS3MIP", "LUMIP", "OMIP", "PAMIP", "PMIP", "RFMIP", "SIMIP",
         "ScenarioMIP", "VIACSAB", "VolMIP"
     ))
-    assert_character(variable, any.missing = FALSE)
-    assert_subset(frequency, empty.ok = FALSE, choices = c(
+    assert_character(variable, any.missing = FALSE, null.ok = TRUE)
+    assert_subset(frequency, empty.ok = TRUE, choices = c(
         "1hr", "1hrCM", "1hrPt", "3hr", "3hrPt", "6hr", "6hrPt", "day", "dec",
         "fx", "mon", "monC", "monPt", "subhrPt", "yr", "yrPt"
     ))
-    assert_character(experiment, any.missing = FALSE)
-    assert_character(source, any.missing = FALSE)
-    assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+")
-    assert_character(resolution, any.missing = FALSE)
+    assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
+    assert_character(source, any.missing = FALSE, null.ok = TRUE)
+    assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
+    assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
     assert_flag(replica)
     assert_flag(latest)
     assert_count(limit, positive = TRUE)
@@ -226,32 +232,49 @@ esgf_query <- function (
     assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
     url_base <- "http://esgf-node.llnl.gov/esg-search/search/?"
-    or <- function (...) paste(..., sep = "%2C", collapse = "%2C") # %2C = ","
-    resolution <- c(gsub(" ", "", resolution, fixed = TRUE),
-                    gsub(" ", "+", resolution, fixed = TRUE))
+
+    dict <- c(activity = "activity_id",
+              experiment = "experiment_id",
+              source = "source_id",
+              variable = "variable_id",
+              resolution = "nominal_resolution",
+              variant = "variant_label")
+
+    pair <- function (x, first = FALSE) {
+        # get name
+        var <- deparse(substitute(x))
+        # skip if empty
+        if (is.null(x)) return()
+        # get key name
+        key <- dict[names(dict) == var]
+        if (!length(key)) key <- var
+        s <- paste0(key, "=", paste0(x, collapse = "%2C")) # %2C = ","
+        if (first) s else paste0("&", s)
+    }
+
+    `%and%` <- function (lhs, rhs) if (is.null(rhs)) lhs else paste0(lhs, rhs)
 
     project <- "CMIP6"
     format <- "application%2Fsolr%2Bjson"
 
-    q <- paste0(url_base,
-                   "project=" ,          project , "&" ,
-               "activity_id=" ,     or(activity) , "&" ,
-             "experiment_id=" ,   or(experiment) , "&" ,
-                 "source_id=" ,       or(source) , "&" ,
-               "variable_id=" ,     or(variable) , "&" ,
-        "nominal_resolution=" ,   or(resolution) , "&" ,
-                 "frequency=" ,    or(frequency) , "&" ,
-                   "replica=" , tolower(replica) , "&" ,
-                    "latest=" ,  tolower(latest) , "&" ,
-             "variant_label=" ,      or(variant) , "&" ,
-                      "type=" ,             type , "&" ,
-                     "limit=" ,            limit , "&" ,
-                    "format=" ,           format
-    )
+    resolution <- c(gsub(" ", "", resolution, fixed = TRUE),
+                    gsub(" ", "+", resolution, fixed = TRUE))
 
-    if (!is.null(data_node)) {
-        q <- paste0(q, "&data_node=", or(data_node))
-    }
+    q <- url_base %and%
+        pair(project, TRUE) %and%
+        pair(activity) %and%
+        pair(experiment) %and%
+        pair(source) %and%
+        pair(variable) %and%
+        pair(resolution) %and%
+        pair(variant) %and%
+        pair(data_node) %and%
+        pair(frequency) %and%
+        pair(replica) %and%
+        pair(latest) %and%
+        pair(type) %and%
+        pair(limit) %and%
+        pair(format)
 
     q <- jsonlite::read_json(q)
 
@@ -380,6 +403,7 @@ init_cmip6_index <- function (
     source = c("AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
                "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
                "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"),
+    variant = "r1i1p1f1",
     replica = FALSE,
     latest = TRUE,
     resolution = c("100 km", "50 km"),
@@ -393,7 +417,10 @@ init_cmip6_index <- function (
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
         experiment = experiment, source = source, replica = replica, latest = latest,
-        resolution = resolution, limit = limit, type = "Dataset", data_node = data_node)
+        variant = variant, resolution = resolution, limit = limit, type = "Dataset",
+        data_node = data_node)
+
+    if (!nrow(qd)) return(qd)
 
     # give a warning if dataset query response hits the limits
     if (nrow(qd) == 10000L) {
@@ -418,7 +445,7 @@ init_cmip6_index <- function (
         .SD <- NULL
 
         # use qd to construction query for files
-        q <- unique(nf[, .SD, .SDcols = c("activity_drs", "source_id",
+        q <- unique(nf[, .SD, .SDcols = c("activity_drs", "source_id", "member_id",
             "experiment_id", "nominal_resolution", "table_id", "variable_id")])
 
         qf <- esgf_query(
@@ -427,6 +454,7 @@ init_cmip6_index <- function (
             frequency = unique(q$table_id),
             experiment = unique(q$experiment_id),
             source = unique(q$source_id),
+            variant = unique(q$member_id),
             resolution = unique(q$nominal_resolution),
             replica = replica,
             latest = latest,
