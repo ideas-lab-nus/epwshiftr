@@ -59,6 +59,10 @@ get_nc_meta <- function (file) {
 #' * `"variant"`: variant label
 #' * `"resolution"`: approximate horizontal resolution
 #'
+#' @param append If `TRUE`, status of CMIP6 files will only be updated if they
+#'        are not found in previous summary. This is useful if CMIP6 files are
+#'        stored in different directories. Default: `FALSE`.
+#'
 #' @param mult Actions when multiple files match a same case in the CMIP6
 #'        index. If `"latest"`, the file with latest modification time
 #'        will be used. If `"skip"`, all matched files will be skip and this
@@ -99,7 +103,7 @@ get_nc_meta <- function (file) {
 summary_database <- function (
     dir,
     by = c("activity", "experiment", "variant", "frequency", "variable", "source", "resolution"),
-    mult = c("skip", "latest"),
+    mult = c("skip", "latest"), append = FALSE,
     recursive = FALSE, update = FALSE, warning = TRUE)
 {
     # column names
@@ -127,9 +131,18 @@ summary_database <- function (
     cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
 
     if (!length(ncfiles)) {
-        # add empty columns
-        set(idx, NULL, cols, list(NA_character_, NA_real_, Sys.time()[NA], NA_character_, NA_character_))
+        vals <- list(NA_character_, NA_real_, Sys.time()[NA], NA_character_, NA_character_)
+        names(vals) <- cols
 
+        if (!append) {
+            set(idx, NULL, cols, vals)
+        } else {
+            # add empty columns
+            for (nm in cols) {
+                if (nm %in% names(idx)) next
+                set(idx, NULL, nm, vals[[nm]])
+            }
+        }
     } else {
         ncmeta <- rbindlist(lapply(ncfiles, function (f) {
             p$message(paste0("Processing file ", f, "..."))
@@ -142,8 +155,6 @@ summary_database <- function (
 
         ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
 
-        # remove existing file meta column
-        if (length(cols_del <- cols[cols %in% names(idx)])) set(idx, NULL, cols_del, NULL)
         # store original column names
         cols_idx <- names(idx)
 
@@ -158,10 +169,28 @@ summary_database <- function (
         idx <- ncmeta[, .SD, .SDcols = c("tracking_id", "datetime_start", "datetime_end", cols)][idx, on = "tracking_id"]
         # b) remove files that do not have any overlap in terms of datetime range
         # but keep rows whose files have not yet been found
-        idx <- idx[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start) | is.na(file_path)]
+        idx <- idx[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start) | is.na(file_path) | is.na(i.file_path)]
 
-        # remove helper column
-        set(idx, NULL, c("i.datetime_start", "i.datetime_end"), NULL)
+        # file meta columns in original index
+        orig <- names(idx)[startsWith(names(idx), "i.")]
+        if (!append) {
+            # remove original file mata columns
+            set(idx, NULL, orig, NULL)
+        } else {
+            # keep original match
+            idx[J(NA_character_), on = "i.file_path", `:=`(
+                i.file_path = file_path,
+                i.file_realsize = file_realsize,
+                i.file_mtime = file_mtime,
+                i.time_units = time_units,
+                i.time_calendar = time_calendar,
+                i.datetime_start = datetime_start,
+                i.datetime_end = datetime_end
+            )]
+            new <- gsub("^i\\.", "", orig)
+            set(idx, NULL, new, NULL)
+            setnames(idx, orig, new)
+        }
 
         if (length(dup_idx <- unique(idx$index[duplicated(idx$index)]))) {
             dup <- idx[J(dup_idx), on = "index"]

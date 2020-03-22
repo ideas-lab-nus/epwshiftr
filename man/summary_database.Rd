@@ -9,6 +9,7 @@ summary_database(
   by = c("activity", "experiment", "variant", "frequency", "variable", "source",
     "resolution"),
   mult = c("skip", "latest"),
+  append = FALSE,
   recursive = FALSE,
   update = FALSE,
   warning = TRUE
@@ -34,6 +35,10 @@ subeset of:
 index. If \code{"latest"}, the file with latest modification time
 will be used. If \code{"skip"}, all matched files will be skip and this
 case will be kept as unmatched. Default: \code{"skip"}.}
+
+\item{append}{If \code{TRUE}, status of CMIP6 files will only be updated if they
+are not found in previous summary. This is useful if CMIP6 files are
+stored in different directories. Default: \code{FALSE}.}
 
 \item{recursive}{If \code{TRUE}, scan recursively into directories. Default:
 \code{FALSE}.}
