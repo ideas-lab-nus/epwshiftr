@@ -1,7 +1,7 @@
 # preprocess_morphing {{{
 #' @importFrom checkmate assert_count
 #' @importFrom data.table set
-preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL) {
+preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL, labels = NULL) {
     # add datetime components
     data.table::set(dt, NULL, c("year", "month", "day", "hour", "minute"),
         list(data.table::year(dt$datetime),
@@ -17,9 +17,28 @@ preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL) {
 
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
-    if (!is.null(years)) dt <- dt[J(years), on = "year"]
+    if (is.null(years)) {
+        data.table::set(dt, NULL, "interval", as.factor(dt$year))
+    } else {
+        dt <- dt[J(years), on = "year"]
 
-    data.table::set(dt, NULL, "interval", as.factor(dt$year))
+        # make sure all years are matched and have the same length
+        if (any(na <- is.na(dt$month))) {
+            mis <- unique(dt$year[na])
+            stop("Input data does not contain any data of year ", paste0("'", mis, "'", collapse = ", "), ".")
+        }
+
+        if (is.null(labels)) {
+            data.table::set(dt, NULL, "interval", as.factor(dt$year))
+        } else {
+            if (is.factor(labels)) labels <- as.character(labels)
+            assert_character(labels, any.missing = FALSE, len = length(years))
+
+            y <- data.table(year = years, interval = as.factor(labels))
+
+            dt[y, on = "year", interval := i.interval]
+        }
+    }
 
     # calculate monthly mean and average value for longitude and latitude
     res <- location_mean(dt, c("datetime", "year", "day", "hour", "minute", "second"))
@@ -87,6 +106,11 @@ remove_units <- function (data, var) {
 #' @param years An integer vector indicating the target years to be considered.
 #'        If `NULL`, all years in input data will be considered. Default: `NULL`.
 #'
+#' @param labels A character or factor vector used for grouping input `years`.
+#'        Usually are the outputs of [base::cut()]. `labels` should have the
+#'        same length as `years`. If given, climate data of `years` grouped by
+#'        `labels` will be averaged. Default: `NULL`.
+#'
 #' @return An `epw_cmip6_morphed` object, which is basically a list of 12 elements:
 #'
 #' | No.  | Element        | Type                       | Morphing Method | Description                                                       |
@@ -127,7 +151,7 @@ remove_units <- function (data, var) {
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_epw <- function (data, years = NULL) {
+morphing_epw <- function (data, years = NULL, labels = NULL) {
     assert_class(data, "epw_cmip6_data")
 
     data_cmip <- data.table::setDT(data$data)
@@ -140,7 +164,7 @@ morphing_epw <- function (data, years = NULL) {
     tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
     if (!nrow(tasmax)) tasmax <- NULL
     if (!nrow(tasmin)) tasmin <- NULL
-    tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, type = "stretch")
+        tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, labels = labels, type = "stretch")
 
     # NODE 8: RH
     verbose("Morphing 'relative humidity'...")
@@ -149,7 +173,7 @@ morphing_epw <- function (data, years = NULL) {
     hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
     if (!nrow(hursmax)) hursmax <- NULL
     if (!nrow(hursmin)) hursmin <- NULL
-    rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, type = "stretch")
+        rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, labels = labels, type = "stretch")
 
     # NODE 7: Tdew
     verbose("Morphing 'dew point temperature'...")
@@ -159,6 +183,7 @@ morphing_epw <- function (data, years = NULL) {
     verbose("Morphing 'atmospheric pressure'...")
     psl <- data_cmip[J("psl"), on = "variable", nomatch = NULL]
     p <- morphing_pa(data_epw, psl, years, type = "stretch")
+        p <- morphing_pa(data_epw, psl, years, labels = labels, type = "stretch")
 
     # NODE 10: Extraterrestrial direct normal radiation [NOT USED in EnergyPlus]
     # NODE 11: Extraterrestrial horizontal radiation [NOT USED in EnergyPlus]
@@ -170,6 +195,7 @@ morphing_epw <- function (data, years = NULL) {
     )]
     rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
     hor_ir <- morphing_hor_ir(data_epw, rlds, years, type = "stretch")
+        hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = "stretch")
 
     # NODE 13: Global horizontal radiation
     verbose("Morphing 'global horizontal radiation'...")
@@ -178,6 +204,7 @@ morphing_epw <- function (data, years = NULL) {
     )]
     rsds <- data_cmip[J("rsds"), on = "variable", nomatch = NULL]
     glob_rad <- morphing_glob_rad(data_epw, rsds, years, type = "stretch")
+        glob_rad <- morphing_glob_rad(data_epw, rsds, years, labels = labels, type = "stretch")
 
     #!NODE 15: Diffuse horizontal radiation
     # NOTE: Since the extraterrestrial horizontal radiation is not used in
@@ -199,11 +226,13 @@ morphing_epw <- function (data, years = NULL) {
     verbose("Morphing 'wind speed'...")
     sfcWind <- data_cmip[J("sfcWind"), on = "variable", nomatch = NULL]
     wind <- morphing_wind_speed(data_epw, sfcWind, years, type = "stretch")
+        wind <- morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = "stretch")
 
     # NODE 22: Total sky cover
     verbose("Morphing 'total sky cover'...")
     clt <- data_cmip[J("clt"), on = "variable", nomatch = NULL]
     total_cover <- morphing_total_sky_cover(data_epw, clt, years)
+        total_cover <- morphing_total_sky_cover(data_epw, clt, years, labels = labels)
 
     # NODE 23: Opaque sky cover
     # Instead, it was assumed that the relation between total sky cover and
@@ -227,7 +256,8 @@ morphing_epw <- function (data, years = NULL) {
 
 # morphing_from_mean {{{
 morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_min = NULL,
-                                type = c("shift", "stretch", "combined"), years = NULL) {
+                                type = c("shift", "stretch", "combined"),
+                                years = NULL, labels = NULL) {
     type <- match.arg(type)
 
     if (!nrow(data_mean)) return(data.table())
@@ -240,13 +270,13 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 
     # add cut interval and average by lon, lat, month and day (i.e. monthly
     # avarage) in CMIP6 data
-    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, years = years)
+    data_mean <- preprocess_morphing(data_mean, leapyear = FALSE, years = years, labels = labels)
     # this will automatically do unit conversions like K --> C
     data_mean <- align_units(data_mean, u)
 
     if (type == "combined" && !is.null(data_max) && !is.null(data_min)) {
-        data_max <- preprocess_morphing(data_max, leapyear = FALSE, years = years)
-        data_min <- preprocess_morphing(data_min, leapyear = FALSE, years = years)
+        data_max <- preprocess_morphing(data_max, leapyear = FALSE, years = years, labels = labels)
+        data_min <- preprocess_morphing(data_min, leapyear = FALSE, years = years, labels = labels)
 
         # this will automatically do unit conversions like K --> C
         data_max <- align_units(data_max, u)
@@ -330,7 +360,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 # }}}
 
 # morphing_tdb {{{
-morphing_tdb <- function (data_epw, tas, tasmax = NULL, tasmin = NULL, years = NULL, type = "combined") {
+morphing_tdb <- function (data_epw, tas, tasmax = NULL, tasmin = NULL, years = NULL, labels = NULL, type = "combined") {
     morphing_from_mean(
         var = "dry_bulb_temperature",
         data_epw = data_epw,
@@ -338,13 +368,14 @@ morphing_tdb <- function (data_epw, tas, tasmax = NULL, tasmin = NULL, years = N
         data_max = tasmax,
         data_min = tasmin,
         years = years,
+        labels = labels,
         type = type
     )
 }
 # }}}
 
 # morphing_rh {{{
-morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years = NULL, type = "combined") {
+morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years = NULL, labels = NULL, type = "combined") {
     rh <- morphing_from_mean(
         var = "relative_humidity",
         data_epw = data_epw,
@@ -352,6 +383,7 @@ morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years =
         data_max = hursmax,
         data_min = hursmin,
         years = years,
+        labels = labels,
         type = type
     )
 
@@ -396,36 +428,39 @@ morphing_tdew <- function (tdb, rh) {
 # }}}
 
 # morphing_pa {{{
-morphing_pa <- function (data_epw, psl, years = NULL, type = "stretch") {
+morphing_pa <- function (data_epw, psl, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
         var = "atmospheric_pressure",
         data_epw = data_epw,
         data_mean = psl,
         years = years,
+        labels = labels,
         type = type
     )
 }
 # }}}
 
 # morphing_hor_ir {{{
-morphing_hor_ir <- function (data_epw, rlds, years = NULL, type = "stretch") {
+morphing_hor_ir <- function (data_epw, rlds, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
         var = "horizontal_infrared_radiation_intensity_from_sky",
         data_epw = data_epw,
         data_mean = rlds,
         years = years,
+        labels = labels,
         type = type
     )
 }
 # }}}
 
 # morphing_glob_rad {{{
-morphing_glob_rad <- function (data_epw, rsds, years = NULL, type = "stretch") {
+morphing_glob_rad <- function (data_epw, rsds, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
         var = "global_horizontal_radiation",
         data_epw = data_epw,
         data_mean = rsds,
         years = years,
+        labels = labels,
         type = type
     )
 }
@@ -459,22 +494,23 @@ morphing_norm_rad <- function (glob_rad, diff_rad) {
 # }}}
 
 # morphing_wind_speed {{{
-morphing_wind_speed <- function (data_epw, sfcWind, years = NULL, type = "stretch") {
+morphing_wind_speed <- function (data_epw, sfcWind, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
         var = "wind_speed",
         data_epw = data_epw,
         data_mean = sfcWind,
         years = years,
+        labels = labels,
         type = type
     )
 }
 # }}}
 
 # morphing_total_sky_cover {{{
-morphing_total_sky_cover <- function (data_epw, clt, years = NULL) {
+morphing_total_sky_cover <- function (data_epw, clt, years = NULL, labels = NULL) {
     var <- "total_sky_cover"
     if (!nrow(clt)) return(data.table())
-    data_mean <- preprocess_morphing(clt, leapyear = FALSE, years = years)
+    data_mean <- preprocess_morphing(clt, leapyear = FALSE, years = years, labels = labels)
     monthly <- unique(data_epw[, .SD, .SDcols = c("month")])
 
     data_mean <- data_mean[monthly, on = c("month")]
@@ -527,12 +563,13 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 # }}}
 
 # morphing_precipitation {{{
-morphing_precipitation <- function (data_epw, pr, years = NULL, type = "stretch") {
+morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
         var = "precipitable_water",
         data_epw = data_epw,
         data_mean = pr,
         years = years,
+        labels = labels,
         type = type
     )
 }

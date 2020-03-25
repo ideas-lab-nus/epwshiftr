@@ -4,13 +4,18 @@
 \alias{morphing_epw}
 \title{Morphing EPW weather variables}
 \usage{
-morphing_epw(data, years = NULL)
+morphing_epw(data, years = NULL, labels = NULL)
 }
 \arguments{
 \item{data}{An \code{epw_cmip6_data}object generated using \code{\link[=extract_data]{extract_data()}}}
 
 \item{years}{An integer vector indicating the target years to be considered.
 If \code{NULL}, all years in input data will be considered. Default: \code{NULL}.}
+
+\item{labels}{A character or factor vector used for grouping input \code{years}.
+Usually are the outputs of \code{\link[base:cut]{base::cut()}}. \code{labels} should have the
+same length as \code{years}. If given, climate data of \code{years} grouped by
+\code{labels} will be averaged. Default: \code{NULL}.}
 }
 \value{
 An \code{epw_cmip6_morphed} object, which is basically a list of 12 elements:\tabular{rllll}{
