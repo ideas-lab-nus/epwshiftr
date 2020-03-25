@@ -53,7 +53,7 @@ Default: \code{FALSE}.}
 match a same case. Default: \code{TRUE}.}
 }
 \value{
-A \code{\link[=data.table]{data.table()}} containing corresponding grouping
+A \code{\link[data.table:data.table]{data.table::data.table()}} containing corresponding grouping
 columns plus:\tabular{lll}{
    Column \tab Type \tab Description \cr
    \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
@@ -65,6 +65,10 @@ columns plus:\tabular{lll}{
    \code{dl_size} \tab Units (Mbytes) \tab Total size of file downloaded \cr
 }
 
+
+Also an attribute \code{not_matched} is added to the returned
+\code{\link[data.table:data.table]{data.table::data.table()}} which contains meta data for those CMIP6 output
+files that are not covered by current CMIP6 output file index.
 
 For the meaning of grouping columns, see \code{\link[=init_cmip6_index]{init_cmip6_index()}}.
 }

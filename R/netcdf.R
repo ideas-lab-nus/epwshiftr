@@ -85,7 +85,7 @@ get_nc_meta <- function (file) {
 #' @param warning If `TRUE`, warning messages will show when multiple files
 #'        match a same case. Default: `TRUE`.
 #'
-#' @return A [data.table()] containing corresponding grouping
+#' @return A [data.table::data.table()] containing corresponding grouping
 #' columns plus:
 #'
 #' | Column           | Type           | Description                         |
@@ -97,6 +97,10 @@ get_nc_meta <- function (file) {
 #' | `dl_num`         | Integer        | Total number of file downloaded     |
 #' | `dl_percent`     | Units (%)      | Total percentage of file downloaded |
 #' | `dl_size`        | Units (Mbytes) | Total size of file downloaded       |
+#'
+#' Also an attribute `not_matched` is added to the returned
+#' [data.table::data.table()] which contains meta data for those CMIP6 output
+#' files that are not covered by current CMIP6 output file index.
 #'
 #' For the meaning of grouping columns, see [init_cmip6_index()].
 #'
@@ -176,6 +180,9 @@ summary_database <- function (
         # b) remove files that do not have any overlap in terms of datetime range
         # but keep rows whose files have not yet been found
         idx <- idx[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start) | is.na(file_path) | is.na(i.file_path)]
+
+        # store files that are not matched
+        left <- ncmeta[!idx, on = "file_path"]
 
         # file meta columns in original index
         orig <- names(idx)[startsWith(names(idx), "i.")]
@@ -267,6 +274,8 @@ summary_database <- function (
         dl_percent = round(units::set_units(sum(!is.na(file_path)) / .N * 100, "%"), 3),
         dl_size = round(units::set_units(units::set_units(sum(file_realsize, na.rm = TRUE), "bytes"), "Mbytes"))
     ), by = c(by_cols)][order(-dl_percent)]
+
+    setattr(sm, "not_matched", left)
 
     sm
 }
