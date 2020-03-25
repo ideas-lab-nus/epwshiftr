@@ -45,6 +45,11 @@ get_nc_meta <- function (file) {
 #' files available against the output file index loaded using
 #' [load_cmip6_index()].
 #'
+#' `summary_database()` uses [future.apply][future.apply::future_lapply()]
+#' underneath. You can use your preferable [future][future::plan] backend to
+#' speed up data extraction in parallel. By default, `summary_database()` uses
+#' [future::sequential] backend, which runs things in sequential.
+#'
 #' @param dir A single string indcating the directory where CMIP6 model output
 #'        NetCDF files are stored.
 #'
@@ -99,6 +104,7 @@ get_nc_meta <- function (file) {
 #' \dontrun{
 #' summary_database()
 #' }
+#' @importFrom future.apply future_lapply
 #' @export
 summary_database <- function (
     dir,
@@ -144,7 +150,7 @@ summary_database <- function (
             }
         }
     } else {
-        ncmeta <- rbindlist(lapply(ncfiles, function (f) {
+        ncmeta <- rbindlist(future.apply::future_lapply(ncfiles, function (f) {
             p$message(paste0("Processing file ", f, "..."))
             p$tick()
             meta <- get_nc_meta(f)
@@ -354,6 +360,11 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' [match_coord()] and extracts CMIP6 data using the coordinates and years of
 #' interest specified.
 #'
+#' `extract_data()` uses [future.apply][future.apply::future_lapply()]
+#' underneath. You can use your preferable [future][future::plan] backend to
+#' speed up data extraction in parallel. By default, `extract_data()` uses
+#' [future::sequential] backend, which runs things in sequential.
+#'
 #' @param coord An `epw_cmip6_coord` object created using [match_coord()]
 #'
 #' @param years An integer vector indicating the target years to be included in
@@ -397,20 +408,29 @@ extract_data <- function (coord, years = NULL, unit = FALSE) {
 
     # initial progress bar
     message("Start to extract CMIP6 data according to matched coordinates...")
-    p <- progress::progress_bar$new(
-        format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = nrow(m_coord), clear = FALSE)
 
-    data <- rbindlist(Map(
-        function (path, coord) {
-            p$message(sprintf("Processing file '%s'...", path))
-            d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
-            p$tick()
-            d
-        },
-        m_coord$file_path, m_coord$coord
-    ))
+    data <- data.table()
 
+    for (i in seq_along(m_coord)) {
+        co <- m_coord[[i]]
+
+        p <- progress::progress_bar$new(
+            format = "[:current/:total][:bar] :percent [:elapsedfull]",
+            total = nrow(co), clear = FALSE)
+
+        d <- rbindlist(
+            future.apply::future_Map(
+                function (path, coord) {
+                    p$message(sprintf("Processing file '%s'...", path))
+                    d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
+                    p$tick()
+                    d
+                },
+                co$file_path, co$coord
+        ))
+
+            data <- rbindlist(list(data, d))
+    }
     structure(list(epw = coord$epw, meta = coord$meta, data = data), class = "epw_cmip6_data")
 }
 # }}}

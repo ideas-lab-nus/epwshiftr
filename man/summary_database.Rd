@@ -74,6 +74,12 @@ For the meaning of grouping columns, see \code{\link[=init_cmip6_index]{init_cmi
 files available against the output file index loaded using
 \code{\link[=load_cmip6_index]{load_cmip6_index()}}.
 }
+\details{
+\code{summary_database()} uses \link[future.apply:future_lapply]{future.apply}
+underneath. You can use your preferable \link[future:plan]{future} backend to
+speed up data extraction in parallel. By default, \code{summary_database()} uses
+\link[future:sequential]{future::sequential} backend, which runs things in sequential.
+}
 \examples{
 \dontrun{
 summary_database()

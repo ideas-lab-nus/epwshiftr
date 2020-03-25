@@ -66,8 +66,13 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 # match_coord {{{
 #' Match coordinates of input EPW in the CMIP6 output file database
 #'
-#' `match_coord` takes an EPW and uses its longitude and latitude to match
+#' `match_coord()` takes an EPW and uses its longitude and latitude to match
 #' corresponding values that meet specified threshold in NetCDF files.
+#'
+#' `match_coord()` uses [future.apply][future.apply::future_lapply()]
+#' underneath. You can use your preferable [future][future::plan] backend to
+#' speed up data extraction in parallel. By default, `match_coord()` uses
+#' [future::sequential] backend, which runs things in sequential.
 #'
 #' @param epw Possible values:
 #'
@@ -147,7 +152,7 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
     p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
         total = nrow(index), clear = FALSE)
 
-    coords <- lapply(index$file_path, function (f) {
+    coords <- future.apply::future_lapply(index$file_path, function (f) {
         p$message(sprintf("Processing file '%s'...", f))
         p$tick()
         match_location_coord(f, meta, threshold, max_num)

@@ -16,6 +16,7 @@ Imports:
     checkmate,
     data.table,
     eplusr,
+    future.apply,
     jsonlite,
     progress,
     psychrolib,

@@ -49,6 +49,12 @@ variable values
 }
 }
 \description{
-\code{match_coord} takes an EPW and uses its longitude and latitude to match
+\code{match_coord()} takes an EPW and uses its longitude and latitude to match
 corresponding values that meet specified threshold in NetCDF files.
+}
+\details{
+\code{match_coord()} uses \link[future.apply:future_lapply]{future.apply}
+underneath. You can use your preferable \link[future:plan]{future} backend to
+speed up data extraction in parallel. By default, \code{match_coord()} uses
+\link[future:sequential]{future::sequential} backend, which runs things in sequential.
 }
