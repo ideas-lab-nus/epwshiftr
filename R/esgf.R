@@ -54,7 +54,7 @@
 #' * `hurs`: Near-surface relative humidity, units: `%`.
 #' * `hursmax`: Maximum near-surface relative humidity, units: `%`.
 #' * `hursmin`: Minimum near-surface relative humidity, units: `%`.
-#' * `psl`: sea level pressure, units: `Pa`.
+#' * `psl`: Sea level pressure, units: `Pa`.
 #' * `rsds`: Surface downwelling shortwave radiation, units: `W m-2`.
 #' * `rlds`: Surface downwelling longware radiation, units: `W m-2`.
 #' * `sfcWind`: Near-surface (usually, 10 meters) wind speed, units: `m s-1`.
@@ -347,7 +347,7 @@ extract_query_file <- function (q) {
 #'
 #' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
 #' , return a [data.table::data.table()] containing the actual NetCDF file url
-#' to download, and store it intro user data directory for futher use.
+#' to download, and store it into user data directory for futher use.
 #'
 #' For details on where the file index is stored, see [rappdirs::user_data_dir()].
 #'
