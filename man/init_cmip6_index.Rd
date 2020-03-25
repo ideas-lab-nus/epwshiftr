@@ -18,7 +18,8 @@ init_cmip6_index(
   resolution = c("100 km", "50 km"),
   limit = 10000L,
   data_node = NULL,
-  years = NULL
+  years = NULL,
+  save = TRUE
 )
 }
 \arguments{
@@ -61,7 +62,7 @@ possible variables are returned. Default: \code{c("tas", "tasmax", "tasmin", "hu
 \item \code{hurs}: Near-surface relative humidity, units: \verb{\%}.
 \item \code{hursmax}: Maximum near-surface relative humidity, units: \verb{\%}.
 \item \code{hursmin}: Minimum near-surface relative humidity, units: \verb{\%}.
-\item \code{psl}: sea level pressure, units: \code{Pa}.
+\item \code{psl}: Sea level pressure, units: \code{Pa}.
 \item \code{rsds}: Surface downwelling shortwave radiation, units: \verb{W m-2}.
 \item \code{rlds}: Surface downwelling longware radiation, units: \verb{W m-2}.
 \item \code{sfcWind}: Near-surface (usually, 10 meters) wind speed, units: \verb{m s-1}.
@@ -137,6 +138,9 @@ Default to \code{NULL}, which means all possible data nodes.}
 \item{years}{An integer vector indicating the target years to be include in
 the data file. All other years will be excluded. If \code{NULL}, no
 subsetting on years will be performed. Default: \code{NULL}.}
+
+\item{save}{If \code{TRUE}, the results will be saved into user data directory.
+Default: \code{TRUE}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{rlll}{
@@ -167,7 +171,7 @@ A \link[data.table:data.table]{data.table::data.table} with 20 columns:\tabular{
 \description{
 \code{init_cmip6_index()} will search the CMIP6 model output file using \code{\link[=esgf_query]{esgf_query()}}
 , return a \code{\link[data.table:data.table]{data.table::data.table()}} containing the actual NetCDF file url
-to download, and store it intro user data directory for futher use.
+to download, and store it into user data directory for futher use.
 }
 \details{
 For details on where the file index is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.

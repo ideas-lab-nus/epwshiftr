@@ -359,6 +359,8 @@ extract_query_file <- function (q) {
 #' @param years An integer vector indicating the target years to be include in
 #'        the data file. All other years will be excluded. If `NULL`, no
 #'        subsetting on years will be performed. Default: `NULL`.
+#' @param save If `TRUE`, the results will be saved into user data directory.
+#'        Default: `TRUE`.
 #'
 #' @return A [data.table::data.table] with 20 columns:
 #'
@@ -409,10 +411,12 @@ init_cmip6_index <- function (
     resolution = c("100 km", "50 km"),
     limit = 10000L,
     data_node = NULL,
-    years = NULL
+    years = NULL,
+    save = TRUE
 )
 {
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    assert_flag(save)
 
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(activity = activity, variable = variable, frequency = frequency,
@@ -509,11 +513,14 @@ init_cmip6_index <- function (
     # remove duplications
     dt <- unique(dt, by = "file_id")
 
-    # save database into the app data directory
-    data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-    verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+    if (save) {
+        # save database into the app data directory
+        data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
 
-    EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
+        EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
+    }
+
     dt
 }
 # }}}
