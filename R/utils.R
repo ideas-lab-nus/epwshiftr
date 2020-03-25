@@ -66,5 +66,6 @@ utils::globalVariables(c(
     "natts", "opaque_sky_cover", "ping", "relative_humidity", "source_id",
     "source_type", "state_province", "table_id", "title", "total_sky_cover",
     "val_max", "val_mean", "val_min", "value", "value_max", "value_min",
-    "variable", "wmo_number"
+    "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
+    "interval", "time_calendar", "time_units"
 ))
