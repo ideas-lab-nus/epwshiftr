@@ -383,13 +383,38 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' @param unit If `TRUE`, units will be added to values using
 #'        [units::set_units()].
 #'
+#' @param out_dir The directory to save extracted data using [fst::write_fst()].
+#'        If `NULL`, all data will be kept in memory by default. Default: `NULL`.
+#'
+#' @param by A character vector of variable names used to split data
+#'        during extraction. Should be a subset of:
+#'
+#' * `"experiment"`: root experiment identifiers
+#' * `"source"`: model identifiers
+#' * `"variable"`: variable identifiers
+#' * `"activity"`: activity identifiers
+#' * `"frequency"`: sampling frequency
+#' * `"variant"`: variant label
+#' * `"resolution"`: approximate horizontal resolution
+#'
+#' If `NULL` and `out_dir` is given, file name `data.fst` will be used. Default:
+#' `NULL`.
+#'
+#' @param keep Whether keep extracted data in memory. Default: `TRUE` if
+#'        `out_dir` is `NULL`, and `FALSE` otherwise.
+#'
+#' @param compress A single integer in the range 0 to 100, indicating the amount
+#'        of compression to use. Lower values mean larger file sizes. Default:
+#'        `100`.
+#'
 #' @return An `epw_cmip6_data` object, which is basically a list of 3 elements:
 #'
 #' * `epw`: An [eplusr::Epw] object whose longitude and latitute are used to
 #'   extract CMIP6 data. It is the same object as created in [match_coord()]
 #' * `meta`: A list containing basic meta data of input EPW, including `city`,
 #'   `state_province`, `country`, `latitute` and `longitude`.
-#' * `data`: A [data.table::data.table()] of 12 columns:
+#' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
+#'   [data.table::data.table()] of 12 columns if `keep` is `TRUE`:
 #'
 #'     | No.  | Column           | Type      | Description                                                          |
 #'     | ---: | -----            | -----     | -----                                                                |
@@ -408,12 +433,35 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #'
 #' @importFrom checkmate assert_class
 #' @importFrom units set_units
+#' @importFrom future.apply future_Map
+#' @importFrom fst write_fst
 #' @export
-extract_data <- function (coord, years = NULL, unit = FALSE) {
+extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
+                          by = NULL, keep = is.null(out_dir), compress = 100) {
     assert_class(coord, "epw_cmip6_coord")
+
+    # column names
+    dict <- c(activity_drs = "activity", experiment_id = "experiment", member_id = "variant",
+              table_id = "frequency", variable_id = "variable", source_id = "source",
+              nominal_resolution = "resolution")
 
     # get matched coords
     m_coord <- coord$coord
+
+    if (is.null(out_dir)) {
+        m_coord <- list(m_coord)
+    } else {
+        assert_directory_exists(out_dir, "w")
+        assert_subset(by, choices = dict)
+        by_cols <- names(dict)[match(by, dict, 0L)]
+        if (length(by_cols)) {
+            m_coord <- split(m_coord[, .SD, .SDcols = c("file_path", "coord", by_cols)], by = by_cols)
+            out_files <- file.path(normalizePath(out_dir), paste0(names(m_coord), ".fst"))
+        } else {
+            m_coord <- list(data = m_coord)
+            out_files <- file.path(normalizePath(out_dir), "data.fst")
+        }
+    }
 
     # initial progress bar
     message("Start to extract CMIP6 data according to matched coordinates...")
@@ -438,8 +486,16 @@ extract_data <- function (coord, years = NULL, unit = FALSE) {
                 co$file_path, co$coord
         ))
 
+        if (!is.null(out_dir)) {
+            f <- out_files[i]
+            fst::write_fst(d, f, compress = compress)
+        }
+
+        if (keep) {
             data <- rbindlist(list(data, d))
+        }
     }
+
     structure(list(epw = coord$epw, meta = coord$meta, data = data), class = "epw_cmip6_data")
 }
 # }}}

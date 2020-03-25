@@ -4,7 +4,15 @@
 \alias{extract_data}
 \title{Extract data}
 \usage{
-extract_data(coord, years = NULL, unit = FALSE)
+extract_data(
+  coord,
+  years = NULL,
+  unit = FALSE,
+  out_dir = NULL,
+  by = NULL,
+  keep = is.null(out_dir),
+  compress = 100
+)
 }
 \arguments{
 \item{coord}{An \code{epw_cmip6_coord} object created using \code{\link[=match_coord]{match_coord()}}}
@@ -15,6 +23,31 @@ subsetting on years will be performed. Default: \code{NULL}.}
 
 \item{unit}{If \code{TRUE}, units will be added to values using
 \code{\link[units:set_units]{units::set_units()}}.}
+
+\item{out_dir}{The directory to save extracted data using \code{\link[fst:write_fst]{fst::write_fst()}}.
+If \code{NULL}, all data will be kept in memory by default. Default: \code{NULL}.}
+
+\item{by}{A character vector of variable names used to split data
+during extraction. Should be a subset of:
+\itemize{
+\item \code{"experiment"}: root experiment identifiers
+\item \code{"source"}: model identifiers
+\item \code{"variable"}: variable identifiers
+\item \code{"activity"}: activity identifiers
+\item \code{"frequency"}: sampling frequency
+\item \code{"variant"}: variant label
+\item \code{"resolution"}: approximate horizontal resolution
+}
+
+If \code{NULL} and \code{out_dir} is given, file name \code{data.fst} will be used. Default:
+\code{NULL}.}
+
+\item{keep}{Whether keep extracted data in memory. Default: \code{TRUE} if
+\code{out_dir} is \code{NULL}, and \code{FALSE} otherwise.}
+
+\item{compress}{A single integer in the range 0 to 100, indicating the amount
+of compression to use. Lower values mean larger file sizes. Default:
+\code{100}.}
 }
 \value{
 An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
@@ -23,7 +56,8 @@ An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
 extract CMIP6 data. It is the same object as created in \code{\link[=match_coord]{match_coord()}}
 \item \code{meta}: A list containing basic meta data of input EPW, including \code{city},
 \code{state_province}, \code{country}, \code{latitute} and \code{longitude}.
-\item \code{data}: A \code{\link[data.table:data.table]{data.table::data.table()}} of 12 columns:\tabular{rlll}{
+\item \code{data}: An empty \code{\link[data.table:data.table]{data.table::data.table()}} if \code{keep} is \code{FALSE} or a
+\code{\link[data.table:data.table]{data.table::data.table()}} of 12 columns if \code{keep} is \code{TRUE}:\tabular{rlll}{
    No. \tab Column \tab Type \tab Description \cr
    1 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
    2 \tab \code{institution_id} \tab Character \tab Institution identifier \cr

@@ -17,6 +17,7 @@ Imports:
     data.table,
     eplusr,
     future.apply,
+    fst,
     jsonlite,
     progress,
     psychrolib,
