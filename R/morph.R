@@ -160,30 +160,49 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
     # NODE 6: Ta
     verbose("Morphing 'dry bulb temperature'...")
     tas <- data_cmip[J("tas"), on = "variable", nomatch = NULL]
-    tasmax <- data_cmip[J("tasmax"), on = "variable", nomatch = NULL]
-    tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
-    if (!nrow(tasmax)) tasmax <- NULL
-    if (!nrow(tasmin)) tasmin <- NULL
+    if (!nrow(tas)) {
+        verbose("WARNING: Input does not contain any data of 'near-surface air temperature'. Skip.")
+        tdb <- data.table()
+    } else {
+        tasmax <- data_cmip[J("tasmax"), on = "variable", nomatch = NULL]
+        tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
+        if (!nrow(tasmax)) tasmax <- NULL
+        if (!nrow(tasmin)) tasmin <- NULL
         tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, labels = labels, type = "stretch")
+    }
 
     # NODE 8: RH
     verbose("Morphing 'relative humidity'...")
     hurs <- data_cmip[J("hurs"), on = "variable", nomatch = NULL]
-    hursmax <- data_cmip[J("hursmax"), on = "variable", nomatch = NULL]
-    hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
-    if (!nrow(hursmax)) hursmax <- NULL
-    if (!nrow(hursmin)) hursmin <- NULL
+    if (!nrow(hurs)) {
+        verbose("WARNING: Input does not contain any data of 'near-surface relative humidity'. Skip.")
+        rh <- data.table()
+    } else {
+        hursmax <- data_cmip[J("hursmax"), on = "variable", nomatch = NULL]
+        hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
+        if (!nrow(hursmax)) hursmax <- NULL
+        if (!nrow(hursmin)) hursmin <- NULL
         rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, labels = labels, type = "stretch")
+    }
 
     # NODE 7: Tdew
     verbose("Morphing 'dew point temperature'...")
-    tdew <- morphing_tdew(tdb, rh)
+    if (!nrow(tdb) || !nrow(rh)) {
+        verbose("WARNING: Input does not contain any data of 'near-surface air temperature' or 'near-surface relative humidity'. Skip.")
+        tdew <- data.table()
+    } else {
+        tdew <- morphing_tdew(tdb, rh)
+    }
 
     # NODE 9 Pa
     verbose("Morphing 'atmospheric pressure'...")
     psl <- data_cmip[J("psl"), on = "variable", nomatch = NULL]
-    p <- morphing_pa(data_epw, psl, years, type = "stretch")
+    if (!nrow(psl)) {
+        verbose("WARNING: Input does not contain any data of 'sea level pressure'. Skip.")
+        p <- data.table()
+    } else {
         p <- morphing_pa(data_epw, psl, years, labels = labels, type = "stretch")
+    }
 
     # NODE 10: Extraterrestrial direct normal radiation [NOT USED in EnergyPlus]
     # NODE 11: Extraterrestrial horizontal radiation [NOT USED in EnergyPlus]
@@ -194,8 +213,12 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         units::set_units(units::drop_units(horizontal_infrared_radiation_intensity_from_sky), "W/m^2"
     )]
     rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
-    hor_ir <- morphing_hor_ir(data_epw, rlds, years, type = "stretch")
+    if (!nrow(rlds)) {
+        verbose("WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.")
+        hor_ir <- data.table()
+    } else {
         hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = "stretch")
+    }
 
     # NODE 13: Global horizontal radiation
     verbose("Morphing 'global horizontal radiation'...")
@@ -203,18 +226,32 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
     )]
     rsds <- data_cmip[J("rsds"), on = "variable", nomatch = NULL]
-    glob_rad <- morphing_glob_rad(data_epw, rsds, years, type = "stretch")
+    if (!nrow(rsds)) {
+        verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
+        glob_rad <- data.table()
+    } else {
         glob_rad <- morphing_glob_rad(data_epw, rsds, years, labels = labels, type = "stretch")
+    }
 
     #!NODE 15: Diffuse horizontal radiation
     # NOTE: Since the extraterrestrial horizontal radiation is not used in
     # EnergyPlus. Here still use the original approach
     verbose("Morphing 'diffuse horizontal radiation'...")
-    diff_rad <- morphing_diff_rad(data_epw, glob_rad)
+    if (!nrow(glob_rad)) {
+        verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
+        diff_rad <- data.table()
+    } else {
+        diff_rad <- morphing_diff_rad(data_epw, glob_rad)
+    }
 
     # NODE 14: Direct normal radiation
     verbose("Morphing 'direct normal radiation'...")
-    norm_rad <- morphing_norm_rad(glob_rad, diff_rad)
+    if (!nrow(glob_rad)) {
+        verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
+        norm_rad <- data.table()
+    } else {
+        norm_rad <- morphing_norm_rad(glob_rad, diff_rad)
+    }
 
     # NODE 16: Global horizontal illuminance [NOT USED in EnergyPlus]
     # NODE 17: Direct normal illuminance [NOT USED in EnergyPlus]
@@ -225,21 +262,34 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
     # NODE 21: Wind speed
     verbose("Morphing 'wind speed'...")
     sfcWind <- data_cmip[J("sfcWind"), on = "variable", nomatch = NULL]
-    wind <- morphing_wind_speed(data_epw, sfcWind, years, type = "stretch")
+    if (!nrow(sfcWind)) {
+        verbose("WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.")
+        wind <- data.table()
+    } else {
         wind <- morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = "stretch")
+    }
 
     # NODE 22: Total sky cover
     verbose("Morphing 'total sky cover'...")
     clt <- data_cmip[J("clt"), on = "variable", nomatch = NULL]
-    total_cover <- morphing_total_sky_cover(data_epw, clt, years)
+    if (!nrow(clt)) {
+        verbose("WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.")
+        total_cover <- data.table()
+    } else {
         total_cover <- morphing_total_sky_cover(data_epw, clt, years, labels = labels)
+    }
 
     # NODE 23: Opaque sky cover
     # Instead, it was assumed that the relation between total sky cover and
     # opaque sky cover remains the same under a changed climate. Therefore, the
     # equation for generating future opaque sky cover is as follows:
     verbose("Morphing 'opaque sky cover'...")
-    opaque_cover <- morphing_opaque_sky_cover(data_epw, total_cover)
+    if (!nrow(total_cover)) {
+        verbose("WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.")
+        opaque_cover <- data.table()
+    } else {
+        opaque_cover <- morphing_opaque_sky_cover(data_epw, total_cover)
+    }
 
     res <- list(epw = data$epw, tdb = tdb, tdew = tdew, rh = rh, p = p, hor_ir = hor_ir,
          glob_rad = glob_rad, norm_rad = norm_rad, diff_rad = diff_rad,
@@ -668,7 +718,18 @@ append_epw_data <- function (morphed) {
 #'
 #' @param morphed An `epw_cmip6_morphed` object created using [morphing_epw()].
 #' @param by A character vector of columns to be used as grouping variables when
-#'        creating EPW files
+#'        creating EPW files. Should be a subeset of:
+#'
+#' * `"experiment"`: root experiment identifiers
+#' * `"source"`: model identifiers
+#' * `"variable"`: variable identifiers
+#' * `"activity"`: activity identifiers
+#' * `"frequency"`: sampling frequency
+#' * `"variant"`: variant label
+#' * `"resolution"`: approximate horizontal resolution
+#' * `"longitude"`: averaged longitude of input data
+#' * `"latitude"`: averaged latitude of input data
+#'
 #' @param dir The parent directory to save the generated EPW files. If not
 #'        exist, it will be created first. Default: `"."`, i.e., current working
 #'        directory.
@@ -677,9 +738,9 @@ append_epw_data <- function (morphed) {
 #' @param overwrite If `TRUE`, overwrite existing files if they exist. Default:
 #'        `FALSE`.
 #'
-#' @return A list of generated [eplusr::Epw] objects
+#' @return A list of generated [eplusr::Epw] objects, invisibly
 #' @export
-future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"),
+future_epw <- function (morphed, by = c("experiment", "source", "interval"),
                         dir = ".", separate = TRUE, overwrite = FALSE) {
     assert_class(morphed, "epw_cmip6_morphed")
     assert_string(dir)
@@ -692,8 +753,30 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
 
     morphed <- morphed[names(morphed) != "epw"]
 
-    # remove empty data
-    morphed <- morphed[sapply(morphed, nrow) != 0L]
+    # remove empty data and give warnings
+    if (any((l <- sapply(morphed, nrow)) == 0L)) {
+        v <- names(which(l == 0))
+        d <- c(tdb = "Dry-bulb temperature",
+               tdew = "Dew-point temperature",
+               rh = "Relative humidity",
+               p = "Atmospheric pressure",
+               hor_ir = "Horizontal infrared radiation intensity from sky",
+               glob_rad = "Global horizontal radiation",
+               norm_rad = "Direct normal radiation",
+               diff_rad = "Diffuse horizontal radiation",
+               wind = "Wind speed",
+               total_cover = "Total sky cover",
+               opaque_cover = "Opaque sky cover"
+        )
+
+        v <- d[names(d) %in% v]
+        warning("Empty morphed data found for variables listed below. Original data from EPW will be used:\n",
+            paste0(sprintf(" [%i]: %s", seq_along(v), v), collapse = "\n"),
+            call. = FALSE
+        )
+
+        morphed <- morphed[sapply(morphed, nrow) != 0L]
+    }
 
     if (!length(morphed)) {
         stop("No morphed data found. Please run 'morphing_epw' first.")
@@ -707,26 +790,26 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
         }
     )
 
-    # columns of meta
-    cols_by <- c(
-        "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
-        "table_id", "lon", "lat",
-        # interval
-        "interval"
+    # column names
+    dict <- c(activity_drs = "activity", experiment_id = "experiment", member_id = "variant",
+              table_id = "frequency", source_id = "source", interval = "interval",
+              lon = "longitude", lat = "latitude"
     )
-
-    assert_subset(by, cols_by)
+    assert_subset(by, choices = dict)
+    cols_by <- unique(names(dict)[match(by, dict, 0L)])
 
     # columns of datetime
     cols_dt <- c("datetime", "year", "month", "day", "hour", "minute")
+
+    for (m in morphed) {
+        set(m, NULL, setdiff(names(m), c(intersect(names(data_epw), names(m)), cols_by, cols_dt)), NULL)
+    }
 
     # merge into one
     merged <- Reduce(function(...) merge(..., by = c(cols_by, cols_dt)), morphed)
 
     # average by group
-    merged <- merged[, lapply(.SD, mean),
-        .SDcols = setdiff(intersect(names(data_epw), names(merged)), cols_dt),
-        by = c(cols_dt, by)]
+    merged <- merged[, lapply(.SD, mean), by = c(cols_dt, cols_by)]
 
     # in case there are decimal numbers for sky cover
     if ("total_sky_cover" %in% names(merged)) {
@@ -742,7 +825,7 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
         on = c("year", "month", "day", "hour", "minute")]
 
     # split data by grouping variables
-    spl <- split(complete, by = c(by))
+    spl <- split(complete, by = cols_by)
 
     # get base file name
     prefix <- tools::file_path_sans_ext(basename(epw$path()))
@@ -760,24 +843,24 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
     }
 
     if (separate) {
-        subdir <- vapply(spl, function (dt) dt[, do.call(file.path, .SD[1]), .SDcols = by], character(1))
+        subdir <- vapply(spl, function (dt) dt[, do.call(file.path, .SD[1]), .SDcols = cols_by], character(1))
         output <- file.path(dir, subdir, fn)
     } else {
         output <- file.path(dir, fn)
     }
 
-    lapply(seq_along(output), function (i) {
+    invisible(lapply(seq_along(output), function (i) {
         # clone the original EPW
         new_epw <- epw$clone()
 
         # construct the case string used in disclaimer comment
         dash_sep <- function (...) paste0("'", paste(..., sep = "-"), "'")
-        case <- spl[[i]][, do.call(dash_sep, .SD[1]), .SDcols = by]
+        case <- spl[[i]][, do.call(dash_sep, .SD[1]), .SDcols = cols_by]
         # set disclaimer comment
         new_epw$comment1(disclaimer_comment(case))
 
         # set data
-        new_epw$set(spl[[i]], warning = FALSE)
+        suppressMessages(new_epw$set(spl[[i]], warning = FALSE))
 
         # save
         new_dir <- dirname(output[i])
@@ -790,7 +873,7 @@ future_epw <- function (morphed, by = c("experiment_id", "source_id", "interval"
         new_epw$save(output[i], overwrite = overwrite)
 
         new_epw
-    })
+    }))
 }
 # }}}
 

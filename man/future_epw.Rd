@@ -6,7 +6,7 @@
 \usage{
 future_epw(
   morphed,
-  by = c("experiment_id", "source_id", "interval"),
+  by = c("experiment", "source", "interval"),
   dir = ".",
   separate = TRUE,
   overwrite = FALSE
@@ -16,7 +16,18 @@ future_epw(
 \item{morphed}{An \code{epw_cmip6_morphed} object created using \code{\link[=morphing_epw]{morphing_epw()}}.}
 
 \item{by}{A character vector of columns to be used as grouping variables when
-creating EPW files}
+creating EPW files. Should be a subeset of:
+\itemize{
+\item \code{"experiment"}: root experiment identifiers
+\item \code{"source"}: model identifiers
+\item \code{"variable"}: variable identifiers
+\item \code{"activity"}: activity identifiers
+\item \code{"frequency"}: sampling frequency
+\item \code{"variant"}: variant label
+\item \code{"resolution"}: approximate horizontal resolution
+\item \code{"longitude"}: averaged longitude of input data
+\item \code{"latitude"}: averaged latitude of input data
+}}
 
 \item{dir}{The parent directory to save the generated EPW files. If not
 exist, it will be created first. Default: \code{"."}, i.e., current working
@@ -29,7 +40,7 @@ using grouping variables specified in \code{by}.}
 \code{FALSE}.}
 }
 \value{
-A list of generated \link[eplusr:Epw]{eplusr::Epw} objects
+A list of generated \link[eplusr:Epw]{eplusr::Epw} objects, invisibly
 }
 \description{
 Create future EPW files using morphed data
