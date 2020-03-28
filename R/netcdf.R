@@ -179,10 +179,28 @@ summary_database <- function (
         # is because for some GCMs, tracking id can be the same for multiple
         # files. The most safe way is to add additional checking for datetime
         # a) first match using tracking id
-        idx <- ncmeta[, .SD, .SDcols = c("tracking_id", "datetime_start", "datetime_end", cols)][idx, on = "tracking_id"]
+        idx_m <- ncmeta[, .SD, .SDcols = c("tracking_id", "datetime_start", "datetime_end", cols)][idx, on = "tracking_id", nomatch = NULL]
+
         # b) remove files that do not have any overlap in terms of datetime range
-        # but keep rows whose files have not yet been found
-        idx <- idx[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start) | is.na(file_path) | is.na(i.file_path)]
+        idx_m <- idx_m[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start)]
+
+        # c) calculate the overlapped percentages coverred datetime of input
+        # file to index data
+        set(idx_m, NULL, "index_match", seq_len(nrow(idx_m)))
+        idx_m[, by = c("index_match"),
+            overlap := {
+                diff <- as.numeric(difftime(i.datetime_end, i.datetime_start, units = "days"))
+                sq <- seq(datetime_start, datetime_end, by = "1 day")
+                sum(sq >= i.datetime_start & sq <= i.datetime_end) / diff
+        }]
+
+        # d) only keep items that have overlapped percentages larger than 60%
+        idx_m <- idx_m[overlap >= 0.6]
+        set(idx_m, NULL, c("overlap", "index_match"), NULL)
+
+        # e) keep rows whose files have not yet been found
+        idx <- rbindlist(list(idx[!idx_m, on = "index"], idx_m), fill = TRUE)
+        data.table::setorderv(idx, "index")
 
         # store files that are not matched
         left <- ncmeta[!idx, on = "file_path"]
