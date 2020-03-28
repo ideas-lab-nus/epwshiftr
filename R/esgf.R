@@ -727,13 +727,9 @@ get_data_node <- function (speed_test = FALSE, timeout = 3) {
         return(res)
     }
 
-    p <- progress::progress_bar$new(
-        format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = length(nodes_up), clear = FALSE)
-
     # use the pingr package to test the connection speed
     speed <- vapply(nodes_up, function (node) {
-        p$message(sprintf("Testing data node '%s'...", node))
+        message(sprintf("Testing data node '%s'...", node))
         pingr::ping(node, count = 1, timeout = timeout)
     }, numeric(1))
 

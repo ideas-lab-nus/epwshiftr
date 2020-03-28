@@ -19,7 +19,7 @@ Imports:
     future.apply,
     fst,
     jsonlite,
-    progress,
+    progressr,
     psychrolib,
     rappdirs,
     RNetCDF,

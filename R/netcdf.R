@@ -109,6 +109,7 @@ get_nc_meta <- function (file) {
 #' summary_database()
 #' }
 #' @importFrom future.apply future_lapply
+#' @importFrom progressr with_progress
 #' @export
 summary_database <- function (
     dir,
@@ -132,10 +133,7 @@ summary_database <- function (
     # find all nc files in specified directory
     ncfiles <- list.files(dir, "\\.nc$", full.names = TRUE, recursive = recursive)
 
-    p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = length(ncfiles), clear = FALSE)
-
-    p$message(paste0("", length(ncfiles), " NetCDF files found."))
+    message(paste0("", length(ncfiles), " NetCDF files found."))
 
     # columns to be added
     cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
@@ -154,14 +152,19 @@ summary_database <- function (
             }
         }
     } else {
-        ncmeta <- rbindlist(future.apply::future_lapply(ncfiles, function (f) {
-            p$message(paste0("Processing file ", f, "..."))
-            p$tick()
-            meta <- get_nc_meta(f)
-            time <- as.list(get_nc_time(f, range = TRUE))
-            names(time) <- c("datetime_start", "datetime_end")
-            c(meta, time)
-        }))
+        progressr::with_progress({
+            p <- progressr::progressor(along = ncfiles)
+
+            ncmeta <- rbindlist(future.apply::future_lapply(seq_along(ncfiles),
+                function (i) {
+                    p(message = sprintf("[%i/%i]", i, length(ncfiles)))
+                    meta <- get_nc_meta(ncfiles[i])
+                    time <- as.list(get_nc_time(ncfiles[i], range = TRUE))
+                    names(time) <- c("datetime_start", "datetime_end")
+                    c(meta, time)
+                }
+            ))
+        })
 
         ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
 
@@ -471,20 +474,20 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     for (i in seq_along(m_coord)) {
         co <- m_coord[[i]]
 
-        p <- progress::progress_bar$new(
-            format = "[:current/:total][:bar] :percent [:elapsedfull]",
-            total = nrow(co), clear = FALSE)
+        progressr::with_progress({
+            p <- progressr::progressor(nrow(co))
+            i <- 0L
 
-        d <- rbindlist(
-            future.apply::future_Map(
-                function (path, coord) {
-                    p$message(sprintf("Processing file '%s'...", path))
-                    d <- get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
-                    p$tick()
-                    d
-                },
-                co$file_path, co$coord
-        ))
+            d <- rbindlist(
+                future.apply::future_Map(
+                    function (path, coord) {
+                        i <<- i + 1L
+                        p(message = sprintf("[%i/%i]", i, nrow(co)))
+                        get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
+                    },
+                    co$file_path, co$coord
+            ))
+        })
 
         if (!is.null(out_dir)) {
             f <- out_files[i]

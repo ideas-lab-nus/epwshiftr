@@ -110,7 +110,7 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #'       coordinate grids. These values are used to extract the corresponding
 #'       variable values
 #'
-#' @importFrom progress progress_bar
+#' @importFrom progressr with_progress
 #' @importFrom checkmate assert_scalar test_file_exists test_r6
 #' @importFrom eplusr read_epw
 #' @export
@@ -149,13 +149,15 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
     }
 
     message("Start to match coordinates...")
-    p <- progress::progress_bar$new(format = "[:current/:total][:bar] :percent [:elapsedfull]",
-        total = nrow(index), clear = FALSE)
+    progressr::with_progress({
+        p <- progressr::progressor(nrow(index))
+        i <- 0L
 
-    coords <- future.apply::future_lapply(index$file_path, function (f) {
-        p$message(sprintf("Processing file '%s'...", f))
-        p$tick()
-        match_location_coord(f, meta, threshold, max_num)
+        coords <- future.apply::future_lapply(index$file_path, function (f) {
+            i <<- i + 1L
+            p(message = sprintf("[%i/%i]", i, nrow(index)))
+            match_location_coord(f, meta, threshold, max_num)
+        })
     })
 
     data.table::set(index, NULL, "coord", coords)
