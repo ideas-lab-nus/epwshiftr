@@ -672,7 +672,20 @@ match_nc_time <- function (x, years = NULL) {
         y <- data.table::year(time)
         i <- lapply(as.integer(years), function (x) which(y == x))
 
-        list(datetime = lapply(i, function (idx) time[idx]), which = i)
+        j <- 1L
+        l <- list()
+        l[[1L]] <- i[[1L]]
+        for (m in i[-1L]) {
+            if (!length(m)) next
+            if (length(l[[j]]) && l[[j]][length(l[[j]])] + 1L == m[1L]) {
+                l[[j]] <- c(l[[j]], m)
+            } else {
+                j <- j + 1L
+                l[[j]] <- m
+            }
+        }
+
+        list(datetime = lapply(l, function (idx) time[idx]), which = l)
     }
 }
 # }}}
