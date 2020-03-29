@@ -699,3 +699,52 @@ match_nc_time <- function (x, years = NULL) {
     }
 }
 # }}}
+
+# rechunk_nc_dims {{{
+rechunk_nc_dims <- function (nc, out_file) {
+    if (Sys.which("nccopy") == "") return()
+
+    out_file <- normalizePath(out_file, "/", mustWork = FALSE)
+
+    system2("nccopy", c(
+        "-k", "nc4",
+        "-u",
+        "-c", "time/365,lon/1,lat/1",
+        paste0("'", nc, "'"), paste0("'", out_file, "'")
+    ))
+
+    normalizePath(out_file)
+}
+# }}}
+
+# permute_nc_dims {{{
+permute_nc_dims <- function (nc, out_file) {
+    if (Sys.which("ncpdq") == "") return()
+
+    out_file <- normalizePath(out_file, "/", mustWork = FALSE)
+
+    system2("ncpdq", c(
+        "--no_tmp_fl",
+        "-h",
+        "-O",
+        "-a", "lat,lon,time",
+        paste0("'", nc, "'"), paste0("'", out_file, "'")
+    ))
+
+    normalizePath(out_file)
+}
+# }}}
+
+# reorganize_nc_dims {{{
+# Ref: https://github.com/ebimodeling/model-drivers/tree/master/met/cruncep
+reorganize_nc_dims <- function (nc) {
+    f <- rechunk_nc_dims(nc, tempfile(fileext = ".nc"))
+    if (is.null(f)) return(nc)
+    re <- permute_nc_dims(f, nc)
+    unlink(f)
+
+    if (is.null(re)) return(nc)
+
+    re
+}
+# }}}
