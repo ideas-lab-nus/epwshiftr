@@ -335,7 +335,12 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     which_lon <- lons$which
     which_time <- time$which
 
-    dt <- rbindlist(lapply(seq_along(which_time), function (i) {
+    # get dimensions
+    dims <- get_nc_dims(nc)[J(c("lon", "lat", "time")), on = "name"][order(id)][, id := .I]
+    dims[J("lon"), on = "name", `:=`(value = list(which_lon))]
+    dims[J("lat"), on = "name", `:=`(value = list(which_lat))]
+
+    dt <- rbindlist(use.names = TRUE, lapply(seq_along(which_time), function (i) {
         if (!length(which_time[[i]])) {
             return(data.table(
                 value = double(),
@@ -344,21 +349,23 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
             ))
         }
 
+        dims[J("time"), on = "name", `:=`(value = list(which_time[[i]]))]
         # Awkwardness arises mainly from one thing: NetCDF data are written
         # with the last dimension varying fastest, whereas R works opposite.
         # Thus, the order of the dimensions according to the CDL conventions
         # (e.g., time, latitude, longitude) is reversed in the R array (e.g.,
         # longitude, latitude, time).
         dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
-            c(min(which_lon), min(which_lat), min(which_time[[i]])),
-            c(length(which_lon), length(which_lat), length(which_time[[i]])),
+            c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
+            c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
             collapse = FALSE
         ))
+        setnames(dt, c(dims$name, "value"))
+        setnames(dt, "time", "datetime")
 
-        set(dt, NULL, "lon", lons$value[dt$V1])
-        set(dt, NULL, "lat", lats$value[dt$V2])
-        set(dt, NULL, "datetime", time$datetime[[i]][dt$V3])
-        set(dt, NULL, c("V1", "V2", "V3"), NULL)
+        set(dt, NULL, "lon", lons$value[dt$lon])
+        set(dt, NULL, "lat", lats$value[dt$lat])
+        set(dt, NULL, "datetime", time$datetime[[i]][dt$datetime])
     }))
 
     if (unit && nrow(dt)) {
@@ -491,6 +498,9 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     for (i in seq_along(m_coord)) {
         co <- m_coord[[i]]
 
+        if (!is.null(out_dir) && length(by_cols)) {
+            message("Extracting data for case '", names(m_coord)[[i]], "'...")
+        }
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))
             ip <- 0L
