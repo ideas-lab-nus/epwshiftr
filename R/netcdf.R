@@ -3,7 +3,6 @@
 get_nc_meta <- function (file) {
     # to avoid No visible binding for global variable check NOTE
     J <- value <- name <- NULL
-    verbose("Parsing meta data of NetCDF file '", file, "'...")
     # get all attributes
     atts <- get_nc_atts(file)
 
@@ -494,13 +493,13 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
 
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))
-            i <- 0L
+            ip <- 0L
 
             d <- rbindlist(
                 future.apply::future_Map(
                     function (path, coord) {
-                        i <<- i + 1L
-                        p(message = sprintf("[%i/%i]", i, nrow(co)))
+                        ip <<- ip + 1L
+                        p(message = sprintf("[%i/%i]", ip, nrow(co)))
                         get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
                     },
                     co$file_path, co$coord
