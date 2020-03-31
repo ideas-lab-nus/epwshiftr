@@ -580,7 +580,7 @@ get_nc_vars <- function (x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
+    vars <- rbindlist(fill = TRUE, lapply(seq_len(inq$nvars) - 1L, function (i) {
         res <- RNetCDF::var.inq.nc(nc, i)
         res <- res[names(res) != "dimids"]
         res[vapply(res, length, integer(1)) > 0L]
