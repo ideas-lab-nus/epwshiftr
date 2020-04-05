@@ -355,11 +355,29 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         # Thus, the order of the dimensions according to the CDL conventions
         # (e.g., time, latitude, longitude) is reversed in the R array (e.g.,
         # longitude, latitude, time).
-        dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
+        dt <- tryCatch(as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
             c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
-            collapse = FALSE
-        ))
+            collapse = FALSE)),
+            error = function (e) {
+                if (grepl("exceeds dimension bound", conditionMessage(e), fixed = TRUE)) {
+                    NULL
+                } else {
+                    signalCondition(e)
+                }
+            }
+        )
+
+        # in case permutation did not work
+        if (is.null(dt)) {
+            dims <- dims[c(3L, 2L, 1L)][, id := .I]
+            dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
+                c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
+                c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
+                collapse = FALSE
+            ))
+        }
+
         setnames(dt, c(dims$name, "value"))
         setnames(dt, "time", "datetime")
 
