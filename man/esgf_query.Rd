@@ -153,14 +153,15 @@ on the \code{type}:
    6 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    7 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
    8 \tab \code{table_id} \tab Character \tab Table identifier, i.e. sampling frequency identifier \cr
-   9 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
-   10 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
-   11 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
-   12 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
-   13 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
-   14 \tab \code{variable_units} \tab Character \tab Units of variable \cr
-   15 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
-   16 \tab \code{dataset_pid} \tab Character \tab A unique string that helps identify the dataset \cr
+   9 \tab \code{frequency} \tab Character \tab Sampling frequency \cr
+   10 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
+   11 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
+   12 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
+   13 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
+   14 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
+   15 \tab \code{variable_units} \tab Character \tab Units of variable \cr
+   16 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
+   17 \tab \code{dataset_pid} \tab Character \tab A unique string that helps identify the dataset \cr
 }
 
 \item If \code{"File"}, returned columns are:\tabular{rlll}{
@@ -174,18 +175,19 @@ on the \code{type}:
    7 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    8 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
    9 \tab \code{table_id} \tab Character \tab Table identifier, i.e. sampling frequency identifier \cr
-   10 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
-   11 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
-   12 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
-   13 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
-   14 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
-   15 \tab \code{variable_units} \tab Character \tab Units of variable \cr
-   16 \tab \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
-   17 \tab \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
-   18 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
-   19 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
-   20 \tab \code{file_url} \tab Character \tab Model output file download url from HTTP server \cr
-   21 \tab \code{tracking_id} \tab Character \tab A unique string that helps identify the output file \cr
+   10 \tab \code{frequency} \tab Character \tab Sampling frequency \cr
+   11 \tab \code{grid_label} \tab Character \tab Grid identifier \cr
+   12 \tab \code{version} \tab Character \tab Approximate date of model output file \cr
+   13 \tab \code{nominal_resolution} \tab Character \tab Approximate horizontal resolution \cr
+   14 \tab \code{variable_id} \tab Character \tab Variable identifier \cr
+   15 \tab \code{variable_long_name} \tab Character \tab Variable long name \cr
+   16 \tab \code{variable_units} \tab Character \tab Units of variable \cr
+   17 \tab \code{datetime_start} \tab POSIXct \tab Start date and time of simulation \cr
+   18 \tab \code{datetime_end} \tab POSIXct \tab End date and time of simulation \cr
+   19 \tab \code{file_size} \tab Character \tab Model output file size in Bytes \cr
+   20 \tab \code{data_node} \tab Character \tab Data node to download the model output file \cr
+   21 \tab \code{file_url} \tab Character \tab Model output file download url from HTTP server \cr
+   22 \tab \code{tracking_id} \tab Character \tab A unique string that helps identify the output file \cr
 }
 
 }

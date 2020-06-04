@@ -144,14 +144,15 @@
 #'     | 6    | `experiment_id`      | Character | Root experiment identifier                                           |
 #'     | 7    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
 #'     | 8    | `table_id`           | Character | Table identifier, i.e. sampling frequency identifier                 |
-#'     | 9    | `grid_label`         | Character | Grid identifier                                                      |
-#'     | 10   | `version`            | Character | Approximate date of model output file                                |
-#'     | 11   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
-#'     | 12   | `variable_id`        | Character | Variable identifier                                                  |
-#'     | 13   | `variable_long_name` | Character | Variable long name                                                   |
-#'     | 14   | `variable_units`     | Character | Units of variable                                                    |
-#'     | 15   | `data_node`          | Character | Data node to download the model output file                          |
-#'     | 16   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
+#'     | 9    | `frequency`          | Character | Sampling frequency                                                   |
+#'     | 10   | `grid_label`         | Character | Grid identifier                                                      |
+#'     | 11   | `version`            | Character | Approximate date of model output file                                |
+#'     | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | 13   | `variable_id`        | Character | Variable identifier                                                  |
+#'     | 14   | `variable_long_name` | Character | Variable long name                                                   |
+#'     | 15   | `variable_units`     | Character | Units of variable                                                    |
+#'     | 16   | `data_node`          | Character | Data node to download the model output file                          |
+#'     | 17   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
 #'
 #' * If `"File"`, returned columns are:
 #'
@@ -166,18 +167,19 @@
 #'     | 7    | `experiment_id`      | Character | Root experiment identifier                                           |
 #'     | 8    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
 #'     | 9    | `table_id`           | Character | Table identifier, i.e. sampling frequency identifier                 |
-#'     | 10   | `grid_label`         | Character | Grid identifier                                                      |
-#'     | 11   | `version`            | Character | Approximate date of model output file                                |
-#'     | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
-#'     | 13   | `variable_id`        | Character | Variable identifier                                                  |
-#'     | 14   | `variable_long_name` | Character | Variable long name                                                   |
-#'     | 15   | `variable_units`     | Character | Units of variable                                                    |
-#'     | 16   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
-#'     | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
-#'     | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
-#'     | 19   | `data_node`          | Character | Data node to download the model output file                          |
-#'     | 20   | `file_url`           | Character | Model output file download url from HTTP server                      |
-#'     | 21   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
+#'     | 10   | `frequency`          | Character | Sampling frequency                                                   |
+#'     | 11   | `grid_label`         | Character | Grid identifier                                                      |
+#'     | 12   | `version`            | Character | Approximate date of model output file                                |
+#'     | 13   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#'     | 14   | `variable_id`        | Character | Variable identifier                                                  |
+#'     | 15   | `variable_long_name` | Character | Variable long name                                                   |
+#'     | 16   | `variable_units`     | Character | Units of variable                                                    |
+#'     | 17   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
+#'     | 18   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
+#'     | 19   | `file_size`          | Character | Model output file size in Bytes                                      |
+#'     | 20   | `data_node`          | Character | Data node to download the model output file                          |
+#'     | 21   | `file_url`           | Character | Model output file download url from HTTP server                      |
+#'     | 22   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
@@ -363,7 +365,7 @@ extract_query_file <- function (q) {
 #' @param save If `TRUE`, the results will be saved into user data directory.
 #'        Default: `TRUE`.
 #'
-#' @return A [data.table::data.table] with 20 columns:
+#' @return A [data.table::data.table] with 22 columns:
 #'
 #' | No.  | Column               | Type      | Description                                                          |
 #' | ---: | -----                | -----     | -----                                                                |
@@ -376,18 +378,19 @@ extract_query_file <- function (q) {
 #' | 7    | `experiment_id`      | Character | Root experiment identifier                                           |
 #' | 8    | `member_id`          | Character | A compound construction from `sub_experiment_id` and `variant_label` |
 #' | 9    | `table_id`           | Character | Table identifier                                                     |
-#' | 10   | `grid_label`         | Character | Grid identifier                                                      |
-#' | 11   | `version`            | Character | Approximate date of model output file                                |
-#' | 12   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
-#' | 13   | `variable_id`        | Character | Variable identifier                                                  |
-#' | 14   | `variable_long_name` | Character | Variable long name                                                   |
-#' | 15   | `variable_units`     | Character | Units of variable                                                    |
-#' | 16   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
-#' | 17   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
-#' | 18   | `file_size`          | Character | Model output file size in Bytes                                      |
-#' | 19   | `data_node`          | Character | Data node to download the model output file                          |
-#' | 20   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
-#' | 21   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
+#' | 10   | `frequency`          | Character | Sampling frequency                                                   |
+#' | 11   | `grid_label`         | Character | Grid identifier                                                      |
+#' | 12   | `version`            | Character | Approximate date of model output file                                |
+#' | 13   | `nominal_resolution` | Character | Approximate horizontal resolution                                    |
+#' | 14   | `variable_id`        | Character | Variable identifier                                                  |
+#' | 15   | `variable_long_name` | Character | Variable long name                                                   |
+#' | 16   | `variable_units`     | Character | Units of variable                                                    |
+#' | 17   | `datetime_start`     | POSIXct   | Start date and time of simulation                                    |
+#' | 18   | `datetime_end`       | POSIXct   | End date and time of simulation                                      |
+#' | 19   | `file_size`          | Character | Model output file size in Bytes                                      |
+#' | 20   | `data_node`          | Character | Data node to download the model output file                          |
+#' | 21   | `dataset_pid`        | Character | A unique string that helps identify the dataset                      |
+#' | 22   | `tracking_id`        | Character | A unique string that helps identify the output file                  |
 #'
 #' @examples
 #' \dontrun{
@@ -489,10 +492,11 @@ init_cmip6_index <- function (
 
     data.table::setcolorder(dt, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "grid_label",
-        "version", "nominal_resolution", "variable_id", "variable_long_name",
-        "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "file_url", "dataset_pid", "tracking_id"
+        "source_id", "experiment_id", "member_id", "table_id", "frequency",
+        "grid_label", "version", "nominal_resolution", "variable_id",
+        "variable_long_name", "variable_units", "datetime_start",
+        "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
+        "tracking_id"
     ))
 
     # use non-equi join to extract matched rows
@@ -624,11 +628,12 @@ set_cmip6_index <- function (index, save = TRUE) {
     checkmate::assert_data_table(index)
     checkmate::assert_subset(names(index),
         c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "grid_label", "version",
-        "nominal_resolution", "variable_id", "variable_long_name", "variable_units",
-        "datetime_start", "datetime_end", "file_size", "data_node", "file_url",
-        "dataset_pid", "tracking_id", "file_path", "file_realsize", "file_mtime",
-        "time_units", "time_calendar")
+        "source_id", "experiment_id", "member_id", "table_id", "frequency",
+        "grid_label", "version", "nominal_resolution", "variable_id",
+        "variable_long_name", "variable_units", "datetime_start",
+        "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
+        "tracking_id", "file_path", "file_realsize", "file_mtime", "time_units",
+        "time_calendar")
     )
 
     # save database into the app data directory

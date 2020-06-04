@@ -23,7 +23,7 @@ test_that("Query ESGF", {
     expect_equal(names(qd),
         c(
             "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
-            "experiment_id", "member_id", "table_id", "grid_label",
+            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "data_node", "dataset_pid"
         )
@@ -52,10 +52,10 @@ test_that("Query ESGF", {
     expect_equal(names(qf),
         c(
             "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-            "source_id", "experiment_id", "member_id", "table_id", "grid_label",
-            "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "datetime_start", "datetime_end", "file_size",
-            "data_node", "file_url", "tracking_id"
+            "source_id", "experiment_id", "member_id", "table_id", "frequency", 
+            "grid_label", "version", "nominal_resolution", "variable_id",
+            "variable_long_name", "variable_units", "datetime_start",
+            "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
         )
     )
 
@@ -73,10 +73,11 @@ test_that("Build CMIP6 file index database", {
     expect_equal(names(idx),
         c(
             "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-            "source_id", "experiment_id", "member_id", "table_id", "grid_label",
-            "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "datetime_start", "datetime_end", "file_size",
-            "data_node", "file_url", "dataset_pid", "tracking_id"
+            "source_id", "experiment_id", "member_id", "table_id", "frequency",
+            "grid_label", "version", "nominal_resolution", "variable_id",
+            "variable_long_name", "variable_units", "datetime_start",
+            "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
+            "tracking_id"
         )
     )
     expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
