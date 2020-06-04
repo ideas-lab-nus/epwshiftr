@@ -299,7 +299,7 @@ esgf_query <- function (
 extract_query_dataset <- function (q) {
     dt <- data.table::rbindlist(lapply(q$response$docs, function (l) {
         l <- l[c("id", "mip_era", "activity_drs", "institution_id", "source_id",
-            "experiment_id", "member_id", "table_id", "grid_label",
+            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
             "version", "nominal_resolution", "variable_id", "variable_long_name",
             "variable_units", "data_node", "pid")]
         lapply(l, unlist)
@@ -315,9 +315,10 @@ extract_query_file <- function (q) {
     id <- NULL
     dt_file <- data.table::rbindlist(lapply(q$response$docs, function (l) {
         l <- l[c("id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-            "source_id", "experiment_id", "member_id", "table_id", "grid_label",
-            "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node", "size", "url", "tracking_id")]
+            "source_id", "experiment_id", "member_id", "table_id", "frequency",
+            "grid_label", "version", "nominal_resolution", "variable_id",
+            "variable_long_name", "variable_units", "data_node", "size", "url",
+            "tracking_id")]
         l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
         if (!length(l$url)) {
             warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
@@ -333,10 +334,10 @@ extract_query_file <- function (q) {
         c("file_id", "file_size", "file_url"))
     data.table::setcolorder(dt_file, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "grid_label",
-        "version", "nominal_resolution", "variable_id", "variable_long_name",
-        "variable_units", "datetime_start", "datetime_end", "file_size",
-        "data_node", "file_url", "tracking_id"
+        "source_id", "experiment_id", "member_id", "table_id", "frequency",
+        "grid_label", "version", "nominal_resolution", "variable_id",
+        "variable_long_name", "variable_units", "datetime_start",
+        "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
     ))
 
     dt_file
@@ -451,12 +452,12 @@ init_cmip6_index <- function (
 
         # use qd to construction query for files
         q <- unique(nf[, .SD, .SDcols = c("activity_drs", "source_id", "member_id",
-            "experiment_id", "nominal_resolution", "table_id", "variable_id")])
+            "experiment_id", "nominal_resolution", "table_id", "frequency", "variable_id")])
 
         qf <- esgf_query(
             activity = unique(q$activity_drs),
             variable = unique(q$variable_id),
-            frequency = unique(q$table_id),
+            frequency = unique(q$frequency),
             experiment = unique(q$experiment_id),
             source = unique(q$source_id),
             variant = unique(q$member_id),

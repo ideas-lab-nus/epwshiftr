@@ -14,7 +14,7 @@ Description:
     Climate Model (GCM).
 Imports:
     checkmate,
-    data.table,
+    data.table (>= 1.12.4),
     eplusr,
     future.apply,
     fst,
