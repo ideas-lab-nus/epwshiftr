@@ -325,11 +325,10 @@ extract_query_file <- function (q) {
             l$url <- NA_character_
         }
         lapply(l, unlist)
-    }))[, c("datetime_start", "datetime_end") := {
-        m <- regexpr("([0-9]{8})-([0-9]{8})", id)
-        s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
-        lapply(s, as.POSIXct, format = "%Y%m%d", tz = "UTC")
-    }][, url := gsub("\\|.+$", "", url)]
+    }))
+
+    dt_file[, c("datetime_start", "datetime_end") := parse_file_date(id, frequency)]
+    dt_file[, url := gsub("\\|.+$", "", url)]
     data.table::setnames(dt_file, c("id", "size", "url"),
         c("file_id", "file_size", "file_url"))
     data.table::setcolorder(dt_file, c(
@@ -735,5 +734,37 @@ get_data_node <- function (speed_test = FALSE, timeout = 3) {
     }, numeric(1))
 
     res[status == "UP", ping := speed][order(ping)]
+}
+# }}}
+
+# parse_file_date {{{
+#' @importFrom data.table fifelse
+parse_file_date <- function (id, frequency) {
+    dig <- fifelse(grepl("hr", frequency, fixed = TRUE), 12L,
+        fifelse(frequency == "day", 8L,
+            fifelse(frequency == "dec", 4L,
+                fifelse(grepl("mon", frequency, fixed = TRUE), 6L,
+                    fifelse(grepl("yr", frequency, fixed = TRUE), 4L, 0L)))))
+
+    reg <- sprintf("([0-9]{%i})-([0-9]{%i})", dig, dig)
+    reg[dig == 0L] <- NA_character_
+
+    suf <- fifelse(dig == 0L, "",
+        fifelse(dig == 4L, "0101",
+            fifelse(dig == 6L, "01", "")))
+
+    fmt <- fifelse(dig == 0L, NA_character_,
+        fifelse(dig == 4L, "%Y%m%d",
+            fifelse(dig == 6L, "%Y%m%d",
+                fifelse(dig == 8L, "%Y%m%d",
+                    fifelse(dig == 12L, "%Y%m%d%H%M%s", NA_character_)))))
+
+    data.table(id, reg, suf, fmt)[
+        !J(NA_character_), on = "reg", by = "reg",
+        c("datetime_start", "datetime_end") := {
+        m <- regexpr(.BY$reg, id)
+        s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
+        lapply(s, function (x) as.POSIXct(paste0(x, suf), format = fmt[1L], tz = "UTC"))
+    }][, .SD, .SDcols = c("datetime_start", "datetime_end")]
 }
 # }}}
