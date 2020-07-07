@@ -106,6 +106,8 @@ get_nc_meta <- function (file) {
 #' @examples
 #' \dontrun{
 #' summary_database()
+#'
+#' summary_database(by = "experiment")
 #' }
 #' @importFrom future.apply future_lapply
 #' @importFrom progressr with_progress
@@ -480,6 +482,11 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' @importFrom units set_units
 #' @importFrom future.apply future_Map
 #' @importFrom fst write_fst
+#' @examples
+#' \dontrun{
+#' coord <- match_coord("path_to_an_EPW")
+#' extract_data(coord, years = 2030:2060)
+#' }
 #' @export
 extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
                           by = NULL, keep = is.null(out_dir), compress = 100) {

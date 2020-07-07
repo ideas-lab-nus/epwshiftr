@@ -113,6 +113,16 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #' @importFrom progressr with_progress
 #' @importFrom checkmate assert_scalar test_file_exists test_r6
 #' @importFrom eplusr read_epw
+#'
+#' @examples
+#' \dontrun{
+#' # download an EPW from EnergyPlus website
+#' epw <- eplusr::download_weather("los angeles.*TMY3", dir = tempdir(),
+#'     type = "EPW", ask = FALSE)
+#'
+#' match_coord(epw, threshold = list(lon = 1.0, lat = 1.0))
+#' }
+#'
 #' @export
 match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL) {
     # load file index

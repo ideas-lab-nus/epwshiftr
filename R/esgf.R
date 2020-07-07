@@ -686,7 +686,9 @@ get_data_dir <- function () {
 #' | `ping`      | double    | Data node response in milliseconds during speed test                            |
 #'
 #' @examples
-#' get_data_dir()
+#' \donttest{
+#' get_data_node()
+#' }
 #'
 #' @export
 get_data_node <- function (speed_test = FALSE, timeout = 3) {

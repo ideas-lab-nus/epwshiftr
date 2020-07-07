@@ -87,5 +87,7 @@ speed up data extraction in parallel. By default, \code{summary_database()} uses
 \examples{
 \dontrun{
 summary_database()
+
+summary_database(by = "experiment")
 }
 }

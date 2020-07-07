@@ -86,3 +86,9 @@ underneath. You can use your preferable \link[future:plan]{future} backend to
 speed up data extraction in parallel. By default, \code{extract_data()} uses
 \link[future:sequential]{future::sequential} backend, which runs things in sequential.
 }
+\examples{
+\dontrun{
+coord <- match_coord("path_to_an_EPW")
+extract_data(coord, years = 2030:2060)
+}
+}

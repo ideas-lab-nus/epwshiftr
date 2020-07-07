@@ -58,3 +58,13 @@ underneath. You can use your preferable \link[future:plan]{future} backend to
 speed up data extraction in parallel. By default, \code{match_coord()} uses
 \link[future:sequential]{future::sequential} backend, which runs things in sequential.
 }
+\examples{
+\dontrun{
+# download an EPW from EnergyPlus website
+epw <- eplusr::download_weather("los angeles.*TMY3", dir = tempdir(),
+    type = "EPW", ask = FALSE)
+
+match_coord(epw, threshold = list(lon = 1.0, lat = 1.0))
+}
+
+}
