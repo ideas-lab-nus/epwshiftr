@@ -6,10 +6,10 @@
 \alias{epwshiftr-package}
 \title{epwshiftr: Create future EnergyPlus Weather files using CMIP6 data}
 \description{
-Query, download climate change projection data from CMIP6 (Coupled Model
-Intercomparison Project Phase 6) project and create future EnergyPlus Weather
-(EPW) files adjusted from climate changes using data from Global Climate
-Model (GCM).
+Query, download climate change projection data from the \href{https://pcmdi.llnl.gov/CMIP6}{CMIP6 (Coupled Model Intercomparison Project Phase 6) project} in
+the \href{https://esgf.llnl.gov}{ESGF (Earth System Grid Federation) platform},
+and create future \href{https://energyplus.net}{EnergyPlus} Weather (EPW) files
+adjusted from climate changes using data from Global Climate Models (GCM).
 }
 \section{Package options}{
 
@@ -25,8 +25,8 @@ directory will be used.
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/hongyuanjia/epwshiftr}
-  \item Report bugs at \url{https://github.com/hongyuanjia/epwshiftr/issues}
+  \item \url{https://github.com/ideas-lab-nus/epwshiftr}
+  \item Report bugs at \url{https://github.com/ideas-lab-nus/epwshiftr/issues}
 }
 
 }
