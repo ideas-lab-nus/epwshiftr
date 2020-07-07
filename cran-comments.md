@@ -19,22 +19,20 @@
 Comments from CRAN maintainer:
 
 ```
-Please add hyperlinks to the websites of the diffeent projects in the
-form <https://.....>.
+Thanks, please replace \dontrun{} by \donttest{} in your Rd-files, if
+the functions do not need an API key.
 
-Please single quote software names and other non English usage in Title
-and Description fields, e.g. write 'EnergyPlus'.
-
-The Title field should be in title case. Current version is:
-  Create future EnergyPlus Weather files using CMIP6 data
-
-In title case that is:
-'Create Future 'EnergyPlus' Weather Files using 'CMIP6' Data
+Please ensure that your functions do not modify (save or delete) the
+user's home filespace in your examples/vignettes/tests. That is not
+allow by CRAN policies. Please only write/save files if the user has
+specified a directory. In your examples/vignettes/tests you can write to
+tempdir().
 
 Please fix and resubmit.
 ```
 
-I corrected the `Title` field in DESCRIPTION into title case,
-single-quoted all abbreviations, and added all links for external
-projects.
+Revisions:
 
+* I change the example of `get_data_node()` to `\donttest{}`.
+* Now all functions will not write to user home filespace by default.
+* I change Tests so that it only writes to `tempdir()`.
