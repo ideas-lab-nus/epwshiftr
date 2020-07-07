@@ -496,5 +496,5 @@ Hongyuan Jia
 ## Contribute
 
 Please note that the ‘epwshiftr’ project is released with a [Contributor
-Code of Conduct](.github/CODE_OF_CONDUCT.md). By contributing to this
+Code of Conduct](https://github.com/hongyuanjia/epwshiftr/blob/master/.github/CODE_OF_CONDUCT.md). By contributing to this
 project, you agree to abide by its terms.
