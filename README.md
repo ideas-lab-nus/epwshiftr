@@ -35,20 +35,18 @@ coverage](https://codecov.io/gh/hongyuanjia/epwshiftr/branch/master/graph/badge.
 
 ## Installation
 
-<!-- You can install the released version of epwshiftr from [CRAN](https://CRAN.R-project.org) with: -->
+You can install the latest stable release of epwshiftr from
+[CRAN](https://CRAN.R-project.org).
 
-<!-- ``` r -->
+``` r
+install.packages("epwshiftr")
+```
 
-<!-- install.packages("epwshiftr") -->
-
-<!-- ``` -->
-
-You can install the development version from
-[GitHub](https://github.com/) with:
+Alternatively, you can install the development version from GitHub.
 
 ``` r
 # install.packages("remotes")
-remotes::install_github("hongyuanjia/epwshiftr")
+remotes::install_github("ideas-lab-nus/epwshiftr")
 ```
 
 ## Get started
