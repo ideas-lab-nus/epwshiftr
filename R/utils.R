@@ -67,5 +67,5 @@ utils::globalVariables(c(
     "source_type", "state_province", "table_id", "title", "total_sky_cover",
     "val_max", "val_mean", "val_min", "value", "value_max", "value_min",
     "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
-    "interval", "time_calendar", "time_units", "overlap"
+    "interval", "time_calendar", "time_units", "overlap", "frequency"
 ))
