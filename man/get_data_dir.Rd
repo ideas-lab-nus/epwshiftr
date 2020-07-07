@@ -10,9 +10,11 @@ get_data_dir()
 A single string.
 }
 \description{
-Get the path of directory where epwshiftr data is stored
+If option \code{epwshiftr.dir} is set, use it. Otherwise, get package data storage
+directory using \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.
 }
 \examples{
+options(epwshiftr.dir = tempdir())
 get_data_dir()
 
 }

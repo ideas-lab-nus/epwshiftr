@@ -78,7 +78,7 @@ get_nc_meta <- function (file) {
 #' @param update If `TRUE`, the output file index will be updated based
 #'        on the matched NetCDF files in specified directory. If `FALSE`, only
 #'        current loaded index will be updated, but the actual index
-#'        database file saved in [rappdirs::app_dir()] will remain unchanged.
+#'        database file saved in [get_data_dir()] will remain unchanged.
 #'        Default: `FALSE`.
 #'
 #' @param warning If `TRUE`, warning messages will show when multiple files

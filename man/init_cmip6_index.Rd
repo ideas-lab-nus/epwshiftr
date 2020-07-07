@@ -20,7 +20,7 @@ init_cmip6_index(
   limit = 10000L,
   data_node = NULL,
   years = NULL,
-  save = TRUE
+  save = FALSE
 )
 }
 \arguments{
@@ -141,7 +141,7 @@ the data file. All other years will be excluded. If \code{NULL}, no
 subsetting on years will be performed. Default: \code{NULL}.}
 
 \item{save}{If \code{TRUE}, the results will be saved into user data directory.
-Default: \code{TRUE}.}
+Default: \code{FALSE}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 22 columns:\tabular{rlll}{

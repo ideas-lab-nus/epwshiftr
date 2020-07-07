@@ -46,7 +46,7 @@ stored in different directories. Default: \code{FALSE}.}
 \item{update}{If \code{TRUE}, the output file index will be updated based
 on the matched NetCDF files in specified directory. If \code{FALSE}, only
 current loaded index will be updated, but the actual index
-database file saved in \code{\link[rappdirs:app_dir]{rappdirs::app_dir()}} will remain unchanged.
+database file saved in \code{\link[=get_data_dir]{get_data_dir()}} will remain unchanged.
 Default: \code{FALSE}.}
 
 \item{warning}{If \code{TRUE}, warning messages will show when multiple files

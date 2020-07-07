@@ -363,7 +363,7 @@ extract_query_file <- function (q) {
 #'        the data file. All other years will be excluded. If `NULL`, no
 #'        subsetting on years will be performed. Default: `NULL`.
 #' @param save If `TRUE`, the results will be saved into user data directory.
-#'        Default: `TRUE`.
+#'        Default: `FALSE`.
 #'
 #' @return A [data.table::data.table] with 22 columns:
 #'
@@ -416,7 +416,7 @@ init_cmip6_index <- function (
     limit = 10000L,
     data_node = NULL,
     years = NULL,
-    save = TRUE
+    save = FALSE
 )
 {
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
@@ -618,13 +618,13 @@ load_cmip6_index <- function (force = FALSE) {
 #' @param index A [data.table::data.table()] containing the same column names
 #'        and types as the output of [init_cmip6_index()].
 #'
-#' @param save If `TRUE`, Besides loaded index, the index file saved to data
+#' @param save If `TRUE`, besides loaded index, the index file saved to data
 #'        directory will be also updated. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table()].
 #' @importFrom checkmate assert_data_table
 #' @export
-set_cmip6_index <- function (index, save = TRUE) {
+set_cmip6_index <- function (index, save = FALSE) {
     checkmate::assert_data_table(index)
     checkmate::assert_subset(names(index),
         c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
@@ -652,8 +652,13 @@ set_cmip6_index <- function (index, save = TRUE) {
 # get_data_dir {{{
 #' Get the path of directory where epwshiftr data is stored
 #'
+#' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
+#' directory using [rappdirs::user_data_dir()].
+#'
 #' @return A single string.
+#'
 #' @examples
+#' options(epwshiftr.dir = tempdir())
 #' get_data_dir()
 #'
 #' @export

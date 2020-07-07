@@ -20,7 +20,6 @@
 
 # package internal environment
 EPWSHIFTR_ENV <- new.env(parent = emptyenv())
-EPWSHIFTR_ENV$data_dir <- .data_dir(init = TRUE)
 EPWSHIFTR_ENV$index_db <- NULL
 
 # set package options

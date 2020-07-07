@@ -9,7 +9,8 @@ verbose <- function (..., sep = "") {
 # .data_dir {{{
 #' Get the package data storage directory
 #'
-#' Get package data storage directory using [rappdirs::user_data_dir()].
+#' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
+#' directory using [rappdirs::user_data_dir()].
 #'
 #' @param init If TRUE, the directory will be created if not exists.
 #' @param force If TRUE, issue an error if the directory does not exist.

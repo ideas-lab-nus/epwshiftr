@@ -67,8 +67,8 @@ test_that("Query ESGF", {
 
 # build_smip_index {{{
 test_that("Build CMIP6 file index database", {
-    options("epwshiftr.dir" = tempdir())
-    expect_silent(idx <- init_cmip6_index(variable = "tas", source = "AWI-CM-1-1-MR", limit = 1))
+    options(epwshiftr.dir = tempdir())
+    expect_silent(idx <- init_cmip6_index(variable = "tas", source = "AWI-CM-1-1-MR", limit = 1, save = TRUE))
     expect_is(idx, "data.table")
     expect_equal(names(idx),
         c(
@@ -93,6 +93,8 @@ test_that("Get package data storage directory", {
     options("epwshiftr.dir" = "a")
     expect_error(get_data_dir(), "not exists")
     options("epwshiftr.dir" = NULL)
+    skip_on_cran()
+    .data_dir(TRUE)
     if (.Platform$OS.type == "windows") {
         expect_equal(get_data_dir(), user_data_dir(appauthor = "epwshiftr"))
     } else {

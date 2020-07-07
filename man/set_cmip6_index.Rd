@@ -4,13 +4,13 @@
 \alias{set_cmip6_index}
 \title{Set CMIP6 index}
 \usage{
-set_cmip6_index(index, save = TRUE)
+set_cmip6_index(index, save = FALSE)
 }
 \arguments{
 \item{index}{A \code{\link[data.table:data.table]{data.table::data.table()}} containing the same column names
 and types as the output of \code{\link[=init_cmip6_index]{init_cmip6_index()}}.}
 
-\item{save}{If \code{TRUE}, Besides loaded index, the index file saved to data
+\item{save}{If \code{TRUE}, besides loaded index, the index file saved to data
 directory will be also updated. Default: \code{FALSE}.}
 }
 \value{
