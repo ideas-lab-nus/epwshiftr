@@ -350,7 +350,7 @@ extract_query_file <- function (q) {
 #'
 #' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
 #' , return a [data.table::data.table()] containing the actual NetCDF file url
-#' to download, and store it into user data directory for futher use.
+#' to download, and store it into user data directory for future use.
 #'
 #' For details on where the file index is stored, see [rappdirs::user_data_dir()].
 #'

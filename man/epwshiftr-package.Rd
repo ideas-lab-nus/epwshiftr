@@ -7,7 +7,7 @@
 \title{epwshiftr: Create future EnergyPlus Weather files using CMIP6 data}
 \description{
 Query, download climate change projection data from CMIP6 (Coupled Model
-Intercomparison Project Phase 6) project and create futher EnergyPlus Weather
+Intercomparison Project Phase 6) project and create future EnergyPlus Weather
 (EPW) files adjusted from climate changes using data from Global Climate
 Model (GCM).
 }

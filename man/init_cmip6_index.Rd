@@ -173,7 +173,7 @@ A \link[data.table:data.table]{data.table::data.table} with 22 columns:\tabular{
 \description{
 \code{init_cmip6_index()} will search the CMIP6 model output file using \code{\link[=esgf_query]{esgf_query()}}
 , return a \code{\link[data.table:data.table]{data.table::data.table()}} containing the actual NetCDF file url
-to download, and store it into user data directory for futher use.
+to download, and store it into user data directory for future use.
 }
 \details{
 For details on where the file index is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.

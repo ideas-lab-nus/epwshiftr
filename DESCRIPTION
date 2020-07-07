@@ -9,7 +9,7 @@ Authors@R:
            comment = c(ORCID = "0000-0002-0075-8183"))
 Description:
     Query, download climate change projection data from CMIP6 (Coupled Model
-    Intercomparison Project Phase 6) project and create futher EnergyPlus
+    Intercomparison Project Phase 6) project and create future EnergyPlus
     Weather (EPW) files adjusted from climate changes using data from Global
     Climate Models (GCM).
 Imports:
