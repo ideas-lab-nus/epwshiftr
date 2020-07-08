@@ -31,7 +31,7 @@ f <- c("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
 file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 ```
 
-# epwshiftr
+# epwshiftr <img src="man/figures/logo.svg" align="right" />
 
 <!-- badges: start -->
 [![Travis build status](https://travis-ci.com/hongyuanjia/epwshiftr.svg?branch=master)](https://travis-ci.com/hongyuanjia/epwshiftr)

@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# epwshiftr
+# epwshiftr <img src="man/figures/logo.svg" align="right" />
 
 <!-- badges: start -->
 
