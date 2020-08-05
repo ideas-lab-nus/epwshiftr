@@ -470,7 +470,7 @@ sapply(epws, function (epw) epw$path())
 
 ## Author
 
-Hongyuan Jia
+Hongyuan Jia and Adrian Chong
 
 ## License
 
@@ -478,7 +478,7 @@ Hongyuan Jia
     
     epwshiftr is released under the terms of MIT License.
     
-    Copyright © 2019 Hongyuan Jia
+    Copyright © 2019 Hongyuan Jia and Adrian Chong
 
   - **CMIP6 data**
     
