@@ -45,9 +45,9 @@ get_nc_meta <- function (file) {
 #' [load_cmip6_index()].
 #'
 #' `summary_database()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable [future][future::plan] backend to
+#' underneath. You can use your preferable future backend to
 #' speed up data extraction in parallel. By default, `summary_database()` uses
-#' [future::sequential] backend, which runs things in sequential.
+#' `future::sequential` backend, which runs things in sequential.
 #'
 #' @param dir A single string indcating the directory where CMIP6 model output
 #'        NetCDF files are stored.
@@ -417,9 +417,9 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' interest specified.
 #'
 #' `extract_data()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable [future][future::plan] backend to
+#' underneath. You can use your preferable future backend to
 #' speed up data extraction in parallel. By default, `extract_data()` uses
-#' [future::sequential] backend, which runs things in sequential.
+#' `future::sequential` backend, which runs things in sequential.
 #'
 #' @param coord An `epw_cmip6_coord` object created using [match_coord()]
 #'

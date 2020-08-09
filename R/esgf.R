@@ -279,9 +279,12 @@ esgf_query <- function (
         pair(limit) %and%
         pair(format)
 
-    q <- jsonlite::read_json(q)
+    q <- tryCatch(jsonlite::read_json(q), warning = function (w) w, error = function (e) e)
 
-    if (q$response$numFound == 0L) {
+    if (inherits(q, "warning") || inherits(q, "error")) {
+        message("No matched data. Please check network connection and the availability of LLNL ESGF node.")
+        dt <- data.table::data.table()
+    } else if (q$response$numFound == 0L) {
         message("No matched data. Please examine the actual response using 'attr(x, \"response\")'.")
         dt <- data.table::data.table()
     } else if (type == "Dataset") {
