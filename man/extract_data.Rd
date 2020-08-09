@@ -82,9 +82,9 @@ interest specified.
 }
 \details{
 \code{extract_data()} uses \link[future.apply:future_lapply]{future.apply}
-underneath. You can use your preferable \link[future:plan]{future} backend to
+underneath. You can use your preferable future backend to
 speed up data extraction in parallel. By default, \code{extract_data()} uses
-\link[future:sequential]{future::sequential} backend, which runs things in sequential.
+\code{future::sequential} backend, which runs things in sequential.
 }
 \examples{
 \dontrun{
