@@ -70,9 +70,9 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #' corresponding values that meet specified threshold in NetCDF files.
 #'
 #' `match_coord()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable [future][future::plan] backend to
+#' underneath. You can use your preferable future backend to
 #' speed up data extraction in parallel. By default, `match_coord()` uses
-#' [future::sequential] backend, which runs things in sequential.
+#' `future::sequential` backend, which runs things in sequential.
 #'
 #' @param epw Possible values:
 #'
