@@ -188,12 +188,16 @@ summary_database <- function (
         # c) calculate the overlapped percentages coverred datetime of input
         # file to index data
         set(idx_m, NULL, "index_match", seq_len(nrow(idx_m)))
-        idx_m[, by = c("index_match"),
-            overlap := {
-                diff <- as.numeric(difftime(i.datetime_end, i.datetime_start, units = "days"))
-                sq <- seq(datetime_start, datetime_end, by = "1 day")
-                sum(sq >= i.datetime_start & sq <= i.datetime_end) / diff
-        }]
+        if (!nrow(idx_m)) {
+            set(idx_m, NULL, "overlap", double())
+        } else {
+            idx_m[, by = c("index_match"),
+                overlap := {
+                    diff <- as.numeric(difftime(i.datetime_end, i.datetime_start, units = "days"))
+                    sq <- seq(datetime_start, datetime_end, by = "1 day")
+                    sum(sq >= i.datetime_start & sq <= i.datetime_end) / diff
+            }]
+        }
 
         # d) only keep items that have overlapped percentages larger than 60%
         idx_m <- idx_m[overlap >= 0.6]
