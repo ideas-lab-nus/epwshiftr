@@ -6,13 +6,13 @@
 <!-- badges: start -->
 
 [![Travis build
-status](https://travis-ci.com/hongyuanjia/epwshiftr.svg?branch=master)](https://travis-ci.com/hongyuanjia/epwshiftr)
+status](https://travis-ci.com/ideas-lab-nus/epwshiftr.svg?branch=master)](https://travis-ci.com/hongyuanjia/epwshiftr)
 [![AppVeyor build
-status](https://ci.appveyor.com/api/projects/status/github/hongyuanjia/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/hongyuanjia/epwshiftr)
+status](https://ci.appveyor.com/api/projects/status/github/ideas-lab-nus/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/hongyuanjia/epwshiftr)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
 [![Codecov test
-coverage](https://codecov.io/gh/hongyuanjia/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/hongyuanjia/epwshiftr?branch=master)
+coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/hongyuanjia/epwshiftr?branch=master)
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data
@@ -478,7 +478,7 @@ Hongyuan Jia and Adrian Chong
     
     epwshiftr is released under the terms of MIT License.
     
-    Copyright © 2019 Hongyuan Jia and Adrian Chong
+    Copyright © 2019-2020 Hongyuan Jia and Adrian Chong
 
   - **CMIP6 data**
     
@@ -494,5 +494,6 @@ Hongyuan Jia and Adrian Chong
 ## Contribute
 
 Please note that the ‘epwshiftr’ project is released with a [Contributor
-Code of Conduct](https://github.com/hongyuanjia/epwshiftr/blob/master/.github/CODE_OF_CONDUCT.md). By contributing to this
-project, you agree to abide by its terms.
+Code of
+Conduct](https://github.com/ideas-lab-nus/epwshiftr/blob/master/.github/CODE_OF_CONDUCT.md).
+By contributing to this project, you agree to abide by its terms.

@@ -3,6 +3,8 @@ destination: docs
 authors:
   Hongyuan Jia:
     href: https://github.com/hongyuanjia
+  Adrian Chong:
+    href: https://github.com/adChong
 
 development:
   model: auto
