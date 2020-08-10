@@ -1,6 +1,6 @@
 Package: epwshiftr
 Title: Create Future 'EnergyPlus' Weather Files using 'CMIP6' Data
-Version: 0.1.0.9000
+Version: 0.1.1
 Authors@R: c(
     person(given = "Hongyuan",
            family = "Jia",
