@@ -342,6 +342,29 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     dims[J("lon"), on = "name", `:=`(value = list(which_lon))]
     dims[J("lat"), on = "name", `:=`(value = list(which_lat))]
 
+    # find correct dimentions
+    ord <- list(
+        c("lon", "lat", "time"),
+        c("lat", "lon", "time"),
+        c("time", "lon", "lat"),
+        c("lat", "time", "lon"),
+        c("lon", "time", "lat"),
+        c("time", "lat", "lon")
+    )
+    ord <- ord[vapply(ord, function (i) {
+        d <- dims[J(i), on = "name"]$length
+        !is.null(tryCatch(RNetCDF::var.get.nc(nc, var, d, rep(1L, 3), collapse = FALSE),
+            error = function (e) {
+                if (grepl("exceeds dimension bound", conditionMessage(e), fixed = TRUE)) {
+                    NULL
+                } else {
+                    signalCondition(e)
+                }
+            }
+        ))
+    }, logical(1))][[1L]]
+    dims <- dims[J(ord), on = "name"]
+
     dt <- rbindlist(use.names = TRUE, lapply(seq_along(which_time), function (i) {
         if (!length(which_time[[i]])) {
             return(data.table(
@@ -357,28 +380,11 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         # Thus, the order of the dimensions according to the CDL conventions
         # (e.g., time, latitude, longitude) is reversed in the R array (e.g.,
         # longitude, latitude, time).
-        dt <- tryCatch(as.data.table(RNetCDF::var.get.nc(nc, var,
+        dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
             c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
-            collapse = FALSE)),
-            error = function (e) {
-                if (grepl("exceeds dimension bound", conditionMessage(e), fixed = TRUE)) {
-                    NULL
-                } else {
-                    signalCondition(e)
-                }
-            }
+            collapse = FALSE)
         )
-
-        # in case permutation did not work
-        if (is.null(dt)) {
-            dims <- dims[c(3L, 2L, 1L)][, id := .I]
-            dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
-                c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
-                c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
-                collapse = FALSE
-            ))
-        }
 
         setnames(dt, c(dims$name, "value"))
         setnames(dt, "time", "datetime")
