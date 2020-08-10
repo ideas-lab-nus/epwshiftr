@@ -15,18 +15,18 @@ knitr::opts_chunk$set(
 library(epwshiftr)
 
 # copy files in advance
-f <- c("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
-       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20500101-20501231.nc",
-       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20510101-20511231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20490101-20491231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20500101-20501231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20510101-20511231.nc",
-       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20790101-20791231.nc",
-       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20800101-20801231.nc",
-       "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20810101-20811231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20790101-20791231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20800101-20801231.nc",
-       "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20810101-20811231.nc"
+f <- c("tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
+       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
+       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
+       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc"
 )
 file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 ```
@@ -103,13 +103,16 @@ idx <- init_cmip6_index(
     experiment = c("ssp585"),
 
     # specify GCM name
-    source = "EC-Earth3",
+    source = "AWI-CM-1-1-MR",
 
-    # only consider data nodes that are current working
-    data_node = nodes[status == "UP", data_node],
+    # specify variant,
+    variant = "r1i1p1f1",
 
     # specify years of interest
-    years = c(2050, 2080)
+    years = c(2050, 2080),
+
+    # save to data dictionary
+    save = TRUE
 )
 
 # the index has been automatically saved into directory specified using
@@ -196,8 +199,8 @@ knitr::kable(head(morphed$rh))
 
 ```{r epw}
 # create future EPWs grouped by GCM, experiment ID, interval (year)
-epws <- future_epw(morphed, by = c("source_id", "experiment_id", "interval"),
-    dir = tempdir(), separate = TRUE
+epws <- future_epw(morphed, by = c("source", "experiment", "interval"),
+    dir = tempdir(), separate = TRUE, overwrite = TRUE
 )
 
 epws
