@@ -1,7 +1,7 @@
 #' epwshiftr: Create future EnergyPlus Weather files using CMIP6 data
 #'
 #' Query, download climate change projection data from the [CMIP6 (Coupled Model
-#' Intercomparison Project Phase 6) project](https://pcmdi.llnl.gov/CMIP6) in
+#' Intercomparison Project Phase 6) project](https://pcmdi.llnl.gov/CMIP6/) in
 #' the [ESGF (Earth System Grid Federation) platform](https://esgf.llnl.gov),
 #' and create future [EnergyPlus](https://energyplus.net) Weather (EPW) files
 #' adjusted from climate changes using data from Global Climate Models (GCM).

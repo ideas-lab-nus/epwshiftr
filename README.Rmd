@@ -228,7 +228,7 @@ Hongyuan Jia and Adrian Chong
   > licensing restrictions, which are recorded in each file as a global
   > attribute (named “license”).
   >
-  > Please carefully read and adhere to the [CMIP6 Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse).
+  > Please carefully read and adhere to the [CMIP6 Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/).
 
 ## Contribute
 

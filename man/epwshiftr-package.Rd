@@ -6,7 +6,7 @@
 \alias{epwshiftr-package}
 \title{epwshiftr: Create future EnergyPlus Weather files using CMIP6 data}
 \description{
-Query, download climate change projection data from the \href{https://pcmdi.llnl.gov/CMIP6}{CMIP6 (Coupled Model Intercomparison Project Phase 6) project} in
+Query, download climate change projection data from the \href{https://pcmdi.llnl.gov/CMIP6/}{CMIP6 (Coupled Model Intercomparison Project Phase 6) project} in
 the \href{https://esgf.llnl.gov}{ESGF (Earth System Grid Federation) platform},
 and create future \href{https://energyplus.net}{EnergyPlus} Weather (EPW) files
 adjusted from climate changes using data from Global Climate Models (GCM).
