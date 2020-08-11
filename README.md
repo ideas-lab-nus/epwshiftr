@@ -474,7 +474,7 @@ Hongyuan Jia and Adrian Chong
     > are recorded in each file as a global attribute (named “license”).
     > 
     > Please carefully read and adhere to the [CMIP6 Terms of
-    > Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse).
+    > Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/).
 
 ## Contribute
 
