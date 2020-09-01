@@ -8,7 +8,7 @@
 [![Travis build
 status](https://travis-ci.com/ideas-lab-nus/epwshiftr.svg?branch=master)](https://travis-ci.com/ideas-lab-nus/epwshiftr)
 [![AppVeyor build
-status](https://ci.appveyor.com/api/projects/status/github/ideas-lab-nus/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/ideas-lab-nus/epwshiftr)
+status](https://ci.appveyor.com/api/projects/status/github/hongyuanjia/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/hongyuanjia/epwshiftr)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
 [![Codecov test
