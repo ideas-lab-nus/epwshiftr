@@ -8,10 +8,15 @@ addons:
     packages:
       - libudunits2-dev
       - libnetcdf-dev
+      - libcgal-dev
+      - libgdal-dev
+      - libglu1-mesa-dev
+      - libproj-dev
   homebrew:
     packages:
       - udunits
       - netcdf
+      - llvm
 
 matrix:
   include:
