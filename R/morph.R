@@ -860,7 +860,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
         new_epw$comment1(disclaimer_comment(case))
 
         # set data
-        suppressMessages(new_epw$set(spl[[i]], warning = FALSE))
+        suppressMessages(new_epw$set(spl[[i]]))
 
         # save
         new_dir <- dirname(output[i])
