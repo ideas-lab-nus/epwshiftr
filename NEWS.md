@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+## Bug fixes
+
+* `load_cimp6_index()` can be correctly load local CMIP6 output index file when
+  `force` is `TRUE` (#8).
+
 # epwshiftr 0.1.1
 
 ## Bug fixes
