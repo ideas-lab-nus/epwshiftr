@@ -579,7 +579,9 @@ load_cmip6_index <- function (force = FALSE) {
         if ("file_mtime" %in% names(idx)) {
             # to avoid No visible binding for global variable check NOTE
             file_mtim <- NULL
-            idx[J(""), on = "file_mtime", file_mtime := NA]
+            if (is.character(idx$file_mtime)) {
+                idx[J(""), on = "file_mtime", file_mtime := NA]
+            }
             idx[, file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
         }
         if ("time_units" %in% names(idx)) {
@@ -591,13 +593,17 @@ load_cmip6_index <- function (force = FALSE) {
         if ("datetime_start" %in% names(idx)) {
             # to avoid No visible binding for global variable check NOTE
             datetime_start <- NULL
-            idx[J(""), on = "datetime_start", datetime_start := NA]
+            if (is.character(idx$datetime_start)) {
+                idx[J(""), on = "datetime_start", datetime_start := NA]
+            }
             data.table::set(idx, NULL, "datetime_start", as.POSIXct(idx$datetime_start, "UTC"))
         }
         if ("datetime_end" %in% names(idx)) {
             # to avoid No visible binding for global variable check NOTE
             datetime_end <- NULL
-            idx[J(""), on = "datetime_end", datetime_end := NA]
+            if (is.character(idx$datetime_end)) {
+                idx[J(""), on = "datetime_end", datetime_end := NA]
+            }
             data.table::set(idx, NULL, "datetime_end", as.POSIXct(idx$datetime_end, "UTC"))
         }
     }
