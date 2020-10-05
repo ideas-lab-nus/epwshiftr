@@ -111,6 +111,14 @@ remove_units <- function (data, var) {
 #'        same length as `years`. If given, climate data of `years` grouped by
 #'        `labels` will be averaged. Default: `NULL`.
 #'
+#' @param methods A named character giving the methods of morphing procedures of
+#'        each variables. Possible variable names are `tdb`, `rh`, `p`,
+#'        `hor_ir`, `glob_rad`, `wind`. Possible values are: `"stretch"`,
+#'        `"shift"` and `"combined"`. For example: `c(tdb = "stretch", rh =
+#'        "shift")`. `"combined"` is only applicable to `tdb`. The default
+#'        morphing method for each variable is listed in the *Return* section.
+#'        If `NULL`, the default methods will be used. Default: `NULL`.
+#'
 #' @return An `epw_cmip6_morphed` object, which is basically a list of 12 elements:
 #'
 #' | No.  | Element        | Type                       | Morphing Method | Description                                                       |
@@ -151,8 +159,21 @@ remove_units <- function (data, var) {
 #' 26, 49–61. https://doi.org/10.1191/0143624405bt112oa
 #'
 #' @export
-morphing_epw <- function (data, years = NULL, labels = NULL) {
+morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL) {
     assert_class(data, "epw_cmip6_data")
+    if (is.null(methods)) {
+        methods <- c(tdb = "stretch", rh = "stretch", p = "stretch",
+            hor_ir = "stretch", glob_rad = "stretch", wind = "stretch"
+        )
+    } else {
+        assert_character(methods, any.missing = FALSE, names = "named", unique = TRUE)
+        assert_names(names(methods), subset.of = c("tdb", "rh", "p", "hor_ir", "glob_rad", "diff_rad", "wind"))
+        methods_def <- list(tdb = "stretch", rh = "stretch", p = "stretch",
+            hor_ir = "stretch", glob_rad = "stretch", diff_rad = "stretch",
+            wind = "stretch"
+        )
+        methods <- unlist(modifyList(methods_def, as.list(methods)))
+    }
 
     data_cmip <- data.table::setDT(data$data)
     data_epw <- suppressMessages(data$epw$add_unit()$data())
@@ -168,7 +189,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
         if (!nrow(tasmax)) tasmax <- NULL
         if (!nrow(tasmin)) tasmin <- NULL
-        tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, labels = labels, type = "stretch")
+        tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, labels = labels, type = methods["tdb"])
     }
 
     # NODE 8: RH
@@ -182,7 +203,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
         if (!nrow(hursmax)) hursmax <- NULL
         if (!nrow(hursmin)) hursmin <- NULL
-        rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, labels = labels, type = "stretch")
+        rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, labels = labels, type = methods["rh"])
     }
 
     # NODE 7: Tdew
@@ -201,7 +222,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         verbose("WARNING: Input does not contain any data of 'sea level pressure'. Skip.")
         p <- data.table()
     } else {
-        p <- morphing_pa(data_epw, psl, years, labels = labels, type = "stretch")
+        p <- morphing_pa(data_epw, psl, years, labels = labels, type = methods["p"])
     }
 
     # NODE 10: Extraterrestrial direct normal radiation [NOT USED in EnergyPlus]
@@ -217,7 +238,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.")
         hor_ir <- data.table()
     } else {
-        hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = "stretch")
+        hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = methods["hor_ir"])
     }
 
     # NODE 13: Global horizontal radiation
@@ -230,7 +251,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
         glob_rad <- data.table()
     } else {
-        glob_rad <- morphing_glob_rad(data_epw, rsds, years, labels = labels, type = "stretch")
+        glob_rad <- morphing_glob_rad(data_epw, rsds, years, labels = labels, type = methods["glob_rad"])
     }
 
     #!NODE 15: Diffuse horizontal radiation
@@ -266,7 +287,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL) {
         verbose("WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.")
         wind <- data.table()
     } else {
-        wind <- morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = "stretch")
+        wind <- morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = methods["wind"])
     }
 
     # NODE 22: Total sky cover

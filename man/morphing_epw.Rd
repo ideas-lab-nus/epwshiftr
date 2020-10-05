@@ -4,7 +4,7 @@
 \alias{morphing_epw}
 \title{Morphing EPW weather variables}
 \usage{
-morphing_epw(data, years = NULL, labels = NULL)
+morphing_epw(data, years = NULL, labels = NULL, methods = NULL)
 }
 \arguments{
 \item{data}{An \code{epw_cmip6_data}object generated using \code{\link[=extract_data]{extract_data()}}}
@@ -16,6 +16,13 @@ If \code{NULL}, all years in input data will be considered. Default: \code{NULL}
 Usually are the outputs of \code{\link[base:cut]{base::cut()}}. \code{labels} should have the
 same length as \code{years}. If given, climate data of \code{years} grouped by
 \code{labels} will be averaged. Default: \code{NULL}.}
+
+\item{methods}{A named character giving the methods of morphing procedures of
+each variables. Possible variable names are \code{tdb}, \code{rh}, \code{p},
+\code{hor_ir}, \code{glob_rad}, \code{wind}. Possible values are: \code{"stretch"},
+\code{"shift"} and \code{"combined"}. For example: \code{c(tdb = "stretch", rh = "shift")}. The default morphing method for each variable is listed in
+the \emph{Return} section. If \code{NULL}, the default methods will be used.
+Default: \code{NULL}.}
 }
 \value{
 An \code{epw_cmip6_morphed} object, which is basically a list of 12 elements:\tabular{rllll}{

@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+## New features
+
+* The type of morphing methods can be specified using the newly added `methods`
+  argument in `morphing_epw()`.
+
 ## Bug fixes
 
 * `load_cimp6_index()` can be correctly load local CMIP6 output index file when
