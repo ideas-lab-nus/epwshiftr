@@ -52,7 +52,7 @@
       <ul class="nav navbar-nav">
 <li>
   <a href="index.html">
-    <span class="fas fa fas fa-home fa-lg"></span>
+    <span class="fas fa-home fa-lg"></span>
      
   </a>
 </li>
@@ -66,7 +66,7 @@
 <ul class="nav navbar-nav navbar-right">
 <li>
   <a href="https://github.com/ideas-lab-nus/epwshiftr/">
-    <span class="fab fa fab fa-github fa-lg"></span>
+    <span class="fab fa-github fa-lg"></span>
      
   </a>
 </li>
@@ -82,9 +82,9 @@
 
       </header><div class="row">
   <div class="contents col-md-9">
-<div id="epwshiftr" class="section level1">
+<div id="epwshiftr-" class="section level1">
 <div class="page-header"><h1 class="hasAnchor">
-<a href="#epwshiftr" class="anchor"></a>epwshiftr <img src="reference/figures/logo.svg" align="right">
+<a href="#epwshiftr-" class="anchor"></a>epwshiftr <img src="reference/figures/logo.svg" align="right">
 </h1></div>
 <!-- badges: start -->
 
@@ -112,12 +112,12 @@
 <h2 class="hasAnchor">
 <a href="#installation" class="anchor"></a>Installation</h2>
 <p>You can install the latest stable release of epwshiftr from <a href="https://CRAN.R-project.org">CRAN</a>.</p>
-<div class="sourceCode" id="cb1"><pre class="downlit">
-<span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span></pre></div>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span></code></pre></div>
 <p>Alternatively, you can install the development version from GitHub.</p>
-<div class="sourceCode" id="cb2"><pre class="downlit">
-<span class="co"># install.packages("remotes")</span>
-<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html">install_github</a></span><span class="op">(</span><span class="st">"ideas-lab-nus/epwshiftr"</span><span class="op">)</span></pre></div>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="co"># install.packages("remotes")</span>
+<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html">install_github</a></span><span class="op">(</span><span class="st">"ideas-lab-nus/epwshiftr"</span><span class="op">)</span></code></pre></div>
 </div>
 <div id="get-started" class="section level2">
 <h2 class="hasAnchor">
@@ -128,8 +128,8 @@
 <ul>
 <li>The first step is to build CMIP6 experiment output file index based on queries using ESGF search RESTful API</li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb3"><pre class="downlit">
-<span class="co"># set directory to store files</span>
+<!-- end list --><div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="co"># set directory to store files</span>
 <span class="fu"><a href="https://rdrr.io/r/base/options.html">options</a></span><span class="op">(</span>epwshiftr.dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>
 <span class="fu"><a href="https://rdrr.io/r/base/options.html">options</a></span><span class="op">(</span>epwshiftr.verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
 
@@ -248,7 +248,7 @@
 <span class="co">#&gt;  $ file_url          : chr  "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v2019052"| __truncated__ ...</span>
 <span class="co">#&gt;  $ dataset_pid       : chr  "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/a336f13f-a4d3-3b57-a45a-8f27f0ba01b8" ...</span>
 <span class="co">#&gt;  $ tracking_id       : chr  "hdl:21.14100/f46077ee-ae81-4932-81af-d61394446ea3" "hdl:21.14100/a476933a-0f14-4d4c-b62d-0bf08e3471fd" "hdl:21.14100/3c3c98f8-d56e-4d8d-8ba7-1a9e541e6018" "hdl:21.14100/8503efb4-6509-4728-b95c-7203bd214a77" ...</span>
-<span class="co">#&gt;  - attr(*, ".internal.selfref")=&lt;externalptr&gt;</span></pre></div>
+<span class="co">#&gt;  - attr(*, ".internal.selfref")=&lt;externalptr&gt;</span></code></pre></div>
 </div>
 <div id="manage-cmip6-output-files" class="section level3">
 <h3 class="hasAnchor">
@@ -258,14 +258,14 @@
 <li><p>After you have downloaded CMIP6 output files of interest, you can use <code>suumary_database()</code> to get a summary on files downloaded against the CMIP6 output file index.</p></li>
 <li><p>This step is necessary as it map the loaded files against index so that epwshiftr knows which case is complete and can be used for the next step.</p></li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb4"><pre class="downlit">
-<span class="co"># Summary downloaded file by GCM and variable, use the latest downloaded file if</span>
+<!-- end list --><div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="co"># Summary downloaded file by GCM and variable, use the latest downloaded file if</span>
 <span class="co"># multiple matches are detected and save matched information into the index file</span>
 <span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/summary_database.html">summary_database</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html">tempdir</a></span><span class="op">(</span><span class="op">)</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"variable"</span><span class="op">)</span>, mult <span class="op">=</span> <span class="st">"latest"</span>, update <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
 <span class="co">#&gt; 24 NetCDF files found.</span>
 <span class="co">#&gt; Data file index updated and saved to '/tmp/RtmpDtbJVc/cmip6_index.csv'</span>
 
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></pre></div>
+<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="10%">
@@ -327,8 +327,8 @@
 <ul>
 <li>With previous step, now we can match coordinates of an EPW in the CMIP6 output file</li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb5"><pre class="downlit">
-<span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html">file.path</a></span><span class="op">(</span><span class="fu">eplusr</span><span class="fu">::</span><span class="fu"><a href="https://hongyuanjia.github.io/eplusr/reference/use_eplus.html">eplus_config</a></span><span class="op">(</span><span class="fl">8.8</span><span class="op">)</span><span class="op">$</span><span class="va">dir</span>, <span class="st">"WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"</span><span class="op">)</span>
+<!-- end list --><div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html">file.path</a></span><span class="op">(</span><span class="fu">eplusr</span><span class="fu">::</span><span class="fu"><a href="https://hongyuanjia.github.io/eplusr/reference/use_eplus.html">eplus_config</a></span><span class="op">(</span><span class="fl">8.8</span><span class="op">)</span><span class="op">$</span><span class="va">dir</span>, <span class="st">"WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"</span><span class="op">)</span>
 <span class="co"># match any coordinates with absolute distance less than 1 degree</span>
 <span class="va">coord</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/match_coord.html">match_coord</a></span><span class="op">(</span><span class="va">epw</span>, threshold <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>lon <span class="op">=</span> <span class="fl">1</span>, lat <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, max_num <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>
 <span class="co">#&gt; Start to match coordinates...</span>
@@ -396,20 +396,20 @@
 <span class="co">#&gt;   ..$ index: int 1</span>
 <span class="co">#&gt;   ..$ value: num 302</span>
 <span class="co">#&gt;   ..$ dis  : num -0.525</span>
-<span class="co">#&gt;   ..$ which: int 323</span></pre></div>
+<span class="co">#&gt;   ..$ which: int 323</span></code></pre></div>
 <ul>
 <li>Once we get the matched coordinates, we can extract corresponding data related to input EPW file using <code><a href="reference/extract_data.html">extract_data()</a></code>
 </li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb6"><pre class="downlit">
-<span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/extract_data.html">extract_data</a></span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span><span class="op">)</span>
+<!-- end list --><div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/extract_data.html">extract_data</a></span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; Start to extract CMIP6 data according to matched coordinates...</span>
 
 <span class="fu"><a href="https://rdrr.io/r/base/class.html">class</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
 <span class="co">#&gt; [1] "epw_cmip6_data"</span>
 <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
 <span class="co">#&gt; [1] "epw"  "meta" "data"</span>
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></pre></div>
+<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="8%">
@@ -541,8 +541,8 @@
 <ul>
 <li>With all necessary information extracted above, now we can perform morphing on out EPW</li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb7"><pre class="downlit">
-<span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/morphing_epw.html">morphing_epw</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
+<!-- end list --><div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/morphing_epw.html">morphing_epw</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
 <span class="co">#&gt; Morphing 'dry bulb temperature'...</span>
 <span class="co">#&gt; Morphing 'relative humidity'...</span>
 <span class="co">#&gt; Morphing 'dew point temperature'...</span>
@@ -571,7 +571,7 @@
 <span class="co">#&gt;  [5] "p"            "hor_ir"       "glob_rad"     "norm_rad"    </span>
 <span class="co">#&gt;  [9] "diff_rad"     "wind"         "total_cover"  "opaque_cover"</span>
 
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">tdb</span><span class="op">)</span><span class="op">)</span></pre></div>
+<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">tdb</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="7%">
@@ -736,9 +736,9 @@
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb8"><pre class="downlit">
-
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">rh</span><span class="op">)</span><span class="op">)</span></pre></div>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R">
+<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">rh</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="7%">
@@ -911,8 +911,8 @@
 <li>Once we get the morphed data using <code><a href="reference/morphing_epw.html">morphing_epw()</a></code>, we can now create future EPW files using <code><a href="reference/future_epw.html">future_epw()</a></code>
 </li>
 </ul>
-<!-- end list --><div class="sourceCode" id="cb9"><pre class="downlit">
-<span class="co"># create future EPWs grouped by GCM, experiment ID, interval (year)</span>
+<!-- end list --><div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span class="co"># create future EPWs grouped by GCM, experiment ID, interval (year)</span>
 <span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/future_epw.html">future_epw</a></span><span class="op">(</span><span class="va">morphed</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"experiment"</span>, <span class="st">"interval"</span><span class="op">)</span>,
     dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html">tempdir</a></span><span class="op">(</span><span class="op">)</span>, separate <span class="op">=</span> <span class="cn">TRUE</span>, overwrite <span class="op">=</span> <span class="cn">TRUE</span>
 <span class="op">)</span>
@@ -975,7 +975,7 @@
 
 <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span><span class="op">(</span><span class="va">epws</span>, <span class="kw">function</span> <span class="op">(</span><span class="va">epw</span><span class="op">)</span> <span class="va">epw</span><span class="op">$</span><span class="fu">path</span><span class="op">(</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2050/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2050.epw"</span>
-<span class="co">#&gt; [2] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw"</span></pre></div>
+<span class="co">#&gt; [2] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw"</span></code></pre></div>
 </div>
 </div>
 <div id="author" class="section level2">
@@ -1048,10 +1048,10 @@
   <div class="dev-status">
 <h2>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://travis-ci.com/ideas-lab-nus/epwshiftr"><img src="https://travis-ci.com/ideas-lab-nus/epwshiftr.svg?branch=master" alt="Travis build status"></a></li>
-<li><a href="https://ci.appveyor.com/project/hongyuanjia/epwshiftr"><img src="https://ci.appveyor.com/api/projects/status/github/hongyuanjia/epwshiftr?branch=master&amp;svg=true" alt="AppVeyor build status"></a></li>
+<li><a href="https://github.com/ideas-lab-nus/epwshiftr/actions"><img src="https://github.com/ideas-lab-nus/epwshiftr/workflows/R-CMD-check/badge.svg" alt="R build status"></a></li>
 <li><a href="https://CRAN.R-project.org/package=epwshiftr"><img src="https://www.r-pkg.org/badges/version/epwshiftr" alt="CRAN status"></a></li>
 <li><a href="https://codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master"><img src="https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
+<li><a href="https://cran.r-project.org/package=epwshiftr"><img src="https://cranlogs.r-pkg.org/badges/epwshiftr" alt="CRAN Download Badge"></a></li>
 </ul>
 </div>
 </div>
