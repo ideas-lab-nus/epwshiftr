@@ -246,7 +246,7 @@ esgf_query <- function (
         # get name
         var <- deparse(substitute(x))
         # skip if empty
-        if (is.null(x)) return()
+        if (is.null(x) || length(x) == 0) return()
         # get key name
         key <- dict[names(dict) == var]
         if (!length(key)) key <- var
