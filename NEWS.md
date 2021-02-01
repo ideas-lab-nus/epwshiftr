@@ -7,6 +7,7 @@
 
 ## Bug fixes
 
+* `esgf_query()` can accept `NULL` `resolution` argument (#12).
 * `load_cimp6_index()` can be correctly load local CMIP6 output index file when
   `force` is `TRUE` (#8).
 
