@@ -5,14 +5,12 @@
 
 <!-- badges: start -->
 
-[![Travis build
-status](https://travis-ci.com/ideas-lab-nus/epwshiftr.svg?branch=master)](https://travis-ci.com/ideas-lab-nus/epwshiftr)
-[![AppVeyor build
-status](https://ci.appveyor.com/api/projects/status/github/hongyuanjia/epwshiftr?branch=master&svg=true)](https://ci.appveyor.com/project/hongyuanjia/epwshiftr)
+[![R build status](https://github.com/ideas-lab-nus/epwshiftr/workflows/R-CMD-check/badge.svg)](https://github.com/ideas-lab-nus/epwshiftr/actions)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
 [![Codecov test
 coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
+[![CRAN Download Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data
