@@ -107,9 +107,9 @@ test_that("Get package data storage directory", {
     skip_on_cran()
     .data_dir(TRUE)
     if (.Platform$OS.type == "windows") {
-        expect_equal(get_data_dir(), user_data_dir(appauthor = "epwshiftr"))
+        expect_equal(get_data_dir(), normalizePath(user_data_dir(appauthor = "epwshiftr")))
     } else {
-        expect_equal(get_data_dir(), user_data_dir(appname = "epwshiftr"))
+        expect_equal(get_data_dir(), normalizePath(user_data_dir(appname = "epwshiftr")))
     }
 })
 # }}}

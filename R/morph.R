@@ -172,7 +172,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL) {
             hor_ir = "stretch", glob_rad = "stretch", diff_rad = "stretch",
             wind = "stretch"
         )
-        methods <- unlist(modifyList(methods_def, as.list(methods)))
+        methods <- unlist(utils::modifyList(methods_def, as.list(methods)))
     }
 
     data_cmip <- data.table::setDT(data$data)
