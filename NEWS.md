@@ -1,4 +1,4 @@
-# epwshiftr (development version)
+# epwshiftr 0.1.2
 
 ## New features
 
