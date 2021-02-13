@@ -8,3 +8,5 @@
 ^codecov\.yml$
 ^LICENSE\.md$
 ^cran-comments\.md$
+^.*\.Rproj$
+^\.Rproj\.user$
