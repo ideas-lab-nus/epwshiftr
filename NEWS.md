@@ -1,3 +1,9 @@
+# epwshiftr 0.1.3
+
+## Minor changes
+
+* Remove `LazyData` in `DESCRIPTION` (#16).
+
 # epwshiftr 0.1.2
 
 ## New features
