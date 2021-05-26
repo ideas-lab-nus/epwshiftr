@@ -22,7 +22,7 @@ the data file. All other years will be excluded. If \code{NULL}, no
 subsetting on years will be performed. Default: \code{NULL}.}
 
 \item{unit}{If \code{TRUE}, units will be added to values using
-\code{\link[units:set_units]{units::set_units()}}.}
+\code{\link[units:units]{units::set_units()}}.}
 
 \item{out_dir}{The directory to save extracted data using \code{\link[fst:write_fst]{fst::write_fst()}}.
 If \code{NULL}, all data will be kept in memory by default. Default: \code{NULL}.}
