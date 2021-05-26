@@ -5,7 +5,7 @@ extract_location_dict <- function (pattern) {
     assert_string(pattern)
 
     pattern <- gsub("\\s+", ".", pattern)
-    d <- data.table::as.data.table(eplusr:::WEATHER_DB)
+    d <- data.table::as.data.table(getFromNamespace("WEATHER_DB", "eplusr"))
     res <- d[grepl(pattern, title, ignore.case = TRUE)]
 
     mes_location <- function (index = NULL, title, country, state_province, location, wmo_number, source_type, longitude, latitude) {
