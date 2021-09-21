@@ -43,8 +43,7 @@ install.packages("epwshiftr")
 Alternatively, you can install the development version from GitHub.
 
 ``` r
-# install.packages("remotes")
-remotes::install_github("ideas-lab-nus/epwshiftr")
+install.packages("epwshiftr", repos = "https://hongyuanjia.r-universe.dev")
 ```
 
 ## Get started
