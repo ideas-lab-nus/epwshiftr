@@ -9,7 +9,8 @@ future_epw(
   by = c("experiment", "source", "interval"),
   dir = ".",
   separate = TRUE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  full = FALSE
 )
 }
 \arguments{
@@ -38,9 +39,19 @@ using grouping variables specified in \code{by}.}
 
 \item{overwrite}{If \code{TRUE}, overwrite existing files if they exist. Default:
 \code{FALSE}.}
+
+\item{full}{If \code{TRUE}, a \link[data.table:data.table]{data.table} containing
+information about how the data are split and also the generated future
+EPWs and their paths are returned. Default: \code{FALSE}.}
 }
 \value{
-A list of generated \link[eplusr:Epw]{eplusr::Epw} objects, invisibly
+If \code{full} is \code{FALSE}, which is the default, a list of generated \link[eplusr:Epw]{eplusr::Epw} objects, invisibly.
+Otherwise, a \link[data.table:data.table]{data.table} with columns:
+\itemize{
+\item specified by the \code{by} value
+\item \code{epw}: a list of \link[eplusr:Epw]{eplusr::Epw}
+\item \code{path}: full paths of the generated EPW files
+}
 }
 \description{
 Create future EPW files using morphed data
