@@ -80,7 +80,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3.9000</span>
       </span>
     </div>
 
@@ -133,7 +133,8 @@
   by <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='st'>"experiment"</span>, <span class='st'>"source"</span>, <span class='st'>"interval"</span><span class='op'>)</span>,
   dir <span class='op'>=</span> <span class='st'>"."</span>,
   separate <span class='op'>=</span> <span class='cn'>TRUE</span>,
-  overwrite <span class='op'>=</span> <span class='cn'>FALSE</span>
+  overwrite <span class='op'>=</span> <span class='cn'>FALSE</span>,
+  full <span class='op'>=</span> <span class='cn'>FALSE</span>
 <span class='op'>)</span></pre>
 
     <h2 class="hasAnchor" id="arguments"><a class="anchor" href="#arguments"></a>Arguments</h2>
@@ -174,11 +175,23 @@ using grouping variables specified in <code>by</code>.</p></td>
       <td><p>If <code>TRUE</code>, overwrite existing files if they exist. Default:
 <code>FALSE</code>.</p></td>
     </tr>
+    <tr>
+      <th>full</th>
+      <td><p>If <code>TRUE</code>, a <a href='https://Rdatatable.gitlab.io/data.table/reference/data.table.html'>data.table</a> containing
+information about how the data are split and also the generated future
+EPWs and their paths are returned. Default: <code>FALSE</code>.</p></td>
+    </tr>
     </table>
 
     <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
 
-    <p>A list of generated <a href='https://hongyuanjia.github.io/eplusr/reference/Epw.html'>eplusr::Epw</a> objects, invisibly</p>
+    <p>If <code>full</code> is <code>FALSE</code>, which is the default, a list of generated <a href='https://hongyuanjia.github.io/eplusr/reference/Epw.html'>eplusr::Epw</a> objects, invisibly.
+Otherwise, a <a href='https://Rdatatable.gitlab.io/data.table/reference/data.table.html'>data.table</a> with columns:</p><ul>
+<li><p>specified by the <code>by</code> value</p></li>
+<li><p><code>epw</code>: a list of <a href='https://hongyuanjia.github.io/eplusr/reference/Epw.html'>eplusr::Epw</a></p></li>
+<li><p><code>path</code>: full paths of the generated EPW files</p></li>
+</ul>
+
 
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">

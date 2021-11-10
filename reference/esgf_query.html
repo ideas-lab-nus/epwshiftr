@@ -80,7 +80,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3.9000</span>
       </span>
     </div>
 
@@ -183,7 +183,7 @@
       <th>variable</th>
       <td><p>A character vector indicating variable identifiers. The 12
 most related variables for EPW are set as defaults. If <code>NULL</code>, all
-possible variables are returned. Default: <code><a href='https://rdrr.io/r/base/c.html'>c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rss", "rls", "sfcWind", "pr", "clt")</a></code>, where:</p><ul>
+possible variables are returned. Default: <code>c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rss", "rls", "sfcWind", "pr", "clt")</code>, where:</p><ul>
 <li><p><code>tas</code>: Near-surface (usually, 2 meter) air temperature, units: <code>K</code>.</p></li>
 <li><p><code>tasmax</code>: Maximum near-surface (usually, 2 meter) air temperature, units: <code>K</code>.</p></li>
 <li><p><code>tasmin</code>: Minimum near-surface (usually, 2 meter) air temperature, units: <code>K</code>.</p></li>
@@ -227,7 +227,7 @@ Possible values:</p><ul>
       <td><p>A character vector indicating root experiment identifiers.
 The <strong>Tier-1</strong> experiment of activity ScenarioMIP are set as defaults.
 If <code>NULL</code>, all possible experiment are returned.
-Default: <code><a href='https://rdrr.io/r/base/c.html'>c("ssp126", "ssp245", "ssp370", "ssp585")</a></code>.</p></td>
+Default: <code>c("ssp126", "ssp245", "ssp370", "ssp585")</code>.</p></td>
     </tr>
     <tr>
       <th>source</th>
@@ -266,7 +266,7 @@ records and <code>FALSE</code> to return previous versions. Default: <code>FALSE
     <tr>
       <th>resolution</th>
       <td><p>A character vector indicating approximate horizontal
-resolution. Default: <code><a href='https://rdrr.io/r/base/c.html'>c("50 km", "100 km")</a></code>.
+resolution. Default: <code>c("50 km", "100 km")</code>.
 If <code>NULL</code>, all possible resolutions are returned.</p></td>
     </tr>
     <tr>
@@ -357,13 +357,13 @@ Index Node.</p>
     <p>https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API</p>
 
     <h2 class="hasAnchor" id="examples"><a class="anchor" href="#examples"></a>Examples</h2>
-    <pre class="examples"><div class='input'><span class='kw'>if</span> <span class='op'>(</span><span class='cn'>FALSE</span><span class='op'>)</span> <span class='op'>{</span>
-<span class='fu'>esgf_query</span><span class='op'>(</span>variable <span class='op'>=</span> <span class='st'>"rss"</span>, experiment <span class='op'>=</span> <span class='st'>"ssp126"</span>, resolution <span class='op'>=</span> <span class='st'>"100 km"</span>, limit <span class='op'>=</span> <span class='fl'>1</span><span class='op'>)</span>
-
-<span class='fu'>esgf_query</span><span class='op'>(</span>variable <span class='op'>=</span> <span class='st'>"rss"</span>, experiment <span class='op'>=</span> <span class='st'>"ssp126"</span>, type <span class='op'>=</span> <span class='st'>"File"</span>, limit <span class='op'>=</span> <span class='fl'>1</span><span class='op'>)</span>
-<span class='op'>}</span>
-
-</div></pre>
+    <pre class="examples"><span class='r-in'><span class='kw'>if</span> <span class='op'>(</span><span class='cn'>FALSE</span><span class='op'>)</span> <span class='op'>{</span></span>
+<span class='r-in'><span class='fu'>esgf_query</span><span class='op'>(</span>variable <span class='op'>=</span> <span class='st'>"rss"</span>, experiment <span class='op'>=</span> <span class='st'>"ssp126"</span>, resolution <span class='op'>=</span> <span class='st'>"100 km"</span>, limit <span class='op'>=</span> <span class='fl'>1</span><span class='op'>)</span></span>
+<span class='r-in'></span>
+<span class='r-in'><span class='fu'>esgf_query</span><span class='op'>(</span>variable <span class='op'>=</span> <span class='st'>"rss"</span>, experiment <span class='op'>=</span> <span class='st'>"ssp126"</span>, type <span class='op'>=</span> <span class='st'>"File"</span>, limit <span class='op'>=</span> <span class='fl'>1</span><span class='op'>)</span></span>
+<span class='r-in'><span class='op'>}</span></span>
+<span class='r-in'></span>
+</pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
     <nav id="toc" data-toggle="toc" class="sticky-top">
