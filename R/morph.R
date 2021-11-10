@@ -758,14 +758,26 @@ append_epw_data <- function (morphed) {
 #'        using grouping variables specified in `by`.
 #' @param overwrite If `TRUE`, overwrite existing files if they exist. Default:
 #'        `FALSE`.
+#' @param full If `TRUE`, a [data.table][data.table::data.table()] containing
+#'        information about how the data are split and also the generated future
+#'        EPWs and their paths are returned. Default: `FALSE`.
 #'
-#' @return A list of generated [eplusr::Epw] objects, invisibly
+#' @return
+#'
+#' If `full` is `FALSE`, which is the default, a list of generated [eplusr::Epw] objects, invisibly.
+#' Otherwise, a [data.table][data.table::data.table()] with columns:
+#'
+#' * specified by the `by` value
+#' * `epw`: a list of [eplusr::Epw]
+#' * `path`: full paths of the generated EPW files
+#'
 #' @export
 future_epw <- function (morphed, by = c("experiment", "source", "interval"),
-                        dir = ".", separate = TRUE, overwrite = FALSE) {
+                        dir = ".", separate = TRUE, overwrite = FALSE, full = FALSE) {
     assert_class(morphed, "epw_cmip6_morphed")
     assert_string(dir)
     assert_flag(separate)
+    assert_flag(full)
 
     epw <- morphed$epw
 
@@ -870,7 +882,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
         output <- file.path(dir, fn)
     }
 
-    invisible(lapply(seq_along(output), function (i) {
+    epws <- lapply(seq_along(output), function (i) {
         # clone the original EPW
         new_epw <- epw$clone()
 
@@ -894,7 +906,19 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
         new_epw$save(output[i], overwrite = overwrite)
 
         new_epw
-    }))
+    })
+
+    if (!full) return(invisible(epws))
+
+    meta <- rbindlist(lapply(spl, function(d) d[1L, .SD, .SDcols = cols_by]))
+
+    # rename the columns
+    setnames(meta, cols_by, names(dict)[match(cols_by, names(dict))])
+
+    set(meta, NULL, "epw", epws)
+    set(meta, NULL, "path", vapply(epws, function(epw) epw$path(), character(1)))
+
+    meta
 }
 # }}}
 

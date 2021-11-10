@@ -1,3 +1,12 @@
+# epwshiftr (development version)
+
+## New features
+
+* A new parameter `full` is added to `future_epw()`. When setting to `TRUE`, 
+  a `data.table` containing information about how the
+  data are split by the `by` argument and also the generated future EPWs and
+  their paths are returned (#18).
+
 # epwshiftr 0.1.3
 
 ## Minor changes
