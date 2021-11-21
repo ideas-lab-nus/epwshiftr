@@ -35,6 +35,7 @@ Imports:
 Suggests:
     testthat,
     pingr,
+    knitr,
     rmarkdown
 License: MIT + file LICENSE
 Encoding: UTF-8
