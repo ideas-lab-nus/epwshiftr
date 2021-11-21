@@ -25,10 +25,8 @@ date: 20 November 2021
 year: 2021
 bibliography: paper.bib
 output:
-    rticles::joss_article:
-        extra_dependencies: ["array"]
-        keep_md: true
-journal: JOSS
+  rmarkdown::html_vignette:
+    keep_md: TRUE
 vignette: >
   %\VignetteEncoding{UTF-8}
   %\VignetteIndexEntry{epwshiftr: Create future EnergyPlus Weather files using CMIP6 data}
@@ -40,26 +38,26 @@ editor_options:
 
 # Summary
 
-[![](logo.png "The epwshiftr package logo"){ width=120px }](https://cran.r-project.org/package=epwshiftr)
+[![](logo.png "The epwshiftr package logo"){width="120px"}](https://cran.r-project.org/package=epwshiftr)
 
 Building energy simulation (BES) has become increasingly applied to assess
 building performance under climate changes and to yield a more sustainable and
 resilient design [@yassaghi2019]. Multiple morphing-based weather-file
-modification tools have been developed over the decades to integrates climate
-change predictions [@troup2016]. Most of the widely adopted weather generators,
-including CCWorkdWeatherGen [@jentsch2008], Meteonorm and WeatherShift
-[@dickinson2016], use GCM (Global Climate Models) data from the CMIP (Coupled
-Model Intercomparison Project) that covers worldwide locations.
+modification tools have been developed to integrates climate change predictions
+[@troup2016]. Most of the widely adopted weather generators, including
+CCWorkdWeatherGen [@jentsch2008], Meteonorm and WeatherShift [@dickinson2016],
+use GCM (Global Climate Models) data from the CMIP (Coupled Model
+Intercomparison Project) that covers worldwide locations.
 
 Currently, the CMIP project is in its sixth phase (CMIP6) [@eyring2016], which
 has developed new emission scenarios that have the similar range as its fifth
 phase (CMIP5), but fill critical gaps for intermediate forcing levels
-[@oneill2016]. It will be used as the coming Sixth IPCC (Intergovernmental Panel
-on Climate Change) Climate Assessments Reports. However, existing tools based on
-the previous CMIP were unable to utilize the data from the latest climate change
-research. Moreover, to the author knowledge, no such tool is available which
-processes user-defined climate simulations in an automated way and allows
-further statistical analysis.
+[@oneill2016]. It will be used in the Sixth IPCC (Intergovernmental Panel on
+Climate Change) Climate Assessments Reports [@ipcc2021]. However, existing tools
+based on the previous CMIP were unable to utilize the data from the latest
+climate change research. There are currently no tools available that could
+process user-defined climate simulations in an automated way and allows further
+statistical analysis.
 
 The epwshiftr package bridges these gaps. It is a free, open-source R package
 for adapting a whole-building energy simulation EnergyPlus [@crawley2001]
@@ -69,12 +67,12 @@ automatically process big amounts of climate change prediction outputs from the
 CMIP6 (CMIP Phase 6) GCMs and create future weather data for BES for world-wide
 locations in a user-friendly and flexible way.
 
-# Epwshiftr package
+# Epwshiftr R package
 
-The epwshiftr is capable of processing multiple GCM outputs at various spatial
-and temporal resolutions. Additionally, the package is designed in a modular
-manner for flexibility and extensibility. There are five modules in total and
-Table lists their corresponding names and functionalities.
+Epwshiftr is capable of processing multiple GCM outputs at various spatial and
+temporal resolutions. Additionally, the package is designed in a modular manner
+for flexibility and extensibility. There are five modules in total and Table
+lists their corresponding names and functionalities.
 
 +-------------------+----------------------------------------------------------+
 | Module name       | Description                                              |
@@ -96,7 +94,7 @@ Table lists their corresponding names and functionalities.
 |                   | emission scenarios using the morphing method             |
 +-------------------+----------------------------------------------------------+
 | EPW Generation    | Create future EPW files using various data aggregation   |
-| Module            | strategies                                               |
+| Module            | strategies using the eplusr package [@jia2021]           |
 +-------------------+----------------------------------------------------------+
 
 : The modules designed in the epwshiftr package
@@ -120,3 +118,4 @@ by the University of California, Berkeley as a center for intellectual
 excellence in research and education in Singapore.
 
 # References
+
