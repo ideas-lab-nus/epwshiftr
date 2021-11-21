@@ -281,9 +281,11 @@ esgf_query <- function (
 
     q <- tryCatch(jsonlite::read_json(q), warning = function (w) w, error = function (e) e)
 
+    # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
         message("No matched data. Please check network connection and the availability of LLNL ESGF node.")
         dt <- data.table::data.table()
+    # nocov end
     } else if (q$response$numFound == 0L) {
         message("No matched data. Please examine the actual response using 'attr(x, \"response\")'.")
         dt <- data.table::data.table()
@@ -325,10 +327,12 @@ extract_query_file <- function (q) {
             "variable_long_name", "variable_units", "data_node", "size", "url",
             "tracking_id")]
         l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
+        # nocov start
         if (!length(l$url)) {
             warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
             l$url <- NA_character_
         }
+        # nocov end
         lapply(l, unlist)
     }))
 
@@ -433,6 +437,7 @@ init_cmip6_index <- function (
 
     if (!nrow(qd)) return(qd)
 
+    # nocov start
     # give a warning if dataset query response hits the limits
     if (nrow(qd) == 10000L) {
         warning("The dataset query returns 10,000 results which ",
@@ -441,6 +446,7 @@ init_cmip6_index <- function (
             "It is suggested to examine and refine your query."
         )
     }
+    # nocov end
 
     dt <- data.table::set(qd, NULL, "file_url", NA_character_)
 
@@ -487,11 +493,13 @@ init_cmip6_index <- function (
     }
 
     verbose("Checking if data is complete")
+    # nocov start
     if (anyNA(dt$file_url)) {
         warning("There are still ", length(unique(dt$dataset_id[is.na(dt$file_url)])), " Dataset that ",
             "did not find any matched output file after ", retry, " retries."
         )
     }
+    # nocov end
 
     data.table::setcolorder(dt, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
@@ -559,14 +567,19 @@ load_cmip6_index <- function (force = FALSE) {
             stop(sprintf("CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."))
         }
 
+        # nocov start
         # load file info
         idx <- tryCatch(
             data.table::fread(f, colClasses = c("version" = "character", "file_size" = "double")),
+            warning = function(w) {
+                stop("Failed to parse CMIP6 experiment output file index. ", conditionMessage(w))
+            },
             error = function (e) {
-                stop("Failed to parse CMIP6 experiment output file index.\n", conditionMessage(e))
+                stop("Failed to parse CMIP6 experiment output file index. ", conditionMessage(e))
             }
         )
-        message("Loading CMIP6 experiment output file index created at ", file.info(f)$mtime, ".")
+        # nocov end
+        verbose("Loading CMIP6 experiment output file index created at ", file.info(f)$mtime, ".")
 
         # fix column types in case of empty values
         if ("file_path" %in% names(idx)) {
@@ -708,7 +721,9 @@ get_data_node <- function (speed_test = FALSE, timeout = 3) {
 
     # locate table
     l_s <- grep("<!--load block main-->", l, fixed = TRUE)
+    # nocov start
     if (!length(l_s)) stop("Internal Error: Failed to read data node table")
+    # nocov end
     l <- l[l_s:length(l)]
     l_s <- grep("<table>", l, fixed = TRUE)[1L]
     l_e <- grep("</table>", l, fixed = TRUE)[1L]
@@ -731,22 +746,28 @@ get_data_node <- function (speed_test = FALSE, timeout = 3) {
     }, NA_character_)
     status <- status[!is.na(status)]
 
+    # nocov start
     if (length(nodes) != length(status)) stop("Internal Error: Failed to read data node table")
+    # nocov end
     res <- data.table::data.table(data_node = nodes, status = status)
     data.table::setorderv(res, "status", -1)
 
     if (!speed_test) return(res)
 
+    # nocov start
     if (!requireNamespace("pingr", quietly = TRUE)) {
         stop("'epwshiftr' relies on the package 'pingr' to perform speed test",
             "please add this to your library with install.packages('pingr') and try again."
         )
     }
+    # nocov end
 
+    # nocov start
     if (!length(nodes_up <- res[status == "UP", data_node])) {
         message("No working data nodes available now. Skip speed test")
         return(res)
     }
+    # nocov end
 
     # use the pingr package to test the connection speed
     speed <- vapply(nodes_up, function (node) {

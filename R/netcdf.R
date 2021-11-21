@@ -652,7 +652,7 @@ get_nc_axes <- function (x) {
         on.exit(RNetCDF::close.nc(nc), add = TRUE)
     }
 
-    # wl wl get file info
+    # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
     vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
@@ -735,6 +735,7 @@ match_nc_time <- function (x, years = NULL) {
 }
 # }}}
 
+# nocov start
 # rechunk_nc_dims {{{
 rechunk_nc_dims <- function (nc, out_file) {
     if (Sys.which("nccopy") == "") return()
@@ -783,3 +784,4 @@ reorganize_nc_dims <- function (nc) {
     re
 }
 # }}}
+# nocov end

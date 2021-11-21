@@ -62,6 +62,13 @@ jobs:
           git config --local user.name "GitHub Actions"
           Rscript -e 'pkgdown::deploy_to_branch(new_process = FALSE)'
 
+      - name: Cache NetCDF files
+        uses: actions/cache@v2
+        with:
+          path: ~/epwshiftr-cache
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
       - name: Upload check results
         if: failure()
         uses: actions/upload-artifact@main

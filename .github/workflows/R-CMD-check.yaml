@@ -75,6 +75,13 @@ jobs:
         run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning", check_dir = "check")
         shell: Rscript {0}
 
+      - name: Cache NetCDF files
+        uses: actions/cache@v2
+        with:
+          path: ~/epwshiftr-cache
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
       - name: Upload check results
         if: failure()
         uses: actions/upload-artifact@main
