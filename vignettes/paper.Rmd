@@ -38,7 +38,7 @@ editor_options:
 
 # Summary
 
-[![](logo.png "The epwshiftr package logo"){ width=120px }](https://cran.r-project.org/package=epwshiftr)
+[![](logo.png "The epwshiftr package logo"){width="120px"}](https://cran.r-project.org/package=epwshiftr)
 
 Building energy simulation (BES) has become increasingly applied to assess
 building performance under climate changes and to yield a more sustainable and
@@ -94,7 +94,7 @@ Table lists their corresponding names and functionalities.
 |                   | emission scenarios using the morphing method             |
 +-------------------+----------------------------------------------------------+
 | EPW Generation    | Create future EPW files using various data aggregation   |
-| Module            | strategies                                               |
+| Module            | strategies using the eplusr package [@jia2021]           |
 +-------------------+----------------------------------------------------------+
 
 : The modules designed in the epwshiftr package
