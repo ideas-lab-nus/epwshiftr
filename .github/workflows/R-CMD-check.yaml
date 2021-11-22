@@ -76,24 +76,6 @@ jobs:
           echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
           if [ ! -d "${{ runner.temp }}/epwshiftr" ]; then mkdir -p "${{ runner.temp }}/epwshiftr"; fi
 
-      - name: Show cache before
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          ls -la ${{ env.EPWSHIFTR_CHECK_CACHE }}
-
-      - name: Check
-        env:
-          _R_CHECK_CRAN_INCOMING_REMOTE_: false
-        run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning", check_dir = "check")
-        shell: Rscript {0}
-
-      - name: Show after
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          ls -la ${{ env.EPWSHIFTR_CHECK_CACHE }}
-
       - name: Cache NetCDF files
         if: runner.os != 'Windows'
         uses: actions/cache@v2
@@ -101,6 +83,12 @@ jobs:
           path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
+      - name: Check
+        env:
+          _R_CHECK_CRAN_INCOMING_REMOTE_: false
+        run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning", check_dir = "check")
+        shell: Rscript {0}
 
       - name: Upload check results
         if: failure()
