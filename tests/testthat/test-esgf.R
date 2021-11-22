@@ -132,9 +132,7 @@ test_that("load_cmip6_index()", {
 
     # only check when LLNL ESGF node works
     if (nrow(idx)) {
-        # create a directory to store the data
-        cache <- "~/epwshiftr-cache"
-        if (!dir.exists(cache)) dir.create(cache)
+        cache <- get_cache()
 
         # download output files
         for (f in idx$file_url) {

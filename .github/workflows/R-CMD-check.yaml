@@ -69,6 +69,11 @@ jobs:
           remotes::install_cran("rcmdcheck")
         shell: Rscript {0}
 
+      - name: Set EPWSHIFTR_CHECK_CACHE
+        shell: bash
+        run: |
+          echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
+
       - name: Check
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
@@ -78,8 +83,8 @@ jobs:
       - name: Cache NetCDF files
         uses: actions/cache@v2
         with:
-          path: ~/epwshiftr-cache
-          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
 
       - name: Upload check results

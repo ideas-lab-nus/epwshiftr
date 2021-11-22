@@ -1,7 +1,7 @@
 test_that("get_nc_meta()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20590101-20591231.nc"
     path <- file.path(cache, file)
 
@@ -24,7 +24,7 @@ test_that("get_nc_meta()", {
 test_that("get_nc_atts()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -43,7 +43,7 @@ test_that("get_nc_atts()", {
 test_that("get_nc_vars()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -60,7 +60,7 @@ test_that("get_nc_vars()", {
 test_that("get_nc_dims()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -77,7 +77,7 @@ test_that("get_nc_dims()", {
 test_that("get_nc_axes()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -94,7 +94,7 @@ test_that("get_nc_axes()", {
 test_that("get_nc_time()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -114,7 +114,7 @@ test_that("get_nc_time()", {
 test_that("match_nc_time()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -159,7 +159,7 @@ test_that("match_nc_time()", {
 test_that("summary_database()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file_2059 <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20590101-20591231.nc"
     file_2060 <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     file_2061 <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20610101-20611231.nc"
@@ -246,7 +246,7 @@ test_that("summary_database()", {
 test_that("get_nc_data()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -282,7 +282,7 @@ test_that("get_nc_data()", {
 test_that("extract_data()", {
     skip_on_cran()
 
-    cache <- "~/epwshiftr-cache"
+    cache <- get_cache()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
     epw <- file.path(cache, "SGP_Singapore.486980_IWEC.epw")
