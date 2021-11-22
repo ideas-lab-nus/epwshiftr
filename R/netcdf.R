@@ -152,6 +152,8 @@ summary_database <- function (
                 set(idx, NULL, nm, vals[[nm]])
             }
         }
+
+        left <- data.table()
     } else {
         progressr::with_progress({
             p <- progressr::progressor(along = ncfiles)

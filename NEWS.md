@@ -7,6 +7,11 @@
   data are split by the `by` argument and also the generated future EPWs and
   their paths are returned (#18).
 
+## Bug fixes
+
+* Fix the error in `summary_database()` when no NetCDF files are found in the
+  input directory.
+
 # epwshiftr 0.1.3
 
 ## Minor changes
