@@ -74,11 +74,21 @@ jobs:
         run: |
           echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
 
+      - name: Show before
+        shell: bash
+        run: |
+          ls -la ${{ env.EPWSHIFTR_CHECK_CACHE }}
+
       - name: Check
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
         run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning", check_dir = "check")
         shell: Rscript {0}
+
+      - name: Show after
+        shell: bash
+        run: |
+          ls -la ${{ env.EPWSHIFTR_CHECK_CACHE }}
 
       - name: Cache NetCDF files
         uses: actions/cache@v2
