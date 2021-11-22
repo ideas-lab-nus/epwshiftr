@@ -579,46 +579,46 @@ load_cmip6_index <- function (force = FALSE) {
             }
         )
         # nocov end
-        verbose("Loading CMIP6 experiment output file index created at ", file.info(f)$mtime, ".")
+        verbose("Loading CMIP6 experiment output file index created at ", as.character(file.info(f)$mtime), ".")
+    }
 
-        # fix column types in case of empty values
-        if ("file_path" %in% names(idx)) {
-            data.table::set(idx, NULL, "file_path", as.character(idx$file_path))
-            idx[J(""), on = "file_path", file_path := NA_character_]
+    # fix column types in case of empty values
+    if ("file_path" %in% names(idx)) {
+        data.table::set(idx, NULL, "file_path", as.character(idx$file_path))
+        idx[J(""), on = "file_path", file_path := NA_character_]
+    }
+    if ("file_realsize" %in% names(idx)) {
+        data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))
+    }
+    if ("file_mtime" %in% names(idx)) {
+        # to avoid No visible binding for global variable check NOTE
+        file_mtime <- NULL
+        if (is.character(idx$file_mtime)) {
+            idx[J(""), on = "file_mtime", file_mtime := NA]
         }
-        if ("file_realsize" %in% names(idx)) {
-            data.table::set(idx, NULL, "file_realsize", as.numeric(idx$file_realsize))
+        idx[, file_mtime := setattr(as.POSIXct(file_mtime, origin = "1970-01-01"), "tzone", NULL)]
+    }
+    if ("time_units" %in% names(idx)) {
+        data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
+    }
+    if ("time_calendar" %in% names(idx)) {
+        data.table::set(idx, NULL, "time_calendar", as.character(idx$time_calendar))
+    }
+    if ("datetime_start" %in% names(idx)) {
+        # to avoid No visible binding for global variable check NOTE
+        datetime_start <- NULL
+        if (is.character(idx$datetime_start)) {
+            idx[J(""), on = "datetime_start", datetime_start := NA]
         }
-        if ("file_mtime" %in% names(idx)) {
-            # to avoid No visible binding for global variable check NOTE
-            file_mtim <- NULL
-            if (is.character(idx$file_mtime)) {
-                idx[J(""), on = "file_mtime", file_mtime := NA]
-            }
-            idx[, file_mtime := as.POSIXct(file_mtime, origin = "1970-01-01", Sys.timezone())]
+        data.table::set(idx, NULL, "datetime_start", as.POSIXct(idx$datetime_start, "UTC"))
+    }
+    if ("datetime_end" %in% names(idx)) {
+        # to avoid No visible binding for global variable check NOTE
+        datetime_end <- NULL
+        if (is.character(idx$datetime_end)) {
+            idx[J(""), on = "datetime_end", datetime_end := NA]
         }
-        if ("time_units" %in% names(idx)) {
-            data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
-        }
-        if ("time_calendar" %in% names(idx)) {
-            data.table::set(idx, NULL, "time_calendar", as.character(idx$time_calendar))
-        }
-        if ("datetime_start" %in% names(idx)) {
-            # to avoid No visible binding for global variable check NOTE
-            datetime_start <- NULL
-            if (is.character(idx$datetime_start)) {
-                idx[J(""), on = "datetime_start", datetime_start := NA]
-            }
-            data.table::set(idx, NULL, "datetime_start", as.POSIXct(idx$datetime_start, "UTC"))
-        }
-        if ("datetime_end" %in% names(idx)) {
-            # to avoid No visible binding for global variable check NOTE
-            datetime_end <- NULL
-            if (is.character(idx$datetime_end)) {
-                idx[J(""), on = "datetime_end", datetime_end := NA]
-            }
-            data.table::set(idx, NULL, "datetime_end", as.POSIXct(idx$datetime_end, "UTC"))
-        }
+        data.table::set(idx, NULL, "datetime_end", as.POSIXct(idx$datetime_end, "UTC"))
     }
 
     # udpate package internal stored file index
@@ -727,7 +727,9 @@ get_data_node <- function (speed_test = FALSE, timeout = 3) {
     l <- l[l_s:length(l)]
     l_s <- grep("<table>", l, fixed = TRUE)[1L]
     l_e <- grep("</table>", l, fixed = TRUE)[1L]
+    # nocov start
     if (!length(l_s) || !length(l_e)) stop("Internal Error: Failed to read data node table")
+    # nocov end
     l <- l[l_s:l_e]
 
     # extract nodes

@@ -642,6 +642,7 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 }
 # }}}
 
+# nocov start
 # morphing_precipitation {{{
 morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
@@ -654,6 +655,7 @@ morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, t
     )
 }
 # }}}
+# nocov end
 
 # location_mean {{{
 location_mean <- function (dt, by_exclude = NULL) {
@@ -789,7 +791,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     }
 
     if (!length(morphed)) {
-        stop("No morphed data found. Please run 'morphing_epw' first.")
+        stop("No morphed data found. Please run 'morphing_epw()' first.")
     }
 
     # remove delta and alpha columns
@@ -847,9 +849,11 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     dir <- normalizePath(dir, mustWork = FALSE)
     if (!dir.exists(dir)) dir.create(dir, showWarnings = FALSE, recursive = TRUE)
     if (!checkmate::test_directory(dir)) {
+        # nocov start
         stop(sprintf("Failed to create output directory '%s'"),
             normalizePath(dir, mustWork = FALSE)
         )
+        # nocov end
     }
 
     if (separate) {
@@ -876,9 +880,11 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
         new_dir <- dirname(output[i])
         if (!dir.exists(new_dir)) dir.create(new_dir, showWarnings = FALSE, recursive = TRUE)
         if (!checkmate::test_directory(new_dir)) {
+            # nocov start
             stop(sprintf("Failed to create output directory '%s'"),
                 normalizePath(new_dir, mustWork = FALSE)
             )
+            # nocov end
         }
         new_epw$save(output[i], overwrite = overwrite)
 
@@ -893,7 +899,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     setnames(meta, cols_by, names(dict)[match(cols_by, names(dict))])
 
     set(meta, NULL, "epw", epws)
-    set(meta, NULL, "path", vapply(epws, function(epw) epw$path(), character(1)))
+    set(meta, NULL, "path", vapply(epws, function(epw) normalizePath(epw$path()), character(1)))
 
     meta
 }
