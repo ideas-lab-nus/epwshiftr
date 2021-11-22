@@ -34,6 +34,8 @@ Imports:
     units
 Suggests:
     testthat,
+    mockery,
+    withr,
     pingr,
     knitr,
     rmarkdown

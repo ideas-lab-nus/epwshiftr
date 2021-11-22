@@ -41,7 +41,6 @@ jobs:
       - name: Install dependencies
         run: |
           remotes::install_deps(dependencies = TRUE)
-          remotes::install_cran("mockery")
           remotes::install_cran("covr")
         shell: Rscript {0}
 

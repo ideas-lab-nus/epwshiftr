@@ -140,7 +140,7 @@ test_that("load_cmip6_index()", {
         for (f in idx$file_url) {
             dest <- file.path(cache, basename(f))
             if (!file.exists(dest)) {
-                flag <- download.file(f, , mode = "wb")
+                flag <- download.file(f, dest, mode = "wb")
             }
         }
 
