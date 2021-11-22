@@ -6,4 +6,32 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)) {
         dir.create(cache, recursive = TRUE)
     }
     cache
+
+    # download weather
+    file <- "SGP_Singapore.486980_IWEC.epw"
+    epw <- file.path(cache, file)
+    if (!file.exists(path)) {
+        eplusr::download_weather("Singapore", dir = cache, type = "epw", ask = FALSE)
+    }
+
+    # download NetCDF
+    withr::with_options(
+        list(epwshiftr.dir = cache),
+        {
+            idx <- init_cmip6_index(
+                variable = "tas", source = "EC-Earth3", years = 2060,
+                experiment = "ssp585", limit = 1, save = TRUE
+            )
+
+            # download output files
+            for (f in idx$file_url) {
+                dest <- file.path(cache, basename(f))
+                if (!file.exists(dest)) {
+                    flag <- download.file(f, dest, mode = "wb")
+                }
+            }
+        }
+    )
+
+    cache
 }

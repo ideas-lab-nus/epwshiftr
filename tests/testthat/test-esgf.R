@@ -134,14 +134,6 @@ test_that("load_cmip6_index()", {
     if (nrow(idx)) {
         cache <- get_cache()
 
-        # download output files
-        for (f in idx$file_url) {
-            dest <- file.path(cache, basename(f))
-            if (!file.exists(dest)) {
-                flag <- download.file(f, dest, mode = "wb")
-            }
-        }
-
         expect_is(idx1 <- load_cmip6_index(), "data.table")
         expect_equal(idx, idx1)
 
