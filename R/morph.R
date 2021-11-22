@@ -367,22 +367,28 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         # Otherwise the final results will be NA
         # NOTE: By doing so, alpha for those GCMS will be zero and 'shift'
         # method is used. Warnings should be issued
-        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE]
-        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE]
+        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE, nomatch = NULL]
+        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE, nomatch = NULL]
         i <- unique(c(i_min, i_max))
 
-        # construct case string
-        cases <- data_mean[i, unique(sprintf("CMIP6.%s.%s.%s.%s.%s.%s",
-            activity_drs, institution_id, source_id, experiment_id, member_id, table_id))]
-        cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
-        # issue warnings
-        warning(sprintf("Case(s) below does not contains max or min of '%s' data. ", gsub("_", " ", var)),
-            "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
-            call. = FALSE
-        )
+        case_fallback <- data.table()
+        if (length(i)) {
+            cols <- c("activity_drs", "institution_id", "source_id",
+                "experiment_id", "member_id", "table_id")
 
-        set(data_mean, i_max, "value_max", data_mean$value[i_max])
-        set(data_mean, i_min, "value_min", data_mean$value[i_max])
+            case_fallback <- unique(data_mean[i], by = cols)
+            set(case_fallback, NULL, setdiff(names(case_fallback), cols), NULL)
+
+            # construct case string
+            cases <- case_fallback[, unique(sprintf("CMIP6.%s.%s.%s.%s.%s.%s",
+                activity_drs, institution_id, source_id, experiment_id, member_id, table_id))]
+            cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
+            # issue warnings
+            warning(sprintf("Case(s) below contains missing values of max or min of '%s' data. ", gsub("_", " ", var)),
+                "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
+                call. = FALSE
+            )
+        }
     }
 
     # add datetime columns from the original EPW data into the monthly average of

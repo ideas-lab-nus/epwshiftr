@@ -13,6 +13,8 @@
   input directory (#25).
 * Fix the error about overwriting temporary EPW file when `epw` in `match_coord() `
   is a search string (#25).
+* Fix the wrong warning messages when `combined` method is used in
+  `morphing_epw()` (#25).
 
 # epwshiftr 0.1.3
 
