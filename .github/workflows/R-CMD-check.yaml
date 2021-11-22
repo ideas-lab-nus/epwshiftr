@@ -73,6 +73,7 @@ jobs:
         shell: bash
         run: |
           echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
+          if [ ! -d "${{ runner.temp }}/epwshiftr" ]; then mkdir -p "${{ runner.temp }}/epwshiftr" fi
 
       - name: Show before
         shell: bash
