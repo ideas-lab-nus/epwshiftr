@@ -405,6 +405,9 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 
     if (type == "combined" && all(c("value_min", "value_max") %in% names(data))) {
         data[, alpha := ((value_max - epw_max) - (value_min - epw_min)) / (epw_max - epw_min)]
+        if (nrow(case_fallback)) {
+            data[case_fallback, on = c(names(case_fallback)), alpha := 0.0]
+        }
     } else {
         data[, alpha := value / epw_mean]
     }

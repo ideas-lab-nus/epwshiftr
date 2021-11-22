@@ -13,6 +13,9 @@
   input directory (#25).
 * Fix the error about overwriting temporary EPW file when `epw` in `match_coord() `
   is a search string (#25).
+* Now `morphing_epw()` can correctly fall back to use "Shift" method when any
+  missing values are detected in maximum and minimum prediction values of
+  climate variables (#25).
 * Fix the wrong warning messages when `combined` method is used in
   `morphing_epw()` (#25).
 
