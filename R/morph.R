@@ -669,12 +669,6 @@ to_radian <- function (degree) {
 }
 # }}}
 
-# to_degree {{{
-to_degree <- function (radian) {
-    radian * 180 / pi
-}
-# }}}
-
 # day_angle {{{
 day_angle <- function (day_of_year) {
     day_of_year * 360.0 / 365.25
@@ -714,32 +708,6 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
     decl <- declination(day_of_year)
     h_ang <- hour_angle(longitude, day_of_year, hour, timezone)
     sin(to_radian(latitude)) * sin(to_radian(decl)) + cos(to_radian(latitude)) * cos(to_radian(decl)) * cos(to_radian(h_ang))
-}
-# }}}
-
-# append_epw_data {{{
-# Append EPW data in each case for merely comparison purpose
-append_epw_data <- function (morphed) {
-    epw <- morphed$epw
-    epw$drop_unit()
-    epw <- epw$data()
-
-    mor <- morphed[names(morphed) != "epw"]
-
-    lapply(mor, function (dt) {
-        # get variable name
-        var <- intersect(names(dt), names(epw)[-(1:7)])
-
-        meta <- unique(dt[, .SD, .SDcols = c("experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "interval")])
-
-        base <- meta[, as.list(epw[, .SD, .SDcols = c(names(epw)[1:6], var)]), by = c(names(meta))]
-
-        set(base, NULL, "interval", "EPW")
-
-        # combine
-        rbindlist(list(dt, base), fill = TRUE)
-    })
 }
 # }}}
 
