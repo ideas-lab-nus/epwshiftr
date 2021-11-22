@@ -70,6 +70,7 @@ jobs:
         shell: Rscript {0}
 
       - name: Set EPWSHIFTR_CHECK_CACHE
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
