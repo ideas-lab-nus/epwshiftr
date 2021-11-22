@@ -22,6 +22,7 @@
 EPWSHIFTR_ENV <- new.env(parent = emptyenv())
 EPWSHIFTR_ENV$index_db <- NULL
 
+# nocov start
 # set package options
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
 .onLoad <- function (libname, pkgname) {
@@ -31,3 +32,4 @@ EPWSHIFTR_ENV$index_db <- NULL
     }
     invisible()
 }
+# nocov end

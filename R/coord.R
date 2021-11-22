@@ -147,7 +147,7 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
             dict <- extract_location_dict(epw)
             if (is.null(dict)) return(invisible())
             epw <- eplusr::read_epw(dict$epw_url)
-            epw$save(file.path(tempdir(), basename(dict$epw_url)))
+            epw$save(file.path(tempdir(), basename(dict$epw_url)), overwrite = TRUE)
         }
     }
 

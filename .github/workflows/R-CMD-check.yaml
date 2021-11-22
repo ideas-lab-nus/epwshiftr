@@ -23,7 +23,6 @@ jobs:
       matrix:
         config:
           - {os: windows-latest, r: 'release', not_cran: false}
-          - {os: macOS-latest, r: 'release', not_cran: false}
           - {os: ubuntu-20.04, r: 'release', not_cran: true, rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest"}
 
     env:
@@ -68,6 +67,21 @@ jobs:
           remotes::install_deps(dependencies = TRUE)
           remotes::install_cran("rcmdcheck")
         shell: Rscript {0}
+
+      - name: Set EPWSHIFTR_CHECK_CACHE
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
+          if [ ! -d "${{ runner.temp }}/epwshiftr" ]; then mkdir -p "${{ runner.temp }}/epwshiftr"; fi
+
+      - name: Cache NetCDF files
+        if: runner.os != 'Windows'
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
 
       - name: Check
         env:

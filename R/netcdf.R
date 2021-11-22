@@ -152,6 +152,8 @@ summary_database <- function (
                 set(idx, NULL, nm, vals[[nm]])
             }
         }
+
+        left <- data.table()
     } else {
         progressr::with_progress({
             p <- progressr::progressor(along = ncfiles)
@@ -362,7 +364,9 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
                 if (grepl("exceeds dimension bound", conditionMessage(e), fixed = TRUE)) {
                     NULL
                 } else {
+                    # nocov start
                     signalCondition(e)
+                    # nocov end
                 }
             }
         ))
@@ -526,7 +530,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     }
 
     # initial progress bar
-    message("Start to extract CMIP6 data according to matched coordinates...")
+    verbose("Start to extract CMIP6 data according to matched coordinates...")
 
     data <- data.table()
 
@@ -534,7 +538,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         co <- m_coord[[i]]
 
         if (!is.null(out_dir) && length(by_cols)) {
-            message("Extracting data for case '", names(m_coord)[[i]], "'...")
+            verbose("Extracting data for case '", names(m_coord)[[i]], "'...")
         }
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))
@@ -652,7 +656,7 @@ get_nc_axes <- function (x) {
         on.exit(RNetCDF::close.nc(nc), add = TRUE)
     }
 
-    # wl wl get file info
+    # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
     vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
@@ -718,11 +722,11 @@ match_nc_time <- function (x, years = NULL) {
         i <- lapply(as.integer(years), function (x) which(y == x))
 
         j <- 1L
-        l <- list()
+        l <- vector("list", length(i))
         l[[1L]] <- i[[1L]]
         for (m in i[-1L]) {
             if (!length(m)) next
-            if (length(l[[j]]) && l[[j]][length(l[[j]])] + 1L == m[1L]) {
+            if (length(l[[j]]) && (l[[j]][length(l[[j]])] + 1L) == m[1L]) {
                 l[[j]] <- c(l[[j]], m)
             } else {
                 j <- j + 1L
@@ -735,6 +739,7 @@ match_nc_time <- function (x, years = NULL) {
 }
 # }}}
 
+# nocov start
 # rechunk_nc_dims {{{
 rechunk_nc_dims <- function (nc, out_file) {
     if (Sys.which("nccopy") == "") return()
@@ -783,3 +788,4 @@ reorganize_nc_dims <- function (nc) {
     re
 }
 # }}}
+# nocov end
