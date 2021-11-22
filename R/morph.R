@@ -367,22 +367,28 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         # Otherwise the final results will be NA
         # NOTE: By doing so, alpha for those GCMS will be zero and 'shift'
         # method is used. Warnings should be issued
-        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE]
-        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE]
+        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE, nomatch = NULL]
+        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE, nomatch = NULL]
         i <- unique(c(i_min, i_max))
 
-        # construct case string
-        cases <- data_mean[i, unique(sprintf("CMIP6.%s.%s.%s.%s.%s.%s",
-            activity_drs, institution_id, source_id, experiment_id, member_id, table_id))]
-        cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
-        # issue warnings
-        warning(sprintf("Case(s) below does not contains max or min of '%s' data. ", gsub("_", " ", var)),
-            "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
-            call. = FALSE
-        )
+        case_fallback <- data.table()
+        if (length(i)) {
+            cols <- c("activity_drs", "institution_id", "source_id",
+                "experiment_id", "member_id", "table_id")
 
-        set(data_mean, i_max, "value_max", data_mean$value[i_max])
-        set(data_mean, i_min, "value_min", data_mean$value[i_max])
+            case_fallback <- unique(data_mean[i], by = cols)
+            set(case_fallback, NULL, setdiff(names(case_fallback), cols), NULL)
+
+            # construct case string
+            cases <- case_fallback[, unique(sprintf("CMIP6.%s.%s.%s.%s.%s.%s",
+                activity_drs, institution_id, source_id, experiment_id, member_id, table_id))]
+            cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
+            # issue warnings
+            warning(sprintf("Case(s) below contains missing values of max or min of '%s' data. ", gsub("_", " ", var)),
+                "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
+                call. = FALSE
+            )
+        }
     }
 
     # add datetime columns from the original EPW data into the monthly average of
@@ -399,6 +405,9 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 
     if (type == "combined" && all(c("value_min", "value_max") %in% names(data))) {
         data[, alpha := ((value_max - epw_max) - (value_min - epw_min)) / (epw_max - epw_min)]
+        if (nrow(case_fallback)) {
+            data[case_fallback, on = c(names(case_fallback)), alpha := 0.0]
+        }
     } else {
         data[, alpha := value / epw_mean]
     }
@@ -633,6 +642,7 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 }
 # }}}
 
+# nocov start
 # morphing_precipitation {{{
 morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, type = "stretch") {
     morphing_from_mean(
@@ -645,6 +655,7 @@ morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, t
     )
 }
 # }}}
+# nocov end
 
 # location_mean {{{
 location_mean <- function (dt, by_exclude = NULL) {
@@ -657,12 +668,6 @@ location_mean <- function (dt, by_exclude = NULL) {
 # to_radian {{{
 to_radian <- function (degree) {
     degree * pi / 180
-}
-# }}}
-
-# to_degree {{{
-to_degree <- function (radian) {
-    radian * 180 / pi
 }
 # }}}
 
@@ -705,32 +710,6 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
     decl <- declination(day_of_year)
     h_ang <- hour_angle(longitude, day_of_year, hour, timezone)
     sin(to_radian(latitude)) * sin(to_radian(decl)) + cos(to_radian(latitude)) * cos(to_radian(decl)) * cos(to_radian(h_ang))
-}
-# }}}
-
-# append_epw_data {{{
-# Append EPW data in each case for merely comparison purpose
-append_epw_data <- function (morphed) {
-    epw <- morphed$epw
-    epw$drop_unit()
-    epw <- epw$data()
-
-    mor <- morphed[names(morphed) != "epw"]
-
-    lapply(mor, function (dt) {
-        # get variable name
-        var <- intersect(names(dt), names(epw)[-(1:7)])
-
-        meta <- unique(dt[, .SD, .SDcols = c("experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "interval")])
-
-        base <- meta[, as.list(epw[, .SD, .SDcols = c(names(epw)[1:6], var)]), by = c(names(meta))]
-
-        set(base, NULL, "interval", "EPW")
-
-        # combine
-        rbindlist(list(dt, base), fill = TRUE)
-    })
 }
 # }}}
 
@@ -812,7 +791,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     }
 
     if (!length(morphed)) {
-        stop("No morphed data found. Please run 'morphing_epw' first.")
+        stop("No morphed data found. Please run 'morphing_epw()' first.")
     }
 
     # remove delta and alpha columns
@@ -870,9 +849,11 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     dir <- normalizePath(dir, mustWork = FALSE)
     if (!dir.exists(dir)) dir.create(dir, showWarnings = FALSE, recursive = TRUE)
     if (!checkmate::test_directory(dir)) {
+        # nocov start
         stop(sprintf("Failed to create output directory '%s'"),
             normalizePath(dir, mustWork = FALSE)
         )
+        # nocov end
     }
 
     if (separate) {
@@ -899,9 +880,11 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
         new_dir <- dirname(output[i])
         if (!dir.exists(new_dir)) dir.create(new_dir, showWarnings = FALSE, recursive = TRUE)
         if (!checkmate::test_directory(new_dir)) {
+            # nocov start
             stop(sprintf("Failed to create output directory '%s'"),
                 normalizePath(new_dir, mustWork = FALSE)
             )
+            # nocov end
         }
         new_epw$save(output[i], overwrite = overwrite)
 
@@ -916,7 +899,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
     setnames(meta, cols_by, names(dict)[match(cols_by, names(dict))])
 
     set(meta, NULL, "epw", epws)
-    set(meta, NULL, "path", vapply(epws, function(epw) epw$path(), character(1)))
+    set(meta, NULL, "path", vapply(epws, function(epw) normalizePath(epw$path()), character(1)))
 
     meta
 }

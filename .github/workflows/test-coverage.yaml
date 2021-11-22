@@ -44,6 +44,19 @@ jobs:
           remotes::install_cran("covr")
         shell: Rscript {0}
 
+      - name: Set EPWSHIFTR_CHECK_CACHE
+        shell: bash
+        run: |
+          echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
+          if [ ! -d "${{ runner.temp }}/epwshiftr" ]; then mkdir -p "${{ runner.temp }}/epwshiftr"; fi
+
+      - name: Cache NetCDF files
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
       - name: Test coverage
         run: covr::codecov(quiet = FALSE)
         shell: Rscript {0}
