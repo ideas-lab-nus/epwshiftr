@@ -26,6 +26,8 @@
 <![endif]-->
 </head>
 <body data-spy="scroll" data-target="#toc">
+    
+
     <div class="container template-article">
       <header><div class="navbar navbar-default navbar-fixed-top" role="navigation">
   <div class="container">
@@ -38,18 +40,12 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3.9001</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9001</span>
       </span>
     </div>
 
     <div id="navbar" class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-<li>
-  <a href="../index.html">
-    <span class="fas fa-home fa-lg"></span>
-     
-  </a>
-</li>
 <li>
   <a href="../reference/index.html">Reference</a>
 </li>
@@ -71,7 +67,7 @@
       </ul>
 <ul class="nav navbar-nav navbar-right">
 <li>
-  <a href="https://github.com/ideas-lab-nus/epwshiftr/">
+  <a href="https://github.com/ideas-lab-nus/epwshiftr/" class="external-link">
     <span class="fab fa-github fa-lg"></span>
      
   </a>
@@ -86,31 +82,31 @@
 
       
 
-      </header><script src="paper_files/accessible-code-block-0.0.1/empty-anchor.js"></script><div class="row">
+      </header><div class="row">
   <div class="col-md-9 contents">
     <div class="page-header toc-ignore">
       <h1 data-toc-skip>epwshiftr: Create future EnergyPlus Weather files using CMIP6 data</h1>
             
-            <h4 class="date">20 November 2021</h4>
+            <h4 data-toc-skip class="date">20 November 2021</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/vignettes/paper.Rmd"><code>vignettes/paper.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/HEAD/vignettes/paper.Rmd" class="external-link"><code>vignettes/paper.Rmd</code></a></small>
       <div class="hidden name"><code>paper.Rmd</code></div>
 
     </div>
 
     
     
-<div id="summary" class="section level1">
-<h1 class="hasAnchor">
-<a href="#summary" class="anchor"></a>Summary</h1>
-<p><a href="https://cran.r-project.org/package=epwshiftr"><img src="logo.png" title="The epwshiftr package logo" width="120"></a></p>
+<div class="section level2">
+<h2 id="summary">Summary<a class="anchor" aria-label="anchor" href="#summary"></a>
+</h2>
+<p><a href="https://cran.r-project.org/package=epwshiftr" class="external-link"><img src="logo.png" title="The epwshiftr package logo" width="120"></a></p>
 <p>Building energy simulation (BES) has become increasingly applied to assess building performance under climate changes and yield a more sustainable and resilient design <span class="citation">(Yassaghi and Hoque 2019)</span>. Multiple morphing-based weather-file modification tools have been developed to integrate climate change predictions <span class="citation">(Troup 2016)</span>. Most of the widely adopted weather generators, including CCWorkdWeatherGen <span class="citation">(Jentsch, Bahaj, and James 2008)</span>, Meteonorm <span class="citation">(Remund et al. 2020)</span>, and WeatherShift <span class="citation">(Dickinson and Brannon 2016)</span>, use GCM (Global Climate Models) data from the CMIP (Coupled Model Intercomparison Project) that covers worldwide locations.</p>
 <p>Currently, the CMIP project is in its sixth phase (CMIP6) <span class="citation">(Eyring et al. 2016)</span>, which has developed new emission scenarios that have a similar range as its fifth phase (CMIP5) but fill critical gaps for intermediate forcing levels <span class="citation">(O’Neill et al. 2016)</span>. It will be used in the Sixth IPCC (Intergovernmental Panel on Climate Change) Climate Assessments Reports <span class="citation">(IPCC 2021)</span>. However, existing tools based on the previous CMIP were unable to utilize the data from the latest climate change research. Currently, there are no tools available that could process user-defined climate simulations in an automated way and allow further statistical analysis.</p>
 <p>The epwshiftr package bridges these gaps. It is a free, open-source R package for adapting a whole-building energy simulation EnergyPlus <span class="citation">(Crawley et al. 2001)</span> Weather (EPW) files to incorporate climate change predictions using the morphing statistical downscaling method <span class="citation">(Belcher, Hacker, and Powell 2005)</span>. The primary goal is to automatically process large amounts of climate change prediction outputs from the CMIP6 (CMIP Phase 6) GCMs and create future climate data for BES across worldwide locations in a user-friendly and flexible way.</p>
 </div>
-<div id="epwshiftr-r-package" class="section level1">
-<h1 class="hasAnchor">
-<a href="#epwshiftr-r-package" class="anchor"></a>Epwshiftr R package</h1>
+<div class="section level2">
+<h2 id="epwshiftr-r-package">Epwshiftr R package<a class="anchor" aria-label="anchor" href="#epwshiftr-r-package"></a>
+</h2>
 <p>Epwshiftr is capable of processing multiple GCM outputs at various spatial and temporal resolutions. Additionally, the package is designed in a modular manner for flexibility and extensibility. There are five modules in total, and the table below lists their corresponding names and functionalities.</p>
 <table class="table">
 <caption>The modules designed in the epwshiftr package</caption>
@@ -147,52 +143,52 @@
 </tbody>
 </table>
 <p>Each module stores climate data in a consistent Tidy <span class="citation">(Wickham 2014)</span> data format, allowing exploring a considerably broad pool of ready-to-use methods available in R for customized statistical analysis. Computational-intensive processes have been designed to run in parallel for speed-up.</p>
-<p>The epwshiftr is distributed via CRAN (The Comprehensive R Archive Network). The source code is available on GitHub at <a href="https://github.com/ideas-lab-nus/epwshiftr" class="uri">https://github.com/ideas-lab-nus/epwshiftr</a> and released under the MIT license.</p>
+<p>The epwshiftr is distributed via CRAN (The Comprehensive R Archive Network). The source code is available on GitHub at <a href="https://github.com/ideas-lab-nus/epwshiftr" class="external-link uri">https://github.com/ideas-lab-nus/epwshiftr</a> and released under the MIT license.</p>
 </div>
-<div id="acknowledgements" class="section level1">
-<h1 class="hasAnchor">
-<a href="#acknowledgements" class="anchor"></a>Acknowledgements</h1>
+<div class="section level2">
+<h2 id="acknowledgements">Acknowledgements<a class="anchor" aria-label="anchor" href="#acknowledgements"></a>
+</h2>
 <p>This research was funded by the Republic of Singapore’s National Research Foundation through a grant to the Berkeley Education Alliance for Research in Singapore (BEARS) for the Singapore-Berkeley Building Efficiency and Sustainability in the Tropics (SinBerBEST) Program. BEARS has been established by the University of California, Berkeley as a center for intellectual excellence in research and education in Singapore.</p>
 </div>
-<div id="references" class="section level1 unnumbered">
-<h1 class="hasAnchor">
-<a href="#references" class="anchor"></a>References</h1>
-<div id="refs" class="references">
-<div id="ref-belcher2005">
-<p>Belcher, Se, Jn Hacker, and Ds Powell. 2005. “Constructing Design Weather Data for Future Climates.” <em>Building Services Engineering Research and Technology</em> 26 (1): 49–61. <a href="https://doi.org/10/b4z2gp">https://doi.org/10/b4z2gp</a>.</p>
+<div class="section level2">
+<h2 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
+</h2>
+<div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-belcher2005" class="csl-entry">
+Belcher, Se, Jn Hacker, and Ds Powell. 2005. <span>“Constructing Design Weather Data for Future Climates.”</span> <em>Building Services Engineering Research and Technology</em> 26 (1): 49–61. <a href="https://doi.org/b4z2gp" class="external-link">https://doi.org/b4z2gp</a>.
 </div>
-<div id="ref-crawley2001">
-<p>Crawley, Drury B., Linda K. Lawrie, Frederick C. Winkelmann, W. F. Buhl, Y. Joe Huang, Curtis O. Pedersen, Richard K. Strand, et al. 2001. “EnergyPlus: Creating a New-Generation Building Energy Simulation Program.” <em>Energy and Buildings</em>, Special issue: BUILDING simulation’99, 33 (4): 319–31. <a href="https://doi.org/10.1016/s0378-7788(00)00114-6">https://doi.org/10.1016/s0378-7788(00)00114-6</a>.</p>
+<div id="ref-crawley2001" class="csl-entry">
+Crawley, Drury B., Linda K. Lawrie, Frederick C. Winkelmann, W. F. Buhl, Y. Joe Huang, Curtis O. Pedersen, Richard K. Strand, et al. 2001. <span>“EnergyPlus: Creating a New-Generation Building Energy Simulation Program.”</span> <em>Energy and Buildings</em>, Special issue: BUILDING SIMULATION’99, 33 (4): 319–31. <a href="https://doi.org/10.1016/s0378-7788(00)00114-6" class="external-link">https://doi.org/10.1016/s0378-7788(00)00114-6</a>.
 </div>
-<div id="ref-dickinson2016">
-<p>Dickinson, Robert, and Benjamin Brannon. 2016. “36 Th International Conference on Passive and Low Energy Architecture.” In, 6. Los Angeles, U.S.</p>
+<div id="ref-dickinson2016" class="csl-entry">
+Dickinson, Robert, and Benjamin Brannon. 2016. <span>“36 Th International Conference on Passive and Low Energy Architecture.”</span> In, 6. Los Angeles, U.S.
 </div>
-<div id="ref-eyring2016">
-<p>Eyring, Veronika, Sandrine Bony, Gerald A. Meehl, Catherine A. Senior, Bjorn Stevens, Ronald J. Stouffer, and Karl E. Taylor. 2016. “Overview of the Coupled Model Intercomparison Project Phase 6 (Cmip6) Experimental Design and Organization.” <em>Geoscientific Model Development</em> 9 (5): 1937–58. <a href="https://doi.org/10.5194/gmd-9-1937-2016">https://doi.org/10.5194/gmd-9-1937-2016</a>.</p>
+<div id="ref-eyring2016" class="csl-entry">
+Eyring, Veronika, Sandrine Bony, Gerald A. Meehl, Catherine A. Senior, Bjorn Stevens, Ronald J. Stouffer, and Karl E. Taylor. 2016. <span>“Overview of the Coupled Model Intercomparison Project Phase 6 (Cmip6) Experimental Design and Organization.”</span> <em>Geoscientific Model Development</em> 9 (5): 1937–58. <a href="https://doi.org/10.5194/gmd-9-1937-2016" class="external-link">https://doi.org/10.5194/gmd-9-1937-2016</a>.
 </div>
-<div id="ref-ipcc2021">
-<p>IPCC. 2021. “Climate Change 2021: The Physical Science Basis. Contribution of Working Group I to the Sixth Assessment Report of the Intergovernmental Panel on Climate Change.” U.K. <a href="https://www.ipcc.ch/report/ar6/wg1/">https://www.ipcc.ch/report/ar6/wg1/</a>.</p>
+<div id="ref-ipcc2021" class="csl-entry">
+IPCC. 2021. <span>“Climate Change 2021: The Physical Science Basis. Contribution of Working Group i to the Sixth Assessment Report of the Intergovernmental Panel on Climate Change.”</span> U.K. <a href="https://www.ipcc.ch/report/ar6/wg1/" class="external-link">https://www.ipcc.ch/report/ar6/wg1/</a>.
 </div>
-<div id="ref-jentsch2008">
-<p>Jentsch, Mark F., AbuBakr S. Bahaj, and Patrick A. B. James. 2008. “Climate Change Future Proofing of BuildingsGeneration and Assessment of Building Simulation Weather Files.” <em>Energy and Buildings</em> 40 (12): 2148–68. <a href="https://doi.org/10/b4n9qc">https://doi.org/10/b4n9qc</a>.</p>
+<div id="ref-jentsch2008" class="csl-entry">
+Jentsch, Mark F., AbuBakr S. Bahaj, and Patrick A. B. James. 2008. <span>“Climate Change Future Proofing of Buildings<span></span>Generation and Assessment of Building Simulation Weather Files.”</span> <em>Energy and Buildings</em> 40 (12): 2148–68. <a href="https://doi.org/b4n9qc" class="external-link">https://doi.org/b4n9qc</a>.
 </div>
-<div id="ref-jia2021">
-<p>Jia, Hongyuan, and Adrian Chong. 2021. “Eplusr: A Framework for Integrating Building Energy Simulation and Data-Driven Analytics.” <em>Energy and Buildings</em> 237 (April): 110757. <a href="https://doi.org/10.1016/j.enbuild.2021.110757">https://doi.org/10.1016/j.enbuild.2021.110757</a>.</p>
+<div id="ref-jia2021" class="csl-entry">
+Jia, Hongyuan, and Adrian Chong. 2021. <span>“Eplusr: A Framework for Integrating Building Energy Simulation and Data-Driven Analytics.”</span> <em>Energy and Buildings</em> 237 (April): 110757. <a href="https://doi.org/10.1016/j.enbuild.2021.110757" class="external-link">https://doi.org/10.1016/j.enbuild.2021.110757</a>.
 </div>
-<div id="ref-oneill2016">
-<p>O’Neill, Brian C., Claudia Tebaldi, Detlef P. van Vuuren, Veronika Eyring, Pierre Friedlingstein, George Hurtt, Reto Knutti, et al. 2016. “The Scenario Model Intercomparison Project (Scenariomip) for Cmip6.” <em>Geoscientific Model Development</em> 9 (9): 3461–82. <a href="https://doi.org/10.5194/gmd-9-3461-2016">https://doi.org/10.5194/gmd-9-3461-2016</a>.</p>
+<div id="ref-oneill2016" class="csl-entry">
+O’Neill, Brian C., Claudia Tebaldi, Detlef P. van Vuuren, Veronika Eyring, Pierre Friedlingstein, George Hurtt, Reto Knutti, et al. 2016. <span>“The Scenario Model Intercomparison Project (ScenarioMIP) for Cmip6.”</span> <em>Geoscientific Model Development</em> 9 (9): 3461–82. <a href="https://doi.org/10.5194/gmd-9-3461-2016" class="external-link">https://doi.org/10.5194/gmd-9-3461-2016</a>.
 </div>
-<div id="ref-remund2020">
-<p>Remund, Jan, Stefan Müller, Michael Schmutz, and Pascal Graf. 2020. “38th European Photovoltaic Solar Energy Conference and Exhibition.” In. Lisbon, Portugal. <a href="https://meteonorm.com/assets/publications/5BV.3.8_pvsec_2020_mn8.pdf">https://meteonorm.com/assets/publications/5BV.3.8_pvsec_2020_mn8.pdf</a>.</p>
+<div id="ref-remund2020" class="csl-entry">
+Remund, Jan, Stefan Müller, Michael Schmutz, and Pascal Graf. 2020. <span>“38th European Photovoltaic Solar Energy Conference and Exhibition.”</span> In. Lisbon, Portugal. <a href="https://meteonorm.com/assets/publications/5BV.3.8_pvsec_2020_mn8.pdf" class="external-link">https://meteonorm.com/assets/publications/5BV.3.8_pvsec_2020_mn8.pdf</a>.
 </div>
-<div id="ref-troup2016">
-<p>Troup, Luke. 2016. “Building Performance Modeling Conference.” In, 8. Salt Lake City, UT, U.S.</p>
+<div id="ref-troup2016" class="csl-entry">
+Troup, Luke. 2016. <span>“Building Performance Modeling Conference.”</span> In, 8. Salt Lake City, UT, U.S.
 </div>
-<div id="ref-wickham2014">
-<p>Wickham, Hadley. 2014. “Tidy Data.” <em>Journal of Statistical Software</em> 59 (1): 1–23. <a href="https://doi.org/10.18637/jss.v059.i10">https://doi.org/10.18637/jss.v059.i10</a>.</p>
+<div id="ref-wickham2014" class="csl-entry">
+Wickham, Hadley. 2014. <span>“Tidy Data.”</span> <em>Journal of Statistical Software</em> 59 (1): 1–23. <a href="https://doi.org/10.18637/jss.v059.i10" class="external-link">https://doi.org/10.18637/jss.v059.i10</a>.
 </div>
-<div id="ref-yassaghi2019">
-<p>Yassaghi, and Hoque. 2019. “An Overview of Climate Change and Building Energy: Performance, Responses and Uncertainties.” <em>Buildings</em> 9 (7): 166. <a href="https://doi.org/10.3390/buildings9070166">https://doi.org/10.3390/buildings9070166</a>.</p>
+<div id="ref-yassaghi2019" class="csl-entry">
+Yassaghi, and Hoque. 2019. <span>“An Overview of Climate Change and Building Energy: Performance, Responses and Uncertainties.”</span> <em>Buildings</em> 9 (7): 166. <a href="https://doi.org/10.3390/buildings9070166" class="external-link">https://doi.org/10.3390/buildings9070166</a>.
 </div>
 </div>
 </div>
@@ -209,11 +205,13 @@
 
 
       <footer><div class="copyright">
-  <p>Developed by <a href="https://github.com/hongyuanjia">Hongyuan Jia</a>, <a href="https://github.com/adChong">Adrian Chong</a>.</p>
+  <p></p>
+<p>Developed by <a href="https://github.com/hongyuanjia" class="external-link">Hongyuan Jia</a>, <a href="https://github.com/adChong" class="external-link">Adrian Chong</a>.</p>
 </div>
 
 <div class="pkgdown">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/">pkgdown</a> 1.6.1.</p>
+  <p></p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
 </div>
 
       </footer>
@@ -221,6 +219,8 @@
 
   
 
+
+  
 
   </body>
 </html>
