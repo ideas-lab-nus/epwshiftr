@@ -54,3 +54,4 @@ Collate:
     'coord.R'
     'morph.R'
 VignetteBuilder: knitr
+Config/testthat/start-first: utils, esgf, coord, netcdf, morph
