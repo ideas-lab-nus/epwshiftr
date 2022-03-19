@@ -127,7 +127,7 @@ test_that("match_coord()", {
             )
         )
         expect_is(res1$coord$coord, "data.table")
-        expect_equal(names(res1$coord$coord[[1]]), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_equal(names(res1$coord$coord), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
 
         # can work with EPW file path
         expect_is(res2 <- match_coord(path), "epw_cmip6_coord")
