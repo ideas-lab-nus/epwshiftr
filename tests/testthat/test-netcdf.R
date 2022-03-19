@@ -301,7 +301,7 @@ test_that("extract_data()", {
         expect_is(d$data, "data.table")
         expect_equal(names(d$data),
             c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
               "description", "units", "value"
             )
         )
@@ -310,6 +310,7 @@ test_that("extract_data()", {
         expect_is(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
         expect_equal(d1$data, data.table())
         expect_true(file.exists(file.path(cache, "data.fst")))
+        unlink(file.path(cache, "data.fst"))
 
         expect_is(
             d2 <- extract_data(coord, out_dir = cache,
@@ -319,6 +320,7 @@ test_that("extract_data()", {
         )
         expect_equal(d2$data, data.table())
         expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
+        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
 
         expect_is(
             d3 <- extract_data(coord, out_dir = cache,
@@ -328,5 +330,6 @@ test_that("extract_data()", {
         )
         expect_equal(d3$data, d$data)
         expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
+        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
     }
 })
