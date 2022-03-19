@@ -6,6 +6,14 @@
   a `data.table` containing information about how the
   data are split by the `by` argument and also the generated future EPWs and
   their paths are returned (#18).
+* Now `summary_database()` can append results to the previous scan and detect if
+  any previously matched NetCDF files do not exist. It stores the metadata of
+  those missing files as a new attribute `not_found` in the results. Warnings
+  are issued if `warning` is set to `TRUE`. Also, a new parameter `miss` has
+  been added to control how to manage those invalid entries. You can set it to
+  `"keep"`, which is the default, to do nothing about it or `"overwrite"` to
+  overwrite those entries based on the newly matched NetCDF files if possible
+  (#40).
 
 ## Bug fixes
 

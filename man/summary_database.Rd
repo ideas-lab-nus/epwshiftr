@@ -5,11 +5,12 @@
 \title{Summary CMIP6 model output file status}
 \usage{
 summary_database(
-  dir,
+  dir = get_data_dir(),
   by = c("activity", "experiment", "variant", "frequency", "variable", "source",
     "resolution"),
   mult = c("skip", "latest"),
   append = FALSE,
+  miss = c("keep", "overwrite"),
   recursive = FALSE,
   update = FALSE,
   warning = TRUE
@@ -40,6 +41,13 @@ case will be kept as unmatched. Default: \code{"skip"}.}
 are not found in previous summary. This is useful if CMIP6 files are
 stored in different directories. Default: \code{FALSE}.}
 
+\item{miss}{Actions when matched files in the previous summary do not exist
+when running current summary. Only applicable when \code{append} is set to
+\code{TRUE}. If \code{"keep"}, the metadata for the missing output files will
+be kept. If \code{"overwrite"} and the missing output files are found in
+current directory, existing metadata will be overwriten based on the
+newly found files. Default: \code{"overwrite"}.}
+
 \item{recursive}{If \code{TRUE}, scan recursively into directories. Default:
 \code{FALSE}.}
 
@@ -49,8 +57,8 @@ current loaded index will be updated, but the actual index
 database file saved in \code{\link[=get_data_dir]{get_data_dir()}} will remain unchanged.
 Default: \code{FALSE}.}
 
-\item{warning}{If \code{TRUE}, warning messages will show when multiple files
-match a same case. Default: \code{TRUE}.}
+\item{warning}{If \code{TRUE}, warning messages will show when target files are
+missing or multiple files match a same case. Default: \code{TRUE}.}
 }
 \value{
 A \code{\link[data.table:data.table]{data.table::data.table()}} containing corresponding grouping
@@ -66,23 +74,40 @@ columns plus:\tabular{lll}{
 }
 
 
-Also an attribute \code{not_matched} is added to the returned
-\code{\link[data.table:data.table]{data.table::data.table()}} which contains meta data for those CMIP6 output
-files that are not covered by current CMIP6 output file index.
+Also 2 extra \code{\link[data.table:data.table]{data.table::data.table()}} are attached as \strong{attributes}:
+\itemize{
+\item \code{not_found}: A \code{\link[data.table:data.table]{data.table::data.table()}} that contains meta data for those
+CMIP6 output files that are listed in current CMIP6 output file index but
+not cannot be found in current database.
+\item \code{not_matched}: A \code{\link[data.table:data.table]{data.table::data.table()}} that contains meta data for
+those CMIP6 output files that are found in current database but not listed
+in current CMIP6 output file index.
+}
 
 For the meaning of grouping columns, see \code{\link[=init_cmip6_index]{init_cmip6_index()}}.
 }
 \description{
-\code{summary_database()} scan the directory specified and returns a
+\code{summary_database()} scans the directory specified and returns a
 \code{\link[=data.table]{data.table()}} containing summary information about all the CMIP6
 files available against the output file index loaded using
 \code{\link[=load_cmip6_index]{load_cmip6_index()}}.
 }
 \details{
+The database here can be any directory that stores the NetCDF files for CMIP6
+GCMs. It can be also be the same as \code{get_data_dir()} where epwshiftr stores
+the output file index, if you want to save the output file index and output
+files in the same place.
+
+\code{summary_database()} uses the \code{tracking_id}, \code{datetime_start} and
+\code{datetime_end} global attributes of each NetCDF file to match against the
+output file index. So the names of NetCDF files do not necessarily follow the
+CMIP6 file name encoding.
+
 \code{summary_database()} uses \link[future.apply:future_lapply]{future.apply}
-underneath. You can use your preferable future backend to
-speed up data extraction in parallel. By default, \code{summary_database()} uses
-\code{future::sequential} backend, which runs things in sequential.
+underneath to speed up the data processing if applicable. You can use your
+preferable future backend to speed up data extraction in parallel. By default,
+\code{summary_database()} uses \code{future::sequential} backend, which runs things in
+sequential.
 }
 \examples{
 \dontrun{
@@ -90,4 +115,5 @@ summary_database()
 
 summary_database(by = "experiment")
 }
+
 }

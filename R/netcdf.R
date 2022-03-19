@@ -6,7 +6,7 @@ get_nc_meta <- function (file) {
     # get all attributes
     atts <- get_nc_atts(file)
 
-    # get meta data
+    # get metadata
     meta <- as.list(atts[
         J("NC_GLOBAL",
           c("mip_era", "activity_id", "institution_id", "source_id",
@@ -39,15 +39,30 @@ get_nc_meta <- function (file) {
 # summary_database {{{
 #' Summary CMIP6 model output file status
 #'
-#' `summary_database()` scan the directory specified and returns a
+#' `summary_database()` scans the directory specified and returns a
 #' [data.table()] containing summary information about all the CMIP6
 #' files available against the output file index loaded using
 #' [load_cmip6_index()].
 #'
+#' The database here can be any directory that stores the NetCDF files for CMIP6
+#' GCMs. It can be also be the same as `get_data_dir()` where epwshiftr stores
+#' the output file index, if you want to save the output file index and output
+#' files in the same place.
+#'
+#' `summary_database()` uses the `tracking_id`, `datetime_start` and
+#' `datetime_end` global attributes of each NetCDF file to match against the
+#' output file index. So the names of NetCDF files do not necessarily follow the
+#' CMIP6 file name encoding.
+#'
+#' `summary_database()` will append 5 columns in the CMIP6 ouput file index:
+#'
+#' - `file_path`: the full path of matched NetCDF file for every case.
+#'
 #' `summary_database()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable future backend to
-#' speed up data extraction in parallel. By default, `summary_database()` uses
-#' `future::sequential` backend, which runs things in sequential.
+#' underneath to speed up the data processing if applicable. You can use your
+#' preferable future backend to speed up data extraction in parallel. By default,
+#' `summary_database()` uses `future::sequential` backend, which runs things in
+#' sequential.
 #'
 #' @param dir A single string indcating the directory where CMIP6 model output
 #'        NetCDF files are stored.
@@ -72,6 +87,13 @@ get_nc_meta <- function (file) {
 #'        will be used. If `"skip"`, all matched files will be skip and this
 #'        case will be kept as unmatched. Default: `"skip"`.
 #'
+#' @param miss Actions when matched files in the previous summary do not exist
+#'        when running current summary. Only applicable when `append` is set to
+#'        `TRUE`. If `"keep"`, the metadata for the missing output files will
+#'        be kept. If `"overwrite"`, existing metadata of those output will be
+#'        first removed from the output file index and overwriten based on the
+#'        newly matched files if possible. Default: `"keep"`.
+#'
 #' @param recursive If `TRUE`, scan recursively into directories. Default:
 #'        `FALSE`.
 #'
@@ -81,8 +103,8 @@ get_nc_meta <- function (file) {
 #'        database file saved in [get_data_dir()] will remain unchanged.
 #'        Default: `FALSE`.
 #'
-#' @param warning If `TRUE`, warning messages will show when multiple files
-#'        match a same case. Default: `TRUE`.
+#' @param warning If `TRUE`, warning messages will show when target files are
+#'        missing or multiple files match a same case. Default: `TRUE`.
 #'
 #' @return A [data.table::data.table()] containing corresponding grouping
 #' columns plus:
@@ -97,9 +119,16 @@ get_nc_meta <- function (file) {
 #' | `dl_percent`     | Units (%)      | Total percentage of file downloaded |
 #' | `dl_size`        | Units (Mbytes) | Total size of file downloaded       |
 #'
-#' Also an attribute `not_matched` is added to the returned
-#' [data.table::data.table()] which contains meta data for those CMIP6 output
-#' files that are not covered by current CMIP6 output file index.
+#' Also 2 extra [data.table::data.table()] are attached as **attributes**:
+#'
+#' - `not_found`: A [data.table::data.table()] that contains metadata for those
+#'   CMIP6 outputs that are listed in current CMIP6 output file index but the
+#'   existing file paths are not valid now and cannot be found in current
+#'   database.
+#'
+#' - `not_matched`: A [data.table::data.table()] that contains metadata for
+#'   those CMIP6 output files that are found in current database but not listed
+#'   in current CMIP6 output file index.
 #'
 #' For the meaning of grouping columns, see [init_cmip6_index()].
 #'
@@ -109,13 +138,15 @@ get_nc_meta <- function (file) {
 #'
 #' summary_database(by = "experiment")
 #' }
+#'
 #' @importFrom future.apply future_lapply
 #' @importFrom progressr with_progress
 #' @export
+# TODO: should all not_matched and not_found merged int one?
 summary_database <- function (
     dir,
     by = c("activity", "experiment", "variant", "frequency", "variable", "source", "resolution"),
-    mult = c("skip", "latest"), append = FALSE,
+    mult = c("skip", "latest"), append = FALSE, miss = c("keep", "overwrite"),
     recursive = FALSE, update = FALSE, warning = TRUE)
 {
     # column names
@@ -127,6 +158,7 @@ summary_database <- function (
     assert_subset(by, choices = dict)
 
     mult <- match.arg(mult)
+    miss <- match.arg(miss)
 
     # load index
     idx <- load_cmip6_index()
@@ -134,7 +166,7 @@ summary_database <- function (
     # find all nc files in specified directory
     ncfiles <- list.files(dir, "\\.nc$", full.names = TRUE, recursive = recursive)
 
-    message(paste0("", length(ncfiles), " NetCDF files found."))
+    verbose(paste0("", length(ncfiles), " NetCDF files found."))
 
     # columns to be added
     cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
@@ -154,6 +186,7 @@ summary_database <- function (
         }
 
         left <- data.table()
+        miss <- data.table()
     } else {
         progressr::with_progress({
             p <- progressr::progressor(along = ncfiles)
@@ -181,13 +214,63 @@ summary_database <- function (
         # NOTE: Should use right join here instead of adding by reference. This
         # is because for some GCMs, tracking id can be the same for multiple
         # files. The most safe way is to add additional checking for datetime
-        # a) first match using tracking id
+        #
+        # a) remove existing output file metadata if necessary
+        if (!append && any(cols %in% cols_idx)) {
+            set(idx, NULL, cols[cols %in% cols_idx], NULL)
+        }
+
+        # b) check existence of previous matched files
+        is_lost <- FALSE # in case append is set to FALSE
+        if (append && "file_path" %in% cols_idx && any(is_lost <- !is.na(idx$file_path) & !file.exists(idx$file_path))) {
+            lost <- idx[is_lost]
+            set(lost, NULL, "index", NULL)
+            if (miss == "overwrite") {
+                i_lost <- which(is_lost)
+                set(idx, i_lost, "file_path", NA_character_)
+                set(idx, i_lost, "file_realsize", NA_real_)
+                set(idx, i_lost, "file_mtime", as.POSIXct(NA))
+                set(idx, i_lost, "time_units", NA_character_)
+                set(idx, i_lost, "time_calendar", NA_character_)
+            }
+
+            if (warning) {
+                # construct error message:
+                lost[, index_case := data.table::rleid(index)]
+                mes <- lost[, by = "index_case", {
+                    head <- sprintf("#%i | For case '%s':\n", .BY$index_case, gsub("\\|.+$", "", file_id[1]))
+                    file <- sprintf("   --> file '%s'", normalizePath(file_path, mustWork = FALSE))
+                    list(message = paste0(head, file))
+                }]$message
+                set(lost, NULL, "index_case", NULL)
+
+                ori <- getOption("warning.length")
+                options(warning.length = 8170L)
+                on.exit(options(warning.length = ori), add = TRUE)
+
+                warning("Previously matched NetCDF file(s) below does not exist anymore. ",
+                    if (miss == "keep") {
+                        "Its metadata are kept in the output file index as `miss` is set to `\"keep\"`.\n"
+                    } else if (miss == "overwrite") {
+                        paste(
+                            "Since `miss` is set to `\"overwrite\"`, its metadata has been **removed** from the output file index",
+                            "and will be overwriten by the data from new matched NetCDF file if possible.\n"
+                        )
+                    },
+                    paste0(mes, collapse = "\n"),
+                    "\n\nYou can run `attr(x, \"not_found\")` to see the metadata of those files.",
+                    call. = FALSE
+                )
+            }
+        }
+
+        # c) first match using tracking id
         idx_m <- ncmeta[, .SD, .SDcols = c("tracking_id", "datetime_start", "datetime_end", cols)][idx, on = "tracking_id", nomatch = NULL]
 
-        # b) remove files that do not have any overlap in terms of datetime range
+        # d) remove files that do not have any overlap in terms of datetime range
         idx_m <- idx_m[!(datetime_start > i.datetime_end | datetime_end < i.datetime_start)]
 
-        # c) calculate the overlapped percentages coverred datetime of input
+        # e) calculate the overlapped percentages coverred datetime of input
         # file to index data
         set(idx_m, NULL, "index_match", seq_len(nrow(idx_m)))
         if (!nrow(idx_m)) {
@@ -201,12 +284,17 @@ summary_database <- function (
             }]
         }
 
-        # d) only keep items that have overlapped percentages larger than 60%
+        # f) only keep items that have overlapped percentages larger than 60%
         idx_m <- idx_m[overlap >= 0.6]
         set(idx_m, NULL, c("overlap", "index_match"), NULL)
 
-        # e) keep rows whose files have not yet been found
-        idx <- rbindlist(list(idx[!idx_m, on = "index"], idx_m), fill = TRUE)
+        # g) keep rows whose files have not yet been found
+        if (!any(is_lost)) {
+            idx <- rbindlist(list(idx[!idx_m, on = "index"], idx_m), fill = TRUE)
+        } else {
+            should_keep <- is_lost | !idx$index %in% idx_m$index
+            idx <- rbindlist(list(idx[should_keep], idx_m[J(idx$index[!should_keep]), on = "index"]), fill = TRUE)
+        }
         data.table::setorderv(idx, "index")
 
         # store files that are not matched
@@ -218,16 +306,18 @@ summary_database <- function (
             # remove original file mata columns
             set(idx, NULL, orig, NULL)
         } else {
-            # keep original match
-            idx[J(NA_character_), on = "i.file_path", `:=`(
-                i.file_path = file_path,
-                i.file_realsize = file_realsize,
-                i.file_mtime = file_mtime,
-                i.time_units = time_units,
-                i.time_calendar = time_calendar,
-                i.datetime_start = datetime_start,
-                i.datetime_end = datetime_end
-            )]
+            if ("i.file_path" %in% orig) {
+                # keep original match
+                idx[J(NA_character_), on = "i.file_path", `:=`(
+                    i.file_path = file_path,
+                    i.file_realsize = file_realsize,
+                    i.file_mtime = file_mtime,
+                    i.time_units = time_units,
+                    i.time_calendar = time_calendar,
+                    i.datetime_start = datetime_start,
+                    i.datetime_end = datetime_end
+                )]
+            }
             new <- gsub("^i\\.", "", orig)
             set(idx, NULL, new, NULL)
             setnames(idx, orig, new)
@@ -271,7 +361,9 @@ summary_database <- function (
                     "Please check if there are duplicated NetCDF files in your database ",
                     "and check NetCDF global attributes of those files ",
                     "to see if there are any incorrect values. ", act, "\n",
-                    paste0(mes, collapse = "\n"), call. = FALSE)
+                    paste0(mes, collapse = "\n"),
+                    "\nYou can run `attr(x, \"not_matched\")` to see the metadata of those files.",
+                    call. = FALSE)
             }
         }
 
@@ -279,7 +371,37 @@ summary_database <- function (
         set(idx, NULL, "index", NULL)
 
         # keep the original order
-        setcolorder(idx, setdiff(cols_idx, "index"))
+        setcolorder(idx, setdiff(cols_idx, c("index", cols)))
+
+        # store files that are not found after updating
+        miss <- idx[is.na(file_path)]
+        set(miss, NULL, cols, NULL)
+
+        if (nrow(miss) && warning) {
+            # construct error message:
+            miss[, index_case := data.table::rleid(index)]
+            mes <- miss[, by = "index_case", {
+                list(message = sprintf("#%i | For case '%s':\n", .BY$index_case, gsub("\\|.+$", "", file_id[1])))
+            }]$message
+            set(miss, NULL, "index_case", NULL)
+
+            ori <- getOption("warning.length")
+            options(warning.length = 8170L)
+            on.exit(options(warning.length = ori), add = TRUE)
+
+            warning("Case(s) shown below does not matche any NetCDF file in the database. ",
+                "Please make sure all needed NetCDF files listed in the file index have been downloaded and placed in the database.\n",
+                paste0(mes, collapse = "\n"),
+                "\n\nYou can run `attr(x, \"not_found\")` to see the metadata of those files.",
+                call. = FALSE)
+        }
+
+        # combine not found and not matched together
+        if (any(is_lost)) {
+            # in this case, file_path, file_realsize and other columns are added
+            # for missed data
+            miss <- rbindlist(list(miss, lost), fill = TRUE)
+        }
     }
 
     # update index
@@ -304,6 +426,7 @@ summary_database <- function (
     ), by = c(by_cols)][order(-dl_percent)]
 
     setattr(sm, "not_matched", left)
+    setattr(sm, "not_found", miss)
 
     sm
 }
@@ -472,7 +595,7 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #'
 #' * `epw`: An [eplusr::Epw] object whose longitude and latitute are used to
 #'   extract CMIP6 data. It is the same object as created in [match_coord()]
-#' * `meta`: A list containing basic meta data of input EPW, including `city`,
+#' * `meta`: A list containing basic metadata of input EPW, including `city`,
 #'   `state_province`, `country`, `latitute` and `longitude`.
 #' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
 #'   [data.table::data.table()] of 12 columns if `keep` is `TRUE`:
