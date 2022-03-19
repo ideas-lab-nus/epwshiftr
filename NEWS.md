@@ -25,14 +25,14 @@
   - `threshold`: Due to the change in distance calculation, the meaning of the
     `threshold` input has been changed.  Instead of directly being used to get
     the 'closest' grid points in NetCDF, the longitude and latitude threshold
-    are only used to help exclude grid points that are definitely too far away
+    is only used to help exclude grid points that are definitely too far away
     from the target location. The default threshold, which is 1 degree for both
     longitude and latitude, is still reasonable for common use cases and is kept
     unchanged.  Also `threshold` now can be set to `NULL`. In this case, the
     distances between the target location and all grid points will be
     calculated. But this may be only useful for rare cases.
   - `max_num`: Now the value `max_num` is the key input to control how many grid
-    points to be matched. The points will always be ordered in a descending
+    points are to be matched. The points will always be ordered in descending
     order in terms of the distances.
 * The `data` in the returned value of `extract_data()` has been updated to
   include a new column `dist` which gives the spherical distance in km between
