@@ -224,7 +224,6 @@ summary_database <- function (
         is_lost <- FALSE # in case append is set to FALSE
         if (append && "file_path" %in% cols_idx && any(is_lost <- !is.na(idx$file_path) & !file.exists(idx$file_path))) {
             lost <- idx[is_lost]
-            set(lost, NULL, "index", NULL)
             if (miss == "overwrite") {
                 i_lost <- which(is_lost)
                 set(idx, i_lost, "file_path", NA_character_)
@@ -262,6 +261,7 @@ summary_database <- function (
                     call. = FALSE
                 )
             }
+            set(lost, NULL, "index", NULL)
         }
 
         # c) first match using tracking id
@@ -367,9 +367,6 @@ summary_database <- function (
             }
         }
 
-        # remove index
-        set(idx, NULL, "index", NULL)
-
         # keep the original order
         setcolorder(idx, setdiff(cols_idx, c("index", cols)))
 
@@ -383,7 +380,7 @@ summary_database <- function (
             mes <- miss[, by = "index_case", {
                 list(message = sprintf("#%i | For case '%s':\n", .BY$index_case, gsub("\\|.+$", "", file_id[1])))
             }]$message
-            set(miss, NULL, "index_case", NULL)
+            set(miss, NULL, c("index", "index_case"), NULL)
 
             ori <- getOption("warning.length")
             options(warning.length = 8170L)
@@ -395,6 +392,9 @@ summary_database <- function (
                 "\n\nYou can run `attr(x, \"not_found\")` to see the metadata of those files.",
                 call. = FALSE)
         }
+
+        # remove index
+        set(idx, NULL, "index", NULL)
 
         # combine not found and not matched together
         if (any(is_lost)) {
