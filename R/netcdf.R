@@ -486,22 +486,22 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
 #'   [data.table::data.table()] of 14 columns if `keep` is `TRUE`:
 #'
-#'     | No.  | Column           | Type      | Description                                                          |
-#'     | ---: | -----            | -----     | -----                                                                |
-#'     | 1    | `activity_drs`   | Character | Activity DRS (Data Reference Syntax)                                 |
-#'     | 2    | `institution_id` | Character | Institution identifier                                               |
-#'     | 3    | `source_id`      | Character | Model identifier                                                     |
-#'     | 4    | `experiment_id`  | Character | Root experiment identifier                                           |
-#'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | 6    | `table_id`       | Character | Table identifier                                                     |
-#'     | 7    | `datetime`       | POSIXct   | Datetime for the predicted value                                     |
-#'     | 8    | `lat`            | Double    | Latitude of extracted location                                       |
-#'     | 9    | `lon`            | Double    | Latitude of extracted location                                       |
-#'     | 10   | `dist`           | Double    | The spherical distance between EPW location and grid coordinates     |
-#'     | 11   | `variable`       | Character | Variable identifier                                                  |
-#'     | 12   | `description`    | Character | Variable long name                                                   |
-#'     | 13   | `units`          | Character | Units of variable                                                    |
-#'     | 14   | `value`          | Double    | The actual predicted value                                           |
+#'     | No.  | Column           | Type      | Description                                                            |
+#'     | ---: | -----            | -----     | -----                                                                  |
+#'     | 1    | `activity_drs`   | Character | Activity DRS (Data Reference Syntax)                                   |
+#'     | 2    | `institution_id` | Character | Institution identifier                                                 |
+#'     | 3    | `source_id`      | Character | Model identifier                                                       |
+#'     | 4    | `experiment_id`  | Character | Root experiment identifier                                             |
+#'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label`   |
+#'     | 6    | `table_id`       | Character | Table identifier                                                       |
+#'     | 7    | `datetime`       | POSIXct   | Datetime for the predicted value                                       |
+#'     | 8    | `lat`            | Double    | Latitude of extracted location                                         |
+#'     | 9    | `lon`            | Double    | Latitude of extracted location                                         |
+#'     | 10   | `dist`           | Double    | The spherical distance in km between EPW location and grid coordinates |
+#'     | 11   | `variable`       | Character | Variable identifier                                                    |
+#'     | 12   | `description`    | Character | Variable long name                                                     |
+#'     | 13   | `units`          | Character | Units of variable                                                      |
+#'     | 14   | `value`          | Double    | The actual predicted value                                             |
 #'
 #' @importFrom checkmate assert_class
 #' @importFrom units set_units

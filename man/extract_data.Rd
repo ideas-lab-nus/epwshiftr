@@ -68,7 +68,7 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_coord
    7 \tab \code{datetime} \tab POSIXct \tab Datetime for the predicted value \cr
    8 \tab \code{lat} \tab Double \tab Latitude of extracted location \cr
    9 \tab \code{lon} \tab Double \tab Latitude of extracted location \cr
-   10 \tab \code{dist} \tab Double \tab The spherical distance between EPW location and grid coordinates \cr
+   10 \tab \code{dist} \tab Double \tab The spherical distance in km between EPW location and grid coordinates \cr
    11 \tab \code{variable} \tab Character \tab Variable identifier \cr
    12 \tab \code{description} \tab Character \tab Variable long name \cr
    13 \tab \code{units} \tab Character \tab Units of variable \cr
