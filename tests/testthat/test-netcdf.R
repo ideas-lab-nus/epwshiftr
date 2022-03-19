@@ -253,20 +253,19 @@ test_that("get_nc_data()", {
     if (file.exists(path)) {
         loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
         coord <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L)
-
-        expect_is(d <- get_nc_data(path, coord$lat, coord$lon, years = 2060), "data.table")
+        expect_is(d <- get_nc_data(path, coord, years = 2060), "data.table")
         expect_equal(names(d),
-            c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+            c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
+              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
               "description", "units", "value"
             )
         )
         expect_is(d$value, "units")
 
-        expect_is(d <- get_nc_data(path, coord$lat, coord$lon, years = 2000), "data.table")
+        expect_is(d <- get_nc_data(path, coord, years = 2000), "data.table")
         expect_equal(names(d),
-            c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+            c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
+              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
               "description", "units", "value"
             )
         )
@@ -274,7 +273,7 @@ test_that("get_nc_data()", {
         expect_is(d$value, "numeric")
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_data(con, coord$lat, coord$lon, years = 2000), d)
+        expect_equivalent(get_nc_data(con, coord, years = 2000), d)
         RNetCDF::close.nc(con)
     }
 })

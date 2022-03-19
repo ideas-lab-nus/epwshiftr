@@ -313,7 +313,7 @@ summary_database <- function (
 #' @importFrom data.table as.data.table set setattr setcolorder
 #' @importFrom RNetCDF utcal.nc
 #' @importFrom units set_units
-get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
+get_nc_data <- function (x, coord, years, unit = TRUE) {
     assert_flag(unit)
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
@@ -339,8 +339,8 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     # match time
     time <- match_nc_time(nc, years)
 
-    which_lat <- lats$which
-    which_lon <- lons$which
+    which_lat <- coord$ind_lat
+    which_lon <- coord$ind_lon
     which_time <- time$which
 
     # get dimensions
@@ -376,9 +376,9 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     dt <- rbindlist(use.names = TRUE, lapply(seq_along(which_time), function (i) {
         if (!length(which_time[[i]])) {
             return(data.table(
-                value = double(),
-                lon = double(), lat = double(),
-                datetime = Sys.time()[0]
+                index = integer(),
+                lon = double(), lat = double(), dist = double(),
+                datetime = Sys.time()[0], value = double()
             ))
         }
 
@@ -390,16 +390,25 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         # longitude, latitude, time).
         dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
-            c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
+            c(length(unique(dims$value[[1L]])), length(unique(dims$value[[2L]])), length(dims$value[[3L]])),
             collapse = FALSE)
         )
 
-        setnames(dt, c(dims$name, "value"))
-        setnames(dt, "time", "datetime")
-
-        set(dt, NULL, "lon", lons$value[dt$lon])
-        set(dt, NULL, "lat", lats$value[dt$lat])
+        setnames(dt, c(paste0("ord_", dims$name), "value"))
+        setnames(dt, "ord_time", "datetime")
         set(dt, NULL, "datetime", time$datetime[[i]][dt$datetime])
+
+        # only keep the matched points
+        coord[order(ind_lon), ord_lon := .GRP, by = .(ind_lon)]
+        coord[order(ind_lat), ord_lat := .GRP, by = .(ind_lat)]
+        res <- dt[coord, on = c("ord_lon", "ord_lat")]
+        set(res, NULL, c("ord_lon", "ord_lat", "ind_lon", "ind_lat"), NULL)
+        setcolorder(res, setdiff(names(res), c("datetime", "value")))
+
+        # clean coord
+        set(coord, NULL, c("ord_lon", "ord_lat"), NULL)
+
+        res
     }))
 
     if (unit && nrow(dt)) {
@@ -410,14 +419,14 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
 
     # change column order
-    setcolorder(dt, c("datetime", "lat", "lon", "variable", "description", "units", "value"))
+    setcolorder(dt, c("index", "datetime", "lat", "lon", "dist", "variable", "description", "units", "value"))
 
     set(dt, NULL,
         c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"),
         atts[J("NC_GLOBAL", c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")),
             on = c("variable", "attribute"), value]
     )
-    setcolorder(dt, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))
+    setcolorder(dt, c("index", "activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))
 
     dt
 }
@@ -549,7 +558,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
                     function (path, coord) {
                         ip <<- ip + 1L
                         p(message = sprintf("[%i/%i]", ip, nrow(co)))
-                        get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
+                        get_nc_data(path, coord, years = years, unit = unit)
                     },
                     co$file_path, co$coord
             ))
