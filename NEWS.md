@@ -5,7 +5,7 @@
 * `match_coord()` has been refactored to correct the calculation method of
   geographical distance. Previously, epwshiftr assumes that distance on
   longitude and latitude is the same which is not true. Now it uses a spheroid
-  formula to calculate the tunnel distance. For details, please see [Tunnel
+  formula to calculate the tunnel distance (#39). For details, please see [Tunnel
   Distance](https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance)
   . The structure of the returned `epw_cmip6_coord` object has also changed.
   The `coord` column in the `coord` `data.table` is also a `data.table` which
@@ -34,6 +34,10 @@
   - `max_num`: Now the value `max_num` is the key input to control how many grid
     points to be matched. The points will always be ordered in a descending
     order in terms of the distances.
+* The `data` in the returned value of `extract_data()` has been updated to
+  include a new column `dist` which gives the spherical distance in km between
+  EPW location and grid coordinates (#39). Also the document of `extract_data()`
+  has been fixed (#29).
 
 ## New features
 
