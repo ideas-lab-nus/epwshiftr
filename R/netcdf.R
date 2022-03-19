@@ -484,7 +484,7 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' * `meta`: A list containing basic meta data of input EPW, including `city`,
 #'   `state_province`, `country`, `latitute` and `longitude`.
 #' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
-#'   [data.table::data.table()] of 12 columns if `keep` is `TRUE`:
+#'   [data.table::data.table()] of 14 columns if `keep` is `TRUE`:
 #'
 #'     | No.  | Column           | Type      | Description                                                          |
 #'     | ---: | -----            | -----     | -----                                                                |
@@ -494,12 +494,14 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #'     | 4    | `experiment_id`  | Character | Root experiment identifier                                           |
 #'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label` |
 #'     | 6    | `table_id`       | Character | Table identifier                                                     |
-#'     | 7    | `lat`            | Double    | Latitude of extracted location                                       |
-#'     | 8    | `lon`            | Double    | Latitude of extracted location                                       |
-#'     | 9    | `variable`       | Character | Variable identifier                                                  |
-#'     | 10   | `description`    | Character | Variable long name                                                   |
-#'     | 11   | `units`          | Character | Units of variable                                                    |
-#'     | 12   | `value`          | Double    | Start date and time of simulation                                    |
+#'     | 7    | `datetime`       | POSIXct   | Datetime for the predicted value                                     |
+#'     | 8    | `lat`            | Double    | Latitude of extracted location                                       |
+#'     | 9    | `lon`            | Double    | Latitude of extracted location                                       |
+#'     | 10   | `dist`           | Double    | The spherical distance between EPW location and grid coordinates     |
+#'     | 11   | `variable`       | Character | Variable identifier                                                  |
+#'     | 12   | `description`    | Character | Variable long name                                                   |
+#'     | 13   | `units`          | Character | Units of variable                                                    |
+#'     | 14   | `value`          | Double    | The actual predicted value                                           |
 #'
 #' @importFrom checkmate assert_class
 #' @importFrom units set_units
@@ -558,7 +560,8 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
                     function (path, coord) {
                         ip <<- ip + 1L
                         p(message = sprintf("[%i/%i]", ip, nrow(co)))
-                        get_nc_data(path, coord, years = years, unit = unit)
+                        d <- get_nc_data(path, coord, years = years, unit = unit)
+                        set(d, NULL, "index", NULL)
                     },
                     co$file_path, co$coord
             ))
