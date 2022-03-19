@@ -58,7 +58,6 @@ test_that("match_nc_coord()", {
 
         # can work with NetCDF object
         con <- RNetCDF::open.nc(path)
-        print.nc(con)
         expect_equal(match_nc_coord(con, loc$latitude, loc$longitude, max_num = 1), matched)
         RNetCDF::close.nc(con)
     }
