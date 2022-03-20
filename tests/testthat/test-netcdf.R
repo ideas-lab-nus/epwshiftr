@@ -291,7 +291,7 @@ test_that("extract_data()", {
         summary_database(cache)
         idx <- load_cmip6_index()
         set_cmip6_index(idx[2L])
-        coord <- match_coord(epw, threshold = NULL, max_num = 6L)
+        coord <- match_coord(epw)
         set_cmip6_index(idx)
 
         expect_is(d <- extract_data(coord, years = 2060), "epw_cmip6_data")
