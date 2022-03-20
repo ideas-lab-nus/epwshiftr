@@ -399,8 +399,9 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
         set(dt, NULL, "datetime", time$datetime[[i]][dt$datetime])
 
         # only keep the matched points
-        coord[order(ind_lon), ord_lon := .GRP, by = .(ind_lon)]
-        coord[order(ind_lat), ord_lat := .GRP, by = .(ind_lat)]
+        ind_lon <- ind_lat <- .GRP <- NULL # to make CRAN check happy
+        coord[order(ind_lon), `:=`(ord_lon = .GRP), by = "ind_lon"]
+        coord[order(ind_lat), `:=`(ord_lat = .GRP), by = "ind_lat"]
         res <- dt[coord, on = c("ord_lon", "ord_lat")]
         set(res, NULL, c("ord_lon", "ord_lat", "ind_lon", "ind_lat"), NULL)
         setcolorder(res, setdiff(names(res), c("datetime", "value")))
