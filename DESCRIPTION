@@ -1,6 +1,6 @@
 Package: epwshiftr
 Title: Create Future 'EnergyPlus' Weather Files using 'CMIP6' Data
-Version: 0.1.3.9001
+Version: 0.1.3.9002
 Authors@R: c(
     person(given = "Hongyuan",
            family = "Jia",
@@ -47,11 +47,11 @@ BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
 Collate:
-    'epwshiftr-package.R'
-    'utils.R'
-    'esgf.R'
-    'netcdf.R'
     'coord.R'
+    'utils.R'
+    'epwshiftr-package.R'
+    'esgf.R'
     'morph.R'
+    'netcdf.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph

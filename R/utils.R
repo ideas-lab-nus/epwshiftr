@@ -57,7 +57,7 @@ verbose <- function (..., sep = "") {
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
-    ".BY", ".I", ".N", ".SD", "J", "activity_drs", "alpha", "attribute",
+    ".BY", ".I", ".N", ".SD", "J", ".GRP", "activity_drs", "alpha", "attribute",
     "country", "data_node", "datetime", "datetime_end", "datetime_start",
     "day_of_year", "degree_Celsius", "delta", "dew_point_temperature",
     "diffuse_horizontal_radiation", "direct_normal_radiation", "dl_percent",
@@ -73,5 +73,6 @@ utils::globalVariables(c(
     "source_type", "state_province", "table_id", "title", "total_sky_cover",
     "val_max", "val_mean", "val_min", "value", "value_max", "value_min",
     "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
-    "interval", "time_calendar", "time_units", "overlap", "frequency"
+    "interval", "time_calendar", "time_units", "overlap", "frequency",
+    "ind_lon", "ind_lat", "ord_lon", "ord_lat"
 ))

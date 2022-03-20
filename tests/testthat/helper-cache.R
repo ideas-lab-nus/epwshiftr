@@ -1,4 +1,4 @@
-get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)) {
+get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FALSE) {
     if (is.na(path)) path <- tools::R_user_dir("epwshiftr", "cache")
 
     cache <- normalizePath(path, mustWork = FALSE)
@@ -11,17 +11,21 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)) {
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(cache, file)
     if (!file.exists(path)) {
-        eplusr::download_weather("Singapore", dir = cache, type = "epw", ask = FALSE)
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1)
     }
 
     # download NetCDF
     withr::with_options(
         list(epwshiftr.dir = cache),
         {
-            idx <- init_cmip6_index(
-                variable = "tas", source = "EC-Earth3", years = 2060,
-                experiment = "ssp585", limit = 1, save = TRUE
-            )
+            if (!reset && file.exists(file.path(cache, "cmip6_index.csv"))) {
+                idx <- load_cmip6_index()
+            } else {
+                idx <- init_cmip6_index(
+                    variable = "tas", source = "EC-Earth3", years = 2060,
+                    experiment = "ssp585", limit = 1, save = TRUE
+                )
+            }
 
             # download output files
             for (f in idx$file_url) {

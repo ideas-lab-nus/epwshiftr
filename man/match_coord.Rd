@@ -18,12 +18,16 @@ search is case-insensitive
 }}
 
 \item{threshold}{A list of 2 elements \code{lon} and \code{lat} specifying the
-absolute distance threshold used when matching longitude and latitude.
-Default: \code{list(lon = 1.0, lat = 1.0)}}
+absolute distance threshold used for subsetting longitude and
+latitude value for calculating distances. If \code{NULL}, no subsetting is
+performed and the distances between the target location and all grid
+points are calculated. This is useful set the \code{threshold} value to
+exclude some points that are absolute too far away from the target
+location. Default: \code{list(lon = 1.0, lat = 1.0)}}
 
-\item{max_num}{The maximum number to be matched for both longitude and
-latitude when \code{threshold} is matched. Default is \code{NULL}, which means
-no limit}
+\item{max_num}{The maximum number of grid points to be matched. Default is
+\code{NULL}, which means no number limit and the total matched grid points
+are determined by the \code{threshold} input.}
 }
 \value{
 An \code{epw_cmip6_coord} object, which is basically a list of 3 elements:
@@ -34,23 +38,24 @@ An \code{epw_cmip6_coord} object, which is basically a list of 3 elements:
 \item \code{coord}: A \code{\link[data.table:data.table]{data.table::data.table()}} which is basically CMIP6 index
 database with an appending new list column \code{coord} that contains
 matched latitudes and longitudes in each NetCDF file. Each element
-in \code{coord} contains 2 elements \code{lat} and \code{lon}, in which contains
-the 4 components describing the matched coordinates.
+in \code{coord} is a \code{\link[data.table:data.table]{data.table::data.table()}} of 6 columns describing
+the matched coordinates.
 \itemize{
 \item \code{index}: the indices of matched coordinates
-\item \code{value}: the actual longitude or latitude in the NetCDF coordinate
+\item \code{ind_lon}, \code{ind_lat}: The value indices of longitude or latitude in the
+NetCDF coordinate grids. These values are used to extract the
+corresponding variable values
+\item \code{lon}, \code{lat}: the actual longitude or latitude in the NetCDF coordinate
 grids
-\item \code{dis}: the distance between the coordinate values in NetCDF and input
-EPW
-\item \code{which}: The value indices of longitude or latitude in the NetCDF
-coordinate grids. These values are used to extract the corresponding
-variable values
+\item \code{dist}: the distance in km between the coordinate values in NetCDF and
+input EPW
 }
 }
 }
 \description{
-\code{match_coord()} takes an EPW and uses its longitude and latitude to match
-corresponding values that meet specified threshold in NetCDF files.
+\code{match_coord()} takes an EPW and uses its longitude and latitude to calculate
+the distance between the EPW location and the global grid points in NetCDF
+files.
 }
 \details{
 \code{match_coord()} uses \link[future.apply:future_lapply]{future.apply}
@@ -58,6 +63,28 @@ underneath. You can use your preferable future backend to
 speed up data extraction in parallel. By default, \code{match_coord()} uses
 \code{future::sequential} backend, which runs things in sequential.
 }
+\section{Geographical distance calculation}{
+
+
+\code{match_coord()} calculates the geographical distances based formulas of
+spherical trigonometry:
+
+\deqn{
+\begin{align}
+&\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1);\\
+&\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1);\\
+&\Delta{Z}=\sin(\phi_2) - \sin(\phi_1);\\
+&C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}.
+\end{align}
+}
+
+where \eqn{phi} is the latitude and \eqn{lambda} is the longitude.  This
+formula treats the Earth as a sphere. The geographical distance between
+points on the surface of a spherical Earth is \eqn{D = RC_h}.
+
+For more details, please see this \href{https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance}{Wikipedia}
+}
+
 \examples{
 \dontrun{
 # download an EPW from EnergyPlus website
