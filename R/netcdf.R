@@ -418,11 +418,11 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
     set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
 
     # change column order
-    setcolorder(dt, c("index", "datetime", "lat", "lon", "dist", "variable", "description", "units", "value"))
+    setcolorder(dt, c("index", "lon", "lat", "dist", "datetime", "variable", "description", "units", "value"))
 
     set(dt, NULL,
-        c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"),
-        atts[J("NC_GLOBAL", c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")),
+        c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"),
+        atts[J("NC_GLOBAL", c("activity_id", "institution_id", "source_id", "experiment_id", "variant_label", "frequency")),
             on = c("variable", "attribute"), value]
     )
     setcolorder(dt, c("index", "activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))

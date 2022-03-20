@@ -256,7 +256,7 @@ test_that("get_nc_data()", {
         expect_is(d <- get_nc_data(path, coord, years = 2060), "data.table")
         expect_equal(names(d),
             c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
@@ -265,7 +265,7 @@ test_that("get_nc_data()", {
         expect_is(d <- get_nc_data(path, coord, years = 2000), "data.table")
         expect_equal(names(d),
             c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
@@ -301,7 +301,7 @@ test_that("extract_data()", {
         expect_is(d$data, "data.table")
         expect_equal(names(d$data),
             c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "dist", "variable",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )

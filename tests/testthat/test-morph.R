@@ -95,7 +95,7 @@ test_that("morphing_from_mean()", {
             )
         )
         expect_equal(names(res),
-            c("activity_drs", "experiment_id", "institution_id", "source_id",
+            c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
               "delta", "alpha"
@@ -116,7 +116,7 @@ test_that("morphing_from_mean()", {
             )
         )
         expect_equal(names(res),
-            c("activity_drs", "experiment_id", "institution_id", "source_id",
+            c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
               "delta", "alpha"
@@ -136,7 +136,7 @@ test_that("morphing_from_mean()", {
             )
         )
         expect_equal(names(res),
-            c("activity_drs", "experiment_id", "institution_id", "source_id",
+            c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
               "delta", "alpha"
@@ -156,7 +156,7 @@ test_that("morphing_from_mean()", {
             )
         )
         expect_equal(names(res),
-            c("activity_drs", "experiment_id", "institution_id", "source_id",
+            c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
               "delta", "alpha"
@@ -176,7 +176,7 @@ test_that("morphing_from_mean()", {
             )
         )
         expect_equal(names(res),
-            c("activity_drs", "experiment_id", "institution_id", "source_id",
+            c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
               "delta", "alpha"

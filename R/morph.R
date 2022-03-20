@@ -355,12 +355,12 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         data_min <- align_units(data_min, u)
 
         # merge max and min CMIP6 values into mean data.table
-        data_mean[data_max, on = c("activity_drs", "experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
+        data_mean[data_max, on = c("activity_drs", "institution_id", "source_id",
+            "experiment_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
             value_max := i.value
         ]
-        data_mean[data_min, on = c("activity_drs", "experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
+        data_mean[data_min, on = c("activity_drs", "institution_id", "source_id",
+            "experiment_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
             value_min := i.value
         ]
 
@@ -427,7 +427,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 
     data[, .SD, .SDcols = c(
         # meta from CMIP6
-        "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
         "table_id", "lon", "lat", "dist",
         # interval
         "interval",
@@ -609,7 +609,7 @@ morphing_total_sky_cover <- function (data_epw, clt, years = NULL, labels = NULL
     data[, .SD, .SDcols = c(
         # meta from CMIP6
         "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
-        "table_id", "lon", "lat",
+        "table_id", "lon", "lat", "dist",
         # interval
         "interval",
         # datetime
@@ -631,8 +631,8 @@ morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
 
     data[, .SD, .SDcols = c(
         # meta from CMIP6
-        "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
-        "table_id", "lon", "lat",
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "dist",
         # interval
         "interval",
         # datetime
