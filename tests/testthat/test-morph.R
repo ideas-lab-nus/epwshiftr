@@ -41,7 +41,7 @@ test_that("preprocess_morphing()", {
         expect_is(res <- preprocess_morphing(d), "data.table")
         expect_equal(names(res),
             c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "lat", "lon", "dist", "units", "value", "month",
+              "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month",
               "interval"
             )
         )
