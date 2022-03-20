@@ -19,7 +19,7 @@ interest specified."><meta property="og:image" content="/logo.svg"><!-- mathjax 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9001</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9002</span>
       </span>
     </div>
 
@@ -28,7 +28,7 @@ interest specified."><meta property="og:image" content="/logo.svg"><!-- mathjax 
   <a href="../reference/index.html">Reference</a>
 </li>
 <li class="dropdown">
-  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     Articles
      
     <span class="caret"></span>
@@ -118,7 +118,7 @@ extract CMIP6 data. It is the same object as created in <code><a href="match_coo
 <li><p><code>meta</code>: A list containing basic meta data of input EPW, including <code>city</code>,
 <code>state_province</code>, <code>country</code>, <code>latitute</code> and <code>longitude</code>.</p></li>
 <li><p><code>data</code>: An empty <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> if <code>keep</code> is <code>FALSE</code> or a
-<code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> of 12 columns if <code>keep</code> is <code>TRUE</code>:</p><table class="table table"><tr><td>No.</td><td>Column</td><td>Type</td><td>Description</td></tr><tr><td>1</td><td><code>activity_drs</code></td><td>Character</td><td>Activity DRS (Data Reference Syntax)</td></tr><tr><td>2</td><td><code>institution_id</code></td><td>Character</td><td>Institution identifier</td></tr><tr><td>3</td><td><code>source_id</code></td><td>Character</td><td>Model identifier</td></tr><tr><td>4</td><td><code>experiment_id</code></td><td>Character</td><td>Root experiment identifier</td></tr><tr><td>5</td><td><code>member_id</code></td><td>Character</td><td>A compound construction from <code>sub_experiment_id</code> and <code>variant_label</code></td></tr><tr><td>6</td><td><code>table_id</code></td><td>Character</td><td>Table identifier</td></tr><tr><td>7</td><td><code>lat</code></td><td>Double</td><td>Latitude of extracted location</td></tr><tr><td>8</td><td><code>lon</code></td><td>Double</td><td>Latitude of extracted location</td></tr><tr><td>9</td><td><code>variable</code></td><td>Character</td><td>Variable identifier</td></tr><tr><td>10</td><td><code>description</code></td><td>Character</td><td>Variable long name</td></tr><tr><td>11</td><td><code>units</code></td><td>Character</td><td>Units of variable</td></tr><tr><td>12</td><td><code>value</code></td><td>Double</td><td>Start date and time of simulation</td></tr></table></li>
+<code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> of 14 columns if <code>keep</code> is <code>TRUE</code>:</p><table class="table table"><tr><td>No.</td><td>Column</td><td>Type</td><td>Description</td></tr><tr><td>1</td><td><code>activity_drs</code></td><td>Character</td><td>Activity DRS (Data Reference Syntax)</td></tr><tr><td>2</td><td><code>institution_id</code></td><td>Character</td><td>Institution identifier</td></tr><tr><td>3</td><td><code>source_id</code></td><td>Character</td><td>Model identifier</td></tr><tr><td>4</td><td><code>experiment_id</code></td><td>Character</td><td>Root experiment identifier</td></tr><tr><td>5</td><td><code>member_id</code></td><td>Character</td><td>A compound construction from <code>sub_experiment_id</code> and <code>variant_label</code></td></tr><tr><td>6</td><td><code>table_id</code></td><td>Character</td><td>Table identifier</td></tr><tr><td>7</td><td><code>lon</code></td><td>Double</td><td>Longitude of extracted location</td></tr><tr><td>8</td><td><code>lat</code></td><td>Double</td><td>Latitude of extracted location</td></tr><tr><td>9</td><td><code>dist</code></td><td>Double</td><td>The spherical distance in km between EPW location and grid coordinates</td></tr><tr><td>10</td><td><code>datetime</code></td><td>POSIXct</td><td>Datetime for the predicted value</td></tr><tr><td>11</td><td><code>variable</code></td><td>Character</td><td>Variable identifier</td></tr><tr><td>12</td><td><code>description</code></td><td>Character</td><td>Variable long name</td></tr><tr><td>13</td><td><code>units</code></td><td>Character</td><td>Units of variable</td></tr><tr><td>14</td><td><code>value</code></td><td>Double</td><td>The actual predicted value</td></tr></table></li>
 </ul></div>
     <div id="details">
     <h2>Details</h2>

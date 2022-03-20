@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9001</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9002</span>
       </span>
     </div>
 
@@ -26,7 +26,7 @@
   <a href="../reference/index.html">Reference</a>
 </li>
 <li class="dropdown">
-  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     Articles
      
     <span class="caret"></span>
@@ -59,6 +59,38 @@
 
     <div class="section level2">
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
+<div class="section level3">
+<h3 id="major-changes-development-version">Major changes<a class="anchor" aria-label="anchor" href="#major-changes-development-version"></a></h3>
+<ul><li>
+<p><code><a href="../reference/match_coord.html">match_coord()</a></code> has been refactored to correct the calculation method of geographical distance. Previously, epwshiftr assumes that distance on longitude and latitude is the same which is not true. Now it uses a spheroid formula to calculate the tunnel distance (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>). For details, please see <a href="https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance" class="external-link">Tunnel Distance</a> . The structure of the returned <code>epw_cmip6_coord</code> object has also changed. The <code>coord</code> column in the <code>coord</code> <code>data.table</code> is also a <code>data.table</code> which contains 6 columns describing the matched coordinates:</p>
+<ul><li>
+<code>index</code>: the indices of matched coordinates</li>
+<li>
+<code>ind_lon</code>, <code>ind_lat</code>: The value indices of longitude or latitude in the NetCDF coordinate grids. These values are used to extract the corresponding variable values</li>
+<li>
+<code>lon</code>, <code>lat</code>: the actual longitude or latitude in the NetCDF coordinate grids</li>
+<li>
+<code>dist</code>: the distance in km between the coordinate values in NetCDF and input EPW</li>
+</ul><p>Besides, the usage of the input <code>threshold</code> and <code>max_num</code> has been changed a little bit:</p>
+<ul><li>
+<code>threshold</code>: Due to the change in distance calculation, the meaning of the <code>threshold</code> input has been changed. Instead of directly being used to get the ‘closest’ grid points in NetCDF, the longitude and latitude threshold is only used to help exclude grid points that are definitely too far away from the target location. The default threshold, which is 1 degree for both longitude and latitude, is still reasonable for common use cases and is kept unchanged. Also <code>threshold</code> now can be set to <code>NULL</code>. In this case, the distances between the target location and all grid points will be calculated. But this may be only useful for rare cases.</li>
+<li>
+<code>max_num</code>: Now the value <code>max_num</code> is the key input to control how many grid points are to be matched. The points will always be ordered in descending order in terms of the distances.</li>
+</ul></li>
+<li><p>The <code>data</code> in the returned value of <code><a href="../reference/extract_data.html">extract_data()</a></code> has been updated to include a new column <code>dist</code> which gives the spherical distance in km between EPW location and grid coordinates (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>).</p></li>
+<li>
+<p>The document on the return value structure for <code><a href="../reference/extract_data.html">extract_data()</a></code> and <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> has been fixed (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/29" class="external-link">#29</a>). And the column order for all metadata in the returned <code>data.table</code> from <code><a href="../reference/extract_data.html">extract_data()</a></code> and <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> are not consistent. The columns will always be in the order below (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/45" class="external-link">#45</a>):</p>
+<ul><li><code>activity_drs</code></li>
+<li><code>institution_id</code></li>
+<li><code>source_id</code></li>
+<li><code>experiment_id</code></li>
+<li><code>member_id</code></li>
+<li><code>table_id</code></li>
+<li><code>lon</code></li>
+<li><code>lat</code></li>
+<li><code>dist</code></li>
+</ul></li>
+</ul></div>
 <div class="section level3">
 <h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
 <ul><li>A new parameter <code>full</code> is added to <code><a href="../reference/future_epw.html">future_epw()</a></code>. When setting to <code>TRUE</code>, a <code>data.table</code> containing information about how the data are split by the <code>by</code> argument and also the generated future EPWs and their paths are returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/18" class="external-link">#18</a>).</li>
