@@ -313,7 +313,7 @@ summary_database <- function (
 #' @importFrom data.table as.data.table set setattr setcolorder
 #' @importFrom RNetCDF utcal.nc
 #' @importFrom units set_units
-get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
+get_nc_data <- function (x, coord, years, unit = TRUE) {
     assert_flag(unit)
     assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
@@ -338,15 +338,12 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 
     # match time
     time <- match_nc_time(nc, years)
-
-    which_lat <- lats$which
-    which_lon <- lons$which
     which_time <- time$which
 
     # get dimensions
     dims <- get_nc_dims(nc)[J(c("lon", "lat", "time")), on = "name"][order(id)][, id := .I]
-    dims[J("lon"), on = "name", `:=`(value = list(which_lon))]
-    dims[J("lat"), on = "name", `:=`(value = list(which_lat))]
+    dims[J("lon"), on = "name", `:=`(value = list(coord$ind_lon))]
+    dims[J("lat"), on = "name", `:=`(value = list(coord$ind_lat))]
 
     # find correct dimentions
     ord <- list(
@@ -376,9 +373,9 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     dt <- rbindlist(use.names = TRUE, lapply(seq_along(which_time), function (i) {
         if (!length(which_time[[i]])) {
             return(data.table(
-                value = double(),
-                lon = double(), lat = double(),
-                datetime = Sys.time()[0]
+                index = integer(),
+                lon = double(), lat = double(), dist = double(),
+                datetime = Sys.time()[0], value = double()
             ))
         }
 
@@ -390,16 +387,27 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
         # longitude, latitude, time).
         dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
-            c(length(dims$value[[1L]]), length(dims$value[[2L]]), length(dims$value[[3L]])),
+            c(length(unique(dims$value[[1L]])), length(unique(dims$value[[2L]])), length(dims$value[[3L]])),
             collapse = FALSE)
         )
 
-        setnames(dt, c(dims$name, "value"))
-        setnames(dt, "time", "datetime")
-
-        set(dt, NULL, "lon", lons$value[dt$lon])
-        set(dt, NULL, "lat", lats$value[dt$lat])
+        setnames(dt, c(paste0("ord_", dims$name), "value"))
+        setnames(dt, "ord_time", "datetime")
         set(dt, NULL, "datetime", time$datetime[[i]][dt$datetime])
+
+        # only keep the matched points
+        ind_lon <- ind_lat <- ord_lon <- ord_lat <- .GRP <- NULL # to make CRAN check happy
+        # NOTE: make a copy of input coord here, otherwise there will be a shallow
+        # copy warning
+        # should be cheap to do so, since the coord is normally a small DT
+        co <- copy(coord)
+        co[order(ind_lon), ord_lon := .GRP, by = "ind_lon"]
+        co[order(ind_lat), ord_lat := .GRP, by = "ind_lat"]
+        res <- dt[co, on = c("ord_lon", "ord_lat")]
+        set(res, NULL, c("ord_lon", "ord_lat", "ind_lon", "ind_lat"), NULL)
+        setcolorder(res, setdiff(names(res), c("datetime", "value")))
+
+        res
     }))
 
     if (unit && nrow(dt)) {
@@ -410,14 +418,14 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
     set(dt, NULL, c("variable", "description", "units"), list(var, var_long, units))
 
     # change column order
-    setcolorder(dt, c("datetime", "lat", "lon", "variable", "description", "units", "value"))
+    setcolorder(dt, c("index", "lon", "lat", "dist", "datetime", "variable", "description", "units", "value"))
 
     set(dt, NULL,
-        c("activity_drs", "experiment_id", "institution_id", "source_id", "member_id", "table_id"),
-        atts[J("NC_GLOBAL", c("activity_id", "experiment_id", "institution_id", "source_id", "variant_label", "frequency")),
+        c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"),
+        atts[J("NC_GLOBAL", c("activity_id", "institution_id", "source_id", "experiment_id", "variant_label", "frequency")),
             on = c("variable", "attribute"), value]
     )
-    setcolorder(dt, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))
+    setcolorder(dt, c("index", "activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id"))
 
     dt
 }
@@ -475,22 +483,24 @@ get_nc_data <- function (x, lats, lons, years, unit = TRUE) {
 #' * `meta`: A list containing basic meta data of input EPW, including `city`,
 #'   `state_province`, `country`, `latitute` and `longitude`.
 #' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
-#'   [data.table::data.table()] of 12 columns if `keep` is `TRUE`:
+#'   [data.table::data.table()] of 14 columns if `keep` is `TRUE`:
 #'
-#'     | No.  | Column           | Type      | Description                                                          |
-#'     | ---: | -----            | -----     | -----                                                                |
-#'     | 1    | `activity_drs`   | Character | Activity DRS (Data Reference Syntax)                                 |
-#'     | 2    | `institution_id` | Character | Institution identifier                                               |
-#'     | 3    | `source_id`      | Character | Model identifier                                                     |
-#'     | 4    | `experiment_id`  | Character | Root experiment identifier                                           |
-#'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label` |
-#'     | 6    | `table_id`       | Character | Table identifier                                                     |
-#'     | 7    | `lat`            | Double    | Latitude of extracted location                                       |
-#'     | 8    | `lon`            | Double    | Latitude of extracted location                                       |
-#'     | 9    | `variable`       | Character | Variable identifier                                                  |
-#'     | 10   | `description`    | Character | Variable long name                                                   |
-#'     | 11   | `units`          | Character | Units of variable                                                    |
-#'     | 12   | `value`          | Double    | Start date and time of simulation                                    |
+#'     | No.  | Column           | Type      | Description                                                            |
+#'     | ---: | -----            | -----     | -----                                                                  |
+#'     | 1    | `activity_drs`   | Character | Activity DRS (Data Reference Syntax)                                   |
+#'     | 2    | `institution_id` | Character | Institution identifier                                                 |
+#'     | 3    | `source_id`      | Character | Model identifier                                                       |
+#'     | 4    | `experiment_id`  | Character | Root experiment identifier                                             |
+#'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label`   |
+#'     | 6    | `table_id`       | Character | Table identifier                                                       |
+#'     | 7    | `lon`            | Double    | Longitude of extracted location                                        |
+#'     | 8    | `lat`            | Double    | Latitude of extracted location                                         |
+#'     | 9    | `dist`           | Double    | The spherical distance in km between EPW location and grid coordinates |
+#'     | 10   | `datetime`       | POSIXct   | Datetime for the predicted value                                       |
+#'     | 11   | `variable`       | Character | Variable identifier                                                    |
+#'     | 12   | `description`    | Character | Variable long name                                                     |
+#'     | 13   | `units`          | Character | Units of variable                                                      |
+#'     | 14   | `value`          | Double    | The actual predicted value                                             |
 #'
 #' @importFrom checkmate assert_class
 #' @importFrom units set_units
@@ -542,16 +552,15 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         }
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))
-            ip <- 0L
 
             d <- rbindlist(
                 future.apply::future_Map(
-                    function (path, coord) {
-                        ip <<- ip + 1L
+                    function(ip, path, coord) {
                         p(message = sprintf("[%i/%i]", ip, nrow(co)))
-                        get_nc_data(path, lats = coord$lat, lons = coord$lon, years = years, unit = unit)
+                        d <- get_nc_data(path, coord, years = years, unit = unit)
+                        set(d, NULL, "index", NULL)
                     },
-                    co$file_path, co$coord
+                    seq.int(nrow(co)), co$file_path, co$coord
             ))
         })
 

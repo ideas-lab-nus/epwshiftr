@@ -1,5 +1,56 @@
 # epwshiftr (development version)
 
+## Major changes
+
+* `match_coord()` has been refactored to correct the calculation method of
+  geographical distance. Previously, epwshiftr assumes that distance on
+  longitude and latitude is the same which is not true. Now it uses a spheroid
+  formula to calculate the tunnel distance (#39). For details, please see [Tunnel
+  Distance](https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance)
+  . The structure of the returned `epw_cmip6_coord` object has also changed.
+  The `coord` column in the `coord` `data.table` is also a `data.table` which
+  contains 6 columns describing the matched coordinates:
+  * `index`: the indices of matched coordinates
+  * `ind_lon`, `ind_lat`: The value indices of longitude or latitude in the
+    NetCDF coordinate grids. These values are used to extract the corresponding
+    variable values
+  * `lon`, `lat`: the actual longitude or latitude in the NetCDF coordinate
+    grids
+  * `dist`: the distance in km between the coordinate values in NetCDF and input
+    EPW
+
+  Besides, the usage of the input `threshold` and `max_num` has been changed a
+  little bit:
+
+  - `threshold`: Due to the change in distance calculation, the meaning of the
+    `threshold` input has been changed.  Instead of directly being used to get
+    the 'closest' grid points in NetCDF, the longitude and latitude threshold
+    is only used to help exclude grid points that are definitely too far away
+    from the target location. The default threshold, which is 1 degree for both
+    longitude and latitude, is still reasonable for common use cases and is kept
+    unchanged.  Also `threshold` now can be set to `NULL`. In this case, the
+    distances between the target location and all grid points will be
+    calculated. But this may be only useful for rare cases.
+  - `max_num`: Now the value `max_num` is the key input to control how many grid
+    points are to be matched. The points will always be ordered in descending
+    order in terms of the distances.
+* The `data` in the returned value of `extract_data()` has been updated to
+  include a new column `dist` which gives the spherical distance in km between
+  EPW location and grid coordinates (#39).
+* The document on the return value structure for `extract_data()` and
+  `morphing_epw()` has been fixed (#29). And the column order for all metadata
+  in the returned `data.table` from `extract_data()` and `morphing_epw()` are
+  not consistent. The columns will always be in the order below (#45):
+  - `activity_drs`
+  - `institution_id`
+  - `source_id`
+  - `experiment_id`
+  - `member_id`
+  - `table_id`
+  - `lon`
+  - `lat`
+  - `dist`
+
 ## New features
 
 * A new parameter `full` is added to `future_epw()`. When setting to `TRUE`, 

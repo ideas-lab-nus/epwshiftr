@@ -57,7 +57,7 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_coord
 \item \code{meta}: A list containing basic meta data of input EPW, including \code{city},
 \code{state_province}, \code{country}, \code{latitute} and \code{longitude}.
 \item \code{data}: An empty \code{\link[data.table:data.table]{data.table::data.table()}} if \code{keep} is \code{FALSE} or a
-\code{\link[data.table:data.table]{data.table::data.table()}} of 12 columns if \code{keep} is \code{TRUE}:\tabular{rlll}{
+\code{\link[data.table:data.table]{data.table::data.table()}} of 14 columns if \code{keep} is \code{TRUE}:\tabular{rlll}{
    No. \tab Column \tab Type \tab Description \cr
    1 \tab \code{activity_drs} \tab Character \tab Activity DRS (Data Reference Syntax) \cr
    2 \tab \code{institution_id} \tab Character \tab Institution identifier \cr
@@ -65,12 +65,14 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_coord
    4 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    5 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
    6 \tab \code{table_id} \tab Character \tab Table identifier \cr
-   7 \tab \code{lat} \tab Double \tab Latitude of extracted location \cr
-   8 \tab \code{lon} \tab Double \tab Latitude of extracted location \cr
-   9 \tab \code{variable} \tab Character \tab Variable identifier \cr
-   10 \tab \code{description} \tab Character \tab Variable long name \cr
-   11 \tab \code{units} \tab Character \tab Units of variable \cr
-   12 \tab \code{value} \tab Double \tab Start date and time of simulation \cr
+   7 \tab \code{lon} \tab Double \tab Longitude of extracted location \cr
+   8 \tab \code{lat} \tab Double \tab Latitude of extracted location \cr
+   9 \tab \code{dist} \tab Double \tab The spherical distance in km between EPW location and grid coordinates \cr
+   10 \tab \code{datetime} \tab POSIXct \tab Datetime for the predicted value \cr
+   11 \tab \code{variable} \tab Character \tab Variable identifier \cr
+   12 \tab \code{description} \tab Character \tab Variable long name \cr
+   13 \tab \code{units} \tab Character \tab Units of variable \cr
+   14 \tab \code{value} \tab Double \tab The actual predicted value \cr
 }
 
 }
