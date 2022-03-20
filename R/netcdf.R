@@ -380,7 +380,7 @@ summary_database <- function (
             mes <- miss[, by = "index_case", {
                 list(message = sprintf("#%i | For case '%s':\n", .BY$index_case, gsub("\\|.+$", "", file_id[1])))
             }]$message
-            set(miss, NULL, c("index", "index_case"), NULL)
+            set(miss, NULL, "index_case", NULL)
 
             ori <- getOption("warning.length")
             options(warning.length = 8170L)
@@ -394,6 +394,7 @@ summary_database <- function (
         }
 
         # remove index
+        set(miss, NULL, "index", NULL)
         set(idx, NULL, "index", NULL)
 
         # combine not found and not matched together
