@@ -36,8 +36,20 @@
     order in terms of the distances.
 * The `data` in the returned value of `extract_data()` has been updated to
   include a new column `dist` which gives the spherical distance in km between
-  EPW location and grid coordinates (#39). Also the document of `extract_data()`
-  has been fixed (#29).
+  EPW location and grid coordinates (#39).
+* The document on the return value structure for `extract_data()` and
+  `morphing_epw()` has been fixed (#29). And the column order for all metadata
+  in the returned `data.table` from `extract_data()` and `morphing_epw()` are
+  not consistent. The columns will always be in the order below (#45):
+  - `activity_drs`
+  - `institution_id`
+  - `source_id`
+  - `experiment_id`
+  - `member_id`
+  - `table_id`
+  - `lon`
+  - `lat`
+  - `dist`
 
 ## New features
 
