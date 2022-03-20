@@ -185,11 +185,62 @@ test_that("summary_database()", {
               "file_realsize", "file_mtime"
             )
         )
-        expect_equal(nrow(not), 0L)
+        expect_is(mis <- attr(db, "not_found"), "data.table")
+        expect_equal(names(mis),
+            c("file_id", "dataset_id", "mip_era", "activity_drs",
+              "institution_id", "source_id", "experiment_id", "member_id",
+              "table_id", "frequency", "grid_label", "version",
+              "nominal_resolution", "variable_id", "variable_long_name",
+              "variable_units", "datetime_start", "datetime_end", "file_size",
+              "data_node", "file_url", "dataset_pid", "tracking_id"
+            )
+        )
+        expect_equal(nrow(mis), 0L)
         expect_equal(as.integer(db$dl_percent), 100L)
         expect_equal(as.integer(db$dl_num), 3L)
 
+        # 'append' can still work for initial summary
+        idx <- load_cmip6_index()
+        cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
+        if (any(cols %in% names(idx))) set(idx, NULL, cols[cols %in% names(idx)], NULL)
+        set_cmip6_index(idx)
         expect_is(db <- summary_database(cache, append = TRUE), "data.table")
+        load_cmip6_index()
+        expect_equal(as.integer(db$dl_percent), 100L)
+        expect_equal(as.integer(db$dl_num), 3L)
+
+        # can append to existing database results
+        idx <- load_cmip6_index()
+        idx[1L, `:=`(file_path = "ori.nc", file_realsize = 1)]
+        idx[2L, `:=`(file_path = NA, file_realsize = 1)]
+        set_cmip6_index(idx)
+        expect_is(expect_warning(db <- summary_database(cache, append = TRUE)), "data.table")
+        idx <- load_cmip6_index()
+        expect_equal(idx$file_path[1], "ori.nc")
+        expect_equal(idx$file_realsize[1], 1.0)
+        expect_true(!is.na(idx$file_path[2]))
+        expect_equal(as.integer(db$dl_percent), 100L)
+        expect_equal(as.integer(db$dl_num), 3L)
+        attr(db, "not_found")
+
+        # can give warnings if missing outputs found
+        nc_2059 <- tempfile(fileext = ".nc")
+        file.rename(paths["2059"], nc_2059)
+        expect_warning(db <- summary_database(cache))
+        idx <- load_cmip6_index()
+        file.rename(nc_2059, paths["2059"])
+        expect_true(is.na(idx$file_path[1]))
+        expect_equal(as.integer(db$dl_percent), 66L)
+        expect_equal(as.integer(db$dl_num), 2L)
+
+        # can overwrite output metadata if the original file path does not
+        # exists
+        summary_database(cache)
+        idx <- load_cmip6_index()
+        idx[1L, `:=`(file_path = "ori.nc")]
+        idx[2L, `:=`(file_path = NA)]
+        set_cmip6_index(idx)
+        expect_warning(db <- summary_database(cache, append = TRUE, miss = "overwrite"))
 
         # can work if no NetCDF files were found
         expect_is(db <- summary_database(tempdir()), "data.table")
