@@ -86,7 +86,7 @@ test_that("match_coord()", {
     path <- file.path(cache, file)
 
     if (!file.exists(path)) {
-        eplusr::download_weather("Singapore", dir = cache, type = "epw", ask = FALSE)
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1)
     }
 
     if (file.exists(path)) {
@@ -126,8 +126,9 @@ test_that("match_coord()", {
               "coord"
             )
         )
-        expect_is(res1$coord$coord, "data.table")
-        expect_equal(names(res1$coord$coord), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_is(res1$coord$coord, "list")
+        expect_is(res1$coord$coord[[1]], "data.table")
+        expect_equal(names(res1$coord$coord[[1]]), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
 
         # can work with EPW file path
         expect_is(res2 <- match_coord(path), "epw_cmip6_coord")
@@ -135,7 +136,7 @@ test_that("match_coord()", {
         expect_equal(res2$coord, res1$coord)
 
         # can select the location interactively
-        mockery::stub(match_coord, "extract_location_dict", eplusr:::WEATHER_DB[grepl("Singapore", title)])
+        mockery::stub(match_coord, "extract_location_dict", eplusr:::WEATHER_DB[grepl("Singapore", title)][1L])
         expect_is(res3 <- match_coord("Singapore"), "epw_cmip6_coord")
 
         mockery::stub(match_coord, "extract_location_dict", NULL)

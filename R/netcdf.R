@@ -338,15 +338,12 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 
     # match time
     time <- match_nc_time(nc, years)
-
-    which_lat <- coord$ind_lat
-    which_lon <- coord$ind_lon
     which_time <- time$which
 
     # get dimensions
     dims <- get_nc_dims(nc)[J(c("lon", "lat", "time")), on = "name"][order(id)][, id := .I]
-    dims[J("lon"), on = "name", `:=`(value = list(which_lon))]
-    dims[J("lat"), on = "name", `:=`(value = list(which_lat))]
+    dims[J("lon"), on = "name", `:=`(value = list(coord$ind_lon))]
+    dims[J("lat"), on = "name", `:=`(value = list(coord$ind_lat))]
 
     # find correct dimentions
     ord <- list(
@@ -399,15 +396,16 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
         set(dt, NULL, "datetime", time$datetime[[i]][dt$datetime])
 
         # only keep the matched points
-        ind_lon <- ind_lat <- .GRP <- NULL # to make CRAN check happy
-        coord[order(ind_lon), `:=`(ord_lon = .GRP), by = "ind_lon"]
-        coord[order(ind_lat), `:=`(ord_lat = .GRP), by = "ind_lat"]
-        res <- dt[coord, on = c("ord_lon", "ord_lat")]
+        ind_lon <- ind_lat <- ord_lon <- ord_lat <- .GRP <- NULL # to make CRAN check happy
+        # NOTE: make a copy of input coord here, otherwise there will be a shallow
+        # copy warning
+        # should be cheap to do so, since the coord is normally a small DT
+        co <- copy(coord)
+        co[order(ind_lon), ord_lon := .GRP, by = "ind_lon"]
+        co[order(ind_lat), ord_lat := .GRP, by = "ind_lat"]
+        res <- dt[co, on = c("ord_lon", "ord_lat")]
         set(res, NULL, c("ord_lon", "ord_lat", "ind_lon", "ind_lat"), NULL)
         setcolorder(res, setdiff(names(res), c("datetime", "value")))
-
-        # clean coord
-        set(coord, NULL, c("ord_lon", "ord_lat"), NULL)
 
         res
     }))
@@ -554,17 +552,15 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         }
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))
-            ip <- 0L
 
             d <- rbindlist(
                 future.apply::future_Map(
-                    function (path, coord) {
-                        ip <<- ip + 1L
+                    function(ip, path, coord) {
                         p(message = sprintf("[%i/%i]", ip, nrow(co)))
                         d <- get_nc_data(path, coord, years = years, unit = unit)
                         set(d, NULL, "index", NULL)
                     },
-                    co$file_path, co$coord
+                    seq.int(nrow(co)), co$file_path, co$coord
             ))
         })
 

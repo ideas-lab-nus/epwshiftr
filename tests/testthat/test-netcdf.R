@@ -291,7 +291,7 @@ test_that("extract_data()", {
         summary_database(cache)
         idx <- load_cmip6_index()
         set_cmip6_index(idx[2L])
-        coord <- match_coord(epw)
+        coord <- match_coord(epw, threshold = NULL, max_num = 6L)
         set_cmip6_index(idx)
 
         expect_is(d <- extract_data(coord, years = 2060), "epw_cmip6_data")
@@ -314,7 +314,8 @@ test_that("extract_data()", {
 
         expect_is(
             d2 <- extract_data(coord, out_dir = cache,
-                by = c("source", "experiment", "variable")
+                by = c("source", "experiment", "variable"),
+                years = 2060
             ),
             "epw_cmip6_data"
         )
@@ -324,12 +325,12 @@ test_that("extract_data()", {
 
         expect_is(
             d3 <- extract_data(coord, out_dir = cache,
-                by = c("source", "experiment", "variable"), keep = TRUE
+                by = c("source", "experiment", "variable"), keep = TRUE,
+                years = 2060
             ),
             "epw_cmip6_data"
         )
         expect_equal(d3$data, d$data)
         expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
-        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
     }
 })

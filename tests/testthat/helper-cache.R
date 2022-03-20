@@ -11,7 +11,7 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)) {
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(cache, file)
     if (!file.exists(path)) {
-        eplusr::download_weather("Singapore", dir = cache, type = "epw", ask = FALSE)
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1)
     }
 
     # download NetCDF
