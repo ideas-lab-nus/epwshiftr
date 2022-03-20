@@ -40,7 +40,8 @@ preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL, labels = NU
         }
     }
 
-    # calculate monthly mean and average value for longitude and latitude
+    # calculate monthly mean and average value for longitude, latitude and
+    # distance
     res <- location_mean(dt, c("datetime", "year", "day", "hour", "minute", "second"))
     data.table::set(res, NULL, "value", units::set_units(res$value, res$units[1], mode = "standard"))
 
@@ -355,11 +356,11 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
 
         # merge max and min CMIP6 values into mean data.table
         data_mean[data_max, on = c("activity_drs", "experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "units", "month", "interval"),
+            "source_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
             value_max := i.value
         ]
         data_mean[data_min, on = c("activity_drs", "experiment_id", "institution_id",
-            "source_id", "member_id", "table_id", "lat", "lon", "units", "month", "interval"),
+            "source_id", "member_id", "table_id", "lat", "lon", "dist", "units", "month", "interval"),
             value_min := i.value
         ]
 
@@ -427,7 +428,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
     data[, .SD, .SDcols = c(
         # meta from CMIP6
         "activity_drs", "experiment_id", "institution_id", "source_id", "member_id",
-        "table_id", "lon", "lat",
+        "table_id", "lon", "lat", "dist",
         # interval
         "interval",
         # datetime
@@ -659,8 +660,8 @@ morphing_precipitation <- function (data_epw, pr, years = NULL, labels = NULL, t
 
 # location_mean {{{
 location_mean <- function (dt, by_exclude = NULL) {
-    res <- dt[, list(lon = mean(lon), lat = mean(lat), value = mean(value)),
-        by = c(setdiff(names(dt), c("lon", "lat", "value", by_exclude)))]
+    res <- dt[, list(lon = mean(lon), lat = mean(lat), dist = mean(dist), value = mean(value)),
+        by = c(setdiff(names(dt), c("lon", "lat", "dist", "value", by_exclude)))]
     data.table::setcolorder(res, setdiff(names(dt), by_exclude))[]
 }
 # }}}
