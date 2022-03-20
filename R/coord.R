@@ -66,13 +66,34 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 # match_coord {{{
 #' Match coordinates of input EPW in the CMIP6 output file database
 #'
-#' `match_coord()` takes an EPW and uses its longitude and latitude to match
-#' corresponding values that meet specified threshold in NetCDF files.
+#' `match_coord()` takes an EPW and uses its longitude and latitude to calculate
+#' the distance between the EPW location and the global grid points in NetCDF
+#' files.
 #'
 #' `match_coord()` uses [future.apply][future.apply::future_lapply()]
 #' underneath. You can use your preferable future backend to
 #' speed up data extraction in parallel. By default, `match_coord()` uses
 #' `future::sequential` backend, which runs things in sequential.
+#'
+#' @section Geographical distance calculation:
+#'
+#' `match_coord()` calculates the geographical distances based formulas of
+#' spherical trigonometry:
+#'
+#' \deqn{
+#' \begin{align}
+#' &\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1);\\
+#' &\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1);\\
+#' &\Delta{Z}=\sin(\phi_2) - \sin(\phi_1);\\
+#' &C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}.
+#' \end{align}
+#' }
+#'
+#' where \eqn{phi} is the latitude and \eqn{lambda} is the longitude.  This
+#' formula treats the Earth as a sphere. The geographical distance between
+#' points on the surface of a spherical Earth is \eqn{D = RC_h}.
+#'
+#' For more details, please see this [Wikipedia](https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance)
 #'
 #' @param epw Possible values:
 #'
@@ -84,12 +105,16 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #'   search is case-insensitive
 #'
 #' @param threshold A list of 2 elements `lon` and `lat` specifying the
-#'        absolute distance threshold used when matching longitude and latitude.
-#'        Default: `list(lon = 1.0, lat = 1.0)`
+#'        absolute distance threshold used for subsetting longitude and
+#'        latitude value for calculating distances. If `NULL`, no subsetting is
+#'        performed and the distances between the target location and all grid
+#'        points are calculated. This is useful set the `threshold` value to
+#'        exclude some points that are absolute too far away from the target
+#'        location. Default: `list(lon = 1.0, lat = 1.0)`
 #'
-#' @param max_num The maximum number to be matched for both longitude and
-#'        latitude when `threshold` is matched. Default is `NULL`, which means
-#'        no limit
+#' @param max_num The maximum number of grid points to be matched. Default is
+#'        `NULL`, which means no number limit and the total matched grid points
+#'        are determined by the `threshold` input.
 #'
 #' @return An `epw_cmip6_coord` object, which is basically a list of 3 elements:
 #'
@@ -99,16 +124,17 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #' * `coord`: A [data.table::data.table()] which is basically CMIP6 index
 #'            database with an appending new list column `coord` that contains
 #'            matched latitudes and longitudes in each NetCDF file. Each element
-#'            in `coord` contains 2 elements `lat` and `lon`, in which contains
-#'            the 4 components describing the matched coordinates.
+#'            in `coord` is a [data.table::data.table()] of 6 columns describing
+#'            the matched coordinates.
+#'
 #'     * `index`: the indices of matched coordinates
-#'     * `value`: the actual longitude or latitude in the NetCDF coordinate
+#'     * `ind_lon`, `ind_lat`: The value indices of longitude or latitude in the
+#'       NetCDF coordinate grids. These values are used to extract the
+#'       corresponding variable values
+#'     * `lon`, `lat`: the actual longitude or latitude in the NetCDF coordinate
 #'       grids
-#'     * `dis`: the distance between the coordinate values in NetCDF and input
-#'       EPW
-#'     * `which`: The value indices of longitude or latitude in the NetCDF
-#'       coordinate grids. These values are used to extract the corresponding
-#'       variable values
+#'     * `dist`: the distance in km between the coordinate values in NetCDF and
+#'       input EPW
 #'
 #' @importFrom progressr with_progress
 #' @importFrom checkmate assert_scalar test_file_exists test_r6
@@ -176,15 +202,34 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
 }
 # }}}
 
+# ref: https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance
+tunnel_dist <- function(lat1, lon1, lat2, lon2) {
+    EARTH_RADIUS <- 6371.009
+
+    lat1 <- to_radian(lat1)
+    lon1 <- to_radian(lon1)
+
+    lat2 <- to_radian(lat2)
+    lon2 <- to_radian(lon2)
+
+    delta_x <- cos(lat2) * cos(lon2) - cos(lat1) * cos(lon1)
+    delta_y <- cos(lat2) * sin(lon2) - cos(lat1) * sin(lon1)
+    delta_z <- sin(lat2) - sin(lat1)
+
+    sqrt(delta_x ^ 2 + delta_y ^ 2 + delta_z ^ 2) * EARTH_RADIUS
+}
+
 # match_nc_coord {{{
-match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0), max_num = NULL) {
+match_nc_coord <- function (x, lat, lon, threshold = NULL, max_num = NULL) {
     assert_number(lat, lower = -90.0, upper = 90.0)
     assert_number(lon, lower = -180.0, upper = 180.0)
 
-    assert_list(threshold)
-    assert_names(names(threshold), must.include = c("lon", "lat"))
-    assert_number(threshold$lon, lower = 0, upper = 180.0)
-    assert_number(threshold$lat, lower = 0, upper = 90.0)
+    assert_list(threshold, null.ok = TRUE)
+    if (!is.null(threshold)) {
+        assert_names(names(threshold), must.include = c("lon", "lat"))
+        assert_number(threshold$lon, lower = 0.0, upper = 180.0)
+        assert_number(threshold$lat, lower = 0.0, upper = 90.0)
+    }
 
     assert_count(max_num, positive = TRUE, null.ok = TRUE)
 
@@ -199,34 +244,48 @@ match_nc_coord <- function (x, lat, lon, threshold = list(lat = 1.0, lon = 1.0),
     dim <- lapply(c("lat", "lon"), function (var) as.numeric(RNetCDF::var.get.nc(nc, var)))
     names(dim) <- c("lat", "lon")
 
-    # calculate distance
-    dis_lat <- dim$lat - lat
+    # use all grid points for distance calculation
+    if (is.null(threshold)) {
+        ind_lat <- seq.int(length(dim$lat))
+        ind_lon <- seq.int(length(dim$lon))
+    # to speed things up, use the input threshold to get rid of grid points that
+    # are too far away
+    } else {
+        # change EPW longitude to [0, 360] range
+        if (min(dim$lon) >= 0 && lon < 0) {
+            lon <- 180 -lon
+        }
 
-    # change EPW longitude to [0, 360] range
-    if (all(dim$lon >= 0) && lon < 0) {
-        lon <- 180 -lon
+        dis_lat <- abs(dim$lat - lat)
+        dis_lon <- abs(dim$lon - lon)
+
+        ind_lat <- which(dis_lat <= threshold$lat)
+        ind_lon <- which(dis_lon <= threshold$lon)
+
+        if (!length(ind_lat)) {
+            stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
+                 "the minimum distance ('", round(min(dis_lat), 2), "') of current file resolution.")
+        }
+        if (!length(ind_lon)) {
+            stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
+                 "the minimum distance ('", round(min(dis_lon), 2), "') of current file resolution.")
+        }
     }
-    dis_lon <- dim$lon - lon
 
-    i_lat <- which(abs(dis_lat) <= threshold$lat)
-    i_lon <- which(abs(dis_lon) <= threshold$lon)
-
-    if (!length(i_lat)) {
-        stop("Threshold for latitude ('", threshold$lat, "') is smaller than ",
-             "the minimum distance ('", round(min(abs(dis_lat)), 2), "') of current file resolution.")
-    }
-    if (!length(i_lon)) {
-        stop("Threshold for latitude ('", threshold$lon, "') is smaller than ",
-             "the minimum distance ('", round(min(abs(dis_lon)), 2), "') of current file resolution.")
-    }
-
-    if (!is.null(max_num)) {
-        if (max_num < length(i_lat)) i_lat <- i_lat[seq.int(as.integer(max_num))]
-        if (max_num < length(i_lon)) i_lon <- i_lon[seq.int(as.integer(max_num))]
-    }
-
-    list(lat = list(index = seq_along(i_lat), value = dim$lat[i_lat], dis = dis_lat[i_lat], which = i_lat),
-         lon = list(index = seq_along(i_lon), value = dim$lon[i_lon], dis = dis_lon[i_lon], which = i_lon)
+    # get the tunnel distances
+    coord <- data.table::CJ(ind_lat = ind_lat, ind_lon = ind_lon)
+    data.table::set(coord, NULL, "dist",
+        tunnel_dist(dim$lat[coord$ind_lat], dim$lon[coord$ind_lon], lat, lon)
     )
+    data.table::setorderv(coord, "dist")
+
+    if (!is.null(max_num)) coord <- coord[seq.int(as.integer(max_num))]
+
+    data.table::set(coord, NULL, "index", seq.int(nrow(coord)))
+    data.table::set(coord, NULL, "lat", dim$lat[coord$ind_lat])
+    data.table::set(coord, NULL, "lon", dim$lon[coord$ind_lon])
+    data.table::setcolorder(coord, c("index", "ind_lon", "ind_lat", "lon", "lat"))
+
+    coord
 }
 # }}}

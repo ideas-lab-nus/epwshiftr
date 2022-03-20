@@ -304,20 +304,19 @@ test_that("get_nc_data()", {
     if (file.exists(path)) {
         loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
         coord <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L)
-
-        expect_is(d <- get_nc_data(path, coord$lat, coord$lon, years = 2060), "data.table")
+        expect_is(d <- get_nc_data(path, coord, years = 2060), "data.table")
         expect_equal(names(d),
-            c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+            c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
         expect_is(d$value, "units")
 
-        expect_is(d <- get_nc_data(path, coord$lat, coord$lon, years = 2000), "data.table")
+        expect_is(d <- get_nc_data(path, coord, years = 2000), "data.table")
         expect_equal(names(d),
-            c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+            c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
@@ -325,7 +324,7 @@ test_that("get_nc_data()", {
         expect_is(d$value, "numeric")
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_data(con, coord$lat, coord$lon, years = 2000), d)
+        expect_equivalent(get_nc_data(con, coord, years = 2000), d)
         RNetCDF::close.nc(con)
     }
 })
@@ -353,7 +352,7 @@ test_that("extract_data()", {
         expect_is(d$data, "data.table")
         expect_equal(names(d$data),
             c("activity_drs", "institution_id", "source_id", "experiment_id",
-              "member_id", "table_id", "datetime", "lat", "lon", "variable",
+              "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
@@ -362,19 +361,23 @@ test_that("extract_data()", {
         expect_is(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
         expect_equal(d1$data, data.table())
         expect_true(file.exists(file.path(cache, "data.fst")))
+        unlink(file.path(cache, "data.fst"))
 
         expect_is(
             d2 <- extract_data(coord, out_dir = cache,
-                by = c("source", "experiment", "variable")
+                by = c("source", "experiment", "variable"),
+                years = 2060
             ),
             "epw_cmip6_data"
         )
         expect_equal(d2$data, data.table())
         expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
+        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
 
         expect_is(
             d3 <- extract_data(coord, out_dir = cache,
-                by = c("source", "experiment", "variable"), keep = TRUE
+                by = c("source", "experiment", "variable"), keep = TRUE,
+                years = 2060
             ),
             "epw_cmip6_data"
         )
