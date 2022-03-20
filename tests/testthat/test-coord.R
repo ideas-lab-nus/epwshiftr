@@ -52,7 +52,7 @@ test_that("match_nc_coord()", {
 
         # can change EPW longitude to [0, 360] range
         loc <- eplusr:::WEATHER_DB[title == "USA_NY_New.York.City-Central.Park.744860_TMY2"]
-        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1), "data.table")
+        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1, lon = 1), max_num = 1), "data.table")
         expect_equal(names(matched), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
         expect_equal(nrow(matched), 1L)
 
