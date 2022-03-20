@@ -493,10 +493,10 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #'     | 4    | `experiment_id`  | Character | Root experiment identifier                                             |
 #'     | 5    | `member_id`      | Character | A compound construction from `sub_experiment_id` and `variant_label`   |
 #'     | 6    | `table_id`       | Character | Table identifier                                                       |
-#'     | 7    | `datetime`       | POSIXct   | Datetime for the predicted value                                       |
+#'     | 7    | `lon`            | Double    | Longitude of extracted location                                        |
 #'     | 8    | `lat`            | Double    | Latitude of extracted location                                         |
-#'     | 9    | `lon`            | Double    | Latitude of extracted location                                         |
-#'     | 10   | `dist`           | Double    | The spherical distance in km between EPW location and grid coordinates |
+#'     | 9    | `dist`           | Double    | The spherical distance in km between EPW location and grid coordinates |
+#'     | 10   | `datetime`       | POSIXct   | Datetime for the predicted value                                       |
 #'     | 11   | `variable`       | Character | Variable identifier                                                    |
 #'     | 12   | `description`    | Character | Variable long name                                                     |
 #'     | 13   | `units`          | Character | Units of variable                                                      |

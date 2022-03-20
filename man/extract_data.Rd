@@ -65,10 +65,10 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_coord
    4 \tab \code{experiment_id} \tab Character \tab Root experiment identifier \cr
    5 \tab \code{member_id} \tab Character \tab A compound construction from \code{sub_experiment_id} and \code{variant_label} \cr
    6 \tab \code{table_id} \tab Character \tab Table identifier \cr
-   7 \tab \code{datetime} \tab POSIXct \tab Datetime for the predicted value \cr
+   7 \tab \code{lon} \tab Double \tab Longitude of extracted location \cr
    8 \tab \code{lat} \tab Double \tab Latitude of extracted location \cr
-   9 \tab \code{lon} \tab Double \tab Latitude of extracted location \cr
-   10 \tab \code{dist} \tab Double \tab The spherical distance in km between EPW location and grid coordinates \cr
+   9 \tab \code{dist} \tab Double \tab The spherical distance in km between EPW location and grid coordinates \cr
+   10 \tab \code{datetime} \tab POSIXct \tab Datetime for the predicted value \cr
    11 \tab \code{variable} \tab Character \tab Variable identifier \cr
    12 \tab \code{description} \tab Character \tab Variable long name \cr
    13 \tab \code{units} \tab Character \tab Units of variable \cr
