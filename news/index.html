@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9002</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9003</span>
       </span>
     </div>
 
@@ -94,6 +94,7 @@
 <div class="section level3">
 <h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
 <ul><li>A new parameter <code>full</code> is added to <code><a href="../reference/future_epw.html">future_epw()</a></code>. When setting to <code>TRUE</code>, a <code>data.table</code> containing information about how the data are split by the <code>by</code> argument and also the generated future EPWs and their paths are returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/18" class="external-link">#18</a>).</li>
+<li>Now <code><a href="../reference/summary_database.html">summary_database()</a></code> can append results to the previous scan and detect if any previously matched NetCDF files do not exist. It stores the metadata of those missing files as a new attribute <code>not_found</code> in the results. Warnings are issued if <code>warning</code> is set to <code>TRUE</code>. Also, a new parameter <code>miss</code> has been added to control how to manage those invalid entries. You can set it to <code>"keep"</code>, which is the default, to do nothing about it or <code>"overwrite"</code> to overwrite those entries based on the newly matched NetCDF files if possible (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/40" class="external-link">#40</a>).</li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
