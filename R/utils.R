@@ -74,5 +74,5 @@ utils::globalVariables(c(
     "val_max", "val_mean", "val_min", "value", "value_max", "value_min",
     "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
     "interval", "time_calendar", "time_units", "overlap", "frequency",
-    "ind_lon", "ind_lat", "ord_lon", "ord_lat"
+    "ind_lon", "ind_lat", "ord_lon", "ord_lat", "dist"
 ))

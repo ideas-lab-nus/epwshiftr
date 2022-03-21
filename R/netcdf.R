@@ -863,11 +863,11 @@ get_nc_time <- function (x, range = FALSE) {
     if (range) {
         time_num_start <- RNetCDF::var.get.nc(nc, "time", 1, 1)
         time_num_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
-        time_ori + c(time_num_start, time_num_end) * secs
+        as.POSIXct(time_ori + c(time_num_start, time_num_end) * secs)
     } else {
         # create time sequences
         time_num <- RNetCDF::var.get.nc(nc, "time", 1, n)
-        time_ori + time_num * secs
+        as.POSIXct(time_ori + time_num * secs)
     }
 }
 # }}}
