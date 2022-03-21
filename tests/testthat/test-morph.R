@@ -39,7 +39,7 @@ test_that("preprocess_morphing()", {
     if (file.exists(path)) {
         d <- fst::read_fst(path, as.data.table = TRUE)
 
-        expect_is(res <- preprocess_morphing(d), "data.table")
+        expect_warning(res <- preprocess_morphing(d, warning = TRUE), "less than a decade")
         expect_equal(names(res),
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month",
