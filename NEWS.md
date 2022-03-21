@@ -65,6 +65,7 @@
   `"keep"`, which is the default, to do nothing about it or `"overwrite"` to
   overwrite those entries based on the newly matched NetCDF files if possible
   (#40).
+* `extract_data()` now supports non-standard calendar, e.g. `360_day` (#32).
 
 ## Bug fixes
 

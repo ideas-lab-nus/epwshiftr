@@ -108,6 +108,46 @@ test_that("get_nc_time()", {
         con <- RNetCDF::open.nc(path)
         expect_equivalent(get_nc_time(con, range = TRUE), time)
         RNetCDF::close.nc(con)
+
+        # can stop if invalid calendar found
+        mockery::stub(get_nc_time, "get_nc_atts",
+            data.table(
+                variable = "time",
+                attribute = "calendar",
+                value = list("invalid")
+            )
+        )
+        expect_error(get_nc_time(path), "Unsupported calendar")
+
+        # can work with only date specification
+        mockery::stub(get_nc_time, "get_nc_atts",
+            data.table(
+                variable = c("time", "time"),
+                attribute = c("calendar", "units"),
+                value = list("standard", "days since 1850-01-01")
+            )
+        )
+        expect_is(get_nc_time(path, range = TRUE), "POSIXct")
+
+        # can warning if months resolution found
+        mockery::stub(get_nc_time, "get_nc_atts",
+            data.table(
+                variable = c("time", "time"),
+                attribute = c("calendar", "units"),
+                value = list("standard", "months since 1850-01")
+            )
+        )
+        expect_warning(get_nc_time(path, range = TRUE), "Month time resolution")
+
+        # can stop if invlaid time unit string
+        mockery::stub(get_nc_time, "get_nc_atts",
+            data.table(
+                variable = c("time", "time"),
+                attribute = c("calendar", "units"),
+                value = list("standard", "months 1850-01")
+            )
+        )
+        expect_error(get_nc_time(path, range = TRUE), "Invalid time units")
     }
 })
 
