@@ -233,7 +233,7 @@ Hongyuan Jia and Adrian Chong
 ## Disclaimer
 
 CMIP6 model data is licensed under a [Creative Commons Attribution-ShareAlike
-4.0 International License](https://creativecom mons.org/licenses).
+4.0 International License](https://creativecommons.org/licenses).
 Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse) for terms of use
 governing CMIP6 output, including citation requirements and proper
 acknowledgment. Further information about each GCM output data, including some
