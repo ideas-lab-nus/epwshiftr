@@ -562,6 +562,9 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' [match_coord()] and extracts CMIP6 data using the coordinates and years of
 #' interest specified.
 #'
+#' `extract_data()` supports common calendars, including `365_day` and
+#' `360_day`, thanks to the [PCICt][PCICt::as.PCICt] package.
+#'
 #' `extract_data()` uses [future.apply][future.apply::future_lapply()]
 #' underneath. You can use your preferable future backend to
 #' speed up data extraction in parallel. By default, `extract_data()` uses
@@ -804,6 +807,7 @@ get_nc_axes <- function (x) {
 # }}}
 
 # get_nc_time {{{
+#' @importFrom PCICt as.PCICt
 get_nc_time <- function (x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -817,27 +821,53 @@ get_nc_time <- function (x, range = FALSE) {
     # get variable attributes
     atts <- get_nc_atts(nc)
 
+    # get calendar
+    cal <- tolower(tolower(atts[variable == "time" & attribute == "calendar", value[[1L]]]))
+    CALENDARS <- c("gregorian", "standard", "proleptic_gregorian", "noleap",
+        "365_day", "all_leap", "366_day", "360_day")
+    if (!cal %in% CALENDARS) {
+        stop(sprintf("Unsupported calendar type found: '%s'.", cal))
+    }
+
     # get time origin and units
-    ori <- atts[variable == "time" & attribute == "units", value[[1L]]]
+    time_spec <- atts[variable == "time" & attribute == "units", value[[1L]]]
+    time_units <- strsplit(time_spec, " ")[[1L]]
+    time_res <- tolower(time_units[1L])
 
-    # get first time value
-    time_start <- RNetCDF::var.get.nc(nc, "time", 1, 1)
+    if (length(time_units) >= 4L) {
+        time_ori_str <- paste(time_units[3L], time_units[4L:length(time_units)])
+    } else if (length(time_units) == 3L) {
+        time_ori_str <- time_units[3L]
+    } else {
+        stop(sprintf("Invalid time units found: '%s'.", time_spec))
+    }
+    # PCICt only handle standard format string
+    if (time_res %in% c("months", "month")) {
+        time_ori_str <- paste0(time_ori_str, "-01")
+        warning("Month time resolution found. Seconds in a month will be set to 86400 (seconds in day) * 30 (day). ",
+            "Time conversion may be not accurate.")
+    }
+    time_ori <- PCICt::as.PCICt.default(time_ori_str, cal = cal)
 
-    # get last time value
-    time_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
+    secs <- switch(time_res,
+        second = 1, seconds = 1,
+        minute = 60, minutes = 60,
+        hour = 3600, hours = 3600,
+        day = 86400, days = 86400,
+        month = 86400 * 30, months = 86400 * 30,
+        stop(sprintf("Unsupported time resolution found: '%s'. Should be one of [%s]",
+            time_res, paste0("'", c("second(s)", "minute(s)", "hour(s)", "day(s)", "month(s)"), "'", collapse = ", ")
+        ))
+    )
 
     if (range) {
-        c(
-            RNetCDF::utcal.nc(ori, time_start, "c"),
-            RNetCDF::utcal.nc(ori, time_end, "c")
-        )
+        time_num_start <- RNetCDF::var.get.nc(nc, "time", 1, 1)
+        time_num_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
+        time_ori + c(time_num_start, time_num_end) * secs
     } else {
         # create time sequences
-        seq(
-            RNetCDF::utcal.nc(ori, time_start, "c"),
-            RNetCDF::utcal.nc(ori, time_end, "c"),
-            length.out = n
-        )
+        time_num <- RNetCDF::var.get.nc(nc, "time", 1, n)
+        time_ori + time_num * secs
     }
 }
 # }}}
