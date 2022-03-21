@@ -474,6 +474,21 @@ Hongyuan Jia and Adrian Chong
     > Please carefully read and adhere to the [CMIP6 Terms of
     > Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/).
 
+## Disclaimer
+
+CMIP6 model data is licensed under a [Creative Commons Attribution-ShareAlike
+4.0 International License](https://creativecom mons.org/licenses).
+Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse) for terms of use
+governing CMIP6 output, including citation requirements and proper
+acknowledgment. Further information about each GCM output data, including some
+limitations, can be found via the `further_info_url` (recorded as a **global
+attribute** in the NetCDF file) and at [EC-Earth](http://www.ec-earth.org). The
+data producers and data providers make no warranty, either express or implied,
+including, but not limited to, warranties of merchantability and fitness for a
+particular purpose. All liabilities arising from the supply of the information
+(including any liability arising in negligence) are excluded to the fullest
+extent permitted by law.
+
 ## Contribute
 
 Please note that the ‘epwshiftr’ project is released with a [Contributor
