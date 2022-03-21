@@ -4,7 +4,13 @@
 \alias{morphing_epw}
 \title{Morphing EPW weather variables}
 \usage{
-morphing_epw(data, years = NULL, labels = NULL, methods = NULL)
+morphing_epw(
+  data,
+  years = NULL,
+  labels = NULL,
+  methods = NULL,
+  warning = FALSE
+)
 }
 \arguments{
 \item{data}{An \code{epw_cmip6_data}object generated using \code{\link[=extract_data]{extract_data()}}}
@@ -23,6 +29,11 @@ each variables. Possible variable names are \code{tdb}, \code{rh}, \code{p},
 \code{"shift"} and \code{"combined"}. For example: \code{c(tdb = "stretch", rh = "shift")}. \code{"combined"} is only applicable to \code{tdb}. The default
 morphing method for each variable is listed in the \emph{Return} section.
 If \code{NULL}, the default methods will be used. Default: \code{NULL}.}
+
+\item{warning}{If \code{TRUE}, warnings will be issued for cases with input data
+less than a decade (10 years). This is because using data that only
+covers a short period of time may not be able to capture the average
+of future climate. Default: \code{FALSE}.}
 }
 \value{
 An \code{epw_cmip6_morphed} object, which is basically a list of 12 elements:\tabular{rllll}{
