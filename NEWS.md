@@ -66,6 +66,10 @@
   overwrite those entries based on the newly matched NetCDF files if possible
   (#40).
 * `extract_data()` now supports non-standard calendar, e.g. `360_day` (#32).
+* A new parameter `warning` has been added in `morphing_epw()`. If set to `TRUE`,
+  warnings will be issued for cases with input data less than a decade (10 years)
+  . This is because using data that only covers a short period of time may not
+  be able to capture the average of future climate (#41).
 
 ## Bug fixes
 
