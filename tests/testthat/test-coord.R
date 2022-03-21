@@ -85,10 +85,6 @@ test_that("match_coord()", {
     file <- "SGP_Singapore.486980_IWEC.epw"
     path <- file.path(cache, file)
 
-    if (!file.exists(path)) {
-        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1)
-    }
-
     if (file.exists(path)) {
         options(epwshiftr.dir = tempdir())
         summary_database(cache, update = TRUE)
