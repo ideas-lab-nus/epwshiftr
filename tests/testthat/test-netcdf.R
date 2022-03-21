@@ -138,6 +138,16 @@ test_that("get_nc_time()", {
             )
         )
         expect_warning(get_nc_time(path, range = TRUE), "Month time resolution")
+
+        # can stop if invlaid time unit string
+        mockery::stub(get_nc_time, "get_nc_atts",
+            data.table(
+                variable = c("time", "time"),
+                attribute = c("calendar", "units"),
+                value = list("standard", "months 1850-01")
+            )
+        )
+        expect_error(get_nc_time(path, range = TRUE), "Invalid time units")
     }
 })
 
