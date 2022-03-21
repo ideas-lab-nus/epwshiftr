@@ -54,7 +54,7 @@ An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
 \itemize{
 \item \code{epw}: An \link[eplusr:Epw]{eplusr::Epw} object whose longitude and latitute are used to
 extract CMIP6 data. It is the same object as created in \code{\link[=match_coord]{match_coord()}}
-\item \code{meta}: A list containing basic meta data of input EPW, including \code{city},
+\item \code{meta}: A list containing basic metadata of input EPW, including \code{city},
 \code{state_province}, \code{country}, \code{latitute} and \code{longitude}.
 \item \code{data}: An empty \code{\link[data.table:data.table]{data.table::data.table()}} if \code{keep} is \code{FALSE} or a
 \code{\link[data.table:data.table]{data.table::data.table()}} of 14 columns if \code{keep} is \code{TRUE}:\tabular{rlll}{

@@ -35,6 +35,7 @@ test_that("preprocess_morphing()", {
 
     cache <- get_cache()
     path <- file.path(cache, "EC-Earth3.ssp585.tas.fst")
+
     if (file.exists(path)) {
         d <- fst::read_fst(path, as.data.table = TRUE)
 
