@@ -207,6 +207,10 @@ matching the given constraints. ributed capabilities of the ESGF search, the
 URL at any Index Node can be used to query that Node only, or all Nodes in
 the ESGF system. \code{esgf_query()} uses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)}
 Index Node.
+
+The core Controlled Vocabularies (CVs) for use in CMIP6, including all
+activities, experiment, sources (GCMs), frequencies can be found at the
+\href{https://github.com/WCRP-CMIP/CMIP6_CVs}{WCRP-CMIP/CMIP6_CVs} GitHub repo.
 }
 \examples{
 \dontrun{
