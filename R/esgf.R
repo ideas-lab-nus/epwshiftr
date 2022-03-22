@@ -14,6 +14,10 @@
 #' Laboratory)](http://esgf-node.llnl.gov)
 #' Index Node.
 #'
+#' The core Controlled Vocabularies (CVs) for use in CMIP6, including all
+#' activities, experiment, sources (GCMs), frequencies can be found at the
+#' [WCRP-CMIP/CMIP6_CVs](https://github.com/WCRP-CMIP/CMIP6_CVs) GitHub repo.
+#'
 #' @param activity A character vector indicating activity identifiers. Default:
 #'        `"ScenarioMIP"`. Possible values:
 #'
