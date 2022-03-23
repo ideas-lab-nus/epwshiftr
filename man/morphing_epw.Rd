@@ -93,7 +93,7 @@ produce future climate weather files. The EPW data is used as the *'baseline
 climate'.
 
 The first step before morphing is to calculate the monthly means of
-climatological variables in the EPW file, denoted by \eqn{\langle x_0 \rangle _m}.
+climatological variables in the EPW file, denoted by \eqn{<x_0>_m}.
 The subscript '0' is to denote the present day weather record, and 'm' is to
 denote the month.
 
@@ -105,15 +105,15 @@ stretch (scaling factor); and 3) a shift and a stretch:
     \label{eq:morphing-both}
     \textrm{Shift: } x &= x_0 + \Delta x_m \\
     \textrm{Stretch: }x &= \alpha_m x_m \\
-    \textrm{Shift + Stretch: } x &= x_0 + \Delta x_m + \alpha_m (x_0 - \langle x_0 \rangle _m)
+    \textrm{Shift + Stretch: } x &= x_0 + \Delta x_m + \alpha_m (x_0 - <x_0>_m)
 \end{aligned}
 }
 \subsection{Shift:}{
 
 If using a shift, for each month, a shift \eqn{\Delta x_m} is applied to
 \eqn{x_0}. \eqn{\Delta x_m} is the absolute change in the monthly mean value
-of the variable for the month \eqn{m}, i.e. \eqn{\Delta x_m = \langle x_0
-\rangle _m - \langle x \rangle _m}. Here the monthly variance of the variable
+of the variable for the month \eqn{m}, i.e. \eqn{\Delta x_m = <x_0>_m - <x>_m}
+. Here the monthly variance of the variable
 is unchanged.
 }
 
@@ -121,8 +121,8 @@ is unchanged.
 
 If using a stretch, for each month, a stretch \eqn{\alpha _m} is applied to
 \eqn{x_0}, where \eqn{\alpha _m} is the fractional change in the monthly-mean
-value of a variable, i.e. \eqn{\alpha _m} = \langle x \rangle _m / \langle
-x_0 \rangle _m. In this case, the variance will be multiplied by to \eqn{alpha^2_m}
+value of a variable, i.e. \eqn{\alpha _m} = <x>_m / <x_0>_m. In this case,
+the variance will be multiplied by to \eqn{alpha^2_m}
 }
 
 \subsection{Combined Shift and Stretch:}{
