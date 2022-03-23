@@ -129,6 +129,52 @@ remove_units <- function (data, var) {
 #'
 #' The EPW weather variables that get morphed are listed in details.
 #'
+#' # The Morphing procedure
+#'
+#' Here *Morphing* is an algorithm proposed by Belcher etc. (Belcher etc. 2005)
+#' used to morph the present-day observed weather files (here the EPWs)  to
+#' produce future climate weather files. The EPW data is used as the *'baseline
+#' climate'.
+#'
+#' The first step before morphing is to calculate the monthly means of
+#' climatological variables in the EPW file, denoted by \eqn{<x_0>_m}.
+#' The subscript '0' is to denote the present day weather record, and 'm' is to
+#' denote the month.
+#'
+#' The morphing involves three generic operations, i.e. 1) a shift; 2) a linear
+#' stretch (scaling factor); and 3) a shift and a stretch:
+#'
+#' \deqn{
+#' \begin{aligned}
+#'     \label{eq:morphing-both}
+#'     \textrm{Shift: } x &= x_0 + \Delta x_m \\
+#'     \textrm{Stretch: }x &= \alpha_m x_m \\
+#'     \textrm{Shift + Stretch: } x &= x_0 + \Delta x_m + \alpha_m (x_0 - <x_0>_m)
+#' \end{aligned}
+#' }
+#'
+#' ## Shift:
+#'
+#' If using a shift, for each month, a shift \eqn{\Delta x_m} is applied to
+#' \eqn{x_0}. \eqn{\Delta x_m} is the absolute change in the monthly mean value
+#' of the variable for the month \eqn{m}, i.e. \eqn{\Delta x_m = <x_0>_m - <x>_m}
+#' . Here the monthly variance of the variable
+#' is unchanged.
+#'
+#' ## Stretch:
+#'
+#' If using a stretch, for each month, a stretch \eqn{\alpha _m} is applied to
+#' \eqn{x_0}, where \eqn{\alpha _m} is the fractional change in the monthly-mean
+#' value of a variable, i.e. \eqn{\alpha _m} = <x>_m / <x_0>_m. In this case,
+#' the variance will be multiplied by to \eqn{alpha^2_m}
+#'
+#' ## Combined Shift and Stretch:
+#'
+#' When using a combined shift and stretch factor, both the mean and the
+#' variance will be switched off altogether.
+#'
+#' For more details about morphing, please see (Belcher etc. 2025)
+#'
 #' @param data An `epw_cmip6_data`object generated using [extract_data()]
 #'
 #' @param years An integer vector indicating the target years to be considered.
