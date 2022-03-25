@@ -4,7 +4,21 @@ verbose <- function (..., sep = "") {
         cat(..., "\n", sep = sep)
     }
 }
+no_verbose <- function(expr) {
+    vb <- getOption("epwshiftr.verbose", FALSE)
+    if (vb) {
+        options("epwshiftr.verbose" = FALSE)
+        on.exit(options(epwshiftr.verbose = vb), add = TRUE)
+    }
+    force(expr)
+}
 # }}}
+
+priv_env <- function(x) x$.__enclos_env__$private
+`priv_env<-` <- function(x, name, value) {
+    x$.__enclos_env__$private[[name]] <- value
+    x
+}
 
 # .data_dir {{{
 #' Get the package data storage directory
@@ -54,6 +68,31 @@ verbose <- function (..., sep = "") {
     d
 }
 # }}}
+
+make_rule <- function(left, line = "-", right = "", width = getOption("width", 80L)) {
+    if (nchar(left) > 0L) {
+        left <- paste0(paste0(rep(line, 2L), collapse = ""), " ", left, " ")
+    } else {
+        left <- ""
+    }
+
+    if (nchar(right) > 0L) {
+        right <- paste0(" ", right, " ", paste0(rep(line, 2L), collapse = ""))
+    } else {
+        right <- ""
+    }
+
+    paste0(
+        left,
+        paste0(rep(line, width - nchar(left) - nchar(right)), collapse = ""),
+        right,
+        collapse = ""
+    )
+}
+
+cat_rule <- function(left, line = "-", right = "", width = getOption("width", 80L)) {
+    cat(make_rule(left, line, right, width), sep = "\n")
+}
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
