@@ -86,7 +86,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' - `req_global_atts`: The last modified time for the CV
         #'   `required_global_attributes`
         timestamp = function() {
-            private$m_timestamps[-1L]
+            private$m_timestamps[names(private$m_timestamps) != "dict"]
         },
 
         #' @description
@@ -94,7 +94,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A [DateTime][POSIXct]
         built_time = function() {
-            private$m_timestamps[names(private$m_timestamps) == "dict"]
+            private$m_timestamps[[names(private$m_timestamps) == "dict"]]
         },
 
         #' @description
