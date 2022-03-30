@@ -53,6 +53,18 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         },
 
         #' @description
+        #' Is it an empty CMIP6Dict?
+        #'
+        #' `$is_empty()` checks if this `CMIP6Dict` is empty, i.e. the
+        #' `$build()` or `$load()` method hasn't been called yet and there is no
+        #' data of CVs and Data Request.
+        #'
+        #' @return A single logical value of `TRUE` or `FALSE`.
+        is_empty = function() {
+            is.null(private$m_version)
+        },
+
+        #' @description
         #' Get the last modified time for CVs
         #'
         #' @return A list of 14 [DateTime][POSIXct]s:
@@ -79,7 +91,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A [DateTime][POSIXct]
         built_time = function() {
-            private$m_timestamps[names(private$m_timestamps) == "db"]
+            private$m_timestamps[names(private$m_timestamps) == "dict"]
         },
 
         #' @description
@@ -87,48 +99,48 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return The updated `CMIP6Dict` itself.
         build = function() {
-            db <- cmip6dict_build()
+            dict <- cmip6dict_build()
 
             private$m_version = list(
-                cv = db$cvs$activity$CV_collection_version,
-                req = db$mip_table$version
+                cv = dict$cvs$activity$CV_collection_version,
+                req = dict$mip_table$version
             )
 
             private$m_timestamps <- list(
-                cv              = db$cvs$activity$CV_collection_modified,
-                activity        = db$cvs$activity$activity_id_CV_modified,
-                experiment      = db$cvs$experiment$experiment_id_CV_modified,
-                sub_experiment  = db$cvs$sub_experiment$sub_experiment_id_CV_modified,
-                institution     = db$cvs$institution$institution_id_CV_modified,
-                source          = db$cvs$source$source_id_CV_modified,
-                table           = db$cvs$table$table_id_CV_modified,
-                frequency       = db$cvs$frequency$frequency_CV_modified,
-                grid_label      = db$cvs$grid_label$grid_label_CV_modified,
-                realm           = db$cvs$realm$realm_CV_modified,
-                source_type     = db$cvs$source_type$source_type_CV_modified,
-                req_global_atts = db$cvs$req_global_atts$required_global_attributes_CV_modified,
-                resolution      = db$cvs$resolution$nominal_resolution_CV_modified,
-                db              = db$built_time
+                cv              = dict$cvs$activity$CV_collection_modified,
+                activity        = dict$cvs$activity$activity_id_CV_modified,
+                experiment      = dict$cvs$experiment$experiment_id_CV_modified,
+                sub_experiment  = dict$cvs$sub_experiment$sub_experiment_id_CV_modified,
+                institution     = dict$cvs$institution$institution_id_CV_modified,
+                source          = dict$cvs$source$source_id_CV_modified,
+                table           = dict$cvs$table$table_id_CV_modified,
+                frequency       = dict$cvs$frequency$frequency_CV_modified,
+                grid_label      = dict$cvs$grid_label$grid_label_CV_modified,
+                realm           = dict$cvs$realm$realm_CV_modified,
+                source_type     = dict$cvs$source_type$source_type_CV_modified,
+                req_global_atts = dict$cvs$req_global_atts$required_global_attributes_CV_modified,
+                resolution      = dict$cvs$resolution$nominal_resolution_CV_modified,
+                dict              = dict$built_time
             )
 
             private$m_tables <- list(
-                mip_table       = db$mip_table$value,
-                activity        = db$cvs$activity$value,
-                experiment      = db$cvs$experiment$value,
-                sub_experiment  = db$cvs$sub_experiment$value,
-                institution     = db$cvs$institution$value,
-                source          = db$cvs$source$value,
-                table           = db$cvs$table$value,
-                frequency       = db$cvs$frequency$value,
-                grid_label      = db$cvs$grid_label$value,
-                realm           = db$cvs$realm$value,
-                source_type     = db$cvs$source_type$value,
-                req_global_atts = db$cvs$req_global_atts$value,
-                resolution      = db$cvs$resolution$value
+                mip_table       = dict$mip_table$value,
+                activity        = dict$cvs$activity$value,
+                experiment      = dict$cvs$experiment$value,
+                sub_experiment  = dict$cvs$sub_experiment$value,
+                institution     = dict$cvs$institution$value,
+                source          = dict$cvs$source$value,
+                table           = dict$cvs$table$value,
+                frequency       = dict$cvs$frequency$value,
+                grid_label      = dict$cvs$grid_label$value,
+                realm           = dict$cvs$realm$value,
+                source_type     = dict$cvs$source_type$value,
+                req_global_atts = dict$cvs$req_global_atts$value,
+                resolution      = dict$cvs$resolution$value
             )
 
-            private$m_cv_sha <- db$cv_sha
-            private$m_req_tag <- db$req_tag
+            private$m_cv_sha <- dict$cv_sha
+            private$m_req_tag <- dict$req_tag
 
             self
         },
@@ -186,26 +198,26 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return The `CMIP6Dict` object itself with updated data.
         update = function() {
-            db <- cmip6dict_update(private$m_cv_sha, private$m_req_tag)
+            dict <- cmip6dict_update(private$m_cv_sha, private$m_req_tag)
 
-            if (!is.null(db$cvs)) {
-                private$m_cv_sha <- db$cv_sha
+            if (!is.null(dict$cvs)) {
+                private$m_cv_sha <- dict$cv_sha
 
-                private$m_version$cv <- db$cvs[[1L]]$CV_collection_version
-                private$m_timestamps$cv <- db$cvs[[1L]]$CV_collection_modified
-                private$m_timestamps$db <- db$built_time
+                private$m_version$cv <- dict$cvs[[1L]]$CV_collection_version
+                private$m_timestamps$cv <- dict$cvs[[1L]]$CV_collection_modified
+                private$m_timestamps$dict <- dict$built_time
 
                 for (type in names(private$m_timestamps)) {
-                    if (is.null(db$cvs[[type]])) next
+                    if (is.null(dict$cvs[[type]])) next
                     nm <- names(CV_TYPES)[CV_TYPES == type]
-                    private$m_timestamps[[type]] <- db$cvs[[type]][[sprintf("%s_CV_modified", nm)]]
-                    private$m_tables[[type]] <- db$cvs[[type]]$value
+                    private$m_timestamps[[type]] <- dict$cvs[[type]][[sprintf("%s_CV_modified", nm)]]
+                    private$m_tables[[type]] <- dict$cvs[[type]]$value
                 }
             }
 
-            if (!is.null(db$mip_table)) {
-                private$m_req_tag <- db$req_tag
-                private$m_version$req <- db$mip_table$version
+            if (!is.null(dict$mip_table)) {
+                private$m_req_tag <- dict$req_tag
+                private$m_version$req <- dict$mip_table$version
             }
 
             self
@@ -280,7 +292,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
             } else {
                 cat(sprintf("- CV  ver: '%s'\n", private$m_version$cv))
                 cat(sprintf("- Req ver: '%s'\n", private$m_version$req))
-                cat(sprintf("- Built at: '%s'\n", private$m_timestamps$db))
+                cat(sprintf("- Built at: '%s'\n", private$m_timestamps$dict))
             }
         }
     ),

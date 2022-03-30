@@ -47,6 +47,7 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-version}{\code{CMIP6Dict$version()}}
+\item \href{#method-is_empty}{\code{CMIP6Dict$is_empty()}}
 \item \href{#method-timestamp}{\code{CMIP6Dict$timestamp()}}
 \item \href{#method-built_time}{\code{CMIP6Dict$built_time()}}
 \item \href{#method-build}{\code{CMIP6Dict$build()}}
@@ -55,7 +56,6 @@ Hongyuan Jia
 \item \href{#method-save}{\code{CMIP6Dict$save()}}
 \item \href{#method-load}{\code{CMIP6Dict$load()}}
 \item \href{#method-print}{\code{CMIP6Dict$print()}}
-\item \href{#method-clone}{\code{CMIP6Dict$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
@@ -74,6 +74,23 @@ A list of two element:
 \item \code{req}: A \link{numeric_version} object giving the version of Data
 Request
 }
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-is_empty"></a>}}
+\if{latex}{\out{\hypertarget{method-is_empty}{}}}
+\subsection{Method \code{is_empty()}}{
+Is it an empty CMIP6Dict?
+
+\verb{$is_empty()} checks if this \code{CMIP6Dict} is empty, i.e. the
+\verb{$build()} or \verb{$load()} method hasn't been called yet and there is no
+data of CVs and Data Request.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$is_empty()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A single logical value of \code{TRUE} or \code{FALSE}.
 }
 }
 \if{html}{\out{<hr>}}
