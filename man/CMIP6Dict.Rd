@@ -35,9 +35,52 @@ For more information, please see:
 }
 }
 \examples{
+\dontrun{
+
 # create a new CMIP6Dict object
 dict <- cmip6_dict()
 
+# by default, there is no data when the CMIP6Dict was created
+dict$is_empty()
+
+# fetch and parse all CVs and Data Request data
+dict$build()
+
+# get the version of CVs nand Data Request
+dict$version()
+
+# get the last modified time for each CV and Data Request
+dict$timestamp()
+
+# get the time when the dict was built
+dict$built_time()
+
+# check if there is updates of CVs and Data Request
+dict$update()
+
+# list the data of CVs
+dict$list("activity")
+dict$list("experiment")
+dict$list("sub_experiment")
+dict$list("institution")
+dict$list("source")
+dict$list("table")
+dict$list("frequency")
+dict$list("grid_label")
+dict$list("realm")
+dict$list("source_type")
+dict$list("req_global_atts")
+dict$list("variable")
+
+# save the dict object for later usage
+# default location is the value of global option "epwshiftr.dir"
+dict$save()
+
+# the saved dict object can be reloaded
+new_dict <- cmip6_dict()
+new_dict$load()
+
+}
 }
 \author{
 Hongyuan Jia
