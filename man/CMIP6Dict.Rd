@@ -26,8 +26,7 @@ The data of CVs for use in CMIP6 is stored as JSON files in a
 \href{https://github.com/WCRP-CMIP/CMIP6_CVs}{GitHub Repo}, while the Data Request
 data is stored a Microsoft Excel file (\code{CMIP6_MIP_tables.xlsx}) in a
 \href{http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk}{Subversion repo}.
-\code{CMIP6Dict} object is able to fetch those files and parse them into
-\link[data.table:data.table]{data.table}s.
+\code{CMIP6Dict} object is able to fetch those files and parse them.
 
 For more information, please see:
 \itemize{
@@ -283,23 +282,6 @@ the version of CVs and Data Request, and the last built time.
 
 \subsection{Returns}{
 The \code{CMIP6Dict} object itself, invisibly.
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clone"></a>}}
-\if{latex}{\out{\hypertarget{method-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$clone(deep = FALSE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
 }
 }
 }

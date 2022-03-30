@@ -17,8 +17,7 @@
 #' [GitHub Repo](https://github.com/WCRP-CMIP/CMIP6_CVs), while the Data Request
 #' data is stored a Microsoft Excel file (`CMIP6_MIP_tables.xlsx`) in a
 #' [Subversion repo](http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk).
-#' `CMIP6Dict` object is able to fetch those files and parse them into
-#' [data.table][data.table::data.table]s.
+#' `CMIP6Dict` object is able to fetch those files and parse them.
 #'
 #' For more information, please see:
 #'
@@ -34,11 +33,15 @@
 #' @importFrom R6 R6Class
 #' @name CMIP6Dict
 #' @export
-cmip6_dict <- function() CMIP6Dict$new()
+cmip6_dict <- function() {
+    EPWSHIFTR_ENV$dict <- CMIP6Dict$new()
+    EPWSHIFTR_ENV$dict
+}
 
 #' @name CMIP6Dict
 #' @export
 CMIP6Dict <- R6::R6Class("CMIP6Dict",
+    cloneable = FALSE, lock_class = TRUE,
     public = list(
         #' @description
         #' Get the version of CVs and Data Request
