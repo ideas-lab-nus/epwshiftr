@@ -425,6 +425,7 @@ cmip6dict_fetch_cv <- function(type, save = FALSE) {
         message(sprintf("Failed to fetch CV json file '%s'. Please check network connection.", url_json))
         return(data.table())
     }
+    # nocov end
 
     d <- switch(type,
         activity = cmip6dict_format_cv_flat(q),
@@ -586,6 +587,7 @@ cmip6dict_fetch_cv_sha <- function() {
         message(sprintf("Failed to fetch CV json file '%s'. Please check network connection.", url_json))
         return(data.table())
     }
+    #nocov end
 
     res <- transpose_nested_list(q$tree)[-1L]
 
