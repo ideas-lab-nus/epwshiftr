@@ -158,17 +158,7 @@ test_that("$update()", {
 
     # can skip rebuild if nothing new
     last_built <- dict$built_time()
-    expect_equal(
-        {
-            mockthat::with_mock(
-                cmip6dict_fetch_mip_table_latest_tag = function(...) priv_env(dict)$m_req_tag,
-                cmip6dict_fetch_cv_sha = function(...) priv_env(dict)$m_cv_sha,
-                dict$update()
-            )
-            dict$built_time()
-        },
-        last_built
-    )
+    expect_equal({dict$update(); dict$built_time()}, last_built)
 
     # can update if new version of CV and MIP Table found
     expect_false(
@@ -177,11 +167,7 @@ test_that("$update()", {
             dict2$load(test_path())
             priv_env(dict2, "m_req_tag") <- "01.00.32"
             priv_env(dict2, "m_cv_sha") <- priv_env(dict2)$m_cv_sha[type == "activity", sha := "a"]
-            mockthat::with_mock(
-                cmip6dict_fetch_mip_table_latest_tag = function(...) priv_env(dict2)$m_req_tag,
-                cmip6dict_fetch_cv_sha = function(...) priv_env(dict2)$m_cv_sha,
-                dict2$update()
-            )
+            dict2$update()
             dict2$built_time() == last_built
         }
     )

@@ -38,7 +38,7 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     curl,
-    mockthat,
+    mockery,
     withr,
     pingr,
     knitr,
