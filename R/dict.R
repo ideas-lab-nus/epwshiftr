@@ -137,7 +137,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A [DateTime][POSIXct]
         built_time = function() {
-            private$m_timestamps[[names(private$m_timestamps) == "dict"]]
+            private$m_timestamps[[which(names(private$m_timestamps) == "dict")]]
         },
 
         #' @description
@@ -211,7 +211,6 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' - `"variable"`: The data of Data Request
         #'
         #' @return
-        #'
         #' For `"activity"`, `"experiment"`, `"sub_experiment"`, `"institution"`,
         #' `"source"`, `"frequency"`, `"grid_label"`, `"realm"` `"source_type"`,
         #' and `"variable", `a [data.table][data.table::data.table] object
@@ -220,6 +219,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' For `"table"` and `"req_global_atts"`, a character vector giving the
         #' value of the corresponding CV.
+        #'
         list = function(type) {
             assert_subset(type, c(CV_TYPES, "variable"))
 
