@@ -70,6 +70,8 @@
 #' new_dict <- cmip6_dict()
 #' new_dict$load()
 #'
+#' # print will show the version summary and the last built time
+#' dict$print()
 #' }
 #' @author Hongyuan Jia
 #'
