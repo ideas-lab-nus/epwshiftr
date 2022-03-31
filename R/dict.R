@@ -597,17 +597,19 @@ cmip6dict_fetch_cv_sha <- function() {
     setcolorder(set(d[types, on = "file"], NULL, "file", NULL), "type")
 }
 
-cmip6dict_save <- function(version, cv_sha, req_tag, timestamps, tables, index, log, dir = getOption("epwshiftr.dir")) {
+cmip6dict_save <- function(version, cv_sha, req_tag, timestamps, tables, index, log, dir = getOption("epwshiftr.dir", ".")) {
     val <- list(version = version, cv_sha = cv_sha, req_tag = req_tag,
         timestamps = timestamps, tables = tables, index = index, log = log
     )
-    f <- normalizePath(file.path(dir, "CMIP6Dict"), mustWork = FALSE)
+    f <- normalizePath(file.path(dir, "CMIP6DICT"), mustWork = FALSE)
     saveRDS(val, f)
     f
 }
 
-cmip6dict_load <- function(path) {
-    checkmate::assert_file_exists(path, "r")
+cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
+    path <- normalizePath(file.path(dir, "CMIP6DICT"), mustWork = FALSE)
+    if (!file.exists(path)) return(NULL)
+
     val <- readRDS(path)
 
     for (nm in names(val$tables)) {
