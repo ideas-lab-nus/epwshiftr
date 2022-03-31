@@ -41,7 +41,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::covr
+          extra-packages: any::covr, any::mockthat
           needs: coverage
 
       - name: Test coverage
