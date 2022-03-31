@@ -313,6 +313,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @return A single string giving the full path of the RDS file.
         load = function(dir = getOption("epwshiftr.dir", ".")) {
             val <- cmip6dict_load(dir)
+            if (is.null(val)) return(self)
 
             private$m_version <- val$version
             private$m_cv_sha <- val$cv_sha
@@ -321,6 +322,10 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
             private$m_tables <- val$tables
             private$m_index <- val$index
             private$m_log <- val$log
+
+            verbose("Load CMIP6 Dictionary that was built at ", format(val$timestamps$dict), ".")
+
+            self
         },
 
         #' @description
