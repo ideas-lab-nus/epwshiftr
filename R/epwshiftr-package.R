@@ -21,6 +21,7 @@
 # package internal environment
 EPWSHIFTR_ENV <- new.env(parent = emptyenv())
 EPWSHIFTR_ENV$index_db <- NULL
+EPWSHIFTR_ENV$dict <- NULL
 
 # nocov start
 # set package options
