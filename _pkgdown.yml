@@ -12,7 +12,7 @@ development:
 reference:
   - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
     contents:
-      - cmip6_dict()
+      - CMIP6Dict
   - title: CMIP6 Index
     desc: Build CMIP6 output index
     contents:
