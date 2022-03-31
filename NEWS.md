@@ -70,6 +70,9 @@
   warnings will be issued for cases with input data less than a decade (10 years)
   . This is because using data that only covers a short period of time may not
   be able to capture the average of future climate (#41).
+* Now epwshiftr is able to download, parse and store CMIP6 Controlled
+  Vocabularies (CVs) and Data Request data using the newly introduced class
+  `CMIP6Dict`. Please see `?CMIP6Dict` for details.
 
 ## Bug fixes
 
