@@ -12,9 +12,9 @@ The \code{CMIP6Dict} object provides functionalities to fetch the latested CMIP6
 Controlled Vocabularies (CVs) and Data Request information.
 }
 \details{
-The CMIP6 CVs defines a well-defined set of global attributes that are
-recorded in each CMIP6 model output, providing information necessary for
-interpreting the data.
+The CMIP6 CVs gives a well-defined set of global attributes that are recorded
+in each CMIP6 model output, providing information necessary for interpreting
+the data.
 
 The CMIP6 Data Request defines all the quantities from CMIP6 simulations that
 should be archived. This includes both quantities of general interest needed
