@@ -1,0 +1,231 @@
+---
+title: "Manage CMIP6 CVs and Data Request"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Introduction to eplusr}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    This vignette introduces you how to use epwshiftr to fetch, parse and store
+    CMIP6 Controlled Vocabularies (CVs) and Data Request.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, echo = FALSE, message = FALSE}
+library(epwshiftr)
+
+# show verbose messages
+options(epwshiftr.verbose = TRUE)
+```
+
+# Controlled Vocabularies (CVs) and Data Request
+
+All CMIP6 outputs are written in netCDF files in conformance with the CMIP
+standards. The Controlled Vocabularies (CVs) and Data Request play a key role in
+ensuring uniformity in the description of data sets across all models.
+
+The CMIP6 CVs gives a well-defined set of global attributes that are recorded in
+each CMIP6 model output, providing information necessary for interpreting the
+data. The data of CVs for use in CMIP6 is stored as JSON files in a
+[GitHub Repo](https://github.com/WCRP-CMIP/CMIP6_CVs).
+
+The CMIP6 Data Request defines all the quantities from CMIP6 simulations that
+should be archived. This includes both quantities of general interest needed
+from most of the CMIP6-endorsed model intercomparison projects (MIPs) and
+quantities that are more specialized and only of interest to a single endorsed
+MIP. The Data Request data is stored a Microsoft Excel file
+(`CMIP6_MIP_tables.xlsx`) in a
+[Subversion repo](http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk).
+
+For more information, please see:
+
+- [CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CV's](https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit)
+- [CMIP6 Data Request](https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html)
+
+# Introduce the `CMIP6Dict` class
+
+epwshiftr provides a `CMIP6Dict` class to help you fetch, parse and store CMIP6
+CVs and Data Request.
+
+## Create a `CMIP6Dict` object
+
+You can create a new `CMIP6Dict` object using the `cmip6_dict()` function. It
+takes no argument and simply returns an empty `CMIP6Dict`.
+
+> It is an [R6](https://r6.r-lib.org/) object with reference semantics. All
+> methods in an `R6` object can be invoked using the `$method_name()` style.
+
+```{r}
+dict <- cmip6_dict()
+dict
+```
+
+You can use `$is_empty()` to check if there are any contents in current
+`CMIP6Dict`.
+
+```{r}
+dict$is_empty()
+```
+
+## Fetch data of CVs and Data Request
+
+After created, you can use `$build()` to fetch all data of CMIP6 CVs and Data
+Request.
+
+Currently, the supproted CVs are:
+
+1. `activity_id`: Activity identifiers, e.g. `HighResMIP`, `ScenarioMIP`.
+1. `experiment_id`: Root experiment identifiers, e.g. `historical`, `ssp126`.
+1. `sub_experiment_id`: Description of sub-experiment, e.g. `none`, `s1960`.
+1. `institution_id`: Institution identifiers, e.g. `AWI`, `CAS`.
+1. `source_id`: Model identifiers, e.g. `GFDL-CM2-1`, `ACCESS-CM2`.
+1. `source_type`: Model configurations, e.g. `AGCM`, `OGCM`.
+1. `table_id`: Table identifiers, e.g. `Amon`, `Oday`.
+1. `frequency`: Sampling frequencies, e.g. `mon`, `day`.
+1. `grid_label`: Grid identifiers, e.g. `gn`, `gr`.
+1. `realm`: Realms where variables are defined, e.g. `atmos`, `ocean`.
+1. `nominal_resolution`: Approximate horizontal resolutions, e.g. `50 km`, `100
+   km`.
+1. `required_global_attributes`: Names of required global attributes.
+
+```{r}
+dict$build()
+dict$is_empty()
+```
+
+You can get the version of the CV collection and Data Request using `$version()`
+method. It returns a list of two `numeric_version`s giving you the current
+version of fetched CV collection (`cv`) and Data Request (`req`):
+
+```{r}
+dict$version()
+```
+
+The last built time can be retrieved using the `$built_time()` method:
+```{r}
+last_built <- dict$built_time()
+last_built
+```
+
+The last modified time for each CV can be retrieved using the `$timestamp()`
+method:
+
+```{r}
+dict$timestamp()
+```
+
+The names of CVs have been abbreviated to make the output cleaner. Below is the
+mapping:
+
+1. `activity_id` -> `activity`
+1. `experiment_id` -> `experiment`
+1. `sub_experiment_id` -> `sub_experiment`
+1. `institution_id` -> `institution`
+1. `source_id` -> `source`
+1. `table_id` -> `table`
+1. `nominal_resolution` -> `resolution`
+1. `required_global_attributes` -> `req_global_atts`
+
+You can use `$update()` to check if there are any updates in CVs and Data
+Request. For CVs, `$update()` uses the GitHub RESTful API to fetch the SHA1
+value of each JSON file that stores the CV and compares it with the last fetched
+value. If any SHA1 is unmatched, the corresponding JSON file will be downloaded
+and parsed. For Data Request, `$update()` fetches the latest tag of the Data
+Request Subversion repo and compares it with the last fetched value.  If new tag
+is found, the corresponding `CMIP6_MIP_tables.xlsx` Microsoft Excel file will be
+downloaded and parsed.
+
+```{r}
+dict$update()
+```
+
+## Extract CV and Data Request data
+
+The CV and Data Request data can be extracted using the `$list(type)` method,
+where `type` is the data type of interest. For Data Request, you can use
+`"variable"` as the type name.
+
+A `data.table` object is returned which contains the value, the description and
+other attributes for Data Request and CVs below:
+
+1. `activity_id`
+1. `experiment_id`
+1. `sub_experiment_id`
+1. `institution_id`
+1. `source_id`
+1. `frequency`
+1. `grid_label`
+1. `realm`
+1. `source_type`
+
+```{r}
+# Data Request
+dict$list("variable")
+
+# activity_id
+dict$list("activity")
+
+# experiment_id
+dict$list("experiment")
+
+# sub_experiment_id
+dict$list("sub_experiment")
+
+# institution_id
+dict$list("institution")
+
+# source_id
+dict$list("source")
+
+# frequency
+dict$list("frequency")
+
+# grid_label
+dict$list("grid_label")
+
+# realm
+dict$list("realm")
+
+# source_type
+dict$list("source_type")
+```
+
+For `table` and `required_global_attributes`, a character vector giving the
+value of the corresponding CV.
+
+```{r}
+# table_id
+dict$list("table")
+
+# required_global_attributes
+dict$list("req_global_atts")
+```
+
+## Store and reuse the `CMIP6Dict` object
+
+`$save()` method stores all the core data of current `CMIP6Dict` object into an
+RDS file named `CMIP6DICT` in the specified folder. It returns the full path of
+the saved RDS file.
+
+```{r}
+dict$save(tempdir())
+```
+
+This file can be reloaded via `$load()` method to restore the last state of
+current `CMIP6Dict` object. It reads the RDS file named `CMIP6DICT` and loads
+the CVs and Data Request data.
+
+```{r}
+new_dict <- cmip6_dict()
+new_dict$load(tempdir())
+```
