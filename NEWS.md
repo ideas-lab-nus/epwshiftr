@@ -72,7 +72,7 @@
   be able to capture the average of future climate (#41).
 * Now epwshiftr is able to download, parse and store CMIP6 Controlled
   Vocabularies (CVs) and Data Request data using the newly introduced class
-  `CMIP6Dict`. Please see `?CMIP6Dict` for details.
+  `CMIP6Dict`. Please see `?CMIP6Dict` for details (#53).
 
 ## Bug fixes
 
