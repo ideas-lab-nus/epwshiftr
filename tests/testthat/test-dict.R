@@ -4,6 +4,8 @@ test_that("cmip6_dict()", {
 })
 
 test_that("$build() and $save()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
 
     expect_is(dict$build(), "CMIP6Dict")
@@ -12,6 +14,8 @@ test_that("$build() and $save()", {
 })
 
 test_that("$version()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
     expect_null(dict$version())
 
@@ -23,6 +27,8 @@ test_that("$version()", {
 })
 
 test_that("$is_empty()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
     expect_true(dict$is_empty())
 
@@ -32,6 +38,8 @@ test_that("$is_empty()", {
 })
 
 test_that("$timestamp()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
     expect_null(dict$timestamp())
 
@@ -47,6 +55,8 @@ test_that("$timestamp()", {
 })
 
 test_that("$built_time()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
     expect_null(dict$built_time())
 
@@ -56,7 +66,10 @@ test_that("$built_time()", {
 })
 
 test_that("$list()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
+
     expect_null(dict$list("activity"))
 
     expect_is(dict$load(test_path()), "CMIP6Dict")
@@ -150,6 +163,8 @@ test_that("$list()", {
 
 
 test_that("$update()", {
+    skip_on_cran()
+
     dict <- cmip6_dict()
 
     # can work for empty dict
