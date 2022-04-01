@@ -225,8 +225,8 @@ Should be one of:
 \subsection{Returns}{
 For \code{"activity"}, \code{"experiment"}, \code{"sub_experiment"}, \code{"institution"},
 \code{"source"}, \code{"frequency"}, \code{"grid_label"}, \code{"realm"} \code{"source_type"},
-and \verb{"variable", }a \link[data.table:data.table]{data.table} object
-giving the value of the corresponding CV, its description and other
+and \code{"variable"}, a \link[data.table:data.table]{data.table} object giving
+the value of the corresponding CV, its description and other
 attributes.
 
 For \code{"table"} and \code{"req_global_atts"}, a character vector giving the

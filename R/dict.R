@@ -168,7 +168,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
                 source_type     = dict$cvs$source_type$source_type_CV_modified,
                 req_global_atts = dict$cvs$req_global_atts$required_global_attributes_CV_modified,
                 resolution      = dict$cvs$resolution$nominal_resolution_CV_modified,
-                dict              = dict$built_time
+                dict            = dict$built_time
             )
 
             private$m_tables <- list(
@@ -215,8 +215,8 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @return
         #' For `"activity"`, `"experiment"`, `"sub_experiment"`, `"institution"`,
         #' `"source"`, `"frequency"`, `"grid_label"`, `"realm"` `"source_type"`,
-        #' and `"variable", `a [data.table][data.table::data.table] object
-        #' giving the value of the corresponding CV, its description and other
+        #' and `"variable"`, a [data.table][data.table::data.table] object giving
+        #' the value of the corresponding CV, its description and other
         #' attributes.
         #'
         #' For `"table"` and `"req_global_atts"`, a character vector giving the
@@ -275,7 +275,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' Save the CMIP6Dict object
         #'
         #' `$save()` stores all the core data of current `CMIP6Dict` object into
-        #' a [RDS][saveRDS()] file named `CMIP6DICT` in the specified folder.
+        #' an [RDS][saveRDS()] file named `CMIP6DICT` in the specified folder.
         #' This file can be reloaded via `$load()` method to restore the last
         #' state of current `CMIP6Dict` object.
         #'
