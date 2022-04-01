@@ -364,17 +364,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         # output index
         m_index = NULL,
         # temporary variables
-        m_log = NULL,
-
-        deep_clone = function(name, value) {
-            if (data.table::is.data.table(value)) {
-                copy(value)
-            } else if (is.list(value)) {
-                lapply(value, function(x) if (data.table::is.data.table(x)) copy(x) else x)
-            } else {
-                value
-            }
-        }
+        m_log = NULL
     )
 )
 
