@@ -18,10 +18,10 @@ navbar:
       icon: fas fa-home fa-lg
       href: index.html
     articles:
-      text: Vignettes
+      text: Articles
       menu:
-      - text: "Introduction to eplusr"
-        href: articles/eplusr.html
+      - text: "Manage CMIP6 CVs and Data Request"
+        href: articles/cmip6_dict.html
     reference:
       text: Manual
       href: reference/index.html

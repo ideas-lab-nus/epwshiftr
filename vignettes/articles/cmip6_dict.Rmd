@@ -6,7 +6,7 @@ output:
         df_print: "paged"
         toc: true
 vignette: >
-    %\VignetteIndexEntry{Introduction to eplusr}
+    %\VignetteIndexEntry{Manage CMIP6 CVs and Data Request}
     %\VignetteEngine{knitr::rmarkdown}
     %\VignetteEncoding{UTF-8}
 description: >
