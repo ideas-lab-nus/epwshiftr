@@ -73,6 +73,12 @@
 * Now epwshiftr is able to download, parse and store CMIP6 Controlled
   Vocabularies (CVs) and Data Request data using the newly introduced class
   `CMIP6Dict`. Please see `?CMIP6Dict` for details (#53).
+* A new option `epwshiftr.threshold_alpha` has been added to set the threshold
+  of the absolute value for alpha, i.e. monthly-mean fractional change when
+  performing morphing operations. The default value is set to `3`. If the
+  morphing methods are set `"stretch"` or `"combined"`, and the absolute alpha
+  exceeds the threshold value, the morphing method is fallbacked to `"shift"` to
+  avoid unrealistic morphed values (#54).
 
 ## Bug fixes
 

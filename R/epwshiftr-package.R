@@ -27,7 +27,10 @@ EPWSHIFTR_ENV$dict <- NULL
 # set package options
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
 .onLoad <- function (libname, pkgname) {
-    .opts  <-  c("epwshiftr.verbose" = "FALSE")
+    .opts  <-  c(
+        "epwshiftr.verbose" = "FALSE",
+        "epwshiftr.threshold_alpha" = "3"
+    )
     for (i in setdiff(names(.opts), names(options()))) {
         eval(parse(text = paste0("options(",i,"=",.opts[i],")")))
     }

@@ -32,7 +32,6 @@ Imports:
     psychrolib,
     R6,
     rappdirs,
-    readxl,
     RNetCDF,
     units
 Suggests:
