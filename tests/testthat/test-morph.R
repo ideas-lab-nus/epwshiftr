@@ -293,7 +293,7 @@ test_that("morphing_epw()", {
         expect_equal(nrow(res$hor_ir), 8760L)
 
         # can morph global_rad, calculate diff_rad and norm_rad
-        d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 700, units = "W/m^2")]
+        d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 300, units = "W/m^2")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_equal(nrow(res$glob_rad), 8760L)
         expect_equal(nrow(res$diff_rad), 8760L)
@@ -313,6 +313,10 @@ test_that("morphing_epw()", {
         expect_equal(nrow(res$opaque_cover), 8760L)
         expect_equal(morphing_total_sky_cover(data_epw, data.table()), data.table())
         expect_equal(morphing_opaque_sky_cover(data_epw, data.table()), data.table())
+
+        # can issue warnings if alpha values are too big
+        d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 1000, units = "W/m^2")]
+        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
     }
 })
 
