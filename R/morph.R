@@ -478,17 +478,19 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         }
     }
 
+    # calculate delta, alpha and add EPW monthly average value
+    data_mean[monthly, on = "month", `:=`(
+        delta = value - val_mean, alpha = value / val_mean,
+        epw_mean = i.val_mean,
+        epw_max = i.val_max, epw_min = i.val_min
+    )]
+    
     # add datetime columns from the original EPW data into the monthly average of
     # CMIP6 data
     # after this every row in 'data' indicates a specific hour (as EPW has
     # hourly data)
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
         data_mean, on = "month", allow.cartesian = TRUE]
-
-    # calculate delta, alpha and add EPW monthly average value
-    data[monthly, on = "month", `:=`(delta = value - i.val_mean,
-        epw_mean = i.val_mean, epw_max = i.val_max, epw_min = i.val_min
-    )]
 
     if (type == "combined" && all(c("value_min", "value_max") %in% names(data))) {
         data[, alpha := ((value_max - epw_max) - (value_min - epw_min)) / (epw_max - epw_min)]
@@ -497,6 +499,41 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         }
     } else {
         data[, alpha := value / epw_mean]
+    }
+
+    # check the alpha values
+    # if values are too small or too large, issue warnings and fall back to
+    # shift method
+    thres_alpha <- getOption("epwshiftr.threshold_alpha")
+    if (!checkmate::test_number(thres_alpha, lower = 0)) {
+        warning(paste0(
+            "The threshold value for the monthly-mean fractional change (Alpha) ",
+            "should be a positive number, but '",
+            if (is.null(thres_alpha)) "NULL" else thres_alpha,
+            "' is found."
+        ))
+    }
+    if (type %in% c("stretch", "combined") && nrow(abnorm_alpha <- data_mean[abs(units::drop_units(alpha)) > thres_alpha])) {
+        warning(sprintf(
+            paste(
+                "The absolute values of monthly-mean fractional change (Alpha) below",
+                "for '%s' has exceeded the threshold (%s) set by the option",
+                "'epwshiftr.threshold_alpha'. 'Shift' morphing method will be utilized",
+                "instead of '%s' method to avoid unrealistic values. It is highly",
+                "suggested to further investigate the input data.\n%s",
+                collapse = " "
+            ),
+            gsub("_", " ", var, fixed = TRUE), thres_alpha, type,
+            paste0(sprintf(
+                "Month = %s | Monthly-mean: EPW = %s, GCM = %s --> Alpha = %s",
+                format(abnorm_alpha$month),
+                format(abnorm_alpha$epw_mean, digits = 3),
+                format(abnorm_alpha$value, digits = 3),
+                format(units::drop_units(abnorm_alpha$alpha), digits = 3)
+            ), collapse = "\n")
+        ))
+        
+        type <- "shift"
     }
 
     if (type == "shift") {
