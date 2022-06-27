@@ -1,7 +1,7 @@
 pandoc: 2.14.2
-pkgdown: 2.0.2
+pkgdown: 2.0.5
 pkgdown_sha: ~
 articles:
   paper: paper.html
-last_built: 2022-03-22T07:17Z
+last_built: 2022-06-27T02:44Z
 

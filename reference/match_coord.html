@@ -19,7 +19,7 @@ files."><meta property="og:image" content="/logo.svg"><!-- mathjax --><script sr
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9006</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9007</span>
       </span>
     </div>
 
@@ -80,6 +80,8 @@ Database, e.g. "los angeles.*tmy3". You will be asked to select a matched
 EPW to download and read. It will be saved into <code><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir()</a></code>. Note that the
 search is case-insensitive</p></li>
 </ul></dd>
+
+
 <dt>threshold</dt>
 <dd><p>A list of 2 elements <code>lon</code> and <code>lat</code> specifying the
 absolute distance threshold used for subsetting longitude and
@@ -88,14 +90,19 @@ performed and the distances between the target location and all grid
 points are calculated. This is useful set the <code>threshold</code> value to
 exclude some points that are absolute too far away from the target
 location. Default: <code>list(lon = 1.0, lat = 1.0)</code></p></dd>
+
+
 <dt>max_num</dt>
 <dd><p>The maximum number of grid points to be matched. Default is
 <code>NULL</code>, which means no number limit and the total matched grid points
 are determined by the <code>threshold</code> input.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>An <code>epw_cmip6_coord</code> object, which is basically a list of 3 elements:</p><ul><li><p><code>epw</code>: An <a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a> object parsed from input <code>epw</code> argument</p></li>
+    
+
+<p>An <code>epw_cmip6_coord</code> object, which is basically a list of 3 elements:</p><ul><li><p><code>epw</code>: An <a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a> object parsed from input <code>epw</code> argument</p></li>
 <li><p><code>meta</code>: A list containing basic meta data of input EPW, including <code>city</code>,
 <code>state_province</code>, <code>country</code>, <code>latitute</code> and <code>longitude</code>.</p></li>
 <li><p><code>coord</code>: A <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> which is basically CMIP6 index
@@ -164,7 +171,7 @@ points on the surface of a spherical Earth is \(D = RC_h\).</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

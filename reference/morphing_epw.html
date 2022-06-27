@@ -19,7 +19,7 @@ Morphing Method."><meta property="og:image" content="/logo.svg"><!-- mathjax -->
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9006</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9007</span>
       </span>
     </div>
 
@@ -80,14 +80,20 @@ Morphing Method.</p>
     <h2>Arguments</h2>
     <dl><dt>data</dt>
 <dd><p>An <code>epw_cmip6_data</code>object generated using <code><a href="extract_data.html">extract_data()</a></code></p></dd>
+
+
 <dt>years</dt>
 <dd><p>An integer vector indicating the target years to be considered.
 If <code>NULL</code>, all years in input data will be considered. Default: <code>NULL</code>.</p></dd>
+
+
 <dt>labels</dt>
 <dd><p>A character or factor vector used for grouping input <code>years</code>.
 Usually are the outputs of <code><a href="https://rdrr.io/r/base/cut.html" class="external-link">base::cut()</a></code>. <code>labels</code> should have the
 same length as <code>years</code>. If given, climate data of <code>years</code> grouped by
 <code>labels</code> will be averaged. Default: <code>NULL</code>.</p></dd>
+
+
 <dt>methods</dt>
 <dd><p>A named character giving the methods of morphing procedures of
 each variables. Possible variable names are <code>tdb</code>, <code>rh</code>, <code>p</code>,
@@ -95,20 +101,75 @@ each variables. Possible variable names are <code>tdb</code>, <code>rh</code>, <
 <code>"shift"</code> and <code>"combined"</code>. For example: <code>c(tdb = "stretch", rh = "shift")</code>. <code>"combined"</code> is only applicable to <code>tdb</code>. The default
 morphing method for each variable is listed in the <em>Return</em> section.
 If <code>NULL</code>, the default methods will be used. Default: <code>NULL</code>.</p></dd>
+
+
 <dt>warning</dt>
 <dd><p>If <code>TRUE</code>, warnings will be issued for cases with input data
 less than a decade (10 years). This is because using data that only
 covers a short period of time may not be able to capture the average
 of future climate. Default: <code>FALSE</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>An <code>epw_cmip6_morphed</code> object, which is basically a list of 12 elements:</p><table class="table table"><tr><td>No.</td><td>Element</td><td>Type</td><td>Morphing Method</td><td>Description</td></tr><tr><td>1</td><td><code>epw</code></td><td><a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a></td><td>N/A</td><td>The original EPW file used for morphing</td></tr><tr><td>2</td><td><code>tdb</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of dry-bulb temperature after morphing</td></tr><tr><td>3</td><td><code>tdew</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of dew-point temperature after morphing</td></tr><tr><td>4</td><td><code>rh</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of relative humidity after morphing</td></tr><tr><td>5</td><td><code>p</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of atmospheric pressure after morphing</td></tr><tr><td>6</td><td><code>hor_ir</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of horizontal infrared radiation from the sky after morphing</td></tr><tr><td>7</td><td><code>glob_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of global horizontal radiation after morphing</td></tr><tr><td>8</td><td><code>norm_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of direct normal radiation after morphing</td></tr><tr><td>9</td><td><code>diff_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of diffuse horizontal radiation after morphing</td></tr><tr><td>10</td><td><code>wind</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of wind speed after morphing</td></tr><tr><td>11</td><td><code>total_cover</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of total sky cover after morphing</td></tr><tr><td>12</td><td><code>opaque_cover</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of opaque sky cover after morphing</td></tr></table><p>Each <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> listed above contains 19 columns below or an
+    
+
+<p>An <code>epw_cmip6_morphed</code> object, which is basically a list of 12 elements:</p><table class="table table"><tr><td>No.</td><td>Element</td><td>Type</td><td>Morphing Method</td><td>Description</td></tr><tr><td>1</td><td><code>epw</code></td><td><a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a></td><td>N/A</td><td>The original EPW file used for morphing</td></tr><tr><td>2</td><td><code>tdb</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of dry-bulb temperature after morphing</td></tr><tr><td>3</td><td><code>tdew</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of dew-point temperature after morphing</td></tr><tr><td>4</td><td><code>rh</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of relative humidity after morphing</td></tr><tr><td>5</td><td><code>p</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of atmospheric pressure after morphing</td></tr><tr><td>6</td><td><code>hor_ir</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of horizontal infrared radiation from the sky after morphing</td></tr><tr><td>7</td><td><code>glob_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of global horizontal radiation after morphing</td></tr><tr><td>8</td><td><code>norm_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of direct normal radiation after morphing</td></tr><tr><td>9</td><td><code>diff_rad</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of diffuse horizontal radiation after morphing</td></tr><tr><td>10</td><td><code>wind</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Stretch</td><td>Data of wind speed after morphing</td></tr><tr><td>11</td><td><code>total_cover</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of total sky cover after morphing</td></tr><tr><td>12</td><td><code>opaque_cover</code></td><td><code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code></td><td>Derived</td><td>Data of opaque sky cover after morphing</td></tr></table><p>Each <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> listed above contains 19 columns below or an
 empty <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> if the corresponding variables cannot be
 found in the input <code>epw_cmip6_data</code> object.</p><table class="table table"><tr><td>No.</td><td>Column</td><td>Type</td><td>Description</td></tr><tr><td>1</td><td><code>activity_drs</code></td><td>Character</td><td>Activity DRS (Data Reference Syntax)</td></tr><tr><td>2</td><td><code>institution_id</code></td><td>Character</td><td>Institution identifier</td></tr><tr><td>3</td><td><code>source_id</code></td><td>Character</td><td>Model identifier</td></tr><tr><td>4</td><td><code>experiment_id</code></td><td>Character</td><td>Root experiment identifier</td></tr><tr><td>5</td><td><code>member_id</code></td><td>Character</td><td>A compound construction from <code>sub_experiment_id</code> and <code>variant_label</code></td></tr><tr><td>6</td><td><code>table_id</code></td><td>Character</td><td>Table identifier</td></tr><tr><td>7</td><td><code>lon</code></td><td>Double</td><td>The <strong>averaged</strong> values of input longitude</td></tr><tr><td>8</td><td><code>lat</code></td><td>Double</td><td>The <strong>averaged</strong> values of input latitude</td></tr><tr><td>9</td><td><code>dist</code></td><td>Double</td><td>The <strong>averaged</strong> spherical distances in km between EPW location and grid coordinates</td></tr><tr><td>10</td><td><code>interval</code></td><td>Factor</td><td>The label value used to average raw input data</td></tr><tr><td>11</td><td><code>datetime</code></td><td>POSIXct</td><td>The datetime value with <strong>fake year</strong> generated by calling the <code>Epw$data()</code> method with the input EPW</td></tr><tr><td>12</td><td><code>year</code></td><td>Integer</td><td>The <strong>original</strong> year of the raw EPW data</td></tr><tr><td>13</td><td><code>month</code></td><td>Integer</td><td>The month value of the morphed data</td></tr><tr><td>14</td><td><code>day</code></td><td>Integer</td><td>The day of the morphed data</td></tr><tr><td>15</td><td><code>hour</code></td><td>Integer</td><td>The hour of the morphed data</td></tr><tr><td>16</td><td><code>minute</code></td><td>Integer</td><td>The minute of the morphed data</td></tr><tr><td>17</td><td><strong>Variable Name</strong></td><td>Double</td><td>The morphed data, where <code>Variable Name</code> is the corresponding EPW weather variable name</td></tr><tr><td>18</td><td><code>delta</code></td><td>Double</td><td>The shift factor. Will be <code>NA</code> for derivied values</td></tr><tr><td>19</td><td><code>alpha</code></td><td>Double</td><td>The stretch factor. Will be <code>NA</code> for derivied values</td></tr></table></div>
     <div id="details">
     <h2>Details</h2>
     <p>The EPW weather variables that get morphed are listed in details.</p>
+    </div>
+    <div id="the-morphing-procedure">
+    <h2>The Morphing procedure</h2>
+    <p>Here <em>Morphing</em> is an algorithm proposed by Belcher etc. (Belcher etc. 2005)
+used to morph the present-day observed weather files (here the EPWs)  to
+produce future climate weather files. The EPW data is used as the *'baseline
+climate'.</p>
+<p>The first step before morphing is to calculate the monthly means of
+climatological variables in the EPW file, denoted by \(&lt;x_0&gt;_m\).
+The subscript '0' is to denote the present day weather record, and 'm' is to
+denote the month.</p>
+<p>The morphing involves three generic operations, i.e. 1) a shift; 2) a linear
+stretch (scaling factor); and 3) a shift and a stretch:</p>
+<p>$$
+\begin{aligned}
+    \label{eq:morphing-both}
+    \textrm{Shift: } x &amp;= x_0 + \Delta x_m \\
+    \textrm{Stretch: }x &amp;= \alpha_m x_m \\
+    \textrm{Shift + Stretch: } x &amp;= x_0 + \Delta x_m + \alpha_m (x_0 - &lt;x_0&gt;_m)
+\end{aligned}
+$$</p><div class="section">
+<h3 id="shift-">Shift:<a class="anchor" aria-label="anchor" href="#shift-"></a></h3>
+
+
+<p>If using a shift, for each month, a shift \(\Delta x_m\) is applied to
+\(x_0\). \(\Delta x_m\) is the absolute change in the monthly mean value
+of the variable for the month \(m\), i.e. \(\Delta x_m = &lt;x_0&gt;_m - &lt;x&gt;_m\)
+. Here the monthly variance of the variable
+is unchanged.</p>
+</div>
+
+<div class="section">
+<h3 id="stretch-">Stretch:<a class="anchor" aria-label="anchor" href="#stretch-"></a></h3>
+
+
+<p>If using a stretch, for each month, a stretch \(\alpha _m\) is applied to
+\(x_0\), where \(\alpha _m\) is the fractional change in the monthly-mean
+value of a variable, i.e. \(\alpha _m\) = &lt;x&gt;_m / &lt;x_0&gt;_m. In this case,
+the variance will be multiplied by to \(alpha^2_m\)</p>
+</div>
+
+<div class="section">
+<h3 id="combined-shift-and-stretch-">Combined Shift and Stretch:<a class="anchor" aria-label="anchor" href="#combined-shift-and-stretch-"></a></h3>
+
+
+<p>When using a combined shift and stretch factor, both the mean and the
+variance will be switched off altogether.</p>
+<p>For more details about morphing, please see (Belcher etc. 2025)</p>
+</div>
+
     </div>
     <div id="references">
     <h2>References</h2>
@@ -129,7 +190,7 @@ for future climates. Building Services Engineering Research and Technology
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

@@ -19,7 +19,7 @@ interest specified."><meta property="og:image" content="/logo.svg"><!-- mathjax 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9006</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9007</span>
       </span>
     </div>
 
@@ -82,16 +82,24 @@ interest specified.</p>
     <h2>Arguments</h2>
     <dl><dt>coord</dt>
 <dd><p>An <code>epw_cmip6_coord</code> object created using <code><a href="match_coord.html">match_coord()</a></code></p></dd>
+
+
 <dt>years</dt>
 <dd><p>An integer vector indicating the target years to be included in
 the data file. All other years will be excluded. If <code>NULL</code>, no
 subsetting on years will be performed. Default: <code>NULL</code>.</p></dd>
+
+
 <dt>unit</dt>
 <dd><p>If <code>TRUE</code>, units will be added to values using
 <code><a href="https://rdrr.io/pkg/units/man/units.html" class="external-link">units::set_units()</a></code>.</p></dd>
+
+
 <dt>out_dir</dt>
 <dd><p>The directory to save extracted data using <code><a href="http://www.fstpackage.org/reference/write_fst.html" class="external-link">fst::write_fst()</a></code>.
 If <code>NULL</code>, all data will be kept in memory by default. Default: <code>NULL</code>.</p></dd>
+
+
 <dt>by</dt>
 <dd><p>A character vector of variable names used to split data
 during extraction. Should be a subset of:</p><ul><li><p><code>"experiment"</code>: root experiment identifiers</p></li>
@@ -103,17 +111,24 @@ during extraction. Should be a subset of:</p><ul><li><p><code>"experiment"</code
 <li><p><code>"resolution"</code>: approximate horizontal resolution</p></li>
 </ul><p>If <code>NULL</code> and <code>out_dir</code> is given, file name <code>data.fst</code> will be used. Default:
 <code>NULL</code>.</p></dd>
+
+
 <dt>keep</dt>
 <dd><p>Whether keep extracted data in memory. Default: <code>TRUE</code> if
 <code>out_dir</code> is <code>NULL</code>, and <code>FALSE</code> otherwise.</p></dd>
+
+
 <dt>compress</dt>
 <dd><p>A single integer in the range 0 to 100, indicating the amount
 of compression to use. Lower values mean larger file sizes. Default:
 <code>100</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>An <code>epw_cmip6_data</code> object, which is basically a list of 3 elements:</p><ul><li><p><code>epw</code>: An <a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a> object whose longitude and latitute are used to
+    
+
+<p>An <code>epw_cmip6_data</code> object, which is basically a list of 3 elements:</p><ul><li><p><code>epw</code>: An <a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a> object whose longitude and latitute are used to
 extract CMIP6 data. It is the same object as created in <code><a href="match_coord.html">match_coord()</a></code></p></li>
 <li><p><code>meta</code>: A list containing basic metadata of input EPW, including <code>city</code>,
 <code>state_province</code>, <code>country</code>, <code>latitute</code> and <code>longitude</code>.</p></li>
@@ -150,7 +165,7 @@ speed up data extraction in parallel. By default, <code>extract_data()</code> us
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

@@ -20,7 +20,7 @@ load_cmip6_index()."><meta property="og:image" content="/logo.svg"><!-- mathjax 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9006</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9007</span>
       </span>
     </div>
 
@@ -87,6 +87,8 @@ files available against the output file index loaded using
     <dl><dt>dir</dt>
 <dd><p>A single string indcating the directory where CMIP6 model output
 NetCDF files are stored.</p></dd>
+
+
 <dt>by</dt>
 <dd><p>The grouping column to summary the database status. Should be a
 subeset of:</p><ul><li><p><code>"experiment"</code>: root experiment identifiers</p></li>
@@ -97,15 +99,21 @@ subeset of:</p><ul><li><p><code>"experiment"</code>: root experiment identifiers
 <li><p><code>"variant"</code>: variant label</p></li>
 <li><p><code>"resolution"</code>: approximate horizontal resolution</p></li>
 </ul></dd>
+
+
 <dt>mult</dt>
 <dd><p>Actions when multiple files match a same case in the CMIP6
 index. If <code>"latest"</code>, the file with latest modification time
 will be used. If <code>"skip"</code>, all matched files will be skip and this
 case will be kept as unmatched. Default: <code>"skip"</code>.</p></dd>
+
+
 <dt>append</dt>
 <dd><p>If <code>TRUE</code>, status of CMIP6 files will only be updated if they
 are not found in previous summary. This is useful if CMIP6 files are
 stored in different directories. Default: <code>FALSE</code>.</p></dd>
+
+
 <dt>miss</dt>
 <dd><p>Actions when matched files in the previous summary do not exist
 when running current summary. Only applicable when <code>append</code> is set to
@@ -113,22 +121,31 @@ when running current summary. Only applicable when <code>append</code> is set to
 be kept. If <code>"overwrite"</code>, existing metadata of those output will be
 first removed from the output file index and overwriten based on the
 newly matched files if possible. Default: <code>"keep"</code>.</p></dd>
+
+
 <dt>recursive</dt>
 <dd><p>If <code>TRUE</code>, scan recursively into directories. Default:
 <code>FALSE</code>.</p></dd>
+
+
 <dt>update</dt>
 <dd><p>If <code>TRUE</code>, the output file index will be updated based
 on the matched NetCDF files in specified directory. If <code>FALSE</code>, only
 current loaded index will be updated, but the actual index
 database file saved in <code><a href="get_data_dir.html">get_data_dir()</a></code> will remain unchanged.
 Default: <code>FALSE</code>.</p></dd>
+
+
 <dt>warning</dt>
 <dd><p>If <code>TRUE</code>, warning messages will show when target files are
 missing or multiple files match a same case. Default: <code>TRUE</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>A <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> containing corresponding grouping
+    
+
+<p>A <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> containing corresponding grouping
 columns plus:</p><table class="table table"><tr><td>Column</td><td>Type</td><td>Description</td></tr><tr><td><code>datetime_start</code></td><td>POSIXct</td><td>Start date and time of simulation</td></tr><tr><td><code>datetime_end</code></td><td>POSIXct</td><td>End date and time of simulation</td></tr><tr><td><code>file_num</code></td><td>Integer</td><td>Total number of file per group</td></tr><tr><td><code>file_size</code></td><td>Units (Mbytes)</td><td>Approximate total size of file</td></tr><tr><td><code>dl_num</code></td><td>Integer</td><td>Total number of file downloaded</td></tr><tr><td><code>dl_percent</code></td><td>Units (%)</td><td>Total percentage of file downloaded</td></tr><tr><td><code>dl_size</code></td><td>Units (Mbytes)</td><td>Total size of file downloaded</td></tr></table><p>Also 2 extra <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> are attached as <strong>attributes</strong>:</p><ul><li><p><code>not_found</code>: A <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> that contains metadata for those
 CMIP6 outputs that are listed in current CMIP6 output file index but the
 existing file paths are not valid now and cannot be found in current
@@ -178,7 +195,7 @@ sequential.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>
