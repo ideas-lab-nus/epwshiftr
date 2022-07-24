@@ -7,7 +7,7 @@ test_that("get_nc_meta()", {
 
     if (file.exists(path)) {
         expect_is(meta <- get_nc_meta(path), "list")
-        expect_equal(names(meta),
+        expect_named(meta,
             c("mip_era", "activity_id", "institution_id", "source_id",
               "experiment_id", "variant_label", "table_id", "grid_label",
               "nominal_resolution", "variable_id", "tracking_id",
@@ -30,9 +30,9 @@ test_that("get_nc_atts()", {
 
     if (file.exists(path)) {
         expect_is(atts <- get_nc_atts(path), "data.table")
-        expect_equal(names(atts), c("id", "variable", "attribute", "value"))
+        expect_named(atts, c("id", "variable", "attribute", "value"))
         expect_true(all(unique(atts$variable) %in% c("height", "lat", "lon", "NC_GLOBAL", "tas", "time")))
-        expect_equal(atts[variable == "NC_GLOBAL", unique(id)], -1L)
+        expect_identical(atts[variable == "NC_GLOBAL", unique(id)], -1L)
 
         con <- RNetCDF::open.nc(path)
         expect_equivalent(get_nc_atts(con), atts)
@@ -49,7 +49,7 @@ test_that("get_nc_vars()", {
 
     if (file.exists(path)) {
         expect_is(vars <- get_nc_vars(path), "data.table")
-        expect_equal(names(vars), c("id", "name", "type", "ndims", "natts"))
+        expect_named(vars, c("id", "name", "type", "ndims", "natts"))
 
         con <- RNetCDF::open.nc(path)
         expect_equivalent(get_nc_vars(con), vars)
@@ -66,7 +66,7 @@ test_that("get_nc_dims()", {
 
     if (file.exists(path)) {
         expect_is(dims <- get_nc_dims(path), "data.table")
-        expect_equal(names(dims), c("id", "name", "length", "unlim"))
+        expect_named(dims, c("id", "name", "length", "unlim"))
 
         con <- RNetCDF::open.nc(path)
         expect_equivalent(get_nc_dims(con), dims)
@@ -83,7 +83,7 @@ test_that("get_nc_axes()", {
 
     if (file.exists(path)) {
         expect_is(axes <- get_nc_axes(path), "data.table")
-        expect_equal(names(axes), c("axis", "variable", "dimension"))
+        expect_named(axes, c("axis", "variable", "dimension"))
 
         con <- RNetCDF::open.nc(path)
         expect_equivalent(get_nc_axes(con), axes)
@@ -390,23 +390,23 @@ test_that("extract_data()", {
         expect_is(d$epw, "Epw")
         expect_equal(d$meta, coord$meta)
         expect_is(d$data, "data.table")
-        expect_equal(names(d$data),
+        expect_named(d$data,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
-        expect_equal(nrow(d$data), 2196L)
+        expect_identical(nrow(d$data), 2196L)
 
         expect_is(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
-        expect_equal(d1$data, data.table())
+        expect_identical(d1$data, data.table())
         expect_true(file.exists(file.path(cache, "data.fst")))
         unlink(file.path(cache, "data.fst"))
 
         expect_is(
             d2 <- extract_data(coord, out_dir = cache,
                 by = c("source", "experiment", "variable"),
-                years = 2060
+                years = 2060L
             ),
             "epw_cmip6_data"
         )
@@ -417,7 +417,7 @@ test_that("extract_data()", {
         expect_is(
             d3 <- extract_data(coord, out_dir = cache,
                 by = c("source", "experiment", "variable"), keep = TRUE,
-                years = 2060
+                years = 2060L
             ),
             "epw_cmip6_data"
         )

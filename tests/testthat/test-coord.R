@@ -4,21 +4,21 @@ test_that("extract_location_dict()", {
 
     mockery::stub(extract_location_dict, "utils::menu", 1L)
     expect_is(res <- extract_location_dict("Singapore"), class = "data.table")
-    expect_equal(names(res),
+    expect_named(res,
         c("title", "location", "state_province", "country", "wmo_region",
             "wmo_number", "source_type", "longitude", "latitude", "epw_url",
             "ddy_url", "stat_url", "zip_url", "provider", "index")
     )
-    expect_equal(nrow(res), 1L)
+    expect_identical(nrow(res), 1L)
 
     mockery::stub(extract_location_dict, "utils::menu", 1L)
     expect_is(res <- extract_location_dict("China"), class = "data.table")
-    expect_equal(names(res),
+    expect_named(res,
         c("title", "location", "state_province", "country", "wmo_region",
             "wmo_number", "source_type", "longitude", "latitude", "epw_url",
             "ddy_url", "stat_url", "zip_url", "provider", "index")
     )
-    expect_equal(nrow(res), 1L)
+    expect_identical(nrow(res), 1L)
 
     mockery::stub(extract_location_dict, "utils::menu", 0L)
     expect_null(extract_location_dict("Singapore"))
@@ -34,7 +34,7 @@ test_that("match_nc_coord()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
+        loc <- eplusr:::WEATHER_DB[grepl("Singapore", title, fixed = TRUE)]
 
         # can stop if threshold is too small
         expect_error(match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 0.01, lon = 1.0)))
@@ -42,19 +42,19 @@ test_that("match_nc_coord()", {
 
         # can specify maximum matched number
         expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L), "data.table")
-        expect_equal(names(matched), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
-        expect_equal(nrow(matched), 1L)
+        expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_identical(nrow(matched), 1L)
 
         # can match multiple values
         expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1.0, lon = 1.0)), "data.table")
-        expect_equal(names(matched), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
-        expect_equal(nrow(matched), 6L)
+        expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_identical(nrow(matched), 6L)
 
         # can change EPW longitude to [0, 360] range
         loc <- eplusr:::WEATHER_DB[title == "USA_NY_New.York.City-Central.Park.744860_TMY2"]
-        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1, lon = 1), max_num = 1), "data.table")
-        expect_equal(names(matched), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
-        expect_equal(nrow(matched), 1L)
+        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1L, lon = 1L), max_num = 1L), "data.table")
+        expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_identical(nrow(matched), 1L)
 
         # can work with NetCDF object
         con <- RNetCDF::open.nc(path)
@@ -73,8 +73,8 @@ test_that("match_location_coord()", {
         loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
 
         expect_is(matched <- match_location_coord(path, as.list(loc)), "data.table")
-        expect_equal(names(matched), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
-        expect_equal(nrow(matched), 6L)
+        expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_identical(nrow(matched), 6L)
     }
 })
 
@@ -108,11 +108,11 @@ test_that("match_coord()", {
 
         # can work with Epw object
         expect_is(res1 <- match_coord(eplusr::read_epw(path)), "epw_cmip6_coord")
-        expect_equal(names(res1), c("epw", "meta", "coord"))
+        expect_named(res1, c("epw", "meta", "coord"))
         expect_is(res1$epw, "Epw")
-        expect_equal(names(res1$meta), c("city", "state_province", "country", "latitude", "longitude"))
-        expect_equal(nrow(res1$coord), 3L)
-        expect_equal(names(res1$coord),
+        expect_named(res1$meta, c("city", "state_province", "country", "latitude", "longitude"))
+        expect_identical(nrow(res1$coord), 3L)
+        expect_named(res1$coord,
             c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
               "source_id", "experiment_id", "member_id", "table_id", "frequency",
               "grid_label", "version", "nominal_resolution", "variable_id",
@@ -123,13 +123,13 @@ test_that("match_coord()", {
             )
         )
         expect_is(res1$coord$coord, "list")
-        expect_is(res1$coord$coord[[1]], "data.table")
-        expect_equal(names(res1$coord$coord[[1]]), c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
+        expect_is(res1$coord$coord[[1L]], "data.table")
+        expect_named(res1$coord$coord[[1L]], c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
 
         # can work with EPW file path
         expect_is(res2 <- match_coord(path), "epw_cmip6_coord")
-        expect_equal(res2$meta, res1$meta)
-        expect_equal(res2$coord, res1$coord)
+        expect_identical(res2$meta, res1$meta)
+        expect_identical(res2$coord, res1$coord)
 
         # can select the location interactively
         mockery::stub(match_coord, "extract_location_dict", eplusr:::WEATHER_DB[grepl("Singapore", title)][1L])
