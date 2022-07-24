@@ -140,8 +140,12 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @description
         #' Fetch and parse all data of CVs and Data Request
         #'
+        #' @param token A string of GitHub token that is used to access GitHub
+        #'        REST APIs. If `NULL`, `GITHUB_PAT` or `GITHUB_TOKEN`
+        #'        environment variable will be used if exists. Default: `NULL`.
+        #'
         #' @return The updated `CMIP6Dict` itself.
-        build = function() {
+        build = function(token = NULL) {
             dict <- cmip6dict_build(cmip6dict_fetch())
             for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
@@ -796,7 +800,7 @@ cmip6dict_download_dreq_file <- function(tag, dir = tempdir(), token = NULL) {
     )
     zipball <- download_gh_tag(REPO_DREQ, tag, dir, token)
 
-    files <- unzip(zipball, exdir = dir)
+    files <- utils::unzip(zipball, exdir = dir)
 
     files <- files[basename(dirname(files)) == "Tables"]
     names(files) <- basename(files)
@@ -935,51 +939,4 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
     setDT(val$dreq)
 
     val
-}
-
-cmip6dict_update <- function(cv_sha, req_tag) {
-    new_sha <- no_verbose(cmip6dict_fetch_cv_sha())
-    new_tag <- cmip6dict_fetch_mip_table_latest_tag()
-
-    out <- list()
-
-    if (is.null(cv_sha) || length(new_cv <- new_sha[!cv_sha, on = c("type", "sha"), type])) {
-        if (is.null(cv_sha)) {
-            new_cv <- CV_TYPES
-
-            verbose("Empty local CMIP6 Controlled Vocabularies (CVs) found. Fetching all...")
-        } else {
-            new_cv <- CV_TYPES[CV_TYPES %in% new_cv]
-
-            verbose(sprintf("New CMIP6 Controlled Vocabularies (CVs) [%s] found. Updating...",
-                paste0("'", toupper(names(new_cv)), "'", collapse = ", ")
-            ))
-        }
-
-        cvs <- lapply(new_cv, cmip6dict_fetch_cv)
-        names(cvs) <- new_cv
-
-        out$cvs <- cvs
-        out$cv_sha <- new_sha
-    }
-
-    if (is.null(req_tag) || new_tag != req_tag) {
-        if (is.null(req_tag)) {
-            verbose("Empty local CMIP6 MIP Table found. Fetching...")
-        } else {
-            verbose(sprintf("Online CMIP6 MIP Table tag '%s' is newer than local tag '%s'. Updating...", new_tag, req_tag))
-        }
-        out$mip_table <- cmip6dict_fetch_mip_table(new_tag)
-        out$req_tag <- new_tag
-    }
-
-    if (!length(out)) {
-        verbose("CMIP6 Controlled Vocabularies (CVs) and MIP Table are all at the latest version. Nothing to udpate.")
-        return(NULL)
-    }
-
-    out$built_time <- Sys.time()
-    verbose("CMIP6 Dictionary updated successfully at ", format(out$built_time), ".")
-
-    out
 }

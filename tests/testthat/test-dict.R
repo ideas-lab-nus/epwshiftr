@@ -34,7 +34,7 @@ test_that("$is_empty()", {
 
     expect_is(dict$load(test_path()), "CMIP6Dict")
     expect_false(dict$is_empty())
-    expect_is(dict$version()$req, "numeric_version")
+    expect_is(dict$version()$dreq, "numeric_version")
 })
 
 test_that("$timestamp()", {
