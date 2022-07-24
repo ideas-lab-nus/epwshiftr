@@ -1,23 +1,22 @@
 #' CMIP6 Controlled Vocabularies (CVs) and Data Request Dictionary
 #'
 #' The `CMIP6Dict` object provides functionalities to fetch the latested CMIP6
-#' Controlled Vocabularies (CVs) and Data Request information.
+#' Controlled Vocabularies (CVs) and Data Request (DReq) information.
 #'
 #' The CMIP6 CVs gives a well-defined set of global attributes that are recorded
 #' in each CMIP6 model output, providing information necessary for interpreting
-#' the data.
+#' the data. The data of CMIP6 CVs is stored as JSON files in the WCRP-CMIP
+#' [GitHub Repo](https://github.com/WCRP-CMIP/CMIP6_CVs).
 #'
-#' The CMIP6 Data Request defines all the quantities from CMIP6 simulations that
-#' should be archived. This includes both quantities of general interest needed
-#' from most of the CMIP6-endorsed model intercomparison projects (MIPs) and
+#' The CMIP6 DReq defines all the quantities from CMIP6 simulations that should
+#' be archived. This includes both quantities of general interest needed from
+#' most of the CMIP6-endorsed model intercomparison projects (MIPs) and
 #' quantities that are more specialized and only of interest to a single
-#' endorsed MIP.
-#'
-#' The data of CVs for use in CMIP6 is stored as JSON files in a
-#' [GitHub Repo](https://github.com/WCRP-CMIP/CMIP6_CVs), while the Data Request
-#' data is stored a Microsoft Excel file (`CMIP6_MIP_tables.xlsx`) in a
+#' endorsed MIP. The raw data of DReq is stored a Microsoft Excel file
+#' (`CMIP6_MIP_tables.xlsx`) in a
 #' [Subversion repo](http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk).
-#' `CMIP6Dict` object is able to fetch those files and parse them.
+#' The `CMIP6Dict` object uses the parsed DReq data that is stored in the
+#' [GitHub Repo](https://github.com/PCMDI/cmip6-cmor-tables).
 #'
 #' For more information, please see:
 #'
@@ -45,22 +44,18 @@
 #' # get the time when the dict was built
 #' dict$built_time()
 #'
-#' # check if there is updates of CVs and Data Request
-#' dict$update()
-#'
-#' # list the data of CVs
-#' dict$list("activity")
-#' dict$list("experiment")
-#' dict$list("sub_experiment")
-#' dict$list("institution")
-#' dict$list("source")
-#' dict$list("table")
-#' dict$list("frequency")
-#' dict$list("grid_label")
-#' dict$list("realm")
-#' dict$list("source_type")
-#' dict$list("req_global_atts")
-#' dict$list("variable")
+#' # get the data of CVs and DReq
+#' dict$get("activity_id")
+#' dict$get("experiment_id")
+#' dict$get("sub_experiment_id")
+#' dict$get("institution_id")
+#' dict$get("source_id")
+#' dict$get("table_id")
+#' dict$get("frequency")
+#' dict$get("grid_label")
+#' dict$get("realm")
+#' dict$get("source_type")
+#' dict$get("dreq")
 #'
 #' # save the dict object for later usage
 #' # default location is the value of global option "epwshiftr.dir"
@@ -93,8 +88,8 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A list of two element:
         #'
-        #' - `cv`: A [numeric_version] object giving the version of CVs
-        #' - `req`: A [numeric_version] object giving the version of Data
+        #' - `cvs`: A [numeric_version] object giving the version of CVs
+        #' - `dreq`: A [numeric_version] object giving the version of Data
         #'   Request
         version = function() {
             private$m_version
@@ -103,9 +98,9 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @description
         #' Is it an empty CMIP6Dict?
         #'
-        #' `$is_empty()` checks if this `CMIP6Dict` is empty, i.e. the
-        #' `$build()` or `$load()` method hasn't been called yet and there is no
-        #' data of CVs and Data Request.
+        #' `$is_empty()` checks if this `CMIP6Dict` is empty, i.e. the `$build()
+        #' ` or `$load()` method hasn't been called yet and there is no data of
+        #' CVs and Data Request.
         #'
         #' @return A single logical value of `TRUE` or `FALSE`.
         is_empty = function() {
@@ -116,22 +111,22 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' Get the last modified time for CVs
         #'
         #' @return A list of 14 [DateTime][POSIXct]s:
-        #'
-        #' - `cv`: The last modified time for the whole CV collection
-        #' - `activity`: The last modified time for the CV `activity_id`
-        #' - `experiment`: The last modified time for the CV `experiment_id`
-        #' - `sub_experiment`: The last modified time for the CV `sub_experiment_id`
-        #' - `institution`: The last modified time for the CV `institution_id`
-        #' - `source`: The last modified time for the CV `source_id`
-        #' - `table`: The last modified time for the CV `table_id`
-        #' - `frequency`: The last modified time for the CV `frequency`
-        #' - `grid_label`: The last modified time for the CV `grid_label`
-        #' - `realm`: The last modified time for the CV `realm`
-        #' - `source_type`: The last modified time for the CV `source_type`
-        #' - `req_global_atts`: The last modified time for the CV
-        #'   `required_global_attributes`
+        #' - `"cvs"`: The last modified time for the whole CV collection
+        #' - `"drs"`: The last modified time for Data Reference Syntax (DRS)
+        #' - `"activity_id"`: The last modified time for Activity ID
+        #' - `"experiment_id"`: The last modified time for Experiment ID
+        #' - `"frequency"`: The last modified time for Frequency
+        #' - `"grid_label"`: The last modified time for Grid Label
+        #' - `"institution_id"`: The last modified time for Institution ID
+        #' - `"nominal_resolution"`: The last modified time for Nominal Resolution
+        #' - `"realm"`: The last modified time for Realm
+        #' - `"required_global_attributes"`: The last modified time for Required Global Attributes
+        #' - `"source_id"`: The last modified time for Source ID
+        #' - `"source_type"`: The last modified time for Source Type
+        #' - `"sub_experiment_id"`: The last modified time for Sub-Experiment ID
+        #' - `"table_id"`: The last modified time for Table ID
         timestamp = function() {
-            private$m_timestamps[names(private$m_timestamps) != "dict"]
+            private$m_timestamps
         },
 
         #' @description
@@ -139,7 +134,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A [DateTime][POSIXct]
         built_time = function() {
-            private$m_timestamps[[which(names(private$m_timestamps) == "dict")]]
+            private$m_built_time
         },
 
         #' @description
@@ -147,128 +142,49 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return The updated `CMIP6Dict` itself.
         build = function() {
-            dict <- cmip6dict_build()
-
-            private$m_version = list(
-                cv = dict$cvs$activity$CV_collection_version,
-                req = dict$mip_table$version
-            )
-
-            private$m_timestamps <- list(
-                cv              = dict$cvs$activity$CV_collection_modified,
-                activity        = dict$cvs$activity$activity_id_CV_modified,
-                experiment      = dict$cvs$experiment$experiment_id_CV_modified,
-                sub_experiment  = dict$cvs$sub_experiment$sub_experiment_id_CV_modified,
-                institution     = dict$cvs$institution$institution_id_CV_modified,
-                source          = dict$cvs$source$source_id_CV_modified,
-                table           = dict$cvs$table$table_id_CV_modified,
-                frequency       = dict$cvs$frequency$frequency_CV_modified,
-                grid_label      = dict$cvs$grid_label$grid_label_CV_modified,
-                realm           = dict$cvs$realm$realm_CV_modified,
-                source_type     = dict$cvs$source_type$source_type_CV_modified,
-                req_global_atts = dict$cvs$req_global_atts$required_global_attributes_CV_modified,
-                resolution      = dict$cvs$resolution$nominal_resolution_CV_modified,
-                dict            = dict$built_time
-            )
-
-            private$m_tables <- list(
-                mip_table       = dict$mip_table$value,
-                activity        = dict$cvs$activity$value,
-                experiment      = dict$cvs$experiment$value,
-                sub_experiment  = dict$cvs$sub_experiment$value,
-                institution     = dict$cvs$institution$value,
-                source          = dict$cvs$source$value,
-                table           = dict$cvs$table$value,
-                frequency       = dict$cvs$frequency$value,
-                grid_label      = dict$cvs$grid_label$value,
-                realm           = dict$cvs$realm$value,
-                source_type     = dict$cvs$source_type$value,
-                req_global_atts = dict$cvs$req_global_atts$value,
-                resolution      = dict$cvs$resolution$value
-            )
-
-            private$m_cv_sha <- dict$cv_sha
-            private$m_req_tag <- dict$req_tag
-
+            dict <- cmip6dict_build(cmip6dict_fetch())
+            for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
         },
 
         #' @description
-        #' List the data for a specific CV or Data Request
+        #' Get the data for a specific CV or Data Request
         #'
         #' @param type A single string indicating the type of data to list.
         #' Should be one of:
         #'
-        #' - `"activity"`: The data of CV `activity_id`
-        #' - `"experiment"`: The data of CV `experiment_id`
-        #' - `"sub_experiment"`: The data of CV `sub_experiment_id`
-        #' - `"institution"`: The data of CV `institution_id`
-        #' - `"source"`: The data of CV `source_id`
-        #' - `"table"`: The data of CV `table_id`
-        #' - `"frequency"`: The data of CV `frequency`
-        #' - `"grid_label"`: The data of CV `grid_label`
-        #' - `"realm"`: The data of CV `realm`
-        #' - `"source_type"`: The data of CV `source_type`
-        #' - `"req_global_atts"`: The data of CV `required_global_attributes`
-        #' - `"variable"`: The data of Data Request
+        #' - `"drs"`: Data Reference Syntax (DRS)
+        #' - `"activity_id"`: Activity ID
+        #' - `"experiment_id"`: Experiment ID
+        #' - `"frequency"`: Frequency
+        #' - `"grid_label"`: Grid Label
+        #' - `"institution_id"`: Institution ID
+        #' - `"nominal_resolution"`: Nominal Resolution
+        #' - `"realm"`: Realm
+        #' - `"required_global_attributes"`: Required Global Attributes
+        #' - `"source_id"`: Source ID
+        #' - `"source_type"`: Source Type
+        #' - `"sub_experiment_id"`: Sub-Experiment ID
+        #' - `"table_id"`: Table ID
+        #' - `"dreq"`: Data Request
         #'
         #' @return
-        #' For `"activity"`, `"experiment"`, `"sub_experiment"`, `"institution"`,
-        #' `"source"`, `"frequency"`, `"grid_label"`, `"realm"` `"source_type"`,
-        #' and `"variable"`, a [data.table][data.table::data.table] object giving
-        #' the value of the corresponding CV, its description and other
-        #' attributes.
+        #' For `"drs"`, "activity_id"`, `"frequency"`, `"grid_label"`,
+        #' `"institution_id"`, `"source_type"` and `"sub_experiment_id"`, a
+        #' [list].
         #'
-        #' For `"table"` and `"req_global_atts"`, a character vector giving the
-        #' value of the corresponding CV.
+        #' For `"experiment_id"`, `"source_id"` and `"dreq"`, a [data.table].
         #'
-        list = function(type) {
-            assert_subset(type, c(CV_TYPES, "variable"))
+        #' For `"nominal_resolution"`, `"required_global_attributes"` and
+        #' `"table_id"`, a [character] vector.
+        get = function(type) {
+            assert_subset(type, c(tolower(CV_TYPES), "dreq"))
 
-            if (type == "variable") type <- "mip_table"
-            out <- private$m_tables[[type]]
-            if (data.table::is.data.table(out)) out <- copy(out)
-            out
-        },
-
-        #' @description
-        #' Update the data for a specific CV or Data Request if applicable
-        #'
-        #' For CVs, `$update()` uses the GitHub RESTful API to fetch the SHA1
-        #' value of each JSON file that stores the CV and compares it with the
-        #' last fetched value. If any SHA1 is unmatched, the corresponding JSON
-        #' file will be downloaded and parsed.
-        #'
-        #' For Data Request, `$update()` fetches the latest tag of the Data
-        #' Request Subversion repo and compares it with the last fetched value.
-        #' If new tag is found, the corresponding `CMIP6_MIP_tables.xlsx`
-        #' Microsoft Excel file will be downloaded and parsed.
-        #'
-        #' @return The `CMIP6Dict` object itself with updated data.
-        update = function() {
-            dict <- cmip6dict_update(private$m_cv_sha, private$m_req_tag)
-
-            if (!is.null(dict$cvs)) {
-                private$m_cv_sha <- dict$cv_sha
-
-                private$m_version$cv <- dict$cvs[[1L]]$CV_collection_version
-                private$m_timestamps$cv <- dict$cvs[[1L]]$CV_collection_modified
-                private$m_timestamps$dict <- dict$built_time
-
-                for (type in names(private$m_timestamps)) {
-                    if (is.null(dict$cvs[[type]])) next
-                    nm <- names(CV_TYPES)[CV_TYPES == type]
-                    private$m_timestamps[[type]] <- dict$cvs[[type]][[sprintf("%s_CV_modified", nm)]]
-                    private$m_tables[[type]] <- dict$cvs[[type]]$value
-                }
+            if (type == "dreq") {
+                data.table::copy(private$m_data$dreq)
+            } else {
+                data.table::copy(private$m_data$cvs[[type]])
             }
-
-            if (!is.null(dict$mip_table)) {
-                private$m_req_tag <- dict$req_tag
-                private$m_version$req <- dict$mip_table$version
-            }
-
-            self
         },
 
         #' @description
@@ -287,13 +203,8 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @return A single string giving the full path of the RDS file.
         save = function(dir = getOption("epwshiftr.dir", ".")) {
             cmip6dict_save(
-                private$m_version,
-                private$m_cv_sha,
-                private$m_req_tag,
-                private$m_timestamps,
-                private$m_tables,
-                private$m_index,
-                private$m_log,
+                private$m_built_time,
+                private$m_data,
                 dir = dir
             )
         },
@@ -314,19 +225,17 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A single string giving the full path of the RDS file.
         load = function(dir = getOption("epwshiftr.dir", ".")) {
-            val <- cmip6dict_load(dir)
-            if (is.null(val)) return(self)
+            dict <- cmip6dict_load(dir)
 
-            private$m_version <- val$version
-            private$m_cv_sha <- val$cv_sha
-            private$m_req_tag <- val$req_tag
-            private$m_timestamps <- val$timestamps
-            private$m_tables <- val$tables
-            private$m_index <- val$index
-            private$m_log <- val$log
+            if (is.null(dict)) {
+                cli::cli_alert_info("Failed to find file {.file CMIP6DICT} at {normalizePath(dir, mustWork = FALSE)}. Skip loading")
+                return(self)
+            }
 
-            verbose("Load CMIP6 Dictionary that was built at ", format(val$timestamps$dict), ".")
+            dict <- cmip6dict_build(dict)
+            cli::cli_alert_success("Loaded CMIP6 Dictionary that was built at {dict$built_time}.")
 
+            for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
         },
 
@@ -338,265 +247,673 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return The `CMIP6Dict` object itself, invisibly.
         print = function() {
-            cat_rule("CMIP6 Dictionary", "-")
-            if (!length(private$m_version)) {
-                cat("- CV  ver: <Empty>\n")
-                cat("- Req ver: <Empty>\n")
+            d <- cli::cli_div(
+                theme = list(rule = list("line-type" = "double"))
+            )
+            cli::cli_rule("CMIP6 Dictionary")
+            if (length(private$m_version)) {
+                cli::cli_li("Built at: {private$m_built_time}")
             } else {
-                cat(sprintf("- CV  ver: '%s'\n", private$m_version$cv))
-                cat(sprintf("- Req ver: '%s'\n", private$m_version$req))
-                cat(sprintf("- Built at: '%s'\n", private$m_timestamps$dict))
+                cli::cli_li("Built at: {.emph <Empty>}")
             }
+            cli::cli_end(d)
+
+            d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
+            ul <- cli::cli_ul()
+
+            if (!length(private$m_version)) {
+                cli::cli_h1("Controlled Vocabularies (CVs)")
+                cli::cli_li("{.strong CV Version}: {.emph <Empty>}")
+                cli::cli_h1("Data Request (DReq)")
+                cli::cli_li("{.strong DReq Version}: {.emph <Empty>}")
+            } else {
+                cli::cli_h1("Controlled Vocabularies (CVs)")
+                cli::cli_li("{.strong CV Version}: {.var {private$m_version$cvs}}")
+                cvs <- private$m_data$cvs
+                cli::cli_li("{.strong CV Contents} [{length(cvs)} type{?s}]: ")
+                ul2 <- cli::cli_ul()
+                for (nm in names(cvs)) {
+                    cli::cli_li("{.strong {nm}} [{NROW(cvs[[nm]])} item{?s}]")
+                }
+                cli::cli_end(ul2)
+
+                cli::cli_h1("Data Request (DReq)")
+                cli::cli_li("{.strong DReq Version}: {.var {private$m_version$dreq}}")
+                dreq <- private$m_data$dreq
+                meta <- attr(dreq, "metadata", TRUE)
+                cli::cli_li("{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms")
+            }
+
+            cli::cli_end(ul)
+            cli::cli_end(d)
+
+            invisible(self)
         }
     ),
 
     private = list(
         # CV and Data Request versions
         m_version = NULL,
-        # CV JSON file sha
-        m_cv_sha = NULL,
-        # Data Request tag
-        m_req_tag = NULL,
+        # the time when the dict was last built
+        m_built_time = NULL,
         # modified time for CV and its components
         m_timestamps = NULL,
         # tables for all CV and Data Request
-        m_tables = NULL,
-        # output index
-        m_index = NULL,
-        # temporary variables
-        m_log = NULL
+        m_data = NULL
     )
 )
+
+REPO_CV <- "WCRP-CMIP/CMIP6_CVs"
+REPO_DREQ <- "PCMDI/cmip6-cmor-tables"
 
 CV_TYPES <- c(
-    "activity_id"                = "activity",
-    "experiment_id"              = "experiment",
-    "sub_experiment_id"          = "sub_experiment",
-    "institution_id"             = "institution",
-    "source_id"                  = "source",
-    "table_id"                   = "table",
-    "frequency"                  = "frequency",
-    "grid_label"                 = "grid_label",
-    "realm"                      = "realm",
-    "source_type"                = "source_type",
-    "required_global_attributes" = "req_global_atts",
-    "nominal_resolution"         = "resolution"
+    "DRS",
+    "activity_id",
+    "experiment_id",
+    "frequency",
+    "grid_label",
+    "institution_id",
+    "nominal_resolution",
+    "realm",
+    "required_global_attributes",
+    "source_id",
+    "source_type",
+    "sub_experiment_id",
+    "table_id"
 )
 
-type_to_std_name <- function(type) names(CV_TYPES)[CV_TYPES %in% type]
+cmip6dict_fetch <- function() {
+    cli::cli_progress_step(
+        "Fetching {.strong CMIP6 Dictionary}...",
+        "Fetched {.strong CMIP6 Dictionary} successfully at {Sys.time()}",
+        "Failed to fetch {.strong CMIP6 Dictionary}.",
+        spinner = TRUE
+    )
 
-cmip6dict_build <- function() {
-    req_tag <- cmip6dict_fetch_mip_table_latest_tag()
-    cv_sha <- cmip6dict_fetch_cv_sha()
-
-    cvs <- lapply(CV_TYPES, cmip6dict_fetch_cv)
-    names(cvs) <- CV_TYPES
-
-    mip_table <- cmip6dict_fetch_mip_table(req_tag)
-
+    cvs <- cmip6dict_fetch_cv()
+    dreq <- cmip6dict_fetch_dreq()
     built_time <- Sys.time()
-    verbose("CMIP6 Dictionary built successfully at ", format(built_time), ".")
-    list(cvs = cvs, cv_sha = cv_sha, req_tag = req_tag, mip_table = mip_table, built_time = built_time)
+
+    list(cvs = cvs, dreq = dreq, built_time = built_time)
 }
 
-cmip6dict_fetch_cv <- function(type, save = FALSE) {
-    assert_subset(type, CV_TYPES, empty.ok = FALSE)
+cmip6dict_build <- function(dict) {
+    res <- list()
+    res$built_time <- dict$built_time
+    dict$built_time <- NULL
 
-    name <- type_to_std_name(type)
-    file_name <- sprintf("CMIP6_%s.json", name)
-    URL_CMIP6_CV <- "https://raw.githubusercontent.com/WCRP-CMIP/CMIP6_CVs/master"
-    url_json <- file.path(URL_CMIP6_CV, file_name, fsep = "/")
-
-    verbose("Fetching Controlled Vocabularies(CVs) ", toupper(name), "...")
-    q <- tryCatch(jsonlite::read_json(url_json, TRUE), warning = function (w) w, error = function (e) e)
-
-    # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
-        message(sprintf("Failed to fetch CV json file '%s'. Please check network connection.", url_json))
-        return(data.table())
-    }
-    # nocov end
-
-    d <- switch(type,
-        activity = cmip6dict_format_cv_flat(q),
-        experiment = cmip6dict_format_cv_experiment(q),
-        frequency = cmip6dict_format_cv_flat(q),
-        grid_label = cmip6dict_format_cv_flat(q),
-        institution = cmip6dict_format_cv_flat(q),
-        resolution = cmip6dict_format_cv_simple(q),
-        realm = cmip6dict_format_cv_flat(q),
-        req_global_atts = cmip6dict_format_cv_simple(q),
-        source = cmip6dict_format_cv_source(q),
-        source_type = cmip6dict_format_cv_flat(q),
-        sub_experiment = cmip6dict_format_cv_flat(q),
-        table = cmip6dict_format_cv_simple(q)
+    res$version = list(
+        cvs = attr(dict$cvs$drs, "version", TRUE)$CV_collection_version,
+        dreq = attr(dict$dreq, "metadata", TRUE)$dreq_version[[1L]]
     )
+
+    res$timestamps <- c(
+        list(cvs = dict$cvs$CV_collection_modified),
+        lapply(dict$cvs, function(cv) attr(cv, "version", TRUE)$CV_modified)
+    )
+
+    res$data <- dict
+
+    res
+}
+
+cmip6dict_fetch_cv_tag_latest <- function(token = NULL) {
+    cli::cli_progress_step(
+        "Fetching latest tag of {.strong CMIP6 CVs}...",
+        "Fetched latest tag of {.strong CMIP6 CVs} successfully.",
+        "Failed to fetched latest tag of {.strong CMIP6 CVs}.",
+        spinner = TRUE
+    )
+    gh_tags(REPO_CV, token)[[1L]]
+}
+
+cmip6dict_download_cv_file <- function(tag, dir = tempdir(), token = NULL) {
+    dests <- character(length(CV_TYPES))
+    names(dests) <- CV_TYPES
+
+    file <- ""
+    cli::cli_progress_step(
+        "Downloading data of {.strong CMIP6 CVs} ['{.file {file}}']...",
+        "Downloaded data of {.strong CMIP6 CVs} successfully.",
+        "Failed to download data of {.strong CMIP6 CVs}.",
+        spinner = TRUE
+    )
+    for (type in CV_TYPES) {
+        file <- sprintf("CMIP6_%s.json", type)
+        cli::cli_progress_update(1L)
+        dests[[type]] <- download_gh_file(REPO_CV, tag, file, dir, token)
+    }
+
+    dests
+}
+
+cmip6dict_fetch_cv <- function(tag = NULL, token = NULL) {
+    if (is.null(tag)) {
+        tag <- cmip6dict_fetch_cv_tag_latest(token)$name
+    }
+    files <- cmip6dict_download_cv_file(tag)
+
+    cvs <- list()
+    for (type in names(files)) {
+        abbr <- tolower(tools::file_path_sans_ext(type))
+        cvs[[abbr]] <- match.fun(sprintf("cmip6dict_parse_cv_%s", abbr))(files[[type]])
+    }
+
+    cvs
+}
+
+cmip6dict_format_cv_nest <- function(json) {
+    transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
+    setnames(as.data.table(transposed), names(json[[1L]]))
+}
+
+cmip6dict_parse_cv_version_metadata <- function(lst) {
+    res <- list()
 
     # make sure the locale for time is set to "C"
     ori <- Sys.getlocale("LC_TIME")
     on.exit(Sys.setlocale("LC_TIME", ori), add = TRUE)
     Sys.setlocale("LC_TIME", "C")
 
-    d$CV_collection_version <- as.numeric_version(d$CV_collection_version)
-    d$CV_collection_modified <- as.POSIXct(d$CV_collection_modified, format =  "%c %z")
+    res$CV_collection_version <- as.numeric_version(lst$CV_collection_version)
+    res$CV_collection_modified <- as.POSIXct(
+        lst$CV_collection_modified, format = "%c %z", tz = "UTC"
+    )
 
     # fix malformed timezone spec
-    type_modified <- sprintf("%s_CV_modified", name)
-    d[[type_modified]] <- gsub(" 0(\\d{4})$", " -\\1", d[[type_modified]])
+    type_modified <- names(lst)[endsWith(names(lst), "CV_modified")]
+    res$CV_modified <- gsub(" 0(\\d{4})$", " -\\1", lst[[type_modified]])
 
     # fix malformed abbr weekday spec
-    d[[type_modified]] <- gsub("Tues", "Tue", d[[type_modified]])
-    d[[type_modified]] <- as.POSIXct(d[[type_modified]], format = "%c %z")
+    res$CV_modified <- gsub("Tues", "Tue", res$CV_modified, fixed = TRUE)
+    res$CV_modified <- as.POSIXct(res$CV_modified, format = "%c %z", tz = "UTC")
 
-    d
+    res$CV_note <- lst[[names(lst)[endsWith(names(lst), "CV_note")]]]
+
+    res
 }
 
-cmip6dict_format_cv_simple <- function(json) {
-    c(json$version_metadata, list(value = json[[1L]]))
+cmip6dict_parse_cv_vec <- function(file, subclass = NULL) {
+    json <- jsonlite::read_json(file)
+    res <- unlst(json[[1L]])
+    setattr(res, "version",
+        cmip6dict_parse_cv_version_metadata(json$version_metadata)
+    )
+
+    structure(res, class = c(subclass, "CMIP6CV", typeof(res)))
 }
 
-cmip6dict_format_cv_flat <- function(json) {
-    d <- data.table(names(json[[1L]]), unlist(json[[1L]]))
-    setnames(d, c(names(json)[1L], "description"))
+cmip6dict_parse_cv_list <- function(file, subclass = NULL) {
+    json <- jsonlite::read_json(file)
+    res <- json[[1L]]
+    setattr(res, "version",
+        cmip6dict_parse_cv_version_metadata(json$version_metadata)
+    )
 
-    c(json$version_metadata, list(value = as.data.table(d)))
+    structure(res, class = c(subclass, "CMIP6CV", "list"))
 }
 
-transpose_nested_list <- function(x, name = "__X__") {
-    transposed <- lapply(names(x[[1L]]), function(nm) lapply(x, "[[", nm))
-    val <- c(list(names(x)), transposed)
-    names(val) <- c(name, names(x[[1L]]))
-    val
+cmip6dict_parse_cv_drs <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_DRS")
 }
 
-cmip6dict_format_cv_nest <- function(json) {
-    val <- transpose_nested_list(json[[1L]], names(json)[1L])
-    c(json$version_metadata, list(value = as.data.table(val)))
+cmip6dict_parse_cv_activity_id <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_ActivityId")
 }
 
-cmip6dict_format_cv_experiment <- function(json) {
-    d <- cmip6dict_format_cv_nest(json)
-    setnames(d$value, 1L, "name")
-    set(d$value, NULL, "experiment_id", NULL)
-    setnames(d$value, 1L, "experiment_id")
+cmip6dict_parse_cv_experiment_id <- function(file) {
+    json <- jsonlite::read_json(file)
+    d <- cmip6dict_format_cv_nest(json[[1L]])
 
-    cols_flat <- c("description", "end_year", "experiment",
+    setcolorder(d, "experiment_id")
+
+    cols_lst <- c("activity_id", "additional_allowed_model_components",
+        "parent_activity_id", "parent_experiment_id",
+        "required_model_components", "sub_experiment_id")
+    for (col in cols_lst) {
+        set(d, NULL, col, lapply(d[[col]], unlist, FALSE, FALSE))
+    }
+
+    cols_flat <- c("experiment_id", "description", "end_year", "experiment",
         "min_number_yrs_per_sim", "start_year", "tier")
     for (col in cols_flat) {
-        set(d$value, NULL, col, unlist(d$value[[col]], FALSE, FALSE))
+        set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
     }
 
     cols_int <- c("end_year", "min_number_yrs_per_sim", "start_year", "tier")
     for (col in cols_int) {
-        set(d$value, NULL, col, suppressWarnings(as.integer(d$value[[col]])))
+        set(d, NULL, col, suppressWarnings(as.integer(d[[col]])))
     }
 
-    d
+    setcolorder(d, c(
+         "experiment_id", "experiment", "description", "tier",
+        "start_year", "end_year", "min_number_yrs_per_sim",
+        "required_model_components",
+        "parent_experiment_id", "sub_experiment_id",
+        "activity_id", "parent_activity_id",
+        "additional_allowed_model_components"
+    ))
+    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+
+    structure(d, class = c("CMIP6CV_ExperimentId", "CMIP6CV", class(d)))
 }
 
-cmip6dict_format_cv_source <- function(json) {
-    d <- cmip6dict_format_cv_nest(json)
+cmip6dict_parse_cv_frequency <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_Frequency")
+}
 
-    setnames(d$value, 1L, "name")
-    set(d$value, NULL, "source_id", NULL)
-    setnames(d$value, 1L, "source_id")
+cmip6dict_parse_cv_grid_label <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_GridLabel")
+}
 
-    cols_flat <- c("cohort", "label", "label_extended", "release_year")
+cmip6dict_parse_cv_institution_id <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_InstitutionId")
+}
+
+cmip6dict_parse_cv_nominal_resolution <- function(file) {
+    cmip6dict_parse_cv_vec(file, "CMIP6CV_Resolution")
+}
+
+cmip6dict_parse_cv_realm <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_Realm")
+}
+
+cmip6dict_parse_cv_required_global_attributes <- function(file) {
+    cmip6dict_parse_cv_vec(file, "CMIP6CV_ReqGlobAttr")
+}
+
+cmip6dict_parse_cv_source_id <- function(file) {
+    json <- jsonlite::read_json(file)
+    d <- cmip6dict_format_cv_nest(json[[1L]])
+
+    setcolorder(d, "source_id")
+
+    cols_lst <- c("activity_participation", "institution_id")
+    for (col in cols_lst) {
+        set(d, NULL, col, lapply(d[[col]], unlst))
+    }
+
+    cols_flat <- c("source_id", "release_year", "cohort", "label",
+        "label_extended")
     for (col in cols_flat) {
-        set(d$value, NULL, col, unlist(d$value[[col]], FALSE, FALSE))
+        set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
     }
 
     cols_int <- c("release_year")
     for (col in cols_int) {
-        set(d$value, NULL, col, as.integer(d$value[[col]]))
+        set(d, NULL, col, suppressWarnings(as.integer(d[[col]])))
     }
 
-    null_to_none <- function(x) if (is.null(x)) "none" else x
-    get_value <- function(l, name) vapply(l, function(x) null_to_none(x[[name]]), character(1))
-    set(d$value, NULL, "model_component",
-        lapply(d$value$model_component, function(comp) {
-            data.table(
-                name = names(comp),
-                description = get_value(comp, "description"),
-                native_nominal_resolution = get_value(comp, "native_nominal_resolution")
-            )
-        })
+    setcolorder(d, c(
+        "source_id", "release_year", "institution_id", "label", "label_extended",
+        "cohort", "activity_participation", "model_component", "license_info"
+    ))
+    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+
+    structure(d, class = c("CMIP6CV_SourceId", "CMIP6CV", class(d)))
+}
+
+cmip6dict_parse_cv_source_type <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_SourceType")
+}
+
+cmip6dict_parse_cv_sub_experiment_id <- function(file) {
+    cmip6dict_parse_cv_list(file, "CMIP6CV_SubExperimentId")
+}
+
+cmip6dict_parse_cv_table_id <- function(file) {
+    cmip6dict_parse_cv_vec(file, "CMIP6CV_TableId")
+}
+
+print_trunc <- function(x, n) {
+    d <- cli::cli_div(theme = list(
+        body = list(`padding-left` = 0L, `margin-left` = 0L)
+    ))
+    if (!is.data.frame(x)) {
+        total <- length(x)
+        if (n < total) {
+            cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
+        }
+    } else {
+        total <- nrow(x)
+        if (n < total) {
+            cli::cli_text()
+            cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
+        }
+    }
+    cli::cli_end(d)
+}
+
+print_list <- function(x, elem = "") {
+    if (!length(x)) return()
+
+    if (length(x) > 1L) {
+        cli::cli_li("{.strong {to_title_case(elem)}}:")
+        ul <- cli::cli_ul()
+        for (nm in names(x)) {
+            print_list(x[[nm]], nm)
+        }
+        cli::cli_end(ul)
+    } else {
+        cli::cli_li("{.strong {to_title_case(elem)}}: {.val {unlst(x)}}")
+    }
+}
+
+cmip6dict_print_cv_rule <- function(name) {
+    d <- cli::cli_div(
+        theme = list(rule = list("line-type" = "double"))
     )
+    cli::cli_rule("{.strong CMIP6CV {name}}", right = "{.strong CMIP6 Dictionary}")
+    cli::cli_end(d)
+}
+
+cmip6dict_print_cv_version <- function(cv, name = "") {
+    ver <- attr(cv, "version", TRUE)
+    if (is.null(ver) || !length(ver)) return(invisible(cv))
+
+    cli::cli_h1("<VERSION METADATA>")
+
+    d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
+    ul <- cli::cli_ul()
+    cli::cli_li("{.strong CV Version}: {.var {ver$CV_collection_version}}")
+    cli::cli_li("{.strong CV Modified}: {format(ver$CV_collection_modified, '%F %T %Z')}")
+    cli::cli_li("{.strong {name} Modified}: {format(ver$CV_modified, '%F %T %Z')}")
+    cli::cli_li("{.strong {name} Note}: {.val {ver$CV_note}}")
+    cli::cli_end(ul)
+    cli::cli_end(d)
+
+    invisible(cv)
+}
+
+cmip6dict_print_cv_vec <- function(cv, n = 5L) {
+    cli::cli_h1("<STORED TYPE>")
+    cli::cli_li("{.strong Stored type}: {.cls {typeof(cv)}}")
+
+    cli::cli_h1("<VALUES>")
+
+    n <- min(n, length(cv))
+    nms <- to_title_case(names(cv))
+
+    txt <- cli::cli_vec(unclass(cv), list(vec_trunc = n))
+    cli::cli_text("{.val {txt}}")
+
+    print_trunc(cv, n)
+
+    invisible(cv)
+}
+
+cmip6dict_print_cv_list <- function(cv, n = 5L, to_title = FALSE) {
+    cli::cli_h1("<STORED TYPE>")
+    cli::cli_li("{.strong Stored type}: {.cls list}")
+
+    cli::cli_h1("<VALUES>")
+
+    n <- min(n, length(cv))
+    nms <- names(cv)
+    if (to_title) nms <- to_title_case(nms)
+
+    d <- cli::cli_div(theme = list(
+        ul = list(`margin-left` = 0L, `padding-left` = 0L),
+        li = list(`margin-left` = 0L, `padding-left` = 2L)
+    ))
+    d <- cli::cli_div()
+    ul <- cli::cli_ul()
+    for (i in seq.int(n)) {
+        cli::cli_li("{.strong {nms[i]}}: {.val {unlst(cv[i])}}")
+    }
+    cli::cli_end(ul)
+    cli::cli_end(d)
+
+    print_trunc(cv, n)
+
+    invisible(cv)
+}
+
+cmip6dict_print_cv_table <- function(cv, n = 3L) {
+    n <- min(n, nrow(cv))
+    cols <- names(cv)
+
+    cli::cli_h1("<STORED TYPE>")
+    cli::cli_li("Stored type: {.cls data.table}")
+
+    cli::cli_h1("<VALUES>")
+    for (i in seq.int(n)) {
+        dt <- cv[i]
+        d <- cli::cli_div(theme = list(
+            h2 = list("margin-left" = 2L, "margin-bottom" = 0L), li = list("padding-left" = 2L)
+        ))
+        cli::cli_h2("[{to_title_case(cols[1])}: {.strong {.val {dt[[cols[1]]]}}}]")
+        ul <- cli::cli_ul()
+        for (col in cols[-1L]) {
+            if (is.list(dt[[col]][[1L]])) {
+                print_list(dt[[col]][[1L]], col)
+            } else {
+                cli::cli_li("{.strong {to_title_case(col)}}: {.val {unlst(dt[[col]])}}")
+            }
+        }
+        cli::cli_end(ul)
+        cli::cli_end(d)
+    }
+
+    print_trunc(cv, n)
+
+    invisible(cv)
+}
+
+#' @export
+print.CMIP6CV <- function(x, n = NULL, ...) {
+    cls <- sub("CMIP6CV_", "", class(x)[[1L]], fixed = TRUE)
+    if (is.null(n)) {
+        n <- if (is.data.frame(x)) 3L else if (is.list(x)) 5L else 10L
+    }
+    switch(cls,
+        "DRS" = {
+            cmip6dict_print_cv_rule("Data Reference Syntax (DRS)")
+            cmip6dict_print_cv_version(x, "DRS")
+            cmip6dict_print_cv_list(x, n, TRUE)
+        },
+        "ActivityId" = {
+            cmip6dict_print_cv_rule("Activity ID")
+            cmip6dict_print_cv_version(x, "ActivityId")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "ExperimentId" = {
+            cmip6dict_print_cv_rule("Experiment ID")
+            cmip6dict_print_cv_version(x, "ExperimentId")
+            cmip6dict_print_cv_table(x, n)
+        },
+        "Frequency" = {
+            cmip6dict_print_cv_rule("Frequency")
+            cmip6dict_print_cv_version(x, "Frequency")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "GridLabel" = {
+            cmip6dict_print_cv_rule("Grid Label")
+            cmip6dict_print_cv_version(x, "GridLabel")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "InstitutionId" = {
+            cmip6dict_print_cv_rule("Institution ID")
+            cmip6dict_print_cv_version(x, "InstitutionId")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "Resolution" = {
+            cmip6dict_print_cv_rule("Nominal Resolution")
+            cmip6dict_print_cv_version(x, "NominalResolution")
+            cmip6dict_print_cv_vec(x, n)
+        },
+        "Realm" = {
+            cmip6dict_print_cv_rule("Realm")
+            cmip6dict_print_cv_version(x, "Realm")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "ReqGlobAttr" = {
+            cmip6dict_print_cv_rule("Required Global Attributes")
+            cmip6dict_print_cv_version(x, "ReqGlobAttr")
+            cmip6dict_print_cv_vec(x, n)
+        },
+        "SourceId" = {
+            cmip6dict_print_cv_rule("Source ID")
+            cmip6dict_print_cv_version(x, "SourceId")
+            cmip6dict_print_cv_table(x, n)
+        },
+        "SourceType" = {
+            cmip6dict_print_cv_rule("Source Type")
+            cmip6dict_print_cv_version(x, "SourceType")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "SubExperimentId" = {
+            cmip6dict_print_cv_rule("Sub Experiment ID")
+            cmip6dict_print_cv_version(x, "SubExperimentId")
+            cmip6dict_print_cv_list(x, n)
+        },
+        "TableId" = {
+            cmip6dict_print_cv_rule("Table ID")
+            cmip6dict_print_cv_version(x, "TableId")
+            cmip6dict_print_cv_vec(x, n)
+        }
+    )
+
+    invisible(x)
+}
+
+cmip6dict_fetch_dreq_tag_latest <- function(token = NULL) {
+    cli::cli_progress_step(
+        "Fetching latest tag of {.strong CMIP6 DReq}...",
+        "Fetched latest tag of {.strong CMIP6 DReq} successfully.",
+        "Failed to fetched latest tag of {.strong CMIP6 DReq}.",
+        spinner = TRUE
+    )
+    gh_tags(REPO_DREQ, token)[[1L]]
+}
+
+cmip6dict_download_dreq_file <- function(tag, dir = tempdir(), token = NULL) {
+    cli::cli_progress_step(
+        "Downloading data of {.strong CMIP6 DReq}...",
+        "Downloaded data of {.strong CMIP6 DReq} successfully.",
+        "Failed to download data of {.strong CMIP6 DReq}.",
+        spinner = TRUE
+    )
+    zipball <- download_gh_tag(REPO_DREQ, tag, dir, token)
+
+    files <- unzip(zipball, exdir = dir)
+
+    files <- files[basename(dirname(files)) == "Tables"]
+    names(files) <- basename(files)
+
+    exclu <- c("CV", "coordinate", "formula_terms", "grids", "input_example")
+    files[!names(files) %in% sprintf("CMIP6_%s.json", exclu)]
+}
+
+cmip6dict_parse_dreq_header <- function(lst) {
+    res <- list()
+
+    # make sure the locale for time is set to "C"
+    ori <- Sys.getlocale("LC_TIME")
+    on.exit(Sys.setlocale("LC_TIME", ori), add = TRUE)
+    Sys.setlocale("LC_TIME", "C")
+
+    res$dreq_version <- numeric_version(lst$data_specs_version)
+    res$cmor_version <- numeric_version(lst$cmor_version)
+    res$table_id <- sub("Table ", "", lst$table_id, fixed = TRUE)
+    res$table_date <- as.Date(lst$table_date, format = "%d %b %Y")
+    res$realm <- lst$realm
+    res$dbl_missing_value <- as.double(lst$missing_value)
+    res$int_missing_value <- as.integer(lst$int_missing_value)
+    res$mip_era <- lst$mip_era
+    res$conventions <- lst$Conventions
+
+    res
+}
+
+cmip6dict_parse_dreq_file <- function(file) {
+    json <- jsonlite::read_json(file)
+    header <- cmip6dict_parse_dreq_header(json[["Header"]])
+
+    d <- cmip6dict_format_cv_nest(json[["variable_entry"]])
+    set(d, NULL, "variable", names(json[["variable_entry"]]))
+    setcolorder(d, "variable")
+
+    cols_flat <- names(d)
+    empty_to_na <- function(x) {x[x == ""] <- NA_character_; x}
+    for (col in cols_flat) {
+        set(d, NULL, col, empty_to_na(unlist(d[[col]], FALSE, FALSE)))
+    }
+
+    setattr(d, "metadata", header)
 
     d
 }
 
-cmip6dict_fetch_mip_table_latest_tag <- function() {
-    l <- readLines("http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/tags/", warn = FALSE)
-    re <- '(?<=href=")\\d{2}\\.\\d{2}\\.\\d{2}(?=/")'
-    m <- unlist(regmatches(l, regexec(re, l, perl = TRUE)))
-
-    vers <- do.call(c, lapply(m, as.numeric_version))
-    m[max(vers) == vers]
-}
-
-#' @importFrom readxl read_excel
-cmip6dict_fetch_mip_table <- function(tag, dir = tempdir()) {
-    checkmate::assert_directory_exists(dir, "w")
-
-    verbose("Fetching CMIP6 MIP Table...")
-    url <- sprintf("http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/tags/%s/dreqPy/docs/CMIP6_MIP_tables.xlsx", tag)
-    f <- file.path(dir, basename(url))
-    utils::download.file(url, f, mode = "wb", quiet = TRUE)
-
-    # parse version
-    notes <- readxl::read_excel(f, "Notes", skip = 1)
-    ver <- as.numeric_version(names(notes)[2L])
-
-    # parse table
-    sheets <- readxl::excel_sheets(f)[-1L]
-    l <- lapply(sheets, function(nm) {
-        d <- as.data.table(readxl::read_excel(f, nm))
-        set(d, NULL, "MIPs (by experiment)", strsplit(d[["MIPs (by experiment)"]], "\\s*,\\s*"))
-        set(d, NULL, "MIPs (requesting)", strsplit(d[["MIPs (requesting)"]], "\\s*,\\s*"))
-        setnames(d, gsub(")", "", fixed = TRUE, gsub(" (", "_", tolower(names(d)), fixed = TRUE)))
-        setnames(d, gsub(" ", "_", fixed = TRUE, names(d)))
-
-        set(d, NULL, "table_id", nm)
-        set(d, NULL, "default_priority", as.integer(d$default_priority))
-        setcolorder(d, "table_id")
-    })
-    d <- rbindlist(l, use.names = TRUE)
-
-    list(tag = tag, version = ver, value = d)
-}
-
-cmip6dict_fetch_cv_sha <- function() {
-    verbose("Fetching SHA1 of Controlled Vocabularies(CVs)...")
-
-    url_json <- "https://api.github.com/repos/WCRP-CMIP/CMIP6_CVs/git/trees/master"
-    q <- tryCatch(jsonlite::read_json(url_json), warning = function (w) w, error = function (e) e)
-
-    # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
-        message(sprintf("Failed to fetch CV json file '%s'. Please check network connection.", url_json))
-        return(data.table())
+cmip6dict_fetch_dreq <- function(tag = NULL, token = NULL) {
+    if (is.null(tag)) {
+        tag <- cmip6dict_fetch_dreq_tag_latest(token)$name
     }
-    #nocov end
+    files <- cmip6dict_download_dreq_file(tag)
 
-    res <- transpose_nested_list(q$tree)[-1L]
+    dreq <- lapply(files, cmip6dict_parse_dreq_file)
+    metadata <- lapply(dreq, attr, "metadata", TRUE)
 
-    d <- data.table(
-        file = basename(unlist(res$path, FALSE, FALSE)),
-        sha = unlist(res$sha, FALSE, FALSE)
+    for (nm in names(dreq)) {
+        set(dreq[[nm]], NULL, "table_id", metadata[[nm]][["table_id"]])
+    }
+
+    dreq <- rbindlist(dreq, use.names = TRUE)
+    setcolorder(dreq, c("variable", "table_id", "modeling_realm", "standard_name", "long_name"))
+    structure(dreq,
+        metadata = rbindlist(metadata, use.names = TRUE),
+        class = c("CMIP6DReq", class(dreq))
     )
-
-    types <- data.table(type = CV_TYPES, file = sprintf("CMIP6_%s.json", names(CV_TYPES)))
-
-    setcolorder(set(d[types, on = "file"], NULL, "file", NULL), "type")
 }
 
-cmip6dict_save <- function(version, cv_sha, req_tag, timestamps, tables, index, log, dir = getOption("epwshiftr.dir", ".")) {
-    val <- list(version = version, cv_sha = cv_sha, req_tag = req_tag,
-        timestamps = timestamps, tables = tables, index = index, log = log
+cmip6dict_print_dreq_rule <- function() {
+    d <- cli::cli_div(
+        theme = list(rule = list("line-type" = "double"))
     )
+    cli::cli_rule("{.strong CMIP6 Data Request}", right = "{.strong CMIP6 Dictionary}")
+    cli::cli_end(d)
+}
+
+cmip6dict_print_dreq_meta <- function(dreq) {
+    meta <- attr(dreq, "metadata", TRUE)
+    if (is.null(meta) || !length(meta)) return(invisible(dreq))
+
+    cli::cli_h1("<HEADER METADATA>")
+
+    d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
+    ul <- cli::cli_ul()
+    cli::cli_li("{.strong DReq Version}: {.var {meta$dreq_version[[1L]]}}")
+    cli::cli_li("{.strong CMOR Version}: {.var {meta$cmor_version[[1L]]}}")
+    cli::cli_li("{.strong MIP Era}: {.var {meta$mip_era[[1L]]}}")
+    cli::cli_li("{.strong Missing Value}:")
+    d2 <- cli::cli_div(theme = list(`li` = list(`margin-left` = 2L, `padding-left` = 2L)))
+    ul2 <- cli::cli_ul()
+    cli::cli_li("Real: {.var {meta$dbl_missing_value[[1L]]}}")
+    cli::cli_li("Int: {.var {meta$int_missing_value[[1L]]}}")
+    cli::cli_end(ul2)
+    cli::cli_end(d2)
+    cli::cli_li("{.strong Conventions}: {.var {meta$conventions[[1L]]}}")
+    cli::cli_li("{.var {nrow(dreq)}} Variables from {.var {length(unique(meta$table_id))}} Tables and {.var {length(unique(meta$realm))}} Realms")
+    cli::cli_end(ul)
+    cli::cli_end(d)
+
+    invisible(dreq)
+}
+
+#' @export
+print.CMIP6DReq <- function(x, n = 3L, ...) {
+    cmip6dict_print_dreq_rule()
+    cmip6dict_print_dreq_meta(x)
+    cmip6dict_print_cv_table(x, n)
+    invisible(x)
+}
+
+cmip6dict_save <- function(built_time, data, dir = getOption("epwshiftr.dir", ".")) {
+    dict <- list(cvs = data$cvs, dreq = data$dreq, built_time = built_time)
+
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
     f <- normalizePath(file.path(dir, "CMIP6DICT"), mustWork = FALSE)
-    saveRDS(val, f)
+    saveRDS(dict, f)
     f
 }
 
@@ -606,17 +923,16 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
 
     val <- readRDS(path)
 
-    for (nm in names(val$tables)) {
-        if (data.table::is.data.table(val$tables[[nm]])) {
-            data.table::setDT(val$tables[[nm]])
-        }
+    if (!identical(names(val), c("cvs", "dreq", "built_time"))) {
+        cli::cli_abort("Malformed format of {.file CMIP6DICT} found.")
     }
 
-    data.table::setDT(val$cv_sha)
-
-    if (!is.null(val$index)) {
-        data.table::setDT(val$index)
+    for (nm in names(val$cvs)) {
+        cls <- class(val$cvs[[nm]])
+        if (data.table::is.data.table(val$cvs[[nm]])) setDT(val$cvs[[nm]])
+        setattr(val$cvs[[nm]], "class", cls)
     }
+    setDT(val$dreq)
 
     val
 }

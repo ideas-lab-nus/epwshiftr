@@ -23,6 +23,12 @@ EPWSHIFTR_ENV <- new.env(parent = emptyenv())
 EPWSHIFTR_ENV$index_db <- NULL
 EPWSHIFTR_ENV$dict <- NULL
 
+## usethis namespace: start
+#' @importFrom checkmate assert_string
+#' @importFrom cli cli_rule
+#' @importFrom jsonlite parse_json
+## usethis namespace: end
+
 # nocov start
 # set package options
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R

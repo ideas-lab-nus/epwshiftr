@@ -1,4 +1,36 @@
-# verbose {{{
+# a little bit faster
+unlst <- function(x) unlist(x, FALSE, FALSE)
+
+trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
+
+# try only catches errors
+try_catch <- function(expr) {
+    tryCatch(
+        expr,
+        warning = function(w) w,
+        error = function(e) e
+    )
+}
+
+to_title_case <- function(x) {
+    sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
+}
+
+#' @importFrom jsonlite fromJSON
+read_json <- function(file) {
+    q <- try(jsonlite::fromJSON(file), silent = TRUE)
+
+    # nocov start
+    if (inherits(q, "warning") || inherits(q, "error")) {
+        cli::cli_abort(c(
+            x = "Failed to read JSON file '{file}'. Please check network connection."
+        ))
+    }
+    #nocov end
+
+    q
+}
+
 verbose <- function (..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
         cat(..., "\n", sep = sep)
@@ -12,7 +44,6 @@ no_verbose <- function(expr) {
     }
     force(expr)
 }
-# }}}
 
 priv_env <- function(x) x$.__enclos_env__$private
 `priv_env<-` <- function(x, name, value) {
@@ -20,7 +51,6 @@ priv_env <- function(x) x$.__enclos_env__$private
     x
 }
 
-# .data_dir {{{
 #' Get the package data storage directory
 #'
 #' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
@@ -66,32 +96,6 @@ priv_env <- function(x) x$.__enclos_env__$private
     }
 
     d
-}
-# }}}
-
-make_rule <- function(left, line = "-", right = "", width = getOption("width", 80L)) {
-    if (nchar(left) > 0L) {
-        left <- paste0(paste0(rep(line, 2L), collapse = ""), " ", left, " ")
-    } else {
-        left <- ""
-    }
-
-    if (nchar(right) > 0L) {
-        right <- paste0(" ", right, " ", paste0(rep(line, 2L), collapse = ""))
-    } else {
-        right <- ""
-    }
-
-    paste0(
-        left,
-        paste0(rep(line, width - nchar(left) - nchar(right)), collapse = ""),
-        right,
-        collapse = ""
-    )
-}
-
-cat_rule <- function(left, line = "-", right = "", width = getOption("width", 80L)) {
-    cat(make_rule(left, line, right, width), sep = "\n")
 }
 
 # get rid of R CMD check NOTEs on global variables

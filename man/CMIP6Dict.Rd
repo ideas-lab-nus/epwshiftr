@@ -9,24 +9,23 @@ cmip6_dict()
 }
 \description{
 The \code{CMIP6Dict} object provides functionalities to fetch the latested CMIP6
-Controlled Vocabularies (CVs) and Data Request information.
+Controlled Vocabularies (CVs) and Data Request (DReq) information.
 }
 \details{
 The CMIP6 CVs gives a well-defined set of global attributes that are recorded
 in each CMIP6 model output, providing information necessary for interpreting
-the data.
+the data. The data of CMIP6 CVs is stored as JSON files in the WCRP-CMIP
+\href{https://github.com/WCRP-CMIP/CMIP6_CVs}{GitHub Repo}.
 
-The CMIP6 Data Request defines all the quantities from CMIP6 simulations that
-should be archived. This includes both quantities of general interest needed
-from most of the CMIP6-endorsed model intercomparison projects (MIPs) and
+The CMIP6 DReq defines all the quantities from CMIP6 simulations that should
+be archived. This includes both quantities of general interest needed from
+most of the CMIP6-endorsed model intercomparison projects (MIPs) and
 quantities that are more specialized and only of interest to a single
-endorsed MIP.
-
-The data of CVs for use in CMIP6 is stored as JSON files in a
-\href{https://github.com/WCRP-CMIP/CMIP6_CVs}{GitHub Repo}, while the Data Request
-data is stored a Microsoft Excel file (\code{CMIP6_MIP_tables.xlsx}) in a
+endorsed MIP. The raw data of DReq is stored a Microsoft Excel file
+(\code{CMIP6_MIP_tables.xlsx}) in a
 \href{http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk}{Subversion repo}.
-\code{CMIP6Dict} object is able to fetch those files and parse them.
+The \code{CMIP6Dict} object uses the parsed DReq data that is stored in the
+\href{https://github.com/PCMDI/cmip6-cmor-tables}{GitHub Repo}.
 
 For more information, please see:
 \itemize{
@@ -55,22 +54,18 @@ dict$timestamp()
 # get the time when the dict was built
 dict$built_time()
 
-# check if there is updates of CVs and Data Request
-dict$update()
-
-# list the data of CVs
-dict$list("activity")
-dict$list("experiment")
-dict$list("sub_experiment")
-dict$list("institution")
-dict$list("source")
-dict$list("table")
-dict$list("frequency")
-dict$list("grid_label")
-dict$list("realm")
-dict$list("source_type")
-dict$list("req_global_atts")
-dict$list("variable")
+# get the data of CVs and DReq
+dict$get("activity_id")
+dict$get("experiment_id")
+dict$get("sub_experiment_id")
+dict$get("institution_id")
+dict$get("source_id")
+dict$get("table_id")
+dict$get("frequency")
+dict$get("grid_label")
+dict$get("realm")
+dict$get("source_type")
+dict$get("dreq")
 
 # save the dict object for later usage
 # default location is the value of global option "epwshiftr.dir"
@@ -90,21 +85,20 @@ Hongyuan Jia
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-version}{\code{CMIP6Dict$version()}}
-\item \href{#method-is_empty}{\code{CMIP6Dict$is_empty()}}
-\item \href{#method-timestamp}{\code{CMIP6Dict$timestamp()}}
-\item \href{#method-built_time}{\code{CMIP6Dict$built_time()}}
-\item \href{#method-build}{\code{CMIP6Dict$build()}}
-\item \href{#method-list}{\code{CMIP6Dict$list()}}
-\item \href{#method-update}{\code{CMIP6Dict$update()}}
-\item \href{#method-save}{\code{CMIP6Dict$save()}}
-\item \href{#method-load}{\code{CMIP6Dict$load()}}
-\item \href{#method-print}{\code{CMIP6Dict$print()}}
+\item \href{#method-CMIP6Dict-version}{\code{CMIP6Dict$version()}}
+\item \href{#method-CMIP6Dict-is_empty}{\code{CMIP6Dict$is_empty()}}
+\item \href{#method-CMIP6Dict-timestamp}{\code{CMIP6Dict$timestamp()}}
+\item \href{#method-CMIP6Dict-built_time}{\code{CMIP6Dict$built_time()}}
+\item \href{#method-CMIP6Dict-build}{\code{CMIP6Dict$build()}}
+\item \href{#method-CMIP6Dict-get}{\code{CMIP6Dict$get()}}
+\item \href{#method-CMIP6Dict-save}{\code{CMIP6Dict$save()}}
+\item \href{#method-CMIP6Dict-load}{\code{CMIP6Dict$load()}}
+\item \href{#method-CMIP6Dict-print}{\code{CMIP6Dict$print()}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-version"></a>}}
-\if{latex}{\out{\hypertarget{method-version}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-version"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-version}{}}}
 \subsection{Method \code{version()}}{
 Get the version of CVs and Data Request
 \subsection{Usage}{
@@ -114,21 +108,20 @@ Get the version of CVs and Data Request
 \subsection{Returns}{
 A list of two element:
 \itemize{
-\item \code{cv}: A \link{numeric_version} object giving the version of CVs
-\item \code{req}: A \link{numeric_version} object giving the version of Data
+\item \code{cvs}: A \link{numeric_version} object giving the version of CVs
+\item \code{dreq}: A \link{numeric_version} object giving the version of Data
 Request
 }
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-is_empty"></a>}}
-\if{latex}{\out{\hypertarget{method-is_empty}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-is_empty"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-is_empty}{}}}
 \subsection{Method \code{is_empty()}}{
 Is it an empty CMIP6Dict?
 
-\verb{$is_empty()} checks if this \code{CMIP6Dict} is empty, i.e. the
-\verb{$build()} or \verb{$load()} method hasn't been called yet and there is no
-data of CVs and Data Request.
+\verb{$is_empty()} checks if this \code{CMIP6Dict} is empty, i.e. the \verb{$build() } or \verb{$load()} method hasn't been called yet and there is no data of
+CVs and Data Request.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$is_empty()}\if{html}{\out{</div>}}
 }
@@ -138,8 +131,8 @@ A single logical value of \code{TRUE} or \code{FALSE}.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-timestamp"></a>}}
-\if{latex}{\out{\hypertarget{method-timestamp}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-timestamp"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-timestamp}{}}}
 \subsection{Method \code{timestamp()}}{
 Get the last modified time for CVs
 \subsection{Usage}{
@@ -149,25 +142,26 @@ Get the last modified time for CVs
 \subsection{Returns}{
 A list of 14 \link[=POSIXct]{DateTime}s:
 \itemize{
-\item \code{cv}: The last modified time for the whole CV collection
-\item \code{activity}: The last modified time for the CV \code{activity_id}
-\item \code{experiment}: The last modified time for the CV \code{experiment_id}
-\item \code{sub_experiment}: The last modified time for the CV \code{sub_experiment_id}
-\item \code{institution}: The last modified time for the CV \code{institution_id}
-\item \code{source}: The last modified time for the CV \code{source_id}
-\item \code{table}: The last modified time for the CV \code{table_id}
-\item \code{frequency}: The last modified time for the CV \code{frequency}
-\item \code{grid_label}: The last modified time for the CV \code{grid_label}
-\item \code{realm}: The last modified time for the CV \code{realm}
-\item \code{source_type}: The last modified time for the CV \code{source_type}
-\item \code{req_global_atts}: The last modified time for the CV
-\code{required_global_attributes}
+\item \code{"cvs"}: The last modified time for the whole CV collection
+\item \code{"drs"}: The last modified time for Data Reference Syntax (DRS)
+\item \code{"activity_id"}: The last modified time for Activity ID
+\item \code{"experiment_id"}: The last modified time for Experiment ID
+\item \code{"frequency"}: The last modified time for Frequency
+\item \code{"grid_label"}: The last modified time for Grid Label
+\item \code{"institution_id"}: The last modified time for Institution ID
+\item \code{"nominal_resolution"}: The last modified time for Nominal Resolution
+\item \code{"realm"}: The last modified time for Realm
+\item \code{"required_global_attributes"}: The last modified time for Required Global Attributes
+\item \code{"source_id"}: The last modified time for Source ID
+\item \code{"source_type"}: The last modified time for Source Type
+\item \code{"sub_experiment_id"}: The last modified time for Sub-Experiment ID
+\item \code{"table_id"}: The last modified time for Table ID
 }
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-built_time"></a>}}
-\if{latex}{\out{\hypertarget{method-built_time}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-built_time"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-built_time}{}}}
 \subsection{Method \code{built_time()}}{
 Get the time when the dictionary was built
 \subsection{Usage}{
@@ -179,8 +173,8 @@ A \link[=POSIXct]{DateTime}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-build"></a>}}
-\if{latex}{\out{\hypertarget{method-build}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-build"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-build}{}}}
 \subsection{Method \code{build()}}{
 Fetch and parse all data of CVs and Data Request
 \subsection{Usage}{
@@ -192,12 +186,12 @@ The updated \code{CMIP6Dict} itself.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-list"></a>}}
-\if{latex}{\out{\hypertarget{method-list}{}}}
-\subsection{Method \code{list()}}{
-List the data for a specific CV or Data Request
+\if{html}{\out{<a id="method-CMIP6Dict-get"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-get}{}}}
+\subsection{Method \code{get()}}{
+Get the data for a specific CV or Data Request
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$list(type)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$get(type)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -206,64 +200,42 @@ List the data for a specific CV or Data Request
 \item{\code{type}}{A single string indicating the type of data to list.
 Should be one of:
 \itemize{
-\item \code{"activity"}: The data of CV \code{activity_id}
-\item \code{"experiment"}: The data of CV \code{experiment_id}
-\item \code{"sub_experiment"}: The data of CV \code{sub_experiment_id}
-\item \code{"institution"}: The data of CV \code{institution_id}
-\item \code{"source"}: The data of CV \code{source_id}
-\item \code{"table"}: The data of CV \code{table_id}
-\item \code{"frequency"}: The data of CV \code{frequency}
-\item \code{"grid_label"}: The data of CV \code{grid_label}
-\item \code{"realm"}: The data of CV \code{realm}
-\item \code{"source_type"}: The data of CV \code{source_type}
-\item \code{"req_global_atts"}: The data of CV \code{required_global_attributes}
-\item \code{"variable"}: The data of Data Request
+\item \code{"drs"}: Data Reference Syntax (DRS)
+\item \code{"activity_id"}: Activity ID
+\item \code{"experiment_id"}: Experiment ID
+\item \code{"frequency"}: Frequency
+\item \code{"grid_label"}: Grid Label
+\item \code{"institution_id"}: Institution ID
+\item \code{"nominal_resolution"}: Nominal Resolution
+\item \code{"realm"}: Realm
+\item \code{"required_global_attributes"}: Required Global Attributes
+\item \code{"source_id"}: Source ID
+\item \code{"source_type"}: Source Type
+\item \code{"sub_experiment_id"}: Sub-Experiment ID
+\item \code{"table_id"}: Table ID
+\item \code{"dreq"}: Data Request
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-For \code{"activity"}, \code{"experiment"}, \code{"sub_experiment"}, \code{"institution"},
-\code{"source"}, \code{"frequency"}, \code{"grid_label"}, \code{"realm"} \code{"source_type"},
-and \code{"variable"}, a \link[data.table:data.table]{data.table} object giving
-the value of the corresponding CV, its description and other
-attributes.
+For \code{"drs"}, "activity_id"\verb{, }"frequency"\verb{, }"grid_label"\verb{, }"institution_id"\verb{, }"source_type"\code{and}"sub_experiment_id"`, a
+\link{list}.
 
-For \code{"table"} and \code{"req_global_atts"}, a character vector giving the
-value of the corresponding CV.
+For \code{"experiment_id"}, \code{"source_id"} and \code{"dreq"}, a \link{data.table}.
+
+For \code{"nominal_resolution"}, \code{"required_global_attributes"} and
+\code{"table_id"}, a \link{character} vector.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-update"></a>}}
-\if{latex}{\out{\hypertarget{method-update}{}}}
-\subsection{Method \code{update()}}{
-Update the data for a specific CV or Data Request if applicable
-
-For CVs, \verb{$update()} uses the GitHub RESTful API to fetch the SHA1
-value of each JSON file that stores the CV and compares it with the
-last fetched value. If any SHA1 is unmatched, the corresponding JSON
-file will be downloaded and parsed.
-
-For Data Request, \verb{$update()} fetches the latest tag of the Data
-Request Subversion repo and compares it with the last fetched value.
-If new tag is found, the corresponding \code{CMIP6_MIP_tables.xlsx}
-Microsoft Excel file will be downloaded and parsed.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$update()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-The \code{CMIP6Dict} object itself with updated data.
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-save"></a>}}
-\if{latex}{\out{\hypertarget{method-save}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-save"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-save}{}}}
 \subsection{Method \code{save()}}{
 Save the CMIP6Dict object
 
 \verb{$save()} stores all the core data of current \code{CMIP6Dict} object into
-a \link[=saveRDS]{RDS} file named \code{CMIP6DICT} in the specified folder.
+an \link[=saveRDS]{RDS} file named \code{CMIP6DICT} in the specified folder.
 This file can be reloaded via \verb{$load()} method to restore the last
 state of current \code{CMIP6Dict} object.
 \subsection{Usage}{
@@ -285,8 +257,8 @@ A single string giving the full path of the RDS file.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-load"></a>}}
-\if{latex}{\out{\hypertarget{method-load}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-load"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-load}{}}}
 \subsection{Method \code{load()}}{
 Load the saved CMIP6Dict object from file
 
@@ -314,8 +286,8 @@ A single string giving the full path of the RDS file.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-print"></a>}}
-\if{latex}{\out{\hypertarget{method-print}{}}}
+\if{html}{\out{<a id="method-CMIP6Dict-print"></a>}}
+\if{latex}{\out{\hypertarget{method-CMIP6Dict-print}{}}}
 \subsection{Method \code{print()}}{
 Print a summary of the current \code{CMIP6Dict} object
 
