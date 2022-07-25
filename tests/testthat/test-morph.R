@@ -11,9 +11,9 @@ test_that("monthly_mean()", {
         epw$add_unit()
         d <- epw$data()
         expect_is(res1 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
-        expect_equal(nrow(res1), 12L)
-        expect_equal(names(res1), c("month", "val_mean", "val_max", "val_min"))
-        expect_equal(res1$month, 1:12)
+        expect_identical(nrow(res1), 12L)
+        expect_named(res1, c("month", "val_mean", "val_max", "val_min"))
+        expect_identical(res1$month, 1L:12L)
         expect_is(res1$val_mean, "units")
         expect_is(res1$val_max, "units")
         expect_is(res1$val_min, "units")
@@ -21,9 +21,9 @@ test_that("monthly_mean()", {
         epw$drop_unit()
         d <- epw$data()
         expect_is(res2 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
-        expect_equal(nrow(res2), 12L)
-        expect_equal(names(res2), c("month", "val_mean", "val_max", "val_min"))
-        expect_equal(res2$month, 1:12)
+        expect_identical(nrow(res2), 12L)
+        expect_named(res2, c("month", "val_mean", "val_max", "val_min"))
+        expect_identical(res2$month, 1L:12L)
         expect_is(res2$val_mean, "numeric")
         expect_is(res2$val_max, "numeric")
         expect_is(res2$val_min, "numeric")
@@ -40,26 +40,26 @@ test_that("preprocess_morphing()", {
         d <- fst::read_fst(path, as.data.table = TRUE)
 
         expect_warning(res <- preprocess_morphing(d, warning = TRUE), "less than a decade")
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month",
               "interval"
             )
         )
-        expect_equal(nrow(res), 12L)
+        expect_identical(nrow(res), 12L)
         expect_is(res$interval, "factor")
 
         # can stop if specified years were not found
-        expect_error(preprocess_morphing(d, years = 2059:2061), "does not contain any data")
+        expect_error(preprocess_morphing(d, years = 2059L:2061L), "does not contain any data")
 
-        expect_is(res <- preprocess_morphing(d, years = 2060, labels = as.factor("2060s")), "data.table")
-        expect_equal(names(res),
+        expect_is(res <- preprocess_morphing(d, years = 2060L, labels = as.factor("2060s")), "data.table")
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month",
               "interval"
             )
         )
-        expect_equal(nrow(res), 12L)
+        expect_identical(nrow(res), 12L)
         expect_is(res$interval, "factor")
     }
 })
@@ -95,7 +95,7 @@ test_that("morphing_from_mean()", {
                 type = "shift"
             )
         )
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
@@ -116,7 +116,7 @@ test_that("morphing_from_mean()", {
                 type = "shift"
             )
         )
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
@@ -136,7 +136,7 @@ test_that("morphing_from_mean()", {
                 type = "combined"
             )
         )
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
@@ -156,7 +156,7 @@ test_that("morphing_from_mean()", {
                 type = "combined"
             )
         )
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
@@ -176,7 +176,7 @@ test_that("morphing_from_mean()", {
                 type = "combined"
             )
         )
-        expect_equal(names(res),
+        expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "interval", "datetime",
               "year", "month", "day", "hour", "minute", "dry_bulb_temperature",
@@ -223,100 +223,107 @@ test_that("morphing_epw()", {
         # can still process if no data found
         d$data[, variable := "tas-1"]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(names(res),
+        expect_named(res,
             c("epw", "tdb", "tdew", "rh", "p", "hor_ir", "glob_rad", "norm_rad",
               "diff_rad", "wind", "total_cover", "opaque_cover"
             )
         )
         expect_is(res$epw, "Epw")
-        expect_equal(res$tdb, data.table())
-        expect_equal(res$tdew, data.table())
-        expect_equal(res$rh, data.table())
-        expect_equal(res$p, data.table())
-        expect_equal(res$hor_ir, data.table())
-        expect_equal(res$glob_rad, data.table())
-        expect_equal(res$norm_rad, data.table())
-        expect_equal(res$diff_rad, data.table())
-        expect_equal(res$wind, data.table())
-        expect_equal(res$total_cover, data.table())
-        expect_equal(res$opaque_cover, data.table())
+        expect_identical(res$tdb, data.table())
+        expect_identical(res$tdew, data.table())
+        expect_identical(res$rh, data.table())
+        expect_identical(res$p, data.table())
+        expect_identical(res$hor_ir, data.table())
+        expect_identical(res$glob_rad, data.table())
+        expect_identical(res$norm_rad, data.table())
+        expect_identical(res$diff_rad, data.table())
+        expect_identical(res$wind, data.table())
+        expect_identical(res$total_cover, data.table())
+        expect_identical(res$opaque_cover, data.table())
 
         d$data[, variable := "tas-1"]
         expect_is(res <- morphing_epw(d, 2060L, methods = c(tdb = "shift")), "epw_cmip6_morphed")
-        expect_equal(names(res),
+        expect_named(res,
             c("epw", "tdb", "tdew", "rh", "p", "hor_ir", "glob_rad", "norm_rad",
               "diff_rad", "wind", "total_cover", "opaque_cover"
             )
         )
         expect_is(res$epw, "Epw")
-        expect_equal(res$tdb, data.table())
-        expect_equal(res$tdew, data.table())
-        expect_equal(res$rh, data.table())
-        expect_equal(res$p, data.table())
-        expect_equal(res$hor_ir, data.table())
-        expect_equal(res$glob_rad, data.table())
-        expect_equal(res$norm_rad, data.table())
-        expect_equal(res$diff_rad, data.table())
-        expect_equal(res$wind, data.table())
-        expect_equal(res$total_cover, data.table())
-        expect_equal(res$opaque_cover, data.table())
+        expect_identical(res$tdb, data.table())
+        expect_identical(res$tdew, data.table())
+        expect_identical(res$rh, data.table())
+        expect_identical(res$p, data.table())
+        expect_identical(res$hor_ir, data.table())
+        expect_identical(res$glob_rad, data.table())
+        expect_identical(res$norm_rad, data.table())
+        expect_identical(res$diff_rad, data.table())
+        expect_identical(res$wind, data.table())
+        expect_identical(res$total_cover, data.table())
+        expect_identical(res$opaque_cover, data.table())
 
         # can morph tas
         d$data[, variable := "tas"]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$tdb), 8760L)
-        expect_equal(nrow(res$tdew), 0L)
+        expect_identical(nrow(res$tdb), 8760L)
+        expect_identical(nrow(res$tdew), 0L)
 
         # can morph rh
         d$data[, `:=`(variable = "hurs", value = 80, units = "%")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$rh), 8760L)
-        expect_equal(nrow(res$tdew), 0L)
+        expect_identical(nrow(res$rh), 8760L)
+        expect_identical(nrow(res$tdew), 0L)
 
         # can calculate tdew
         d$data <- rbindlist(list(
             data_mean, copy(data_mean)[, `:=`(variable = "hurs", value = 80, units = "%")]
         ))
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$tdb), 8760L)
-        expect_equal(nrow(res$rh), 8760L)
-        expect_equal(nrow(res$tdew), 8760L)
+        expect_identical(nrow(res$tdb), 8760L)
+        expect_identical(nrow(res$rh), 8760L)
+        expect_identical(nrow(res$tdew), 8760L)
 
         # can morph pa
         d$data <- copy(data_mean)[, `:=`(variable = "psl", value = 101300, units = "Pa")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$p), 8760L)
+        expect_identical(nrow(res$p), 8760L)
 
         # can morph hor_ir
         d$data <- copy(data_mean)[, `:=`(variable = "rlds", value = 400, units = "W/m^2")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$hor_ir), 8760L)
+        expect_identical(nrow(res$hor_ir), 8760L)
 
         # can morph global_rad, calculate diff_rad and norm_rad
         d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 300, units = "W/m^2")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$glob_rad), 8760L)
-        expect_equal(nrow(res$diff_rad), 8760L)
-        expect_equal(nrow(res$norm_rad), 8760L)
-        expect_equal(morphing_diff_rad(data_epw, data.table()), data.table())
-        expect_equal(morphing_norm_rad(data_epw, data.table()), data.table())
+        expect_identical(nrow(res$glob_rad), 8760L)
+        expect_identical(nrow(res$diff_rad), 8760L)
+        expect_identical(nrow(res$norm_rad), 8760L)
+        expect_identical(morphing_diff_rad(data_epw, data.table()), data.table())
+        expect_identical(morphing_norm_rad(data_epw, data.table()), data.table())
 
         # can morph wind speed
         d$data <- copy(data_mean)[, `:=`(variable = "sfcWind", value = 1, units = "m/s")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$wind), 8760L)
+        expect_identical(nrow(res$wind), 8760L)
 
         # can morph total sky cover and opaque sky cover
         d$data <- copy(data_mean)[, `:=`(variable = "clt", value = 80, units = "%")]
         expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
-        expect_equal(nrow(res$total_cover), 8760L)
-        expect_equal(nrow(res$opaque_cover), 8760L)
-        expect_equal(morphing_total_sky_cover(data_epw, data.table()), data.table())
-        expect_equal(morphing_opaque_sky_cover(data_epw, data.table()), data.table())
+        expect_identical(nrow(res$total_cover), 8760L)
+        expect_identical(nrow(res$opaque_cover), 8760L)
+        expect_identical(morphing_total_sky_cover(data_epw, data.table()), data.table())
+        expect_identical(morphing_opaque_sky_cover(data_epw, data.table()), data.table())
 
         # can issue warnings if alpha values are too big
         d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 1000, units = "W/m^2")]
         expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+
+        thres_alpha <- getOption("epwshiftr.threshold_alpha")
+        options("epwshiftr.threshold_alpha" = NULL)
+        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        options("epwshiftr.threshold_alpha" = -1L)
+        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        options("epwshiftr.threshold_alpha" = thres_alpha)
     }
 })
 
@@ -346,8 +353,8 @@ test_that("future_epw()", {
         morphed <- morphing_epw(d, 2060L)
         expect_warning(res <- future_epw(morphed, dir = file.path(tempdir(), "future_epw"), overwrite = TRUE))
         expect_is(res, "list")
-        expect_equal(length(res), 1L)
-        expect_is(res[[1]], "Epw")
+        expect_identical(length(res), 1L)
+        expect_is(res[[1L]], "Epw")
         expect_true(file.exists(file.path(
             tempdir(), "future_epw",
             "ssp585",
@@ -359,7 +366,7 @@ test_that("future_epw()", {
         # can get full summary of future EPWs
         expect_warning(res <- future_epw(morphed, dir = file.path(tempdir(), "future_epw"), overwrite = TRUE, separate = FALSE, full = TRUE))
         expect_is(res, "data.table")
-        expect_equal(names(res), c("experiment_id", "source_id", "interval", "epw", "path"))
+        expect_named(res, c("experiment_id", "source_id", "interval", "epw", "path"))
         expect_true(file.exists(file.path(
             tempdir(), "future_epw",
             "SGP_Singapore.486980_IWEC.ssp585.EC-Earth3.2060.epw"

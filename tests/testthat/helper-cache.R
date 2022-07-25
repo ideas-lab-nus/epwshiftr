@@ -10,8 +10,8 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     # download weather
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(cache, file)
-    if (!file.exists(path)) {
-        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1)
+    if (!file.exists(epw)) {
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1L)
     }
 
     # download NetCDF
@@ -22,8 +22,8 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
                 idx <- load_cmip6_index()
             } else {
                 idx <- init_cmip6_index(
-                    variable = "tas", source = "EC-Earth3", years = 2060,
-                    experiment = "ssp585", limit = 1, save = TRUE
+                    variable = "tas", source = "EC-Earth3", years = 2060L,
+                    experiment = "ssp585", limit = 1L, save = TRUE
                 )
             }
 
@@ -31,6 +31,9 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
             for (f in idx$file_url) {
                 dest <- file.path(cache, basename(f))
                 if (!file.exists(dest)) {
+                    old <- getOption("timeout")
+                    options(timeout = 60L * 100L)
+                    on.exit(options(timeout = old), add = TRUE)
                     flag <- download.file(f, dest, mode = "wb")
                 }
             }

@@ -1,12 +1,18 @@
-# verbose {{{
+# a little bit faster
+unlst <- function(x) unlist(x, FALSE, FALSE)
+
+trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
+
+to_title_case <- function(x) {
+    sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
+}
+
 verbose <- function (..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
         cat(..., "\n", sep = sep)
     }
 }
-# }}}
 
-# .data_dir {{{
 #' Get the package data storage directory
 #'
 #' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
@@ -53,7 +59,6 @@ verbose <- function (..., sep = "") {
 
     d
 }
-# }}}
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
@@ -74,5 +79,6 @@ utils::globalVariables(c(
     "val_max", "val_mean", "val_min", "value", "value_max", "value_min",
     "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
     "interval", "time_calendar", "time_units", "overlap", "frequency",
-    "ind_lon", "ind_lat", "ord_lon", "ord_lat", "dist"
+    "ind_lon", "ind_lat", "ord_lon", "ord_lat", "dist", "num_years", "type",
+    "year"
 ))
