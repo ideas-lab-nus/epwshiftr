@@ -10,6 +10,12 @@
 #'
 #' * `epwshiftr.verbose`: If `TRUE`, more detailed message will be printed.
 #'   Default: `FALSE`.
+#' * `epwshiftr.threshold_alpha`: the threshold of the absolute value for alpha,
+#'   i.e. monthly-mean fractional change, when performing morphing operations.
+#'   The default value is set to `3`. If the morphing methods are set
+#'   `"stretch"` or `"combined"`, and the absolute alpha exceeds the threshold
+#'   value, warnings are issued and the morphing method is fallbacked to
+#'   `"shift"` to avoid unrealistic morphed values.
 #' * `epwshiftr.dir`: The directory to store package data, including CMIP6
 #'   model output file index and etc. If not set, the current user data
 #'   directory will be used.
