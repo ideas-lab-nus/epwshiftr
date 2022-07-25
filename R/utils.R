@@ -3,52 +3,14 @@ unlst <- function(x) unlist(x, FALSE, FALSE)
 
 trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
 
-# try only catches errors
-try_catch <- function(expr) {
-    tryCatch(
-        expr,
-        warning = function(w) w,
-        error = function(e) e
-    )
-}
-
 to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
-}
-
-#' @importFrom jsonlite fromJSON
-read_json <- function(file) {
-    q <- try(jsonlite::fromJSON(file), silent = TRUE)
-
-    # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
-        cli::cli_abort(c(
-            x = "Failed to read JSON file '{file}'. Please check network connection."
-        ))
-    }
-    #nocov end
-
-    q
 }
 
 verbose <- function (..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
         cat(..., "\n", sep = sep)
     }
-}
-no_verbose <- function(expr) {
-    vb <- getOption("epwshiftr.verbose", FALSE)
-    if (vb) {
-        options("epwshiftr.verbose" = FALSE)
-        on.exit(options(epwshiftr.verbose = vb), add = TRUE)
-    }
-    force(expr)
-}
-
-priv_env <- function(x) x$.__enclos_env__$private
-`priv_env<-` <- function(x, name, value) {
-    x$.__enclos_env__$private[[name]] <- value
-    x
 }
 
 #' Get the package data storage directory
