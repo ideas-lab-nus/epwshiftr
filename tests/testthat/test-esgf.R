@@ -2,7 +2,7 @@ test_that("esgf_query()", {
     options(epwshiftr.verbose = FALSE)
     # Dataset query
     expect_is(
-        qd <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1),
+        qd <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L),
         "data.table"
     )
 
@@ -23,7 +23,7 @@ test_that("esgf_query()", {
               "variant_label:\"r1i1p1f1\""
             ) %in% fq_qd)
         )
-        expect_equal(names(qd),
+        expect_named(qd,
             c(
                 "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
                 "experiment_id", "member_id", "table_id", "frequency", "grid_label",
@@ -35,7 +35,7 @@ test_that("esgf_query()", {
 
     # File query
     expect_is(
-        qf <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1, type = "File"),
+        qf <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L, type = "File"),
         "data.table"
     )
 
@@ -56,7 +56,7 @@ test_that("esgf_query()", {
               "variant_label:\"r1i1p1f1\""
             ) %in% fq_qf)
         )
-        expect_equal(names(qf),
+        expect_named(qf,
             c(
                 "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
                 "source_id", "experiment_id", "member_id", "table_id", "frequency", 
@@ -164,9 +164,9 @@ test_that("get_data_dir()", {
     skip_on_cran()
     .data_dir(TRUE)
     if (.Platform$OS.type == "windows") {
-        expect_equal(get_data_dir(), normalizePath(user_data_dir(appauthor = "epwshiftr")))
+        expect_identical(get_data_dir(), normalizePath(user_data_dir(appauthor = "epwshiftr")))
     } else {
-        expect_equal(get_data_dir(), normalizePath(user_data_dir(appname = "epwshiftr")))
+        expect_identical(get_data_dir(), normalizePath(user_data_dir(appname = "epwshiftr")))
     }
 })
 
@@ -174,9 +174,9 @@ test_that("get_data_node()", {
     skip_on_cran()
 
     expect_is(node <- get_data_node(), "data.table")
-    expect_equal(names(node), c("data_node", "status"))
+    expect_named(node, c("data_node", "status"))
 
     # can test speed using pingr
     expect_is(node <- get_data_node(TRUE, 1), "data.table")
-    expect_equal(names(node), c("data_node", "status", "ping"))
+    expect_named(node, c("data_node", "status", "ping"))
 })

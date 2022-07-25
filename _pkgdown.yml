@@ -9,7 +9,33 @@ authors:
 development:
   model: auto
 
+navbar:
+  structure:
+    left:  [home, articles, reference, news]
+    right: [github]
+  components:
+    home:
+      icon: fas fa-home fa-lg
+      href: index.html
+    articles:
+      text: Articles
+      menu:
+      - text: "Manage CMIP6 CVs and Data Request"
+        href: articles/cmip6_dict.html
+    reference:
+      text: Manual
+      href: reference/index.html
+    news:
+      text: News
+      href: news/index.html
+    github:
+      icon: fa-github fa-lg
+      href: https://github.com/ideas-lab-nus/epwshiftr
+
 reference:
+  - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
+    contents:
+      - CMIP6Dict
   - title: CMIP6 Index
     desc: Build CMIP6 output index
     contents:
