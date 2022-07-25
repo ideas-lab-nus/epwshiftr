@@ -617,7 +617,6 @@ cmip6dict_print_cv_rule <- function(name) {
 
 cmip6dict_print_cv_version <- function(cv, name = "") {
     ver <- attr(cv, "version", TRUE)
-    if (is.null(ver) || !length(ver)) return(invisible(cv))
 
     cli::cli_h1("<VERSION METADATA>")
 
@@ -884,7 +883,6 @@ cmip6dict_print_dreq_rule <- function() {
 
 cmip6dict_print_dreq_meta <- function(dreq) {
     meta <- attr(dreq, "metadata", TRUE)
-    if (is.null(meta) || !length(meta)) return(invisible(dreq))
 
     cli::cli_h1("<HEADER METADATA>")
 

@@ -18,7 +18,7 @@ test_that("$build() and $save()", {
 
 test_that("$load()", {
     dict <- cmip6_dict()
-    expect_is(dict$load("."), "CMIP6Dict")
+    expect_message(dict$load(file.path(tempdir(), "not_exists")))
 
     empty_dir <- file.path(tempdir(), "empty")
     if (!dir.exists(empty_dir)) dir.create(empty_dir)
