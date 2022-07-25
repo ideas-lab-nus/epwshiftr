@@ -54,13 +54,13 @@ For more information, please see:
 
 # Introduce the `CMIP6Dict` class
 
-epwshiftr provides a `CMIP6Dict` class to help you fetch, parse and store CMIP6
-CVs and Data Request.
+{epwshiftr} provides a `CMIP6Dict` class to help you fetch, parse and store
+CMIP6 CVs and Data Request.
 
 ## Create a `CMIP6Dict` object
 
 You can create a new `CMIP6Dict` object using the `cmip6_dict()` function. It
-takes no argument and simply returns an empty `CMIP6Dict`.
+takes no argument and simply returns an empty `CMIP6Dict` object.
 
 > It is an [R6](https://r6.r-lib.org/) object with reference semantics. All
 > methods in an `R6` object can be invoked using the `$method_name()` style.
@@ -82,21 +82,27 @@ dict$is_empty()
 After created, you can use `$build()` to fetch all data of CMIP6 CVs and Data
 Request.
 
-Currently, the supproted CVs are:
+The GitHub RESTful APIs are used to to fetch the latest tag of CVs and Data
+Request. You can specify your GitHub token by specifying the `token` argument in
+`$build()`. By default, it will uses `GITHUB_PAT` or `GITHUB_TOKEN` environment
+variable if exists.
 
+Currently, all supproted CVs are:
+
+1. `drs`: Data Reference Syntax (DRS).
 1. `activity_id`: Activity identifiers, e.g. `HighResMIP`, `ScenarioMIP`.
 1. `experiment_id`: Root experiment identifiers, e.g. `historical`, `ssp126`.
-1. `sub_experiment_id`: Description of sub-experiment, e.g. `none`, `s1960`.
-1. `institution_id`: Institution identifiers, e.g. `AWI`, `CAS`.
-1. `source_id`: Model identifiers, e.g. `GFDL-CM2-1`, `ACCESS-CM2`.
-1. `source_type`: Model configurations, e.g. `AGCM`, `OGCM`.
-1. `table_id`: Table identifiers, e.g. `Amon`, `Oday`.
 1. `frequency`: Sampling frequencies, e.g. `mon`, `day`.
 1. `grid_label`: Grid identifiers, e.g. `gn`, `gr`.
-1. `realm`: Realms where variables are defined, e.g. `atmos`, `ocean`.
+1. `institution_id`: Institution identifiers, e.g. `AWI`, `CAS`.
 1. `nominal_resolution`: Approximate horizontal resolutions, e.g. `50 km`, `100
    km`.
+1. `realm`: Realms where variables are defined, e.g. `atmos`, `ocean`.
 1. `required_global_attributes`: Names of required global attributes.
+1. `source_id`: Model identifiers, e.g. `GFDL-CM2-1`, `ACCESS-CM2`.
+1. `source_type`: Model configurations, e.g. `AGCM`, `OGCM`.
+1. `sub_experiment_id`: Description of sub-experiment, e.g. `none`, `s1960`.
+1. `table_id`: Table identifiers, e.g. `Amon`, `Oday`.
 
 ```{r}
 dict$build()
@@ -105,7 +111,7 @@ dict$is_empty()
 
 You can get the version of the CV collection and Data Request using `$version()`
 method. It returns a list of two `numeric_version`s giving you the current
-version of fetched CV collection (`cv`) and Data Request (`req`):
+version of fetched CV collection (`cvs`) and Data Request (`dreq`):
 
 ```{r}
 dict$version()
@@ -117,98 +123,70 @@ last_built <- dict$built_time()
 last_built
 ```
 
-The last modified time for each CV can be retrieved using the `$timestamp()`
-method:
+The last modified time of the CV collection and each CV can be retrieved using
+the `$timestamp()` method:
 
 ```{r}
 dict$timestamp()
 ```
 
-The names of CVs have been abbreviated to make the output cleaner. Below is the
-mapping:
-
-1. `activity_id` -> `activity`
-1. `experiment_id` -> `experiment`
-1. `sub_experiment_id` -> `sub_experiment`
-1. `institution_id` -> `institution`
-1. `source_id` -> `source`
-1. `table_id` -> `table`
-1. `nominal_resolution` -> `resolution`
-1. `required_global_attributes` -> `req_global_atts`
-
-You can use `$update()` to check if there are any updates in CVs and Data
-Request. For CVs, `$update()` uses the GitHub RESTful API to fetch the SHA1
-value of each JSON file that stores the CV and compares it with the last fetched
-value. If any SHA1 is unmatched, the corresponding JSON file will be downloaded
-and parsed. For Data Request, `$update()` fetches the latest tag of the Data
-Request Subversion repo and compares it with the last fetched value.  If new tag
-is found, the corresponding `CMIP6_MIP_tables.xlsx` Microsoft Excel file will be
-downloaded and parsed.
-
-```{r}
-dict$update()
-```
-
 ## Extract CV and Data Request data
 
-The CV and Data Request data can be extracted using the `$list(type)` method,
+The CV and Data Request data can be extracted using the `$get(type)` method,
 where `type` is the data type of interest. For Data Request, you can use
-`"variable"` as the type name.
+`"dreq"` as the type name.
 
-A `data.table` object is returned which contains the value, the description and
-other attributes for Data Request and CVs below:
+The returned data type are:
+1. For type `"drs"`, "activity_id"`, `"frequency"`, `"grid_label"`,
+   `"institution_id"`, `"source_type"` and `"sub_experiment_id"`, a [list].
 
-1. `activity_id`
-1. `experiment_id`
-1. `sub_experiment_id`
-1. `institution_id`
-1. `source_id`
-1. `frequency`
-1. `grid_label`
-1. `realm`
-1. `source_type`
+1. For type `"experiment_id"`, `"source_id"` and `"dreq"`, a [data.table].
+
+1. For `"nominal_resolution"`, `"required_global_attributes"` and `"table_id"`,
+   a [character] vector.
 
 ```{r}
 # Data Request
-dict$list("variable")
+dict$get("dreq")
+
+# DRS
+dict$get("drs")
 
 # activity_id
-dict$list("activity")
+dict$get("activity_id")
 
 # experiment_id
-dict$list("experiment")
-
-# sub_experiment_id
-dict$list("sub_experiment")
-
-# institution_id
-dict$list("institution")
-
-# source_id
-dict$list("source")
+dict$get("experiment_id")
 
 # frequency
-dict$list("frequency")
+dict$get("frequency")
 
 # grid_label
-dict$list("grid_label")
+dict$get("grid_label")
+
+# institution_id
+dict$get("institution_id")
+
+# nominal_resolution
+dict$get("nominal_resolution")
 
 # realm
-dict$list("realm")
-
-# source_type
-dict$list("source_type")
-```
-
-For `table` and `required_global_attributes`, a character vector giving the
-value of the corresponding CV.
-
-```{r}
-# table_id
-dict$list("table")
+dict$get("realm")
 
 # required_global_attributes
-dict$list("req_global_atts")
+dict$get("required_global_attributes")
+
+# source_id
+dict$get("source_id")
+
+# source_type
+dict$get("source_type")
+
+# sub_experiment_id
+dict$get("sub_experiment_id")
+
+# table_id
+dict$get("table_id")
 ```
 
 ## Store and reuse the `CMIP6Dict` object
