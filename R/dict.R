@@ -206,6 +206,10 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'
         #' @return A single string giving the full path of the RDS file.
         save = function(dir = getOption("epwshiftr.dir", ".")) {
+            if (self$is_empty()) {
+                cli::cli_warn(c("!" = "Saving an empty CMIP6 Dictionary object. You may want to build the dictionary first by running `$build()` and call `$save()` again."))
+            }
+
             cmip6dict_save(
                 private$m_built_time,
                 private$m_data,
@@ -232,7 +236,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
             dict <- cmip6dict_load(dir)
 
             if (is.null(dict)) {
-                cli::cli_alert_info("Failed to find file {.file CMIP6DICT} at {normalizePath(dir, mustWork = FALSE)}. Skip loading")
+                cli::cli_alert_info("Failed to find file {.file CMIP6DICT} at {.path {normalizePath(dir, mustWork = FALSE)}}. Skip loading.")
                 return(self)
             }
 
@@ -928,7 +932,7 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
     val <- readRDS(path)
 
     if (!identical(names(val), c("cvs", "dreq", "built_time"))) {
-        cli::cli_abort("Malformed format of {.file CMIP6DICT} found.")
+        cli::cli_abort(c(x = "Malformed format of {.file CMIP6DICT} found."))
     }
 
     for (nm in names(val$cvs)) {

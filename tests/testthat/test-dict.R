@@ -7,10 +7,22 @@ test_that("$build() and $save()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
+    expect_warning(dict$save())
 
     expect_is(dict$build(), "CMIP6Dict")
 
     expect_true(file.exists(dict$save(test_path())))
+    # can create dir if not exists
+    expect_true(file.exists(dict$save(file.path(tempdir(), "abc"))))
+})
+
+test_that("$load()", {
+    dict <- cmip6_dict()
+    dict$load(".")
+
+    empty <- file.path(tempdir(), "empty", "CMIP6DICT")
+    saveRDS(list(), empty)
+    expect_error(dict$load(dirname(empty)))
 })
 
 test_that("$version()", {
@@ -81,12 +93,14 @@ test_that("$get()", {
         unique(vapply(dict$get("drs"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("drs"))
 
     expect_is(dict$get("activity_id"), "list")
     expect_identical(
         unique(vapply(dict$get("activity_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("activity_id"))
 
     expect_is(dict$get("experiment_id"), "data.table")
     expect_identical(
@@ -100,38 +114,45 @@ test_that("$get()", {
             additional_allowed_model_components = "list"
         )
     )
+    expect_message(dict$get("experiment_id"))
 
     expect_is(dict$get("frequency"), "list")
     expect_identical(
         unique(vapply(dict$get("frequency"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("frequency"))
 
     expect_is(dict$get("grid_label"), "list")
     expect_identical(
         unique(vapply(dict$get("grid_label"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("grid_label"))
 
     expect_is(dict$get("institution_id"), "list")
     expect_identical(
         unique(vapply(dict$get("institution_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("institution_id"))
 
     expect_is(dict$get("nominal_resolution"), "character")
     expect_identical(
         unique(vapply(dict$get("nominal_resolution"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("nominal_resolution"))
 
     expect_is(dict$get("realm"), "list")
     expect_identical(
         unique(vapply(dict$get("realm"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("realm"))
 
     expect_is(dict$get("required_global_attributes"), "character")
+    expect_message(dict$get("required_global_attributes"))
 
     expect_is(dict$get("source_id"), "data.table")
     expect_identical(
@@ -142,24 +163,34 @@ test_that("$get()", {
             activity_participation = "list", model_component = "list", license_info = "list"
         )
     )
+    expect_message(dict$get("source_id"))
 
     expect_is(dict$get("source_type"), "list")
     expect_identical(
         unique(vapply(dict$get("realm"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("source_type"))
 
     expect_is(dict$get("sub_experiment_id"), "list")
     expect_identical(
         unique(vapply(dict$get("sub_experiment_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
+    expect_message(dict$get("sub_experiment_id"))
 
     expect_is(dict$get("table_id"), "character")
+    expect_message(dict$get("table_id"))
+
+    expect_is(dict$get("dreq"), "data.table")
+    expect_message(dict$get("dreq"))
 })
 
 test_that("$print()", {
     dict <- cmip6_dict()
+    expect_message(dict$print())
+
+    expect_is(dict$load(test_path()), "CMIP6Dict")
     expect_message(dict$print())
 })
 
