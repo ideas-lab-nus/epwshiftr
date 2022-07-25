@@ -25,6 +25,9 @@
     <loc>/SUPPORT.html</loc>
   </url>
   <url>
+    <loc>/articles/cmip6_dict.html</loc>
+  </url>
+  <url>
     <loc>/articles/index.html</loc>
   </url>
   <url>
@@ -38,6 +41,9 @@
   </url>
   <url>
     <loc>/news/index.html</loc>
+  </url>
+  <url>
+    <loc>/reference/CMIP6Dict.html</loc>
   </url>
   <url>
     <loc>/reference/epwshiftr-package.html</loc>

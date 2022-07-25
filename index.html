@@ -46,14 +46,17 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9007</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9008</span>
       </span>
     </div>
 
     <div id="navbar" class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
 <li>
-  <a href="reference/index.html">Reference</a>
+  <a href="index.html">
+    <span class="fas fa-home fa-lg"></span>
+     
+  </a>
 </li>
 <li class="dropdown">
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -63,18 +66,21 @@
   </a>
   <ul class="dropdown-menu" role="menu">
 <li>
-      <a href="articles/paper.html">epwshiftr: Create future EnergyPlus Weather files using CMIP6 data</a>
+      <a href="articles/cmip6_dict.html">Manage CMIP6 CVs and Data Request</a>
     </li>
   </ul>
 </li>
 <li>
-  <a href="news/index.html">Changelog</a>
+  <a href="reference/index.html">Manual</a>
+</li>
+<li>
+  <a href="news/index.html">News</a>
 </li>
       </ul>
 <ul class="nav navbar-nav navbar-right">
 <li>
-  <a href="https://github.com/ideas-lab-nus/epwshiftr/" class="external-link">
-    <span class="fab fa-github fa-lg"></span>
+  <a href="https://github.com/ideas-lab-nus/epwshiftr" class="external-link">
+    <span class="fa fa-github fa-lg"></span>
      
   </a>
 </li>
@@ -115,10 +121,10 @@
 </h2>
 <p>You can install the latest stable release of epwshiftr from <a href="https://CRAN.R-project.org" class="external-link">CRAN</a>.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span></span></code></pre></div>
 <p>Alternatively, you can install the development version from GitHub.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span>, repos <span class="op">=</span> <span class="st">"https://hongyuanjia.r-universe.dev"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"epwshiftr"</span>, repos <span class="op">=</span> <span class="st">"https://hongyuanjia.r-universe.dev"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="get-started">Get started<a class="anchor" aria-label="anchor" href="#get-started"></a>
@@ -128,126 +134,126 @@
 </h3>
 <ul><li>The first step is to build CMIP6 experiment output file index based on queries using ESGF search RESTful API</li></ul>
 <!-- end list --><div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># set directory to store files</span>
-<span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>epwshiftr.dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>epwshiftr.verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-
-<span class="co"># get CMIP6 data nodes</span>
-<span class="op">(</span><span class="va">nodes</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/get_data_node.html">get_data_node</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt;                          data_node status</span>
-<span class="co">#&gt;                             &lt;char&gt; &lt;char&gt;</span>
-<span class="co">#&gt;  1:                 aims3.llnl.gov     UP</span>
-<span class="co">#&gt;  2:                cmip.bcc.cma.cn     UP</span>
-<span class="co">#&gt;  3:      cmip.dess.tsinghua.edu.cn     UP</span>
-<span class="co">#&gt;  4:                cmip.fio.org.cn     UP</span>
-<span class="co">#&gt;  5:          crd-esgf-drc.ec.gc.ca     UP</span>
-<span class="co">#&gt;  6:           data.meteo.unican.es     UP</span>
-<span class="co">#&gt;  7:       dataserver.nccs.nasa.gov     UP</span>
-<span class="co">#&gt;  8:           dist.nmlab.snu.ac.kr     UP</span>
-<span class="co">#&gt;  9:         dpesgf03.nccs.nasa.gov     UP</span>
-<span class="co">#&gt; 10:        esg-cccr.tropmet.res.in     UP</span>
-<span class="co">#&gt; 11:               esg-dn1.ru.ac.th     UP</span>
-<span class="co">#&gt; 12:             esg-dn2.nsc.liu.se     UP</span>
-<span class="co">#&gt; 13:                 esg.camscma.cn     UP</span>
-<span class="co">#&gt; 14:                 esg.lasg.ac.cn     UP</span>
-<span class="co">#&gt; 15:             esg.pik-potsdam.de     UP</span>
-<span class="co">#&gt; 16:             esgf-data.ucar.edu     UP</span>
-<span class="co">#&gt; 17:          esgf-data1.ceda.ac.uk     UP</span>
-<span class="co">#&gt; 18:          esgf-data1.diasjp.net     UP</span>
-<span class="co">#&gt; 19:            esgf-data1.llnl.gov     UP</span>
-<span class="co">#&gt; 20:          esgf-data2.ceda.ac.uk     UP</span>
-<span class="co">#&gt; 21:          esgf-data2.diasjp.net     UP</span>
-<span class="co">#&gt; 22:            esgf-data2.llnl.gov     UP</span>
-<span class="co">#&gt; 23:          esgf-data3.ceda.ac.uk     UP</span>
-<span class="co">#&gt; 24:          esgf-data3.diasjp.net     UP</span>
-<span class="co">#&gt; 25:                esgf-dev.bsc.es     UP</span>
-<span class="co">#&gt; 26:      esgf-nimscmip6.apcc21.org     UP</span>
-<span class="co">#&gt; 27:              esgf-node.cmcc.it     UP</span>
-<span class="co">#&gt; 28:             esgf-node2.cmcc.it     UP</span>
-<span class="co">#&gt; 29:                   esgf.anl.gov     UP</span>
-<span class="co">#&gt; 30:                esgf.apcc21.org     UP</span>
-<span class="co">#&gt; 31:                    esgf.dwd.de     UP</span>
-<span class="co">#&gt; 32:                esgf.nci.org.au     UP</span>
-<span class="co">#&gt; 33:        esgf.rcec.sinica.edu.tw     UP</span>
-<span class="co">#&gt; 34:                  esgf2.dkrz.de     UP</span>
-<span class="co">#&gt; 35:          noresg.nird.sigma2.no     UP</span>
-<span class="co">#&gt; 36:              vesg.ipsl.upmc.fr     UP</span>
-<span class="co">#&gt; 37:  145.100.59.180.surf-hosted.nl   DOWN</span>
-<span class="co">#&gt; 38: acdisc.gesdisc.eosdis.nasa.gov   DOWN</span>
-<span class="co">#&gt; 39:               cordexesg.dmi.dk   DOWN</span>
-<span class="co">#&gt; 40:             esg-dn1.nsc.liu.se   DOWN</span>
-<span class="co">#&gt; 41:               esg1.umr-cnrm.fr   DOWN</span>
-<span class="co">#&gt; 42:          esgdata.gfdl.noaa.gov   DOWN</span>
-<span class="co">#&gt; 43:         esgf-cnr.hpc.cineca.it   DOWN</span>
-<span class="co">#&gt; 44:        esgf-ictp.hpc.cineca.it   DOWN</span>
-<span class="co">#&gt; 45:                    esgf.bsc.es   DOWN</span>
-<span class="co">#&gt; 46:                  esgf.ichec.ie   DOWN</span>
-<span class="co">#&gt; 47:                  esgf1.dkrz.de   DOWN</span>
-<span class="co">#&gt; 48:                  esgf3.dkrz.de   DOWN</span>
-<span class="co">#&gt; 49:   gpm1.gesdisc.eosdis.nasa.gov   DOWN</span>
-<span class="co">#&gt;                          data_node status</span>
-
-<span class="co"># create a CMIP6 output file index</span>
-<span class="va">idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/init_cmip6_index.html">init_cmip6_index</a></span><span class="op">(</span>
-    <span class="co"># only consider ScenarioMIP activity</span>
-    activity <span class="op">=</span> <span class="st">"ScenarioMIP"</span>,
-
-    <span class="co"># specify dry-bulb temperature and relative humidity</span>
-    variable <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"hurs"</span><span class="op">)</span>,
-
-    <span class="co"># specify report frequent</span>
-    frequency <span class="op">=</span> <span class="st">"day"</span>,
-
-    <span class="co"># specify experiment name</span>
-    experiment <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp585"</span><span class="op">)</span>,
-
-    <span class="co"># specify GCM name</span>
-    source <span class="op">=</span> <span class="st">"AWI-CM-1-1-MR"</span>,
-
-    <span class="co"># specify variant,</span>
-    variant <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,
-
-    <span class="co"># specify years of interest</span>
-    years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span>,
-
-    <span class="co"># save to data dictionary</span>
-    save <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-<span class="co">#&gt; Querying CMIP6 Dataset Information</span>
-<span class="co">#&gt; Querying CMIP6 File Information [Attempt 1]</span>
-<span class="co">#&gt; Checking if data is complete</span>
-<span class="co">#&gt; Data file index saved to '/tmp/RtmpDtbJVc/cmip6_index.csv'</span>
-
-<span class="co"># the index has been automatically saved into directory specified using</span>
-<span class="co"># `epwshiftr.dir` option and can be reloaded</span>
-<span class="va">idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/load_cmip6_index.html">load_cmip6_index</a></span><span class="op">(</span><span class="op">)</span>
-
-<span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">idx</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt; Classes 'data.table' and 'data.frame':   6 obs. of  23 variables:</span>
-<span class="co">#&gt;  $ file_id           : chr  "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_"| __truncated__ ...</span>
-<span class="co">#&gt;  $ dataset_id        : chr  "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf3.dkrz.de" ...</span>
-<span class="co">#&gt;  $ mip_era           : chr  "CMIP6" "CMIP6" "CMIP6" "CMIP6" ...</span>
-<span class="co">#&gt;  $ activity_drs      : chr  "ScenarioMIP" "ScenarioMIP" "ScenarioMIP" "ScenarioMIP" ...</span>
-<span class="co">#&gt;  $ institution_id    : chr  "AWI" "AWI" "AWI" "AWI" ...</span>
-<span class="co">#&gt;  $ source_id         : chr  "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" ...</span>
-<span class="co">#&gt;  $ experiment_id     : chr  "ssp585" "ssp585" "ssp585" "ssp585" ...</span>
-<span class="co">#&gt;  $ member_id         : chr  "r1i1p1f1" "r1i1p1f1" "r1i1p1f1" "r1i1p1f1" ...</span>
-<span class="co">#&gt;  $ table_id          : chr  "day" "day" "day" "day" ...</span>
-<span class="co">#&gt;  $ frequency         : chr  "day" "day" "day" "day" ...</span>
-<span class="co">#&gt;  $ grid_label        : chr  "gn" "gn" "gn" "gn" ...</span>
-<span class="co">#&gt;  $ version           : chr  "20190529" "20190529" "20190529" "20190529" ...</span>
-<span class="co">#&gt;  $ nominal_resolution: chr  "100 km" "100 km" "100 km" "100 km" ...</span>
-<span class="co">#&gt;  $ variable_id       : chr  "hurs" "hurs" "hurs" "tas" ...</span>
-<span class="co">#&gt;  $ variable_long_name: chr  "Near-Surface Relative Humidity" "Near-Surface Relative Humidity" "Near-Surface Relative Humidity" "Near-Surface Air Temperature" ...</span>
-<span class="co">#&gt;  $ variable_units    : chr  "%" "%" "%" "K" ...</span>
-<span class="co">#&gt;  $ datetime_start    : POSIXct, format: "2049-01-01" "2050-01-01" ...</span>
-<span class="co">#&gt;  $ datetime_end      : POSIXct, format: "2049-12-31" "2050-12-31" ...</span>
-<span class="co">#&gt;  $ file_size         : int  91761231 91729347 91727399 82292505 82268546 82149654</span>
-<span class="co">#&gt;  $ data_node         : chr  "esgf3.dkrz.de" "esgf3.dkrz.de" "esgf3.dkrz.de" "esgf3.dkrz.de" ...</span>
-<span class="co">#&gt;  $ file_url          : chr  "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v2019052"| __truncated__ ...</span>
-<span class="co">#&gt;  $ dataset_pid       : chr  "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/a336f13f-a4d3-3b57-a45a-8f27f0ba01b8" ...</span>
-<span class="co">#&gt;  $ tracking_id       : chr  "hdl:21.14100/f46077ee-ae81-4932-81af-d61394446ea3" "hdl:21.14100/a476933a-0f14-4d4c-b62d-0bf08e3471fd" "hdl:21.14100/3c3c98f8-d56e-4d8d-8ba7-1a9e541e6018" "hdl:21.14100/8503efb4-6509-4728-b95c-7203bd214a77" ...</span>
-<span class="co">#&gt;  - attr(*, ".internal.selfref")=&lt;externalptr&gt;</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># set directory to store files</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>epwshiftr.dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>epwshiftr.verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># get CMIP6 data nodes</span></span>
+<span><span class="op">(</span><span class="va">nodes</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/get_data_node.html">get_data_node</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;                          data_node status</span></span>
+<span><span class="co">#&gt;                             &lt;char&gt; &lt;char&gt;</span></span>
+<span><span class="co">#&gt;  1:                 aims3.llnl.gov     UP</span></span>
+<span><span class="co">#&gt;  2:                cmip.bcc.cma.cn     UP</span></span>
+<span><span class="co">#&gt;  3:      cmip.dess.tsinghua.edu.cn     UP</span></span>
+<span><span class="co">#&gt;  4:                cmip.fio.org.cn     UP</span></span>
+<span><span class="co">#&gt;  5:          crd-esgf-drc.ec.gc.ca     UP</span></span>
+<span><span class="co">#&gt;  6:           data.meteo.unican.es     UP</span></span>
+<span><span class="co">#&gt;  7:       dataserver.nccs.nasa.gov     UP</span></span>
+<span><span class="co">#&gt;  8:           dist.nmlab.snu.ac.kr     UP</span></span>
+<span><span class="co">#&gt;  9:         dpesgf03.nccs.nasa.gov     UP</span></span>
+<span><span class="co">#&gt; 10:        esg-cccr.tropmet.res.in     UP</span></span>
+<span><span class="co">#&gt; 11:               esg-dn1.ru.ac.th     UP</span></span>
+<span><span class="co">#&gt; 12:             esg-dn2.nsc.liu.se     UP</span></span>
+<span><span class="co">#&gt; 13:                 esg.camscma.cn     UP</span></span>
+<span><span class="co">#&gt; 14:                 esg.lasg.ac.cn     UP</span></span>
+<span><span class="co">#&gt; 15:             esg.pik-potsdam.de     UP</span></span>
+<span><span class="co">#&gt; 16:             esgf-data.ucar.edu     UP</span></span>
+<span><span class="co">#&gt; 17:          esgf-data1.ceda.ac.uk     UP</span></span>
+<span><span class="co">#&gt; 18:          esgf-data1.diasjp.net     UP</span></span>
+<span><span class="co">#&gt; 19:            esgf-data1.llnl.gov     UP</span></span>
+<span><span class="co">#&gt; 20:          esgf-data2.ceda.ac.uk     UP</span></span>
+<span><span class="co">#&gt; 21:          esgf-data2.diasjp.net     UP</span></span>
+<span><span class="co">#&gt; 22:            esgf-data2.llnl.gov     UP</span></span>
+<span><span class="co">#&gt; 23:          esgf-data3.ceda.ac.uk     UP</span></span>
+<span><span class="co">#&gt; 24:          esgf-data3.diasjp.net     UP</span></span>
+<span><span class="co">#&gt; 25:                esgf-dev.bsc.es     UP</span></span>
+<span><span class="co">#&gt; 26:      esgf-nimscmip6.apcc21.org     UP</span></span>
+<span><span class="co">#&gt; 27:              esgf-node.cmcc.it     UP</span></span>
+<span><span class="co">#&gt; 28:             esgf-node2.cmcc.it     UP</span></span>
+<span><span class="co">#&gt; 29:                   esgf.anl.gov     UP</span></span>
+<span><span class="co">#&gt; 30:                esgf.apcc21.org     UP</span></span>
+<span><span class="co">#&gt; 31:                    esgf.dwd.de     UP</span></span>
+<span><span class="co">#&gt; 32:                esgf.nci.org.au     UP</span></span>
+<span><span class="co">#&gt; 33:        esgf.rcec.sinica.edu.tw     UP</span></span>
+<span><span class="co">#&gt; 34:                  esgf2.dkrz.de     UP</span></span>
+<span><span class="co">#&gt; 35:          noresg.nird.sigma2.no     UP</span></span>
+<span><span class="co">#&gt; 36:              vesg.ipsl.upmc.fr     UP</span></span>
+<span><span class="co">#&gt; 37:  145.100.59.180.surf-hosted.nl   DOWN</span></span>
+<span><span class="co">#&gt; 38: acdisc.gesdisc.eosdis.nasa.gov   DOWN</span></span>
+<span><span class="co">#&gt; 39:               cordexesg.dmi.dk   DOWN</span></span>
+<span><span class="co">#&gt; 40:             esg-dn1.nsc.liu.se   DOWN</span></span>
+<span><span class="co">#&gt; 41:               esg1.umr-cnrm.fr   DOWN</span></span>
+<span><span class="co">#&gt; 42:          esgdata.gfdl.noaa.gov   DOWN</span></span>
+<span><span class="co">#&gt; 43:         esgf-cnr.hpc.cineca.it   DOWN</span></span>
+<span><span class="co">#&gt; 44:        esgf-ictp.hpc.cineca.it   DOWN</span></span>
+<span><span class="co">#&gt; 45:                    esgf.bsc.es   DOWN</span></span>
+<span><span class="co">#&gt; 46:                  esgf.ichec.ie   DOWN</span></span>
+<span><span class="co">#&gt; 47:                  esgf1.dkrz.de   DOWN</span></span>
+<span><span class="co">#&gt; 48:                  esgf3.dkrz.de   DOWN</span></span>
+<span><span class="co">#&gt; 49:   gpm1.gesdisc.eosdis.nasa.gov   DOWN</span></span>
+<span><span class="co">#&gt;                          data_node status</span></span>
+<span></span>
+<span><span class="co"># create a CMIP6 output file index</span></span>
+<span><span class="va">idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/init_cmip6_index.html">init_cmip6_index</a></span><span class="op">(</span></span>
+<span>    <span class="co"># only consider ScenarioMIP activity</span></span>
+<span>    activity <span class="op">=</span> <span class="st">"ScenarioMIP"</span>,</span>
+<span></span>
+<span>    <span class="co"># specify dry-bulb temperature and relative humidity</span></span>
+<span>    variable <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"hurs"</span><span class="op">)</span>,</span>
+<span></span>
+<span>    <span class="co"># specify report frequent</span></span>
+<span>    frequency <span class="op">=</span> <span class="st">"day"</span>,</span>
+<span></span>
+<span>    <span class="co"># specify experiment name</span></span>
+<span>    experiment <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp585"</span><span class="op">)</span>,</span>
+<span></span>
+<span>    <span class="co"># specify GCM name</span></span>
+<span>    source <span class="op">=</span> <span class="st">"AWI-CM-1-1-MR"</span>,</span>
+<span></span>
+<span>    <span class="co"># specify variant,</span></span>
+<span>    variant <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,</span>
+<span></span>
+<span>    <span class="co"># specify years of interest</span></span>
+<span>    years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span>,</span>
+<span></span>
+<span>    <span class="co"># save to data dictionary</span></span>
+<span>    save <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; Querying CMIP6 Dataset Information</span></span>
+<span><span class="co">#&gt; Querying CMIP6 File Information [Attempt 1]</span></span>
+<span><span class="co">#&gt; Checking if data is complete</span></span>
+<span><span class="co">#&gt; Data file index saved to '/tmp/RtmpDtbJVc/cmip6_index.csv'</span></span>
+<span></span>
+<span><span class="co"># the index has been automatically saved into directory specified using</span></span>
+<span><span class="co"># `epwshiftr.dir` option and can be reloaded</span></span>
+<span><span class="va">idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/load_cmip6_index.html">load_cmip6_index</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">idx</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Classes 'data.table' and 'data.frame':   6 obs. of  23 variables:</span></span>
+<span><span class="co">#&gt;  $ file_id           : chr  "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529.hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f"| __truncated__ "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_"| __truncated__ ...</span></span>
+<span><span class="co">#&gt;  $ dataset_id        : chr  "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.hurs.gn.v20190529|esgf3.dkrz.de" "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf3.dkrz.de" ...</span></span>
+<span><span class="co">#&gt;  $ mip_era           : chr  "CMIP6" "CMIP6" "CMIP6" "CMIP6" ...</span></span>
+<span><span class="co">#&gt;  $ activity_drs      : chr  "ScenarioMIP" "ScenarioMIP" "ScenarioMIP" "ScenarioMIP" ...</span></span>
+<span><span class="co">#&gt;  $ institution_id    : chr  "AWI" "AWI" "AWI" "AWI" ...</span></span>
+<span><span class="co">#&gt;  $ source_id         : chr  "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" "AWI-CM-1-1-MR" ...</span></span>
+<span><span class="co">#&gt;  $ experiment_id     : chr  "ssp585" "ssp585" "ssp585" "ssp585" ...</span></span>
+<span><span class="co">#&gt;  $ member_id         : chr  "r1i1p1f1" "r1i1p1f1" "r1i1p1f1" "r1i1p1f1" ...</span></span>
+<span><span class="co">#&gt;  $ table_id          : chr  "day" "day" "day" "day" ...</span></span>
+<span><span class="co">#&gt;  $ frequency         : chr  "day" "day" "day" "day" ...</span></span>
+<span><span class="co">#&gt;  $ grid_label        : chr  "gn" "gn" "gn" "gn" ...</span></span>
+<span><span class="co">#&gt;  $ version           : chr  "20190529" "20190529" "20190529" "20190529" ...</span></span>
+<span><span class="co">#&gt;  $ nominal_resolution: chr  "100 km" "100 km" "100 km" "100 km" ...</span></span>
+<span><span class="co">#&gt;  $ variable_id       : chr  "hurs" "hurs" "hurs" "tas" ...</span></span>
+<span><span class="co">#&gt;  $ variable_long_name: chr  "Near-Surface Relative Humidity" "Near-Surface Relative Humidity" "Near-Surface Relative Humidity" "Near-Surface Air Temperature" ...</span></span>
+<span><span class="co">#&gt;  $ variable_units    : chr  "%" "%" "%" "K" ...</span></span>
+<span><span class="co">#&gt;  $ datetime_start    : POSIXct, format: "2049-01-01" "2050-01-01" ...</span></span>
+<span><span class="co">#&gt;  $ datetime_end      : POSIXct, format: "2049-12-31" "2050-12-31" ...</span></span>
+<span><span class="co">#&gt;  $ file_size         : int  91761231 91729347 91727399 82292505 82268546 82149654</span></span>
+<span><span class="co">#&gt;  $ data_node         : chr  "esgf3.dkrz.de" "esgf3.dkrz.de" "esgf3.dkrz.de" "esgf3.dkrz.de" ...</span></span>
+<span><span class="co">#&gt;  $ file_url          : chr  "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/hurs/gn/v201905"| __truncated__ "http://esgf3.dkrz.de/thredds/fileServer/cmip6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v2019052"| __truncated__ ...</span></span>
+<span><span class="co">#&gt;  $ dataset_pid       : chr  "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/89501ae0-2fec-307b-bf68-552ea4d504a0" "hdl:21.14100/a336f13f-a4d3-3b57-a45a-8f27f0ba01b8" ...</span></span>
+<span><span class="co">#&gt;  $ tracking_id       : chr  "hdl:21.14100/f46077ee-ae81-4932-81af-d61394446ea3" "hdl:21.14100/a476933a-0f14-4d4c-b62d-0bf08e3471fd" "hdl:21.14100/3c3c98f8-d56e-4d8d-8ba7-1a9e541e6018" "hdl:21.14100/8503efb4-6509-4728-b95c-7203bd214a77" ...</span></span>
+<span><span class="co">#&gt;  - attr(*, ".internal.selfref")=&lt;externalptr&gt;</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="manage-cmip6-output-files">Manage CMIP6 output files<a class="anchor" aria-label="anchor" href="#manage-cmip6-output-files"></a>
@@ -258,13 +264,13 @@
 <li><p>This step is necessary as it map the loaded files against index so that epwshiftr knows which case is complete and can be used for the next step.</p></li>
 </ul>
 <!-- end list --><div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># Summary downloaded file by GCM and variable, use the latest downloaded file if</span>
-<span class="co"># multiple matches are detected and save matched information into the index file</span>
-<span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/summary_database.html">summary_database</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"variable"</span><span class="op">)</span>, mult <span class="op">=</span> <span class="st">"latest"</span>, update <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-<span class="co">#&gt; 24 NetCDF files found.</span>
-<span class="co">#&gt; Data file index updated and saved to '/tmp/RtmpDtbJVc/cmip6_index.csv'</span>
-
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># Summary downloaded file by GCM and variable, use the latest downloaded file if</span></span>
+<span><span class="co"># multiple matches are detected and save matched information into the index file</span></span>
+<span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/summary_database.html">summary_database</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"variable"</span><span class="op">)</span>, mult <span class="op">=</span> <span class="st">"latest"</span>, update <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt; 24 NetCDF files found.</span></span>
+<span><span class="co">#&gt; Data file index updated and saved to '/tmp/RtmpDtbJVc/cmip6_index.csv'</span></span>
+<span></span>
+<span><span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="10%">
@@ -319,86 +325,86 @@
 </h3>
 <ul><li>With previous step, now we can match coordinates of an EPW in the CMIP6 output file</li></ul>
 <!-- end list --><div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu">eplusr</span><span class="fu">::</span><span class="fu"><a href="https://hongyuanjia.github.io/eplusr/reference/use_eplus.html" class="external-link">eplus_config</a></span><span class="op">(</span><span class="fl">8.8</span><span class="op">)</span><span class="op">$</span><span class="va">dir</span>, <span class="st">"WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"</span><span class="op">)</span>
-<span class="co"># match any coordinates with absolute distance less than 1 degree</span>
-<span class="va">coord</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/match_coord.html">match_coord</a></span><span class="op">(</span><span class="va">epw</span>, threshold <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lon <span class="op">=</span> <span class="fl">1</span>, lat <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, max_num <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>
-<span class="co">#&gt; Start to match coordinates...</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">coord</span><span class="op">)</span>
-<span class="co">#&gt; [1] "epw_cmip6_coord"</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">coord</span><span class="op">)</span>
-<span class="co">#&gt; [1] "epw"   "meta"  "coord"</span>
-
-<span class="va">coord</span><span class="op">$</span><span class="va">meta</span>
-<span class="co">#&gt; $city</span>
-<span class="co">#&gt; [1] "San Francisco Intl Ap"</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; $state_province</span>
-<span class="co">#&gt; [1] "CA"</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; $country</span>
-<span class="co">#&gt; [1] "USA"</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; $latitude</span>
-<span class="co">#&gt; [1] 37.62</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; $longitude</span>
-<span class="co">#&gt; [1] -122.4</span>
-
-<span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">file_path</span>, <span class="va">coord</span><span class="op">)</span><span class="op">]</span>
-<span class="co">#&gt;                                                                          file_path</span>
-<span class="co">#&gt;                                                                             &lt;char&gt;</span>
-<span class="co">#&gt;  1: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc</span>
-<span class="co">#&gt;  2: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc</span>
-<span class="co">#&gt;  3: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc</span>
-<span class="co">#&gt;  4:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc</span>
-<span class="co">#&gt;  5:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc</span>
-<span class="co">#&gt;  6:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc</span>
-<span class="co">#&gt;  7: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc</span>
-<span class="co">#&gt;  8: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc</span>
-<span class="co">#&gt;  9: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc</span>
-<span class="co">#&gt; 10:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc</span>
-<span class="co">#&gt; 11:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc</span>
-<span class="co">#&gt; 12:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc</span>
-<span class="co">#&gt;      coord</span>
-<span class="co">#&gt;     &lt;list&gt;</span>
-<span class="co">#&gt;  1: &lt;list&gt;</span>
-<span class="co">#&gt;  2: &lt;list&gt;</span>
-<span class="co">#&gt;  3: &lt;list&gt;</span>
-<span class="co">#&gt;  4: &lt;list&gt;</span>
-<span class="co">#&gt;  5: &lt;list&gt;</span>
-<span class="co">#&gt;  6: &lt;list&gt;</span>
-<span class="co">#&gt;  7: &lt;list&gt;</span>
-<span class="co">#&gt;  8: &lt;list&gt;</span>
-<span class="co">#&gt;  9: &lt;list&gt;</span>
-<span class="co">#&gt; 10: &lt;list&gt;</span>
-<span class="co">#&gt; 11: &lt;list&gt;</span>
-<span class="co">#&gt; 12: &lt;list&gt;</span>
-
-<span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>
-<span class="co">#&gt; List of 2</span>
-<span class="co">#&gt;  $ lat:List of 4</span>
-<span class="co">#&gt;   ..$ index: int 1</span>
-<span class="co">#&gt;   ..$ value: num 36.9</span>
-<span class="co">#&gt;   ..$ dis  : num -0.685</span>
-<span class="co">#&gt;   ..$ which: int 136</span>
-<span class="co">#&gt;  $ lon:List of 4</span>
-<span class="co">#&gt;   ..$ index: int 1</span>
-<span class="co">#&gt;   ..$ value: num 302</span>
-<span class="co">#&gt;   ..$ dis  : num -0.525</span>
-<span class="co">#&gt;   ..$ which: int 323</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu">eplusr</span><span class="fu">::</span><span class="fu"><a href="https://hongyuanjia.github.io/eplusr/reference/use_eplus.html" class="external-link">eplus_config</a></span><span class="op">(</span><span class="fl">8.8</span><span class="op">)</span><span class="op">$</span><span class="va">dir</span>, <span class="st">"WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"</span><span class="op">)</span></span>
+<span><span class="co"># match any coordinates with absolute distance less than 1 degree</span></span>
+<span><span class="va">coord</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/match_coord.html">match_coord</a></span><span class="op">(</span><span class="va">epw</span>, threshold <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lon <span class="op">=</span> <span class="fl">1</span>, lat <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, max_num <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Start to match coordinates...</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">coord</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "epw_cmip6_coord"</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">coord</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "epw"   "meta"  "coord"</span></span>
+<span></span>
+<span><span class="va">coord</span><span class="op">$</span><span class="va">meta</span></span>
+<span><span class="co">#&gt; $city</span></span>
+<span><span class="co">#&gt; [1] "San Francisco Intl Ap"</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $state_province</span></span>
+<span><span class="co">#&gt; [1] "CA"</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $country</span></span>
+<span><span class="co">#&gt; [1] "USA"</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $latitude</span></span>
+<span><span class="co">#&gt; [1] 37.62</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $longitude</span></span>
+<span><span class="co">#&gt; [1] -122.4</span></span>
+<span></span>
+<span><span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">file_path</span>, <span class="va">coord</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;                                                                          file_path</span></span>
+<span><span class="co">#&gt;                                                                             &lt;char&gt;</span></span>
+<span><span class="co">#&gt;  1: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc</span></span>
+<span><span class="co">#&gt;  2: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc</span></span>
+<span><span class="co">#&gt;  3: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc</span></span>
+<span><span class="co">#&gt;  4:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc</span></span>
+<span><span class="co">#&gt;  5:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc</span></span>
+<span><span class="co">#&gt;  6:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc</span></span>
+<span><span class="co">#&gt;  7: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc</span></span>
+<span><span class="co">#&gt;  8: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc</span></span>
+<span><span class="co">#&gt;  9: /tmp/RtmpDtbJVc/hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc</span></span>
+<span><span class="co">#&gt; 10:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc</span></span>
+<span><span class="co">#&gt; 11:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc</span></span>
+<span><span class="co">#&gt; 12:  /tmp/RtmpDtbJVc/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc</span></span>
+<span><span class="co">#&gt;      coord</span></span>
+<span><span class="co">#&gt;     &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  1: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  2: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  3: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  4: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  5: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  6: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  7: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  8: &lt;list&gt;</span></span>
+<span><span class="co">#&gt;  9: &lt;list&gt;</span></span>
+<span><span class="co">#&gt; 10: &lt;list&gt;</span></span>
+<span><span class="co">#&gt; 11: &lt;list&gt;</span></span>
+<span><span class="co">#&gt; 12: &lt;list&gt;</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">$</span><span class="va">coord</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span></span>
+<span><span class="co">#&gt; List of 2</span></span>
+<span><span class="co">#&gt;  $ lat:List of 4</span></span>
+<span><span class="co">#&gt;   ..$ index: int 1</span></span>
+<span><span class="co">#&gt;   ..$ value: num 36.9</span></span>
+<span><span class="co">#&gt;   ..$ dis  : num -0.685</span></span>
+<span><span class="co">#&gt;   ..$ which: int 136</span></span>
+<span><span class="co">#&gt;  $ lon:List of 4</span></span>
+<span><span class="co">#&gt;   ..$ index: int 1</span></span>
+<span><span class="co">#&gt;   ..$ value: num 302</span></span>
+<span><span class="co">#&gt;   ..$ dis  : num -0.525</span></span>
+<span><span class="co">#&gt;   ..$ which: int 323</span></span></code></pre></div>
 <ul><li>Once we get the matched coordinates, we can extract corresponding data related to input EPW file using <code><a href="reference/extract_data.html">extract_data()</a></code>
 </li></ul>
 <!-- end list --><div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/extract_data.html">extract_data</a></span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt; Start to extract CMIP6 data according to matched coordinates...</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
-<span class="co">#&gt; [1] "epw_cmip6_data"</span>
-<span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
-<span class="co">#&gt; [1] "epw"  "meta" "data"</span>
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/extract_data.html">extract_data</a></span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Start to extract CMIP6 data according to matched coordinates...</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "epw_cmip6_data"</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "epw"  "meta" "data"</span></span>
+<span><span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="8%">
@@ -529,36 +535,36 @@
 </h3>
 <ul><li>With all necessary information extracted above, now we can perform morphing on out EPW</li></ul>
 <!-- end list --><div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/morphing_epw.html">morphing_epw</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span>
-<span class="co">#&gt; Morphing 'dry bulb temperature'...</span>
-<span class="co">#&gt; Morphing 'relative humidity'...</span>
-<span class="co">#&gt; Morphing 'dew point temperature'...</span>
-<span class="co">#&gt; Morphing 'atmospheric pressure'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'sea level pressure'. Skip.</span>
-<span class="co">#&gt; Morphing 'horizontal infrared radiation from the sky'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.</span>
-<span class="co">#&gt; Morphing 'global horizontal radiation'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span>
-<span class="co">#&gt; Morphing 'diffuse horizontal radiation'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span>
-<span class="co">#&gt; Morphing 'direct normal radiation'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span>
-<span class="co">#&gt; Morphing 'wind speed'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.</span>
-<span class="co">#&gt; Morphing 'total sky cover'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.</span>
-<span class="co">#&gt; Morphing 'opaque sky cover'...</span>
-<span class="co">#&gt; WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span>
-<span class="co">#&gt; [1] "epw_cmip6_morphed"</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span>
-<span class="co">#&gt;  [1] "epw"          "tdb"          "tdew"         "rh"          </span>
-<span class="co">#&gt;  [5] "p"            "hor_ir"       "glob_rad"     "norm_rad"    </span>
-<span class="co">#&gt;  [9] "diff_rad"     "wind"         "total_cover"  "opaque_cover"</span>
-
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">tdb</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/morphing_epw.html">morphing_epw</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Morphing 'dry bulb temperature'...</span></span>
+<span><span class="co">#&gt; Morphing 'relative humidity'...</span></span>
+<span><span class="co">#&gt; Morphing 'dew point temperature'...</span></span>
+<span><span class="co">#&gt; Morphing 'atmospheric pressure'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'sea level pressure'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'horizontal infrared radiation from the sky'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'global horizontal radiation'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'diffuse horizontal radiation'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'direct normal radiation'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'wind speed'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'total sky cover'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.</span></span>
+<span><span class="co">#&gt; Morphing 'opaque sky cover'...</span></span>
+<span><span class="co">#&gt; WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "epw_cmip6_morphed"</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span>
+<span><span class="co">#&gt;  [1] "epw"          "tdb"          "tdew"         "rh"          </span></span>
+<span><span class="co">#&gt;  [5] "p"            "hor_ir"       "glob_rad"     "norm_rad"    </span></span>
+<span><span class="co">#&gt;  [9] "diff_rad"     "wind"         "total_cover"  "opaque_cover"</span></span>
+<span></span>
+<span><span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">tdb</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <table style="width:100%;" class="table">
 <colgroup>
 <col width="7%">
@@ -724,8 +730,8 @@
 </tbody>
 </table>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R">
-<span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">rh</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span></span>
+<span><span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">$</span><span class="va">rh</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="7%">
@@ -897,70 +903,70 @@
 <ul><li>Once we get the morphed data using <code><a href="reference/morphing_epw.html">morphing_epw()</a></code>, we can now create future EPW files using <code><a href="reference/future_epw.html">future_epw()</a></code>
 </li></ul>
 <!-- end list --><div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># create future EPWs grouped by GCM, experiment ID, interval (year)</span>
-<span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/future_epw.html">future_epw</a></span><span class="op">(</span><span class="va">morphed</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"experiment"</span>, <span class="st">"interval"</span><span class="op">)</span>,
-    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, separate <span class="op">=</span> <span class="cn">TRUE</span>, overwrite <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-<span class="co">#&gt; Warning: Empty morphed data found for variables listed below. Original data from EPW will be used:</span>
-<span class="co">#&gt;  [1]: Atmospheric pressure</span>
-<span class="co">#&gt;  [2]: Horizontal infrared radiation intensity from sky</span>
-<span class="co">#&gt;  [3]: Global horizontal radiation</span>
-<span class="co">#&gt;  [4]: Direct normal radiation</span>
-<span class="co">#&gt;  [5]: Diffuse horizontal radiation</span>
-<span class="co">#&gt;  [6]: Wind speed</span>
-<span class="co">#&gt;  [7]: Total sky cover</span>
-<span class="co">#&gt;  [8]: Opaque sky cover</span>
-<span class="co">#&gt; ── Info ──────────────────────────────────────────────────────────────────</span>
-<span class="co">#&gt; Data period #1 has been replaced with input data.</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;      Name StartDayOfWeek StartDay EndDay</span>
-<span class="co">#&gt;  1:  Data         Sunday     1/ 1  12/31</span>
-<span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span>
-<span class="co">#&gt; Replace the existing EPW file located at /tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2050/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2050.epw.</span>
-<span class="co">#&gt; ── Info ──────────────────────────────────────────────────────────────────</span>
-<span class="co">#&gt; Data period #1 has been replaced with input data.</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;      Name StartDayOfWeek StartDay EndDay</span>
-<span class="co">#&gt;  1:  Data         Sunday     1/ 1  12/31</span>
-<span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span>
-<span class="co">#&gt; Replace the existing EPW file located at /tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw.</span>
-
-<span class="va">epws</span>
-<span class="co">#&gt; [[1]]</span>
-<span class="co">#&gt; ══ EnergyPlus Weather File ═══════════════════════════════════════════════</span>
-<span class="co">#&gt; [Location ]: San Francisco Intl Ap, CA, USA</span>
-<span class="co">#&gt;              {N 37°37'}, {W 122°24'}, {UTC-08:00}</span>
-<span class="co">#&gt; [Elevation]: 2m above see level</span>
-<span class="co">#&gt; [Data Src ]: TMY3</span>
-<span class="co">#&gt; [WMO Stat ]: 724940</span>
-<span class="co">#&gt; [Leap Year]: No</span>
-<span class="co">#&gt; [Interval ]: 60 mins</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ── Data Periods ──────────────────────────────────────────────────────────</span>
-<span class="co">#&gt;    Name StartDayOfWeek StartDay EndDay</span>
-<span class="co">#&gt; 1: Data         Sunday     1/ 1  12/31</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; [[2]]</span>
-<span class="co">#&gt; ══ EnergyPlus Weather File ═══════════════════════════════════════════════</span>
-<span class="co">#&gt; [Location ]: San Francisco Intl Ap, CA, USA</span>
-<span class="co">#&gt;              {N 37°37'}, {W 122°24'}, {UTC-08:00}</span>
-<span class="co">#&gt; [Elevation]: 2m above see level</span>
-<span class="co">#&gt; [Data Src ]: TMY3</span>
-<span class="co">#&gt; [WMO Stat ]: 724940</span>
-<span class="co">#&gt; [Leap Year]: No</span>
-<span class="co">#&gt; [Interval ]: 60 mins</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ── Data Periods ──────────────────────────────────────────────────────────</span>
-<span class="co">#&gt;    Name StartDayOfWeek StartDay EndDay</span>
-<span class="co">#&gt; 1: Data         Sunday     1/ 1  12/31</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span>
-
-<span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">epws</span>, <span class="kw">function</span> <span class="op">(</span><span class="va">epw</span><span class="op">)</span> <span class="va">epw</span><span class="op">$</span><span class="fu">path</span><span class="op">(</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt; [1] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2050/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2050.epw"</span>
-<span class="co">#&gt; [2] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw"</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># create future EPWs grouped by GCM, experiment ID, interval (year)</span></span>
+<span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/future_epw.html">future_epw</a></span><span class="op">(</span><span class="va">morphed</span>, by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"experiment"</span>, <span class="st">"interval"</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, separate <span class="op">=</span> <span class="cn">TRUE</span>, overwrite <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; Warning: Empty morphed data found for variables listed below. Original data from EPW will be used:</span></span>
+<span><span class="co">#&gt;  [1]: Atmospheric pressure</span></span>
+<span><span class="co">#&gt;  [2]: Horizontal infrared radiation intensity from sky</span></span>
+<span><span class="co">#&gt;  [3]: Global horizontal radiation</span></span>
+<span><span class="co">#&gt;  [4]: Direct normal radiation</span></span>
+<span><span class="co">#&gt;  [5]: Diffuse horizontal radiation</span></span>
+<span><span class="co">#&gt;  [6]: Wind speed</span></span>
+<span><span class="co">#&gt;  [7]: Total sky cover</span></span>
+<span><span class="co">#&gt;  [8]: Opaque sky cover</span></span>
+<span><span class="co">#&gt; ── Info ──────────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; Data period #1 has been replaced with input data.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;      Name StartDayOfWeek StartDay EndDay</span></span>
+<span><span class="co">#&gt;  1:  Data         Sunday     1/ 1  12/31</span></span>
+<span><span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; Replace the existing EPW file located at /tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2050/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2050.epw.</span></span>
+<span><span class="co">#&gt; ── Info ──────────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; Data period #1 has been replaced with input data.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;      Name StartDayOfWeek StartDay EndDay</span></span>
+<span><span class="co">#&gt;  1:  Data         Sunday     1/ 1  12/31</span></span>
+<span><span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; Replace the existing EPW file located at /tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw.</span></span>
+<span></span>
+<span><span class="va">epws</span></span>
+<span><span class="co">#&gt; [[1]]</span></span>
+<span><span class="co">#&gt; ══ EnergyPlus Weather File ═══════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; [Location ]: San Francisco Intl Ap, CA, USA</span></span>
+<span><span class="co">#&gt;              {N 37°37'}, {W 122°24'}, {UTC-08:00}</span></span>
+<span><span class="co">#&gt; [Elevation]: 2m above see level</span></span>
+<span><span class="co">#&gt; [Data Src ]: TMY3</span></span>
+<span><span class="co">#&gt; [WMO Stat ]: 724940</span></span>
+<span><span class="co">#&gt; [Leap Year]: No</span></span>
+<span><span class="co">#&gt; [Interval ]: 60 mins</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ── Data Periods ──────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt;    Name StartDayOfWeek StartDay EndDay</span></span>
+<span><span class="co">#&gt; 1: Data         Sunday     1/ 1  12/31</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; [[2]]</span></span>
+<span><span class="co">#&gt; ══ EnergyPlus Weather File ═══════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; [Location ]: San Francisco Intl Ap, CA, USA</span></span>
+<span><span class="co">#&gt;              {N 37°37'}, {W 122°24'}, {UTC-08:00}</span></span>
+<span><span class="co">#&gt; [Elevation]: 2m above see level</span></span>
+<span><span class="co">#&gt; [Data Src ]: TMY3</span></span>
+<span><span class="co">#&gt; [WMO Stat ]: 724940</span></span>
+<span><span class="co">#&gt; [Leap Year]: No</span></span>
+<span><span class="co">#&gt; [Interval ]: 60 mins</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ── Data Periods ──────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt;    Name StartDayOfWeek StartDay EndDay</span></span>
+<span><span class="co">#&gt; 1: Data         Sunday     1/ 1  12/31</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ──────────────────────────────────────────────────────────────────────────</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">epws</span>, <span class="kw">function</span> <span class="op">(</span><span class="va">epw</span><span class="op">)</span> <span class="va">epw</span><span class="op">$</span><span class="fu">path</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2050/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2050.epw"</span></span>
+<span><span class="co">#&gt; [2] "/tmp/RtmpDtbJVc/AWI-CM-1-1-MR/ssp585/2080/USA_CA_San.Francisco.Intl.AP.724940_TMY3.AWI-CM-1-1-MR.ssp585.2080.epw"</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -1067,7 +1073,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
 </div>
 
       </footer>
