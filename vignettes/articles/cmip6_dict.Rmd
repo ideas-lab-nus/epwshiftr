@@ -137,6 +137,7 @@ where `type` is the data type of interest. For Data Request, you can use
 `"dreq"` as the type name.
 
 The returned data type are:
+
 1. For type `"drs"`, "activity_id"`, `"frequency"`, `"grid_label"`,
    `"institution_id"`, `"source_type"` and `"sub_experiment_id"`, a [list].
 
