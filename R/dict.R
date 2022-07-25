@@ -940,7 +940,9 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
         if (data.table::is.data.table(val$cvs[[nm]])) setDT(val$cvs[[nm]])
         setattr(val$cvs[[nm]], "class", cls)
     }
+    cls <- class(val$dreq)
     setDT(val$dreq)
+    setattr(val$dreq, "class", cls)
 
     val
 }

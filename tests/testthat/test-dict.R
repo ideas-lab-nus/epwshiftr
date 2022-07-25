@@ -18,7 +18,7 @@ test_that("$build() and $save()", {
 
 test_that("$load()", {
     dict <- cmip6_dict()
-    dict$load(".")
+    expect_is(dict$load("."), "CMIP6Dict")
 
     empty_dir <- file.path(tempdir(), "empty")
     if (!dir.exists(empty_dir)) dir.create(empty_dir)
@@ -154,7 +154,7 @@ test_that("$get()", {
     expect_message(print(dict$get("realm")))
 
     expect_is(dict$get("required_global_attributes"), "character")
-    expect_message(dict$get("required_global_attributes"))
+    expect_message(print(dict$get("required_global_attributes")))
 
     expect_is(dict$get("source_id"), "data.table")
     expect_identical(
