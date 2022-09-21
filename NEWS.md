@@ -80,6 +80,8 @@
   exceeds the threshold value, warnings are issued and the morphing method is
   fallbacked to `"shift"` to avoid unrealistic morphed values (#54).
 * Now HDF5 format is supported (#60).
+* Now `replica` can be `NULL` in `esgf_query()` and `init_cmip6_index()`. In
+  this case, both the master record and replicas are all returned (#61).
 
 ## Bug fixes
 

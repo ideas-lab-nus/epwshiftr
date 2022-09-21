@@ -112,6 +112,7 @@
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
+#'        Use `NULL` to return both the master and the replicas.
 #'        Default: `FALSE`.
 #'
 #' @param latest Whether the record is the latest available version, or a
@@ -231,7 +232,7 @@ esgf_query <- function (
     assert_character(source, any.missing = FALSE, null.ok = TRUE)
     assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
     assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(replica)
+    assert_flag(replica, null.ok = TRUE)
     assert_flag(latest)
     assert_count(limit, positive = TRUE)
     assert_choice(type, choices = c("Dataset", "File"))
