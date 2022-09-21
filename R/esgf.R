@@ -112,6 +112,7 @@
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
+#'        Use `NULL` to return both the master and the replicas.
 #'        Default: `FALSE`.
 #'
 #' @param latest Whether the record is the latest available version, or a
@@ -231,7 +232,7 @@ esgf_query <- function (
     assert_character(source, any.missing = FALSE, null.ok = TRUE)
     assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
     assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(replica)
+    assert_flag(replica, null.ok = TRUE)
     assert_flag(latest)
     assert_count(limit, positive = TRUE)
     assert_choice(type, choices = c("Dataset", "File"))
@@ -282,6 +283,28 @@ esgf_query <- function (
         pair(type) %and%
         pair(limit) %and%
         pair(format)
+
+    # use 'fields' to subset returned fields
+    if (type == "Dataset") {
+        fileds <- c(
+            "id",
+            "mip_era", "activity_drs", "institution_id", "source_id",
+            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
+            "version", "nominal_resolution", "variable_id", "variable_long_name",
+            "variable_units", "data_node", "number_of_files",
+            "pid"
+        )
+    } else if (type == "File") {
+        fields <- c(
+            "id", "dataset_id",
+            "mip_era", "activity_drs", "institution_id", "source_id",
+            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
+            "version", "nominal_resolution", "variable_id", "variable_long_name",
+            "variable_units", "data_node", "size", "url",
+            "tracking_id"
+        )
+    }
+    q <- q %and% pair(fields)
 
     q <- tryCatch(jsonlite::read_json(q), warning = function (w) w, error = function (e) e)
 
