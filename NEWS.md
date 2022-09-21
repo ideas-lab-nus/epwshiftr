@@ -79,6 +79,7 @@
   morphing methods are set `"stretch"` or `"combined"`, and the absolute alpha
   exceeds the threshold value, warnings are issued and the morphing method is
   fallbacked to `"shift"` to avoid unrealistic morphed values (#54).
+* Now HDF5 format is supported (#60).
 
 ## Bug fixes
 
