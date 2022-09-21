@@ -284,28 +284,6 @@ esgf_query <- function (
         pair(limit) %and%
         pair(format)
 
-    # use 'fields' to subset returned fields
-    if (type == "Dataset") {
-        fileds <- c(
-            "id",
-            "mip_era", "activity_drs", "institution_id", "source_id",
-            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-            "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node", "number_of_files",
-            "pid"
-        )
-    } else if (type == "File") {
-        fields <- c(
-            "id", "dataset_id",
-            "mip_era", "activity_drs", "institution_id", "source_id",
-            "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-            "version", "nominal_resolution", "variable_id", "variable_long_name",
-            "variable_units", "data_node", "size", "url",
-            "tracking_id"
-        )
-    }
-    q <- q %and% pair(fields)
-
     q <- tryCatch(jsonlite::read_json(q), warning = function (w) w, error = function (e) e)
 
     # nocov start
