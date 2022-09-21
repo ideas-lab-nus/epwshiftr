@@ -164,7 +164,7 @@ summary_database <- function (
     idx <- load_cmip6_index()
 
     # find all nc files in specified directory
-    ncfiles <- list.files(dir, "\\.nc$", full.names = TRUE, recursive = recursive)
+    ncfiles <- list.files(dir, "[.](nc)|(hdf)$", full.names = TRUE, recursive = recursive)
 
     verbose(paste0("", length(ncfiles), " NetCDF files found."))
 
