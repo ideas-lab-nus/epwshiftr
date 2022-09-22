@@ -95,6 +95,9 @@
 * Fix the wrong warning messages when `combined` method is used in
   `morphing_epw()` (#25).
 
+## Internal refactor
+* `fields` parameter is used to directly filter the ESGF query responses (#66).
+
 # epwshiftr 0.1.3
 
 ## Minor changes
