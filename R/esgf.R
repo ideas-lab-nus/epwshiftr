@@ -275,14 +275,14 @@ esgf_query <- function(activity = "ScenarioMIP",
         key <- dict[names(dict) == var]
         if (!length(key)) key <- var
         if (is.logical(x)) x <- tolower(x)
-        s <- paste0(key, "=", paste0(x, collapse = "%2C")) # %2C = ","
+        s <- paste0(key, "=", paste0(x, collapse = ",")) # %2C = ","
         if (first) s else paste0("&", s)
     }
 
     `%and%` <- function(lhs, rhs) if (is.null(rhs)) lhs else paste0(lhs, rhs)
 
     project <- "CMIP6"
-    format <- "application%2Fsolr%2Bjson"
+    format <- "application/solr+json"
 
     resolution <- c(
         gsub(" ", "", resolution, fixed = TRUE),
@@ -313,6 +313,7 @@ esgf_query <- function(activity = "ScenarioMIP",
     }
     q <- q %and% pair(fields)
 
+    q <- utils::URLencode(q, reserved = TRUE)
     q <- tryCatch(jsonlite::read_json(q), warning = function(w) w, error = function(e) e)
 
     # nocov start

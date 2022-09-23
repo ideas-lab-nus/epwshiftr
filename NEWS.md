@@ -97,6 +97,7 @@
 
 ## Internal refactor
 * `fields` parameter is used to directly filter the ESGF query responses (#66).
+* Use `utils::URLencode()` to encode query URLs (#62).
 
 # epwshiftr 0.1.3
 
