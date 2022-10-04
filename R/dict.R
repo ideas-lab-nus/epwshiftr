@@ -74,8 +74,8 @@
 #' @name CMIP6Dict
 #' @export
 cmip6_dict <- function() {
-    EPWSHIFTR_ENV$dict <- CMIP6Dict$new()
-    EPWSHIFTR_ENV$dict
+    this$dict <- CMIP6Dict$new()
+    this$dict
 }
 
 #' @name CMIP6Dict

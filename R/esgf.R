@@ -574,7 +574,7 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
         verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
 
-        EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
+        this$index_db <- data.table::copy(dt)
     }
 
     dt
@@ -597,10 +597,10 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
 #' @importFrom data.table copy fread
 #' @export
 load_cmip6_index <- function(force = FALSE) {
-    if (is.null(EPWSHIFTR_ENV$index_db)) force <- TRUE
+    if (is.null(this$index_db)) force <- TRUE
 
     if (!force) {
-        idx <- data.table::copy(EPWSHIFTR_ENV$index_db)
+        idx <- data.table::copy(this$index_db)
     } else {
         f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
         if (!file.exists(f)) {
@@ -662,7 +662,7 @@ load_cmip6_index <- function(force = FALSE) {
     }
 
     # udpate package internal stored file index
-    EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
+    this$index_db <- data.table::copy(idx)
 
     idx[]
 }
@@ -708,7 +708,7 @@ set_cmip6_index <- function(index, save = FALSE) {
     }
 
     # udpate package internal stored file index
-    EPWSHIFTR_ENV$index_db <- data.table::copy(index)
+    this$index_db <- data.table::copy(index)
 
     invisible(index)
 }

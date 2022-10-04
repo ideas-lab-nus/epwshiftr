@@ -1,6 +1,6 @@
 test_that("cmip6_dict()", {
     expect_is(dict <- cmip6_dict(), "CMIP6Dict")
-    expect_is(EPWSHIFTR_ENV$dict, "CMIP6Dict")
+    expect_is(this$dict, "CMIP6Dict")
 })
 
 test_that("$build() and $save()", {

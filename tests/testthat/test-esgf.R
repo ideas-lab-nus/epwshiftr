@@ -138,7 +138,7 @@ test_that("load_cmip6_index()", {
         expect_equal(idx, idx1)
 
         # remove exising db
-        EPWSHIFTR_ENV$index_db <- NULL
+        this$index_db <- NULL
         expect_is(idx2 <- load_cmip6_index(TRUE), "data.table")
         expect_equal(idx, idx2)
     }
