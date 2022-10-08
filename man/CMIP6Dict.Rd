@@ -178,7 +178,7 @@ A \link[=POSIXct]{DateTime}
 \subsection{Method \code{build()}}{
 Fetch and parse all data of CVs and Data Request
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$build(token = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{CMIP6Dict$build(token = NULL, force = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -187,6 +187,9 @@ Fetch and parse all data of CVs and Data Request
 \item{\code{token}}{A string of GitHub token that is used to access GitHub
 REST APIs. If \code{NULL}, \code{GITHUB_PAT} or \code{GITHUB_TOKEN}
 environment variable will be used if exists. Default: \code{NULL}.}
+
+\item{\code{force}}{Whether to force to rebuild the dict when it has been
+already built before. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }

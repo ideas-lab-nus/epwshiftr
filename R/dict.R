@@ -144,8 +144,17 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #'        REST APIs. If `NULL`, `GITHUB_PAT` or `GITHUB_TOKEN`
         #'        environment variable will be used if exists. Default: `NULL`.
         #'
+        #' @param force Whether to force to rebuild the dict when it has been
+        #'        already built before. Default: `FALSE`.
+        #'
         #' @return The updated `CMIP6Dict` itself.
-        build = function(token = NULL) {
+        build = function(token = NULL, force = FALSE) {
+            assert_flag(force)
+
+            if (self$is_empty()) force <- TRUE
+
+            if (!force) return(self)
+
             dict <- cmip6dict_build(cmip6dict_fetch())
             for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
