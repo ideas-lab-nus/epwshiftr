@@ -22,6 +22,8 @@ test_that("ESGF Query Parameter works", {
 })
 
 test_that("ESGF Query works", {
+    skip_on_cran()
+
     attach_cache(readRDS(file.path(get_cache(), "facets")))
 
     expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")

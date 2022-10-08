@@ -3,7 +3,7 @@ test_that("extract_location_dict()", {
     expect_null(extract_location_dict("abcdefghijk"))
 
     mockery::stub(extract_location_dict, "utils::menu", 1L)
-    expect_is(res <- extract_location_dict("Singapore"), class = "data.table")
+    expect_s3_class(res <- extract_location_dict("Singapore"), class = "data.table")
     expect_named(res,
         c("title", "location", "state_province", "country", "wmo_region",
             "wmo_number", "source_type", "longitude", "latitude", "epw_url",
@@ -12,7 +12,7 @@ test_that("extract_location_dict()", {
     expect_identical(nrow(res), 1L)
 
     mockery::stub(extract_location_dict, "utils::menu", 1L)
-    expect_is(res <- extract_location_dict("China"), class = "data.table")
+    expect_s3_class(res <- extract_location_dict("China"), class = "data.table")
     expect_named(res,
         c("title", "location", "state_province", "country", "wmo_region",
             "wmo_number", "source_type", "longitude", "latitude", "epw_url",
@@ -41,18 +41,18 @@ test_that("match_nc_coord()", {
         expect_error(match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1.0, lon = 0.01)))
 
         # can specify maximum matched number
-        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L), "data.table")
+        expect_s3_class(matched <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L), "data.table")
         expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
         expect_identical(nrow(matched), 1L)
 
         # can match multiple values
-        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1.0, lon = 1.0)), "data.table")
+        expect_s3_class(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1.0, lon = 1.0)), "data.table")
         expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
         expect_identical(nrow(matched), 6L)
 
         # can change EPW longitude to [0, 360] range
         loc <- eplusr:::WEATHER_DB[title == "USA_NY_New.York.City-Central.Park.744860_TMY2"]
-        expect_is(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1L, lon = 1L), max_num = 1L), "data.table")
+        expect_s3_class(matched <- match_nc_coord(path, loc$latitude, loc$longitude, threshold = list(lat = 1L, lon = 1L), max_num = 1L), "data.table")
         expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
         expect_identical(nrow(matched), 1L)
 
@@ -72,7 +72,7 @@ test_that("match_location_coord()", {
     if (file.exists(path)) {
         loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
 
-        expect_is(matched <- match_location_coord(path, as.list(loc)), "data.table")
+        expect_s3_class(matched <- match_location_coord(path, as.list(loc)), "data.table")
         expect_named(matched, c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
         expect_identical(nrow(matched), 6L)
     }
@@ -103,13 +103,13 @@ test_that("match_coord()", {
         set_cmip6_index(idx2, TRUE)
         withr::with_options(
             list(datatable.old.fread.datetime.character = TRUE),
-            expect_equivalent(load_cmip6_index(TRUE)[, -"file_mtime"], idx[, -"file_mtime"])
+            expect_equal(load_cmip6_index(TRUE)[, -"file_mtime"], idx[, -"file_mtime"], ignore_attr = TRUE)
         )
 
         # can work with Epw object
-        expect_is(res1 <- match_coord(eplusr::read_epw(path)), "epw_cmip6_coord")
+        expect_s3_class(res1 <- match_coord(eplusr::read_epw(path)), "epw_cmip6_coord")
         expect_named(res1, c("epw", "meta", "coord"))
-        expect_is(res1$epw, "Epw")
+        expect_s3_class(res1$epw, "Epw")
         expect_named(res1$meta, c("city", "state_province", "country", "latitude", "longitude"))
         expect_identical(nrow(res1$coord), 3L)
         expect_named(res1$coord,
@@ -122,18 +122,18 @@ test_that("match_coord()", {
               "coord"
             )
         )
-        expect_is(res1$coord$coord, "list")
-        expect_is(res1$coord$coord[[1L]], "data.table")
+        expect_type(res1$coord$coord, "list")
+        expect_s3_class(res1$coord$coord[[1L]], "data.table")
         expect_named(res1$coord$coord[[1L]], c("index", "ind_lon", "ind_lat", "lon", "lat", "dist"))
 
         # can work with EPW file path
-        expect_is(res2 <- match_coord(path), "epw_cmip6_coord")
+        expect_s3_class(res2 <- match_coord(path), "epw_cmip6_coord")
         expect_identical(res2$meta, res1$meta)
         expect_identical(res2$coord, res1$coord)
 
         # can select the location interactively
         mockery::stub(match_coord, "extract_location_dict", eplusr:::WEATHER_DB[grepl("Singapore", title)][1L])
-        expect_is(res3 <- match_coord("Singapore"), "epw_cmip6_coord")
+        expect_s3_class(res3 <- match_coord("Singapore"), "epw_cmip6_coord")
 
         mockery::stub(match_coord, "extract_location_dict", NULL)
         expect_null(match_coord("abcdefghijk"))
