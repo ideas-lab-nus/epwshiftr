@@ -92,6 +92,7 @@ test_that("ESGF Query works", {
     # fields
     expect_equal(q$fields()$value, "*")
     expect_equal(q$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
+    expect_equal(q$fields("*")$fields()$value, "*")
     expect_null(q$fields(NULL)$fields())
 
     # shards
@@ -100,6 +101,11 @@ test_that("ESGF Query works", {
     expect_error(q$shards("a"), "distrib")
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_error(q$shards("a"), "Assertion")
+    expect_equal(
+        q$shards("localhost:8985/solr/datasets")$shards()$value,
+        "localhost:8985/solr/datasets"
+    )
+    expect_null(q$shards(NULL)$shards())
 
     # replica
     expect_null(q$replica())
@@ -167,5 +173,5 @@ test_that("ESGF Query works", {
     expect_type(q$response(), "list")
     expect_equal(names(q$response()), c("responseHeader", "response"))
 
-    expect_snapshot_output(EsgfQuery$new()$print())
+    expect_snapshot_output(EsgfQuery$new()$params(table_id = "Amon", member_id = "00")$print())
 })

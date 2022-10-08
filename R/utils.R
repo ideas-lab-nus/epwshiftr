@@ -39,6 +39,7 @@ now <- function() {
     t
 }
 
+# nocov start
 rd_query_is_facets <- function(x) {
     x %in% c("facets", "fields", "shards", "replica", "latest", "type", "limit", "offset", "distrib")
 }
@@ -100,6 +101,8 @@ rd_query_method_return <- function() {
         "}"
     )
 }
+# nocov end
+
 #' Get the package data storage directory
 #'
 #' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
