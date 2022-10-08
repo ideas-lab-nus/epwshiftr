@@ -390,7 +390,7 @@ cmip6dict_download_cv_file <- function(tag, dir = tempdir(), token = NULL) {
 
     file <- ""
     cli::cli_progress_step(
-        "Downloading data of {.strong CMIP6 CVs} ['{.file {file}}']...",
+        "Downloading data of {.strong CMIP6 CVs} [{.file {file}}]...",
         "Downloaded data of {.strong CMIP6 CVs} successfully.",
         "Failed to download data of {.strong CMIP6 CVs}.",
         spinner = TRUE
