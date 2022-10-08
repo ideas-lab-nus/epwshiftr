@@ -120,6 +120,7 @@ If \code{NULL}, all possible variants are returned.
 
 \item{replica}{Whether the record is the "master" copy, or a replica. Use
 \code{FALSE} to return only originals and \code{TRUE} to return only replicas.
+Use \code{NULL} to return both the master and the replicas.
 Default: \code{FALSE}.}
 
 \item{latest}{Whether the record is the latest available version, or a

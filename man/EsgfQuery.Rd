@@ -33,7 +33,6 @@ set them before sending the actual query to the ESGF search services.
 When creating an \code{EsgfQuery} object, a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 is sent to the index node to get all available facets and shards.
-
 \code{EsgfQuery} object provides three value-listing methods to extract data from
 the response of the facet listing query:
 \itemize{
