@@ -35,7 +35,13 @@ navbar:
 reference:
   - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
     contents:
-      - CMIP6Dict
+      - Cmip6Dict
+
+  - title: ESGF search services
+    contents:
+      - EsgfQuery
+      - query_esgf
+
   - title: CMIP6 Index
     desc: Build CMIP6 output index
     contents:
@@ -44,19 +50,23 @@ reference:
       - load_cmip6_index
       - set_cmip6_index
       - get_data_node
+
   - title: CMIP6 Output
     desc: Manage CMIP6 output files
     contents:
       - summary_database
+
   - title: Data extraction
     desc: Extract CMIP6 data based on EPW
     contents:
       - match_coord
       - extract_data
+
   - title: Create future EPWs
     contents:
       - morphing_epw
       - future_epw
+
   - title: epwshiftr Options
     contents:
       - epwshiftr-package
