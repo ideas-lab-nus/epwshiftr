@@ -320,9 +320,9 @@ test_that("morphing_epw()", {
 
         thres_alpha <- getOption("epwshiftr.threshold_alpha")
         options("epwshiftr.threshold_alpha" = NULL)
-        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        suppressWarnings(expect_warning(res <- morphing_epw(d, 2060L), "threshold"))
         options("epwshiftr.threshold_alpha" = -1L)
-        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        suppressWarnings(expect_warning(res <- morphing_epw(d, 2060L), "threshold"))
         options("epwshiftr.threshold_alpha" = thres_alpha)
     }
 })

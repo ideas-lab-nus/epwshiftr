@@ -1,6 +1,6 @@
 test_that("cmip6_dict()", {
-    expect_s3_class(dict <- cmip6_dict(), "CMIP6Dict")
-    expect_s3_class(this$dict, "CMIP6Dict")
+    expect_s3_class(dict <- cmip6_dict(), "Cmip6Dict")
+    expect_s3_class(this$dict, "Cmip6Dict")
 })
 
 test_that("$build() and $save()", {
@@ -9,7 +9,7 @@ test_that("$build() and $save()", {
     dict <- cmip6_dict()
     expect_warning(dict$save())
 
-    expect_s3_class(dict$build(), "CMIP6Dict")
+    expect_s3_class(dict$build(), "Cmip6Dict")
 
     expect_true(file.exists(dict$save(test_path())))
     # can create dir if not exists
@@ -33,7 +33,7 @@ test_that("$version()", {
     dict <- cmip6_dict()
     expect_null(dict$version())
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
     expect_type(dict$version(), "list")
     expect_named(dict$version(), c("cvs", "dreq"))
     expect_s3_class(dict$version()$cvs, "numeric_version")
@@ -46,7 +46,7 @@ test_that("$is_empty()", {
     dict <- cmip6_dict()
     expect_true(dict$is_empty())
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
     expect_false(dict$is_empty())
     expect_s3_class(dict$version()$dreq, "numeric_version")
 })
@@ -57,7 +57,7 @@ test_that("$timestamp()", {
     dict <- cmip6_dict()
     expect_null(dict$timestamp())
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
     expect_type(dict$timestamp(), "list")
     expect_length(dict$timestamp(), 14L)
     expect_named(dict$timestamp(),
@@ -76,7 +76,7 @@ test_that("$built_time()", {
     dict <- cmip6_dict()
     expect_null(dict$built_time())
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
     expect_s3_class(dict$built_time(), "POSIXct")
     expect_length(dict$built_time(), 1L)
 })
@@ -88,7 +88,7 @@ test_that("$get()", {
 
     expect_null(dict$get("activity_id"))
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
 
     expect_s3_class(dict$get("drs"), "list")
     expect_identical(
@@ -192,7 +192,7 @@ test_that("$print()", {
     dict <- cmip6_dict()
     expect_message(dict$print())
 
-    expect_s3_class(dict$load(test_path()), "CMIP6Dict")
+    expect_s3_class(dict$load(test_path()), "Cmip6Dict")
     expect_message(dict$print())
 })
 
