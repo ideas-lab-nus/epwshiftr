@@ -264,9 +264,12 @@ esgf_query <- function(activity = "ScenarioMIP",
         variant = "variant_label"
     )
 
-    pair <- function(x, first = FALSE) {
+    pair <- function(x, encode = TRUE) {
+        checkmate::assert_vector(x, TRUE, null.ok = TRUE)
+
         # get name
         var <- deparse(substitute(x))
+
         # skip if empty
         if (is.null(x) || length(x) == 0) {
             return()
@@ -274,36 +277,32 @@ esgf_query <- function(activity = "ScenarioMIP",
         # get key name
         key <- dict[names(dict) == var]
         if (!length(key)) key <- var
+
         if (is.logical(x)) x <- tolower(x)
-        s <- paste0(key, "=", paste0(x, collapse = ",")) # %2C = ","
-        if (first) s else paste0("&", s)
+
+        if (encode) x <- query_param_encode(as.character(x))
+
+        paste0(key, "=", paste0(x, collapse = query_param_encode(",")))
     }
 
-    `%and%` <- function(lhs, rhs) if (is.null(rhs)) lhs else paste0(lhs, rhs)
+    `%and%` <- function(lhs, rhs) {
+        if (is.null(rhs)) {
+            lhs
+        } else if (lhs == url_base) {
+            paste(lhs, rhs, sep = "", collapse = "")
+        } else {
+            paste(lhs, rhs, sep = "&", collapse = "&")
+        }
+    }
 
     project <- "CMIP6"
     format <- "application/solr+json"
+    offset <- 0L
 
     resolution <- c(
         gsub(" ", "", resolution, fixed = TRUE),
         gsub(" ", "+", resolution, fixed = TRUE)
     )
-
-    q <- url_base %and%
-        pair(project, TRUE) %and%
-        pair(activity) %and%
-        pair(experiment) %and%
-        pair(source) %and%
-        pair(variable) %and%
-        pair(resolution) %and%
-        pair(variant) %and%
-        pair(data_node) %and%
-        pair(frequency) %and%
-        pair(replica) %and%
-        pair(latest) %and%
-        pair(type) %and%
-        pair(limit) %and%
-        pair(format)
 
     # use `fileds` to directly subset data from responses
     if (type == "Dataset") {
@@ -311,9 +310,25 @@ esgf_query <- function(activity = "ScenarioMIP",
     } else if (type == "File") {
         fields <- RES_FILE
     }
-    q <- q %and% pair(fields)
 
-    q <- utils::URLencode(q, reserved = TRUE)
+    q <- url_base %and%
+        pair(offset) %and%
+        pair(limit) %and%
+        pair(type) %and%
+        pair(replica) %and%
+        pair(latest) %and%
+        pair(project) %and%
+        pair(activity) %and%
+        pair(experiment) %and%
+        pair(source) %and%
+        pair(variable) %and%
+        pair(resolution, FALSE) %and%
+        pair(variant) %and%
+        pair(data_node) %and%
+        pair(frequency) %and%
+        pair(fields) %and%
+        pair(format)
+
     q <- tryCatch(jsonlite::read_json(q), warning = function(w) w, error = function(e) e)
 
     # nocov start
