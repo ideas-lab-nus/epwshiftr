@@ -3,7 +3,7 @@
 S3method(print,CMIP6CV)
 S3method(print,CMIP6DReq)
 S3method(print,EsgfQueryParam)
-export(CMIP6Dict)
+export(Cmip6Dict)
 export(EsgfQuery)
 export(cmip6_dict)
 export(esgf_query)

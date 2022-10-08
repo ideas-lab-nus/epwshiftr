@@ -1,6 +1,6 @@
 #' CMIP6 Controlled Vocabularies (CVs) and Data Request Dictionary
 #'
-#' The `CMIP6Dict` object provides functionalities to fetch the latested CMIP6
+#' The `Cmip6Dict` object provides functionalities to fetch the latested CMIP6
 #' Controlled Vocabularies (CVs) and Data Request (DReq) information.
 #'
 #' The CMIP6 CVs gives a well-defined set of global attributes that are recorded
@@ -15,7 +15,7 @@
 #' endorsed MIP. The raw data of DReq is stored a Microsoft Excel file
 #' (`CMIP6_MIP_tables.xlsx`) in a
 #' [Subversion repo](http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk).
-#' The `CMIP6Dict` object uses the parsed DReq data that is stored in the
+#' The `Cmip6Dict` object uses the parsed DReq data that is stored in the
 #' [GitHub Repo](https://github.com/PCMDI/cmip6-cmor-tables).
 #'
 #' For more information, please see:
@@ -26,10 +26,10 @@
 #' @examples
 #' \dontrun{
 #'
-#' # create a new CMIP6Dict object
+#' # create a new Cmip6Dict object
 #' dict <- cmip6_dict()
 #'
-#' # by default, there is no data when the CMIP6Dict was created
+#' # by default, there is no data when the Cmip6Dict was created
 #' dict$is_empty()
 #'
 #' # fetch and parse all CVs and Data Request data
@@ -71,16 +71,16 @@
 #' @author Hongyuan Jia
 #'
 #' @importFrom R6 R6Class
-#' @name CMIP6Dict
+#' @name Cmip6Dict
 #' @export
 cmip6_dict <- function() {
-    this$dict <- CMIP6Dict$new()
+    this$dict <- Cmip6Dict$new()
     this$dict
 }
 
-#' @name CMIP6Dict
+#' @name Cmip6Dict
 #' @export
-CMIP6Dict <- R6::R6Class("CMIP6Dict",
+Cmip6Dict <- R6::R6Class("Cmip6Dict",
     cloneable = FALSE, lock_class = TRUE,
     public = list(
         #' @description
@@ -96,9 +96,9 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         },
 
         #' @description
-        #' Is it an empty CMIP6Dict?
+        #' Is it an empty Cmip6Dict?
         #'
-        #' `$is_empty()` checks if this `CMIP6Dict` is empty, i.e. the `$build()
+        #' `$is_empty()` checks if this `Cmip6Dict` is empty, i.e. the `$build()
         #' ` or `$load()` method hasn't been called yet and there is no data of
         #' CVs and Data Request.
         #'
@@ -147,7 +147,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         #' @param force Whether to force to rebuild the dict when it has been
         #'        already built before. Default: `FALSE`.
         #'
-        #' @return The updated `CMIP6Dict` itself.
+        #' @return The updated `Cmip6Dict` itself.
         build = function(token = NULL, force = FALSE) {
             assert_flag(force)
 
@@ -201,12 +201,12 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         },
 
         #' @description
-        #' Save the CMIP6Dict object
+        #' Save the Cmip6Dict object
         #'
-        #' `$save()` stores all the core data of current `CMIP6Dict` object into
+        #' `$save()` stores all the core data of current `Cmip6Dict` object into
         #' an [RDS][saveRDS()] file named `CMIP6DICT` in the specified folder.
         #' This file can be reloaded via `$load()` method to restore the last
-        #' state of current `CMIP6Dict` object.
+        #' state of current `Cmip6Dict` object.
         #'
         #' @param dir A single string giving the directory to save the RDS file.
         #'        Default is set to the global option `epwshiftr.dir`. The
@@ -227,7 +227,7 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         },
 
         #' @description
-        #' Load the saved CMIP6Dict object from file
+        #' Load the saved Cmip6Dict object from file
         #'
         #' `$load()` loads the RDS file named `CMIP6DICT` that is created using
         #' `$save()` method.
@@ -257,12 +257,12 @@ CMIP6Dict <- R6::R6Class("CMIP6Dict",
         },
 
         #' @description
-        #' Print a summary of the current `CMIP6Dict` object
+        #' Print a summary of the current `Cmip6Dict` object
         #'
-        #' `$print()` gives the summary of current `CMIP6Dict` object including
+        #' `$print()` gives the summary of current `Cmip6Dict` object including
         #' the version of CVs and Data Request, and the last built time.
         #'
-        #' @return The `CMIP6Dict` object itself, invisibly.
+        #' @return The `Cmip6Dict` object itself, invisibly.
         print = function() {
             d <- cli::cli_div(
                 theme = list(rule = list("line-type" = "double"))
