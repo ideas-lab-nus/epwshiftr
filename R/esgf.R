@@ -121,10 +121,10 @@ RES_FILE <- c(
 #'        described below. Default: `"r1i1p1f1"`.
 #'        If `NULL`, all possible variants are returned.
 #'
-#' * `r`: realization_index (<k>) = realization number (integer >0)
-#' * `i`: initialization_index (<l>) = index for variant of initialization method (integer >0)
-#' * `p`: physics_index (<m>) = index for model physics variant (integer >0)
-#' * `f`: forcing_index (<n>) = index for variant of forcing (integer >0)
+#' * `r`: realization_index (`<k>`) = realization number (integer >0)
+#' * `i`: initialization_index (`<l>`) = index for variant of initialization method (integer >0)
+#' * `p`: physics_index (`<m>`) = index for model physics variant (integer >0)
+#' * `f`: forcing_index (`<n>`) = index for variant of forcing (integer >0)
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.

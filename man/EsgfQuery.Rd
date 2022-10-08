@@ -7,6 +7,13 @@
 \usage{
 query_esgf(host = "https://esgf-node.llnl.gov/esg-search")
 }
+\arguments{
+\item{host}{The URL to the ESGF Search API service. This should be the URL of
+the ESGF search service excluding the final endpoint name. Usually
+this is \verb{http://<hostname>/esg-search}. Default is to ses the
+\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
+which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+}
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
 the software that powers most global climate change research, notably

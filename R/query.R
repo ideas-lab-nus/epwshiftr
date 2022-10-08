@@ -193,6 +193,13 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' @author Hongyuan Jia
 #'
 #' @name EsgfQuery
+#'
+#' @param host The URL to the ESGF Search API service. This should be the URL of
+#'        the ESGF search service excluding the final endpoint name. Usually
+#'        this is `http://<hostname>/esg-search`. Default is to ses the
+#'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'
 #' @export
 query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search") {
     EsgfQuery$new(host = host)

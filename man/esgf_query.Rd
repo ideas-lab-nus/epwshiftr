@@ -111,10 +111,10 @@ indices stored as global attributes in format \verb{r<k>i<l>p<m>f<n>}
 described below. Default: \code{"r1i1p1f1"}.
 If \code{NULL}, all possible variants are returned.
 \itemize{
-\item \code{r}: realization_index (<k>) = realization number (integer >0)
-\item \code{i}: initialization_index (<l>) = index for variant of initialization method (integer >0)
-\item \code{p}: physics_index (<m>) = index for model physics variant (integer >0)
-\item \code{f}: forcing_index (<n>) = index for variant of forcing (integer >0)
+\item \code{r}: realization_index (\verb{<k>}) = realization number (integer >0)
+\item \code{i}: initialization_index (\verb{<l>}) = index for variant of initialization method (integer >0)
+\item \code{p}: physics_index (\verb{<m>}) = index for model physics variant (integer >0)
+\item \code{f}: forcing_index (\verb{<n>}) = index for variant of forcing (integer >0)
 }}
 
 \item{replica}{Whether the record is the "master" copy, or a replica. Use
