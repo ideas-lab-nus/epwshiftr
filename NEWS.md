@@ -82,6 +82,8 @@
 * Now HDF5 format is supported (#60).
 * Now `replica` can be `NULL` in `esgf_query()` and `init_cmip6_index()`. In
   this case, both the master record and replicas are all returned (#61).
+* New class `EsgfQuery` is added to support more flexible. Please see
+  `?EsgfQuery` for details (#63).
 
 ## Bug fixes
 
@@ -96,8 +98,9 @@
   `morphing_epw()` (#25).
 
 ## Internal refactor
+
 * `fields` parameter is used to directly filter the ESGF query responses (#66).
-* Use `utils::URLencode()` to encode query URLs (#62).
+* Improve URL encoding (#62).
 
 # epwshiftr 0.1.3
 
