@@ -30,6 +30,8 @@ this$index_db <- NULL
 this$dict <- NULL
 this$cache <- list()
 
+attach_cache <- function(cache) this$cache <- cache
+
 ## usethis namespace: start
 #' @importFrom checkmate assert_string
 #' @importFrom cli cli_rule

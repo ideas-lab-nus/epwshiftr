@@ -5,13 +5,20 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     if (identical(Sys.getenv("NOT_CRAN"), "true") && !dir.exists(cache)) {
         dir.create(cache, recursive = TRUE)
     }
-    cache
 
     # download weather
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(cache, file)
     if (!file.exists(epw)) {
         eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1L)
+    }
+
+    # ESGF facet listing query
+    facets <- file.path(cache, "facets")
+    if (!file.exists(facets)) {
+        query_build_facet_cache("https://esgf-node.llnl.gov/esg-search", NULL, TRUE)
+        saveRDS(epwshiftr:::this$cache, facets)
+        attach_cache(list())
     }
 
     # download NetCDF

@@ -13,6 +13,93 @@ verbose <- function (..., sep = "") {
     }
 }
 
+vb <- function(expr) {
+    if (!getOption("epwshiftr.verbose", FALSE)) return()
+    force(expr)
+}
+
+eval_with_bang <- function(..., .env = parent.frame()) {
+    l <- eval(substitute(alist(...)))
+    assert_list(l, .var.name = "Input", min.len = 1L)
+    lapply(l, function(elem) {
+        if (!is.symbol(elem) && !is.null(elem) && elem[[1L]] == "!") {
+            negate <- TRUE
+            elem[[1L]] <- as.name("c")
+        } else {
+            negate <- FALSE
+        }
+
+        list(value = eval(elem, .env), negate = negate)
+    })
+}
+
+now <- function() {
+    t <- Sys.time()
+    attr(t, "tzone") <- Sys.timezone()
+    t
+}
+
+rd_query_is_facets <- function(x) {
+    x %in% c("facets", "fields", "shards", "replica", "latest", "type", "limit", "offset", "distrib")
+}
+
+rd_query_method_param <- function(method, type, negate, default, nullable = TRUE) {
+    val_quote <- if (grepl("character|string", type)) '"' else ""
+    def_quote <- if (!missing(default) && is.null(default)) "" else val_quote
+    rd <- c(
+        paste(
+            paste("The", if (rd_query_is_facets(method)) "facet" else "", "parameter value."),
+            if (!missing(default)) {
+                sprintf("Default: \\code{%s%s%s}.", def_quote, if (is.null(default)) "NULL" else default, def_quote)
+            }
+        ),
+
+        "There are two options:",
+        "\\itemize{",
+        "\\item If \\code{value} is not given, current value is returned.",
+        paste(
+            sprintf("\\item %s %s%s.", if (type == "integer") "An" else "A", type, if (nullable) " or \\code{NULL}" else ""),
+        if (method %in% c("fields", "facets")) {
+            sprintf(
+                paste(
+                    "The special notation \\code{\"*\"} can be used to indicate that",
+                    "all available %s should be considered."
+                ),
+                method
+            )
+        },
+        if (!missing(negate)) {
+            sprintf(
+                paste(
+                    "Note that you can put a preceding \\code{!} to negate the facet contraints.",
+                    "For example, \\code{$%s(!c(%s))} searches for all \\code{%s}s except for",
+                    "%s."
+                ),
+                method, paste0(val_quote, negate, val_quote, collapse = ", "),
+                method, paste0("\\code{", negate, "}", collapse = " and ")
+            )
+        }),
+        "}"
+    )
+
+    paste(rd, collapse = "\n")
+}
+
+rd_query_method_return <- function() {
+    paste(
+        "\\itemize{",
+        "\\item If \\code{value} is given, the modified \\code{EsgfQuery} object.",
+        paste(
+            "\\item Otherwise, an \\code{EsgfQueryParam} object which is essentially a list of three elements:",
+            "\\itemize{",
+                "\\item \\code{value}: input values.",
+                "\\item \\code{negate}: Whether there is a preceding \\code{!}.",
+                "\\item \\code{name}: Parameter name.",
+            "}"
+        ),
+        "}"
+    )
+}
 #' Get the package data storage directory
 #'
 #' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
