@@ -24,8 +24,6 @@ test_that("ESGF Query Parameter works", {
 test_that("ESGF Query works", {
     skip_on_cran()
 
-    attach_cache(readRDS(file.path(get_cache(), "facets")))
-
     expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")
     expect_s3_class(q <- query_esgf(), "EsgfQuery")
 
@@ -112,6 +110,11 @@ test_that("ESGF Query works", {
     expect_equal(q$replica(TRUE)$replica()$value, TRUE)
     expect_equal(q$replica(FALSE)$replica()$value, FALSE)
     expect_null(q$replica(NULL)$replica())
+
+    # latest
+    expect_true(q$latest()$value)
+    expect_false(q$latest(FALSE)$latest()$value)
+    expect_true(q$latest(TRUE)$latest()$value)
 
     # type
     expect_equal(q$type()$value, "Dataset")
