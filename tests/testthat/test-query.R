@@ -19,6 +19,27 @@ test_that("ESGF Query Parameter works", {
     expect_snapshot_output(print(new_query_param("x", list(value = TRUE, negate = TRUE))))
     expect_snapshot_output(print(new_query_param("x", list(value = 1.0, negate = TRUE))))
     expect_snapshot_output(print(new_query_param("x", list(value = "solr+json", negate = TRUE))))
+
+    # can build query url
+    host <- "https://esgf-node.llnl.gov/esg-search"
+    expect_null(query_build(host, list(project = NULL)))
+    expect_true(grepl("CMIP5", query_build(host, list(project = "CMIP6", others = list(project = "CMIP5")))))
+    expect_true(grepl(
+        "project=CMIP5&table_id=Amon",
+        query_build(host, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon")))
+    ))
+    expect_true(grepl(
+        "project=CMIP5&table_id=Amon",
+        query_build(host,
+            list(
+                project = new_query_param("project", "CMIP6"),
+                others = list(
+                    project = "CMIP5",
+                    table_id = new_query_param("table_id", "Amon")
+                )
+            )
+        )
+    ))
 })
 
 test_that("ESGF Query works", {
@@ -144,7 +165,10 @@ test_that("ESGF Query works", {
     expect_null(q$frequency())
     expect_equal(
         q$params(table_id = "Amon", member_id = "00")$params(),
-        list(new_query_param("table_id", "Amon"), new_query_param("member_id", "00"))
+        list(
+            table_id = new_query_param("table_id", "Amon"),
+            member_id = new_query_param("member_id", "00")
+        )
     )
     ## can reset format
     expect_warning(q$params(format = "xml"), "JSON")
@@ -156,7 +180,8 @@ test_that("ESGF Query works", {
     expect_equal(q$params(NULL)$params(), list())
 
     # can get url
-    expect_type(EsgfQuery$new()$url(), "character")
+    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgfQuery$new()$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 
     # can get count
     expect_type(EsgfQuery$new()$frequency("1hr")$count(FALSE), "integer")

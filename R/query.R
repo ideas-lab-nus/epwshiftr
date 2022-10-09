@@ -1296,8 +1296,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 )
 
 query_param_encode <- function(param) {
+    # nocov start
     # only for character
     if (!is.character(param)) return(param)
+    # nocov end
 
     # escape encoding if needed
     if (!is.null(attr(param, "encoded", TRUE)) && attr(param, "encoded", TRUE)) {
@@ -1361,8 +1363,6 @@ query_build <- function(host, params, type = "search") {
 }
 
 query_build_facet_cache <- function(host, project = "CMIP6", force = FALSE) {
-    if (!force && !is.null(this$cache[[host]])) return(this$cache[[host]])
-
     url <- query_build(host,
         list(
             project = project,

@@ -10,6 +10,7 @@ test_that("$build() and $save()", {
     expect_warning(dict$save())
 
     expect_s3_class(dict$build(), "Cmip6Dict")
+    expect_s3_class(dict$build(), "Cmip6Dict")
 
     expect_true(file.exists(dict$save(test_path())))
     # can create dir if not exists
