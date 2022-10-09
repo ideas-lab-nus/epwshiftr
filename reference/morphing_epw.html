@@ -19,7 +19,7 @@ Morphing Method."><meta property="og:image" content="/logo.svg"><!-- mathjax -->
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9011</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9012</span>
       </span>
     </div>
 
@@ -38,6 +38,9 @@ Morphing Method."><meta property="og:image" content="/logo.svg"><!-- mathjax -->
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/cmip6_dict.html">Manage CMIP6 CVs and Data Request</a>
+    </li>
+    <li>
+      <a href="../reference/EsgfQuery.html">Work with ESGF search RESTful API</a>
     </li>
   </ul></li>
 <li>
@@ -152,9 +155,9 @@ $$</p><div class="section">
 
 <p>If using a shift, for each month, a shift \(\Delta x_m\) is applied to
 \(x_0\). \(\Delta x_m\) is the absolute change in the monthly mean value
-of the variable for the month \(m\), i.e. \(\Delta x_m = &lt;x_0&gt;_m - &lt;x&gt;_m\)
-. Here the monthly variance of the variable
-is unchanged.</p>
+of the variable for the month \(m\),
+i.e. \(\Delta x_m = &lt;x_0&gt;_m - &lt;x&gt;_m\). Here the monthly variance of the
+variable is unchanged.</p>
 </div>
 
 <div class="section">
@@ -163,7 +166,7 @@ is unchanged.</p>
 
 <p>If using a stretch, for each month, a stretch \(\alpha _m\) is applied to
 \(x_0\), where \(\alpha _m\) is the fractional change in the monthly-mean
-value of a variable, i.e. \(\alpha _m\) = &lt;x&gt;_m / &lt;x_0&gt;_m. In this case,
+value of a variable, i.e. \(\alpha _m = &lt;x&gt;_m / &lt;x_0&gt;_m\). In this case,
 the variance will be multiplied by to \(alpha^2_m\)</p>
 </div>
 
