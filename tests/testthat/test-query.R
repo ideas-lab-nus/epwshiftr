@@ -121,8 +121,8 @@ test_that("ESGF Query works", {
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_error(q$shards("a"), "Assertion")
     expect_equal(
-        q$shards("localhost:8985/solr/datasets")$shards()$value,
-        "localhost:8985/solr/datasets"
+        q$shards("esgf-node.llnl.gov:8985/solr")$shards()$value,
+        "esgf-node.llnl.gov:8985/solr"
     )
     expect_null(q$shards(NULL)$shards())
 

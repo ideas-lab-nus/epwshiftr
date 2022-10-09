@@ -52,9 +52,10 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' the software that powers most global climate change research, notably
 #' assessments by the Intergovernmental Panel on Climate Change (IPCC).
 #'
-#' The ESGF search service exposes a RESTful URL that can be used by clients to
+#' The ESGF search service exposes RESTful APIs that can be used by clients to
 #' query the contents of the underlying search index, and return results
-#' matching the given constraints.
+#' matching the given constraints. The documentation of the APIs can be found
+#' using this [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html)
 #'
 #' `EsgfQuery` is the workhorse for dealing with ESGF search services.
 #'
@@ -75,7 +76,8 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' When creating an `EsgfQuery` object, a
 #' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-#' is sent to the index node to get all available facets and shards.
+#' is sent to the index node to get all available facets and shards for the
+#' default project (CMIP6).
 #' `EsgfQuery` object provides three value-listing methods to extract data from
 #' the response of the facet listing query:
 #'
@@ -236,7 +238,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         initialize = function(host = "https://esgf-node.llnl.gov/esg-search") {
             assert_string(host)
-            private$url_host <- host
+            # in case of a encoded URL
+            private$url_host <- utils::URLdecode(host)
 
             if (private$has_facet_cache()) {
                 vb(cli::cli_alert_success(paste(
@@ -270,8 +273,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' can be used as parameter values within a specific project.
         #'
         #' By default, `$build_cache()` is called when initialize a new
-        #' `EsgfQuery` object. So in general, there is no need to call this
-        #' method, unless that you want to rebuild the cache.
+        #' `EsgfQuery` object for the default project (CMIP6). So in general,
+        #' there is no need to call this method, unless that you want to
+        #' rebuild the cache again with different projects after calling
+        #' \href{#method-EsgfQuery-project}{\code{$project()}}.
         #'
         #' @return The modified `EsgfQuery` object.
         #'
@@ -284,7 +289,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 "Building facet cache for host {.var {private$url_host}}...",
                 "Built facet query cache for host {.var {private$url_host}} built at {private$facet_cache()$timestamp}."
             ))
-            query_build_facet_cache(private$url_host, NULL, force = TRUE)
+            query_build_facet_cache(private$url_host, private$param_project)
             self
         },
 
@@ -311,7 +316,34 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$list_all_shards()
         #' }
         list_all_shards = function() {
-            strsplit(private$facet_cache()$responseHeader$params$shards, ",", fixed = TRUE)[[1L]]
+            shards <- private$facet_cache()$responseHeader$params$shards
+            # nocov start
+            if (!length(shards)) return(NULL)
+            # nocov end
+
+            shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
+            # fix the host if it refers to the local server
+
+            shards_parts <- regmatches(shards, regexec("(.*):(\\d*)/solr(.*)", shards))
+
+            # nocov start
+            if (length(invld <- shards[lengths(shards_parts) != 4L])) {
+                warning(sprintf(
+                    "Unrecogized Shard specification found: %s.",
+                    paste0("'", invld, "'", collapse = ", ")
+                ))
+            }
+            # nocov end
+
+            vapply(shards_parts, FUN.VALUE = "", function(shard) {
+                shard <- shard[-1L]
+                # replace localhost
+                if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
+                    shard[1L] <- strsplit(private$url_host, "/", fixed = TRUE)[[1L]][[3L]]
+                }
+                # exclude suffix
+                sprintf("%s:%s/solr%s", shard[[1L]], shard[[2L]], shard[[3L]])
+            })
         },
 
         #' @description
@@ -1268,7 +1300,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 }
                 choices <- c("*", self$list_all_facets())
             } else if (facet == "shards") {
+                # suffix should be excluded when query
                 choices <- self$list_all_shards()
+                if (length(choices)) {
+                    choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
+                }
             } else {
                 choices <- self$list_all_values(facet)
             }
@@ -1362,18 +1398,31 @@ query_build <- function(host, params, type = "search") {
     )
 }
 
-query_build_facet_cache <- function(host, project = "CMIP6", force = FALSE) {
+query_build_facet_cache <- function(host, project = "CMIP6") {
+    # build a query without project to get facet names and values
     url <- query_build(host,
         list(
-            project = project,
+            project = NULL,
             facets = "*",
             limit = 0,
             distrib = TRUE,
             format = "application/solr+json"
         )
     )
-
     res <- jsonlite::fromJSON(url, simplifyVector = FALSE)
+
+    # build a query with project to get the Shards
+    url <- query_build(host,
+        list(
+            project = "CMIP6",
+            limit = 0,
+            distrib = TRUE,
+            format = "application/solr+json"
+        )
+    )
+    res$responseHeader$params$shards <- jsonlite::fromJSON(url, simplifyVector = FALSE)$responseHeader$params$shards
+
+    # add timestamp
     res$timestamp <- now()
 
     this$cache[[host]] <- res

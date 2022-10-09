@@ -19,9 +19,10 @@ The Earth System Grid Federation (ESGF) is an international collaboration for
 the software that powers most global climate change research, notably
 assessments by the Intergovernmental Panel on Climate Change (IPCC).
 
-The ESGF search service exposes a RESTful URL that can be used by clients to
+The ESGF search service exposes RESTful APIs that can be used by clients to
 query the contents of the underlying search index, and return results
-matching the given constraints.
+matching the given constraints. The documentation of the APIs can be found
+using this \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}
 
 \code{EsgfQuery} is the workhorse for dealing with ESGF search services.
 }
@@ -39,7 +40,8 @@ set them before sending the actual query to the ESGF search services.
 
 When creating an \code{EsgfQuery} object, a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-is sent to the index node to get all available facets and shards.
+is sent to the index node to get all available facets and shards for the
+default project (CMIP6).
 \code{EsgfQuery} object provides three value-listing methods to extract data from
 the response of the facet listing query:
 \itemize{
@@ -659,8 +661,10 @@ to the index node. It contains all available facets and shards that
 can be used as parameter values within a specific project.
 
 By default, \verb{$build_cache()} is called when initialize a new
-\code{EsgfQuery} object. So in general, there is no need to call this
-method, unless that you want to rebuild the cache.
+\code{EsgfQuery} object for the default project (CMIP6). So in general,
+there is no need to call this method, unless that you want to
+rebuild the cache again with different projects after calling
+\href{#method-EsgfQuery-project}{\code{$project()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache()}\if{html}{\out{</div>}}
 }
