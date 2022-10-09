@@ -181,6 +181,7 @@ test_that("ESGF Query works", {
 
     # can get url
     expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(TRUE), "character")
     expect_type(EsgfQuery$new()$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 
     # can get count

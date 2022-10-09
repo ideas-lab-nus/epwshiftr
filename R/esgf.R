@@ -24,11 +24,10 @@ RES_FILE <- c(
 #'
 #' The ESGF search service exposes a RESTful URL that can be used by clients to
 #' query the contents of the underlying search index, and return results
-#' matching the given constraints. ributed capabilities of the ESGF search, the
-#' URL at any Index Node can be used to query that Node only, or all Nodes in
-#' the ESGF system. `esgf_query()` uses the [LLNL (Lawrence Livermore National
-#' Laboratory)](http://esgf-node.llnl.gov)
-#' Index Node.
+#' matching the given constraints. With the distributed capabilities of the ESGF
+#' search, the URL at any Index Node can be used to query that Node only, or all
+#' Nodes in the ESGF system. `esgf_query()` uses the
+#' [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov).
 #'
 #' The core Controlled Vocabularies (CVs) for use in CMIP6, including all
 #' activities, experiment, sources (GCMs), frequencies can be found at the
@@ -76,7 +75,7 @@ RES_FILE <- c(
 #' * `hursmin`: Minimum near-surface relative humidity, units: `%`.
 #' * `psl`: Sea level pressure, units: `Pa`.
 #' * `rsds`: Surface downwelling shortwave radiation, units: `W m-2`.
-#' * `rlds`: Surface downwelling longware radiation, units: `W m-2`.
+#' * `rlds`: Surface downwelling longwave radiation, units: `W m-2`.
 #' * `sfcWind`: Near-surface (usually, 10 meters) wind speed, units: `m s-1`.
 #' * `pr`: Precipitation, units: `kg m-2 s-1`.
 #' * `clt`: Total cloud area fraction for the whole atmospheric column, as

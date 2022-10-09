@@ -17,7 +17,7 @@ future_epw(
 \item{morphed}{An \code{epw_cmip6_morphed} object created using \code{\link[=morphing_epw]{morphing_epw()}}.}
 
 \item{by}{A character vector of columns to be used as grouping variables when
-creating EPW files. Should be a subeset of:
+creating EPW files. Should be a subset of:
 \itemize{
 \item \code{"experiment"}: root experiment identifiers
 \item \code{"source"}: model identifiers

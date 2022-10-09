@@ -1,6 +1,6 @@
 #' CMIP6 Controlled Vocabularies (CVs) and Data Request Dictionary
 #'
-#' The `Cmip6Dict` object provides functionalities to fetch the latested CMIP6
+#' The `Cmip6Dict` object provides functionalities to fetch the latest CMIP6
 #' Controlled Vocabularies (CVs) and Data Request (DReq) information.
 #'
 #' The CMIP6 CVs gives a well-defined set of global attributes that are recorded

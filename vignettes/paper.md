@@ -45,7 +45,7 @@ building performance under climate changes and yield a more sustainable and
 resilient design [@yassaghi2019]. Multiple morphing-based weather-file
 modification tools have been developed to integrate climate change predictions
 [@troup2016]. Most of the widely adopted weather generators, including
-CCWorkdWeatherGen [@jentsch2008], Meteonorm [@remund2020], and WeatherShift
+CCWorldWeatherGen [@jentsch2008], Meteonorm [@remund2020], and WeatherShift
 [@dickinson2016], use GCM (Global Climate Models) data from the CMIP (Coupled
 Model Intercomparison Project) that covers worldwide locations.
 

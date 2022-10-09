@@ -329,13 +329,13 @@ morphed <- morphing_epw(data)
 #> Morphing 'atmospheric pressure'...
 #> WARNING: Input does not contain any data of 'sea level pressure'. Skip.
 #> Morphing 'horizontal infrared radiation from the sky'...
-#> WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.
+#> WARNING: Input does not contain any data of 'surface downwelling longwave radiation'. Skip.
 #> Morphing 'global horizontal radiation'...
-#> WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.
+#> WARNING: Input does not contain any data of 'surface downwelling shortwave radiation'. Skip.
 #> Morphing 'diffuse horizontal radiation'...
-#> WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.
+#> WARNING: Input does not contain any data of 'surface downwelling shortwave radiation'. Skip.
 #> Morphing 'direct normal radiation'...
-#> WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.
+#> WARNING: Input does not contain any data of 'surface downwelling shortwave radiation'. Skip.
 #> Morphing 'wind speed'...
 #> WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.
 #> Morphing 'total sky cover'...
@@ -493,7 +493,7 @@ extent permitted by law.
 
 If you encounter a clear bug or have questions about the usage, please file an
 issue with a minimal reproducible example on
-[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort% 3Aupdated-desc)
+[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
 If you have a solution for an existing bug or an implementation for a missing
 feature, please send a pull request and let us review.
 
