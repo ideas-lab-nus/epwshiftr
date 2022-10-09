@@ -40,7 +40,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9012</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9013</span>
       </span>
     </div>
 
@@ -108,23 +108,23 @@
 <div class="section level2">
 <h2 id="controlled-vocabularies-cvs-and-data-request">Controlled Vocabularies (CVs) and Data Request<a class="anchor" aria-label="anchor" href="#controlled-vocabularies-cvs-and-data-request"></a>
 </h2>
-<p>All CMIP6 outputs are written in netCDF files in conformance with the CMIP standards. The Controlled Vocabularies (CVs) and Data Request play a key role in ensuring uniformity in the description of data sets across all models.</p>
+<p>All CMIP6 outputs are written in NetCDF files in conformance with the CMIP standards. The Controlled Vocabularies (CVs) and Data Request play a key role in ensuring uniformity in the description of data sets across all models.</p>
 <p>The CMIP6 CVs gives a well-defined set of global attributes that are recorded in each CMIP6 model output, providing information necessary for interpreting the data. The data of CVs for use in CMIP6 is stored as JSON files in a <a href="https://github.com/WCRP-CMIP/CMIP6_CVs" class="external-link">GitHub Repo</a>.</p>
 <p>The CMIP6 Data Request defines all the quantities from CMIP6 simulations that should be archived. This includes both quantities of general interest needed from most of the CMIP6-endorsed model intercomparison projects (MIPs) and quantities that are more specialized and only of interest to a single endorsed MIP. The Data Request data is stored a Microsoft Excel file (<code>CMIP6_MIP_tables.xlsx</code>) in a <a href="http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk" class="external-link">Subversion repo</a>.</p>
 <p>For more information, please see:</p>
 <ul>
-<li><a href="https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit" class="external-link">CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CV’s</a></li>
+<li><a href="https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit" class="external-link">CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CVs</a></li>
 <li><a href="https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html" class="external-link">CMIP6 Data Request</a></li>
 </ul>
 </div>
 <div class="section level2">
-<h2 id="introduce-the-cmip6dict-class">Introduce the <code>CMIP6Dict</code> class<a class="anchor" aria-label="anchor" href="#introduce-the-cmip6dict-class"></a>
+<h2 id="introduce-the-cmip6dict-class">Introduce the <code>Cmip6Dict</code> class<a class="anchor" aria-label="anchor" href="#introduce-the-cmip6dict-class"></a>
 </h2>
-<p>{epwshiftr} provides a <code>CMIP6Dict</code> class to help you fetch, parse and store CMIP6 CVs and Data Request.</p>
+<p>{epwshiftr} provides a <code>Cmip6Dict</code> class to help you fetch, parse and store CMIP6 CVs and Data Request.</p>
 <div class="section level3">
-<h3 id="create-a-cmip6dict-object">Create a <code>CMIP6Dict</code> object<a class="anchor" aria-label="anchor" href="#create-a-cmip6dict-object"></a>
+<h3 id="create-a-cmip6dict-object">Create a <code>Cmip6Dict</code> object<a class="anchor" aria-label="anchor" href="#create-a-cmip6dict-object"></a>
 </h3>
-<p>You can create a new <code>CMIP6Dict</code> object using the <code><a href="../reference/CMIP6Dict.html">cmip6_dict()</a></code> function. It takes no argument and simply returns an empty <code>CMIP6Dict</code> object.</p>
+<p>You can create a new <code>Cmip6Dict</code> object using the <code><a href="../reference/CMIP6Dict.html">cmip6_dict()</a></code> function. It takes no argument and simply returns an empty <code>Cmip6Dict</code> object.</p>
 <blockquote>
 <p>It is an <a href="https://r6.r-lib.org/" class="external-link">R6</a> object with reference semantics. All methods in an <code>R6</code> object can be invoked using the <code>$method_name()</code> style.</p>
 </blockquote>
@@ -139,7 +139,7 @@
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: &lt;Empty&gt;</span></span></code></pre></div>
-<p>You can use <code>$is_empty()</code> to check if there are any contents in current <code>CMIP6Dict</code>.</p>
+<p>You can use <code>$is_empty()</code> to check if there are any contents in current <code>Cmip6Dict</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">is_empty</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
@@ -149,7 +149,7 @@
 </h3>
 <p>After created, you can use <code>$build()</code> to fetch all data of CMIP6 CVs and Data Request.</p>
 <p>The GitHub RESTful APIs are used to to fetch the latest tag of CVs and Data Request. You can specify your GitHub token by specifying the <code>token</code> argument in <code>$build()</code>. By default, it will uses <code>GITHUB_PAT</code> or <code>GITHUB_TOKEN</code> environment variable if exists.</p>
-<p>Currently, all supproted CVs are:</p>
+<p>Currently, all supported CVs are:</p>
 <ol style="list-style-type: decimal">
 <li>
 <code>drs</code>: Data Reference Syntax (DRS).</li>
@@ -181,26 +181,26 @@
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>dict<span class="sc">$</span><span class="fu">build</span>()</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching latest tag of  [1mCMIP6 CVs [22m...</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[753ms] [39m</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[456ms] [39m</span></span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>⠙ Downloading data of  [1mCMIP6 CVs [22m []...</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠹ Downloading data of  [1mCMIP6 CVs [22m [ [34mCMIP6_required_global_attributes.json [39m]...</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[4.2s] [39m</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠹ Downloading data of  [1mCMIP6 CVs [22m [ [34mCMIP6_activity_id.json [39m]...</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[2.7s] [39m</span></span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>⠙ Fetching latest tag of  [1mCMIP6 DReq [22m...</span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[649ms] [39m</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[428ms] [39m</span></span>
 <span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>⠙ Downloading data of  [1mCMIP6 DReq [22m...</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[1.6s] [39m</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[971ms] [39m</span></span>
 <span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a> [32m✔ [39m Fetched  [1mCMIP6 Dictionary [22m successfully at <span class="dv">2022-10-09</span> <span class="dv">08</span><span class="sc">:</span><span class="dv">20</span><span class="sc">:</span><span class="dv">17</span>  [<span class="dv">38</span>;<span class="dv">5</span>;249m[<span class="fl">7.6</span>s] [39m</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a> [32m✔ [39m Fetched  [1mCMIP6 Dictionary [22m successfully at <span class="dv">2022-10-09</span> <span class="dv">15</span><span class="sc">:</span><span class="dv">13</span><span class="sc">:</span><span class="dv">00</span>  [<span class="dv">38</span>;<span class="dv">5</span>;249m[<span class="fl">4.9</span>s] [39m</span>
 <span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; • Built at: 2022-10-09 08:20:17</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; • Built at: 2022-10-09 15:13:00</span></span>
 <span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [36m── [39m  [1mControlled Vocabularies (CVs) [22m  [36m─────────────────────────────────────────────── [39m</span></span>
 <span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; •  [1mCV Version [22m: `6.2.58.46`</span></span>
@@ -236,7 +236,7 @@
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">last_built</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">last_built</span></span>
-<span><span class="co">#&gt; [1] "2022-10-09 08:20:17 UTC"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "2022-10-09 15:13:00 UTC"</span></span></code></pre></div>
 <p>The last modified time of the CV collection and each CV can be retrieved using the <code>$timestamp()</code> method:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">timestamp</span><span class="op">(</span><span class="op">)</span></span>
@@ -841,19 +841,19 @@
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 33 more items</span></span></span></code></pre></div>
 </div>
 <div class="section level3">
-<h3 id="store-and-reuse-the-cmip6dict-object">Store and reuse the <code>CMIP6Dict</code> object<a class="anchor" aria-label="anchor" href="#store-and-reuse-the-cmip6dict-object"></a>
+<h3 id="store-and-reuse-the-cmip6dict-object">Store and reuse the <code>Cmip6Dict</code> object<a class="anchor" aria-label="anchor" href="#store-and-reuse-the-cmip6dict-object"></a>
 </h3>
-<p><code>$save()</code> method stores all the core data of current <code>CMIP6Dict</code> object into an RDS file named <code>CMIP6DICT</code> in the specified folder. It returns the full path of the saved RDS file.</p>
+<p><code>$save()</code> method stores all the core data of current <code>Cmip6Dict</code> object into an RDS file named <code>CMIP6DICT</code> in the specified folder. It returns the full path of the saved RDS file.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpHe3CEA/CMIP6DICT"</span></span></code></pre></div>
-<p>This file can be reloaded via <code>$load()</code> method to restore the last state of current <code>CMIP6Dict</code> object. It reads the RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request data.</p>
+<span><span class="co">#&gt; [1] "/tmp/Rtmp5EOFR6/CMIP6DICT"</span></span></code></pre></div>
+<p>This file can be reloaded via <code>$load()</code> method to restore the last state of current <code>Cmip6Dict</code> object. It reads the RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">new_dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">new_dict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2022-10-09 08:20:17.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2022-10-09 15:13:00.</span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2022-10-09 08:20:17</span></span>
+<span><span class="co">#&gt; • Built at: 2022-10-09 15:13:00</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.46`</span></span>

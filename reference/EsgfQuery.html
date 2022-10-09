@@ -24,7 +24,7 @@ EsgfQuery is the workhorse for dealing with ESGF search services."><meta propert
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9012</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9013</span>
       </span>
     </div>
 
@@ -94,7 +94,7 @@ using this <a href="https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.ht
     <dl><dt>host</dt>
 <dd><p>The URL to the ESGF Search API service. This should be the URL of
 the ESGF search service excluding the final endpoint name. Usually
-this is <code>http://&lt;hostname&gt;/esg-search</code>. Default is to ses the
+this is <code>http://&lt;hostname&gt;/esg-search</code>. Default is set to the
 <a href="http://esgf-node.llnl.gov" class="external-link">LLNL (Lawrence Livermore National Laboratory) Index Node</a>,
 which is <code>"https://esgf-node.llnl.gov/esg-search"</code>.</p></dd>
 
@@ -201,14 +201,15 @@ to the index node and stores the response internally. The response contains
 all available facets and shards and is used as a source for validating user
 input for parameter setters.</p></li>
 <li><p><a href="#method-EsgfQuery-url"><code>EsgfQuery$url()</code></a>: Returns the actual
-query URL.</p></li>
+query URL or the wget script URL which can be used to download all files
+matching the given constraints..</p></li>
 <li><p><a href="#method-EsgfQuery-response"><code>EsgfQuery$response()</code></a>: Returns the
-acutal response of
+actual response of
 <a href="#method-EsgfQuery-count"><code>EsgfQuery$count()</code></a> and
 <a href="#method-EsgfQuery-collect"><code>EsgfQuery$collect()</code></a>. It is a named
 list generated from the JSON response using <code><a href="https://rdrr.io/pkg/jsonlite/man/fromJSON.html" class="external-link">jsonlite::fromJSON()</a></code>.</p></li>
 <li><p><a href="#method-EsgfQuery-print"><code>EsgfQuery$print()</code></a>: Print a summary
-of the current <code>EsgfQuery</code> object including the host url, the built time of
+of the current <code>EsgfQuery</code> object including the host URL, the built time of
 facet cache and all query parameters.</p></li>
 </ul></div>
 
@@ -399,7 +400,7 @@ q$list_all_values()
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>"CMIP6"</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$project(!c("CMIP5", "CMIP6"))</code> searches for all <code>project</code>s except for <code>CMIP5</code> and <code>CMIP6</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$project(!c("CMIP5", "CMIP6"))</code> searches for all <code>project</code>s except for <code>CMIP5</code> and <code>CMIP6</code>.</p></li>
 </ul></dd>
 
 
@@ -445,7 +446,7 @@ q$project(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$activity_id(!c("C4MIP", "GeoMIP"))</code> searches for all <code>activity_id</code>s except for <code>C4MIP</code> and <code>GeoMIP</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$activity_id(!c("C4MIP", "GeoMIP"))</code> searches for all <code>activity_id</code>s except for <code>C4MIP</code> and <code>GeoMIP</code>.</p></li>
 </ul></dd>
 
 
@@ -491,7 +492,7 @@ q$activity_id(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$experiment_id(!c("ssp126", "ssp245"))</code> searches for all <code>experiment_id</code>s except for <code>ssp126</code> and <code>ssp245</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$experiment_id(!c("ssp126", "ssp245"))</code> searches for all <code>experiment_id</code>s except for <code>ssp126</code> and <code>ssp245</code>.</p></li>
 </ul></dd>
 
 
@@ -537,7 +538,7 @@ q$experiment_id(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$source_id(!c("CESM2", "CESM2-FV2"))</code> searches for all <code>source_id</code>s except for <code>CESM2</code> and <code>CESM2-FV2</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$source_id(!c("CESM2", "CESM2-FV2"))</code> searches for all <code>source_id</code>s except for <code>CESM2</code> and <code>CESM2-FV2</code>.</p></li>
 </ul></dd>
 
 
@@ -583,7 +584,7 @@ q$source_id(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$variable_id(!c("tas", "pr"))</code> searches for all <code>variable_id</code>s except for <code>tas</code> and <code>pr</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$variable_id(!c("tas", "pr"))</code> searches for all <code>variable_id</code>s except for <code>tas</code> and <code>pr</code>.</p></li>
 </ul></dd>
 
 
@@ -629,7 +630,7 @@ q$variable_id(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$frequency(!c("day", "mon"))</code> searches for all <code>frequency</code>s except for <code>day</code> and <code>mon</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$frequency(!c("day", "mon"))</code> searches for all <code>frequency</code>s except for <code>day</code> and <code>mon</code>.</p></li>
 </ul></dd>
 
 
@@ -675,7 +676,7 @@ q$frequency(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$variant_label(!c("r1i1p1f1", "r2i1p1f1"))</code> searches for all <code>variant_label</code>s except for <code>r1i1p1f1</code> and <code>r2i1p1f1</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$variant_label(!c("r1i1p1f1", "r2i1p1f1"))</code> searches for all <code>variant_label</code>s except for <code>r1i1p1f1</code> and <code>r2i1p1f1</code>.</p></li>
 </ul></dd>
 
 
@@ -721,7 +722,7 @@ q$variant_label(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$nominal_resolution(!c("50 km", "1x1 degree"))</code> searches for all <code>nominal_resolution</code>s except for <code>50 km</code> and <code>1x1 degree</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$nominal_resolution(!c("50 km", "1x1 degree"))</code> searches for all <code>nominal_resolution</code>s except for <code>50 km</code> and <code>1x1 degree</code>.</p></li>
 </ul></dd>
 
 
@@ -767,7 +768,7 @@ q$nominal_resolution(NULL)
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
 <dd><p>The  parameter value. Default: <code>NULL</code>.
 There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet contraints. For example, <code>$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))</code> searches for all <code>data_node</code>s except for <code>cmip.bcc.cma.cn</code> and <code>esg.camscma.cn</code>.</p></li>
+<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> to negate the facet constraints. For example, <code>$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))</code> searches for all <code>data_node</code>s except for <code>cmip.bcc.cma.cn</code> and <code>esg.camscma.cn</code>.</p></li>
 </ul></dd>
 
 
@@ -1282,11 +1283,21 @@ q$params(NULL)$params()
 
 </div><p></p><hr><a id="method-EsgfQuery-url"></a><div class="section">
 <h3 id="method-url-">Method <code><a href="https://rdrr.io/r/base/connections.html" class="external-link">url()</a></code><a class="anchor" aria-label="anchor" href="#method-url-"></a></h3>
-<p>Get the actual query URL</p><div class="section">
+<p>Get the URL of actual query or wget script</p><div class="section">
 <h4 id="usage-24">Usage<a class="anchor" aria-label="anchor" href="#usage-24"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgfQuery</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgfQuery</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span>wget <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
+<div class="section">
+<h4 id="arguments-21">Arguments<a class="anchor" aria-label="anchor" href="#arguments-21"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>wget</code></dt>
+<dd><p>Whether to return the URL of the wget script that can be
+used to download all files matching the given constraints.
+Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
 <div class="section">
 <h4 id="returns-24">Returns<a class="anchor" aria-label="anchor" href="#returns-24"></a></h4>
 <p>A single string.</p>
@@ -1295,6 +1306,15 @@ q$params(NULL)$params()
 <h4 id="examples-24">Examples<a class="anchor" aria-label="anchor" href="#examples-24"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$url()
+
+# get the wget script URL
+q$url(wget = TRUE)
+
+# You can download the wget script using the URL directly. For
+# example, the code below downloads the script and save it as
+# 'wget.sh' in R's temporary folder:
+download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
+
 }
 </code></pre></div><p></p></div>
 </div>
@@ -1308,7 +1328,7 @@ q$url()
 </div>
 
 <div class="section">
-<h4 id="arguments-21">Arguments<a class="anchor" aria-label="anchor" href="#arguments-21"></a></h4>
+<h4 id="arguments-22">Arguments<a class="anchor" aria-label="anchor" href="#arguments-22"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>facets</code></dt>
 <dd><p><code>NULL</code>, a flag or a character vector. There are three
 options:</p><ul><li><p>If <code>NULL</code> or <code>FALSE</code>, only the total number of matched records is
@@ -1397,7 +1417,7 @@ q$response()
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print a summary of the current <code>EsgfQuery</code> object</p>
 <p><code>$print()</code> gives the summary of current <code>EsgfQuery</code> object including
-the host url, the built time of facet cache and all query parameters.</p><div class="section">
+the host URL, the built time of facet cache and all query parameters.</p><div class="section">
 <h4 id="usage-28">Usage<a class="anchor" aria-label="anchor" href="#usage-28"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgfQuery</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -1790,6 +1810,15 @@ q$print()
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># get the wget script URL</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span>wget <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># You can download the wget script using the URL directly. For</span></span></span>
+<span class="r-in"><span><span class="co"># example, the code below downloads the script and save it as</span></span></span>
+<span class="r-in"><span><span class="co"># 'wget.sh' in R's temporary folder:</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/download.file.html" class="external-link">download.file</a></span><span class="op">(</span><span class="va">q</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"wget.sh"</span><span class="op">)</span>, mode <span class="op">=</span> <span class="st">"wb"</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>

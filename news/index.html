@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9012</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9013</span>
       </span>
     </div>
 
@@ -111,7 +111,7 @@
 <li>A new option <code>epwshiftr.threshold_alpha</code> has been added to set the threshold of the absolute value for alpha, i.e. monthly-mean fractional change when performing morphing operations. The default value is set to <code>3</code>. If the morphing methods are set <code>"stretch"</code> or <code>"combined"</code>, and the absolute alpha exceeds the threshold value, warnings are issued and the morphing method is fallbacked to <code>"shift"</code> to avoid unrealistic morphed values (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/54" class="external-link">#54</a>).</li>
 <li>Now HDF5 format is supported (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/60" class="external-link">#60</a>).</li>
 <li>Now <code>replica</code> can be <code>NULL</code> in <code><a href="../reference/esgf_query.html">esgf_query()</a></code> and <code><a href="../reference/init_cmip6_index.html">init_cmip6_index()</a></code>. In this case, both the master record and replicas are all returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/61" class="external-link">#61</a>).</li>
-<li>New class <code>EsgfQuery</code> is added to support more flexible. Please see <code><a href="../reference/EsgfQuery.html">?EsgfQuery</a></code> for details (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/63" class="external-link">#63</a>).</li>
+<li>New class <code>EsgfQuery</code> is added to support more flexible APIs for ESGF search services. Please see <code><a href="../reference/EsgfQuery.html">?EsgfQuery</a></code> for details (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/63" class="external-link">#63</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/69" class="external-link">#69</a>).</li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>

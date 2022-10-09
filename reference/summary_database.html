@@ -20,7 +20,7 @@ load_cmip6_index()."><meta property="og:image" content="/logo.svg"><!-- mathjax 
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9012</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9013</span>
       </span>
     </div>
 
@@ -94,13 +94,13 @@ files available against the output file index loaded using
     <div id="arguments">
     <h2>Arguments</h2>
     <dl><dt>dir</dt>
-<dd><p>A single string indcating the directory where CMIP6 model output
+<dd><p>A single string indicating the directory where CMIP6 model output
 NetCDF files are stored.</p></dd>
 
 
 <dt>by</dt>
 <dd><p>The grouping column to summary the database status. Should be a
-subeset of:</p><ul><li><p><code>"experiment"</code>: root experiment identifiers</p></li>
+subset of:</p><ul><li><p><code>"experiment"</code>: root experiment identifiers</p></li>
 <li><p><code>"source"</code>: model identifiers</p></li>
 <li><p><code>"variable"</code>: variable identifiers</p></li>
 <li><p><code>"activity"</code>: activity identifiers</p></li>
@@ -128,7 +128,7 @@ stored in different directories. Default: <code>FALSE</code>.</p></dd>
 when running current summary. Only applicable when <code>append</code> is set to
 <code>TRUE</code>. If <code>"keep"</code>, the metadata for the missing output files will
 be kept. If <code>"overwrite"</code>, existing metadata of those output will be
-first removed from the output file index and overwriten based on the
+first removed from the output file index and overwritten based on the
 newly matched files if possible. Default: <code>"keep"</code>.</p></dd>
 
 
@@ -174,7 +174,7 @@ files in the same place.</p>
 <code>datetime_end</code> global attributes of each NetCDF file to match against the
 output file index. So the names of NetCDF files do not necessarily follow the
 CMIP6 file name encoding.</p>
-<p><code>summary_database()</code> will append 5 columns in the CMIP6 ouput file index:</p><ul><li><p><code>file_path</code>: the full path of matched NetCDF file for every case.</p></li>
+<p><code>summary_database()</code> will append 5 columns in the CMIP6 output file index:</p><ul><li><p><code>file_path</code>: the full path of matched NetCDF file for every case.</p></li>
 </ul><p><code>summary_database()</code> uses <a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply</a>
 underneath to speed up the data processing if applicable. You can use your
 preferable future backend to speed up data extraction in parallel. By default,
