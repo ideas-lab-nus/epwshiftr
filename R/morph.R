@@ -237,8 +237,8 @@ remove_units <- function (data, var) {
 #' | 15   | `hour`            | Integer   | The hour of the morphed data                                                                          |
 #' | 16   | `minute`          | Integer   | The minute of the morphed data                                                                        |
 #' | 17   | **Variable Name** | Double    | The morphed data, where `Variable Name` is the corresponding EPW weather variable name                |
-#' | 18   | `delta`           | Double    | The shift factor. Will be `NA` for derivied values                                                    |
-#' | 19   | `alpha`           | Double    | The stretch factor. Will be `NA` for derivied values                                                  |
+#' | 18   | `delta`           | Double    | The shift factor. Will be `NA` for derived values                                                    |
+#' | 19   | `alpha`           | Double    | The stretch factor. Will be `NA` for derived values                                                  |
 #'
 #' @references
 #' Belcher, S., Hacker, J., Powell, D., 2005. Constructing design weather data
@@ -322,7 +322,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     )]
     rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
     if (!nrow(rlds)) {
-        verbose("WARNING: Input does not contain any data of 'surface downwelling longware radiation'. Skip.")
+        verbose("WARNING: Input does not contain any data of 'surface downwelling longwave radiation'. Skip.")
         hor_ir <- data.table()
     } else {
         hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = methods["hor_ir"], warning = warning)
@@ -849,7 +849,7 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
 #'
 #' @param morphed An `epw_cmip6_morphed` object created using [morphing_epw()].
 #' @param by A character vector of columns to be used as grouping variables when
-#'        creating EPW files. Should be a subeset of:
+#'        creating EPW files. Should be a subset of:
 #'
 #' * `"experiment"`: root experiment identifiers
 #' * `"source"`: model identifiers

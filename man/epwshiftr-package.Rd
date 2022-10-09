@@ -20,7 +20,7 @@ Default: \code{FALSE}.
 i.e. monthly-mean fractional change, when performing morphing operations.
 The default value is set to \code{3}. If the morphing methods are set
 \code{"stretch"} or \code{"combined"}, and the absolute alpha exceeds the threshold
-value, warnings are issued and the morphing method is fallbacked to
+value, warnings are issued and the morphing method fallbacks to
 \code{"shift"} to avoid unrealistic morphed values.
 \item \code{epwshiftr.dir}: The directory to store package data, including CMIP6
 model output file index and etc. If not set, the current user data

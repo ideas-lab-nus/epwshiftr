@@ -17,11 +17,11 @@ summary_database(
 )
 }
 \arguments{
-\item{dir}{A single string indcating the directory where CMIP6 model output
+\item{dir}{A single string indicating the directory where CMIP6 model output
 NetCDF files are stored.}
 
 \item{by}{The grouping column to summary the database status. Should be a
-subeset of:
+subset of:
 \itemize{
 \item \code{"experiment"}: root experiment identifiers
 \item \code{"source"}: model identifiers
@@ -45,7 +45,7 @@ stored in different directories. Default: \code{FALSE}.}
 when running current summary. Only applicable when \code{append} is set to
 \code{TRUE}. If \code{"keep"}, the metadata for the missing output files will
 be kept. If \code{"overwrite"}, existing metadata of those output will be
-first removed from the output file index and overwriten based on the
+first removed from the output file index and overwritten based on the
 newly matched files if possible. Default: \code{"keep"}.}
 
 \item{recursive}{If \code{TRUE}, scan recursively into directories. Default:
@@ -104,7 +104,7 @@ files in the same place.
 output file index. So the names of NetCDF files do not necessarily follow the
 CMIP6 file name encoding.
 
-\code{summary_database()} will append 5 columns in the CMIP6 ouput file index:
+\code{summary_database()} will append 5 columns in the CMIP6 output file index:
 \itemize{
 \item \code{file_path}: the full path of matched NetCDF file for every case.
 }

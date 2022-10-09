@@ -8,7 +8,7 @@
 cmip6_dict()
 }
 \description{
-The \code{Cmip6Dict} object provides functionalities to fetch the latested CMIP6
+The \code{Cmip6Dict} object provides functionalities to fetch the latest CMIP6
 Controlled Vocabularies (CVs) and Data Request (DReq) information.
 }
 \details{

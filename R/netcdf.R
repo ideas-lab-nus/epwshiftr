@@ -54,7 +54,7 @@ get_nc_meta <- function (file) {
 #' output file index. So the names of NetCDF files do not necessarily follow the
 #' CMIP6 file name encoding.
 #'
-#' `summary_database()` will append 5 columns in the CMIP6 ouput file index:
+#' `summary_database()` will append 5 columns in the CMIP6 output file index:
 #'
 #' - `file_path`: the full path of matched NetCDF file for every case.
 #'
@@ -64,11 +64,11 @@ get_nc_meta <- function (file) {
 #' `summary_database()` uses `future::sequential` backend, which runs things in
 #' sequential.
 #'
-#' @param dir A single string indcating the directory where CMIP6 model output
+#' @param dir A single string indicating the directory where CMIP6 model output
 #'        NetCDF files are stored.
 #'
 #' @param by The grouping column to summary the database status. Should be a
-#'        subeset of:
+#'        subset of:
 #'
 #' * `"experiment"`: root experiment identifiers
 #' * `"source"`: model identifiers
@@ -91,7 +91,7 @@ get_nc_meta <- function (file) {
 #'        when running current summary. Only applicable when `append` is set to
 #'        `TRUE`. If `"keep"`, the metadata for the missing output files will
 #'        be kept. If `"overwrite"`, existing metadata of those output will be
-#'        first removed from the output file index and overwriten based on the
+#'        first removed from the output file index and overwritten based on the
 #'        newly matched files if possible. Default: `"keep"`.
 #'
 #' @param recursive If `TRUE`, scan recursively into directories. Default:
@@ -253,7 +253,7 @@ summary_database <- function (
                     } else if (miss == "overwrite") {
                         paste(
                             "Since `miss` is set to `\"overwrite\"`, its metadata has been **removed** from the output file index",
-                            "and will be overwriten by the data from new matched NetCDF file if possible.\n"
+                            "and will be overwritten by the data from new matched NetCDF file if possible.\n"
                         )
                     },
                     paste0(mes, collapse = "\n"),
@@ -605,10 +605,10 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #'
 #' @return An `epw_cmip6_data` object, which is basically a list of 3 elements:
 #'
-#' * `epw`: An [eplusr::Epw] object whose longitude and latitute are used to
+#' * `epw`: An [eplusr::Epw] object whose longitude and latitude are used to
 #'   extract CMIP6 data. It is the same object as created in [match_coord()]
 #' * `meta`: A list containing basic metadata of input EPW, including `city`,
-#'   `state_province`, `country`, `latitute` and `longitude`.
+#'   `state_province`, `country`, `latitude` and `longitude`.
 #' * `data`: An empty [data.table::data.table()] if `keep` is `FALSE` or a
 #'   [data.table::data.table()] of 14 columns if `keep` is `TRUE`:
 #'

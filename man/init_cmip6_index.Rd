@@ -65,7 +65,7 @@ possible variables are returned. Default: \code{c("tas", "tasmax", "tasmin", "hu
 \item \code{hursmin}: Minimum near-surface relative humidity, units: \verb{\%}.
 \item \code{psl}: Sea level pressure, units: \code{Pa}.
 \item \code{rsds}: Surface downwelling shortwave radiation, units: \verb{W m-2}.
-\item \code{rlds}: Surface downwelling longware radiation, units: \verb{W m-2}.
+\item \code{rlds}: Surface downwelling longwave radiation, units: \verb{W m-2}.
 \item \code{sfcWind}: Near-surface (usually, 10 meters) wind speed, units: \verb{m s-1}.
 \item \code{pr}: Precipitation, units: \verb{kg m-2 s-1}.
 \item \code{clt}: Total cloud area fraction for the whole atmospheric column, as

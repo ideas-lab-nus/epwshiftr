@@ -64,7 +64,7 @@ possible variables are returned. Default: \code{c("tas", "tasmax", "tasmin", "hu
 \item \code{hursmin}: Minimum near-surface relative humidity, units: \verb{\%}.
 \item \code{psl}: Sea level pressure, units: \code{Pa}.
 \item \code{rsds}: Surface downwelling shortwave radiation, units: \verb{W m-2}.
-\item \code{rlds}: Surface downwelling longware radiation, units: \verb{W m-2}.
+\item \code{rlds}: Surface downwelling longwave radiation, units: \verb{W m-2}.
 \item \code{sfcWind}: Near-surface (usually, 10 meters) wind speed, units: \verb{m s-1}.
 \item \code{pr}: Precipitation, units: \verb{kg m-2 s-1}.
 \item \code{clt}: Total cloud area fraction for the whole atmospheric column, as
@@ -204,10 +204,10 @@ assessments by the Intergovernmental Panel on Climate Change (IPCC).
 
 The ESGF search service exposes a RESTful URL that can be used by clients to
 query the contents of the underlying search index, and return results
-matching the given constraints. ributed capabilities of the ESGF search, the
-URL at any Index Node can be used to query that Node only, or all Nodes in
-the ESGF system. \code{esgf_query()} uses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)}
-Index Node.
+matching the given constraints. With the distributed capabilities of the ESGF
+search, the URL at any Index Node can be used to query that Node only, or all
+Nodes in the ESGF system. \code{esgf_query()} uses the
+\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node}.
 
 The core Controlled Vocabularies (CVs) for use in CMIP6, including all
 activities, experiment, sources (GCMs), frequencies can be found at the
