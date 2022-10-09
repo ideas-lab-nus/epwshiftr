@@ -406,7 +406,7 @@ summary_database <- function (
     }
 
     # update index
-    EPWSHIFTR_ENV$index_db <- copy(idx)
+    this$index_db <- copy(idx)
 
     if (update) {
         # save database into the app data directory

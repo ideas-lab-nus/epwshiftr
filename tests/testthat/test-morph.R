@@ -10,23 +10,23 @@ test_that("monthly_mean()", {
 
         epw$add_unit()
         d <- epw$data()
-        expect_is(res1 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
+        expect_s3_class(res1 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
         expect_identical(nrow(res1), 12L)
         expect_named(res1, c("month", "val_mean", "val_max", "val_min"))
         expect_identical(res1$month, 1L:12L)
-        expect_is(res1$val_mean, "units")
-        expect_is(res1$val_max, "units")
-        expect_is(res1$val_min, "units")
+        expect_s3_class(res1$val_mean, "units")
+        expect_s3_class(res1$val_max, "units")
+        expect_s3_class(res1$val_min, "units")
 
         epw$drop_unit()
         d <- epw$data()
-        expect_is(res2 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
+        expect_s3_class(res2 <- monthly_mean(d, "dry_bulb_temperature"), "data.table")
         expect_identical(nrow(res2), 12L)
         expect_named(res2, c("month", "val_mean", "val_max", "val_min"))
         expect_identical(res2$month, 1L:12L)
-        expect_is(res2$val_mean, "numeric")
-        expect_is(res2$val_max, "numeric")
-        expect_is(res2$val_min, "numeric")
+        expect_type(res2$val_mean, "double")
+        expect_type(res2$val_max, "double")
+        expect_type(res2$val_min, "double")
     }
 })
 
@@ -47,12 +47,12 @@ test_that("preprocess_morphing()", {
             )
         )
         expect_identical(nrow(res), 12L)
-        expect_is(res$interval, "factor")
+        expect_s3_class(res$interval, "factor")
 
         # can stop if specified years were not found
         expect_error(preprocess_morphing(d, years = 2059L:2061L), "does not contain any data")
 
-        expect_is(res <- preprocess_morphing(d, years = 2060L, labels = as.factor("2060s")), "data.table")
+        expect_s3_class(res <- preprocess_morphing(d, years = 2060L, labels = as.factor("2060s")), "data.table")
         expect_named(res,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month",
@@ -60,7 +60,7 @@ test_that("preprocess_morphing()", {
             )
         )
         expect_identical(nrow(res), 12L)
-        expect_is(res$interval, "factor")
+        expect_s3_class(res$interval, "factor")
     }
 })
 
@@ -87,7 +87,7 @@ test_that("morphing_from_mean()", {
         )
 
         # can use morphing using shift factor
-        expect_is(class = "data.table",
+        expect_s3_class(class = "data.table",
             res <- morphing_from_mean(
                 "dry_bulb_temperature",
                 data_epw, data_mean, NULL, NULL,
@@ -102,13 +102,13 @@ test_that("morphing_from_mean()", {
               "delta", "alpha"
             )
         )
-        expect_is(res$dry_bulb_temperature, "units")
-        expect_is(res$delta, "units")
-        expect_is(res$alpha, "units")
+        expect_s3_class(res$dry_bulb_temperature, "units")
+        expect_s3_class(res$delta, "units")
+        expect_s3_class(res$alpha, "units")
         expect_equal(res$dry_bulb_temperature - data_epw$dry_bulb_temperature, res$delta)
 
         # can use morphing using stretch factor
-        expect_is(class = "data.table",
+        expect_s3_class(class = "data.table",
             res <- morphing_from_mean(
                 "dry_bulb_temperature",
                 data_epw, data_mean, NULL, NULL,
@@ -123,12 +123,12 @@ test_that("morphing_from_mean()", {
               "delta", "alpha"
             )
         )
-        expect_is(res$dry_bulb_temperature, "units")
-        expect_is(res$delta, "units")
-        expect_is(res$alpha, "units")
+        expect_s3_class(res$dry_bulb_temperature, "units")
+        expect_s3_class(res$delta, "units")
+        expect_s3_class(res$alpha, "units")
 
         # can use morphing using combined factor
-        expect_is(class = "data.table",
+        expect_s3_class(class = "data.table",
             res <- morphing_from_mean(
                 "dry_bulb_temperature",
                 data_epw, data_mean, data_mean, data_mean,
@@ -143,12 +143,12 @@ test_that("morphing_from_mean()", {
               "delta", "alpha"
             )
         )
-        expect_is(res$dry_bulb_temperature, "units")
-        expect_is(res$delta, "units")
-        expect_is(res$alpha, "units")
+        expect_s3_class(res$dry_bulb_temperature, "units")
+        expect_s3_class(res$delta, "units")
+        expect_s3_class(res$alpha, "units")
 
         # can use morphing using combined factor
-        expect_is(class = "data.table",
+        expect_s3_class(class = "data.table",
             res <- morphing_from_mean(
                 "dry_bulb_temperature",
                 data_epw, data_mean, data_mean, data_mean,
@@ -163,12 +163,12 @@ test_that("morphing_from_mean()", {
               "delta", "alpha"
             )
         )
-        expect_is(res$dry_bulb_temperature, "units")
-        expect_is(res$delta, "units")
-        expect_is(res$alpha, "units")
+        expect_s3_class(res$dry_bulb_temperature, "units")
+        expect_s3_class(res$delta, "units")
+        expect_s3_class(res$alpha, "units")
 
         # can use morphing using combined factor without max and min values
-        expect_is(class = "data.table",
+        expect_s3_class(class = "data.table",
             res <- morphing_from_mean(
                 "dry_bulb_temperature",
                 data_epw, data_mean, NULL, NULL,
@@ -183,9 +183,9 @@ test_that("morphing_from_mean()", {
               "delta", "alpha"
             )
         )
-        expect_is(res$dry_bulb_temperature, "units")
-        expect_is(res$delta, "units")
-        expect_is(res$alpha, "units")
+        expect_s3_class(res$dry_bulb_temperature, "units")
+        expect_s3_class(res$delta, "units")
+        expect_s3_class(res$alpha, "units")
 
         # can fallback to "shift" if missing values found in data_min or
         # data_max
@@ -222,13 +222,13 @@ test_that("morphing_epw()", {
 
         # can still process if no data found
         d$data[, variable := "tas-1"]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_named(res,
             c("epw", "tdb", "tdew", "rh", "p", "hor_ir", "glob_rad", "norm_rad",
               "diff_rad", "wind", "total_cover", "opaque_cover"
             )
         )
-        expect_is(res$epw, "Epw")
+        expect_s3_class(res$epw, "Epw")
         expect_identical(res$tdb, data.table())
         expect_identical(res$tdew, data.table())
         expect_identical(res$rh, data.table())
@@ -242,13 +242,13 @@ test_that("morphing_epw()", {
         expect_identical(res$opaque_cover, data.table())
 
         d$data[, variable := "tas-1"]
-        expect_is(res <- morphing_epw(d, 2060L, methods = c(tdb = "shift")), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L, methods = c(tdb = "shift")), "epw_cmip6_morphed")
         expect_named(res,
             c("epw", "tdb", "tdew", "rh", "p", "hor_ir", "glob_rad", "norm_rad",
               "diff_rad", "wind", "total_cover", "opaque_cover"
             )
         )
-        expect_is(res$epw, "Epw")
+        expect_s3_class(res$epw, "Epw")
         expect_identical(res$tdb, data.table())
         expect_identical(res$tdew, data.table())
         expect_identical(res$rh, data.table())
@@ -263,13 +263,13 @@ test_that("morphing_epw()", {
 
         # can morph tas
         d$data[, variable := "tas"]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$tdb), 8760L)
         expect_identical(nrow(res$tdew), 0L)
 
         # can morph rh
         d$data[, `:=`(variable = "hurs", value = 80, units = "%")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$rh), 8760L)
         expect_identical(nrow(res$tdew), 0L)
 
@@ -277,24 +277,24 @@ test_that("morphing_epw()", {
         d$data <- rbindlist(list(
             data_mean, copy(data_mean)[, `:=`(variable = "hurs", value = 80, units = "%")]
         ))
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$tdb), 8760L)
         expect_identical(nrow(res$rh), 8760L)
         expect_identical(nrow(res$tdew), 8760L)
 
         # can morph pa
         d$data <- copy(data_mean)[, `:=`(variable = "psl", value = 101300, units = "Pa")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$p), 8760L)
 
         # can morph hor_ir
         d$data <- copy(data_mean)[, `:=`(variable = "rlds", value = 400, units = "W/m^2")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$hor_ir), 8760L)
 
         # can morph global_rad, calculate diff_rad and norm_rad
         d$data <- copy(data_mean)[, `:=`(variable = "rsds", value = 300, units = "W/m^2")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$glob_rad), 8760L)
         expect_identical(nrow(res$diff_rad), 8760L)
         expect_identical(nrow(res$norm_rad), 8760L)
@@ -303,12 +303,12 @@ test_that("morphing_epw()", {
 
         # can morph wind speed
         d$data <- copy(data_mean)[, `:=`(variable = "sfcWind", value = 1, units = "m/s")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$wind), 8760L)
 
         # can morph total sky cover and opaque sky cover
         d$data <- copy(data_mean)[, `:=`(variable = "clt", value = 80, units = "%")]
-        expect_is(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
+        expect_s3_class(res <- morphing_epw(d, 2060L), "epw_cmip6_morphed")
         expect_identical(nrow(res$total_cover), 8760L)
         expect_identical(nrow(res$opaque_cover), 8760L)
         expect_identical(morphing_total_sky_cover(data_epw, data.table()), data.table())
@@ -320,9 +320,9 @@ test_that("morphing_epw()", {
 
         thres_alpha <- getOption("epwshiftr.threshold_alpha")
         options("epwshiftr.threshold_alpha" = NULL)
-        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        suppressWarnings(expect_warning(res <- morphing_epw(d, 2060L), "threshold"))
         options("epwshiftr.threshold_alpha" = -1L)
-        expect_warning(res <- morphing_epw(d, 2060L), "threshold")
+        suppressWarnings(expect_warning(res <- morphing_epw(d, 2060L), "threshold"))
         options("epwshiftr.threshold_alpha" = thres_alpha)
     }
 })
@@ -352,9 +352,9 @@ test_that("future_epw()", {
         d$data <- copy(data_mean)[, `:=`(variable = "clt", value = 80, units = "%")]
         morphed <- morphing_epw(d, 2060L)
         expect_warning(res <- future_epw(morphed, dir = file.path(tempdir(), "future_epw"), overwrite = TRUE))
-        expect_is(res, "list")
+        expect_type(res, "list")
         expect_identical(length(res), 1L)
-        expect_is(res[[1L]], "Epw")
+        expect_s3_class(res[[1L]], "Epw")
         expect_true(file.exists(file.path(
             tempdir(), "future_epw",
             "ssp585",
@@ -365,7 +365,7 @@ test_that("future_epw()", {
 
         # can get full summary of future EPWs
         expect_warning(res <- future_epw(morphed, dir = file.path(tempdir(), "future_epw"), overwrite = TRUE, separate = FALSE, full = TRUE))
-        expect_is(res, "data.table")
+        expect_s3_class(res, "data.table")
         expect_named(res, c("experiment_id", "source_id", "interval", "epw", "path"))
         expect_true(file.exists(file.path(
             tempdir(), "future_epw",
