@@ -10,7 +10,7 @@ query_esgf(host = "https://esgf-node.llnl.gov/esg-search")
 \arguments{
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
 the ESGF search service excluding the final endpoint name. Usually
-this is \verb{http://<hostname>/esg-search}. Default is to ses the
+this is \verb{http://<hostname>/esg-search}. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
 which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
 }
@@ -146,14 +146,15 @@ to the index node and stores the response internally. The response contains
 all available facets and shards and is used as a source for validating user
 input for parameter setters.
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
-query URL.
+query URL or the wget script URL which can be used to download all files
+matching the given constraints..
 \item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}: Returns the
-acutal response of
+actual response of
 \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}} and
 \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}. It is a named
 list generated from the JSON response using \code{\link[jsonlite:fromJSON]{jsonlite::fromJSON()}}.
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-of the current \code{EsgfQuery} object including the host url, the built time of
+of the current \code{EsgfQuery} object including the host URL, the built time of
 facet cache and all query parameters.
 }
 }
@@ -529,6 +530,15 @@ q$params(NULL)$params()
 
 \dontrun{
 q$url()
+
+# get the wget script URL
+q$url(wget = TRUE)
+
+# You can download the wget script using the URL directly. For
+# example, the code below downloads the script and save it as
+# 'wget.sh' in R's temporary folder:
+download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
+
 }
 
 ## ------------------------------------------------
@@ -775,7 +785,7 @@ Get or set the \code{project} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} searches for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} searches for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -820,7 +830,7 @@ Get or set the \code{activity_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} searches for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} searches for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -865,7 +875,7 @@ Get or set the \code{experiment_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} searches for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} searches for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -910,7 +920,7 @@ Get or set the \code{source_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} searches for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} searches for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -955,7 +965,7 @@ Get or set the \code{variable_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$variable_id(!c("tas", "pr"))} searches for all \code{variable_id}s except for \code{tas} and \code{pr}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} searches for all \code{variable_id}s except for \code{tas} and \code{pr}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -1000,7 +1010,7 @@ Get or set the \code{frequency} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$frequency(!c("day", "mon"))} searches for all \code{frequency}s except for \code{day} and \code{mon}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} searches for all \code{frequency}s except for \code{day} and \code{mon}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -1045,7 +1055,7 @@ Get or set the \code{variant_label} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} searches for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} searches for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -1090,7 +1100,7 @@ Get or set the \code{nominal_resolution} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} searches for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} searches for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -1135,7 +1145,7 @@ Get or set the \code{data_node} parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet contraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} searches for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} searches for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -1654,11 +1664,20 @@ q$params(NULL)$params()
 \if{html}{\out{<a id="method-EsgfQuery-url"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQuery-url}{}}}
 \subsection{Method \code{url()}}{
-Get the actual query URL
+Get the URL of actual query or wget script
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$url()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$url(wget = FALSE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{wget}}{Whether to return the URL of the wget script that can be
+used to download all files matching the given constraints.
+Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
 A single string.
 }
@@ -1666,6 +1685,15 @@ A single string.
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
 q$url()
+
+# get the wget script URL
+q$url(wget = TRUE)
+
+# You can download the wget script using the URL directly. For
+# example, the code below downloads the script and save it as
+# 'wget.sh' in R's temporary folder:
+download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
+
 }
 }
 \if{html}{\out{</div>}}
@@ -1786,7 +1814,7 @@ q$response()
 Print a summary of the current \code{EsgfQuery} object
 
 \verb{$print()} gives the summary of current \code{EsgfQuery} object including
-the host url, the built time of facet cache and all query parameters.
+the host URL, the built time of facet cache and all query parameters.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$print()}\if{html}{\out{</div>}}
 }

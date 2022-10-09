@@ -180,16 +180,17 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'   input for parameter setters.
 #'
 #' - \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
-#'   query URL.
+#'   query URL or the wget script URL which can be used to download all files
+#'   matching the given constraints..
 #'
 #' - \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}: Returns the
-#'   acutal response of
+#'   actual response of
 #'   \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}} and
 #'   \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}. It is a named
 #'   list generated from the JSON response using [jsonlite::fromJSON()].
 #'
 #' - \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-#'   of the current `EsgfQuery` object including the host url, the built time of
+#'   of the current `EsgfQuery` object including the host URL, the built time of
 #'   facet cache and all query parameters.
 #'
 #' @author Hongyuan Jia
@@ -198,7 +199,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' @param host The URL to the ESGF Search API service. This should be the URL of
 #'        the ESGF search service excluding the final endpoint name. Usually
-#'        this is `http://<hostname>/esg-search`. Default is to ses the
+#'        this is `http://<hostname>/esg-search`. Default is set to the
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
 #'        which is `"https://esgf-node.llnl.gov/esg-search"`.
 #'
@@ -1069,20 +1070,33 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
 
         #' @description
-        #' Get the actual query URL
+        #' Get the URL of actual query or wget script
+        #'
+        #' @param wget Whether to return the URL of the wget script that can be
+        #'        used to download all files matching the given constraints.
+        #'        Default: `FALSE`.
         #'
         #' @return A single string.
         #'
         #' @examples
         #' \dontrun{
         #' q$url()
+        #'
+        #' # get the wget script URL
+        #' q$url(wget = TRUE)
+        #'
+        #' # You can download the wget script using the URL directly. For
+        #' # example, the code below downloads the script and save it as
+        #' # 'wget.sh' in R's temporary folder:
+        #' download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
+        #'
         #' }
-        url = function() {
+        url = function(wget = FALSE) {
+            assert_flag(wget)
             params <- mget(ls(envir = private, pattern = "^param_"), envir = private)
             names(params) <- gsub("^param_", "", names(params))
-            query_build(private$url_host, params)
+            query_build(private$url_host, params, type = if (wget) "wget" else "search")
         },
-
 
         #' @description
         #' Send a query of facet counting and fetch the results
@@ -1201,7 +1215,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Print a summary of the current `EsgfQuery` object
         #'
         #' `$print()` gives the summary of current `EsgfQuery` object including
-        #' the host url, the built time of facet cache and all query parameters.
+        #' the host URL, the built time of facet cache and all query parameters.
         #'
         #' @return The `EsgfQuery` object itself, invisibly.
         #'
@@ -1389,11 +1403,14 @@ query_build <- function(host, params, type = "search") {
     # skip empty parameter
     params <- params[!vapply(params, is.null, logical(1L))]
 
+    if (type == "wget") {
+        params <- params[!names(params) %in% c("type", "format")]
+    }
+
     if (!length(params)) return(NULL)
 
     paste0(
-        sprintf("%s/search?", host),
-        if (type == "wget") "wget",
+        sprintf("%s/%s?", host, type),
         paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
     )
 }
