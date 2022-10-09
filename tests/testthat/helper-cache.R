@@ -5,7 +5,6 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     if (identical(Sys.getenv("NOT_CRAN"), "true") && !dir.exists(cache)) {
         dir.create(cache, recursive = TRUE)
     }
-    cache
 
     # download weather
     file <- "SGP_Singapore.486980_IWEC.epw"

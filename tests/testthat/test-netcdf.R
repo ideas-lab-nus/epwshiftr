@@ -6,7 +6,7 @@ test_that("get_nc_meta()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(meta <- get_nc_meta(path), "list")
+        expect_type(meta <- get_nc_meta(path), "list")
         expect_named(meta,
             c("mip_era", "activity_id", "institution_id", "source_id",
               "experiment_id", "variant_label", "table_id", "grid_label",
@@ -16,7 +16,7 @@ test_that("get_nc_meta()", {
         )
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_meta(con), meta)
+        expect_equal(get_nc_meta(con), meta, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -29,13 +29,13 @@ test_that("get_nc_atts()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(atts <- get_nc_atts(path), "data.table")
+        expect_s3_class(atts <- get_nc_atts(path), "data.table")
         expect_named(atts, c("id", "variable", "attribute", "value"))
         expect_true(all(unique(atts$variable) %in% c("height", "lat", "lon", "NC_GLOBAL", "tas", "time")))
         expect_identical(atts[variable == "NC_GLOBAL", unique(id)], -1L)
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_atts(con), atts)
+        expect_equal(get_nc_atts(con), atts, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -48,11 +48,11 @@ test_that("get_nc_vars()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(vars <- get_nc_vars(path), "data.table")
+        expect_s3_class(vars <- get_nc_vars(path), "data.table")
         expect_named(vars, c("id", "name", "type", "ndims", "natts"))
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_vars(con), vars)
+        expect_equal(get_nc_vars(con), vars, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -65,11 +65,11 @@ test_that("get_nc_dims()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(dims <- get_nc_dims(path), "data.table")
+        expect_s3_class(dims <- get_nc_dims(path), "data.table")
         expect_named(dims, c("id", "name", "length", "unlim"))
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_dims(con), dims)
+        expect_equal(get_nc_dims(con), dims, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -82,11 +82,11 @@ test_that("get_nc_axes()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(axes <- get_nc_axes(path), "data.table")
+        expect_s3_class(axes <- get_nc_axes(path), "data.table")
         expect_named(axes, c("axis", "variable", "dimension"))
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_axes(con), axes)
+        expect_equal(get_nc_axes(con), axes, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -99,14 +99,14 @@ test_that("get_nc_time()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(time <- get_nc_time(path), "POSIXct")
+        expect_s3_class(time <- get_nc_time(path), "POSIXct")
         expect_equal(length(time), 366)
 
-        expect_is(time <- get_nc_time(path, range = TRUE), "POSIXct")
+        expect_s3_class(time <- get_nc_time(path, range = TRUE), "POSIXct")
         expect_equal(length(time), 2L)
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_time(con, range = TRUE), time)
+        expect_equal(get_nc_time(con, range = TRUE), time, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
 
         # can stop if invalid calendar found
@@ -127,7 +127,7 @@ test_that("get_nc_time()", {
                 value = list("standard", "days since 1850-01-01")
             )
         )
-        expect_is(get_nc_time(path, range = TRUE), "POSIXct")
+        expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct")
 
         # can warning if months resolution found
         mockery::stub(get_nc_time, "get_nc_atts",
@@ -159,21 +159,21 @@ test_that("match_nc_time()", {
     path <- file.path(cache, file)
 
     if (file.exists(path)) {
-        expect_is(matched <- match_nc_time(path, 2060), "list")
+        expect_type(matched <- match_nc_time(path, 2060), "list")
         expect_equal(names(matched), c("datetime", "which"))
         expect_equal(length(matched$datetime), 1L)
         expect_equal(length(matched$datetime[[1L]]), 366L)
         expect_equal(length(matched$which), 1L)
         expect_equal(matched$which[[1L]], 1:366)
 
-        expect_is(matched <- match_nc_time(path), "list")
+        expect_type(matched <- match_nc_time(path), "list")
         expect_equal(names(matched), c("datetime", "which"))
         expect_equal(length(matched$datetime), 1L)
         expect_equal(length(matched$datetime[[1L]]), 366L)
         expect_equal(length(matched$which), 1L)
         expect_equal(matched$which[[1L]], 1:366)
 
-        expect_is(matched <- match_nc_time(path, 2059), "list")
+        expect_type(matched <- match_nc_time(path, 2059), "list")
         expect_equal(length(matched$datetime), 1L)
         expect_equal(length(matched$datetime[[1L]]), 0L)
         expect_equal(length(matched$which), 1L)
@@ -183,7 +183,7 @@ test_that("match_nc_time()", {
         expect_equal(match_nc_time(con, 2059), matched)
         RNetCDF::close.nc(con)
 
-        expect_is(matched <- match_nc_time(path, 2059:2061), "list")
+        expect_type(matched <- match_nc_time(path, 2059:2061), "list")
         expect_equal(length(matched), 2L)
         expect_equal(length(matched$datetime), 3L)
         expect_equal(length(matched$which), 3L)
@@ -210,13 +210,13 @@ test_that("summary_database()", {
     index <- file.path(tempdir(), "cmip6_index.csv")
 
     if (all(file.exists(paths)) && file.exists(index)) {
-        expect_is(db <- summary_database(cache), "data.table")
+        expect_s3_class(db <- summary_database(cache), "data.table")
         expect_true(all(!is.na(load_cmip6_index()$file_path)))
         expect_true(all(!is.na(load_cmip6_index()$file_realsize)))
         expect_true(all(!is.na(load_cmip6_index()$file_mtime)))
         expect_true(all(!is.na(load_cmip6_index()$time_units)))
         expect_true(all(!is.na(load_cmip6_index()$time_calendar)))
-        expect_is(not <- attr(db, "not_matched"), "data.table")
+        expect_s3_class(not <- attr(db, "not_matched"), "data.table")
         expect_equal(names(not),
             c("mip_era", "activity_id", "institution_id", "source_id", "experiment_id",
               "variant_label", "table_id", "grid_label", "nominal_resolution",
@@ -225,7 +225,7 @@ test_that("summary_database()", {
               "file_realsize", "file_mtime"
             )
         )
-        expect_is(mis <- attr(db, "not_found"), "data.table")
+        expect_s3_class(mis <- attr(db, "not_found"), "data.table")
         expect_equal(names(mis),
             c("file_id", "dataset_id", "mip_era", "activity_drs",
               "institution_id", "source_id", "experiment_id", "member_id",
@@ -244,7 +244,7 @@ test_that("summary_database()", {
         cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
         if (any(cols %in% names(idx))) set(idx, NULL, cols[cols %in% names(idx)], NULL)
         set_cmip6_index(idx)
-        expect_is(db <- summary_database(cache, append = TRUE), "data.table")
+        expect_s3_class(db <- summary_database(cache, append = TRUE), "data.table")
         load_cmip6_index()
         expect_equal(as.integer(db$dl_percent), 100L)
         expect_equal(as.integer(db$dl_num), 3L)
@@ -254,7 +254,8 @@ test_that("summary_database()", {
         idx[1L, `:=`(file_path = "ori.nc", file_realsize = 1)]
         idx[2L, `:=`(file_path = NA, file_realsize = 1)]
         set_cmip6_index(idx)
-        expect_is(expect_warning(db <- summary_database(cache, append = TRUE)), "data.table")
+        expect_warning(db <- summary_database(cache, append = TRUE))
+        expect_s3_class(db, "data.table")
         idx <- load_cmip6_index()
         expect_equal(idx$file_path[1], "ori.nc")
         expect_equal(idx$file_realsize[1], 1.0)
@@ -280,10 +281,10 @@ test_that("summary_database()", {
         idx[1L, `:=`(file_path = "ori.nc")]
         idx[2L, `:=`(file_path = NA)]
         set_cmip6_index(idx)
-        expect_warning(db <- summary_database(cache, append = TRUE, miss = "overwrite"))
+        suppressWarnings(expect_warning(db <- summary_database(cache, append = TRUE, miss = "overwrite")))
 
         # can work if no NetCDF files were found
-        expect_is(db <- summary_database(tempdir()), "data.table")
+        expect_s3_class(db <- summary_database(tempdir()), "data.table")
         expect_equal(names(db),
             c("activity_drs", "experiment_id", "member_id", "table_id",
               "variable_id", "source_id", "nominal_resolution",
@@ -297,7 +298,7 @@ test_that("summary_database()", {
         idx <- load_cmip6_index()
         set(idx, NULL, 25:28, NULL)
         set_cmip6_index(idx, TRUE)
-        expect_is(db <- summary_database(tempdir(), append = TRUE), "data.table")
+        expect_s3_class(db <- summary_database(tempdir(), append = TRUE), "data.table")
         expect_equal(names(db),
             c("activity_drs", "experiment_id", "member_id", "table_id",
               "variable_id", "source_id", "nominal_resolution",
@@ -310,7 +311,7 @@ test_that("summary_database()", {
         expect_equal(attr(db, "not_matched"), data.table())
 
         # can update local cmip6_index.csv
-        expect_is(db <- summary_database(tempdir(), update = TRUE), "data.table")
+        expect_s3_class(db <- summary_database(tempdir(), update = TRUE), "data.table")
         expect_equal(nm <- names(load_cmip6_index(TRUE)),
             c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
               "source_id", "experiment_id", "member_id", "table_id", "frequency",
@@ -328,8 +329,8 @@ test_that("summary_database()", {
 
         # can give warnings if duplicates found
         file.copy(paths["2059"], file.path(cache, "dup_2059.nc"), copy.date = TRUE)
-        expect_warning(summary_database(cache))
-        expect_warning(summary_database(cache, mult = "latest"))
+        suppressWarnings(expect_warning(summary_database(cache)))
+        suppressWarnings(expect_warning(summary_database(cache, mult = "latest")))
         unlink(file.path(cache, "dup_2059.nc"), force = TRUE)
     }
 })
@@ -344,16 +345,16 @@ test_that("get_nc_data()", {
     if (file.exists(path)) {
         loc <- eplusr:::WEATHER_DB[grepl("Singapore", title)]
         coord <- match_nc_coord(path, loc$latitude, loc$longitude, max_num = 1L)
-        expect_is(d <- get_nc_data(path, coord, years = 2060), "data.table")
+        expect_s3_class(d <- get_nc_data(path, coord, years = 2060), "data.table")
         expect_equal(names(d),
             c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
               "description", "units", "value"
             )
         )
-        expect_is(d$value, "units")
+        expect_s3_class(d$value, "units")
 
-        expect_is(d <- get_nc_data(path, coord, years = 2000), "data.table")
+        expect_s3_class(d <- get_nc_data(path, coord, years = 2000), "data.table")
         expect_equal(names(d),
             c("index", "activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
@@ -361,10 +362,10 @@ test_that("get_nc_data()", {
             )
         )
         expect_equal(nrow(d), 0L)
-        expect_is(d$value, "numeric")
+        expect_type(d$value, "double")
 
         con <- RNetCDF::open.nc(path)
-        expect_equivalent(get_nc_data(con, coord, years = 2000), d)
+        expect_equal(get_nc_data(con, coord, years = 2000), d, ignore_attr = TRUE)
         RNetCDF::close.nc(con)
     }
 })
@@ -385,11 +386,11 @@ test_that("extract_data()", {
         coord <- match_coord(epw)
         set_cmip6_index(idx)
 
-        expect_is(d <- extract_data(coord, years = 2060), "epw_cmip6_data")
+        expect_s3_class(d <- extract_data(coord, years = 2060), "epw_cmip6_data")
         expect_equal(names(d), c("epw", "meta", "data"))
-        expect_is(d$epw, "Epw")
+        expect_s3_class(d$epw, "Epw")
         expect_equal(d$meta, coord$meta)
-        expect_is(d$data, "data.table")
+        expect_s3_class(d$data, "data.table")
         expect_named(d$data,
             c("activity_drs", "institution_id", "source_id", "experiment_id",
               "member_id", "table_id", "lon", "lat", "dist", "datetime", "variable",
@@ -398,12 +399,12 @@ test_that("extract_data()", {
         )
         expect_identical(nrow(d$data), 2196L)
 
-        expect_is(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
+        expect_s3_class(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
         expect_identical(d1$data, data.table())
         expect_true(file.exists(file.path(cache, "data.fst")))
         unlink(file.path(cache, "data.fst"))
 
-        expect_is(
+        expect_s3_class(
             d2 <- extract_data(coord, out_dir = cache,
                 by = c("source", "experiment", "variable"),
                 years = 2060L
@@ -414,7 +415,7 @@ test_that("extract_data()", {
         expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
         unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
 
-        expect_is(
+        expect_s3_class(
             d3 <- extract_data(coord, out_dir = cache,
                 by = c("source", "experiment", "variable"), keep = TRUE,
                 years = 2060L

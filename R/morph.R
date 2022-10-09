@@ -157,15 +157,15 @@ remove_units <- function (data, var) {
 #'
 #' If using a shift, for each month, a shift \eqn{\Delta x_m} is applied to
 #' \eqn{x_0}. \eqn{\Delta x_m} is the absolute change in the monthly mean value
-#' of the variable for the month \eqn{m}, i.e. \eqn{\Delta x_m = <x_0>_m - <x>_m}
-#' . Here the monthly variance of the variable
-#' is unchanged.
+#' of the variable for the month \eqn{m},
+#' i.e. \eqn{\Delta x_m = <x_0>_m - <x>_m}. Here the monthly variance of the
+#' variable is unchanged.
 #'
 #' ## Stretch:
 #'
 #' If using a stretch, for each month, a stretch \eqn{\alpha _m} is applied to
 #' \eqn{x_0}, where \eqn{\alpha _m} is the fractional change in the monthly-mean
-#' value of a variable, i.e. \eqn{\alpha _m} = <x>_m / <x_0>_m. In this case,
+#' value of a variable, i.e. \eqn{\alpha _m = <x>_m / <x_0>_m}. In this case,
 #' the variance will be multiplied by to \eqn{alpha^2_m}
 #'
 #' ## Combined Shift and Stretch:

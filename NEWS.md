@@ -72,7 +72,7 @@
   be able to capture the average of future climate (#41).
 * Now epwshiftr is able to download, parse and store CMIP6 Controlled
   Vocabularies (CVs) and Data Request data using the newly introduced class
-  `CMIP6Dict`. Please see `?CMIP6Dict` for details (#53).
+  `Cmip6Dict`. Please see `?Cmip6Dict` for details (#53).
 * A new option `epwshiftr.threshold_alpha` has been added to set the threshold
   of the absolute value for alpha, i.e. monthly-mean fractional change when
   performing morphing operations. The default value is set to `3`. If the
@@ -82,6 +82,8 @@
 * Now HDF5 format is supported (#60).
 * Now `replica` can be `NULL` in `esgf_query()` and `init_cmip6_index()`. In
   this case, both the master record and replicas are all returned (#61).
+* New class `EsgfQuery` is added to support more flexible. Please see
+  `?EsgfQuery` for details (#63).
 
 ## Bug fixes
 
@@ -96,7 +98,9 @@
   `morphing_epw()` (#25).
 
 ## Internal refactor
+
 * `fields` parameter is used to directly filter the ESGF query responses (#66).
+* Improve URL encoding (#62).
 
 # epwshiftr 0.1.3
 

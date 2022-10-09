@@ -1,7 +1,7 @@
 test_that("esgf_query()", {
     options(epwshiftr.verbose = FALSE)
     # Dataset query
-    expect_is(
+    expect_s3_class(
         qd <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L),
         "data.table"
     )
@@ -34,7 +34,7 @@ test_that("esgf_query()", {
     }
 
     # File query
-    expect_is(
+    expect_s3_class(
         qf <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L, type = "File"),
         "data.table"
     )
@@ -68,20 +68,20 @@ test_that("esgf_query()", {
     }
 
     # empty found
-    expect_is(q <- esgf_query(variable = "NONSENSE"), "data.table")
-    expect_equivalent(q, data.table())
+    expect_s3_class(q <- esgf_query(variable = "NONSENSE"), "data.table")
+    expect_equal(q, data.table(), ignore_attr = TRUE)
 
     # can return if no data has been found
-    expect_is(esgf_query(resolution = "1 m"), "data.table")
+    expect_s3_class(esgf_query(resolution = "1 m"), "data.table")
 })
 
 test_that("init_cmip6_index()", {
     options(epwshiftr.dir = tempdir())
 
     # can return if no data has been found
-    expect_is(init_cmip6_index(resolution = "1 m"), "data.table")
+    expect_s3_class(init_cmip6_index(resolution = "1 m"), "data.table")
 
-    expect_is(
+    expect_s3_class(
         idx <- init_cmip6_index(variable = "tas", source = "EC-Earth3",
             experiment = "ssp858", years = 2060, limit = 1, save = TRUE
         ),
@@ -122,7 +122,7 @@ test_that("load_cmip6_index()", {
     expect_error(load_cmip6_index(TRUE))
     unlink(index, TRUE)
 
-    expect_is(
+    expect_s3_class(
         idx <- init_cmip6_index(
             variable = "tas", source = "EC-Earth3", years = 2060,
             experiment = "ssp585", limit = 1, save = TRUE
@@ -134,12 +134,12 @@ test_that("load_cmip6_index()", {
     if (nrow(idx)) {
         cache <- get_cache()
 
-        expect_is(idx1 <- load_cmip6_index(), "data.table")
+        expect_s3_class(idx1 <- load_cmip6_index(), "data.table")
         expect_equal(idx, idx1)
 
         # remove exising db
-        EPWSHIFTR_ENV$index_db <- NULL
-        expect_is(idx2 <- load_cmip6_index(TRUE), "data.table")
+        this$index_db <- NULL
+        expect_s3_class(idx2 <- load_cmip6_index(TRUE), "data.table")
         expect_equal(idx, idx2)
     }
 })
@@ -150,8 +150,7 @@ test_that("set_cmip6_index()", {
     # can overwrite index
     if (file.exists(file.path(tempdir(), "cmip6_index.csv"))) {
         idx <- load_cmip6_index()
-        expect_is(set_cmip6_index(idx, save = TRUE), "data.table")
-
+        expect_s3_class(set_cmip6_index(idx, save = TRUE), "data.table")
     }
 })
 
@@ -173,10 +172,10 @@ test_that("get_data_dir()", {
 test_that("get_data_node()", {
     skip_on_cran()
 
-    expect_is(node <- get_data_node(), "data.table")
+    expect_s3_class(node <- get_data_node(), "data.table")
     expect_named(node, c("data_node", "status"))
 
     # can test speed using pingr
-    expect_is(node <- get_data_node(TRUE, 1), "data.table")
+    expect_s3_class(node <- get_data_node(TRUE, 1), "data.table")
     expect_named(node, c("data_node", "status", "ping"))
 })

@@ -121,10 +121,10 @@ RES_FILE <- c(
 #'        described below. Default: `"r1i1p1f1"`.
 #'        If `NULL`, all possible variants are returned.
 #'
-#' * `r`: realization_index (<k>) = realization number (integer >0)
-#' * `i`: initialization_index (<l>) = index for variant of initialization method (integer >0)
-#' * `p`: physics_index (<m>) = index for model physics variant (integer >0)
-#' * `f`: forcing_index (<n>) = index for variant of forcing (integer >0)
+#' * `r`: realization_index (`<k>`) = realization number (integer >0)
+#' * `i`: initialization_index (`<l>`) = index for variant of initialization method (integer >0)
+#' * `p`: physics_index (`<m>`) = index for model physics variant (integer >0)
+#' * `f`: forcing_index (`<n>`) = index for variant of forcing (integer >0)
 #'
 #' @param replica Whether the record is the "master" copy, or a replica. Use
 #'        `FALSE` to return only originals and `TRUE` to return only replicas.
@@ -264,9 +264,12 @@ esgf_query <- function(activity = "ScenarioMIP",
         variant = "variant_label"
     )
 
-    pair <- function(x, first = FALSE) {
+    pair <- function(x, encode = TRUE) {
+        checkmate::assert_vector(x, TRUE, null.ok = TRUE)
+
         # get name
         var <- deparse(substitute(x))
+
         # skip if empty
         if (is.null(x) || length(x) == 0) {
             return()
@@ -274,36 +277,32 @@ esgf_query <- function(activity = "ScenarioMIP",
         # get key name
         key <- dict[names(dict) == var]
         if (!length(key)) key <- var
+
         if (is.logical(x)) x <- tolower(x)
-        s <- paste0(key, "=", paste0(x, collapse = "%2C")) # %2C = ","
-        if (first) s else paste0("&", s)
+
+        if (encode) x <- query_param_encode(as.character(x))
+
+        paste0(key, "=", paste0(x, collapse = query_param_encode(",")))
     }
 
-    `%and%` <- function(lhs, rhs) if (is.null(rhs)) lhs else paste0(lhs, rhs)
+    `%and%` <- function(lhs, rhs) {
+        if (is.null(rhs)) {
+            lhs
+        } else if (lhs == url_base) {
+            paste(lhs, rhs, sep = "", collapse = "")
+        } else {
+            paste(lhs, rhs, sep = "&", collapse = "&")
+        }
+    }
 
     project <- "CMIP6"
-    format <- "application%2Fsolr%2Bjson"
+    format <- "application/solr+json"
+    offset <- 0L
 
     resolution <- c(
         gsub(" ", "", resolution, fixed = TRUE),
         gsub(" ", "+", resolution, fixed = TRUE)
     )
-
-    q <- url_base %and%
-        pair(project, TRUE) %and%
-        pair(activity) %and%
-        pair(experiment) %and%
-        pair(source) %and%
-        pair(variable) %and%
-        pair(resolution) %and%
-        pair(variant) %and%
-        pair(data_node) %and%
-        pair(frequency) %and%
-        pair(replica) %and%
-        pair(latest) %and%
-        pair(type) %and%
-        pair(limit) %and%
-        pair(format)
 
     # use `fileds` to directly subset data from responses
     if (type == "Dataset") {
@@ -311,7 +310,24 @@ esgf_query <- function(activity = "ScenarioMIP",
     } else if (type == "File") {
         fields <- RES_FILE
     }
-    q <- q %and% pair(fields)
+
+    q <- url_base %and%
+        pair(offset) %and%
+        pair(limit) %and%
+        pair(type) %and%
+        pair(replica) %and%
+        pair(latest) %and%
+        pair(project) %and%
+        pair(activity) %and%
+        pair(experiment) %and%
+        pair(source) %and%
+        pair(variable) %and%
+        pair(resolution, FALSE) %and%
+        pair(variant) %and%
+        pair(data_node) %and%
+        pair(frequency) %and%
+        pair(fields) %and%
+        pair(format)
 
     q <- tryCatch(jsonlite::read_json(q), warning = function(w) w, error = function(e) e)
 
@@ -573,7 +589,7 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
         verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
 
-        EPWSHIFTR_ENV$index_db <- data.table::copy(dt)
+        this$index_db <- data.table::copy(dt)
     }
 
     dt
@@ -596,10 +612,10 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
 #' @importFrom data.table copy fread
 #' @export
 load_cmip6_index <- function(force = FALSE) {
-    if (is.null(EPWSHIFTR_ENV$index_db)) force <- TRUE
+    if (is.null(this$index_db)) force <- TRUE
 
     if (!force) {
-        idx <- data.table::copy(EPWSHIFTR_ENV$index_db)
+        idx <- data.table::copy(this$index_db)
     } else {
         f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
         if (!file.exists(f)) {
@@ -661,7 +677,7 @@ load_cmip6_index <- function(force = FALSE) {
     }
 
     # udpate package internal stored file index
-    EPWSHIFTR_ENV$index_db <- data.table::copy(idx)
+    this$index_db <- data.table::copy(idx)
 
     idx[]
 }
@@ -707,7 +723,7 @@ set_cmip6_index <- function(index, save = FALSE) {
     }
 
     # udpate package internal stored file index
-    EPWSHIFTR_ENV$index_db <- data.table::copy(index)
+    this$index_db <- data.table::copy(index)
 
     invisible(index)
 }

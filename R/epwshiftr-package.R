@@ -25,9 +25,14 @@
 "_PACKAGE"
 
 # package internal environment
-EPWSHIFTR_ENV <- new.env(parent = emptyenv())
-EPWSHIFTR_ENV$index_db <- NULL
-EPWSHIFTR_ENV$dict <- NULL
+this <- new.env(parent = emptyenv())
+this$index_db <- NULL
+this$dict <- NULL
+this$cache <- list()
+
+# nocov start
+attach_cache <- function(cache) this$cache <- cache
+# nocov end
 
 ## usethis namespace: start
 #' @importFrom checkmate assert_string
