@@ -249,7 +249,7 @@ extent permitted by law.
 
 If you encounter a clear bug or have questions about the usage, please file an
 issue with a minimal reproducible example on
-[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort% 3Aupdated-desc)
+[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
 If you have a solution for an existing bug or an implementation for a missing
 feature, please send a pull request and let us review.
 

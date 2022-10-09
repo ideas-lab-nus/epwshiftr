@@ -74,8 +74,8 @@ found in the input \code{epw_cmip6_data} object.\tabular{rlll}{
    15 \tab \code{hour} \tab Integer \tab The hour of the morphed data \cr
    16 \tab \code{minute} \tab Integer \tab The minute of the morphed data \cr
    17 \tab \strong{Variable Name} \tab Double \tab The morphed data, where \verb{Variable Name} is the corresponding EPW weather variable name \cr
-   18 \tab \code{delta} \tab Double \tab The shift factor. Will be \code{NA} for derivied values \cr
-   19 \tab \code{alpha} \tab Double \tab The stretch factor. Will be \code{NA} for derivied values \cr
+   18 \tab \code{delta} \tab Double \tab The shift factor. Will be \code{NA} for derived values \cr
+   19 \tab \code{alpha} \tab Double \tab The stretch factor. Will be \code{NA} for derived values \cr
 }
 }
 \description{

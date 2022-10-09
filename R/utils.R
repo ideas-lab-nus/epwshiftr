@@ -72,7 +72,7 @@ rd_query_method_param <- function(method, type, negate, default, nullable = TRUE
         if (!missing(negate)) {
             sprintf(
                 paste(
-                    "Note that you can put a preceding \\code{!} to negate the facet contraints.",
+                    "Note that you can put a preceding \\code{!} to negate the facet constraints.",
                     "For example, \\code{$%s(!c(%s))} searches for all \\code{%s}s except for",
                     "%s."
                 ),
