@@ -1001,6 +1001,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                         new_query_param(names_oth[[i]], params_oth[[i]])
                     }
                 )
+                names(private$param_others) <- names_oth
             }
 
             if (length(params_base)) {
@@ -1323,6 +1324,7 @@ query_param_encode <- function(param) {
 
 query_build <- function(host, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
+    checkmate::assert_names(names(params))
 
     params_other <- params[["others"]]
     params_base <- params[names(params) != "others"]
