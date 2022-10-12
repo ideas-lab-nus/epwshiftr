@@ -17,7 +17,7 @@ new_query_param <- function(name, value) {
     structure(value, class = c("EsgfQueryParam", "list"))
 }
 
-is.query_param <- function(x) inherits(x, "EsgfQueryParam")
+is_query_param <- function(x) inherits(x, "EsgfQueryParam")
 
 #' @export
 print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
@@ -1383,12 +1383,12 @@ query_build <- function(host, params, type = "search") {
 
     # standarize params
     for (i in seq_along(params_base)) {
-        if (!is.null(params_base[[i]]) && !is.query_param(params_base[[i]])) {
+        if (!is.null(params_base[[i]]) && !is_query_param(params_base[[i]])) {
             params_base[[i]] <- new_query_param(names(params_base[i]), params_base[[i]])
         }
     }
     for (i in seq_along(params_other)) {
-        if (!is.null(params_other[[i]]) && !is.query_param(params_other[[i]])) {
+        if (!is.null(params_other[[i]]) && !is_query_param(params_other[[i]])) {
             params_other[[i]] <- new_query_param(names(params_other[i]), params_other[[i]])
         }
     }
