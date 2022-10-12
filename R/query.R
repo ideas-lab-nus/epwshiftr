@@ -1,3 +1,6 @@
+#' @include query-result.R
+NULL
+
 # TODO: update doc about tye query type
 # TODO: collect all results with auto-pagination
 # TODO: automatically add fields that are specified via methods
@@ -700,7 +703,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' By default, all available metadata fields are returned for each
         #' query. `$facets()` can be used to limit the number of fields returned
-        #' in the query response.
+        #' in the query response. However, the following fields are always
+        #' included in the results:
+        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param value
         #' `r rd_query_method_param("fields", "character vector", default = "*")`
@@ -1189,9 +1194,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Send the actual query and fetch the results
         #'
-        #' `$collect()` sends the actual query to the ESGF search services and
-        #' returns the results in a [data.table::data.table]. The columns depend
-        #' on the value of query type and `fields` parameter.
+        #' `$collect()` sends the actual query with **`type=Dataset`** to the
+        #' ESGF search services and returns the results as an
+        #' [EsgfQueryResultDataset] object.
+        #' The columns depend on the value of query type and `fields` parameter.
+        #' However, the following fields are always included in the results:
+        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param all Whether to collect all result despite of the value of
         #'        `offset`. Default: `FALSE.

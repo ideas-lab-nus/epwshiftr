@@ -103,6 +103,24 @@ rd_query_method_return <- function() {
 }
 # nocov end
 
+set_size_units <- function(x) {
+    base <- 1024L
+    iec <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
+    if (!inherits(x, "units")) {
+        x <- units::set_units(x, iec[[1L]], mode = "standard")
+    } else {
+        bytes <- try(units::set_units(x, iec[[1L]], mode = "standard"), silent = TRUE)
+        if (inherits(bytes, "try-error")) {
+            warning("Failed to set input units to 'Byte'. Conversion skipped.")
+            return(x)
+        }
+        x <- bytes
+    }
+
+    power <- min(as.integer(log(units::drop_units(x), base = base)), length(iec))
+    units::set_units(x, iec[power + 1L], mode = "standard")
+}
+
 #' Get the package data storage directory
 #'
 #' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
