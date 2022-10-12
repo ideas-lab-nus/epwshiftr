@@ -1355,6 +1355,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 choices <- self$list_all_values(facet)
             }
             assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
+            unique(value)
         },
 
         new_facet_param = function(facet, value, allow_negate = TRUE, env = parent.frame()) {
@@ -1364,7 +1365,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 value <- list(value = value, negate = FALSE)
             }
 
-            private$validate_facet_value(facet, value$value)
+            value$value <- private$validate_facet_value(facet, value$value)
             new_query_param(facet, value)
         },
 
