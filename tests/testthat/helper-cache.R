@@ -6,6 +6,15 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
         dir.create(cache, recursive = TRUE)
     }
 
+    # cache ESGF facet listing query
+    facets <- file.path(cache, "facets")
+    if (!file.exists(facets)) {
+        query_build_facet_cache(formals(query_esgf)$host)
+        cache <- this$cache
+        saveRDS(cache, facets)
+        attach_cache(list())
+    }
+
     # download weather
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(cache, file)
@@ -40,4 +49,12 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     )
 
     cache
+}
+
+attach_facet_cache <- function() {
+    attach_cache(readRDS(file.path(get_cache(), "facets")))
+}
+
+clear_facet_cache <- function() {
+    attach_cache(list())
 }
