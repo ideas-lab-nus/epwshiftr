@@ -58,6 +58,7 @@ Collate:
     'gh.R'
     'morph.R'
     'netcdf.R'
+    'query-result.R'
     'query.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
