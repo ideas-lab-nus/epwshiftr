@@ -1096,9 +1096,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         url = function(wget = FALSE) {
             assert_flag(wget)
-            params <- mget(ls(envir = private, pattern = "^param_"), envir = private)
-            names(params) <- gsub("^param_", "", names(params))
-            query_build(private$url_host, params, type = if (wget) "wget" else "search")
+            query_build(
+                private$url_host,
+                private$get_all_params(),
+                type = if (wget) "wget" else "search"
+            )
         },
 
         #' @description
@@ -1344,6 +1346,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 gsub("param_", "", grep("^param_", names(private), value = TRUE), fixed = TRUE),
                 c("format", "others")
             )
+        },
+
+        get_all_params = function() {
+            params <- mget(ls(envir = private, pattern = "^param_"), envir = private)
+            names(params) <- gsub("^param_", "", names(params))
+            params
         }
     )
 )
