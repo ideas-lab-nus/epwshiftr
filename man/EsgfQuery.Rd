@@ -1711,9 +1711,22 @@ Send the actual query and fetch the results
 returns the results in a \link[data.table:data.table]{data.table::data.table}. The columns depend
 on the value of query type and \code{fields} parameter.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{all}}{Whether to collect all result despite of the value of
+\code{offset}. Default: `FALSE.}
+
+\item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
+respect the current value of \code{limit} when collecting all
+matched records. If \code{FALSE}, the allowed maximum limit number
+10000 is used. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
 }

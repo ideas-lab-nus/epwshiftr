@@ -1193,6 +1193,14 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' returns the results in a [data.table::data.table]. The columns depend
         #' on the value of query type and `fields` parameter.
         #'
+        #' @param all Whether to collect all result despite of the value of
+        #'        `offset`. Default: `FALSE.
+        #'
+        #' @param limit Only applicable when `all` is set to `TRUE`. Whether to
+        #'        respect the current value of `limit` when collecting all
+        #'        matched records. If `FALSE`, the allowed maximum limit number
+        #'        `r this$data_max_limit` is used. Default: `FALSE`.
+        #'
         #' @return A [data.table][data.table::data.table()].
         #'
         #' @examples
@@ -1200,22 +1208,22 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$fields("source_id")
         #' q$collect()
         #' }
-        collect = function() {
-            private$last_response <- jsonlite::fromJSON(self$url())
-            res <- data.table::setDT(
-                lapply(private$last_response$response$docs, unlist)
+        collect = function(all = FALSE, limit = TRUE) {
+            assert_flag(all)
+            assert_flag(limit)
+
+            result <- query_collect(
+                private$url_host, private$get_all_params(),
+                required_fields = EsgfQueryResultDataset$private_fields$required_fields,
+                all = all, limit = limit
             )
+            private$last_response <- result$response
 
-            # 'score' is always returned in the response
-            # remove if unless explicitly required
-            if ("score" %in% names(res) && !is.null(fields <- private$param_fields)) {
-                in_facets <- "score" %in% fields$value
-                if ((in_facets && fields$negate) || (!in_facets && !fields$negate)) {
-                    data.table::set(res, NULL, "score", NULL)
-                }
-            }
+            # replace docs in the last response
+            result$response$response$docs <- result$docs
 
-            res
+            # create new results
+            new_query_result(EsgfQueryResultDataset, private$url_host, result$response)
         },
 
         #' @description
@@ -1473,4 +1481,53 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     res$timestamp <- now()
 
     this$cache[[host]] <- res
+}
+
+query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE) {
+    assert_flag(all)
+    assert_flag(limit)
+
+    # include necessary fields
+    if (!is.null(params$fields) && !"*" %in% params$fields$value && !is.null(required_fields)) {
+        params$fields <- c(params$fields$value, required_fields)
+    }
+
+    # reset limit to the allowed maximum number with zero offset
+    if (all) {
+        if (!limit) params$limit <- this$data_max_limit
+        params$offset <- 0L
+    }
+
+    response <- read_json_response(query_build(host, params))
+    docs <- response$response$docs
+
+    # check if the total number is less that the limit
+    total <- response$response$numFound
+    if (total > 0L && all) {
+        current <- length(response$response$docs[[1]])
+        left <- total - current
+
+        while (left > 0L) {
+            params$offset <- current
+
+            response <- read_json_response(query_build(host, params))
+
+            # combine results
+            docs <- rbind(docs, response$response$docs)
+            current <- length(docs)
+
+            left <- total - current
+        }
+    }
+
+    # 'score' is always returned in the response
+    # remove if unless explicitly required
+    if ("score" %in% names(docs) && !is.null(fields <- params$fields)) {
+        in_facets <- "score" %in% fields$value
+        if ((in_facets && fields$negate) || (!in_facets && !fields$negate)) {
+            docs$score <- NULL
+        }
+    }
+
+    list(response = response, docs = docs)
 }
