@@ -981,6 +981,28 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             all_facets <- self$list_all_facets()
             predefined <- private$predefined_facets()
 
+            if ("type" %in% nms && length(type <- params[[nms == "type"]])) {
+                assert_choice(type$value,
+                    c("Dataset", "File", "Aggregation"), .var.name = "type"
+                )
+
+                if (type$value != "Dataset") {
+                    warning(sprintf(
+                        paste(
+                            "Only 'Dataset' query is supported.",
+                            "But 'type' found in input with value = '%s'.",
+                            "'type' has been reset to 'Dataset'.",
+                            "If you want to perform a 'File' or 'Aggregation' query",
+                            "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
+                            "result, and then use 'EsgfQueryResultDataset$collect()'."
+
+                        )
+                    ))
+                    type$value <- "Dataset"
+                    type$negate <- FALSE
+                }
+            }
+
             if ("format" %in% nms && length(fmt <- params[[nms == "format"]]) &&
                 (is.null(fmt) || fmt$value != "application/solr+json")
             ) {
