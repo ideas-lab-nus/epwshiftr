@@ -22,7 +22,8 @@ assessments by the Intergovernmental Panel on Climate Change (IPCC).
 The ESGF search service exposes RESTful APIs that can be used by clients to
 query the contents of the underlying search index, and return results
 matching the given constraints. The documentation of the APIs can be found
-using this \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}
+using this
+\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}.
 
 \code{EsgfQuery} is the workhorse for dealing with ESGF search services.
 }
@@ -616,6 +617,7 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}
 \item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}
+\item \href{#method-EsgfQuery-clone}{\code{EsgfQuery$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
@@ -1833,5 +1835,22 @@ q$print()
 
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-clone"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-clone}{}}}
+\subsection{Method \code{clone()}}{
+The objects of this class are cloneable with this method.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$clone(deep = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{deep}}{Whether to make a deep clone.}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

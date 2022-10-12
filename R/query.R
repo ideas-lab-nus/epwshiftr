@@ -55,7 +55,8 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' The ESGF search service exposes RESTful APIs that can be used by clients to
 #' query the contents of the underlying search index, and return results
 #' matching the given constraints. The documentation of the APIs can be found
-#' using this [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html)
+#' using this
+#' [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html).
 #'
 #' `EsgfQuery` is the workhorse for dealing with ESGF search services.
 #'
@@ -212,7 +213,7 @@ query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search") {
 #' @name EsgfQuery
 #' @export
 EsgfQuery <- R6::R6Class("EsgfQuery",
-    cloneable = FALSE, lock_class = TRUE,
+    lock_class = TRUE,
     public = list(
         #' @description
         #' Create a new EsgfQuery object
