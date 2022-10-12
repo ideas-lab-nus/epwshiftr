@@ -137,11 +137,6 @@ test_that("ESGF Query works", {
     expect_false(q$latest(FALSE)$latest()$value)
     expect_true(q$latest(TRUE)$latest()$value)
 
-    # type
-    expect_equal(q$type()$value, "Dataset")
-    expect_equal(q$type("Aggregation")$type()$value, "Aggregation")
-    expect_equal(q$type("Dataset")$type()$value, "Dataset")
-
     # limit
     expect_equal(q$limit()$value, 10L)
     expect_warning(lim <- q$limit(12000)$limit(), "10,000")

@@ -450,18 +450,6 @@ q$latest(TRUE)
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$type`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$type()
-
-# set the parameter
-q$type("Dataset")
-}
-
-## ------------------------------------------------
 ## Method `EsgfQuery$limit`
 ## ------------------------------------------------
 
@@ -607,7 +595,6 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-shards}{\code{EsgfQuery$shards()}}
 \item \href{#method-EsgfQuery-replica}{\code{EsgfQuery$replica()}}
 \item \href{#method-EsgfQuery-latest}{\code{EsgfQuery$latest()}}
-\item \href{#method-EsgfQuery-type}{\code{EsgfQuery$type()}}
 \item \href{#method-EsgfQuery-limit}{\code{EsgfQuery$limit()}}
 \item \href{#method-EsgfQuery-offset}{\code{EsgfQuery$offset()}}
 \item \href{#method-EsgfQuery-distrib}{\code{EsgfQuery$distrib()}}
@@ -1412,47 +1399,6 @@ q$latest()
 
 # set the parameter
 q$latest(TRUE)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-type"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-type}{}}}
-\subsection{Method \code{type()}}{
-Get or set the \code{type} parameter.
-
-There are three types in total: \code{Dataset}, \code{File} or \code{Aggregation}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$type(value = "Dataset")}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{value}}{The facet parameter value. Default: \code{"Dataset"}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A string.
-}}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$type()
-
-# set the parameter
-q$type("Dataset")
 }
 }
 \if{html}{\out{</div>}}

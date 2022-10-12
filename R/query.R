@@ -811,33 +811,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
 
         #' @description
-        #' Get or set the `type` parameter.
-        #'
-        #' There are three types in total: `Dataset`, `File` or `Aggregation`.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("type", "string", default = "Dataset", nullable = FALSE)`
-        #'
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$type()
-        #'
-        #' # set the parameter
-        #' q$type("Dataset")
-        #' }
-        type = function(value = "Dataset") {
-            if (missing(value)) return(private$param_type)
-            assert_choice(value, choices = c("Dataset", "File", "Aggregation"), .var.name = "type")
-            private$param_type <- new_query_param("type", value)
-            invisible(self)
-        },
-
-        #' @description
         #' Get or set the `limit` parameter.
         #'
         #' `$limit()` can be used to limit the number of records to return.
