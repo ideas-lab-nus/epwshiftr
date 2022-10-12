@@ -471,8 +471,8 @@ q$limit()
 # set the parameter
 q$limit(10L)
 
-# `limit` is reset to 10,000 if input is greater than that
-q$limit(10000L) # warning
+# `limit` is reset to the allowed maximum query limit if input is greater than that
+q$limit(12000L) # warning
 }
 
 ## ------------------------------------------------
@@ -1466,8 +1466,9 @@ Get or set the \code{limit} parameter.
 
 \verb{$limit()} can be used to limit the number of records to return.
 Note that the maximum number of records to return per query for ESGF
-search services is 10,000. A warning is issued if input value is
-greater than that. In this case, \code{limit} will be reset to 10,000.
+search services is 10,000.
+A warning is issued if input value is greater than that. In this
+case, \code{limit} will be reset to 10,000.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$limit(value = 10L)}\if{html}{\out{</div>}}
 }
@@ -1496,8 +1497,8 @@ q$limit()
 # set the parameter
 q$limit(10L)
 
-# `limit` is reset to 10,000 if input is greater than that
-q$limit(10000L) # warning
+# `limit` is reset to the allowed maximum query limit if input is greater than that
+q$limit(12000L) # warning
 }
 }
 \if{html}{\out{</div>}}

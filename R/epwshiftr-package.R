@@ -29,6 +29,7 @@ this <- new.env(parent = emptyenv())
 this$index_db <- NULL
 this$dict <- NULL
 this$cache <- list()
+this$data_max_limit <- 10000L
 
 # nocov start
 attach_cache <- function(cache) this$cache <- cache
