@@ -263,7 +263,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 }
             }
 
-            invisible(self)
+            self
         },
 
         #' @description
