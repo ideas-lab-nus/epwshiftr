@@ -1,3 +1,26 @@
+# TODO: update doc about tye query type
+# TODO: collect all results with auto-pagination
+# TODO: automatically add fields that are specified via methods
+read_json_response <- function(url, ...) {
+    q <- tryCatch(jsonlite::fromJSON(url, ...), warning = function(w) w, error = function(e) e)
+
+    # nocov start
+    if (inherits(q, "warning") || inherits(q, "error")) {
+        warning(
+            "No matched data. Please check network connection and the availability of ESGF index/data node. Details: \n",
+            conditionMessage(q)
+        )
+        q <- NULL
+    # nocov end
+    } else if (q$response$numFound == 0L) {
+        vb(cli::cli_alert_warning(
+            "No matched data. Please examine your query and the actual response."
+        ))
+    }
+
+    q
+}
+
 new_query_param <- function(name, value) {
     assert_string(name)
 
@@ -1135,30 +1158,26 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$count(facets = c("activity_id", "source_id"))
         #' }
         count = function(facets = TRUE) {
-            # reset limit
-            old_limit <- private$param_limit
-            on.exit(private$param_limit <- old_limit, add = TRUE)
-            private$param_limit <- new_query_param("limit", 0)
+            params <- private$get_all_params()
+            params$limit <- new_query_param("limit", 0)
 
             # reset facets
-            old_facets <- private$param_facets
-            on.exit(private$param_facets <- old_facets, add = TRUE)
-
             if (!checkmate::test_flag(facets)) {
-                self$facets(facets)
+                params$facets <- private$new_facet_param("facets", facets, FALSE)
                 facets <- !is.null(facets)
             } else {
                 # use current stored facets
                 if (facets) {
                     # if current facets is set to empty, returns the total
                     # number
-                    if (is.null(old_facets)) facets <- FALSE
+                    if (is.null(params$facets)) facets <- FALSE
                 } else {
-                    private$param_facets <- NULL
+                    params$facets <- NULL
                 }
             }
 
-            res <- jsonlite::fromJSON(self$url(), simplifyVector = FALSE)
+            url <- query_build(private$url_host, params)
+            res <- read_json_response(url, simplifyVector = FALSE)
             private$last_response <- res
 
             if (!facets) return(res$response$numFound)
@@ -1437,7 +1456,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
             format = "application/solr+json"
         )
     )
-    res <- jsonlite::fromJSON(url, simplifyVector = FALSE)
+    res <- read_json_response(url, simplifyVector = FALSE)
 
     # build a query with project to get the Shards
     url <- query_build(host,
@@ -1448,7 +1467,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
             format = "application/solr+json"
         )
     )
-    res$responseHeader$params$shards <- jsonlite::fromJSON(url, simplifyVector = FALSE)$responseHeader$params$shards
+    res$responseHeader$params$shards <- read_json_response(url, simplifyVector = FALSE)$responseHeader$params$shards
 
     # add timestamp
     res$timestamp <- now()
