@@ -841,8 +841,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' `$limit()` can be used to limit the number of records to return.
         #' Note that the maximum number of records to return per query for ESGF
-        #' search services is 10,000. A warning is issued if input value is
-        #' greater than that. In this case, `limit` will be reset to 10,000.
+        #' search services is `r format(this$data_max_limit, big.mark = ',')`.
+        #' A warning is issued if input value is greater than that. In this
+        #' case, `limit` will be reset to `r format(this$data_max_limit, big.mark = ',')`.
         #'
         #' @param value
         #' `r rd_query_method_param("limit", "integer", default = 10L, nullable = FALSE)`
@@ -858,15 +859,22 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' # set the parameter
         #' q$limit(10L)
         #'
-        #' # `limit` is reset to 10,000 if input is greater than that
-        #' q$limit(10000L) # warning
+        #' # `limit` is reset to the allowed maximum query limit if input is greater than that
+        #' q$limit(12000L) # warning
         #' }
         limit = function(value = 10L) {
             if (missing(value)) return(private$param_limit)
             assert_count(value, .var.name = "limit")
-            if (value > 10000L) {
-                warning("ESGF Search API only supports a maximum value of limit <= 10,000.", " 'limit' has been reset to '10000'.")
-                value <- 10000L
+            if (value > this$data_max_limit) {
+                warning(sprintf(
+                    paste(
+                        "ESGF Search API only supports a maximum value of limit <= %s",
+                        "'limit' has been reset to '%s'."
+                    ),
+                    format(this$data_max_limit, big.mark = ","),
+                    this$data_max_limit
+                ))
+                value <- this$data_max_limit
             }
             private$param_limit <- new_query_param("limit", value)
             invisible(self)
@@ -1067,7 +1075,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
             self
         },
-
 
         #' @description
         #' Get the URL of actual query or wget script
