@@ -1207,7 +1207,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @param limit Only applicable when `all` is set to `TRUE`. Whether to
         #'        respect the current value of `limit` when collecting all
         #'        matched records. If `FALSE`, the allowed maximum limit number
-        #'        `r this$data_max_limit` is used. Default: `FALSE`.
+        #'        `r this$data_max_limit` is used. It can also be a positive
+        #'        integer which will be used as a temporary limit per query.
+        #'        Default: `FALSE`.
         #'
         #' @param params Whether to include facet fields that have parameter
         #'        constraints explicitly set using `EsgfQuery$project()`,
@@ -1218,8 +1220,27 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @examples
         #' \dontrun{
-        #' q$fields("source_id")
-        #' q$collect()
+        #' # by default, all fields with contrains are included in the results
+        #' query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+        #' res1 <- query$collect()
+        #' res1$fields
+        #'
+        #' # set `params` to `FALSE` to disable it
+        #' query$collect(params = FALSE)$fields
+        #'
+        #' # collect all matched records with `query$limit()` records per query
+        #' res2 <- query$collect(all = TRUE, limit = TRUE)
+        #' identical(query$count(), res2$count())
+        #'
+        #' # same as above, but collect all matched records with max allowed
+        #' # record limit per query
+        #' res3 <- query$collect(all = TRUE, limit = FALSE)
+        #' identical(res2$count(), res3$count())
+        #'
+        #' # same as above, but collect all matched records with specified limit
+        #' # per query
+        #' res4 <- query$collect(all = TRUE, limit = 30)
+        #' identical(res2$count(), res4$count())
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
