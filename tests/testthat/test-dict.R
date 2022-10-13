@@ -3,7 +3,7 @@ test_that("cmip6_dict()", {
     expect_s3_class(this$dict, "Cmip6Dict")
 })
 
-test_that("$build() and $save()", {
+test_that("Cmip6Dict$build() and Cmip6Dict$save()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -17,7 +17,7 @@ test_that("$build() and $save()", {
     expect_true(file.exists(dict$save(file.path(tempdir(), "abc"))))
 })
 
-test_that("$load()", {
+test_that("Cmip6Dict$load()", {
     dict <- cmip6_dict()
     expect_message(dict$load(file.path(tempdir(), "not_exists")))
 
@@ -28,7 +28,7 @@ test_that("$load()", {
     expect_error(dict$load(dirname(empty)))
 })
 
-test_that("$version()", {
+test_that("Cmip6Dict$version()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -41,7 +41,7 @@ test_that("$version()", {
     expect_s3_class(dict$version()$dreq, "numeric_version")
 })
 
-test_that("$is_empty()", {
+test_that("Cmip6Dict$is_empty()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -52,7 +52,7 @@ test_that("$is_empty()", {
     expect_s3_class(dict$version()$dreq, "numeric_version")
 })
 
-test_that("$timestamp()", {
+test_that("Cmip6Dict$timestamp()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -71,7 +71,7 @@ test_that("$timestamp()", {
     )
 })
 
-test_that("$built_time()", {
+test_that("Cmip6Dict$built_time()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -82,7 +82,7 @@ test_that("$built_time()", {
     expect_length(dict$built_time(), 1L)
 })
 
-test_that("$get()", {
+test_that("Cmip6Dict$get()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -189,7 +189,7 @@ test_that("$get()", {
     expect_message(print(dict$get("dreq")))
 })
 
-test_that("$print()", {
+test_that("Cmip6Dict$print()", {
     dict <- cmip6_dict()
     expect_message(dict$print())
 
