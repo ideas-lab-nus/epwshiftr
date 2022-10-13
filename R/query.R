@@ -1317,7 +1317,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             cli::cli_end(ul)
             cli::cli_end(d)
 
-            self
+            invisible(self)
         }
     ),
     private = list(
