@@ -474,7 +474,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         experiment_id = function(value) {
             if (missing(value)) return(private$param_experiment_id)
             private$param_experiment_id <- private$new_facet_param("experiment_id", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -503,7 +503,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         source_id = function(value) {
             if (missing(value)) return(private$param_source_id)
             private$param_source_id <- private$new_facet_param("source_id", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -532,7 +532,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         variable_id = function(value) {
             if (missing(value)) return(private$param_variable_id)
             private$param_variable_id <- private$new_facet_param("variable_id", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -561,7 +561,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         frequency = function(value) {
             if (missing(value)) return(private$param_frequency)
             private$param_frequency <- private$new_facet_param("frequency", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -590,7 +590,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         variant_label = function(value) {
             if (missing(value)) return(private$param_variant_label)
             private$param_variant_label <- private$new_facet_param("variant_label", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -636,7 +636,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             }
 
             private$param_nominal_resolution <- param
-            invisible(self)
+            self
         },
 
         #' @description
@@ -665,7 +665,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         data_node = function(value) {
             if (missing(value)) return(private$param_data_node)
             private$param_data_node <- private$new_facet_param("data_node", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -695,7 +695,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         facets = function(value) {
             if (missing(value)) return(private$param_facets)
             private$param_facets <- private$new_facet_param("facets", value, FALSE)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -732,7 +732,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         fields = function(value = "*") {
             if (missing(value)) return(private$param_fields)
             private$param_fields <- private$new_facet_param("fields", value, FALSE)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -775,7 +775,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 stop("'$distrib()' returns FALSE. Shard specification is only applicable for distributed queries.")
             }
             private$param_shards <- private$new_facet_param("shards", value, FALSE)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -807,7 +807,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             if (missing(value)) return(private$param_replica)
             assert_flag(value, null.ok = TRUE, .var.name = "replica")
             private$param_replica <- new_query_param("replica", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -835,7 +835,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             if (missing(value)) return(private$param_latest)
             assert_flag(value, .var.name = "latest")
             private$param_latest <- new_query_param("latest", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -879,7 +879,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 value <- this$data_max_limit
             }
             private$param_limit <- new_query_param("limit", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -907,7 +907,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             if (missing(value)) return(private$param_offset)
             assert_count(value, .var.name = "offset")
             private$param_offset <- new_query_param("offset", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -936,7 +936,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             if (missing(value)) return(private$param_distrib)
             assert_flag(value, .var.name = "distrib")
             private$param_distrib <- new_query_param("distrib", value)
-            invisible(self)
+            self
         },
 
         #' @description
@@ -961,10 +961,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @return
         #'
-        #' - If parameters are specified, the modified `EsgfQuery` object,
-        #' invisibly.
+        #' - If parameters are specified, the modified `EsgfQuery` object.
+        #'
         #' - Otherwise, an empty list for `$params(NULL)` or a list of
-        #' `EsgfQueryParam` objects.
+        #'   `EsgfQueryParam` objects.
         #'
         #' @examples
         #' \dontrun{
@@ -994,7 +994,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
             if (length(dots) == 1L && is.null(names(dots)) && is.null(dots[[1L]])) {
                 private$param_others <- list()
-                return(invisible(self))
+                return(self)
             }
 
             params <- eval_with_bang(...)
@@ -1303,7 +1303,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             cli::cli_end(ul)
             cli::cli_end(d)
 
-            invisible(self)
+            self
         }
     ),
     private = list(

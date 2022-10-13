@@ -1577,8 +1577,7 @@ except for \verb{3hr} and \code{day}.
 }
 \subsection{Returns}{
 \itemize{
-\item If parameters are specified, the modified \code{EsgfQuery} object,
-invisibly.
+\item If parameters are specified, the modified \code{EsgfQuery} object.
 \item Otherwise, an empty list for \verb{$params(NULL)} or a list of
 \code{EsgfQueryParam} objects.
 }
