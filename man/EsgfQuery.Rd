@@ -550,8 +550,27 @@ q$count(facets = c("activity_id", "source_id"))
 ## ------------------------------------------------
 
 \dontrun{
-q$fields("source_id")
-q$collect()
+# by default, all fields with contrains are included in the results
+query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+res1 <- query$collect()
+res1$fields
+
+# set `params` to `FALSE` to disable it
+query$collect(params = FALSE)$fields
+
+# collect all matched records with `query$limit()` records per query
+res2 <- query$collect(all = TRUE, limit = TRUE)
+identical(query$count(), res2$count())
+
+# same as above, but collect all matched records with max allowed
+# record limit per query
+res3 <- query$collect(all = TRUE, limit = FALSE)
+identical(res2$count(), res3$count())
+
+# same as above, but collect all matched records with specified limit
+# per query
+res4 <- query$collect(all = TRUE, limit = 30)
+identical(res2$count(), res4$count())
 }
 
 ## ------------------------------------------------
@@ -1727,7 +1746,9 @@ However, the following fields are always included in the results:
 \item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
 respect the current value of \code{limit} when collecting all
 matched records. If \code{FALSE}, the allowed maximum limit number
-10000 is used. Default: \code{FALSE}.}
+10000 is used. It can also be a positive
+integer which will be used as a temporary limit per query.
+Default: \code{FALSE}.}
 
 \item{\code{params}}{Whether to include facet fields that have parameter
 constraints explicitly set using \code{EsgfQuery$project()},
@@ -1742,8 +1763,27 @@ An \link{EsgfQueryResultDataset} object.
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$fields("source_id")
-q$collect()
+# by default, all fields with contrains are included in the results
+query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+res1 <- query$collect()
+res1$fields
+
+# set `params` to `FALSE` to disable it
+query$collect(params = FALSE)$fields
+
+# collect all matched records with `query$limit()` records per query
+res2 <- query$collect(all = TRUE, limit = TRUE)
+identical(query$count(), res2$count())
+
+# same as above, but collect all matched records with max allowed
+# record limit per query
+res3 <- query$collect(all = TRUE, limit = FALSE)
+identical(res2$count(), res3$count())
+
+# same as above, but collect all matched records with specified limit
+# per query
+res4 <- query$collect(all = TRUE, limit = 30)
+identical(res2$count(), res4$count())
 }
 }
 \if{html}{\out{</div>}}
