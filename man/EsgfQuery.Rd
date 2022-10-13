@@ -130,7 +130,7 @@ number of records that match the query.
 \code{EsgfQuery$count(facets = c("source_id", "activity_id"))}
 }
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
-query results and format it into a \link[data.table:data.table]{data.table}
+query results and format it into an \link{EsgfQueryResultDataset} object.
 }
 }
 
@@ -1219,7 +1219,7 @@ By default, all available metadata fields are returned for each
 query. \verb{$facets()} can be used to limit the number of fields returned
 in the query response. However, the following fields are always
 included in the results:
-\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_fields}, \verb{access}.
+\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$fields(value = "*")}\if{html}{\out{</div>}}
 }
@@ -1714,7 +1714,7 @@ ESGF search services and returns the results as an
 \link{EsgfQueryResultDataset} object.
 The columns depend on the value of query type and \code{fields} parameter.
 However, the following fields are always included in the results:
-\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_fields}, \verb{access}.
+\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE)}\if{html}{\out{</div>}}
 }
