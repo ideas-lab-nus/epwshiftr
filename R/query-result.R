@@ -199,7 +199,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     private = list(
         required_fields = c(
             EsgfQueryResult$private_fields$required_fields,
-            "index_node", "number_of_fields", "access"
+            "index_node", "number_of_files", "access"
         )
     )
 )
