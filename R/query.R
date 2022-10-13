@@ -1222,13 +1222,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$collect()
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
-            assert_flag(all)
-            assert_flag(params)
-            checkmate::assert(
-                checkmate::check_flag(TRUE),
-                checkmate::check_count(0, positive = TRUE)
-            )
-
             result <- query_collect(
                 private$url_host, private$get_all_params(),
                 required_fields = EsgfQueryResultDataset$private_fields$required_fields,
@@ -1510,7 +1503,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
     assert_flag(constraints)
     checkmate::assert(
         checkmate::check_flag(limit),
-        checkmate::check_count(limit, positive = TRUE)
+        checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
     )
 
     params <- query_param_flat(params)
