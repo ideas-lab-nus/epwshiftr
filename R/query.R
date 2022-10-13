@@ -191,7 +191,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'     `EsgfQuery$count(facets = c("source_id", "activity_id"))`
 #'
 #' - \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
-#'   query results and format it into a [data.table][data.table::data.table()]
+#'   query results and format it into an [EsgfQueryResultDataset] object.
 #'
 #' ## Other helpers
 #'
@@ -1209,21 +1209,30 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        matched records. If `FALSE`, the allowed maximum limit number
         #'        `r this$data_max_limit` is used. Default: `FALSE`.
         #'
-        #' @return A [data.table][data.table::data.table()].
+        #' @param params Whether to include facet fields that have parameter
+        #'        constraints explicitly set using `EsgfQuery$project()`,
+        #'        `EsgfQuery$activity_id()`, `EsgfQuery$params()` and etc.
+        #'        Default: `TRUE`.
+        #'
+        #' @return An [EsgfQueryResultDataset] object.
         #'
         #' @examples
         #' \dontrun{
         #' q$fields("source_id")
         #' q$collect()
         #' }
-        collect = function(all = FALSE, limit = TRUE) {
+        collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             assert_flag(all)
-            assert_flag(limit)
+            assert_flag(params)
+            checkmate::assert(
+                checkmate::check_flag(TRUE),
+                checkmate::check_count(0, positive = TRUE)
+            )
 
             result <- query_collect(
                 private$url_host, private$get_all_params(),
                 required_fields = EsgfQueryResultDataset$private_fields$required_fields,
-                all = all, limit = limit
+                all = all, limit = limit, constraints = params
             )
             private$last_response <- result$response
 
@@ -1421,8 +1430,7 @@ query_param_encode <- function(param) {
     })
 }
 
-query_build <- function(host, params, type = "search") {
-    checkmate::assert_choice(type, c("search", "wget"))
+query_param_flat <- function(params) {
     checkmate::assert_names(names(params))
 
     params_other <- params[["others"]]
@@ -1448,7 +1456,12 @@ query_build <- function(host, params, type = "search") {
     }
 
     # skip empty parameter
-    params <- params[!vapply(params, is.null, logical(1L))]
+    params[!vapply(params, is.null, logical(1L))]
+}
+
+query_build <- function(host, params, type = "search") {
+    checkmate::assert_choice(type, c("search", "wget"))
+    params <- query_param_flat(params)
 
     if (type == "wget") {
         params <- params[!names(params) %in% c("type", "format")]
@@ -1492,18 +1505,50 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     this$cache[[host]] <- res
 }
 
-query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE) {
+query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
     assert_flag(all)
-    assert_flag(limit)
+    assert_flag(constraints)
+    checkmate::assert(
+        checkmate::check_flag(limit),
+        checkmate::check_count(limit, positive = TRUE)
+    )
 
+    params <- query_param_flat(params)
     # include necessary fields
-    if (!is.null(params$fields) && !"*" %in% params$fields$value && !is.null(required_fields)) {
-        params$fields <- c(params$fields$value, required_fields)
+    if (!is.null(params$fields) && !"*" %in% params$fields$value) {
+        params$fields <- params$fields$value
+
+        if (!is.null(required_fields)) {
+            params$fields <- unique(c(params$fields, required_fields))
+        }
+
+        if (constraints) {
+            # all non-emtpy param names
+            par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
+            # exclude keywords
+            keywords <- c(
+                "facets", "offset", "limit", "fields", "format", "type",
+                "replica", "latest", "distrib", "shards", "bbox", "start",
+                "end", "from", "to"
+            )
+            par_nms <- setdiff(par_nms, keywords)
+            params$fields <- unique(c(params$fields, par_nms))
+        }
+
+        # convert back to a query param in case steps below assume it to be one
+        params$fields <- new_query_param("fields", params$fields)
     }
 
     # reset limit to the allowed maximum number with zero offset
     if (all) {
-        if (!limit) params$limit <- this$data_max_limit
+        # use specified batch
+        if (is.numeric(limit)) {
+            params$limit <- limit
+        # use 'unlimited' batch
+        } else if (!limit) {
+            params$limit <- this$data_max_limit
+        }
+
         params$offset <- 0L
     }
 
@@ -1523,7 +1568,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
 
             # combine results
             docs <- rbind(docs, response$response$docs)
-            current <- length(docs)
+            current <- nrow(docs)
 
             left <- total - current
         }

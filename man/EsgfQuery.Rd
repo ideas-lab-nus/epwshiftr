@@ -1716,7 +1716,7 @@ The columns depend on the value of query type and \code{fields} parameter.
 However, the following fields are always included in the results:
 \verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE, params = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -1729,11 +1729,16 @@ However, the following fields are always included in the results:
 respect the current value of \code{limit} when collecting all
 matched records. If \code{FALSE}, the allowed maximum limit number
 10000 is used. Default: \code{FALSE}.}
+
+\item{\code{params}}{Whether to include facet fields that have parameter
+constraints explicitly set using \code{EsgfQuery$project()},
+\code{EsgfQuery$activity_id()}, \code{EsgfQuery$params()} and etc.
+Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A \link[data.table:data.table]{data.table}.
+An \link{EsgfQueryResultDataset} object.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
