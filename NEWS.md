@@ -101,6 +101,7 @@
 
 * `fields` parameter is used to directly filter the ESGF query responses (#66).
 * Improve URL encoding (#62).
+* Update minimal version of depended packages (#75).
 
 # epwshiftr 0.1.3
 

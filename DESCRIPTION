@@ -1,6 +1,6 @@
 Package: epwshiftr
 Title: Create Future 'EnergyPlus' Weather Files using 'CMIP6' Data
-Version: 0.1.3.9013
+Version: 0.1.3.9014
 Authors@R: c(
     person(given = "Hongyuan",
            family = "Jia",
@@ -21,10 +21,10 @@ Description:
     <https://energyplus.net> Weather ('EPW') files adjusted from climate changes
     using data from Global Climate Models ('GCM').
 Imports:
-    checkmate,
-    cli,
+    checkmate (>= 2.0.0),
+    cli (>= 3.4.0),
     data.table (>= 1.12.4),
-    eplusr,
+    eplusr (>= 0.15.2),
     fst,
     future.apply,
     jsonlite,
