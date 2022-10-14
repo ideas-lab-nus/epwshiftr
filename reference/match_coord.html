@@ -143,12 +143,16 @@ speed up data extraction in parallel. By default, <code>match_coord()</code> use
 <p><code>match_coord()</code> calculates the geographical distances based formulas of
 spherical trigonometry:</p>
 <p>$$
-\begin{align}
-&amp;\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1);\\
-&amp;\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1);\\
-&amp;\Delta{Z}=\sin(\phi_2) - \sin(\phi_1);\\
-&amp;C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}.
-\end{align}
+\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1)
+$$</p>
+<p>$$
+\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1)
+$$</p>
+<p>$$
+\Delta{Z}=\sin(\phi_2) - \sin(\phi_1)
+$$</p>
+<p>$$
+C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}
 $$</p>
 <p>where \(phi\) is the latitude and \(lambda\) is the longitude.  This
 formula treats the Earth as a sphere. The geographical distance between
