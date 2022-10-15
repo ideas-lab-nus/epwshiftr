@@ -60,6 +60,7 @@ Collate:
     'netcdf.R'
     'query-result.R'
     'query.R'
+    'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
 Config/testthat/edition: 3
