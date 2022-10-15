@@ -1201,8 +1201,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' However, the following fields are always included in the results:
         #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
-        #' @param all Whether to collect all result despite of the value of
-        #'        `offset`. Default: `FALSE.
+        #' @param all Whether to collect all results despite of the value of
+        #'        `offset`. Default: `FALSE`.
         #'
         #' @param limit Only applicable when `all` is set to `TRUE`. Whether to
         #'        respect the current value of `limit` when collecting all
