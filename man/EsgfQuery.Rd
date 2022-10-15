@@ -1235,7 +1235,7 @@ q$facets("*")
 Get or set the \code{fields} parameter.
 
 By default, all available metadata fields are returned for each
-query. \verb{$facets()} can be used to limit the number of fields returned
+query. \verb{$fields()} can be used to limit the number of fields returned
 in the query response. However, the following fields are always
 included in the results:
 \verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
@@ -1730,7 +1730,7 @@ Send the actual query and fetch the results
 \verb{$collect()} sends the actual query with \strong{\code{type=Dataset}} to the
 ESGF search services and returns the results as an
 \link{EsgfQueryResultDataset} object.
-The columns depend on the value of query type and \code{fields} parameter.
+The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
 \verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
 \subsection{Usage}{

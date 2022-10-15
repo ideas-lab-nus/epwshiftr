@@ -702,7 +702,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `fields` parameter.
         #'
         #' By default, all available metadata fields are returned for each
-        #' query. `$facets()` can be used to limit the number of fields returned
+        #' query. `$fields()` can be used to limit the number of fields returned
         #' in the query response. However, the following fields are always
         #' included in the results:
         #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
@@ -1197,7 +1197,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' `$collect()` sends the actual query with **`type=Dataset`** to the
         #' ESGF search services and returns the results as an
         #' [EsgfQueryResultDataset] object.
-        #' The columns depend on the value of query type and `fields` parameter.
+        #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
         #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
