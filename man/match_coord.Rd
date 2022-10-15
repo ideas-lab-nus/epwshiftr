@@ -70,12 +70,19 @@ speed up data extraction in parallel. By default, \code{match_coord()} uses
 spherical trigonometry:
 
 \deqn{
-\begin{align}
-&\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1);\\
-&\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1);\\
-&\Delta{Z}=\sin(\phi_2) - \sin(\phi_1);\\
-&C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}.
-\end{align}
+\Delta{X}=\cos(\phi_2)\cos(\lambda_2) - \cos(\phi_1)\cos(\lambda_1)
+}
+
+\deqn{
+\Delta{Y}=\cos(\phi_2)\sin(\lambda_2) - \cos(\phi_1)\sin(\lambda_1)
+}
+
+\deqn{
+\Delta{Z}=\sin(\phi_2) - \sin(\phi_1)
+}
+
+\deqn{
+C_h=\sqrt{(\Delta{X})^2 + (\Delta{Y})^2 + (\Delta{Z})^2}
 }
 
 where \eqn{phi} is the latitude and \eqn{lambda} is the longitude.  This
