@@ -1740,8 +1740,8 @@ However, the following fields are always included in the results:
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{all}}{Whether to collect all result despite of the value of
-\code{offset}. Default: `FALSE.}
+\item{\code{all}}{Whether to collect all results despite of the value of
+\code{offset}. Default: \code{FALSE}.}
 
 \item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
 respect the current value of \code{limit} when collecting all
