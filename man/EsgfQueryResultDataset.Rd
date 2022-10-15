@@ -110,7 +110,9 @@ The following fields are always included in the results:
   shards = NULL,
   replica = NULL,
   latest = TRUE,
-  type = "File"
+  type = "File",
+  all = FALSE,
+  limit = 100L
 )}\if{html}{\out{</div>}}
 }
 
@@ -136,6 +138,12 @@ all versions will be returned.}
 
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}
+
+\item{\code{all}}{A flag. Whether to collect all results. Default: \code{TRUE}.}
+
+\item{\code{limit}}{A positive integer indicating the number of records to
+fetch per query. If \code{NULL}, the allowed maximum limit number
+10000 is used. Default: \code{100L}.}
 }
 \if{html}{\out{</div>}}
 }

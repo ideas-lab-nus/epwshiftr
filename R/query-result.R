@@ -289,12 +289,22 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
         #'
+        #' @param all A flag. Whether to collect all results. Default: `TRUE`.
+        #'
+        #' @param limit A positive integer indicating the number of records to
+        #'        fetch per query. If `NULL`, the allowed maximum limit number
+        #'        `r this$data_max_limit` is used. Default: `100L`.
+        #'
         #' @return
         #'
         #' - If `type="File"`, an [EsgfQueryResultFile] object
         #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
         #'
-        collect = function(fields = NULL, shards = NULL, replica = NULL, latest = TRUE, type = "File") {
+        collect = function(fields = NULL, shards = NULL, replica = NULL, latest = TRUE,
+                           type = "File", all = FALSE, limit = 100L) {
+            checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
+            if (is.null(limit)) limit <- this$data_max_limit
+
             params <- private$build_params(
                 fields = fields,
                 shards = shards,
@@ -303,9 +313,20 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 type = type
             )
 
-            url <- query_build(private$url_host, params)
-            private$response <- read_json_response(url)
+            result <- query_collect(
+                private$url_host, params,
+                all = all, limit = limit, constraints = FALSE,
+                required_fields = if (type == "File")
+                    EsgfQueryResultFile$private_fields$required_fields
+                else if (type == "Aggregation")
+                    EsgfQueryResultAggregation$private_fields$required_fields
+            )
+            private$last_response <- result$response
 
+            # replace docs in the last response
+            result$response$response$docs <- result$docs
+
+            # create new results
             if (type == "File") {
                 new_query_result(
                     EsgfQueryResultFile,
