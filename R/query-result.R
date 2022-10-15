@@ -1,11 +1,51 @@
+#' Base class for results for ESGF query
+#'
+#' @description
+#'
+#' `EsgfQueryResult` is a base class that represents basic query results from
+#' ESGF search RESTful API. It defines common fields and methods for results
+#' from all query types, including `Dataset`, `File` and `Aggregation`. Results
+#' from the three types are
+#'
+#' In general, there is no need to create an `EsgfQueryResult` manually.
+#'
+#' @author Hongyuan Jia
+#' @name EsgfQueryResult
+#' @importFrom R6 R6Class
 EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     lock_class = TRUE,
     public = list(
+        #' @description
+        #' Create a new EsgfQueryResult object
+        #'
+        #' @param host The URL to the ESGF Search API service. This should be
+        #'        the URL of the ESGF search service excluding the final
+        #'        endpoint name. It should be the same as the `host` for an
+        #'        [EsgfQuery] object that collects the query results.
+        #'
+        #' @param result The result of an query response.
+        #'
+        #' @return An `EsgfQueryResult` object.
+        #'
         initialize = function(host, result) {
             private$url_host <- host
             private$result <- result
             self
         },
+
+        #' @description
+        #' Convert the results into a [data.table][data.table::data.table()]
+        #'
+        #' @param fields A character vector indicating the fields to put into
+        #'        the `data.table`. If `NULL`, all fields in the query result
+        #'        will be used. Default: `NULL`.
+        #'
+        #' @param formatted A character vector indicating the fields whose
+        #'        values should be extracted using the corresponding
+        #'        `EsgfQueryResult$FIELD` active binding. Default: `NULL`.
+        #'
+        #' @return A [data.table][data.table::data.table()].
+        #'
         to_dt = function(fields = NULL, formatted = NULL) {
             docs <- private$get_docs()
 
@@ -33,15 +73,32 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             res
         },
+
+        #' @description
+        #' Count the number of matched records in current result
+        #'
+        #' @return An integer.
+        #'
         count = function() {
             length(self$id)
         }
     ),
 
     active = list(
+        #' @field id A character vector indicating globally unique record
+        #'        identifiers.
         id = function() {
             private$get_field("id")
         },
+
+        #' @field url A list of [data.table][data.table::data.table()] with 3
+        #'        columns:
+        #'        (a) `service` \\[`character`\\]: The service types, e.g.
+        #'        OPENDAP, HTTPServer, etc.;
+        #'        (b) `url` \\[`character`\\]: The actual URLs;
+        #'        (c) `mime_type` \\[`character`\\]: The MIME types indicating
+        #'        the nature and format of the corresponding document of the
+        #'        URLs.
         url = function() {
             urls <- private$get_field("url")
             if (!length(urls)) return(NULL)
@@ -61,14 +118,20 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 res
             })
         },
+
+        #' @field size A vector of [units][units::as_units()] indicating the
+        #'        file sizes.
         size = function() {
             size <- private$get_field("size")
             set_size_units(size)
         },
+
+        #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             sort(names(private$get_docs()))
         }
     ),
+
     private = list(
         url_host = NULL,
         result = NULL,
@@ -111,8 +174,6 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         validate_shards = function(shards) {
             if (is.null(shards)) return(NULL)
             choices <- query_esgf(private$url_host)$list_all_shards()
-            # suffix should be excluded when query
-            choices <- self$list_all_shards()
             if (length(choices)) {
                 choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
             }
@@ -141,19 +202,98 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     )
 )
 
+#' ESGF Query results for `Dataset` type
+#'
+#' @description
+#'
+#' `EsgfQueryResultDataset` is a class that represents query results for
+#' `Dataset` type from ESGF search RESTful API.
+#'
+#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' Usually, it is created by calling
+#' \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}.
+#'
+#' @author Hongyuan Jia
+#' @name EsgfQueryResultDataset
+#' @importFrom R6 R6Class
 EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
+        #' @description
+        #' Convert the results into a [data.table][data.table::data.table()]
+        #'
+        #' @param fields A character vector indicating the fields to put into
+        #'        the `data.table`. If `NULL`, all fields in the query result
+        #'        will be used. Default: `NULL`.
+        #'
+        #' @param formatted Whether to use formatted values for special fields,
+        #'        including `url` and `size`. Default: `FALSE`.
+        #'
+        #' @return A [data.table][data.table::data.table()].
+        #'
         to_dt = function(fields = NULL, formatted = FALSE) {
             assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         },
+
+        #' @description
+        #' Check if there are OPeNDAP support for the datasets
+        #'
+        #' @return A logical vector.
+        #'
         has_opendap = function() {
             vapply(self$access, function(acc) "OPENDAP" %in% acc, logical(1L))
         },
+
+        #' @description
+        #' Check if there are HTTPServer download URL for the datasets
+        #'
+        #' @return A logical vector.
+        #'
         has_download = function() {
             vapply(self$access, function(acc) "HTTPServer" %in% acc, logical(1L))
         },
+
+        #' @description
+        #' Collect file or aggregation information for current datasets
+        #'
+        #' `$collect()` sends a query with **`type=File`** or
+        #' **`type=aggregation` (based on the specified `type`) for current
+        #' datasets and returns an
+        #' [EsgfQueryResultFile] or
+        #' [EsgfQueryResultAggregation] object, respectively.
+        #'
+        #' The following fields are always included in the results:
+        #'
+        #' - For `File` query: `r paste0("\\verb{", EsgfQueryResultFile$private_fields$required_fields, "}", collapse = ", ")`.
+        #'
+        #' - For `Aggregation` query: `r paste0("\\verb{", EsgfQueryResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
+        #'
+        #' @param fields A character vector indicating the value of `fields`
+        #'        parameter when sending the query. If `NULL`, all available
+        #'        fields will be included. Default: `NULL`.
+        #'
+        #' @param shards A character vector indicating the value of `shards`
+        #'        parameter when sending the query. If `NULL`, all available
+        #'        shards will be used. Default: `NULL`.
+        #'
+        #' @param replica `NULL` or a flag. If `TRUE`, only master
+        #'        file/aggregation records will be returned. If `FALSE`, only
+        #'        replicas will be returned; If `NULL`, both masters and
+        #'        replicas will be returned. Default: `NULL`.
+        #'
+        #' @param latest A flag. If `TRUE`, only the very last, up-to-date
+        #'        version of the matching records will be returned. Otherwise,
+        #'        all versions will be returned.
+        #'
+        #' @param type A string indicating the query type. Should be one of
+        #'        `File` or `Aggregation`. Default: `"File"`.
+        #'
+        #' @return
+        #'
+        #' - If `type="File"`, an [EsgfQueryResultFile] object
+        #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
+        #'
         collect = function(fields = NULL, shards = NULL, replica = NULL, latest = TRUE, type = "File") {
             params <- private$build_params(
                 fields = fields,
@@ -178,6 +318,11 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 )
             }
         },
+
+        #' @description
+        #' Print a summary of the current dataset
+        #'
+        #' @return The `EsgfQueryResultDataset` object itself, invisibly.
         print = function() {
             d <- cli::cli_div(
                 theme = list(rule = list("line-type" = "double"))
@@ -196,6 +341,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             invisible(self)
         }
     ),
+
     private = list(
         required_fields = c(
             EsgfQueryResult$private_fields$required_fields,
@@ -204,12 +350,31 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     )
 )
 
+#' ESGF Query results for `File` type
+#'
+#' @description
+#'
+#' `EsgfQueryResultFile` is a class that represents query results for
+#' `File` type from ESGF search RESTful API.
+#'
+#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' Usually, it is created by calling
+#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#'
+#' @author Hongyuan Jia
+#' @name EsgfQueryResultFile
+#' @importFrom R6 R6Class
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
     active = list(
+        #' @field filename A character vector indicating file names on the
+        #'        sever.
         filename = function() {
             private$get_field("title")
         },
+
+        #' @field url_opendap A character vector of the OPeNDAP URLs of the
+        #'        files.
         url_opendap = function() {
             url <- private$get_url("OPENDAP", "OPeNDAP")
             has_html <- tools::file_ext(url) == "html"
@@ -218,9 +383,14 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             }
             url
         },
+
+        #' @field url_download A character vector of the download URLs of the
+        #'        files.
         url_download = function() {
             private$get_url("HTTPServer")
         },
+
+        #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             c("filename", "url_opendap", "url_download", super$fields)
         }
@@ -250,6 +420,20 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     )
 )
 
+#' ESGF Query results for `Aggregation` type
+#'
+#' @description
+#'
+#' `EsgfQueryResultAggregation` is a class that represents query results for
+#' `Aggregation` type from ESGF search RESTful API.
+#'
+#' In general, there is no need to create an `EsgfQueryResultAggregation` manually.
+#' Usually, it is created by calling
+#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#'
+#' @author Hongyuan Jia
+#' @name EsgfQueryResultAggregation
+#' @importFrom R6 R6Class
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     inherit = EsgfQueryResult, lock_class = TRUE
 )
