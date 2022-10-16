@@ -57,6 +57,13 @@ test_that("EsgfQuery$list_all_facets()", {
     expect_type(q$list_all_facets(), "character")
 })
 
+test_that("EsgfQuery$list_all_fields()", {
+    skip_on_cran()
+
+    expect_s3_class(q <- query_esgf(), "EsgfQuery")
+    expect_type(q$list_all_fields(), "character")
+})
+
 test_that("EsgfQuery$list_all_shards()", {
     skip_on_cran()
 

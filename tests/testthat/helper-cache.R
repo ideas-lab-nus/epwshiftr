@@ -12,7 +12,7 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
         query_build_facet_cache(formals(query_esgf)$host)
         cache <- this$cache
         saveRDS(cache, facets)
-        attach_cache(list())
+        clear_facet_cache()
     }
 
     # download weather
@@ -49,6 +49,10 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     )
 
     cache
+}
+
+save_facet_cache <- function() {
+    saveRDS(this$cache, file.path(get_cache(), "facets"))
 }
 
 attach_facet_cache <- function() {

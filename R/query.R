@@ -111,6 +111,9 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' - \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}:
 #'   List all available facet names.
 #'
+#' - \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}:
+#'   List all available field names.
+#'
 #' - \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}:
 #'   List all available shards.
 #'
@@ -332,6 +335,19 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         list_all_facets = function() {
             unlst(private$facet_cache()$responseHeader$params$facet.field)
+        },
+
+        #' @description
+        #' List all available field names
+        #'
+        #' @return A character vector.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$list_all_fields()
+        #' }
+        list_all_fields = function() {
+            unlst(private$facet_cache()$responseHeader$params$fields)
         },
 
         #' @description
@@ -1375,7 +1391,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 if ("*" %in% value) {
                     value <- "*"
                 }
-                choices <- c("*", self$list_all_facets())
+                if (facet == "facets") {
+                    choices <- c("*", self$list_all_facets())
+                } else {
+                    choices <- c("*", self$list_all_fields())
+                }
             } else if (facet == "shards") {
                 # suffix should be excluded when query
                 choices <- self$list_all_shards()
@@ -1502,16 +1522,19 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     )
     res <- read_json_response(url, simplifyVector = FALSE)
 
-    # build a query with project to get the Shards
+    # build a query with project to get the Shards and field names
     url <- query_build(host,
         list(
             project = "CMIP6",
-            limit = 0,
+            limit = 1,
             distrib = TRUE,
+            fields = "*",
             format = "application/solr+json"
         )
     )
-    res$responseHeader$params$shards <- read_json_response(url, simplifyVector = FALSE)$responseHeader$params$shards
+    res2 <- read_json_response(url)
+    res$responseHeader$params$shards <- res2$responseHeader$params$shards
+    res$responseHeader$params$fields <- names(res2$response$docs)
 
     # add timestamp
     res$timestamp <- now()
