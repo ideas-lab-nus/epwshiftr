@@ -48,6 +48,8 @@ the response of the facet listing query:
 \itemize{
 \item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}:
 List all available facet names.
+\item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}:
+List all available field names.
 \item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}:
 List all available shards.
 \item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}:
@@ -186,6 +188,14 @@ q$build_cache()
 
 \dontrun{
 q$list_all_facets()
+}
+
+## ------------------------------------------------
+## Method `EsgfQuery$list_all_fields`
+## ------------------------------------------------
+
+\dontrun{
+q$list_all_fields()
 }
 
 ## ------------------------------------------------
@@ -598,6 +608,7 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
 \item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}
 \item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}
+\item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}
 \item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}
 \item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}
 \item \href{#method-EsgfQuery-project}{\code{EsgfQuery$project()}}
@@ -717,6 +728,29 @@ A character vector.
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
 q$list_all_facets()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_all_fields"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_fields}{}}}
+\subsection{Method \code{list_all_fields()}}{
+List all available field names
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_fields()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A character vector.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_all_fields()
 }
 }
 \if{html}{\out{</div>}}
