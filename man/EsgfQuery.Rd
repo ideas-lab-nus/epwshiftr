@@ -1272,7 +1272,7 @@ By default, all available metadata fields are returned for each
 query. \verb{$fields()} can be used to limit the number of fields returned
 in the query response. However, the following fields are always
 included in the results:
-\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
+\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$fields(value = "*")}\if{html}{\out{</div>}}
 }
@@ -1766,7 +1766,7 @@ ESGF search services and returns the results as an
 \link{EsgfQueryResultDataset} object.
 The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
-\verb{id}, \verb{url}, \verb{size}, \verb{index_node}, \verb{number_of_files}, \verb{access}.
+\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE, params = TRUE)}\if{html}{\out{</div>}}
 }

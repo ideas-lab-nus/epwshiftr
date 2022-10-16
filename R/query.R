@@ -1446,8 +1446,8 @@ query_param_encode <- function(param) {
         return(param)
     }
 
-    # '*', '.', ':', '_', '-' are kept
-    reg <- "[^a-zA-Z0-9*.:_-]"
+    # '*', '.', ':', '_', '|', '-' are kept
+    reg <- "[^a-zA-Z0-9*.:_|-]"
 
     vapply(param, FUN.VALUE = character(1L), USE.NAMES = FALSE, function(value) {
         s <- strsplit(value, "")[[1L]]
