@@ -104,6 +104,7 @@ rd_query_method_return <- function() {
 # nocov end
 
 set_size_units <- function(x) {
+    if (!length(x)) return(NULL)
     base <- 1024L
     iec <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
     if (!inherits(x, "units")) {
@@ -117,7 +118,9 @@ set_size_units <- function(x) {
         x <- bytes
     }
 
-    power <- min(as.integer(log(units::drop_units(x), base = base)), length(iec))
+    power <- log(units::drop_units(x), base = base)
+    power[is.infinite(power)] <- 0
+    power <- min(as.integer(power), length(iec))
     units::set_units(x, iec[power + 1L], mode = "standard")
 }
 
