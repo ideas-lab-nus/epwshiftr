@@ -36,6 +36,7 @@ files.}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
+\item \href{#method-EsgfQueryResultFile-to_dt}{\code{EsgfQueryResultFile$to_dt()}}
 \item \href{#method-EsgfQueryResultFile-clone}{\code{EsgfQueryResultFile$clone()}}
 }
 }
@@ -44,10 +45,34 @@ files.}
 <ul>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="count"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-count'><code>epwshiftr::EsgfQueryResult$count()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="initialize"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-initialize'><code>epwshiftr::EsgfQueryResult$initialize()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-to_dt'><code>epwshiftr::EsgfQueryResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResultFile-to_dt"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultFile-to_dt}{}}}
+\subsection{Method \code{to_dt()}}{
+Convert the results into a \link[data.table:data.table]{data.table}
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultFile$to_dt(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{fields}}{A character vector indicating the fields to put into
+the \code{data.table}. If \code{NULL}, all fields in the query result
+will be used. Default: \code{NULL}.}
+
+\item{\code{formatted}}{Whether to use formatted values for special fields,
+including \code{url} and \code{size}. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table}.
+}
+}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQueryResultFile-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQueryResultFile-clone}{}}}

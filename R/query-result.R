@@ -64,8 +64,12 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             res <- data.table::setDT(
                 lapply(docs, function(doc) {
-                    if (typeof(doc) == "list" && all(lengths(doc) == 1L)) {
-                        doc <- unlst(doc)
+                    if (typeof(doc) == "list") {
+                        len <- lengths(doc)
+                        if (all(len <= 1L)) {
+                            doc[len == 0L] <- list(NA)
+                            doc <- unlst(doc)
+                        }
                     }
                     doc
                 })
@@ -128,6 +132,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
+            if (!self$count()) return(NULL)
             sort(names(private$get_docs()))
         }
     ),
@@ -135,9 +140,8 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     private = list(
         url_host = NULL,
         result = NULL,
-        response = NULL,
-        params = list(),
-        required_fields = c("id", "url", "size"),
+
+        required_fields = c("id", "size", "url"),
 
         get_docs = function() {
             private$result$response$docs
@@ -148,56 +152,25 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
 
-        has_facet_cache = function() {
-            !is.null(private$url_host) && !is.null(this$cache[[private$url_host]])
-        },
-
         facet_cache = function() {
             this$cache[[private$url_host]]
         },
 
-        validate_fields = function(fields) {
-            if (is.null(fields)) return(NULL)
-            if ("*" %in% fields) fields <- "*"
-            choices <- unlst(private$facet_cache()$responseHeader$params$facet.field)
-            choices <- c("*", choices)
+        get_url = function(type, name = type) {
+            vapply(self$url, function(dt_url) {
+                if (!length(dt_url)) return(NA_character_)
 
-            # add required fields
-            if (!"*" %in% fields && any(miss <- !private$required_fields %in% fields)) {
-                fields <- c(fields, private$required_fields[miss])
-            }
+                res <- dt_url$url[dt_url$service == type]
+                if (!length(res)) return(NA_character_)
+                # nocov start
+                if (length(res) > 1L) {
+                    warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
+                    res <- res[[1L]]
+                }
+                # nocov end
 
-            assert_subset(fields, empty.ok = TRUE, .var.name = "fields", choices = choices)
-            unique(fields)
-        },
-
-        validate_shards = function(shards) {
-            if (is.null(shards)) return(NULL)
-            choices <- query_esgf(private$url_host)$list_all_shards()
-            if (length(choices)) {
-                choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
-            }
-            assert_subset(shards, empty.ok = TRUE, .var.name = "shards", choices = choices)
-            unique(shards)
-        },
-
-        build_params = function(fields = NULL, shards = NULL, replica = NULL, latest = TRUE, type = "File") {
-            assert_flag(replica, null.ok = TRUE)
-            assert_flag(latest)
-            assert_choice(type, c("File", "Aggregation"))
-            fields <- private$validate_fields(fields)
-            shards <- private$validate_shards(shards)
-
-            private$params <- list(
-                dataset_id = self$id,
-                fields = fields,
-                shards = shards,
-                replica = replica,
-                latest = latest,
-                type = type,
-                format = "application/solr+json"
-            )
-            private$params
+                res
+            }, character(1L))
         }
     )
 )
@@ -273,53 +246,39 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #'        parameter when sending the query. If `NULL`, all available
         #'        fields will be included. Default: `NULL`.
         #'
-        #' @param shards A character vector indicating the value of `shards`
-        #'        parameter when sending the query. If `NULL`, all available
-        #'        shards will be used. Default: `NULL`.
-        #'
-        #' @param replica `NULL` or a flag. If `TRUE`, only master
-        #'        file/aggregation records will be returned. If `FALSE`, only
-        #'        replicas will be returned; If `NULL`, both masters and
-        #'        replicas will be returned. Default: `NULL`.
-        #'
-        #' @param latest A flag. If `TRUE`, only the very last, up-to-date
-        #'        version of the matching records will be returned. Otherwise,
-        #'        all versions will be returned.
-        #'
-        #' @param type A string indicating the query type. Should be one of
-        #'        `File` or `Aggregation`. Default: `"File"`.
-        #'
         #' @param all A flag. Whether to collect all results. Default: `TRUE`.
         #'
         #' @param limit A positive integer indicating the number of records to
         #'        fetch per query. If `NULL`, the allowed maximum limit number
         #'        `r this$data_max_limit` is used. Default: `100L`.
         #'
+        #' @param type A string indicating the query type. Should be one of
+        #'        `File` or `Aggregation`. Default: `"File"`.
+        #'
+        #' @param ... Other parameters to set. Currently, there are 4 parameters
+        #'        supported, including `replica`, `distrib`, `latest`, `shards`.
+        #'        For details on possible parameters, please see [query_esgf()].
+        #'
         #' @return
         #'
         #' - If `type="File"`, an [EsgfQueryResultFile] object
         #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
         #'
-        collect = function(fields = NULL, shards = NULL, replica = NULL, latest = TRUE,
-                           type = "File", all = FALSE, limit = 100L) {
-            checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
-            if (is.null(limit)) limit <- this$data_max_limit
-
+        collect = function(fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
+            # replica = NULL, latest = TRUE, distrib = TRUE, shards = NULL, 
             params <- private$build_params(
-                fields = fields,
-                shards = shards,
-                replica = replica,
-                latest = latest,
-                type = type
+                fields = fields, limit = limit, type = type, ...
             )
 
+            req_fld <- if (type == "File") {
+                EsgfQueryResultFile$private_fields$required_fields
+            } else if (type == "Aggregation") {
+                EsgfQueryResultAggregation$private_fields$required_fields
+            }
+
             result <- query_collect(
-                private$url_host, params,
-                all = all, limit = limit, constraints = FALSE,
-                required_fields = if (type == "File")
-                    EsgfQueryResultFile$private_fields$required_fields
-                else if (type == "Aggregation")
-                    EsgfQueryResultAggregation$private_fields$required_fields
+                private$url_host, params, required_fields = req_fld,
+                all = all, limit = limit, constraints = FALSE
             )
             private$last_response <- result$response
 
@@ -330,12 +289,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (type == "File") {
                 new_query_result(
                     EsgfQueryResultFile,
-                    private$url_host, private$response
+                    private$url_host, result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgfQueryResultAggregation,
-                    private$url_host, private$response
+                    private$url_host, result$response
                 )
             }
         },
@@ -364,10 +323,62 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     ),
 
     private = list(
-        required_fields = c(
+        last_response = NULL,
+        params = list(),
+
+        required_fields = sort(unique(c(
             EsgfQueryResult$private_fields$required_fields,
-            "index_node", "number_of_files", "access"
-        )
+            "index_node", "number_of_files", "number_of_aggregations", "access"
+        ))),
+
+        build_params = function(fields = NULL, limit = 100L, type = "File", ...) {
+            assert_choice(type, c("File", "Aggregation"))
+
+            checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
+            if (is.null(limit)) limit <- this$data_max_limit
+
+            params <- eval(substitute(alist(...)))
+            if (length(params)) {
+                # other parameters
+                names_supp <- c("replica", "distrib", "latest", "shards")
+                params <- eval_with_bang(...)
+
+                # stop if unsupported parameter found
+                names_params <- names(params)
+                if (any(invld <- !names_params %in% names_supp)) {
+                    stop(sprintf(
+                        "Unsupported query parameter found: [%s]. Should be subset of [%s].",
+                        names_params[invld], paste(names_supp, collapse = ", ")
+                    ))
+                }
+            }
+
+            # assign default values for distrib and latest
+            if (is.null(params$distrib)) params$distrib <- new_query_param("distrib", TRUE)
+            if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
+
+            # create a new query to validate params
+            query <- query_esgf(private$url_host)
+
+            params <- list(
+                dataset_id = self$id,
+
+                # use query object to validate params
+                fields = query$fields(fields)$fields(),
+                shards = query$shards(params$shards$value)$shards(),
+                replica = query$replica(params$replica$value)$replica(),
+                latest = query$latest(params$latest$value)$latest(),
+                distrib = query$distrib(params$distrib$value)$distrib(),
+
+                limit = limit,
+                type = type,
+                format = "application/solr+json"
+            )
+
+            # convert all inputs into query params and remove empty one
+            private$params <- query_param_flat(params)
+            private$params
+        }
     )
 )
 
@@ -387,6 +398,24 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 #' @importFrom R6 R6Class
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
+    public = list(
+        #' @description
+        #' Convert the results into a [data.table][data.table::data.table()]
+        #'
+        #' @param fields A character vector indicating the fields to put into
+        #'        the `data.table`. If `NULL`, all fields in the query result
+        #'        will be used. Default: `NULL`.
+        #'
+        #' @param formatted Whether to use formatted values for special fields,
+        #'        including `url` and `size`. Default: `FALSE`.
+        #'
+        #' @return A [data.table][data.table::data.table()].
+        #'
+        to_dt = function(fields = NULL, formatted = FALSE) {
+            assert_flag(formatted)
+            super$to_dt(fields, if (formatted) c("url", "size"))
+        }
+    ),
     active = list(
         #' @field filename A character vector indicating file names on the
         #'        sever.
@@ -413,31 +442,16 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
-            c("filename", "url_opendap", "url_download", super$fields)
+            if (!self$count()) return(NULL)
+            sort(c("filename", "url_opendap", "url_download", super$fields))
         }
     ),
     private = list(
-        required_fields = c(
+        required_fields = sort(unique(c(
             EsgfQueryResult$private_fields$required_fields,
-            "dataset_id", "checksum", "checksum_type", "tracking_id", "title"
-        ),
-
-        get_url = function(type, name = type) {
-            vapply(self$url, function(dt_url) {
-                if (!length(dt_url)) return(NA_character_)
-
-                res <- dt_url$url[dt_url$service == type]
-                if (!length(res)) return(NA_character_)
-                # nocov start
-                if (length(res) > 1L) {
-                    warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
-                    res <- res[[1L]]
-                }
-                # nocov end
-
-                res
-            }, character(1L))
-        }
+            "dataset_id", "checksum", "checksum_type", "tracking_id", "title",
+            "data_node"
+        )))
     )
 )
 
@@ -456,7 +470,57 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 #' @name EsgfQueryResultAggregation
 #' @importFrom R6 R6Class
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
-    inherit = EsgfQueryResult, lock_class = TRUE
+    inherit = EsgfQueryResult, lock_class = TRUE,
+    public = list(
+        #' @description
+        #' Convert the results into a [data.table][data.table::data.table()]
+        #'
+        #' @param fields A character vector indicating the fields to put into
+        #'        the `data.table`. If `NULL`, all fields in the query result
+        #'        will be used. Default: `NULL`.
+        #'
+        #' @param formatted Whether to use formatted values for special fields,
+        #'        including `url` and `size`. Default: `FALSE`.
+        #'
+        #' @return A [data.table][data.table::data.table()].
+        #'
+        to_dt = function(fields = NULL, formatted = FALSE) {
+            assert_flag(formatted)
+            super$to_dt(fields, if (formatted) c("url", "size"))
+        }
+    ),
+
+    active = list(
+        #' @field url_opendap A character vector of the OPeNDAP URLs of the
+        #'        files.
+        url_opendap = function() {
+            url <- private$get_url("OPENDAP", "OPeNDAP")
+            has_html <- !is.na(url) & tools::file_ext(url) == "html"
+            if (any(has_html)) {
+                url[has_html] <- tools::file_path_sans_ext(url[has_html])
+            }
+            url
+        },
+
+        #' @field url_download A character vector of the download URLs of the
+        #'        files.
+        url_download = function() {
+            private$get_url("HTTPServer")
+        },
+
+        #' @field fields A character vector indicating all fields in the results.
+        fields = function() {
+            if (!self$count()) return(NULL)
+            sort(c("url_opendap", "url_download", super$fields))
+        }
+    ),
+
+    private = list(
+        required_fields = sort(unique(c(
+            EsgfQueryResult$private_fields$required_fields,
+            "dataset_id", "title", "data_node"
+        )))
+    )
 )
 
 new_query_result <- function(generator, host, result, ..., .env = parent.frame()) {

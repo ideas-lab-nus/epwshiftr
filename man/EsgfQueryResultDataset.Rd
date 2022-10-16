@@ -101,18 +101,16 @@ datasets and returns an
 
 The following fields are always included in the results:
 \itemize{
-\item For \code{File} query: \verb{id}, \verb{url}, \verb{size}, \verb{dataset_id}, \verb{checksum}, \verb{checksum_type}, \verb{tracking_id}, \verb{title}.
-\item For \code{Aggregation} query: \verb{}.
+\item For \code{File} query: \verb{checksum}, \verb{checksum_type}, \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{size}, \verb{title}, \verb{tracking_id}, \verb{url}.
+\item For \code{Aggregation} query: \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{size}, \verb{title}, \verb{url}.
 }
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$collect(
   fields = NULL,
-  shards = NULL,
-  replica = NULL,
-  latest = TRUE,
-  type = "File",
   all = FALSE,
-  limit = 100L
+  limit = 100L,
+  type = "File",
+  ...
 )}\if{html}{\out{</div>}}
 }
 
@@ -123,27 +121,18 @@ The following fields are always included in the results:
 parameter when sending the query. If \code{NULL}, all available
 fields will be included. Default: \code{NULL}.}
 
-\item{\code{shards}}{A character vector indicating the value of \code{shards}
-parameter when sending the query. If \code{NULL}, all available
-shards will be used. Default: \code{NULL}.}
-
-\item{\code{replica}}{\code{NULL} or a flag. If \code{TRUE}, only master
-file/aggregation records will be returned. If \code{FALSE}, only
-replicas will be returned; If \code{NULL}, both masters and
-replicas will be returned. Default: \code{NULL}.}
-
-\item{\code{latest}}{A flag. If \code{TRUE}, only the very last, up-to-date
-version of the matching records will be returned. Otherwise,
-all versions will be returned.}
-
-\item{\code{type}}{A string indicating the query type. Should be one of
-\code{File} or \code{Aggregation}. Default: \code{"File"}.}
-
 \item{\code{all}}{A flag. Whether to collect all results. Default: \code{TRUE}.}
 
 \item{\code{limit}}{A positive integer indicating the number of records to
 fetch per query. If \code{NULL}, the allowed maximum limit number
 10000 is used. Default: \code{100L}.}
+
+\item{\code{type}}{A string indicating the query type. Should be one of
+\code{File} or \code{Aggregation}. Default: \code{"File"}.}
+
+\item{\code{...}}{Other parameters to set. Currently, there are 4 parameters
+supported, including \code{replica}, \code{distrib}, \code{latest}, \code{shards}.
+For details on possible parameters, please see \code{\link[=query_esgf]{query_esgf()}}.}
 }
 \if{html}{\out{</div>}}
 }

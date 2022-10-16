@@ -17,9 +17,23 @@ Hongyuan Jia
 \section{Super class}{
 \code{\link[epwshiftr:EsgfQueryResult]{epwshiftr::EsgfQueryResult}} -> \code{EsgfQueryResultAggregation}
 }
+\section{Active bindings}{
+\if{html}{\out{<div class="r6-active-bindings">}}
+\describe{
+\item{\code{url_opendap}}{A character vector of the OPeNDAP URLs of the
+files.}
+
+\item{\code{url_download}}{A character vector of the download URLs of the
+files.}
+
+\item{\code{fields}}{A character vector indicating all fields in the results.}
+}
+\if{html}{\out{</div>}}
+}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
+\item \href{#method-EsgfQueryResultAggregation-to_dt}{\code{EsgfQueryResultAggregation$to_dt()}}
 \item \href{#method-EsgfQueryResultAggregation-clone}{\code{EsgfQueryResultAggregation$clone()}}
 }
 }
@@ -28,10 +42,34 @@ Hongyuan Jia
 <ul>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="count"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-count'><code>epwshiftr::EsgfQueryResult$count()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="initialize"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-initialize'><code>epwshiftr::EsgfQueryResult$initialize()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-to_dt'><code>epwshiftr::EsgfQueryResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResultAggregation-to_dt"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-to_dt}{}}}
+\subsection{Method \code{to_dt()}}{
+Convert the results into a \link[data.table:data.table]{data.table}
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultAggregation$to_dt(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{fields}}{A character vector indicating the fields to put into
+the \code{data.table}. If \code{NULL}, all fields in the query result
+will be used. Default: \code{NULL}.}
+
+\item{\code{formatted}}{Whether to use formatted values for special fields,
+including \code{url} and \code{size}. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table}.
+}
+}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQueryResultAggregation-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-clone}{}}}
