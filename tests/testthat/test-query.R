@@ -45,7 +45,6 @@ test_that("ESGF Query Parameter works", {
 test_that("query_esgf()", {
     skip_on_cran()
 
-    attach_facet_cache()
     expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")
     expect_s3_class(q <- query_esgf(), "EsgfQuery")
 })
