@@ -315,5 +315,8 @@ test_that("EsgfQuery$response()", {
 
 test_that("EsgfQuery$print()", {
     skip_on_cran()
-    expect_snapshot(EsgfQuery$new()$params(table_id = "Amon", member_id = "r1i1p1f1")$print())
+
+    suppressMessages(expect_message(
+        EsgfQuery$new()$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+    ))
 })
