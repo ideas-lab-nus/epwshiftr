@@ -240,6 +240,9 @@ test_that("EsgfQuery$params()", {
     # can reset format
     expect_warning(q$params(format = "xml"), "JSON")
 
+    # can reset type
+    expect_warning(q$params(type = "File"))
+
     # can restore original values in case of error
     expect_equal(q$frequency("day")$frequency()$value, "day")
     expect_error(q$params(frequency = "1hr", source_id = "a"), "Assertion")
