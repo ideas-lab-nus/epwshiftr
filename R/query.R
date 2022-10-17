@@ -1036,14 +1036,14 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                             "Only 'Dataset' query is supported.",
                             "But 'type' found in input with value = '%s'.",
                             "'type' has been reset to 'Dataset'.",
-                            "If you want to perform a 'File' or 'Aggregation' query",
+                            "If you want to perform a '%s' query,",
                             "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
-                            "result, and then use 'EsgfQueryResultDataset$collect()'."
-
-                        )
+                            "result, and then use 'EsgfQueryResultDataset$collect(type = '%s')'."
+                        ),
+                        type$value, type$value, type$value
                     ))
-                    type$value <- "Dataset"
-                    type$negate <- FALSE
+                    params$type$value <- "Dataset"
+                    params$type$negate <- FALSE
                 }
             }
 
@@ -1423,7 +1423,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         predefined_facets = function() {
             setdiff(
                 gsub("param_", "", grep("^param_", names(private), value = TRUE), fixed = TRUE),
-                c("format", "others")
+                c("type", "format", "others")
             )
         },
 
