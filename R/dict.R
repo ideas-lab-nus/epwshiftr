@@ -70,7 +70,6 @@
 #' }
 #' @author Hongyuan Jia
 #'
-#' @importFrom R6 R6Class
 #' @name Cmip6Dict
 #' @export
 cmip6_dict <- function() {
@@ -149,7 +148,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
         #'
         #' @return The updated `Cmip6Dict` itself.
         build = function(token = NULL, force = FALSE) {
-            assert_flag(force)
+            checkmate::assert_flag(force)
 
             if (self$is_empty()) force <- TRUE
 
@@ -191,7 +190,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
         #' For `"nominal_resolution"`, `"required_global_attributes"` and
         #' `"table_id"`, a [character] vector.
         get = function(type) {
-            assert_subset(type, c(tolower(CV_TYPES), "dreq"))
+            checkmate::assert_subset(type, c(tolower(CV_TYPES), "dreq"))
 
             if (type == "dreq") {
                 data.table::copy(private$m_data$dreq)
@@ -421,7 +420,7 @@ cmip6dict_fetch_cv <- function(tag = NULL, token = NULL) {
 
 cmip6dict_format_cv_nest <- function(json) {
     transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
-    setnames(as.data.table(transposed), names(json[[1L]]))
+    setnames(data.table::as.data.table(transposed), names(json[[1L]]))
 }
 
 cmip6dict_parse_cv_version_metadata <- function(lst) {
@@ -453,7 +452,7 @@ cmip6dict_parse_cv_version_metadata <- function(lst) {
 cmip6dict_parse_cv_vec <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- unlst(json[[1L]])
-    setattr(res, "version",
+    data.table::setattr(res, "version",
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
@@ -463,7 +462,7 @@ cmip6dict_parse_cv_vec <- function(file, subclass = NULL) {
 cmip6dict_parse_cv_list <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- json[[1L]]
-    setattr(res, "version",
+    data.table::setattr(res, "version",
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
@@ -510,7 +509,7 @@ cmip6dict_parse_cv_experiment_id <- function(file) {
         "activity_id", "parent_activity_id",
         "additional_allowed_model_components"
     ))
-    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
     structure(d, class = c("CMIP6CV_ExperimentId", "CMIP6CV", class(d)))
 }
@@ -565,7 +564,7 @@ cmip6dict_parse_cv_source_id <- function(file) {
         "source_id", "release_year", "institution_id", "label", "label_extended",
         "cohort", "activity_participation", "model_component", "license_info"
     ))
-    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
     structure(d, class = c("CMIP6CV_SourceId", "CMIP6CV", class(d)))
 }
@@ -856,7 +855,7 @@ cmip6dict_parse_dreq_file <- function(file) {
         set(d, NULL, col, empty_to_na(unlist(d[[col]], FALSE, FALSE)))
     }
 
-    setattr(d, "metadata", header)
+    data.table::setattr(d, "metadata", header)
 
     d
 }
@@ -944,12 +943,12 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
 
     for (nm in names(val$cvs)) {
         cls <- class(val$cvs[[nm]])
-        if (data.table::is.data.table(val$cvs[[nm]])) setDT(val$cvs[[nm]])
-        setattr(val$cvs[[nm]], "class", cls)
+        if (data.table::is.data.table(val$cvs[[nm]])) data.table::setDT(val$cvs[[nm]])
+        data.table::setattr(val$cvs[[nm]], "class", cls)
     }
     cls <- class(val$dreq)
-    setDT(val$dreq)
-    setattr(val$dreq, "class", cls)
+    data.table::setDT(val$dreq)
+    data.table::setattr(val$dreq, "class", cls)
 
     val
 }

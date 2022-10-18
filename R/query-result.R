@@ -11,7 +11,6 @@
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResult
-#' @importFrom R6 R6Class
 EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     lock_class = TRUE,
     public = list(
@@ -49,8 +48,8 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         to_dt = function(fields = NULL, formatted = NULL) {
             docs <- private$get_docs()
 
-            assert_subset(fields, names(docs))
-            assert_character(formatted, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_subset(fields, names(docs))
+            checkmate::assert_character(formatted, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
 
             if (length(fields)) {
                 docs <- docs[match(fields, names(docs))]
@@ -188,7 +187,6 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultDataset
-#' @importFrom R6 R6Class
 EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -205,7 +203,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @return A [data.table][data.table::data.table()].
         #'
         to_dt = function(fields = NULL, formatted = FALSE) {
-            assert_flag(formatted)
+            checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         },
 
@@ -332,7 +330,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         ))),
 
         build_params = function(fields = NULL, limit = 100L, type = "File", ...) {
-            assert_choice(type, c("File", "Aggregation"))
+            checkmate::assert_choice(type, c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
             if (is.null(limit)) limit <- this$data_max_limit
@@ -395,7 +393,6 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultFile
-#' @importFrom R6 R6Class
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -412,7 +409,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #' @return A [data.table][data.table::data.table()].
         #'
         to_dt = function(fields = NULL, formatted = FALSE) {
-            assert_flag(formatted)
+            checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         }
     ),
@@ -468,7 +465,6 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultAggregation
-#' @importFrom R6 R6Class
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -485,7 +481,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #' @return A [data.table][data.table::data.table()].
         #'
         to_dt = function(fields = NULL, formatted = FALSE) {
-            assert_flag(formatted)
+            checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         }
     ),

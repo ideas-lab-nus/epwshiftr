@@ -20,7 +20,7 @@ vb <- function(expr) {
 
 eval_with_bang <- function(..., .env = parent.frame()) {
     l <- eval(substitute(alist(...)))
-    assert_list(l, .var.name = "Input", min.len = 1L)
+    checkmate::assert_list(l, .var.name = "Input", min.len = 1L)
     lapply(l, function(elem) {
         if (!is.symbol(elem) && !is.null(elem) && elem[[1L]] == "!") {
             negate <- TRUE
@@ -134,8 +134,6 @@ set_size_units <- function(x) {
 #'
 #' @return A single string indicating the directory location.
 #'
-#' @importFrom rappdirs user_data_dir
-#' @importFrom checkmate test_directory_exists
 #' @noRd
 .data_dir <- function (init = FALSE, force = TRUE) {
     checkmate::assert_flag(init)
@@ -162,7 +160,7 @@ set_size_units <- function(x) {
         force <- TRUE
     }
 
-    if ((init || force) && !test_directory_exists(d, "rw")) {
+    if ((init || force) && !checkmate::test_directory_exists(d, "rw")) {
         stop(sprintf("%s package data storage directory '%s' does not exists or is not writable.",
             "epwshiftr", d
         ))

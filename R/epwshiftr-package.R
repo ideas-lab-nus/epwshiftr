@@ -23,9 +23,23 @@
 #' @include utils.R
 #' @author Hongyuan Jia
 ## usethis namespace: start
-#' @importFrom checkmate assert_string
+#' @importFrom checkmate assert_count
 #' @importFrom cli cli_rule
-#' @importFrom jsonlite parse_json
+#' @importFrom data.table :=
+#' @importFrom data.table data.table
+#' @importFrom eplusr read_epw
+#' @importFrom fst write_fst
+#' @importFrom future.apply future_lapply
+#' @importFrom jsonlite fromJSON
+#' @importFrom PCICt as.PCICt
+#' @importFrom progressr with_progress
+#' @importFrom psychrolib GetTDewPointFromRelHum
+#' @importFrom psychrolib SetUnitSystem
+#' @importFrom R6 R6Class
+#' @importFrom rappdirs user_data_dir
+#' @importFrom RNetCDF utcal.nc
+#' @importFrom units set_units
+#' @importFrom utils menu
 ## usethis namespace: end
 "_PACKAGE"
 
