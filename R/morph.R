@@ -1,5 +1,4 @@
 # preprocess_morphing {{{
-#' @importFrom checkmate assert_count
 #' @importFrom data.table set
 preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL, labels = NULL, warning = FALSE) {
     # add datetime components
@@ -15,7 +14,7 @@ preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL, labels = NU
     # TODO: handle leapyear in mean, max, min
     if (!leapyear) dt <- dt[!J(2L, 29L), on = c("month", "day")]
 
-    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
     if (is.null(years)) {
         data.table::set(dt, NULL, "interval", as.factor(dt$year))
@@ -32,9 +31,9 @@ preprocess_morphing <- function (dt, leapyear = FALSE, years = NULL, labels = NU
             data.table::set(dt, NULL, "interval", as.factor(dt$year))
         } else {
             if (is.factor(labels)) labels <- as.character(labels)
-            assert_character(labels, any.missing = FALSE, len = length(years))
+            checkmate::assert_character(labels, any.missing = FALSE, len = length(years))
 
-            y <- data.table(year = years, interval = as.factor(labels))
+            y <- data.table::data.table(year = years, interval = as.factor(labels))
 
             dt[y, on = "year", interval := i.interval]
         }
@@ -250,14 +249,14 @@ remove_units <- function (data, var) {
 #'
 #' @export
 morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, warning = FALSE) {
-    assert_class(data, "epw_cmip6_data")
+    checkmate::assert_class(data, "epw_cmip6_data")
     if (is.null(methods)) {
         methods <- c(tdb = "stretch", rh = "stretch", p = "stretch",
             hor_ir = "stretch", glob_rad = "stretch", wind = "stretch"
         )
     } else {
-        assert_character(methods, any.missing = FALSE, names = "named", unique = TRUE)
-        assert_names(names(methods), subset.of = c("tdb", "rh", "p", "hor_ir", "glob_rad", "diff_rad", "wind"))
+        checkmate::assert_character(methods, any.missing = FALSE, names = "named", unique = TRUE)
+        checkmate::assert_names(names(methods), subset.of = c("tdb", "rh", "p", "hor_ir", "glob_rad", "diff_rad", "wind"))
         methods_def <- list(tdb = "stretch", rh = "stretch", p = "stretch",
             hor_ir = "stretch", glob_rad = "stretch", diff_rad = "stretch",
             wind = "stretch"
@@ -273,7 +272,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     tas <- data_cmip[J("tas"), on = "variable", nomatch = NULL]
     if (!nrow(tas)) {
         verbose("WARNING: Input does not contain any data of 'near-surface air temperature'. Skip.")
-        tdb <- data.table()
+        tdb <- data.table::data.table()
     } else {
         tasmax <- data_cmip[J("tasmax"), on = "variable", nomatch = NULL]
         tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
@@ -287,7 +286,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     hurs <- data_cmip[J("hurs"), on = "variable", nomatch = NULL]
     if (!nrow(hurs)) {
         verbose("WARNING: Input does not contain any data of 'near-surface relative humidity'. Skip.")
-        rh <- data.table()
+        rh <- data.table::data.table()
     } else {
         hursmax <- data_cmip[J("hursmax"), on = "variable", nomatch = NULL]
         hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
@@ -300,7 +299,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     verbose("Morphing 'dew point temperature'...")
     if (!nrow(tdb) || !nrow(rh)) {
         verbose("WARNING: Input does not contain any data of 'near-surface air temperature' or 'near-surface relative humidity'. Skip.")
-        tdew <- data.table()
+        tdew <- data.table::data.table()
     } else {
         tdew <- morphing_tdew(tdb, rh)
     }
@@ -310,7 +309,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     psl <- data_cmip[J("psl"), on = "variable", nomatch = NULL]
     if (!nrow(psl)) {
         verbose("WARNING: Input does not contain any data of 'sea level pressure'. Skip.")
-        p <- data.table()
+        p <- data.table::data.table()
     } else {
         p <- morphing_pa(data_epw, psl, years, labels = labels, type = methods["p"], warning = warning)
     }
@@ -326,7 +325,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
     if (!nrow(rlds)) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling longwave radiation'. Skip.")
-        hor_ir <- data.table()
+        hor_ir <- data.table::data.table()
     } else {
         hor_ir <- morphing_hor_ir(data_epw, rlds, years, labels = labels, type = methods["hor_ir"], warning = warning)
     }
@@ -339,7 +338,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     rsds <- data_cmip[J("rsds"), on = "variable", nomatch = NULL]
     if (!nrow(rsds)) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
-        glob_rad <- data.table()
+        glob_rad <- data.table::data.table()
     } else {
         glob_rad <- morphing_glob_rad(data_epw, rsds, years, labels = labels, type = methods["glob_rad"], warning = warning)
     }
@@ -350,7 +349,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     verbose("Morphing 'diffuse horizontal radiation'...")
     if (!nrow(glob_rad)) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
-        diff_rad <- data.table()
+        diff_rad <- data.table::data.table()
     } else {
         diff_rad <- morphing_diff_rad(data_epw, glob_rad)
     }
@@ -359,7 +358,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     verbose("Morphing 'direct normal radiation'...")
     if (!nrow(glob_rad)) {
         verbose("WARNING: Input does not contain any data of 'surface downwelling shortware radiation'. Skip.")
-        norm_rad <- data.table()
+        norm_rad <- data.table::data.table()
     } else {
         norm_rad <- morphing_norm_rad(glob_rad, diff_rad)
     }
@@ -375,7 +374,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     sfcWind <- data_cmip[J("sfcWind"), on = "variable", nomatch = NULL]
     if (!nrow(sfcWind)) {
         verbose("WARNING: Input does not contain any data of 'near-surface wind speed'. Skip.")
-        wind <- data.table()
+        wind <- data.table::data.table()
     } else {
         wind <- morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = methods["wind"], warning = warning)
     }
@@ -385,7 +384,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     clt <- data_cmip[J("clt"), on = "variable", nomatch = NULL]
     if (!nrow(clt)) {
         verbose("WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.")
-        total_cover <- data.table()
+        total_cover <- data.table::data.table()
     } else {
         total_cover <- morphing_total_sky_cover(data_epw, clt, years, labels = labels, warning = warning)
     }
@@ -397,7 +396,7 @@ morphing_epw <- function (data, years = NULL, labels = NULL, methods = NULL, war
     verbose("Morphing 'opaque sky cover'...")
     if (!nrow(total_cover)) {
         verbose("WARNING: Input does not contain any data of 'total cloud area fraction for the whole atmospheric column'. Skip.")
-        opaque_cover <- data.table()
+        opaque_cover <- data.table::data.table()
     } else {
         opaque_cover <- morphing_opaque_sky_cover(data_epw, total_cover)
     }
@@ -421,7 +420,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
                                 years = NULL, labels = NULL, warning = FALSE) {
     type <- match.arg(type)
 
-    if (!nrow(data_mean)) return(data.table())
+    if (!nrow(data_mean)) return(data.table::data.table())
 
     # calculate monthly average of EPW data
     monthly <- monthly_mean(data_epw, var)
@@ -461,7 +460,7 @@ morphing_from_mean <- function (var, data_epw, data_mean, data_max = NULL, data_
         i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE, nomatch = NULL]
         i <- unique(c(i_min, i_max))
 
-        case_fallback <- data.table()
+        case_fallback <- data.table::data.table()
         if (length(i)) {
             cols <- c("activity_drs", "institution_id", "source_id",
                 "experiment_id", "member_id", "table_id")
@@ -603,7 +602,6 @@ morphing_rh <- function (data_epw, hurs, hursmax = NULL, hursmin = NULL, years =
 # }}}
 
 # morphing_tdew {{{
-#' @importFrom psychrolib GetTDewPointFromRelHum SetUnitSystem
 morphing_tdew <- function (tdb, rh) {
     psychrolib::SetUnitSystem("SI")
 
@@ -681,7 +679,7 @@ morphing_glob_rad <- function (data_epw, rsds, years = NULL, labels = NULL, type
 # morphing_diff_rad {{{
 morphing_diff_rad <- function (data_epw, glob_rad) {
     diff_rad <- data.table::copy(glob_rad)
-    if (!nrow(diff_rad)) return(data.table())
+    if (!nrow(diff_rad)) return(data.table::data.table())
     diff_rad[data_epw[, .SD, .SDcols = c("month", "day", "hour", "diffuse_horizontal_radiation")],
         on = c("month", "day", "hour"),
         diffuse_horizontal_radiation := i.diffuse_horizontal_radiation * alpha]
@@ -694,7 +692,7 @@ morphing_diff_rad <- function (data_epw, glob_rad) {
 # morphing_norm_rad {{{
 morphing_norm_rad <- function (glob_rad, diff_rad) {
     norm_rad <- data.table::copy(glob_rad)
-    if (!nrow(glob_rad) || !nrow(diff_rad)) return(data.table())
+    if (!nrow(glob_rad) || !nrow(diff_rad)) return(data.table::data.table())
     norm_rad[, diffuse_horizontal_radiation := diff_rad$diffuse_horizontal_radiation]
     # calculate solar angle
     norm_rad[, day_of_year := data.table::yday(datetime)]
@@ -722,7 +720,7 @@ morphing_wind_speed <- function (data_epw, sfcWind, years = NULL, labels = NULL,
 # morphing_total_sky_cover {{{
 morphing_total_sky_cover <- function (data_epw, clt, years = NULL, labels = NULL, warning = FALSE) {
     var <- "total_sky_cover"
-    if (!nrow(clt)) return(data.table())
+    if (!nrow(clt)) return(data.table::data.table())
     data_mean <- preprocess_morphing(clt, leapyear = FALSE, years = years, labels = labels, warning = warning)
     monthly <- unique(data_epw[, .SD, .SDcols = c("month")])
 
@@ -754,7 +752,7 @@ morphing_total_sky_cover <- function (data_epw, clt, years = NULL, labels = NULL
 
 # morphing_opaque_sky_cover {{{
 morphing_opaque_sky_cover <- function (data_epw, total_sky_cover) {
-    if (!nrow(total_sky_cover)) return(data.table())
+    if (!nrow(total_sky_cover)) return(data.table::data.table())
     data <- data.table::copy(total_sky_cover)[
         data_epw[, .SD, .SDcols = c("month", "day", "hour", "opaque_sky_cover")],
         on = c("month", "day", "hour"),
@@ -887,10 +885,10 @@ solar_angle <- function (latitude, longitude, day_of_year, hour, timezone) {
 #' @export
 future_epw <- function (morphed, by = c("experiment", "source", "interval"),
                         dir = ".", separate = TRUE, overwrite = FALSE, full = FALSE) {
-    assert_class(morphed, "epw_cmip6_morphed")
-    assert_string(dir)
-    assert_flag(separate)
-    assert_flag(full)
+    checkmate::assert_class(morphed, "epw_cmip6_morphed")
+    checkmate::assert_string(dir)
+    checkmate::assert_flag(separate)
+    checkmate::assert_flag(full)
 
     epw <- morphed$epw
 
@@ -941,7 +939,7 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
               table_id = "frequency", source_id = "source", interval = "interval",
               lon = "longitude", lat = "latitude"
     )
-    assert_subset(by, choices = dict)
+    checkmate::assert_subset(by, choices = dict)
     cols_by <- unique(names(dict)[match(by, dict, 0L)])
 
     # columns of datetime

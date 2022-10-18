@@ -211,9 +211,6 @@ RES_FILE <- c(
 #' esgf_query(variable = "rss", experiment = "ssp126", type = "File", limit = 1)
 #' }
 #'
-#' @importFrom jsonlite read_json
-#' @importFrom checkmate assert_character assert_choice assert_count assert_flag assert_subset
-#' @importFrom data.table data.table setattr
 #' @export
 esgf_query <- function(activity = "ScenarioMIP",
                        variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
@@ -231,26 +228,26 @@ esgf_query <- function(activity = "ScenarioMIP",
                        type = "Dataset",
                        limit = 10000L,
                        data_node = NULL) {
-    assert_subset(activity, empty.ok = FALSE, choices = c(
+    checkmate::assert_subset(activity, empty.ok = FALSE, choices = c(
         "AerChemMIP", "C4MIP", "CDRMIP", "CFMIP", "CMIP", "CORDEX", "DAMIP",
         "DCPP", "DynVarMIP", "FAFMIP", "GMMIP", "GeoMIP", "HighResMIP",
         "ISMIP6", "LS3MIP", "LUMIP", "OMIP", "PAMIP", "PMIP", "RFMIP", "SIMIP",
         "ScenarioMIP", "VIACSAB", "VolMIP"
     ))
-    assert_character(variable, any.missing = FALSE, null.ok = TRUE)
-    assert_subset(frequency, empty.ok = TRUE, choices = c(
+    checkmate::assert_character(variable, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_subset(frequency, empty.ok = TRUE, choices = c(
         "1hr", "1hrCM", "1hrPt", "3hr", "3hrPt", "6hr", "6hrPt", "day", "dec",
         "fx", "mon", "monC", "monPt", "subhrPt", "yr", "yrPt"
     ))
-    assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
-    assert_character(source, any.missing = FALSE, null.ok = TRUE)
-    assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
-    assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(replica, null.ok = TRUE)
-    assert_flag(latest)
-    assert_count(limit, positive = TRUE)
-    assert_choice(type, choices = c("Dataset", "File"))
-    assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(source, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
+    checkmate::assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_flag(replica, null.ok = TRUE)
+    checkmate::assert_flag(latest)
+    checkmate::assert_count(limit, positive = TRUE)
+    checkmate::assert_choice(type, choices = c("Dataset", "File"))
+    checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
     url_base <- "http://esgf-node.llnl.gov/esg-search/search/?"
 
@@ -328,7 +325,7 @@ esgf_query <- function(activity = "ScenarioMIP",
         pair(fields) %and%
         pair(format)
 
-    q <- tryCatch(jsonlite::read_json(q), warning = function(w) w, error = function(e) e)
+    q <- tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
 
     # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
@@ -448,9 +445,7 @@ extract_query_file <- function(q) {
 #' init_cmip6_index()
 #' }
 #'
-#' @importFrom checkmate assert_directory_exists assert_integerish
 #' @importFrom data.table copy fwrite rbindlist set setcolorder
-#' @importFrom rappdirs user_data_dir
 #' @export
 init_cmip6_index <- function(activity = "ScenarioMIP",
                              variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
@@ -469,8 +464,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
                              data_node = NULL,
                              years = NULL,
                              save = FALSE) {
-    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(save)
+    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_flag(save)
 
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(
@@ -650,7 +645,7 @@ load_cmip6_index <- function(force = FALSE) {
         if (is.character(idx$file_mtime)) {
             idx[J(""), on = "file_mtime", file_mtime := NA]
         }
-        idx[, file_mtime := setattr(as.POSIXct(file_mtime, origin = "1970-01-01"), "tzone", NULL)]
+        idx[, file_mtime := data.table::setattr(as.POSIXct(file_mtime, origin = "1970-01-01"), "tzone", NULL)]
     }
     if ("time_units" %in% names(idx)) {
         data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
@@ -698,7 +693,6 @@ load_cmip6_index <- function(force = FALSE) {
 #'        directory will be also updated. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table()].
-#' @importFrom checkmate assert_data_table
 #' @export
 set_cmip6_index <- function(index, save = FALSE) {
     checkmate::assert_data_table(index)
@@ -887,7 +881,7 @@ parse_file_date <- function(id, frequency) {
         )
     )
 
-    data.table(id, reg, suf, fmt)[
+    data.table::data.table(id, reg, suf, fmt)[
         !J(NA_character_),
         on = "reg", by = "reg",
         c("datetime_start", "datetime_end") := {

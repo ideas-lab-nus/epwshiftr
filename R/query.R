@@ -25,16 +25,16 @@ read_json_response <- function(url, ...) {
 }
 
 new_query_param <- function(name, value) {
-    assert_string(name)
+    checkmate::assert_string(name)
 
     if (!is.list(value)) value <- list(value = value, negate = FALSE)
     if (is.null(value$value)) return(NULL)
 
-    assert_list(value,
+    checkmate::assert_list(value,
         types = c("logical", "numeric", "character"),
         any.missing = TRUE, names = "unique"
     )
-    assert_names(names(value), must.include = c("value", "negate"))
+    checkmate::assert_names(names(value), must.include = c("value", "negate"))
 
     # do not allow NAs
     for (val in value) checkmate::assert_atomic(val, any.missing = FALSE)
@@ -238,7 +238,6 @@ query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search") {
     EsgfQuery$new(host = host)
 }
 
-#' @importFrom R6 R6Class
 #' @name EsgfQuery
 #' @export
 EsgfQuery <- R6::R6Class("EsgfQuery",
@@ -268,7 +267,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q
         #' }
         initialize = function(host = "https://esgf-node.llnl.gov/esg-search") {
-            assert_string(host)
+            checkmate::assert_string(host)
             # in case of a encoded URL
             private$url_host <- utils::URLdecode(host)
 
@@ -402,7 +401,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$list_all_values()
         #' }
         list_all_values = function(facet) {
-            assert_choice(facet, self$list_all_facets())
+            checkmate::assert_choice(facet, self$list_all_facets())
             names(private$facet_cache_count(facet))
         },
 
@@ -821,7 +820,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         replica = function(value) {
             if (missing(value)) return(private$param_replica)
-            assert_flag(value, null.ok = TRUE, .var.name = "replica")
+            checkmate::assert_flag(value, null.ok = TRUE, .var.name = "replica")
             private$param_replica <- new_query_param("replica", value)
             self
         },
@@ -849,7 +848,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         latest = function(value = TRUE) {
             if (missing(value)) return(private$param_latest)
-            assert_flag(value, .var.name = "latest")
+            checkmate::assert_flag(value, .var.name = "latest")
             private$param_latest <- new_query_param("latest", value)
             self
         },
@@ -882,7 +881,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         limit = function(value = 10L) {
             if (missing(value)) return(private$param_limit)
-            assert_count(value, .var.name = "limit")
+            checkmate::assert_count(value, .var.name = "limit")
             if (value > this$data_max_limit) {
                 warning(sprintf(
                     paste(
@@ -921,7 +920,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         offset = function(value = 0L) {
             if (missing(value)) return(private$param_offset)
-            assert_count(value, .var.name = "offset")
+            checkmate::assert_count(value, .var.name = "offset")
             private$param_offset <- new_query_param("offset", value)
             self
         },
@@ -950,7 +949,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         distrib = function(value = TRUE) {
             if (missing(value)) return(private$param_distrib)
-            assert_flag(value, .var.name = "distrib")
+            checkmate::assert_flag(value, .var.name = "distrib")
             private$param_distrib <- new_query_param("distrib", value)
             self
         },
@@ -1026,7 +1025,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             predefined <- private$predefined_facets()
 
             if ("type" %in% nms && length(type <- params[[nms == "type"]])) {
-                assert_choice(type$value,
+                checkmate::assert_choice(type$value,
                     c("Dataset", "File", "Aggregation"), .var.name = "type"
                 )
 
@@ -1073,7 +1072,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     seq_along(params_oth),
                     function(i) {
                         if (names_oth[[i]] %in% all_facets) {
-                            assert_subset(
+                            checkmate::assert_subset(
                                 params_oth[[i]]$value,
                                 names(private$facet_cache_count(names_oth[[i]])),
                                 .var.name = names_oth[[i]]
@@ -1139,7 +1138,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' }
         url = function(wget = FALSE) {
-            assert_flag(wget)
+            checkmate::assert_flag(wget)
             query_build(
                 private$url_host,
                 private$get_all_params(),
@@ -1405,7 +1404,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             } else {
                 choices <- self$list_all_values(facet)
             }
-            assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
+            checkmate::assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
             unique(value)
         },
 
@@ -1543,8 +1542,8 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
 }
 
 query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
-    assert_flag(all)
-    assert_flag(constraints)
+    checkmate::assert_flag(all)
+    checkmate::assert_flag(constraints)
     checkmate::assert(
         checkmate::check_flag(limit),
         checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
