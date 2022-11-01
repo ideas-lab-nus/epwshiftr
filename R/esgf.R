@@ -350,9 +350,14 @@ esgf_query <- function(activity = "ScenarioMIP",
 # extract_query_dataset {{{
 #' @importFrom data.table rbindlist
 extract_query_dataset <- function(q) {
-    dt <- data.table::rbindlist(lapply(q$response$docs, lapply, unlist))
+    dt <- data.table::as.data.table(q$response$docs)
     data.table::set(dt, NULL, setdiff(names(dt), RES_DATASET), NULL)
     data.table::setcolorder(dt, RES_DATASET)
+    for (col in names(dt)) {
+        if (is.list(.subset2(dt, col))) {
+            data.table::set(dt, NULL, col, unlst(.subset2(dt, col)))
+        }
+    }
     data.table::setnames(dt, c("id", "pid"), c("dataset_id", "dataset_pid"))
 }
 # }}}
@@ -362,18 +367,31 @@ extract_query_dataset <- function(q) {
 extract_query_file <- function(q) {
     # to avoid No visible binding for global variable check NOTE
     id <- NULL
-    dt <- data.table::rbindlist(lapply(q$response$docs, function(l) {
-        l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
-        # nocov start
-        if (!length(l$url)) {
-            warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
-            l$url <- NA_character_
-        }
-        # nocov end
-        lapply(l, unlist)
-    }))
+
+    dt <- data.table::as.data.table(q$response$docs)
     data.table::set(dt, NULL, setdiff(names(dt), RES_FILE), NULL)
     data.table::setcolorder(dt, RES_FILE)
+
+    data.table::set(dt, NULL, "url",
+        vapply(seq_len(nrow(dt)), FUN.VALUE = "", function(i) {
+            url <- grep("HTTPServer", .subset2(dt, "url")[[i]], fixed = TRUE, value = TRUE)
+
+            # nocov start
+            if (!length(url)) {
+                warning("Dataset with id '", .subset2(dt, "id")[[i]], "' does not have a HTTPServer download method.")
+                url <- NA_character_
+            }
+            # nocov end
+
+            url
+        })
+    )
+
+    for (col in names(dt)) {
+        if (is.list(.subset2(dt, col))) {
+            data.table::set(dt, NULL, col, unlst(.subset2(dt, col)))
+        }
+    }
 
     dt[, c("datetime_start", "datetime_end") := parse_file_date(id, frequency)]
     dt[, url := gsub("\\|.+$", "", url)]

@@ -358,7 +358,7 @@ cmip6dict_build <- function(dict) {
     res$built_time <- dict$built_time
     dict$built_time <- NULL
 
-    res$version = list(
+    res$version <- list(
         cvs = attr(dict$cvs$drs, "version", TRUE)$CV_collection_version,
         dreq = attr(dict$dreq, "metadata", TRUE)$dreq_version[[1L]]
     )
@@ -380,7 +380,7 @@ cmip6dict_fetch_cv_tag_latest <- function(token = NULL) {
         "Failed to fetched latest tag of {.strong CMIP6 CVs}.",
         spinner = TRUE
     )
-    gh_tags(REPO_CV, token)[[1L]]
+    gh_tags(REPO_CV, token)[1L, ]
 }
 
 cmip6dict_download_cv_file <- function(tag, dir = tempdir(), token = NULL) {
@@ -647,7 +647,6 @@ cmip6dict_print_cv_vec <- function(cv, n = 5L) {
     cli::cli_h1("<VALUES>")
 
     n <- min(n, length(cv))
-    nms <- to_title_case(names(cv))
 
     txt <- cli::cli_vec(unclass(cv), list(vec_trunc = n))
     cli::cli_text("{.val {txt}}")
@@ -799,7 +798,7 @@ cmip6dict_fetch_dreq_tag_latest <- function(token = NULL) {
         "Failed to fetched latest tag of {.strong CMIP6 DReq}.",
         spinner = TRUE
     )
-    gh_tags(REPO_DREQ, token)[[1L]]
+    gh_tags(REPO_DREQ, token)[1L, ]
 }
 
 cmip6dict_download_dreq_file <- function(tag, dir = tempdir(), token = NULL) {
