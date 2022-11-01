@@ -56,7 +56,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             }
             if (!is.null(formatted)) {
                 for (field in formatted) {
+                    # nocov start
                     if (is.null(docs[[field]])) next
+                    # nocov end
                     docs[[field]] <- self[[field]]
                 }
             }
@@ -104,7 +106,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'        URLs.
         url = function() {
             urls <- private$get_field("url")
+            # nocov start
             if (!length(urls)) return(NULL)
+            # nocov end
 
             lapply(urls, function(url) {
                 if (!length(url)) return(NULL) # nocov
@@ -131,7 +135,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
+            # nocov start
             if (!self$count()) return(NULL)
+            # nocov end
             sort(names(private$get_docs()))
         }
     ),
@@ -151,13 +157,11 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
 
-        facet_cache = function() {
-            this$cache[[private$url_host]]
-        },
-
         get_url = function(type, name = type) {
             vapply(self$url, function(dt_url) {
+                # nocov start
                 if (!length(dt_url)) return(NA_character_)
+                # nocov end
 
                 res <- dt_url$url[dt_url$service == type]
                 if (!length(res)) return(NA_character_)
@@ -439,7 +443,9 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
+            # nocov start
             if (!self$count()) return(NULL)
+            # nocov end
             sort(c("filename", "url_opendap", "url_download", super$fields))
         }
     ),
@@ -506,7 +512,9 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
 
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
+            # nocov start
             if (!self$count()) return(NULL)
+            # nocov end
             sort(c("url_opendap", "url_download", super$fields))
         }
     ),

@@ -93,6 +93,9 @@ test_that("ESGF Query Result Dataset works", {
     ## $collect(): can collect aggregation
     expect_s3_class(aggs <- datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgfQueryResultAggregation")
 
+    # $print()
+    suppressMessages(expect_message(datasets$print()))
+
     saveRDS(files, file.path(get_cache(), "result_files"))
     saveRDS(aggs, file.path(get_cache(), "result_aggs"))
 })
@@ -101,6 +104,15 @@ test_that("ESGF Query Result File works", {
     skip_on_cran()
 
     files <- readRDS(file.path(get_cache(), "result_files"))
+
+    # $to_dt(): can extract the data into a data.table
+    expect_s3_class(files$to_dt(), "data.table")
+    # $to_dt(): can only keep selected fields
+    expect_s3_class(files$to_dt(c("checksum", "checksum_type")), "data.table")
+    expect_equal(names(files$to_dt(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
+    # $to_dt(): can keep the special format of certain fields
+    expect_s3_class(files$to_dt(formatted = TRUE)$size, "units")
+    expect_s3_class(files$to_dt(formatted = TRUE)$url[[1L]], "data.table")
 
     # $id
     expect_type(files$id, "character")
@@ -159,12 +171,14 @@ test_that("ESGF Query Result Aggregation works", {
 
     aggs <- readRDS(file.path(get_cache(), "result_aggs"))
 
-    attach_facet_cache()
-    aggs <- new_query_result(
-        EsgfQueryResultAggregation,
-        aggs$.__enclos_env__$private$url_host,
-        aggs$.__enclos_env__$private$result
-    )
+    # $to_dt(): can extract the data into a data.table
+    expect_s3_class(aggs$to_dt(), "data.table")
+    # $to_dt(): can only keep selected fields
+    expect_s3_class(aggs$to_dt(c("url", "size")), "data.table")
+    expect_equal(names(aggs$to_dt(c("url", "size"))), c("url", "size"))
+    # $to_dt(): can keep the special format of certain fields
+    expect_s3_class(aggs$to_dt(formatted = TRUE)$size, "units")
+    expect_s3_class(aggs$to_dt(formatted = TRUE)$url[[1L]], "data.table")
 
     # $id
     expect_type(aggs$id, "character")
