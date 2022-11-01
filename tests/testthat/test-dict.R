@@ -109,9 +109,9 @@ test_that("Cmip6Dict$get()", {
     expect_identical(
         vapply(dict$get("experiment_id"), typeof, ""),
         c(
-            experiment_id = "character", experiment = "character", description = "character", 
-            tier = "integer", start_year = "integer", end_year = "integer", 
-            min_number_yrs_per_sim = "integer", required_model_components = "list", 
+            experiment_id = "character", experiment = "character", description = "character",
+            tier = "integer", start_year = "integer", end_year = "integer",
+            min_number_yrs_per_sim = "integer", required_model_components = "list",
             parent_experiment_id = "list", sub_experiment_id = "list",
             activity_id = "list", parent_activity_id = "list",
             additional_allowed_model_components = "list"
