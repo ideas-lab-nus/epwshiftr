@@ -5,7 +5,7 @@
 \alias{query_esgf}
 \title{Query CMIP6 data using ESGF search RESTful API}
 \usage{
-query_esgf(host = "https://esgf-node.llnl.gov/esg-search")
+query_esgf(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE)
 }
 \arguments{
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
@@ -13,6 +13,8 @@ the ESGF search service excluding the final endpoint name. Usually
 this is \verb{http://<hostname>/esg-search}. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
 which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+
+\item{build}{Whether to send the facet listing query. Default: \code{TRUE}.}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -643,13 +645,14 @@ Hongyuan Jia
 \subsection{Method \code{new()}}{
 Create a new EsgfQuery object
 
-When initialization, a
+When initialization, by default, a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 is sent to the index node to get all available facets and shards.
 This information will be used to validate inputs for \code{activity_id},
-\code{scource_id} facets and etc.
+\code{scource_id} facets and etc. You can disable sending this query by
+setting \code{build} to \code{FALSE}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -660,6 +663,8 @@ the URL of the ESGF search service excluding the final
 endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
 Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
 \code{"https://esgf-node.llnl.gov/esg-search"}.}
+
+\item{\code{build}}{Whether to send the facet listing query. Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -722,7 +727,7 @@ List all available facet names
 }
 
 \subsection{Returns}{
-A character vector.
+A character vector or \code{NULL} if no facet cache is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -745,7 +750,7 @@ List all available field names
 }
 
 \subsection{Returns}{
-A character vector.
+A character vector or \code{NULL} if no facet cache is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -768,7 +773,7 @@ List all available shards
 }
 
 \subsection{Returns}{
-A character vector.
+A character vector or \code{NULL} if no facet cache is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -798,7 +803,7 @@ List all available values of a specific facet
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A named character vector.
+A named character vector or \code{NULL} if no facet cache is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
