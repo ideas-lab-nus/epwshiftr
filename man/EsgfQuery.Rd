@@ -562,7 +562,7 @@ q$count(facets = c("activity_id", "source_id"))
 ## ------------------------------------------------
 
 \dontrun{
-# by default, all fields with contrains are included in the results
+# by default, all fields with constrains are included in the results
 query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
 res1 <- query$collect()
 res1$fields
@@ -1802,7 +1802,7 @@ An \link{EsgfQueryResultDataset} object.
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-# by default, all fields with contrains are included in the results
+# by default, all fields with constrains are included in the results
 query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
 res1 <- query$collect()
 res1$fields
