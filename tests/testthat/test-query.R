@@ -1,4 +1,4 @@
-host <- "https://esgf.ceda.ac.uk/esg-search/"
+host <- "https://esgf.ceda.ac.uk/esg-search"
 
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
@@ -49,6 +49,8 @@ test_that("query_esgf()", {
 
     skip_on_cran()
 
+    # NOTE: attached facet cache is used throughout tests
+    attach_facet_cache()
     expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
     expect_s3_class(q <- query_esgf(host), "EsgfQuery")
 })
@@ -193,7 +195,7 @@ test_that("EsgfQuery$project() and other facet methods", {
 
     # data_node
     expect_null(q$data_node())
-    expect_equal(q$data_node("esg.lasg.ac.cn")$data_node()$value, "esg.lasg.ac.cn")
+    expect_equal(q$data_node("esgf.ceda.ac.uk")$data_node()$value, "esgf.ceda.ac.uk")
     expect_null(q$data_node(NULL)$data_node())
 })
 
@@ -236,8 +238,8 @@ test_that("EsgfQuery$shards()", {
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_s3_class(q$shards("a"), "EsgfQuery")
     expect_equal(
-        q$shards("esgf-node.llnl.gov:8985/solr")$shards()$value,
-        "esgf-node.llnl.gov:8985/solr"
+        q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()$value,
+        "esgf-solr.ceda.ac.uk:8983/solr"
     )
     expect_null(q$shards(NULL)$shards())
 
@@ -251,8 +253,8 @@ test_that("EsgfQuery$shards()", {
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_error(q$shards("a"), "Assertion")
     expect_equal(
-        q$shards("esgf-node.llnl.gov:8985/solr")$shards()$value,
-        "esgf-node.llnl.gov:8985/solr"
+        q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()$value,
+        "esgf-solr.ceda.ac.uk:8983/solr"
     )
     expect_null(q$shards(NULL)$shards())
 })
@@ -365,10 +367,10 @@ test_that("EsgfQuery$params()", {
     expect_equal(q$params(frequency = NULL)$params(), list())
     expect_null(q$frequency())
     expect_equal(
-        q$params(table_id = "Amon", member_id = "00")$params(),
+        q$params(table_id = "Amon", member_id = "r1i1p1f1")$params(),
         list(
             table_id = new_query_param("table_id", "Amon"),
-            member_id = new_query_param("member_id", "00")
+            member_id = new_query_param("member_id", "r1i1p1f1")
         )
     )
 
@@ -396,32 +398,31 @@ test_that("EsgfQuery$url()", {
 
     expect_s3_class(q <- query_esgf(host), "EsgfQuery")
 
-    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgfQuery$new()$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+    expect_type(q$nominal_resolution("100 km")$url(), "character")
+    expect_type(q$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(q$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 })
 
 test_that("EsgfQuery$count()", {
-    expect_type(EsgfQuery$new(build = FALSE)$frequency("1hr")$count(FALSE), "integer")
-    expect_type(EsgfQuery$new(build = FALSE)$frequency("1hr")$count(TRUE), "integer")
-    expect_type(cnt <- EsgfQuery$new(build = FALSE)$frequency("1hr")$count("activity_id"), "list")
+    expect_type(EsgfQuery$new(host, FALSE)$frequency("1hr")$count(FALSE), "integer")
+    expect_type(EsgfQuery$new(host, FALSE)$frequency("1hr")$count(TRUE), "integer")
+    expect_type(cnt <- EsgfQuery$new(host, FALSE)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
 
     skip_on_cran()
 
     expect_s3_class(q <- query_esgf(host), "EsgfQuery")
 
-    expect_type(EsgfQuery$new()$frequency("1hr")$count(FALSE), "integer")
-    expect_type(EsgfQuery$new()$frequency("1hr")$count(TRUE), "integer")
-    expect_type(cnt <- EsgfQuery$new()$frequency("1hr")$count("activity_id"), "list")
+    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(FALSE), "integer")
+    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(TRUE), "integer")
+    expect_type(cnt <- EsgfQuery$new(host)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
 })
 
 test_that("EsgfQuery$collect()", {
     skip_on_cran()
 
-    attach_facet_cache()
-    expect_s3_class(q <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgfQuery")
 
     # can collect the specified limit number of records
     expect_s3_class(
@@ -433,8 +434,10 @@ test_that("EsgfQuery$collect()", {
     expect_true(all(c("project", "frequency", "source_id") %in% names(res)))
 
     # can collect required fields
+    # NOTE: it is possible that some index nodes do not have
+    # 'number_of_aggregations' field
     expect_true(
-        all(EsgfQueryResultDataset$private_fields$required_fields %in% names(res))
+        all(setdiff(EsgfQueryResultDataset$private_fields$required_fields, "number_of_aggregations") %in% names(res))
     )
 
     # can collect all results with auto-pagination
@@ -449,16 +452,26 @@ test_that("EsgfQuery$collect()", {
 test_that("EsgfQuery$response()", {
     skip_on_cran()
 
-    expect_null(EsgfQuery$new()$response())
+    expect_null(EsgfQuery$new(host)$response())
 
-    expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")
+    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
     expect_type(q$limit(0)$frequency("1hr")$count(), "integer")
     expect_type(q$response(), "list")
-    expect_equal(names(q$response()), c("responseHeader", "response"))
+    expect_true(all(c("responseHeader", "response") %in% names(q$response())))
 })
 
 test_that("EsgfQuery$print()", {
     skip_on_cran()
 
-    expect_snapshot(EsgfQuery$new(build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print())
+    expect_snapshot(
+        EsgfQuery$new("a", build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+    )
+
+    expect_snapshot(
+        EsgfQuery$new(host, build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print(),
+        transform = function(out) {
+            out[grepl("Facet cache built at: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", out)] <- "* Facet cache built at: [yyyy-mm-dd HH:MM:SS]"
+            out
+        }
+    )
 })

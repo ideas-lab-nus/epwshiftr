@@ -1,47 +1,98 @@
 # ESGF Query Parameter works
 
-    [1] "x=false"
+    Code
+      format(new_query_param("x", list(value = TRUE, negate = TRUE)))
+    Output
+      [1] "x=false"
 
 ---
 
-    [1] "x!=1"
+    Code
+      format(new_query_param("x", list(value = 1, negate = TRUE)))
+    Output
+      [1] "x!=1"
 
 ---
 
-    [1] "x!=solr%2Bjson"
+    Code
+      format(new_query_param("x", list(value = "solr+json", negate = TRUE)))
+    Output
+      [1] "x!=solr%2Bjson"
 
 ---
 
-    [1] "x = true"
+    Code
+      format(new_query_param("x", TRUE), space = TRUE)
+    Output
+      [1] "x = true"
 
 ---
 
-    [1] "x = 1"
+    Code
+      format(new_query_param("x", 1), space = TRUE)
+    Output
+      [1] "x = 1"
 
 ---
 
-    [1] "x = solr%2Bjson"
+    Code
+      format(new_query_param("x", "solr+json"), space = TRUE)
+    Output
+      [1] "x = solr%2Bjson"
 
 ---
 
-    x = false
+    Code
+      print(new_query_param("x", list(value = TRUE, negate = TRUE)))
+    Output
+      x = false
 
 ---
 
-    x != 1
+    Code
+      print(new_query_param("x", list(value = 1, negate = TRUE)))
+    Output
+      x != 1
 
 ---
 
-    x != solr+json
+    Code
+      print(new_query_param("x", list(value = "solr+json", negate = TRUE)))
+    Output
+      x != solr+json
 
 # EsgfQuery$print()
 
     Code
-      EsgfQuery$new()$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+      EsgfQuery$new("a", build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
+        print()
     Message <cliMessage>
       == ESGF Query ==================================================================
-      * Host: https://esgf-node.llnl.gov/esg-search
-      * Facet cache built at: 2022-10-13 23:27:17
+      * Host: a
+      * Facet cache built at: <NONE>
+        NOTE: You may run `$build_cache()` to create the cache.
+      
+      -- <QUERY PARAMETER> -----------------------------------------------------------
+      * format = application/solr+json
+      * limit = 10
+      * distrib = true
+      * offset = 0
+      * type = Dataset
+      * latest = true
+      * fields = *
+      * project = CMIP6
+      * table_id = Amon
+      * member_id = r1i1p1f1
+
+---
+
+    Code
+      EsgfQuery$new(host, build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
+        print()
+    Message <cliMessage>
+      == ESGF Query ==================================================================
+      * Host: https://esgf.ceda.ac.uk/esg-search
+      * Facet cache built at: [yyyy-mm-dd HH:MM:SS]
       
       -- <QUERY PARAMETER> -----------------------------------------------------------
       * format = application/solr+json

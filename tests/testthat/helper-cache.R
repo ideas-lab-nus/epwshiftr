@@ -42,7 +42,7 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
                     old <- getOption("timeout")
                     options(timeout = 60L * 100L)
                     on.exit(options(timeout = old), add = TRUE)
-                    flag <- download.file(f, dest, mode = "wb")
+                    download.file(f, dest, mode = "wb")
                 }
             }
         }
@@ -52,11 +52,15 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
 }
 
 save_facet_cache <- function() {
-    saveRDS(this$cache, file.path(get_cache(), "facets"))
+    if (length(this$cache)) {
+        saveRDS(this$cache, file.path(get_cache(), "facets"))
+    }
 }
 
 attach_facet_cache <- function() {
-    attach_cache(readRDS(file.path(get_cache(), "facets")))
+    if (file.exists(cache <- file.path(get_cache(), "facets"))) {
+        attach_cache(readRDS(cache))
+    }
 }
 
 clear_facet_cache <- function() {
