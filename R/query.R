@@ -4,12 +4,13 @@ NULL
 # TODO: update doc about query type
 # TODO: collect all results with auto-pagination
 # TODO: automatically add fields that are specified via methods
-read_json_response <- function(url, ...) {
+read_json_response <- function(url, strict = TRUE, ...) {
     q <- tryCatch(jsonlite::fromJSON(url, ...), warning = function(w) w, error = function(e) e)
 
     # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
-        warning(
+        cond_fun <- if (strict) stop else warning
+        cond_fun(
             "No matched data. Please check network connection and the availability of ESGF index/data node. Details: \n",
             conditionMessage(q)
         )
@@ -1429,7 +1430,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             } else {
                 choices <- self$list_all_values(facet)
             }
-            checkmate::assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
+
+            if (length(choices)) {
+                checkmate::assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
+            }
             unique(value)
         },
 
