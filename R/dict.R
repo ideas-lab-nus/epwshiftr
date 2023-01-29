@@ -267,41 +267,36 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_rule("CMIP6 Dictionary")
-            if (length(private$m_version)) {
-                cli::cli_li("Built at: {private$m_built_time}")
-            } else {
-                cli::cli_li("Built at: {.emph <Empty>}")
-            }
             cli::cli_end(d)
-
-            d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
-            ul <- cli::cli_ul()
+            if (length(private$m_version)) {
+                cli::cli_bullets(c("*" = "Built at: {private$m_built_time}"))
+            } else {
+                cli::cli_bullets(c("*" = "Built at: {.emph <NONE>}"))
+            }
 
             if (!length(private$m_version)) {
                 cli::cli_h1("Controlled Vocabularies (CVs)")
-                cli::cli_li("{.strong CV Version}: {.emph <Empty>}")
+                cli::cli_bullets(c("*" = "{.strong CV Version}: {.emph <Empty>}"))
                 cli::cli_h1("Data Request (DReq)")
-                cli::cli_li("{.strong DReq Version}: {.emph <Empty>}")
+                cli::cli_bullets(c("*" = "{.strong DReq Version}: {.emph <Empty>}"))
             } else {
                 cli::cli_h1("Controlled Vocabularies (CVs)")
-                cli::cli_li("{.strong CV Version}: {.var {private$m_version$cvs}}")
+                cli::cli_bullets(c("*" = "{.strong CV Version}: {.var {private$m_version$cvs}}"))
+
                 cvs <- private$m_data$cvs
-                cli::cli_li("{.strong CV Contents} [{length(cvs)} type{?s}]: ")
-                ul2 <- cli::cli_ul()
-                for (nm in names(cvs)) {
-                    cli::cli_li("{.strong {nm}} [{NROW(cvs[[nm]])} item{?s}]")
-                }
-                cli::cli_end(ul2)
+                cli::cli_bullets(c("*" = "{.strong CV Contents} [{length(cvs)} type{?s}]: "))
+                fmt <- sprintf("{.strong %s} [%s items]", names(cvs), vapply(cvs, NROW, integer(1)))
+                names(fmt) <- rep("*", length(fmt))
+                div <- cli::cli_div(theme = list(".bullets .bullet-*" = list("padding-left" = 2)))
+                cli::cli_bullets(fmt)
+                cli::cli_end(div)
 
                 cli::cli_h1("Data Request (DReq)")
-                cli::cli_li("{.strong DReq Version}: {.var {private$m_version$dreq}}")
+                cli::cli_bullets(c("*" = "{.strong DReq Version}: {.var {private$m_version$dreq}}"))
                 dreq <- private$m_data$dreq
                 meta <- attr(dreq, "metadata", TRUE)
-                cli::cli_li("{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms")
+                cli::cli_bullets(c("*" = "{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms"))
             }
-
-            cli::cli_end(ul)
-            cli::cli_end(d)
 
             invisible(self)
         }

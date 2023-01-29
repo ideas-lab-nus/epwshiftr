@@ -267,7 +267,6 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
         #'
         collect = function(fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
-            # replica = NULL, latest = TRUE, distrib = TRUE, shards = NULL, 
             params <- private$build_params(
                 fields = fields, limit = limit, type = type, ...
             )
