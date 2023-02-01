@@ -488,7 +488,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
                              limit = 10000L,
                              data_node = NULL,
                              years = NULL,
-                             save = FALSE) {
+                             save = FALSE,
+                             host = "http://esgf-node.llnl.gov/esg-search") {
     checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_flag(save)
 
