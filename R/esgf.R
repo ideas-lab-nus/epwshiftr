@@ -498,7 +498,7 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         activity = activity, variable = variable, frequency = frequency,
         experiment = experiment, source = source, replica = replica, latest = latest,
         variant = variant, resolution = resolution, limit = limit, type = "Dataset",
-        data_node = data_node
+        data_node = data_node, host = host
     )
 
     if (!nrow(qd)) {
@@ -547,7 +547,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
             replica = replica,
             latest = latest,
             type = "File",
-            data_node = data_node
+            data_node = data_node,
+            host = host
         )
 
         # remove all common columns in file query except for "dataset_id"
