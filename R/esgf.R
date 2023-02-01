@@ -147,6 +147,12 @@ RES_FILE <- c(
 #' @param data_node A character vector indicating data nodes to be queried.
 #'        Default to `NULL`, which means all possible data nodes.
 #'
+#' @param host The URL to the ESGF Search API service. This should be the URL of
+#'        the ESGF search service excluding the final endpoint name. Usually
+#'        this is `http://<hostname>/esg-search`. Default is set to the
+#'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'
 #' @return A [data.table::data.table] with an attribute named `response` which
 #' is a list converted from json response. If no matched data is found, an empty
 #' data.table is returned. Otherwise, the columns of returned data varies based
@@ -227,7 +233,8 @@ esgf_query <- function(activity = "ScenarioMIP",
                        resolution = c("100 km", "50 km"),
                        type = "Dataset",
                        limit = 10000L,
-                       data_node = NULL) {
+                       data_node = NULL,
+                       host = "http://esgf-node.llnl.gov/esg-search") {
     checkmate::assert_subset(activity, empty.ok = FALSE, choices = c(
         "AerChemMIP", "C4MIP", "CDRMIP", "CFMIP", "CMIP", "CORDEX", "DAMIP",
         "DCPP", "DynVarMIP", "FAFMIP", "GMMIP", "GeoMIP", "HighResMIP",
@@ -249,7 +256,7 @@ esgf_query <- function(activity = "ScenarioMIP",
     checkmate::assert_choice(type, choices = c("Dataset", "File"))
     checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
-    url_base <- "http://esgf-node.llnl.gov/esg-search/search/?"
+    url_base <- file.path(host, "search/?")
 
     dict <- c(
         activity = "activity_id",
