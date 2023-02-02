@@ -1,3 +1,9 @@
+lpad <- function(x, pad = " ", width = NULL) {
+    wid <- nchar(x, "width")
+    if (is.null(width)) width <- max(wid)
+    paste0(strrep(pad, pmax(width - wid, 0)), x)
+}
+
 # a little bit faster
 unlst <- function(x) unlist(x, FALSE, FALSE)
 

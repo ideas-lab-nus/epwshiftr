@@ -179,6 +179,94 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
                 res
             }, character(1L))
+        },
+
+        print_header = function(type = "") {
+            d <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
+            cli::cli_rule("ESGF Query Result [{type}]")
+            cli::cli_end(d)
+        },
+
+        print_summary = function() {
+            cli::cli_bullets(c("*" = "Host: {private$url_host}"))
+            cli::cli_bullets(c("*" = "Collected at: {private$result$timestamp}"))
+            cli::cli_bullets(c("*" = "Result count: {self$count()}"))
+            cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
+            if (is.null(self$fields)) {
+                cli::cli_bullets(c("*" = "Fields: 0"))
+            } else {
+                cli::cli_bullets(c("*" = "Fields: {length(self$fields)} | [ {self$fields} ]"))
+            }
+        },
+
+        print_parameters = function() {
+            cli::cli_h1("<Query Parameter>")
+            print_query_params(private$parameters)
+        },
+
+        print_contents = function(type, n) {
+            checkmate::assert_count(n, positive = TRUE, null.ok = TRUE)
+
+            if (is.null(self$data_node)) {
+                cli::cli_rule("<{type}>")
+            } else {
+                cli::cli_rule("<{type}> ({length(unique(self$data_node))} Data Nodes)")
+            }
+
+            if (self$count() == 0L) {
+                cli::cli_bullets(c(" " = "{.strong <Empty 0>}"))
+                cli::cli_bullets(c(" " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"))
+                return()
+            }
+
+            checkmate::assert_count(n, positive = TRUE, null.ok = TRUE)
+            n <- if (is.null(n)) self$count() else min(n, self$count())
+            ind <- seq_len(n)
+
+            pre <- lpad(ind, "0")
+            brief <- sprintf("[%s] %s", pre, self$id[ind])
+
+            spc <- strrep(" ", nchar(pre[1L], "width"))
+
+            if (type == "Dataset") {
+                size <- sprintf("%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
+                    spc, self$number_of_files[ind],
+                    round(self$size[ind], 2), units(self$size)$numerator,
+                    if (is.null(self$number_of_aggregations)) {
+                        "No Aggregations"
+                    } else {
+                        agg <- self$number_of_aggregations
+                        agg[is.na(agg)] <- 0L
+                        paste(agg,
+                            vapply(agg, ngettext, "", "Aggregation", "Aggregations")
+                        )
+                    },
+                    spc,
+                    if (is.null(self$access)) {
+                        "NONE"
+                    } else {
+                        vapply(self$access[ind], paste0, "", collapse = ", ")
+                    }
+                )
+            } else {
+                size <- sprintf("%s   [ %s %s | Access: <%s> ]",
+                    spc, round(self$size[ind], 2), units(self$size)$numerator,
+                    if (is.null(self$url)) {
+                        "NONE"
+                    } else {
+                        vapply(self$url[ind], FUN.VALUE = character(1),
+                            function(url) paste0(url$service, collapse = ", ")
+                        )
+                    }
+                )
+            }
+
+            for (i in ind) {
+                cli::cat_line(.subset2(brief, i))
+                cli::cat_line(.subset2(size, i))
+            }
+
+            print_trunc(self$id, n)
         }
     )
 )
@@ -308,22 +396,16 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @description
         #' Print a summary of the current dataset
         #'
+        #' @param n An integer indicating how many items to print. If `NULL`,
+        #'        all items will be printed. Default: `10L`.
+        #'
         #' @return The `EsgfQueryResultDataset` object itself, invisibly.
-        print = function() {
-            d <- cli::cli_div(
-                theme = list(rule = list("line-type" = "double"))
-            )
-            cli::cli_rule("ESGF Query Result [Dataset]")
-            cli::cli_li("Host: {private$url_host}")
-
-            d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
-            ul <- cli::cli_ul()
-
-            cli::cli_li("Dataset ID: {self$id}")
-
-            cli::cli_end(ul)
-            cli::cli_end(d)
-
+        print = function(n = 10L) {
+            private$print_header("Dataset")
+            private$print_summary()
+            private$print_parameters()
+            cli::cat_line()
+            private$print_contents("Dataset", n)
             invisible(self)
         }
     ),
@@ -415,6 +497,22 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         to_dt = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
+        },
+
+        #' @description
+        #' Print a summary of the current dataset
+        #'
+        #' @param n An integer indicating how many items to print. If `NULL`,
+        #'        all items will be printed. Default: `10L`.
+        #'
+        #' @return The `EsgfQueryResultFile` object itself, invisibly.
+        print = function(n = 10L) {
+            private$print_header("File")
+            private$print_summary()
+            private$print_parameters()
+            cli::cat_line()
+            private$print_contents("File", n)
+            invisible(self)
         }
     ),
     active = list(
@@ -489,6 +587,22 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         to_dt = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
+        },
+
+        #' @description
+        #' Print a summary of the current dataset
+        #'
+        #' @param n An integer indicating how many items to print. If `NULL`,
+        #'        all items will be printed. Default: `10L`.
+        #'
+        #' @return The `EsgfQueryResultAggregation` object itself, invisibly.
+        print = function(n = 10L) {
+            private$print_header("Aggregation")
+            private$print_summary()
+            private$print_parameters()
+            cli::cat_line()
+            private$print_contents("Aggregation", n)
+            invisible(self)
         }
     ),
 

@@ -149,9 +149,17 @@ For details on possible parameters, please see \code{\link[=query_esgf]{query_es
 \subsection{Method \code{print()}}{
 Print a summary of the current dataset
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$print()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$print(n = 10L)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{n}}{An integer indicating how many items to print. If \code{NULL},
+all items will be printed. Default: \code{10L}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
 The \code{EsgfQueryResultDataset} object itself, invisibly.
 }
