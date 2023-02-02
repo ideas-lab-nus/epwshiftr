@@ -1052,7 +1052,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                         paste(
                             "Only 'Dataset' query is supported.",
                             "But 'type' found in input with value = '%s'.",
-                            "'type' has been reset to 'Dataset'.",
+                            "It has been reset to 'Dataset'.",
                             "If you want to perform a '%s' query,",
                             "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
                             "result, and then use 'EsgfQueryResultDataset$collect(type = '%s')'."
@@ -1071,7 +1071,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     paste(
                         "Only JSON response format is supported.",
                         "But 'format' found in input with value = '%s'.",
-                        "'format' has been reset to 'application/solr+json'."
+                        "It has been reset to 'application/solr+json'."
                     ),
                     if (is.null(fmt)) "NULL" else fmt$value
                 ))
@@ -1258,7 +1258,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' res1 <- query$collect()
         #' res1$fields
         #'
-        #' # set `params` to `FALSE` to disable it
+        #' # set `params` to `FALSE` to exclude them
         #' query$collect(params = FALSE)$fields
         #'
         #' # collect all matched records with `query$limit()` records per query

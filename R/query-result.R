@@ -22,12 +22,15 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'        endpoint name. It should be the same as the `host` for an
         #'        [EsgfQuery] object that collects the query results.
         #'
+        #' @param params A list of query parameters.
+        #'
         #' @param result The result of an query response.
         #'
         #' @return An `EsgfQueryResult` object.
         #'
-        initialize = function(host, result) {
+        initialize = function(host, params, result) {
             private$url_host <- host
+            private$parameters <- params
             private$result <- result
             self
         },
@@ -37,11 +40,11 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'
         #' @param fields A character vector indicating the fields to put into
         #'        the `data.table`. If `NULL`, all fields in the query result
-        #'        will be used. Default: `NULL`.
+        #'        will be used. Possible field names can be retrieved using
+        #'        `$fields`. Default: `NULL`.
         #'
-        #' @param formatted A character vector indicating the fields whose
-        #'        values should be extracted using the corresponding
-        #'        `EsgfQueryResult$FIELD` active binding. Default: `NULL`.
+        #' @param formatted Whether to use formatted values for special fields,
+        #'        including `url` and `size`. Default: `FALSE`.
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
@@ -144,7 +147,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
     private = list(
         url_host = NULL,
+        parameters = NULL,
         result = NULL,
+        last_response = NULL,
 
         required_fields = c("id", "size", "url"),
 
@@ -290,12 +295,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (type == "File") {
                 new_query_result(
                     EsgfQueryResultFile,
-                    private$url_host, result$response
+                    private$url_host, params, result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgfQueryResultAggregation,
-                    private$url_host, result$response
+                    private$url_host, params, result$response
                 )
             }
         },
@@ -324,9 +329,6 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     ),
 
     private = list(
-        last_response = NULL,
-        params = list(),
-
         required_fields = sort(unique(c(
             EsgfQueryResult$private_fields$required_fields,
             "index_node", "number_of_files", "number_of_aggregations", "access"
@@ -377,8 +379,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             )
 
             # convert all inputs into query params and remove empty one
-            private$params <- query_param_flat(params)
-            private$params
+            query_param_flat(params)
         }
     )
 )
@@ -526,7 +527,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     )
 )
 
-new_query_result <- function(generator, host, result, ..., .env = parent.frame()) {
+new_query_result <- function(generator, host, params, result, ..., .env = parent.frame()) {
     if (generator$is_locked()) {
         generator$unlock()
         on.exit(generator$lock(), add = TRUE)
@@ -561,5 +562,6 @@ new_query_result <- function(generator, host, result, ..., .env = parent.frame()
             }
         }, add = TRUE)
     }
-    generator$new(host, result, ...)
+    generator$new(host, params, result, ...)
+}
 }

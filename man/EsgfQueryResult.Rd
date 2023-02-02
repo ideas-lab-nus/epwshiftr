@@ -51,7 +51,7 @@ file sizes.}
 \subsection{Method \code{new()}}{
 Create a new EsgfQueryResult object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(host, result)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(host, params, result)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -61,6 +61,8 @@ Create a new EsgfQueryResult object
 the URL of the ESGF search service excluding the final
 endpoint name. It should be the same as the \code{host} for an
 \link{EsgfQuery} object that collects the query results.}
+
+\item{\code{params}}{A list of query parameters.}
 
 \item{\code{result}}{The result of an query response.}
 }
@@ -84,11 +86,11 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \describe{
 \item{\code{fields}}{A character vector indicating the fields to put into
 the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+will be used. Possible field names can be retrieved using
+\verb{$fields}. Default: \code{NULL}.}
 
-\item{\code{formatted}}{A character vector indicating the fields whose
-values should be extracted using the corresponding
-\code{EsgfQueryResult$FIELD} active binding. Default: \code{NULL}.}
+\item{\code{formatted}}{Whether to use formatted values for special fields,
+including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }

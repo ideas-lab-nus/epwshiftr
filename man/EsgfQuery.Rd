@@ -567,7 +567,7 @@ query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id
 res1 <- query$collect()
 res1$fields
 
-# set `params` to `FALSE` to disable it
+# set `params` to `FALSE` to exclude them
 query$collect(params = FALSE)$fields
 
 # collect all matched records with `query$limit()` records per query
@@ -1807,7 +1807,7 @@ query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id
 res1 <- query$collect()
 res1$fields
 
-# set `params` to `FALSE` to disable it
+# set `params` to `FALSE` to exclude them
 query$collect(params = FALSE)$fields
 
 # collect all matched records with `query$limit()` records per query
