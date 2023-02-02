@@ -1335,6 +1335,13 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 cli::cli_li("Facet cache built at: {private$facet_cache()$timestamp}")
             }
 
+            ts <- if (is.null(private$last_response)) {
+                "<NONE>"
+            } else {
+                private$last_response$timestamp
+            }
+            cli::cli_li("Last query sent at: {ts}")
+
             cli::cli_h1("<Query Parameter>")
             print_query_params(private$parameters)
 

@@ -34,6 +34,7 @@ files.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgfQueryResultAggregation-to_dt}{\code{EsgfQueryResultAggregation$to_dt()}}
+\item \href{#method-EsgfQueryResultAggregation-print}{\code{EsgfQueryResultAggregation$print()}}
 \item \href{#method-EsgfQueryResultAggregation-clone}{\code{EsgfQueryResultAggregation$clone()}}
 }
 }
@@ -68,6 +69,27 @@ including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResultAggregation-print"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-print}{}}}
+\subsection{Method \code{print()}}{
+Print a summary of the current dataset
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultAggregation$print(n = 10L)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{n}}{An integer indicating how many items to print. If \code{NULL},
+all items will be printed. Default: \code{10L}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The \code{EsgfQueryResultAggregation} object itself, invisibly.
 }
 }
 \if{html}{\out{<hr>}}
