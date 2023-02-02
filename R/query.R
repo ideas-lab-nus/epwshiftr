@@ -2,9 +2,9 @@
 NULL
 
 # TODO: update doc about query type
-# TODO: collect all results with auto-pagination
 # TODO: automatically add fields that are specified via methods
 read_json_response <- function(url, strict = TRUE, ...) {
+    timestamp <- now()
     q <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
 
     # nocov start
@@ -22,6 +22,7 @@ read_json_response <- function(url, strict = TRUE, ...) {
         ))
     }
 
+    q$timestamp <- timestamp
     q
 }
 
@@ -1624,7 +1625,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
         }
     }
 
-    list(response = response, docs = docs)
+    list(timestamp = timestamp, response = response, docs = docs)
 }
 
 print_query_params <- function(params) {
