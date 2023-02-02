@@ -337,11 +337,15 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #'
         #' - For `Aggregation` query: `r paste0("\\verb{", EsgfQueryResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
         #'
+        #' @param which A character vector giving the value of dataset ID or an
+        #'        integer vector giving the indices of the dataset. If `NULL`,
+        #'        all datasets will be sent. Default: `NULL`.
+        #'
         #' @param fields A character vector indicating the value of `fields`
         #'        parameter when sending the query. If `NULL`, all available
         #'        fields will be included. Default: `NULL`.
         #'
-        #' @param all A flag. Whether to collect all results. Default: `TRUE`.
+        #' @param all A flag. Whether to collect all results. Default: `FALSE`.
         #'
         #' @param limit A positive integer indicating the number of records to
         #'        fetch per query. If `NULL`, the allowed maximum limit number
@@ -359,9 +363,25 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' - If `type="File"`, an [EsgfQueryResultFile] object
         #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
         #'
-        collect = function(fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
+            if (!is.null(which)) {
+                if (!self$count()) {
+                    which <- NULL
+                } else {
+                    checkmate::assert(
+                        checkmate::check_subset(which, self$id),
+                        checkmate::check_integerish(which,
+                            lower = 1L, upper = self$count(), any.missing = FALSE,
+                            unique = TRUE
+                        )
+                    )
+                }
+
+                which <- if (is.character(which)) match(which, self$id) else as.integer(which)
+            }
+
             params <- private$build_params(
-                fields = fields, limit = limit, type = type, ...
+                fields = fields, limit = limit, type = type, index = which, ...
             )
 
             req_fld <- if (type == "File") {
@@ -416,7 +436,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             "index_node", "number_of_files", "number_of_aggregations", "access"
         ))),
 
-        build_params = function(fields = NULL, limit = 100L, type = "File", ...) {
+        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
             checkmate::assert_choice(type, c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
@@ -446,7 +466,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             query <- query_esgf(private$url_host)
 
             params <- list(
-                dataset_id = self$id,
+                dataset_id = if (is.null(index)) self$id else self$id[index],
 
                 # use query object to validate params
                 fields = query$fields(fields)$fields(),
