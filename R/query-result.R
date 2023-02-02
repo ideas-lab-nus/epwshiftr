@@ -187,11 +187,15 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             cli::cli_end(d)
         },
 
-        print_summary = function() {
+        print_summary = function(type = "") {
             cli::cli_bullets(c("*" = "Host: {private$url_host}"))
             cli::cli_bullets(c("*" = "Collected at: {private$result$timestamp}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
-            cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
+            if (type == "Aggregation") {
+                cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
+            } else {
+                cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
+            }
             if (is.null(self$fields)) {
                 cli::cli_bullets(c("*" = "Fields: 0"))
             } else {
@@ -210,11 +214,11 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             if (is.null(self$data_node)) {
                 cli::cli_rule("<{type}>")
             } else {
-                cli::cli_rule("<{type}> ({length(unique(self$data_node))} Data Nodes)")
+                cli::cli_rule("<{type}> (From {length(unique(self$data_node))} Data Nodes)")
             }
 
             if (self$count() == 0L) {
-                cli::cli_bullets(c(" " = "{.strong <Empty 0>}"))
+                cli::cli_bullets(c(" " = "{.strong <Empty>}"))
                 cli::cli_bullets(c(" " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"))
                 return()
             }
@@ -250,7 +254,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 )
             } else {
                 size <- sprintf("%s   [ %s %s | Access: <%s> ]",
-                    spc, round(self$size[ind], 2), units(self$size)$numerator,
+                    spc,
+                    if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
+                    units(self$size)$numerator,
                     if (is.null(self$url)) {
                         "NONE"
                     } else {
@@ -422,7 +428,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @return The `EsgfQueryResultDataset` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Dataset")
-            private$print_summary()
+            private$print_summary("Dataset")
             private$print_parameters()
             cli::cat_line()
             private$print_contents("Dataset", n)
@@ -528,7 +534,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #' @return The `EsgfQueryResultFile` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("File")
-            private$print_summary()
+            private$print_summary("File")
             private$print_parameters()
             cli::cat_line()
             private$print_contents("File", n)
@@ -618,7 +624,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #' @return The `EsgfQueryResultAggregation` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Aggregation")
-            private$print_summary()
+            private$print_summary("Aggregation")
             private$print_parameters()
             cli::cat_line()
             private$print_contents("Aggregation", n)

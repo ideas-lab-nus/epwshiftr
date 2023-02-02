@@ -1,8 +1,7 @@
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
-    attach_facet_cache()
-    q <- query_esgf()$
+    q <- query_esgf(build = FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -77,33 +76,55 @@ test_that("ESGF Query Result Dataset works", {
     expect_length(datasets$number_of_files, 2L)
 
     # $collect():
+    ## $collect(): can specify dataset index
+    expect_s3_class(datasets$collect(1, fields = "id"), "EsgfQueryResultFile")
+
+    ## $collect(): can specify dataset id
+    expect_s3_class(datasets$collect(datasets$id[1], fields = "id"), "EsgfQueryResultFile")
+
     ## $collect(): can limit fields and record number
     expect_s3_class(files <- datasets$collect(fields = "id", limit = 1), "EsgfQueryResultFile")
     expect_length(files$fields, 12L)
+
     ## $collect(): can collect all fields
     expect_s3_class(files <- datasets$collect(fields = "id", all = TRUE), "EsgfQueryResultFile")
     expect_equal(files$count(), sum(datasets$number_of_files))
+
     ## $collect(): can specify specific parameters
-    expect_s3_class(files <- datasets$collect(fields = "id", limit = 1, replica = FALSE), "EsgfQueryResultFile")
+    expect_s3_class(datasets$collect(fields = "id", limit = 1, replica = FALSE), "EsgfQueryResultFile")
+
     ## $collect(): can collect all possible fields
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgfQueryResultFile")
     expect_length(files$fields, 55L)
+
     ## $collect(): can stop if unsupported parameters found
-    expect_error(files <- datasets$collect(experiment_id = "ssp585"), "Unsupported")
+    expect_error(datasets$collect(experiment_id = "ssp585"), "Unsupported")
+
     ## $collect(): can collect aggregation
-    expect_s3_class(aggs <- datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgfQueryResultAggregation")
+    expect_s3_class(datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgfQueryResultAggregation")
 
     # $print()
-    suppressMessages(expect_message(datasets$print()))
-
-    saveRDS(files, file.path(get_cache(), "result_files"))
-    saveRDS(aggs, file.path(get_cache(), "result_aggs"))
+    expect_snapshot(datasets$print(), transform = function(out) {
+        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
+        out[grepl("^\\* Total size: ", out)]   <- "* Total size: XX [GiB]"
+        gsub("\\d+ Files, \\d+\\.\\d+ GiB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", out)
+    })
 })
 
 test_that("ESGF Query Result File works", {
     skip_on_cran()
 
-    files <- readRDS(file.path(get_cache(), "result_files"))
+    files <- query_esgf(build = FALSE)$
+        activity_id("ScenarioMIP")$
+        source_id("AWI-CM-1-1-MR")$
+        frequency("day")$
+        variable_id("tas")$
+        experiment_id("ssp585")$
+        variant_label("r1i1p1f1")$
+        fields(c("source_id", "experiment_id", "frequency"))$
+        limit(2)$
+        collect()$
+        collect(limit = 1)
 
     # $to_dt(): can extract the data into a data.table
     expect_s3_class(files$to_dt(), "data.table")
@@ -163,13 +184,28 @@ test_that("ESGF Query Result File works", {
         all(EsgfQueryResultFile$private_fields$required_fields %in% files$fields)
     )
 
-    unlink(file.path(get_cache(), "result_files"))
+    # $print()
+    expect_snapshot(files$print(), transform = function(out) {
+        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
+        out[grepl("^\\* Total size: ", out)]   <- "* Total size: XX [MiB]"
+        gsub("\\d+\\.\\d+ MiB \\| Access", "XX MiB | Access", out)
+    })
 })
 
 test_that("ESGF Query Result Aggregation works", {
     skip_on_cran()
 
-    aggs <- readRDS(file.path(get_cache(), "result_aggs"))
+    aggs <- query_esgf(build = FALSE)$
+        activity_id("ScenarioMIP")$
+        source_id("AWI-CM-1-1-MR")$
+        frequency("day")$
+        variable_id("tas")$
+        experiment_id("ssp585")$
+        variant_label("r1i1p1f1")$
+        fields(c("source_id", "experiment_id", "frequency"))$
+        limit(2)$
+        collect()$
+        collect(fields = "id", limit = 2, type = "Aggregation")
 
     # $to_dt(): can extract the data into a data.table
     expect_s3_class(aggs$to_dt(), "data.table")
@@ -213,5 +249,9 @@ test_that("ESGF Query Result Aggregation works", {
         all(EsgfQueryResultAggregation$private_fields$required_fields %in% aggs$fields)
     )
 
-    unlink(file.path(get_cache(), "result_aggs"))
+    # $print()
+    expect_snapshot(aggs$print(), transform = function(out) {
+        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
+        out
+    })
 })
