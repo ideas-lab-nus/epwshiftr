@@ -106,6 +106,7 @@ The following fields are always included in the results:
 }
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$collect(
+  which = NULL,
   fields = NULL,
   all = FALSE,
   limit = 100L,
@@ -117,11 +118,15 @@ The following fields are always included in the results:
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{which}}{A character vector giving the value of dataset ID or an
+integer vector giving the indices of the dataset. If \code{NULL},
+all datasets will be sent. Default: \code{NULL}.}
+
 \item{\code{fields}}{A character vector indicating the value of \code{fields}
 parameter when sending the query. If \code{NULL}, all available
 fields will be included. Default: \code{NULL}.}
 
-\item{\code{all}}{A flag. Whether to collect all results. Default: \code{TRUE}.}
+\item{\code{all}}{A flag. Whether to collect all results. Default: \code{FALSE}.}
 
 \item{\code{limit}}{A positive integer indicating the number of records to
 fetch per query. If \code{NULL}, the allowed maximum limit number
