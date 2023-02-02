@@ -451,7 +451,7 @@ cmip6dict_parse_cv_vec <- function(file, subclass = NULL) {
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
-    structure(res, class = c(subclass, "CMIP6CV", typeof(res)))
+    structure(res, class = c(subclass, "Cmip6CV", typeof(res)))
 }
 
 cmip6dict_parse_cv_list <- function(file, subclass = NULL) {
@@ -461,15 +461,15 @@ cmip6dict_parse_cv_list <- function(file, subclass = NULL) {
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
-    structure(res, class = c(subclass, "CMIP6CV", "list"))
+    structure(res, class = c(subclass, "Cmip6CV", "list"))
 }
 
 cmip6dict_parse_cv_drs <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_DRS")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_DRS")
 }
 
 cmip6dict_parse_cv_activity_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_ActivityId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_ActivityId")
 }
 
 cmip6dict_parse_cv_experiment_id <- function(file) {
@@ -506,31 +506,31 @@ cmip6dict_parse_cv_experiment_id <- function(file) {
     ))
     data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
-    structure(d, class = c("CMIP6CV_ExperimentId", "CMIP6CV", class(d)))
+    structure(d, class = c("Cmip6CV_ExperimentId", "Cmip6CV", class(d)))
 }
 
 cmip6dict_parse_cv_frequency <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_Frequency")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_Frequency")
 }
 
 cmip6dict_parse_cv_grid_label <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_GridLabel")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_GridLabel")
 }
 
 cmip6dict_parse_cv_institution_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_InstitutionId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_InstitutionId")
 }
 
 cmip6dict_parse_cv_nominal_resolution <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_Resolution")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_Resolution")
 }
 
 cmip6dict_parse_cv_realm <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_Realm")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_Realm")
 }
 
 cmip6dict_parse_cv_required_global_attributes <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_ReqGlobAttr")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
 }
 
 cmip6dict_parse_cv_source_id <- function(file) {
@@ -561,34 +561,35 @@ cmip6dict_parse_cv_source_id <- function(file) {
     ))
     data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
-    structure(d, class = c("CMIP6CV_SourceId", "CMIP6CV", class(d)))
+    structure(d, class = c("Cmip6CV_SourceId", "Cmip6CV", class(d)))
 }
 
 cmip6dict_parse_cv_source_type <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_SourceType")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_SourceType")
 }
 
 cmip6dict_parse_cv_sub_experiment_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_SubExperimentId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_SubExperimentId")
 }
 
 cmip6dict_parse_cv_table_id <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_TableId")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_TableId")
 }
 
-print_trunc <- function(x, n) {
+print_trunc <- function(x, n, newline_before = is.data.frame(x)) {
     d <- cli::cli_div(theme = list(
         body = list(`padding-left` = 0L, `margin-left` = 0L)
     ))
     if (!is.data.frame(x)) {
         total <- length(x)
         if (n < total) {
+            if (newline_before) cli::cat_line()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     } else {
         total <- nrow(x)
         if (n < total) {
-            cli::cli_text()
+            if (newline_before) cli::cat_line()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     }
@@ -614,7 +615,7 @@ cmip6dict_print_cv_rule <- function(name) {
     d <- cli::cli_div(
         theme = list(rule = list("line-type" = "double"))
     )
-    cli::cli_rule("{.strong CMIP6CV {name}}", right = "{.strong CMIP6 Dictionary}")
+    cli::cli_rule("{.strong Cmip6CV {name}}", right = "{.strong CMIP6 Dictionary}")
     cli::cli_end(d)
 }
 
@@ -710,8 +711,8 @@ cmip6dict_print_cv_table <- function(cv, n = 3L) {
 }
 
 #' @export
-print.CMIP6CV <- function(x, n = NULL, ...) {
-    cls <- sub("CMIP6CV_", "", class(x)[[1L]], fixed = TRUE)
+print.Cmip6CV <- function(x, n = NULL, ...) {
+    cls <- sub("Cmip6CV_", "", class(x)[[1L]], fixed = TRUE)
     if (is.null(n)) {
         n <- if (is.data.frame(x)) 3L else if (is.list(x)) 5L else 10L
     }
@@ -871,7 +872,7 @@ cmip6dict_fetch_dreq <- function(tag = NULL, token = NULL) {
     setcolorder(dreq, c("variable", "table_id", "modeling_realm", "standard_name", "long_name"))
     structure(dreq,
         metadata = rbindlist(metadata, use.names = TRUE),
-        class = c("CMIP6DReq", class(dreq))
+        class = c("Cmip6DReq", class(dreq))
     )
 }
 
@@ -909,7 +910,7 @@ cmip6dict_print_dreq_meta <- function(dreq) {
 }
 
 #' @export
-print.CMIP6DReq <- function(x, n = 3L, ...) {
+print.Cmip6DReq <- function(x, n = 3L, ...) {
     cmip6dict_print_dreq_rule()
     cmip6dict_print_dreq_meta(x)
     cmip6dict_print_cv_table(x, n)
