@@ -25,6 +25,10 @@ value, warnings are issued and the morphing method fallbacks to
 \item \code{epwshiftr.dir}: The directory to store package data, including CMIP6
 model output file index and etc. If not set, the current user data
 directory will be used.
+\item \code{epwshiftr.cache}: If \code{TRUE}, ESGF queries will be cached so that
+duplicated queries will instantly return. It can also be a positive integer
+specifying the maximum number of queries can be cached. \code{TRUE} means
+infinite. Default: \code{TRUE}
 }
 }
 

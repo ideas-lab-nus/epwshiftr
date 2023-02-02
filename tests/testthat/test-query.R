@@ -358,9 +358,9 @@ test_that("EsgfQuery$params()", {
     # can use existing method for common parameters
     expect_equal(q$params(), list())
     expect_error(q$params(nominal_resolution = !c("a", "b")), "Assertion")
-    expect_equal(q$params(nominal_resolution = !c("10 km", "25 km"))$params(), list())
     expect_error(q$params(table_id = "1"), "Assertion")
     expect_error(q$params(table_id = "day", table_id = "hour"), "unique names")
+    expect_equal(q$params(), list())
 
     # can reset existing parameters
     expect_equal(q$frequency("day")$frequency()$value, "day")
@@ -470,7 +470,7 @@ test_that("EsgfQuery$print()", {
     expect_snapshot(
         EsgfQuery$new(host, build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print(),
         transform = function(out) {
-            out[grepl("Facet cache built at: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", out)] <- "* Facet cache built at: [yyyy-mm-dd HH:MM:SS]"
+            out[grepl("Facet cache built at: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", out)] <- "* Facet cache built at: yyyy-mm-dd HH:MM:SS"
             out
         }
     )

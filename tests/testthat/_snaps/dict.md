@@ -3,18 +3,13 @@
     Code
       print(dict$get("drs"))
     Message <cliMessage>
-      == CMIP6CV Data Reference Syntax (DRS) ===================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Data Reference Syntax (DRS) ===================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * DRS Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * DRS Modified: yyyy-mm-dd HH:MM:SS UTC
       * DRS Note: "Add CMIP6 Data Reference Syntax (DRS) templates"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * Directory path example:
         "CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/historical/r1i1p1f3/Amon/tas/gn/v20191207/"
       * Directory path sub experiment example:
@@ -32,18 +27,13 @@
     Code
       print(dict$get("activity_id"))
     Message <cliMessage>
-      == CMIP6CV Activity ID ===================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Activity ID ===================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * ActivityId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * ActivityId Modified: yyyy-mm-dd HH:MM:SS UTC
       * ActivityId Note: "Update activity_id to include CDRMIP and PAMIP"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * AerChemMIP: "Aerosols and Chemistry Model Intercomparison Project"
       * C4MIP: "Coupled Climate Carbon Cycle Model Intercomparison Project"
       * CDRMIP: "Carbon Dioxide Removal Model Intercomparison Project"
@@ -57,18 +47,13 @@
     Code
       print(dict$get("experiment_id"))
     Message <cliMessage>
-      == CMIP6CV Experiment ID =================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Experiment ID =================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * ExperimentId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * ExperimentId Modified: yyyy-mm-dd HH:MM:SS UTC
       * ExperimentId Note: "Revise experiment_id historical parent experiments"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <data.table>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <data.table> ---------------------------------------------------------
       
         -- [Experiment id: "1pctCO2"] --
         * Experiment: "1 percent per year increase in CO2"
@@ -122,18 +107,13 @@
     Code
       print(dict$get("frequency"))
     Message <cliMessage>
-      == CMIP6CV Frequency ======================================= CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Frequency ======================================= CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * Frequency Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * Frequency Modified: yyyy-mm-dd HH:MM:SS UTC
       * Frequency Note: "Update description of 3hr and 6hr frequencies"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * 1hr: "sampled hourly"
       * 1hrCM: "monthly-mean diurnal cycle resolving each day into 1-hour means"
       * 1hrPt: "sampled hourly, at specified time point within an hour"
@@ -146,19 +126,14 @@
     Code
       print(dict$get("grid_label"))
     Message <cliMessage>
-      == CMIP6CV Grid Label ====================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Grid Label ====================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * GridLabel Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * GridLabel Modified: yyyy-mm-dd HH:MM:SS UTC
       * GridLabel Note: "Issue395 durack1 augment grid_label with description
         (#401)"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * gm: "global mean data"
       * gn: "data reported on a model's native grid"
       * gna: "data reported on a native grid in the region of Antarctica"
@@ -171,18 +146,13 @@
     Code
       print(dict$get("institution_id"))
     Message <cliMessage>
-      == CMIP6CV Institution ID ================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Institution ID ================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * InstitutionId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * InstitutionId Modified: yyyy-mm-dd HH:MM:SS UTC
       * InstitutionId Note: "Register institution_id UCSB for E3SM-1-0"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * AER: "Research and Climate Group, Atmospheric and Environmental Research,
         131 Hartwell Avenue, Lexington, MA 02421, USA"
       * AS-RCEC: "Research Center for Environmental Changes, Academia Sinica,
@@ -198,19 +168,14 @@
     Code
       print(dict$get("nominal_resolution"))
     Message <cliMessage>
-      == CMIP6CV Nominal Resolution ============================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Nominal Resolution ============================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * NominalResolution Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * NominalResolution Modified: yyyy-mm-dd HH:MM:SS UTC
       * NominalResolution Note: "Issue141 durack1 update grid_resolution to
         nominal_resolution (#143)"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <character>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <character> ----------------------------------------------------------
       "0.5 km", "1 km", "10 km", "100 km", "1000 km", "10000 km", "1x1 degree", "2.5
       km", ..., "500 km", and "5000 km"
       # ... with 5 more items
@@ -220,18 +185,13 @@
     Code
       print(dict$get("realm"))
     Message <cliMessage>
-      == CMIP6CV Realm =========================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Realm =========================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * Realm Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * Realm Modified: yyyy-mm-dd HH:MM:SS UTC
       * Realm Note: "Issue285 durack1 update realm format (#290)"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * aerosol: "Aerosol"
       * atmos: "Atmosphere"
       * atmosChem: "Atmospheric Chemistry"
@@ -244,19 +204,14 @@
     Code
       print(dict$get("required_global_attributes"))
     Message <cliMessage>
-      == CMIP6CV Required Global Attributes ====================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Required Global Attributes ====================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * ReqGlobAttr Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * ReqGlobAttr Modified: yyyy-mm-dd HH:MM:SS UTC
       * ReqGlobAttr Note: "Reverting addition of external_variables to
         required_global_attributes"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <character>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <character> ----------------------------------------------------------
       "Conventions", "activity_id", "creation_date", "data_specs_version",
       "experiment", "experiment_id", "forcing_index", "frequency", ...,
       "variable_id", and "variant_label"
@@ -267,18 +222,13 @@
     Code
       print(dict$get("source_id"))
     Message <cliMessage>
-      == CMIP6CV Source ID ======================================= CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Source ID ======================================= CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * SourceId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * SourceId Modified: yyyy-mm-dd HH:MM:SS UTC
       * SourceId Note: "Revised E3SM-2-0 source_id license history"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <data.table>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <data.table> ---------------------------------------------------------
       
         -- [Source id: "4AOP-v1-5"] --
         * Release year: 2019
@@ -422,19 +372,14 @@
     Code
       print(dict$get("source_type"))
     Message <cliMessage>
-      == CMIP6CV Source Type ===================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Source Type ===================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * SourceType Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * SourceType Modified: yyyy-mm-dd HH:MM:SS UTC
       * SourceType Note: "Issue396 durack1 augment source_type with description
         (#399)"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * AER: "aerosol treatment in an atmospheric model where concentrations are
         calculated based on emissions, transformation, and removal processes (rather
         than being prescribed or omitted entirely)"
@@ -455,18 +400,13 @@
     Code
       print(dict$get("sub_experiment_id"))
     Message <cliMessage>
-      == CMIP6CV Sub Experiment ID =============================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Sub Experiment ID =============================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * SubExperimentId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * SubExperimentId Modified: yyyy-mm-dd HH:MM:SS UTC
       * SubExperimentId Note: "Revise sub_experiment_id values"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <list>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <list> ---------------------------------------------------------------
       * none: "none"
       * s1910: "initialized near end of year 1910"
       * s1920: "initialized near end of year 1920"
@@ -479,19 +419,14 @@
     Code
       print(dict$get("table_id"))
     Message <cliMessage>
-      == CMIP6CV Table ID ======================================== CMIP6 Dictionary ==
-      
-      -- <VERSION METADATA> ----------------------------------------------------------
+      == Cmip6CV Table ID ======================================== CMIP6 Dictionary ==
       * CV Version: `6.2.58.49`
-      * CV Modified: [yyyy-mm-dd HH:MM:SS UTC]
-      * TableId Modified: [yyyy-mm-dd HH:MM:SS UTC]
+      * CV Modified: yyyy-mm-dd HH:MM:SS UTC
+      * TableId Modified: yyyy-mm-dd HH:MM:SS UTC
       * TableId Note: "Issue199 durack1 update table_id to Data Request v1.0
         (#200)"
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <character>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <character> ----------------------------------------------------------
       "3hr", "6hrLev", "6hrPlev", "6hrPlevPt", "AERday", "AERhr", "AERmon",
       "AERmonZ", ..., "day", and "fx"
       # ... with 33 more items
@@ -503,7 +438,7 @@
     Message <cliMessage>
       == CMIP6 Data Request ====================================== CMIP6 Dictionary ==
       
-      -- <HEADER METADATA> -----------------------------------------------------------
+      -- <Header Metadata> -----------------------------------------------------------
       * DReq Version: `1.0.33`
       * CMOR Version: `3.5`
       * MIP Era: `CMIP6`
@@ -513,10 +448,7 @@
       * Conventions: `CF-1.7 CMIP-6.2`
       * `2062` Variables from `43` Tables and `9` Realms
       
-      -- <STORED TYPE> ---------------------------------------------------------------
-      * Stored type: <data.table>
-      
-      -- <VALUES> --------------------------------------------------------------------
+      -- Values <data.table> ---------------------------------------------------------
       
         -- [Variable: "clt"] --
         * Table id: "3hr"

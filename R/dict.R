@@ -497,7 +497,7 @@ cmip6dict_parse_cv_experiment_id <- function(file) {
     }
 
     setcolorder(d, c(
-         "experiment_id", "experiment", "description", "tier",
+        "experiment_id", "experiment", "description", "tier",
         "start_year", "end_year", "min_number_yrs_per_sim",
         "required_model_components",
         "parent_experiment_id", "sub_experiment_id",
@@ -577,19 +577,17 @@ cmip6dict_parse_cv_table_id <- function(file) {
 }
 
 print_trunc <- function(x, n, newline_before = is.data.frame(x)) {
-    d <- cli::cli_div(theme = list(
-        body = list(`padding-left` = 0L, `margin-left` = 0L)
-    ))
+    d <- cli::cli_div(theme = list(body = list(`padding-left` = 0L, `margin-left` = 0L)))
     if (!is.data.frame(x)) {
         total <- length(x)
         if (n < total) {
-            if (newline_before) cli::cat_line()
+            if (newline_before) cli::cli_text()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     } else {
         total <- nrow(x)
         if (n < total) {
-            if (newline_before) cli::cat_line()
+            if (newline_before) cli::cli_text()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     }
@@ -622,8 +620,6 @@ cmip6dict_print_cv_rule <- function(name) {
 cmip6dict_print_cv_version <- function(cv, name = "") {
     ver <- attr(cv, "version", TRUE)
 
-    cli::cli_h1("<VERSION METADATA>")
-
     d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
     ul <- cli::cli_ul()
     cli::cli_li("{.strong CV Version}: {.var {ver$CV_collection_version}}")
@@ -637,10 +633,7 @@ cmip6dict_print_cv_version <- function(cv, name = "") {
 }
 
 cmip6dict_print_cv_vec <- function(cv, n = 5L) {
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("{.strong Stored type}: {.cls {typeof(cv)}}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls {typeof(cv)}}")
 
     n <- min(n, length(cv))
 
@@ -653,10 +646,7 @@ cmip6dict_print_cv_vec <- function(cv, n = 5L) {
 }
 
 cmip6dict_print_cv_list <- function(cv, n = 5L, to_title = FALSE) {
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("{.strong Stored type}: {.cls list}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls list}")
 
     n <- min(n, length(cv))
     nms <- names(cv)
@@ -683,10 +673,7 @@ cmip6dict_print_cv_table <- function(cv, n = 3L) {
     n <- min(n, nrow(cv))
     cols <- names(cv)
 
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("Stored type: {.cls data.table}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls data.table}")
     for (i in seq.int(n)) {
         dt <- cv[i]
         d <- cli::cli_div(theme = list(
@@ -887,7 +874,7 @@ cmip6dict_print_dreq_rule <- function() {
 cmip6dict_print_dreq_meta <- function(dreq) {
     meta <- attr(dreq, "metadata", TRUE)
 
-    cli::cli_h1("<HEADER METADATA>")
+    cli::cli_h1("<Header Metadata>")
 
     d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
     ul <- cli::cli_ul()
