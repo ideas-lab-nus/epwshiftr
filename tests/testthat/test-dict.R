@@ -86,7 +86,7 @@ test_that("Cmip6Dict$get()", {
     skip_on_cran()
 
     trans <- function(out) {
-        gsub("^\\* (.+) Modified:.+$", "* \\1 Modified: [yyyy-mm-dd HH:MM:SS UTC]", out)
+        gsub("^\\* (.+) Modified:.+$", "* \\1 Modified: yyyy-mm-dd HH:MM:SS UTC", out)
     }
 
     dict <- cmip6_dict()

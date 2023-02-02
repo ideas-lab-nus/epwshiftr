@@ -71,16 +71,17 @@
       * Host: a
       * Facet cache built at: <NONE>
         NOTE: You may run `$build_cache()` to create the cache.
+      * Last query sent at: <NONE>
       
-      -- <QUERY PARAMETER> -----------------------------------------------------------
-      * format = application/solr+json
-      * limit = 10
-      * distrib = true
-      * offset = 0
-      * type = Dataset
-      * latest = true
-      * fields = *
+      -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6
+      * fields = *
+      * latest = true
+      * type = Dataset
+      * offset = 0
+      * distrib = true
+      * limit = 10
+      * format = application/solr+json
       * table_id = Amon
       * member_id = r1i1p1f1
 
@@ -92,17 +93,18 @@
     Message <cliMessage>
       == ESGF Query ==================================================================
       * Host: https://esgf.ceda.ac.uk/esg-search
-      * Facet cache built at: [yyyy-mm-dd HH:MM:SS]
+      * Facet cache built at: yyyy-mm-dd HH:MM:SS
+      * Last query sent at: <NONE>
       
-      -- <QUERY PARAMETER> -----------------------------------------------------------
-      * format = application/solr+json
-      * limit = 10
-      * distrib = true
-      * offset = 0
-      * type = Dataset
-      * latest = true
-      * fields = *
+      -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6
+      * fields = *
+      * latest = true
+      * type = Dataset
+      * offset = 0
+      * distrib = true
+      * limit = 10
+      * format = application/solr+json
       * table_id = Amon
       * member_id = r1i1p1f1
 
