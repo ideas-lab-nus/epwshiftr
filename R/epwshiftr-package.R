@@ -19,6 +19,11 @@
 #' * `epwshiftr.dir`: The directory to store package data, including CMIP6
 #'   model output file index and etc. If not set, the current user data
 #'   directory will be used.
+#' * `epwshiftr.cache`: If `TRUE`, ESGF queries will be cached so that
+#'   duplicated queries will instantly return. It can also be a positive integer
+#'   specifying the maximum number of queries can be cached. `TRUE` means
+#'   infinite. Default: `TRUE`
+#'
 #'
 #' @include utils.R
 #' @author Hongyuan Jia
@@ -47,7 +52,7 @@
 this <- new.env(parent = emptyenv())
 this$index_db <- NULL
 this$dict <- NULL
-this$cache <- list()
+this$cache <- list(facet = list(), query = list())
 this$data_max_limit <- 10000L
 
 # nocov start

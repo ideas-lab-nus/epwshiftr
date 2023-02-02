@@ -3,27 +3,39 @@ NULL
 
 # TODO: update doc about query type
 # TODO: automatically add fields that are specified via methods
-read_json_response <- function(url, strict = TRUE, ...) {
+read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
+    checkmate::assert(checkmate::check_flag(cache), checkmate::check_count(cache, positive = TRUE))
+    if (cache && url %in% names(this$cache$query)) return(this$cache$query[[url]])
+
     timestamp <- now()
-    q <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
 
     # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
+    if (inherits(res, "warning") || inherits(res, "error")) {
         cond_fun <- if (strict) stop else warning
         cond_fun(
             "No matched data. Please check network connection and the availability of ESGF index/data node. Details: \n",
-            conditionMessage(q)
+            conditionMessage(res)
         )
-        q <- NULL
+        res <- NULL
     # nocov end
-    } else if (q$response$numFound == 0L) {
+    } else if (res$response$numFound == 0L) {
         vb(cli::cli_alert_warning(
             "No matched data. Please examine your query and the actual response."
         ))
     }
 
-    q$timestamp <- timestamp
-    q
+    res$timestamp <- timestamp
+
+    # cache results
+    if (cache) {
+        if (is.numeric(cache) && !url %in% names(this$cache$query) && length(this$cache$query) >= cache) {
+            this$cache$query <- this$cache$query[seq_len(length(this$cache$query))]
+        }
+        this$cache$query[[url]] <- res
+    }
+
+    res
 }
 
 new_query_param <- function(name, value) {
@@ -1380,11 +1392,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         last_response = NULL,
 
         has_facet_cache = function() {
-            !is.null(private$url_host) && !is.null(this$cache[[private$url_host]])
+            !is.null(private$url_host) && !is.null(this$cache$facet[[private$url_host]])
         },
 
         facet_cache = function() {
-            this$cache[[private$url_host]]
+            this$cache$facet[[private$url_host]]
         },
 
         facet_cache_count = function(facet) {
@@ -1551,7 +1563,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     # add timestamp
     res$timestamp <- now()
 
-    this$cache[[host]] <- res
+    this$cache$facet[[host]] <- res
 }
 
 query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {

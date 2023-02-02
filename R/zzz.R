@@ -4,7 +4,8 @@
     # set package options
     .opts  <-  c(
         "epwshiftr.verbose" = "FALSE",
-        "epwshiftr.threshold_alpha" = "3"
+        "epwshiftr.threshold_alpha" = "3",
+        "epwshiftr.cache" = "TRUE"
     )
     for (name in setdiff(names(.opts), names(options()))) {
         eval(parse(text = sprintf("options(%s = %s)", name, .opts[name])))
