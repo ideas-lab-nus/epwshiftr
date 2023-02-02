@@ -469,7 +469,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
 
             # create a new query to validate params
-            query <- query_esgf(private$url_host)
+            query <- query_esgf(private$url_host, build = private$url_host %in% names(this$cache$facet))
 
             params <- list(
                 dataset_id = if (is.null(index)) self$id else self$id[index],
