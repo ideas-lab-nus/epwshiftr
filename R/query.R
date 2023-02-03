@@ -215,9 +215,8 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' `EsgfQuery` object also provide several other helper functions:
 #'
 #' - \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}:
-#'   By default, `EsgfQuery$build_cache()` is called when initialize a new
-#'   `EsgfQuery` object. So in general, there is no need to call this
-#'   separately. Basically, `EsgfQuery$build_cahce()` sends a
+#'   By default, `EsgfQuery$build_cache()` is not called when initialize a new
+#'   `EsgfQuery` object. Basically, `EsgfQuery$build_cahce()` sends a
 #'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
 #'   to the index node and stores the response internally. The response contains
 #'   all available facets and shards and is used as a source for validating user
@@ -247,10 +246,10 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
 #'        which is `"https://esgf-node.llnl.gov/esg-search"`.
 #'
-#' @param build Whether to send the facet listing query. Default: `TRUE`.
+#' @param build Whether to send the facet listing query. Default: `FALSE`.
 #'
 #' @export
-query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE) {
+query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE) {
     EsgfQuery$new(host = host, build = build)
 }
 
@@ -262,13 +261,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Create a new EsgfQuery object
         #'
-        #' When initialization, by default, a
-        #' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-        #' is sent to the index node to get all available facets and shards.
-        #' This information will be used to validate inputs for `activity_id`,
-        #' `scource_id` facets and etc. You can disable sending this query by
-        #' setting `build` to `FALSE`.
-        #'
         #' @param host The URL to the ESGF Search API service. This should be
         #'        the URL of the ESGF search service excluding the final
         #'        endpoint name. Usually this is `http://<hostname>/esg-search`.
@@ -276,7 +268,14 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        Laboratory)](http://esgf-node.llnl.gov) Index Node, which is
         #'        `"https://esgf-node.llnl.gov/esg-search"`.
         #'
-        #' @param build Whether to send the facet listing query. Default: `TRUE`.
+        #' @param build Whether to send the facet listing query.
+        #'        A [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
+        #'        can be sent to the index node to get all available facets and
+        #'        shards. When available, this information will be automatically
+        #'        used to validate inputs for `activity_id`, `scource_id` facets
+        #'        and etc. NOTE: Not all index nodes support facet listing
+        #'        query. You may encounter error if your input host does not
+        #'        support it. Default: `FALSE`.
         #'
         #' @return An `EsgfQuery` object.
         #'
@@ -285,7 +284,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
         #' q
         #' }
-        initialize = function(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE) {
+        initialize = function(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE) {
             checkmate::assert_string(host)
             checkmate::assert_flag(build)
 
@@ -324,12 +323,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
         #' to the index node. It contains all available facets and shards that
         #' can be used as parameter values within a specific project.
-        #'
-        #' By default, `$build_cache()` is called when initialize a new
-        #' `EsgfQuery` object for the default project (CMIP6). So in general,
-        #' there is no need to call this method, unless that you want to
-        #' rebuild the cache again with different projects after calling
-        #' \href{#method-EsgfQuery-project}{\code{$project()}}.
         #'
         #' @return The modified `EsgfQuery` object.
         #'

@@ -5,7 +5,7 @@
 \alias{query_esgf}
 \title{Query CMIP6 data using ESGF search RESTful API}
 \usage{
-query_esgf(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE)
+query_esgf(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE)
 }
 \arguments{
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
@@ -14,7 +14,7 @@ this is \verb{http://<hostname>/esg-search}. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
 which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
 
-\item{build}{Whether to send the facet listing query. Default: \code{TRUE}.}
+\item{build}{Whether to send the facet listing query. Default: \code{FALSE}.}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -143,9 +143,8 @@ query results and format it into an \link{EsgfQueryResultDataset} object.
 \code{EsgfQuery} object also provide several other helper functions:
 \itemize{
 \item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}:
-By default, \code{EsgfQuery$build_cache()} is called when initialize a new
-\code{EsgfQuery} object. So in general, there is no need to call this
-separately. Basically, \code{EsgfQuery$build_cahce()} sends a
+By default, \code{EsgfQuery$build_cache()} is not called when initialize a new
+\code{EsgfQuery} object. Basically, \code{EsgfQuery$build_cahce()} sends a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 to the index node and stores the response internally. The response contains
 all available facets and shards and is used as a source for validating user
@@ -635,6 +634,8 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}}
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}
 \item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}
+\item \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}
+\item \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}
 \item \href{#method-EsgfQuery-clone}{\code{EsgfQuery$clone()}}
 }
@@ -644,15 +645,8 @@ Hongyuan Jia
 \if{latex}{\out{\hypertarget{method-EsgfQuery-new}{}}}
 \subsection{Method \code{new()}}{
 Create a new EsgfQuery object
-
-When initialization, by default, a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-is sent to the index node to get all available facets and shards.
-This information will be used to validate inputs for \code{activity_id},
-\code{scource_id} facets and etc. You can disable sending this query by
-setting \code{build} to \code{FALSE}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", build = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -664,7 +658,14 @@ endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
 Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
 \code{"https://esgf-node.llnl.gov/esg-search"}.}
 
-\item{\code{build}}{Whether to send the facet listing query. Default: \code{TRUE}.}
+\item{\code{build}}{Whether to send the facet listing query.
+A \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
+can be sent to the index node to get all available facets and
+shards. When available, this information will be automatically
+used to validate inputs for \code{activity_id}, \code{scource_id} facets
+and etc. NOTE: Not all index nodes support facet listing
+query. You may encounter error if your input host does not
+support it. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -693,12 +694,6 @@ A facet cache is data that is fetched using a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 to the index node. It contains all available facets and shards that
 can be used as parameter values within a specific project.
-
-By default, \verb{$build_cache()} is called when initialize a new
-\code{EsgfQuery} object for the default project (CMIP6). So in general,
-there is no need to call this method, unless that you want to
-rebuild the cache again with different projects after calling
-\href{#method-EsgfQuery-project}{\code{$project()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache()}\if{html}{\out{</div>}}
 }
@@ -1854,6 +1849,24 @@ q$response()
 }
 \if{html}{\out{</div>}}
 
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-save"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-save}{}}}
+\subsection{Method \code{save()}}{
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$save(file = "query.json")}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-load"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-load}{}}}
+\subsection{Method \code{load()}}{
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$load(file = "query.json")}\if{html}{\out{</div>}}
 }
 
 }

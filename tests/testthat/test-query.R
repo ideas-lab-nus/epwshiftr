@@ -51,8 +51,8 @@ test_that("query_esgf()", {
 
     # NOTE: attached facet cache is used throughout tests
     attach_facet_cache()
-    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- EsgfQuery$new(host, TRUE), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 })
 
 test_that("EsgfQuery$list_all_facets()", {
@@ -60,7 +60,7 @@ test_that("EsgfQuery$list_all_facets()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_facets(), "character")
 })
 
@@ -69,7 +69,7 @@ test_that("EsgfQuery$list_all_fields()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_fields(), "character")
 })
 
@@ -78,7 +78,7 @@ test_that("EsgfQuery$list_all_shards()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_shards(), "character")
 })
 
@@ -87,7 +87,7 @@ test_that("EsgfQuery$list_all_values()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_values("activity_id"), "character")
 })
 
@@ -146,7 +146,7 @@ test_that("EsgfQuery$project() and other facet methods", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     # project
     expect_equal(q$project()$value, "CMIP6")
@@ -206,7 +206,7 @@ test_that("EsgfQuery$facets()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_null(q$facets())
     expect_equal(q$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
@@ -221,7 +221,7 @@ test_that("EsgfQuery$fields()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_equal(q$fields()$value, "*")
     expect_equal(q$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
@@ -245,7 +245,7 @@ test_that("EsgfQuery$shards()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_null(q$shards())
     expect_false(q$distrib(FALSE)$distrib()$value)
@@ -267,7 +267,7 @@ test_that("EsgfQuery$replica()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_null(q$replica())
     expect_equal(q$replica(TRUE)$replica()$value, TRUE)
@@ -282,7 +282,7 @@ test_that("EsgfQuery$latest()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_true(q$latest()$value)
     expect_false(q$latest(FALSE)$latest()$value)
@@ -297,7 +297,7 @@ test_that("EsgfQuery$limit()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_equal(q$limit()$value, 10L)
     expect_warning(lim <- q$limit(12000)$limit(), "10,000")
@@ -311,7 +311,7 @@ test_that("EsgfQuery$offset()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_equal(q$offset()$value, 0L)
     expect_equal(q$offset(0)$offset()$value, 0L)
@@ -353,7 +353,7 @@ test_that("EsgfQuery$params()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     # can use existing method for common parameters
     expect_equal(q$params(), list())
@@ -396,7 +396,7 @@ test_that("EsgfQuery$url()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_type(q$nominal_resolution("100 km")$url(), "character")
     expect_type(q$nominal_resolution("100 km")$url(TRUE), "character")
@@ -411,7 +411,7 @@ test_that("EsgfQuery$count()", {
 
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 
     expect_type(EsgfQuery$new(host)$frequency("1hr")$count(FALSE), "integer")
     expect_type(EsgfQuery$new(host)$frequency("1hr")$count(TRUE), "integer")
@@ -422,7 +422,7 @@ test_that("EsgfQuery$count()", {
 test_that("EsgfQuery$collect()", {
     skip_on_cran()
 
-    expect_s3_class(q <- query_esgf(host)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host, TRUE)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgfQuery")
 
     # can collect the specified limit number of records
     expect_s3_class(
