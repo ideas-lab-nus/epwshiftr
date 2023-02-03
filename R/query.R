@@ -1644,7 +1644,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
         }
     }
 
-    list(timestamp = timestamp, response = response, docs = docs)
+    list(response = response, docs = docs)
 }
 
 print_query_params <- function(params) {
