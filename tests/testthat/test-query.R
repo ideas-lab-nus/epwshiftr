@@ -44,28 +44,29 @@ test_that("ESGF Query Parameter works", {
 })
 
 test_that("query_esgf()", {
-    expect_s3_class(EsgfQuery$new(build = FALSE), "EsgfQuery")
-    expect_s3_class(query_esgf(build = FALSE), "EsgfQuery")
+    expect_s3_class(EsgfQuery$new(listing = FALSE), "EsgfQuery")
+    expect_s3_class(query_esgf(listing = FALSE), "EsgfQuery")
 
     skip_on_cran()
 
-    # NOTE: attached facet cache is used throughout tests
+    # NOTE: attached facet listing cache is used throughout tests
     attach_facet_cache()
     expect_s3_class(q <- EsgfQuery$new(host, TRUE), "EsgfQuery")
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 })
 
 test_that("EsgfQuery$list_all_facets()", {
-    expect_null(query_esgf(build = FALSE)$list_all_facets())
+    expect_null(query_esgf(listing = FALSE)$list_all_facets())
 
     skip_on_cran()
 
+    options("epwshiftr.verbose" = TRUE)
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_facets(), "character")
 })
 
 test_that("EsgfQuery$list_all_fields()", {
-    expect_null(query_esgf(build = FALSE)$list_all_fields())
+    expect_null(query_esgf(listing = FALSE)$list_all_fields())
 
     skip_on_cran()
 
@@ -74,7 +75,7 @@ test_that("EsgfQuery$list_all_fields()", {
 })
 
 test_that("EsgfQuery$list_all_shards()", {
-    expect_null(query_esgf(build = FALSE)$list_all_shards())
+    expect_null(query_esgf(listing = FALSE)$list_all_shards())
 
     skip_on_cran()
 
@@ -83,7 +84,7 @@ test_that("EsgfQuery$list_all_shards()", {
 })
 
 test_that("EsgfQuery$list_all_values()", {
-    expect_null(query_esgf(build = FALSE)$list_all_values())
+    expect_null(query_esgf(listing = FALSE)$list_all_values("activity_id"))
 
     skip_on_cran()
 
@@ -92,7 +93,7 @@ test_that("EsgfQuery$list_all_values()", {
 })
 
 test_that("EsgfQuery$project() and other facet methods", {
-    q <- query_esgf(build = FALSE)
+    q <- query_esgf(listing = FALSE)
 
     # project
     expect_equal(q$project()$value, "CMIP6")
@@ -200,9 +201,9 @@ test_that("EsgfQuery$project() and other facet methods", {
 })
 
 test_that("EsgfQuery$facets()", {
-    expect_null(query_esgf(build = FALSE)$facets())
-    expect_equal(query_esgf(build = FALSE)$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
-    expect_null(query_esgf(build = FALSE)$facets(NULL)$facets())
+    expect_null(query_esgf(listing = FALSE)$facets())
+    expect_equal(query_esgf(listing = FALSE)$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
+    expect_null(query_esgf(listing = FALSE)$facets(NULL)$facets())
 
     skip_on_cran()
 
@@ -214,10 +215,10 @@ test_that("EsgfQuery$facets()", {
 })
 
 test_that("EsgfQuery$fields()", {
-    expect_equal(query_esgf(build = FALSE)$fields()$value, "*")
-    expect_equal(query_esgf(build = FALSE)$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
-    expect_equal(query_esgf(build = FALSE)$fields("*")$fields()$value, "*")
-    expect_null(query_esgf(build = FALSE)$fields(NULL)$fields())
+    expect_equal(query_esgf(listing = FALSE)$fields()$value, "*")
+    expect_equal(query_esgf(listing = FALSE)$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
+    expect_equal(query_esgf(listing = FALSE)$fields("*")$fields()$value, "*")
+    expect_null(query_esgf(listing = FALSE)$fields(NULL)$fields())
 
     skip_on_cran()
 
@@ -230,7 +231,7 @@ test_that("EsgfQuery$fields()", {
 })
 
 test_that("EsgfQuery$shards()", {
-    expect_s3_class(q <- query_esgf(build = FALSE), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(listing = FALSE), "EsgfQuery")
 
     expect_null(q$shards())
     expect_false(q$distrib(FALSE)$distrib()$value)
@@ -260,10 +261,10 @@ test_that("EsgfQuery$shards()", {
 })
 
 test_that("EsgfQuery$replica()", {
-    expect_null(query_esgf(build = FALSE)$replica())
-    expect_equal(query_esgf(build = FALSE)$replica(TRUE)$replica()$value, TRUE)
-    expect_equal(query_esgf(build = FALSE)$replica(FALSE)$replica()$value, FALSE)
-    expect_null(query_esgf(build = FALSE)$replica(NULL)$replica())
+    expect_null(query_esgf(listing = FALSE)$replica())
+    expect_equal(query_esgf(listing = FALSE)$replica(TRUE)$replica()$value, TRUE)
+    expect_equal(query_esgf(listing = FALSE)$replica(FALSE)$replica()$value, FALSE)
+    expect_null(query_esgf(listing = FALSE)$replica(NULL)$replica())
 
     skip_on_cran()
 
@@ -276,9 +277,9 @@ test_that("EsgfQuery$replica()", {
 })
 
 test_that("EsgfQuery$latest()", {
-    expect_true(query_esgf(build = FALSE)$latest()$value)
-    expect_false(query_esgf(build = FALSE)$latest(FALSE)$latest()$value)
-    expect_true(query_esgf(build = FALSE)$latest(TRUE)$latest()$value)
+    expect_true(query_esgf(listing = FALSE)$latest()$value)
+    expect_false(query_esgf(listing = FALSE)$latest(FALSE)$latest()$value)
+    expect_true(query_esgf(listing = FALSE)$latest(TRUE)$latest()$value)
 
     skip_on_cran()
 
@@ -290,10 +291,10 @@ test_that("EsgfQuery$latest()", {
 })
 
 test_that("EsgfQuery$limit()", {
-    expect_equal(query_esgf(build = FALSE)$limit()$value, 10L)
-    expect_warning(lim <- query_esgf(build = FALSE)$limit(12000)$limit(), "10,000")
+    expect_equal(query_esgf(listing = FALSE)$limit()$value, 10L)
+    expect_warning(lim <- query_esgf(listing = FALSE)$limit(12000)$limit(), "10,000")
     expect_equal(lim$value, 10000L)
-    expect_equal(query_esgf(build = FALSE)$limit(10L)$limit()$value, 10L)
+    expect_equal(query_esgf(listing = FALSE)$limit(10L)$limit()$value, 10L)
 
     skip_on_cran()
 
@@ -306,8 +307,8 @@ test_that("EsgfQuery$limit()", {
 })
 
 test_that("EsgfQuery$offset()", {
-    expect_equal(query_esgf(build = FALSE)$offset()$value, 0L)
-    expect_equal(query_esgf(build = FALSE)$offset(0)$offset()$value, 0L)
+    expect_equal(query_esgf(listing = FALSE)$offset()$value, 0L)
+    expect_equal(query_esgf(listing = FALSE)$offset(0)$offset()$value, 0L)
 
     skip_on_cran()
 
@@ -318,7 +319,7 @@ test_that("EsgfQuery$offset()", {
 })
 
 test_that("EsgfQuery$params()", {
-    expect_s3_class(q <- query_esgf(build = FALSE), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(listing = FALSE), "EsgfQuery")
 
     # can use existing method for common parameters
     expect_equal(q$params(), list())
@@ -390,9 +391,9 @@ test_that("EsgfQuery$params()", {
 })
 
 test_that("EsgfQuery$url()", {
-    expect_type(EsgfQuery$new(build = FALSE)$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgfQuery$new(build = FALSE)$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgfQuery$new(build = FALSE)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+    expect_type(EsgfQuery$new(listing = FALSE)$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgfQuery$new(listing = FALSE)$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(EsgfQuery$new(listing = FALSE)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 
     skip_on_cran()
 
@@ -464,13 +465,13 @@ test_that("EsgfQuery$print()", {
     skip_on_cran()
 
     expect_snapshot(
-        EsgfQuery$new("a", build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+        EsgfQuery$new("a", listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
     )
 
     expect_snapshot(
-        EsgfQuery$new(host, build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print(),
+        EsgfQuery$new(host, listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$print(),
         transform = function(out) {
-            out[grepl("Facet cache built at: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", out)] <- "* Facet cache built at: yyyy-mm-dd HH:MM:SS"
+            out[grepl("Facet listing built at: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}", out)] <- "* Facet listing built at: yyyy-mm-dd HH:MM:SS"
             out
         }
     )

@@ -214,9 +214,9 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' `EsgfQuery` object also provide several other helper functions:
 #'
-#' - \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}:
-#'   By default, `EsgfQuery$build_cache()` is not called when initialize a new
-#'   `EsgfQuery` object. Basically, `EsgfQuery$build_cahce()` sends a
+#' - \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}:
+#'   By default, `EsgfQuery$build_listing()` is not called when initialize a new
+#'   `EsgfQuery` object. Basically, `EsgfQuery$build_listing()` sends a
 #'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
 #'   to the index node and stores the response internally. The response contains
 #'   all available facets and shards and is used as a source for validating user
@@ -234,7 +234,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' - \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
 #'   of the current `EsgfQuery` object including the host URL, the built time of
-#'   facet cache and all query parameters.
+#'   facet listing and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
@@ -246,11 +246,12 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
 #'        which is `"https://esgf-node.llnl.gov/esg-search"`.
 #'
-#' @param build Whether to send the facet listing query. Default: `FALSE`.
+#' @param listing Whether to send the facet listing query used to validate
+#'        inputs. Default: `FALSE`.
 #'
 #' @export
-query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE) {
-    EsgfQuery$new(host = host, build = build)
+query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE) {
+    EsgfQuery$new(host = host, listing = listing)
 }
 
 #' @name EsgfQuery
@@ -268,7 +269,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        Laboratory)](http://esgf-node.llnl.gov) Index Node, which is
         #'        `"https://esgf-node.llnl.gov/esg-search"`.
         #'
-        #' @param build Whether to send the facet listing query.
+        #' @param listing Whether to send the facet listing query.
         #'        A [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
         #'        can be sent to the index node to get all available facets and
         #'        shards. When available, this information will be automatically
@@ -284,9 +285,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
         #' q
         #' }
-        initialize = function(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE) {
+        initialize = function(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE) {
             checkmate::assert_string(host)
-            checkmate::assert_flag(build)
+            checkmate::assert_flag(listing)
 
             # in case of a encoded URL
             private$url_host <- utils::URLdecode(host)
@@ -294,14 +295,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 private$url_host <- substring(private$url_host, 1L, nchar(private$url_host) - 1L)
             }
 
-            if (private$has_facet_cache()) {
-                vb(cli::cli_alert_success(paste(
-                    "Loaded facet query cache for host {.var {private$url_host}}",
-                    "built at {.var {private$facet_cache()$timestamp}}."
-                )))
-            } else if (build) {
-                self$build_cache()
-            }
+            if (listing) self$build_listing()
 
             # init parameter values
             params <- setdiff(names(private$parameters), "others")
@@ -317,71 +311,92 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
 
         #' @description
-        #' Build facet cache used for input validation
+        #' Build facet listing used for input validation
         #'
-        #' A facet cache is data that is fetched using a
+        #' Facet listing is data that is fetched using a
         #' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
         #' to the index node. It contains all available facets and shards that
         #' can be used as parameter values within a specific project.
+        #'
+        #' @param force By default, every facet listing query is cached and
+        #'        reused when possible. If `TRUE`, the previous cache is
+        #'        abandoned and a new query is re-sent and cached. Default:
+        #'        `FALSE`.
         #'
         #' @return The modified `EsgfQuery` object.
         #'
         #' @examples
         #' \dontrun{
-        #' q$build_cache()
+        #' q$build_listing()
         #' }
-        build_cache = function() {
+        build_listing = function(force = FALSE) {
+            checkmate::assert_flag(force)
+
+            if (!force && !is.null(this$cache$facet[[private$url_host]])) {
+                vb(cli::cli_progress_step(paste(
+                    "Loaded facet listing cache for host {.var {private$url_host}}",
+                    "built at {private$facet_listing$timestamp}."
+                )))
+
+                private$facet_listing <- this$cache$facet[[private$url_host]]
+                return(self)
+            }
+
             vb(cli::cli_progress_step(
-                "Building facet cache for host {.var {private$url_host}}...",
-                "Built facet query cache for host {.var {private$url_host}} built at {private$facet_cache()$timestamp}."
+                "Building facet listing for host {.var {private$url_host}}...",
+                paste(
+                    "Built facet listing for host {.var {private$url_host}}",
+                    "built at {private$facet_listing$timestamp}."
+                )
             ))
-            query_build_facet_cache(private$url_host, private$parameters$project)
+
+            query_build_facet_listing(private$url_host, private$parameters$project)
             self
         },
 
         #' @description
         #' List all available facet names
         #'
-        #' @return A character vector or `NULL` if no facet cache is found.
+        #' @return A character vector or `NULL` if no facet listing is found.
         #'
         #' @examples
         #' \dontrun{
         #' q$list_all_facets()
         #' }
         list_all_facets = function() {
-            if (!private$has_facet_cache()) return(NULL)
+            if (!private$has_facet_listing()) return(NULL)
 
-            unlst(private$facet_cache()$responseHeader$params$facet.field)
+            unlst(private$facet_listing$responseHeader$params$facet.field)
         },
 
         #' @description
         #' List all available field names
         #'
-        #' @return A character vector or `NULL` if no facet cache is found.
+        #' @return A character vector or `NULL` if no facet listing is found.
         #'
         #' @examples
         #' \dontrun{
         #' q$list_all_fields()
         #' }
         list_all_fields = function() {
-            if (!private$has_facet_cache()) return(NULL)
+            if (!private$has_facet_listing()) return(NULL)
 
-            unlst(private$facet_cache()$responseHeader$params$fields)
+            unlst(private$facet_listing$responseHeader$params$fields)
         },
 
         #' @description
         #' List all available shards
         #'
-        #' @return A character vector or `NULL` if no facet cache is found.
+        #' @return A character vector or `NULL` if no facet listing is found.
         #'
         #' @examples
         #' \dontrun{
         #' q$list_all_shards()
         #' }
         list_all_shards = function() {
-            if (!private$has_facet_cache()) return(NULL)
+            if (!private$has_facet_listing()) return(NULL)
 
-            shards <- private$facet_cache()$responseHeader$params$shards
+            shards <- private$facet_listing$responseHeader$params$shards
             # nocov start
             if (!length(shards)) return(NULL)
             # nocov end
@@ -416,17 +431,17 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @param facet A single string giving the facet name.
         #'
-        #' @return A named character vector or `NULL` if no facet cache is found.
+        #' @return A named character vector or `NULL` if no facet listing is found.
         #'
         #' @examples
         #' \dontrun{
         #' q$list_all_values()
         #' }
         list_all_values = function(facet) {
-            if (!private$has_facet_cache()) return(NULL)
+            if (!private$has_facet_listing()) return(NULL)
 
             checkmate::assert_choice(facet, self$list_all_facets())
-            names(private$facet_cache_count(facet))
+            names(private$facet_listing_count(facet))
         },
 
         #' @description
@@ -1098,7 +1113,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                         if (names_oth[[i]] %in% all_facets) {
                             checkmate::assert_subset(
                                 params_oth[[i]]$value,
-                                names(private$facet_cache_count(names_oth[[i]])),
+                                names(private$facet_listing_count(names_oth[[i]])),
                                 .var.name = names_oth[[i]]
                             )
                         }
@@ -1319,7 +1334,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Print a summary of the current `EsgfQuery` object
         #'
         #' `$print()` gives the summary of current `EsgfQuery` object including
-        #' the host URL, the built time of facet cache and all query parameters.
+        #' the host URL, the built time of facet listing and all query parameters.
         #'
         #' @return The `EsgfQuery` object itself, invisibly.
         #'
@@ -1333,11 +1348,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             )
             cli::cli_rule("ESGF Query")
             cli::cli_li("Host: {private$url_host}")
-            if (!private$has_facet_cache()) {
-                cli::cli_li("Facet cache built at: {.emph <NONE>}")
-                cli::cli_bullets(c(" " = "{.emph NOTE: You may run `$build_cache()`} to create the cache."))
+            if (!private$has_facet_listing()) {
+                cli::cli_li("Facet listing built at: {.emph <NONE>}")
+                cli::cli_bullets(c(" " = "{.emph NOTE: You may run `$build_listing()`} to create the listing"))
             } else {
-                cli::cli_li("Facet cache built at: {private$facet_cache()$timestamp}")
+                cli::cli_li("Facet listing built at: {private$facet_listing$timestamp}")
             }
 
             ts <- if (is.null(private$last_response)) {
@@ -1355,6 +1370,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
     ),
     private = list(
         url_host = NULL,
+        facet_listing = list(),
 
         # all query parameters
         parameters = list(
@@ -1383,18 +1399,13 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         ),
 
         last_response = NULL,
+        last_result = NULL,
 
-        has_facet_cache = function() {
-            !is.null(private$url_host) && !is.null(this$cache$facet[[private$url_host]])
-        },
+        has_facet_listing = function() length(private$facet_listing),
 
-        facet_cache = function() {
-            this$cache$facet[[private$url_host]]
-        },
-
-        facet_cache_count = function(facet) {
+        facet_listing_count = function(facet) {
             private$format_facet_counts(
-                private$facet_cache()$facet_counts$facet_fields[[facet]]
+                private$facet_listing$facet_counts$facet_fields[[facet]]
             )
         },
 
@@ -1408,7 +1419,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
 
         validate_facet_value = function(facet, value) {
-            if (!private$has_facet_cache()) return(value)
+            if (!private$has_facet_listing()) return(value)
 
             if (facet %in% c("facets", "fields")) {
                 if ("*" %in% value) {
@@ -1526,7 +1537,7 @@ query_build <- function(host, params, type = "search") {
     )
 }
 
-query_build_facet_cache <- function(host, project = "CMIP6") {
+query_build_facet_listing <- function(host, project = "CMIP6") {
     # build a query without project to get facet names and values
     url <- query_build(host,
         list(

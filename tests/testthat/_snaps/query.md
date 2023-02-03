@@ -64,13 +64,13 @@
 # EsgfQuery$print()
 
     Code
-      EsgfQuery$new("a", build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
+      EsgfQuery$new("a", listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
         print()
     Message <cliMessage>
       == ESGF Query ==================================================================
       * Host: a
-      * Facet cache built at: <NONE>
-        NOTE: You may run `$build_cache()` to create the cache.
+      * Facet listing built at: <NONE>
+        NOTE: You may run `$build_listing()` to create the listing
       * Last query sent at: <NONE>
       
       -- <Query Parameter> -----------------------------------------------------------
@@ -88,12 +88,13 @@
 ---
 
     Code
-      EsgfQuery$new(host, build = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
+      EsgfQuery$new(host, listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
         print()
     Message <cliMessage>
       == ESGF Query ==================================================================
       * Host: https://esgf.ceda.ac.uk/esg-search
-      * Facet cache built at: yyyy-mm-dd HH:MM:SS
+      * Facet listing built at: <NONE>
+        NOTE: You may run `$build_listing()` to create the listing
       * Last query sent at: <NONE>
       
       -- <Query Parameter> -----------------------------------------------------------

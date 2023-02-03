@@ -5,7 +5,7 @@
 \alias{query_esgf}
 \title{Query CMIP6 data using ESGF search RESTful API}
 \usage{
-query_esgf(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE)
+query_esgf(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE)
 }
 \arguments{
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
@@ -14,7 +14,8 @@ this is \verb{http://<hostname>/esg-search}. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
 which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
 
-\item{build}{Whether to send the facet listing query. Default: \code{FALSE}.}
+\item{listing}{Whether to send the facet listing query used to validate
+inputs. Default: \code{FALSE}.}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -646,7 +647,7 @@ Hongyuan Jia
 \subsection{Method \code{new()}}{
 Create a new EsgfQuery object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", build = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -658,7 +659,7 @@ endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
 Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
 \code{"https://esgf-node.llnl.gov/esg-search"}.}
 
-\item{\code{build}}{Whether to send the facet listing query.
+\item{\code{listing}}{Whether to send the facet listing query.
 A \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 can be sent to the index node to get all available facets and
 shards. When available, this information will be automatically
@@ -690,14 +691,24 @@ q
 \subsection{Method \code{build_cache()}}{
 Build facet cache used for input validation
 
-A facet cache is data that is fetched using a
+A facet listing cache is data that is fetched using a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 to the index node. It contains all available facets and shards that
 can be used as parameter values within a specific project.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache(force = FALSE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{force}}{By default, every facet listing query is cache and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
 The modified \code{EsgfQuery} object.
 }
