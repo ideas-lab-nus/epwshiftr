@@ -143,9 +143,9 @@ query results and format it into an \link{EsgfQueryResultDataset} object.
 
 \code{EsgfQuery} object also provide several other helper functions:
 \itemize{
-\item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}:
-By default, \code{EsgfQuery$build_cache()} is not called when initialize a new
-\code{EsgfQuery} object. Basically, \code{EsgfQuery$build_cahce()} sends a
+\item \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}:
+By default, \code{EsgfQuery$build_listing()} is not called when initialize a new
+\code{EsgfQuery} object. Basically, \code{EsgfQuery$build_listing()} sends a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 to the index node and stores the response internally. The response contains
 all available facets and shards and is used as a source for validating user
@@ -153,14 +153,9 @@ input for parameter setters.
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
 query URL or the wget script URL which can be used to download all files
 matching the given constraints..
-\item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}: Returns the
-actual response of
-\href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}} and
-\href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}. It is a named
-list generated from the JSON response using \code{\link[jsonlite:fromJSON]{jsonlite::fromJSON()}}.
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
 of the current \code{EsgfQuery} object including the host URL, the built time of
-facet cache and all query parameters.
+facet listing and all query parameters.
 }
 }
 }
@@ -177,11 +172,11 @@ q
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$build_cache`
+## Method `EsgfQuery$build_listing`
 ## ------------------------------------------------
 
 \dontrun{
-q$build_cache()
+q$build_listing()
 }
 
 ## ------------------------------------------------
@@ -586,11 +581,23 @@ identical(res2$count(), res4$count())
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$response`
+## Method `EsgfQuery$save`
 ## ------------------------------------------------
 
 \dontrun{
-q$response()
+q$save(tempfile(fileext = ".json"))
+}
+
+## ------------------------------------------------
+## Method `EsgfQuery$load`
+## ------------------------------------------------
+
+\dontrun{
+f <- tempfile(fileext = "json")
+
+q <- query_esgf()
+json <- q$save(f)
+q$load(f)
 }
 
 ## ------------------------------------------------
@@ -608,7 +615,7 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
-\item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}
+\item \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}
 \item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}
 \item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}
 \item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}
@@ -634,7 +641,6 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}
 \item \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}}
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}
-\item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}
 \item \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}
 \item \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}
@@ -686,23 +692,23 @@ q
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-build_cache"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-build_cache}{}}}
-\subsection{Method \code{build_cache()}}{
-Build facet cache used for input validation
+\if{html}{\out{<a id="method-EsgfQuery-build_listing"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-build_listing}{}}}
+\subsection{Method \code{build_listing()}}{
+Build facet listing used for input validation
 
-A facet listing cache is data that is fetched using a
+Facet listing is data that is fetched using a
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
 to the index node. It contains all available facets and shards that
 can be used as parameter values within a specific project.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache(force = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_listing(force = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{force}}{By default, every facet listing query is cache and
+\item{\code{force}}{By default, every facet listing query is cached and
 reused when possible. If \code{TRUE}, the previous cache is
 abandoned and a new query is re-sent and cached. Default:
 \code{FALSE}.}
@@ -715,7 +721,7 @@ The modified \code{EsgfQuery} object.
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$build_cache()
+q$build_listing()
 }
 }
 \if{html}{\out{</div>}}
@@ -733,7 +739,7 @@ List all available facet names
 }
 
 \subsection{Returns}{
-A character vector or \code{NULL} if no facet cache is found.
+A character vector or \code{NULL} if no facet listing is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -756,7 +762,7 @@ List all available field names
 }
 
 \subsection{Returns}{
-A character vector or \code{NULL} if no facet cache is found.
+A character vector or \code{NULL} if no facet listing is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -779,7 +785,7 @@ List all available shards
 }
 
 \subsection{Returns}{
-A character vector or \code{NULL} if no facet cache is found.
+A character vector or \code{NULL} if no facet listing is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -809,7 +815,7 @@ List all available values of a specific facet
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A named character vector or \code{NULL} if no facet cache is found.
+A named character vector or \code{NULL} if no facet listing is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1837,25 +1843,36 @@ identical(res2$count(), res4$count())
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-response"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-response}{}}}
-\subsection{Method \code{response()}}{
-Get the response of last sent query
+\if{html}{\out{<a id="method-EsgfQuery-save"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-save}{}}}
+\subsection{Method \code{save()}}{
+Save the query into a JSON file
 
-The response of the last sent query is always stored internally and
-can be retrieved using \verb{$response()}. It is a named list generated
-from the JSON response using \code{\link[jsonlite:fromJSON]{jsonlite::fromJSON()}}.
+\verb{$save()} puts main data of an \code{EsgfQuery} object into a JSON file
+which can be loaded to restore the current state of query using
+\href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$response()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$save(file = "query.json", pretty = TRUE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to save the data
+to. Default: \code{query.json}.}
+
+\item{\code{pretty}}{Whether to add indentation whitespace to JSON output.
+For details, please see \code{\link[jsonlite:fromJSON]{jsonlite::toJSON()}}. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
-A named list.
+The full path of the output JSON file.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$response()
+q$save(tempfile(fileext = ".json"))
 }
 }
 \if{html}{\out{</div>}}
@@ -1864,20 +1881,41 @@ q$response()
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-save"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-save}{}}}
-\subsection{Method \code{save()}}{
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$save(file = "query.json")}\if{html}{\out{</div>}}
-}
-
-}
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQuery-load"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQuery-load}{}}}
 \subsection{Method \code{load()}}{
+Restore the query state from an JSON file
+
+\verb{$load()} reads data of an \code{EsgfQuery} object from a JSON file
+created using
+\href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$load(file = "query.json")}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to read the data
+from. Default: \code{query.json}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The modified \code{EsgfQuery} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+f <- tempfile(fileext = "json")
+
+q <- query_esgf()
+json <- q$save(f)
+q$load(f)
+}
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -1888,7 +1926,7 @@ q$response()
 Print a summary of the current \code{EsgfQuery} object
 
 \verb{$print()} gives the summary of current \code{EsgfQuery} object including
-the host URL, the built time of facet cache and all query parameters.
+the host URL, the built time of facet listing and all query parameters.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$print()}\if{html}{\out{</div>}}
 }

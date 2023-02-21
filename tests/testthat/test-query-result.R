@@ -1,7 +1,7 @@
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
-    q <- query_esgf(build = FALSE)$
+    q <- query_esgf(listing = FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -114,7 +114,7 @@ test_that("ESGF Query Result Dataset works", {
 test_that("ESGF Query Result File works", {
     skip_on_cran()
 
-    files <- query_esgf(build = FALSE)$
+    files <- query_esgf(listing = FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -195,7 +195,7 @@ test_that("ESGF Query Result File works", {
 test_that("ESGF Query Result Aggregation works", {
     skip_on_cran()
 
-    aggs <- query_esgf(build = FALSE)$
+    aggs <- query_esgf(listing = FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$

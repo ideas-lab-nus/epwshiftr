@@ -9,7 +9,7 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
     # cache ESGF facet listing query
     facets <- file.path(cache, "facets")
     if (!file.exists(facets)) {
-        query_build_facet_cache(formals(query_esgf)$host)
+        query_build_facet_listing(formals(query_esgf)$host)
         cache <- this$cache
         saveRDS(cache, facets)
         clear_facet_cache()

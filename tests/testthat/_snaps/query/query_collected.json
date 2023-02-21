@@ -1,0 +1,282 @@
+{
+  "host": ["https://esgf.ceda.ac.uk/esg-search"],
+  "parameter": {
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
+    },
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
+    },
+    "experiment_id": {
+      "value": ["ssp585"],
+      "negate": [false]
+    },
+    "source_id": null,
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": null,
+    "variant_label": null,
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["*"],
+      "negate": [false]
+    },
+    "shards": null,
+    "replica": null,
+    "latest": {
+      "value": [true],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"],
+      "negate": [false]
+    },
+    "offset": {
+      "value": [0],
+      "negate": [false]
+    },
+    "distrib": {
+      "value": [true],
+      "negate": [false]
+    },
+    "limit": {
+      "value": [2],
+      "negate": [false]
+    },
+    "format": {
+      "value": ["application/solr+json"],
+      "negate": [false]
+    },
+    "table_id": {
+      "value": ["Amon", "day"],
+      "negate": [false]
+    }
+  },
+  "last_result": {
+    "url_host": ["https://esgf.ceda.ac.uk/esg-search"],
+    "parameter": {
+      "project": {
+        "value": ["CMIP6"],
+        "negate": [false]
+      },
+      "activity_id": {
+        "value": ["ScenarioMIP"],
+        "negate": [false]
+      },
+      "experiment_id": {
+        "value": ["ssp585"],
+        "negate": [false]
+      },
+      "source_id": null,
+      "variable_id": {
+        "value": ["tas"],
+        "negate": [false]
+      },
+      "frequency": null,
+      "variant_label": null,
+      "nominal_resolution": null,
+      "data_node": null,
+      "facets": null,
+      "fields": {
+        "value": ["*"],
+        "negate": [false]
+      },
+      "shards": null,
+      "replica": null,
+      "latest": {
+        "value": [true],
+        "negate": [false]
+      },
+      "type": {
+        "value": ["Dataset"],
+        "negate": [false]
+      },
+      "offset": {
+        "value": [0],
+        "negate": [false]
+      },
+      "distrib": {
+        "value": [true],
+        "negate": [false]
+      },
+      "limit": {
+        "value": [2],
+        "negate": [false]
+      },
+      "format": {
+        "value": ["application/solr+json"],
+        "negate": [false]
+      },
+      "table_id": {
+        "value": ["Amon", "day"],
+        "negate": [false]
+      }
+    },
+    "response": {
+      "responseHeader": {
+        "status": [0],
+        "QTime": [101],
+        "params": {
+          "df": ["text"],
+          "q.alt": ["*:*"],
+          "indent": ["true"],
+          "echoParams": ["all"],
+          "fl": ["*,score"],
+          "start": ["0"],
+          "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "experiment_id:\"ssp585\"", "variable_id:\"tas\"", "latest:true", "table_id:\"Amon\" || table_id:\"day\""],
+          "rows": ["2"],
+          "q": ["*:*"],
+          "shards": ["esgf-solr.ceda.ac.uk:8983/solr/datasets,esgf-solr.ceda.ac.uk:8996/solr/datasets,esgf-solr.ceda.ac.uk:8998/solr/datasets,esgf-solr.ceda.ac.uk:8999/solr/datasets,esgf-solr.ceda.ac.uk:9000/solr/datasets,esgf-solr.ceda.ac.uk:9001/solr/datasets,esgf-solr.ceda.ac.uk:9004/solr/datasets"],
+          "tie": ["0.01"],
+          "facet.limit": ["-1"],
+          "qf": ["text"],
+          "facet.method": ["enum"],
+          "facet.mincount": ["1"],
+          "wt": ["json"],
+          "facet": ["true"],
+          "facet.sort": ["lex"]
+        }
+      },
+      "response": {
+        "numFound": [2772],
+        "start": [0],
+        "maxScore": [1],
+        "docs": [
+          {
+            "id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn.v20190429|esgf.ceda.ac.uk",
+            "version": "20190429",
+            "access": ["HTTPServer", "GridFTP", "OPENDAP", "Globus"],
+            "activity_drs": ["ScenarioMIP"],
+            "activity_id": ["ScenarioMIP"],
+            "cf_standard_name": ["air_temperature"],
+            "citation_url": ["http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn.v20190429.json"],
+            "data_node": "esgf.ceda.ac.uk",
+            "data_specs_version": ["01.00.29"],
+            "dataset_id_template_": ["%(mip_era)s.%(activity_drs)s.%(institution_id)s.%(source_id)s.%(experiment_id)s.%(member_id)s.%(table_id)s.%(variable_id)s.%(grid_label)s"],
+            "datetime_start": "2015-01-01T12:00:00Z",
+            "datetime_stop": "2100-12-31T12:00:00Z",
+            "directory_format_template_": ["%(root)s/%(mip_era)s/%(activity_drs)s/%(institution_id)s/%(source_id)s/%(experiment_id)s/%(member_id)s/%(table_id)s/%(variable_id)s/%(grid_label)s/%(version)s"],
+            "east_degrees": 357.1875,
+            "experiment_id": ["ssp585"],
+            "experiment_title": ["update of RCP8.5 based on SSP5"],
+            "frequency": ["day"],
+            "further_info_url": ["https://furtherinfo.es-doc.org/CMIP6.CCCma.CanESM5.ssp585.none.r3i1p1f1"],
+            "geo": ["ENVELOPE(-180.0, -2.8125, 87.8638, -87.8638)", "ENVELOPE(0.0, 180.0, 87.8638, -87.8638)"],
+            "geo_units": ["degrees_east"],
+            "grid": ["T63L49 native atmosphere, T63 Linear Gaussian Grid; 128 x 64 longitude/latitude; 49 levels; top level 1 hPa"],
+            "grid_label": ["gn"],
+            "index_node": "esgf.ceda.ac.uk",
+            "instance_id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn.v20190429",
+            "institution_id": ["CCCma"],
+            "latest": true,
+            "master_id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn",
+            "member_id": ["r3i1p1f1"],
+            "metadata_format": "THREDDS",
+            "mip_era": ["CMIP6"],
+            "model_cohort": ["Registered"],
+            "nominal_resolution": ["500 km"],
+            "north_degrees": 87.8638,
+            "number_of_files": 1,
+            "pid": ["hdl:21.14100/c588c78f-87a2-3b98-ab6f-5ceeb2c346de"],
+            "product": ["model-output"],
+            "project": ["CMIP6"],
+            "realm": ["atmos"],
+            "replica": true,
+            "size": 830630043,
+            "source_id": ["CanESM5"],
+            "source_type": ["AOGCM"],
+            "south_degrees": -87.8638,
+            "sub_experiment_id": ["none"],
+            "table_id": ["day"],
+            "title": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn",
+            "type": "Dataset",
+            "variable": ["tas"],
+            "variable_id": ["tas"],
+            "variable_long_name": ["Near-Surface Air Temperature"],
+            "variable_units": ["K"],
+            "variant_label": ["r3i1p1f1"],
+            "west_degrees": 0,
+            "xlink": ["http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p1f1.day.tas.gn.v20190429.json|Citation|citation", "http://hdl.handle.net/hdl:21.14100/c588c78f-87a2-3b98-ab6f-5ceeb2c346de|PID|pid"],
+            "retracted": false,
+            "_timestamp": "2019-09-07T05:45:18.946Z",
+            "_version_": "1732991786098360320"
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn.v20190429|esgf.ceda.ac.uk",
+            "version": "20190429",
+            "access": ["HTTPServer", "GridFTP", "OPENDAP", "Globus"],
+            "activity_drs": ["ScenarioMIP"],
+            "activity_id": ["ScenarioMIP"],
+            "cf_standard_name": ["air_temperature"],
+            "citation_url": ["http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn.v20190429.json"],
+            "data_node": "esgf.ceda.ac.uk",
+            "data_specs_version": ["01.00.29"],
+            "dataset_id_template_": ["%(mip_era)s.%(activity_drs)s.%(institution_id)s.%(source_id)s.%(experiment_id)s.%(member_id)s.%(table_id)s.%(variable_id)s.%(grid_label)s"],
+            "datetime_start": "2015-01-16T12:00:00Z",
+            "datetime_stop": "2100-12-16T12:00:00Z",
+            "directory_format_template_": ["%(root)s/%(mip_era)s/%(activity_drs)s/%(institution_id)s/%(source_id)s/%(experiment_id)s/%(member_id)s/%(table_id)s/%(variable_id)s/%(grid_label)s/%(version)s"],
+            "east_degrees": 357.1875,
+            "experiment_id": ["ssp585"],
+            "experiment_title": ["update of RCP8.5 based on SSP5"],
+            "frequency": ["mon"],
+            "further_info_url": ["https://furtherinfo.es-doc.org/CMIP6.CCCma.CanESM5.ssp585.none.r3i1p2f1"],
+            "geo": ["ENVELOPE(-180.0, -2.8125, 87.8638, -87.8638)", "ENVELOPE(0.0, 180.0, 87.8638, -87.8638)"],
+            "geo_units": ["degrees_east"],
+            "grid": ["T63L49 native atmosphere, T63 Linear Gaussian Grid; 128 x 64 longitude/latitude; 49 levels; top level 1 hPa"],
+            "grid_label": ["gn"],
+            "index_node": "esgf.ceda.ac.uk",
+            "instance_id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn.v20190429",
+            "institution_id": ["CCCma"],
+            "latest": true,
+            "master_id": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn",
+            "member_id": ["r3i1p2f1"],
+            "metadata_format": "THREDDS",
+            "mip_era": ["CMIP6"],
+            "model_cohort": ["Registered"],
+            "nominal_resolution": ["500 km"],
+            "north_degrees": 87.8638,
+            "number_of_files": 1,
+            "pid": ["hdl:21.14100/8ff866c8-8b8b-34b5-a8d3-e118fa33105b"],
+            "product": ["model-output"],
+            "project": ["CMIP6"],
+            "realm": ["atmos"],
+            "replica": true,
+            "size": 27265911,
+            "source_id": ["CanESM5"],
+            "source_type": ["AOGCM"],
+            "south_degrees": -87.8638,
+            "sub_experiment_id": ["none"],
+            "table_id": ["Amon"],
+            "title": "CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn",
+            "type": "Dataset",
+            "variable": ["tas"],
+            "variable_id": ["tas"],
+            "variable_long_name": ["Near-Surface Air Temperature"],
+            "variable_units": ["K"],
+            "variant_label": ["r3i1p2f1"],
+            "west_degrees": 0,
+            "xlink": ["http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.ScenarioMIP.CCCma.CanESM5.ssp585.r3i1p2f1.Amon.tas.gn.v20190429.json|Citation|citation", "http://hdl.handle.net/hdl:21.14100/8ff866c8-8b8b-34b5-a8d3-e118fa33105b|PID|pid"],
+            "retracted": false,
+            "_timestamp": "2019-08-05T18:26:34.130Z",
+            "_version_": "1732991786232578048"
+          }
+        ]
+      },
+      "facet_counts": {
+        "facet_queries": {},
+        "facet_fields": {},
+        "facet_ranges": {},
+        "facet_intervals": {},
+        "facet_heatmaps": {}
+      },
+      "timestamp": ["2023-05-06T07:11:20:20.154273Z"]
+    }
+  },
+  "facet_listing": []
+}

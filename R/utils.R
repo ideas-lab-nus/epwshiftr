@@ -13,6 +13,11 @@ to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
 }
 
+priv <- function(x) {
+    checkmate::assert_r6(x)
+    x$.__enclos_env__[["private"]]
+}
+
 verbose <- function (..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
         cat(..., "\n", sep = sep)
@@ -39,9 +44,9 @@ eval_with_bang <- function(..., .env = parent.frame()) {
     })
 }
 
-now <- function() {
+now <- function(tz = "UTC") {
     t <- Sys.time()
-    attr(t, "tzone") <- Sys.timezone()
+    attr(t, "tzone") <- tz
     t
 }
 
