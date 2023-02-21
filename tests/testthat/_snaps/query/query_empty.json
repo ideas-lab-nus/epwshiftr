@@ -1,0 +1,63 @@
+{
+  "host": ["https://esgf.ceda.ac.uk/esg-search"],
+  "parameter": {
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
+    },
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
+    },
+    "experiment_id": {
+      "value": ["ssp585"],
+      "negate": [false]
+    },
+    "source_id": null,
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": null,
+    "variant_label": null,
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["*"],
+      "negate": [false]
+    },
+    "shards": null,
+    "replica": null,
+    "latest": {
+      "value": [true],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"],
+      "negate": [false]
+    },
+    "offset": {
+      "value": [0],
+      "negate": [false]
+    },
+    "distrib": {
+      "value": [true],
+      "negate": [false]
+    },
+    "limit": {
+      "value": [2],
+      "negate": [false]
+    },
+    "format": {
+      "value": ["application/solr+json"],
+      "negate": [false]
+    },
+    "table_id": {
+      "value": ["Amon", "day"],
+      "negate": [false]
+    }
+  },
+  "last_result": null,
+  "facet_listing": []
+}

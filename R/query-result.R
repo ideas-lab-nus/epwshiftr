@@ -704,4 +704,3 @@ new_query_result <- function(generator, host, params, result, ..., .env = parent
     }
     generator$new(host, params, result, ...)
 }
-}

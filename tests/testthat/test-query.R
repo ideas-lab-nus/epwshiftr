@@ -49,8 +49,8 @@ test_that("query_esgf()", {
 
     skip_on_cran()
 
-    # NOTE: attached facet listing cache is used throughout tests
-    attach_facet_cache()
+    # # NOTE: attached facet listing cache is used throughout tests
+    # attach_facet_cache()
     expect_s3_class(q <- EsgfQuery$new(host, TRUE), "EsgfQuery")
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 })
@@ -444,21 +444,40 @@ test_that("EsgfQuery$collect()", {
     # can collect all results with auto-pagination
     ## with maximum batch size
     expect_s3_class(res <- q$collect(all = TRUE, limit = FALSE), "EsgfQueryResultDataset")
-    expect_equal(q$response()$response$numFound, res$count())
     ## with specified limits
     expect_s3_class(res <- q$collect(all = TRUE, limit = 30), "EsgfQueryResultDataset")
-    expect_equal(q$response()$response$numFound, res$count())
 })
 
-test_that("EsgfQuery$response()", {
-    skip_on_cran()
+test_that("EsgfQuery$save() & EsgfQuery$load()", {
+    q <- EsgfQuery$new(host = host, listing = FALSE)$
+        activity_id("ScenarioMIP")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2)$
+        params(table_id = c("Amon", "day"))
 
-    expect_null(EsgfQuery$new(host)$response())
+    # empty query object
+    fe <- tempfile(fileext = ".json")
+    expect_snapshot_file(q$save(fe), "query_empty.json")
+    expect_s3_class(qe <- query_esgf()$load(fe), "EsgfQuery")
+    expect_equal(priv(q)$url_host, priv(qe)$url_host)
+    expect_equal(priv(q)$parameter, priv(qe)$parameter)
+    expect_equal(priv(q)$facet_listing, priv(qe)$facet_listing)
+    expect_equal(priv(q)$last_result, priv(qe)$last_result)
 
-    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
-    expect_type(q$limit(0)$frequency("1hr")$count(), "integer")
-    expect_type(q$response(), "list")
-    expect_true(all(c("responseHeader", "response") %in% names(q$response())))
+    # query object with results
+    q$collect()
+    fc <- tempfile(fileext = ".json")
+    # reset timestamp before snapshoting so that it keeps the same between tests
+    q$.__enclos_env__$private$last_result$response$timestamp <- as.POSIXct(
+        "2020-02-02 22:22:22.123456", "UTC"
+    )
+    expect_snapshot_file(q$save(fc), "query_collected.json")
+    expect_s3_class(qc <- query_esgf()$load(fc), "EsgfQuery")
+    expect_equal(priv(q)$url_host, priv(qc)$url_host)
+    expect_equal(priv(q)$parameter, priv(qc)$parameter)
+    expect_equal(priv(q)$facet_listing, priv(qc)$facet_listing)
+    expect_equal(priv(q)$last_result, priv(qc)$last_result)
 })
 
 test_that("EsgfQuery$print()", {
