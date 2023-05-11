@@ -22,12 +22,14 @@ identifiers.}
 
 \item{\code{url}}{A list of \link[data.table:data.table]{data.table} with 3
 columns:
-(a) \code{service} \[\code{character}\]: The service types, e.g.
-OPENDAP, HTTPServer, etc.;
-(b) \code{url} \[\code{character}\]: The actual URLs;
-(c) \code{mime_type} \[\code{character}\]: The MIME types indicating
+\enumerate{
+\item \code{service} \[\code{character}\]: The service types, e.g. OPENDAP,
+HTTPServer, etc.;
+\item \code{url} \[\code{character}\]: The actual URLs;
+\item \code{mime_type} \[\code{character}\]: The MIME types indicating
 the nature and format of the corresponding document of the
-URLs.}
+URLs.
+}}
 
 \item{\code{size}}{A vector of \link[units:units]{units} indicating the
 file sizes.}
@@ -42,6 +44,8 @@ file sizes.}
 \item \href{#method-EsgfQueryResult-new}{\code{EsgfQueryResult$new()}}
 \item \href{#method-EsgfQueryResult-to_dt}{\code{EsgfQueryResult$to_dt()}}
 \item \href{#method-EsgfQueryResult-count}{\code{EsgfQueryResult$count()}}
+\item \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}
+\item \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}
 \item \href{#method-EsgfQueryResult-clone}{\code{EsgfQueryResult$clone()}}
 }
 }
@@ -51,7 +55,7 @@ file sizes.}
 \subsection{Method \code{new()}}{
 Create a new EsgfQueryResult object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(host, params, result)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(host, params, response)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -64,7 +68,7 @@ endpoint name. It should be the same as the \code{host} for an
 
 \item{\code{params}}{A list of query parameters.}
 
-\item{\code{result}}{The result of an query response.}
+\item{\code{response}}{The result of an query response.}
 }
 \if{html}{\out{</div>}}
 }
@@ -109,6 +113,59 @@ Count the number of matched records in current result
 
 \subsection{Returns}{
 An integer.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResult-save"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResult-save}{}}}
+\subsection{Method \code{save()}}{
+Save the result into a JSON file
+
+\verb{$save()} puts main data of an \code{EsgfQueryResult} object into a JSON file
+which can be loaded to restore the current state of result using
+\href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$save(file = "result.json", pretty = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to save the data
+to. Default: \code{result.json}.}
+
+\item{\code{pretty}}{Whether to add indentation whitespace to JSON output.
+For details, please see \code{\link[jsonlite:fromJSON]{jsonlite::toJSON()}}. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The full path of the output JSON file.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResult-load"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResult-load}{}}}
+\subsection{Method \code{load()}}{
+Restore the result state from an JSON file
+
+\verb{$load()} reads data of an \code{EsgfQueryResult} object from a JSON file
+created using
+\href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$load(file = "result.json")}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to read the data
+from. Default: \code{result.json}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The modified \code{EsgfQueryResult} object itself.
 }
 }
 \if{html}{\out{<hr>}}

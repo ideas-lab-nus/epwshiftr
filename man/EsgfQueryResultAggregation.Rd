@@ -43,6 +43,8 @@ files.}
 <ul>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="count"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-count'><code>epwshiftr::EsgfQueryResult$count()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="initialize"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-initialize'><code>epwshiftr::EsgfQueryResult$initialize()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="load"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-load'><code>epwshiftr::EsgfQueryResult$load()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgfQueryResult" data-id="save"><a href='../../epwshiftr/html/EsgfQueryResult.html#method-EsgfQueryResult-save'><code>epwshiftr::EsgfQueryResult$save()</code></a></span></li>
 </ul>
 </details>
 }}
