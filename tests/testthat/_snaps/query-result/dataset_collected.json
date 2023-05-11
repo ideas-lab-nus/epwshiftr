@@ -1,0 +1,1147 @@
+{
+  "host": ["https://esgf-node.llnl.gov/esg-search"],
+  "parameter": {
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
+    },
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
+    },
+    "experiment_id": {
+      "value": ["ssp585"],
+      "negate": [false]
+    },
+    "source_id": {
+      "value": ["AWI-CM-1-1-MR"],
+      "negate": [false]
+    },
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": {
+      "value": ["day"],
+      "negate": [false]
+    },
+    "variant_label": {
+      "value": ["r1i1p1f1"],
+      "negate": [false]
+    },
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["source_id", "experiment_id", "frequency"],
+      "negate": [false]
+    },
+    "shards": null,
+    "replica": null,
+    "latest": {
+      "value": [true],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"],
+      "negate": [false]
+    },
+    "offset": {
+      "value": [0],
+      "negate": [false]
+    },
+    "distrib": {
+      "value": [true],
+      "negate": [false]
+    },
+    "limit": {
+      "value": [2],
+      "negate": [false]
+    },
+    "format": {
+      "value": ["application/solr+json"],
+      "negate": [false]
+    }
+  },
+  "last_result": {
+    "url_host": ["https://esgf-node.llnl.gov/esg-search"],
+    "parameter": {
+      "dataset_id": {
+        "value": ["CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov"],
+        "negate": [false]
+      },
+      "fields": {
+        "value": ["id"],
+        "negate": [false]
+      },
+      "latest": {
+        "value": [true],
+        "negate": [false]
+      },
+      "distrib": {
+        "value": [true],
+        "negate": [false]
+      },
+      "limit": {
+        "value": [100],
+        "negate": [false]
+      },
+      "type": {
+        "value": ["File"],
+        "negate": [false]
+      },
+      "format": {
+        "value": ["application/solr+json"],
+        "negate": [false]
+      }
+    },
+    "response": {
+      "responseHeader": {
+        "status": [0],
+        "QTime": [10],
+        "params": {
+          "df": ["text"],
+          "q.alt": ["*:*"],
+          "indent": ["true"],
+          "echoParams": ["all"],
+          "fl": ["checksum_type,data_node,size,dataset_id,checksum,id,title,tracking_id,url,score"],
+          "start": ["0"],
+          "fq": ["type:File", "dataset_id:\"CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov\"", "latest:true"],
+          "sort": ["id asc"],
+          "rows": ["100"],
+          "q": ["*:*"],
+          "shards": ["localhost:8983/solr/files,localhost:8985/solr/files,localhost:8988/solr/files,localhost:8990/solr/files,localhost:8993/solr/files,localhost:8995/solr/files,localhost:8987/solr/files"],
+          "tie": ["0.01"],
+          "facet.limit": ["2048"],
+          "qf": ["text"],
+          "facet.method": ["fc"],
+          "facet.mincount": ["1"],
+          "wt": ["json"],
+          "facet.sort": ["lex"]
+        }
+      },
+      "response": {
+        "numFound": [86],
+        "start": [0],
+        "maxScore": [1],
+        "docs": [
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc|esgf-data1.llnl.gov",
+            "checksum": ["32defb4444e4ba719d2ba242f5eb36890f0d46bc5096d07360ba839b96cce72c"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82428729,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc",
+            "tracking_id": ["hdl:21.14100/1a274874-5aa1-437a-8d99-bbfbb42f09ae"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc|esgf-data1.llnl.gov",
+            "checksum": ["cd5e0bcffa61c6bede8407cff22ce3c057e817057cc43c8bc74d050b2a276b9a"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82599903,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc",
+            "tracking_id": ["hdl:21.14100/635600fe-aa3a-43a8-8b56-3282cf18d4dd"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20160101-20161231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc|esgf-data1.llnl.gov",
+            "checksum": ["c88ce5d424ea4d7f221c4520b5dda8cbfe242667078532f7bd9dd806243dad6b"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82247509,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc",
+            "tracking_id": ["hdl:21.14100/4a60d8bc-6139-4d25-ac8d-907af638c71e"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20170101-20171231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc|esgf-data1.llnl.gov",
+            "checksum": ["49a25043adc60c10593a96cbd667d4cb9769f1c9765d67a9e52ad46ff93bdaeb"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82369176,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc",
+            "tracking_id": ["hdl:21.14100/c546bc97-1d31-4b56-bb94-359be03f55f8"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20180101-20181231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc|esgf-data1.llnl.gov",
+            "checksum": ["bab7d88a5f2d99bc9b5a86d127ae075c23586911c85448e16d01ad9a47f0c8d8"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82419661,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc",
+            "tracking_id": ["hdl:21.14100/4fde7d6d-bdce-4122-9809-f02866b11281"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20190101-20191231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc|esgf-data1.llnl.gov",
+            "checksum": ["035303c9b61cb38fcb4f20458f10ac3ad7888a761075aee25b3aab2f71830a57"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82678691,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc",
+            "tracking_id": ["hdl:21.14100/d5bcbc0e-b8a8-4433-b751-f2620f2e2b08"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20201231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc|esgf-data1.llnl.gov",
+            "checksum": ["9e4c7f23fd0637aa4265eaf603c0a354c3b80fb1d9bf283c927673aeef959b87"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82383303,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc",
+            "tracking_id": ["hdl:21.14100/0ffc8029-510c-43b3-94e3-2d0bd266f63a"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20210101-20211231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f1ef7427e7312ec4026bd411fc9429468b67b4b9546f9b4e81caefd687e5a85c"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82318711,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc",
+            "tracking_id": ["hdl:21.14100/c2c1d910-3b8c-47a0-97a4-e2b21921f5da"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20220101-20221231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc|esgf-data1.llnl.gov",
+            "checksum": ["6e89dd2bea55dc467eff0658540f88559e99c06e0e771d8f39b748d9cabe66cb"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82359178,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc",
+            "tracking_id": ["hdl:21.14100/dba9027c-e2fd-4760-8368-0ff068e8d2aa"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20230101-20231231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc|esgf-data1.llnl.gov",
+            "checksum": ["fb828b7e9c50c239a7cc6a5da553804462e39b36b350e87fe7d8fabce7e59acd"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82541619,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc",
+            "tracking_id": ["hdl:21.14100/7104b266-2702-4255-8142-161fb42d1558"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20240101-20241231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc|esgf-data1.llnl.gov",
+            "checksum": ["781244a87618b90780d495476c619f43ec16ea3c53c99cba190ce4fb6389c925"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82336911,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc",
+            "tracking_id": ["hdl:21.14100/2fd29d19-7227-4c48-b36f-36fbea735480"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc|esgf-data1.llnl.gov",
+            "checksum": ["0c22c18bbb18d18ba9bab51c7852aa4d2c82bc834944e1403f419978ef8943c2"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82388164,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc",
+            "tracking_id": ["hdl:21.14100/b8c69a66-0df2-4179-88f7-a1193426089b"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20260101-20261231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc|esgf-data1.llnl.gov",
+            "checksum": ["447921b14676392b3ca4cec030e573312d299395008fd72364d3a36df9dfba59"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82274776,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc",
+            "tracking_id": ["hdl:21.14100/04a146f4-5137-4c31-bc90-37d0b705567d"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20270101-20271231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc|esgf-data1.llnl.gov",
+            "checksum": ["d1751db91debee35203b11b5c55b0a0b80ebb6f07ccb66e864c951bbf935cf0a"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82529993,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc",
+            "tracking_id": ["hdl:21.14100/3884a7bd-8ad5-4878-a064-f33bbe3f9ff8"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20280101-20281231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f77a300adad6f51d41d67e33844b3985422d7f4e0966aab10b925df819e0617d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82327141,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc",
+            "tracking_id": ["hdl:21.14100/1e6f0934-0eef-4677-8220-6a28e6e207db"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20290101-20291231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc|esgf-data1.llnl.gov",
+            "checksum": ["4fd668793db28e0440144a9bd35f8e397c93a51c44636f2f88a3d54c18c96811"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82260770,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc",
+            "tracking_id": ["hdl:21.14100/034155fa-387a-4730-b299-0beeba4a6e4c"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc|esgf-data1.llnl.gov",
+            "checksum": ["82864ed270a6dd88a6f3eede2efdc7cc007d484a734e304d079b4ebc48d6ab3d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82322904,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc",
+            "tracking_id": ["hdl:21.14100/d25c80eb-6da3-4ca0-978f-2e72b0052807"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20310101-20311231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc|esgf-data1.llnl.gov",
+            "checksum": ["690bc37cad6ce8643e050e0242bf2052e2d04e828acb189867ae40322b5badeb"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82517932,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc",
+            "tracking_id": ["hdl:21.14100/33c9b257-29be-44b0-8186-1e4c2ead50d0"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20320101-20321231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc|esgf-data1.llnl.gov",
+            "checksum": ["acc63b94708c21d3e3f32cdc681f4ec0eccc384451f26421d8a8652dd43d054f"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82293443,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc",
+            "tracking_id": ["hdl:21.14100/632289df-4a68-4ed3-93ab-3efda0ed5f90"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20330101-20331231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc|esgf-data1.llnl.gov",
+            "checksum": ["e44718e6f5e938b5978e450784eb9715ac06009f0cdada0c7b8e25697bd602ea"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82414582,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc",
+            "tracking_id": ["hdl:21.14100/0364d8a5-5e6b-43fb-9a86-ea419e08a5c5"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20340101-20341231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc|esgf-data1.llnl.gov",
+            "checksum": ["5a7fded26384e12fab28b753380a837572134f004683d3a2b7377fa91edbbe83"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82288050,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc",
+            "tracking_id": ["hdl:21.14100/86e29456-bb93-48ec-ae10-8830f9924ee1"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20350101-20351231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc|esgf-data1.llnl.gov",
+            "checksum": ["ccc0820f3df650bace967d6b62f53f2847a944e3fbe11a7a434fd2e829278f83"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82489399,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc",
+            "tracking_id": ["hdl:21.14100/bc85dacd-3c4b-4952-b878-070eca86bf15"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20360101-20361231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc|esgf-data1.llnl.gov",
+            "checksum": ["03bd54e515198bb38fbe0d62c56177ee4c5e037a887703df9be3fa53dc2494b8"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82227488,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc",
+            "tracking_id": ["hdl:21.14100/f8622d03-e303-42e3-a139-14961161b377"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20370101-20371231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc|esgf-data1.llnl.gov",
+            "checksum": ["cdf74e10ace478196680ad352adea48fe367e74beb9bc33ecbda42179f7d17d8"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82310172,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc",
+            "tracking_id": ["hdl:21.14100/b36d8fff-3015-4c21-852f-038d5b9f508f"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20380101-20381231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc|esgf-data1.llnl.gov",
+            "checksum": ["db0c29d2d34b85834402e93c02c6418fbd1e7c33e465071325837b2f02d76bc1"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82293085,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc",
+            "tracking_id": ["hdl:21.14100/51388569-d9f2-4dd2-90af-931b5b5289ed"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20390101-20391231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc|esgf-data1.llnl.gov",
+            "checksum": ["8c937f81592c510e0e370686995533ac01ebe6cc8128f2865376703b2cba10d3"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82562182,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc",
+            "tracking_id": ["hdl:21.14100/7f2ce3f2-5719-419f-ac1b-448619f59f9f"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20400101-20401231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc|esgf-data1.llnl.gov",
+            "checksum": ["8b8fee9537b208f7a9192e0e3bba7469fbf7ec4e2827733d9c047b9aef57dd0a"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82290218,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc",
+            "tracking_id": ["hdl:21.14100/17fdf86f-8428-45cc-88ab-7b49039eb560"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20410101-20411231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f1eddf9c9a9bfd5ecd5ed94b8a88ae411150222f6d46325ce79854d51176c5b3"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82355743,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc",
+            "tracking_id": ["hdl:21.14100/db4a1c18-b0dc-44df-96f1-7e5027552ed1"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20420101-20421231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc|esgf-data1.llnl.gov",
+            "checksum": ["24f393f6faaa1b4a27358c1ba4f28ac8ae0cdd371c682a921241e860d2218116"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82287110,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc",
+            "tracking_id": ["hdl:21.14100/08e10fff-1a93-4786-9978-49975d027be4"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20430101-20431231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc|esgf-data1.llnl.gov",
+            "checksum": ["40393a62cbd6f2843b24b7d795ec731f2f683448825cb7f4e2dd6008e2c3cf04"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82515140,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc",
+            "tracking_id": ["hdl:21.14100/c361965c-f8a5-4eb6-92b5-9dff246b4a1d"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20440101-20441231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc|esgf-data1.llnl.gov",
+            "checksum": ["4679e460c6ba13e30dd1223496472f7e5d7ed0a88dd74c42edae0f8a8afc5c1d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82269986,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc",
+            "tracking_id": ["hdl:21.14100/a4dd866b-ace7-4f51-8f35-df6f710bccd6"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20450101-20451231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc|esgf-data1.llnl.gov",
+            "checksum": ["708ac294808e2a755ccd0effe40dc38e6cc7fbbcdd2163c321a6bd28fbc95628"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82343947,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc",
+            "tracking_id": ["hdl:21.14100/3f4b5728-0ab6-4692-a1b0-0bd3b9fbb81b"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20460101-20461231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc|esgf-data1.llnl.gov",
+            "checksum": ["3465bf4c2e27ee06bfd49c19615011d594268339aaa0941fe3ac56c1be167993"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82272027,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc",
+            "tracking_id": ["hdl:21.14100/a11fa5c3-2592-444f-8c6f-86d8d8deff42"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20470101-20471231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc|esgf-data1.llnl.gov",
+            "checksum": ["00855ef489c1d37d5c9040b32e2d282bbd30c3d0fb62cdea1fa808a776c06622"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82539509,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc",
+            "tracking_id": ["hdl:21.14100/62ddbd0c-412c-46f3-a6c4-9f545447b437"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20480101-20481231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc|esgf-data1.llnl.gov",
+            "checksum": ["aec48d4d2a0c6578da49df65dc65c9199b63b7e30a5b02155f5801cb0b48f7a9"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82292505,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
+            "tracking_id": ["hdl:21.14100/8503efb4-6509-4728-b95c-7203bd214a77"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc|esgf-data1.llnl.gov",
+            "checksum": ["19fecd2bcde983d022990510ab8b43ca99d6a92326df62f950928cde14333e83"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82268546,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+            "tracking_id": ["hdl:21.14100/a110946e-c414-4f01-bb98-0bb9a1583468"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc|esgf-data1.llnl.gov",
+            "checksum": ["1cf3eb04dd7b44f663562c2d4c0bb1f6c796893c57513d1e7be768a29d814ed5"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82149654,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
+            "tracking_id": ["hdl:21.14100/5f24d28d-6703-4e71-a80b-8a706977a3b2"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc|esgf-data1.llnl.gov",
+            "checksum": ["52cf7a5567e248f325f7d4c8bb1efa8fae9c3ac25381f0cb333f1a413ab03963"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82457710,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc",
+            "tracking_id": ["hdl:21.14100/997b249d-aff4-48e5-bb50-1239b200b11b"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20520101-20521231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc|esgf-data1.llnl.gov",
+            "checksum": ["b822a8159a012405b3ace5c0bc002e0dc33c834c59917e94804ac4da32eca3d6"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82192198,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc",
+            "tracking_id": ["hdl:21.14100/436612cc-1787-4fe8-81fb-399e1b4edcce"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20530101-20531231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc|esgf-data1.llnl.gov",
+            "checksum": ["a446926a2a90c93ecf4042b1f643648a6b9fd0d8b621dbdd97c84ff21ce5fb21"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82192674,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc",
+            "tracking_id": ["hdl:21.14100/ea601e9c-91e1-42ef-b42d-330a057fa459"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20540101-20541231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc|esgf-data1.llnl.gov",
+            "checksum": ["baeeac248d04c9d7fff079b37b1788975e286ba82fa2c943c627286c858e0635"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82232401,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc",
+            "tracking_id": ["hdl:21.14100/9f1fd0c2-3593-484b-88d0-71dc55c33054"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20550101-20551231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc|esgf-data1.llnl.gov",
+            "checksum": ["127f0234d71461e73d5f0635017ad3babba5ab4c55ab16ffb2be15187eeffeec"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82445870,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc",
+            "tracking_id": ["hdl:21.14100/b0a071e0-9387-40c6-9ad4-012d0735a997"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20560101-20561231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc|esgf-data1.llnl.gov",
+            "checksum": ["9c7d386c405cf43a31bb876850648b7568ff0be072468e80a1faa40148e26d3f"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82132102,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc",
+            "tracking_id": ["hdl:21.14100/9c006378-8b52-45c6-9952-bc161e8922fc"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20570101-20571231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc|esgf-data1.llnl.gov",
+            "checksum": ["8fa11f86d22021f23c0b6ff84cc4a75e0440de26b80e8735032a9dd057e7f830"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82173775,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc",
+            "tracking_id": ["hdl:21.14100/f4cb65c3-2003-4415-8cea-97b02e828889"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20580101-20581231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc|esgf-data1.llnl.gov",
+            "checksum": ["08cdcfe4369f790c4aba255d8c0dada118662396e1332d5214ce895326fca091"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82148319,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc",
+            "tracking_id": ["hdl:21.14100/156993ae-6ef4-4e4b-9928-3c7d159d4137"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20590101-20591231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc|esgf-data1.llnl.gov",
+            "checksum": ["40d2e17a4fa36dd6fbdb4f8f79b295b3d748bcff281595027265467f929324c4"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82376307,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc",
+            "tracking_id": ["hdl:21.14100/192ba92c-ece1-40cb-a8ac-a2ab22adaf5e"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20600101-20601231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc|esgf-data1.llnl.gov",
+            "checksum": ["456a4a0fc52f77d1934dd835f209270e759529cb307a33d369a1730fbb213e4d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82161724,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc",
+            "tracking_id": ["hdl:21.14100/b874ad97-0b3d-406e-93cc-4e8df04707d6"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20610101-20611231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc|esgf-data1.llnl.gov",
+            "checksum": ["c207aa8b5603039c22ecff408efe546d8e02fcff03854668a105a611fbc92b60"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82127518,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc",
+            "tracking_id": ["hdl:21.14100/07537201-5a5c-4b32-aaec-dc82af8c558e"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20620101-20621231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc|esgf-data1.llnl.gov",
+            "checksum": ["d6f4be7019b89246a143f2381475bb18048da5c7243b67b645d236aa5428f0a0"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82194504,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc",
+            "tracking_id": ["hdl:21.14100/bfbd3ace-b058-486b-a659-d59caa6c75e1"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20630101-20631231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc|esgf-data1.llnl.gov",
+            "checksum": ["2ac2a470af0974a51c045639c79967811fc02eac33f14fab1dff898fd53f47f2"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82379238,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc",
+            "tracking_id": ["hdl:21.14100/1a5ec954-d70a-4685-bb51-5a3ef8098a81"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20640101-20641231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc|esgf-data1.llnl.gov",
+            "checksum": ["5c184c063184ab7ae5c9e3d109839ab20c761f0e397e7659e4170d6f5d07fcd3"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82116153,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc",
+            "tracking_id": ["hdl:21.14100/d8c7e541-e021-4460-9587-7195c83184f7"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20650101-20651231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc|esgf-data1.llnl.gov",
+            "checksum": ["130abe2aba6ab1b2688160450cb3dde56fec847aa2687cf79de52e81c5bd1405"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82090770,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc",
+            "tracking_id": ["hdl:21.14100/a9fcc196-94a2-4edd-85f3-fb752544418c"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20660101-20661231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc|esgf-data1.llnl.gov",
+            "checksum": ["4f0d79fcd19ac700478c788f186af62ef423f5712d4a48e739da4c76cb2c253d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82254292,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc",
+            "tracking_id": ["hdl:21.14100/f2e64478-16c9-4530-8cb0-5e698cc33e4d"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20670101-20671231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc|esgf-data1.llnl.gov",
+            "checksum": ["08e1f2fcf636cca918d2305c0d85d43b9e4251042e95cc651c1901edb985f9fa"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82435217,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc",
+            "tracking_id": ["hdl:21.14100/40f70dc4-e884-49c1-b0a4-faf8995140ca"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20680101-20681231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc|esgf-data1.llnl.gov",
+            "checksum": ["c2d42b9c7178c8d099f2063578bc1028d21c5dcaf0129d3f2ccbbfae0417f11c"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82167721,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc",
+            "tracking_id": ["hdl:21.14100/35c334bd-d324-4f1e-af98-cdee0593ed94"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20690101-20691231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f7765bbccb02894d890e150b7bbe3dca79129b4f60d893345616f30b939e2f34"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82124962,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc",
+            "tracking_id": ["hdl:21.14100/8c117ffa-a3b7-4bdc-a6b5-d4213272096b"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20700101-20701231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc|esgf-data1.llnl.gov",
+            "checksum": ["e29ea5ba0b3e1e8b28f9660b78f514e3870dc39a947a3c7619eef716a4d6e1af"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82082624,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc",
+            "tracking_id": ["hdl:21.14100/a371be5b-506c-479d-abb3-03356fbcf3e3"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20710101-20711231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc|esgf-data1.llnl.gov",
+            "checksum": ["0e9c840b0b3325e61db3bf6f287ca415ab954282a193fa5dd949ca811962e061"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82326540,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc",
+            "tracking_id": ["hdl:21.14100/c93f90db-6336-4995-ac99-3dad3e193715"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20720101-20721231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc|esgf-data1.llnl.gov",
+            "checksum": ["1e7a65f0f704ba6b29a1345ccb2225c585a3c1b8f891b86577d2fb0c339b03d3"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82152235,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc",
+            "tracking_id": ["hdl:21.14100/cdc83009-d7e2-4049-9516-b6bf96d77d89"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20730101-20731231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc|esgf-data1.llnl.gov",
+            "checksum": ["950d6c598de26293a1d88de5779dff9a1aff3218427a9a26e175a1e088d8582b"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82212542,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc",
+            "tracking_id": ["hdl:21.14100/32485f66-ac4c-4610-a803-f86f9986d370"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20740101-20741231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc|esgf-data1.llnl.gov",
+            "checksum": ["1893bba0a0f0b6a0c4cfc626653cad4d50cdfa62e06222c20b576ff1f9893a9a"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82177892,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc",
+            "tracking_id": ["hdl:21.14100/80167e96-7005-4582-b88f-fb89bd9b56d6"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20750101-20751231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc|esgf-data1.llnl.gov",
+            "checksum": ["00828b37b7a582052ed3673d72d135ab486b1791245a588e13ad7ff35083207e"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82313029,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc",
+            "tracking_id": ["hdl:21.14100/efbd233c-4431-4954-a097-ce21912e27ab"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20760101-20761231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc|esgf-data1.llnl.gov",
+            "checksum": ["3708fffc9f9f82566861470cada9fde0b177e9904c6250afb06f0b80db353f98"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82092058,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc",
+            "tracking_id": ["hdl:21.14100/7ddbd9a4-47b6-4881-999d-284637cb8636"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20770101-20771231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc|esgf-data1.llnl.gov",
+            "checksum": ["10582115dcfcbdc50ae1eff99ec0cd303afe78e827ca92b405b5cd1698986fbc"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82085308,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc",
+            "tracking_id": ["hdl:21.14100/f6ba2333-7014-45ec-9305-c265160ac383"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20780101-20781231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc|esgf-data1.llnl.gov",
+            "checksum": ["b1ed2eae03cdb97f82596cc2510385375363f5f0f81e1dad7f20e41abfeea70e"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82051498,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
+            "tracking_id": ["hdl:21.14100/371b6e30-1aa8-482b-974b-0481fa943d4d"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc|esgf-data1.llnl.gov",
+            "checksum": ["0173d01245a2c8200bf6737de3f42f6cf7868d4c8db09f7e2295991374a57ac6"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82327661,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+            "tracking_id": ["hdl:21.14100/bbe254fa-ff13-4f1a-b419-aad808102978"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc|esgf-data1.llnl.gov",
+            "checksum": ["6b4cd1f21df84854ccc3a23d0490b6ad69717d24f4b3204b48a8ee216ff9f2af"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81983363,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc",
+            "tracking_id": ["hdl:21.14100/42e39832-8ebe-49c7-bf45-50be6e6530a8"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc|esgf-data1.llnl.gov",
+            "checksum": ["272dd4a27b9fc60e78f87f940b71a84f43d101ba618f99d724982f0760c6251a"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82124290,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc",
+            "tracking_id": ["hdl:21.14100/9f6f614f-e628-455e-9301-da810a32a408"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20820101-20821231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc|esgf-data1.llnl.gov",
+            "checksum": ["4228a7c49f6edc9eff390a070023f430d165a6849c8c77df4836cdb2ee04b6cf"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82042455,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc",
+            "tracking_id": ["hdl:21.14100/6da12dca-9c58-4f3c-bb95-623a57c006bd"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20830101-20831231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc|esgf-data1.llnl.gov",
+            "checksum": ["cc9ed18701bfb22d18949aa54a9f9e581479a8149d865286e614a43308ab4452"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82277210,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc",
+            "tracking_id": ["hdl:21.14100/0f5731a1-70c7-4b3b-b755-39c21f44ad3c"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20840101-20841231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc|esgf-data1.llnl.gov",
+            "checksum": ["d0ae751514f467d6f06f37cba06d653fccef374a98e783e6b5a64a87cc1354bf"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82029647,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc",
+            "tracking_id": ["hdl:21.14100/6a339738-9a66-4cce-a31c-895dd0b6ca72"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20850101-20851231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc|esgf-data1.llnl.gov",
+            "checksum": ["7fdbb2af3d510e5c44b91ae7c1dc9a8fbb57ca88e174ec203f5beb725c7b7373"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81994707,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc",
+            "tracking_id": ["hdl:21.14100/47160bce-3bb4-4e82-942e-1eb0763962f0"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20860101-20861231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc|esgf-data1.llnl.gov",
+            "checksum": ["ec1e6cddbf0b7c9b3e446afcbbadc5f2505bbf64eb9be4fb7082435f4a416888"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81979554,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc",
+            "tracking_id": ["hdl:21.14100/6d8244c6-2fb7-4b66-9480-f37e9026bed2"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20870101-20871231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc|esgf-data1.llnl.gov",
+            "checksum": ["a4fe07f868314001b57c62c8972c069ee0607642998e6e1719944ee4127c47a9"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82254708,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc",
+            "tracking_id": ["hdl:21.14100/3ec5fd0f-0b7b-4be0-8a03-4de6c182968c"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20880101-20881231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc|esgf-data1.llnl.gov",
+            "checksum": ["e6cab3d82448ed92b3dd544cd8efcd299fdcfd66b3214d35a2d616bb8a7a7320"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81946626,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc",
+            "tracking_id": ["hdl:21.14100/980f7213-ab9e-4d61-852c-72473956b2b0"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20890101-20891231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc|esgf-data1.llnl.gov",
+            "checksum": ["75d5839a0b98ff50ed0a8bac517c58bb718fd26f3580483559a2c7ac76856135"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82064989,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc",
+            "tracking_id": ["hdl:21.14100/f604b456-1713-4c84-96ff-9d7dbab6d528"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20900101-20901231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f5ffde59e15dccbd13f0f283a1ef9c8b41df5fa12c13d6900ab4360e008d6731"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82036940,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc",
+            "tracking_id": ["hdl:21.14100/99dae2ba-0787-4ba7-b83c-55abb6cbf690"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20910101-20911231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc|esgf-data1.llnl.gov",
+            "checksum": ["c3c773ff678a6261d653f52ce48d6c97c546a86b5e24d03e669a80e3fe80c2b7"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82224457,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc",
+            "tracking_id": ["hdl:21.14100/4a818c5d-414d-4c86-b9fb-17c543843df8"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20920101-20921231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc|esgf-data1.llnl.gov",
+            "checksum": ["804b05b18bded26ec24ffef06cfe61d26efe39f32f5fdcf9b71e45668c01bec2"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82014986,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc",
+            "tracking_id": ["hdl:21.14100/145e7156-1fd2-4874-b737-0261a99b1b8a"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20930101-20931231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc|esgf-data1.llnl.gov",
+            "checksum": ["f417bf036532c046a5f2cd2a119cbcc3fc7717c6082fa1b0d7893eff3eceee02"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81990162,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc",
+            "tracking_id": ["hdl:21.14100/6d2475df-69f4-49a6-afc6-63cd655f4d1a"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20940101-20941231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc|esgf-data1.llnl.gov",
+            "checksum": ["2bb660274227f7770f90322c8c6ea6ce15f4e5e5a18348a00f44ecd8eb8c1e93"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81966781,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc",
+            "tracking_id": ["hdl:21.14100/16874054-ea52-4624-b0ea-f46183328688"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20950101-20951231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc|esgf-data1.llnl.gov",
+            "checksum": ["672150fc7f5ffec776a90c78b1fa4556428561fdb29d697d88cb07b8c66219df"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 82194298,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc",
+            "tracking_id": ["hdl:21.14100/8ef25435-86c0-468a-b95c-3484fa6d7224"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20960101-20961231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc|esgf-data1.llnl.gov",
+            "checksum": ["3de855f983e1464391bc3ef416785657ce31f5942549a7046f7a789b79e37d52"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81923843,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc",
+            "tracking_id": ["hdl:21.14100/52102bcc-fd69-4a2c-99a0-96e67fa605ef"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20970101-20971231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc|esgf-data1.llnl.gov",
+            "checksum": ["caf6eb23f68cad9c3e71291298f6d4830a65b6f9734c98d97d06ae1e2f90014d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81972498,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc",
+            "tracking_id": ["hdl:21.14100/7e7b2312-d287-4852-a7f2-ed57e483bc5e"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20980101-20981231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc|esgf-data1.llnl.gov",
+            "checksum": ["0a7e951e502c4270f81e440494b2af9c0993390637c7e04979e3a4e6a79b6b64"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81930980,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc",
+            "tracking_id": ["hdl:21.14100/a024f82a-003b-4188-bdef-e9ad578d7c1f"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20990101-20991231.nc|Globus|Globus"]
+          },
+          {
+            "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc|esgf-data1.llnl.gov",
+            "checksum": ["6a7e78aca90e4b784e190d9ebc7a8f37a34bbcd78dec003f91444c3d1efa4f8d"],
+            "checksum_type": ["SHA256"],
+            "data_node": "esgf-data1.llnl.gov",
+            "dataset_id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+            "size": 81927411,
+            "title": "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc",
+            "tracking_id": ["hdl:21.14100/483a6110-934c-474e-b715-44cd92e03317"],
+            "url": ["http://esgf-data1.llnl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc|application/netcdf|HTTPServer", "gsiftp://aimsdtn2.llnl.gov:2811//css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc|application/gridftp|GridFTP", "http://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc.html|application/opendap-html|OPENDAP", "globus:415a6320-e49c-11e5-9798-22000b9da45e/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_21000101-21001231.nc|Globus|Globus"]
+          }
+        ]
+      },
+      "timestamp": ["2023-05-11T09:35:23:23.839041Z"]
+    },
+    "responseHeader": {
+      "QTime": [10]
+    }
+  },
+  "response": {
+    "responseHeader": {
+      "status": [0],
+      "QTime": [10],
+      "params": {
+        "df": ["text"],
+        "q.alt": ["*:*"],
+        "indent": ["true"],
+        "echoParams": ["all"],
+        "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
+        "start": ["0"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "experiment_id:\"ssp585\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "rows": ["2"],
+        "q": ["*:*"],
+        "shards": ["localhost:8983/solr/datasets,localhost:8985/solr/datasets,localhost:8988/solr/datasets,localhost:8990/solr/datasets,localhost:8993/solr/datasets,localhost:8995/solr/datasets,localhost:8987/solr/datasets"],
+        "tie": ["0.01"],
+        "facet.limit": ["2048"],
+        "qf": ["text"],
+        "facet.method": ["fc"],
+        "facet.mincount": ["1"],
+        "wt": ["json"],
+        "facet.sort": ["lex"]
+      }
+    },
+    "response": {
+      "numFound": [5],
+      "start": [0],
+      "maxScore": [1],
+      "docs": [
+        {
+          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov",
+          "access": ["HTTPServer", "GridFTP", "OPENDAP", "Globus", "LAS"],
+          "activity_id": ["ScenarioMIP"],
+          "experiment_id": ["ssp585"],
+          "frequency": ["day"],
+          "index_node": "esgf-node.llnl.gov",
+          "number_of_aggregations": 2,
+          "number_of_files": 86,
+          "project": ["CMIP6"],
+          "size": 7072872604,
+          "source_id": ["AWI-CM-1-1-MR"],
+          "url": ["http://esgf-data1.llnl.gov/thredds/catalog/esgcet/59/CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.xml#CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|application/xml+thredds|THREDDS", "http://esgf-data1.llnl.gov/las/getUI.do?catid=BDA7D633E3E4065F7F7D07B5DF1F5873_ns_CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|application/las|LAS"],
+          "variable_id": ["tas"],
+          "variant_label": ["r1i1p1f1"]
+        },
+        {
+          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data04.diasjp.net",
+          "access": ["HTTPServer", "OPENDAP"],
+          "activity_id": ["ScenarioMIP"],
+          "experiment_id": ["ssp585"],
+          "frequency": ["day"],
+          "index_node": "esgf-node.llnl.gov",
+          "number_of_aggregations": 1,
+          "number_of_files": 86,
+          "project": ["CMIP6"],
+          "size": 7072872604,
+          "source_id": ["AWI-CM-1-1-MR"],
+          "url": ["http://esgf-data04.diasjp.net/thredds/catalog/esgcet/67/CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.xml#CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|application/xml+thredds|THREDDS"],
+          "variable_id": ["tas"],
+          "variant_label": ["r1i1p1f1"]
+        }
+      ]
+    },
+    "timestamp": ["2020-02-02T22:22:22:22.123456Z"]
+  }
+}

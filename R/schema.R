@@ -195,7 +195,7 @@ SCHEMA_QUERY <- local({
             "project", "activity_id", "source_id", "variable_id",
             "variant_label", "nominal_resolution", "data_node", "facets",
             "fields", "shards", "replica", "latest", "distrib", "limit",
-            "offset"
+            "offset", "format"
         )),
         fields = list(
             project            = sch_param,
@@ -207,6 +207,7 @@ SCHEMA_QUERY <- local({
             data_node          = sch_param,
             facets             = sch_param,
             shards             = sch_param,
+            dataset_id         = sch_param,
             replica = c(
                 sch_list,
                 list(
@@ -303,6 +304,36 @@ SCHEMA_QUERY <- local({
             facet_listing = SCHEMA_RESPONSE
         )
     )
+})
+# }}}
+
+# SCHEMA_RESULT_DATASET {{{
+SCHEMA_RESULT_DATASET <- local({
+    schema <- SCHEMA_QUERY
+
+    schema$names$must.include <- c("host", "parameter", "response", "last_result")
+    schema$fields$response <- schema$fields$last_result$response
+    schema$fields$facet_listing <- NULL
+
+    # only require parameters for File and Aggregation queries
+    schema$fields$last_result$fields$parameter$names$must.include <- c("dataset_id",
+        "fields", "latest", "distrib", "limit", "type", "format")
+    schema$fields$last_result$fields$parameter$fields$dataset_id <- schema$fields$parameter$fields$project
+
+    # redefine 'type' values
+    schema$fields$last_result$fields$parameter$fields$type$fields$value$type[[2L]] <- c("File", "Aggregation")
+
+    # remove 'facet' requirement in the response of last result
+    schema$fields$last_result$fields$response$fields$responseHeader$fields$params$names$must.include <- setdiff(
+        schema$fields$last_result$fields$response$fields$responseHeader$fields$params$names$must.include,
+        "facet"
+    )
+    schema$fields$last_result$fields$response$fields$responseHeader$fields$params$fields$facet <- NULL
+
+    # remove 'facet_counts' requirement in the response of last result
+    schema$fields$last_result$fields$response$fields$facet_counts <- NULL
+
+    schema
 })
 # }}}
 

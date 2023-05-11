@@ -1400,45 +1400,13 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$save(tempfile(fileext = ".json"))
         #' }
         save = function(file = "query.json", pretty = TRUE) {
-            checkmate::assert_string(file)
-            checkmate::assert_choice(tools::file_ext(file), "json")
-
-            params <- query_param_flat(private$parameter, empty = TRUE)
-            # exclude name
-            params <- lapply(params, .subset, c("value", "negate"))
-
-            last_result <- private$last_result
-            if (length(last_result)) {
-                last_result$parameter <- query_param_flat(
-                    last_result$parameter, empty = TRUE
-                )
-                # exclude name
-                last_result$parameter <- lapply(last_result$parameter,
-                    .subset, c("value", "negate"))
-
-                # NOTE: the timestamp may include sub-seconds, but
-                # jsonlite::toJSON() will cut that part when converting POSIXct
-                # to string we can convert it to a string in advance
-                if (length(last_result$response$timestamp)) {
-                    last_result$response$timestamp <- format.POSIXct(
-                        last_result$response$timestamp, digits = 6, tz = "UTC",
-                        format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
-                    )
-                }
-            }
-
-            data <- list(
+            query_save(
                 host = private$url_host,
-                parameter = params,
-                last_result = last_result,
-                facet_listing = private$facet_listing
+                parameter = private$parameter,
+                last_result = private$last_result,
+                facet_listing = private$facet_listing,
+                file = file, pretty = pretty
             )
-
-            jsonlite::write_json(data, file, null = "null", digits = 6,
-                pretty = pretty
-            )
-
-            normalizePath(file, mustWork = TRUE)
         },
         # }}}
 
@@ -1464,43 +1432,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$load(f)
         #' }
         load = function(file = "query.json") {
-            checkmate::assert_file(file, "r", extension = "json")
+            q <- query_load(file)
 
-            json <- jsonlite::fromJSON(file, simplifyVector = TRUE)
-
-            # validate using predefined schema
-            schema_validate(json, SCHEMA_QUERY)
-
-            create_params <- function(input) {
-                params <- EsgfQuery$private_fields$parameter
-                for (nm in names(input)) {
-                    par <- input[[nm]]
-                    if (!is.null(par)) {
-                        par <- new_query_param(nm, par[c("value", "negate")])
-                        if (nm %in% names(params)) {
-                            params[[nm]] <- new_query_param(nm, par)
-                        } else {
-                            params$others[[nm]] <- new_query_param(nm, par)
-                        }
-                    }
-                }
-                params
-            }
-
-            if (length(json$last_result)) {
-                json$last_result$parameter <- create_params(json$last_result$parameter)
-                if (length(json$last_result$response$timestamp)) {
-                    json$last_result$response$timestamp <- as.POSIXct(
-                        json$last_result$response$timestamp, tz = "UTC",
-                        format = "%Y-%m-%dT%H:%M:%S:%OSZ"
-                    )
-                }
-            }
-
-            private$url_host <- json$host
-            private$parameter <- create_params(json$parameter)
-            private$facet_listing <- json$facet_listing
-            private$last_result <- json$last_result
+            private$url_host <- q$host
+            private$parameter <- q$parameter
+            private$facet_listing <- q$facet_listing
+            private$last_result <- q$last_result
 
             self
         },
@@ -1850,6 +1787,109 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
     }
 
     list(response = response, docs = docs)
+}
+# }}}
+
+# query_save {{{
+query_save <- function(host, parameter, last_result, ..., file = "query.json", pretty = TRUE) {
+    checkmate::assert_string(file)
+    checkmate::assert_choice(tools::file_ext(file), "json")
+
+    params <- query_param_flat(parameter, empty = TRUE)
+    # exclude name
+    params <- lapply(params, .subset, c("value", "negate"))
+
+    if (length(last_result)) {
+        last_result$parameter <- query_param_flat(
+            last_result$parameter, empty = TRUE
+        )
+        # exclude name
+        last_result$parameter <- lapply(last_result$parameter,
+            .subset, c("value", "negate"))
+
+        # NOTE: the timestamp may include sub-seconds, but
+        # jsonlite::toJSON() will cut that part when converting POSIXct
+        # to string we can convert it to a string in advance
+        if (length(last_result$response$timestamp)) {
+            last_result$response$timestamp <- format.POSIXct(
+                last_result$response$timestamp, digits = 6, tz = "UTC",
+                format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
+            )
+        }
+    }
+
+    data <- list(
+        host = host,
+        parameter = params,
+        last_result = last_result
+    )
+
+    if (length(list(...))) data <- c(data, list(...))
+
+    if (length(data$response) && length(data$response$timestamp)) {
+        # NOTE: the timestamp may include sub-seconds, but
+        # jsonlite::toJSON() will cut that part when converting POSIXct
+        # to string we can convert it to a string in advance
+        data$response$timestamp <- format.POSIXct(
+            data$response$timestamp, digits = 6, tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
+        )
+    }
+
+    jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
+
+    normalizePath(file, mustWork = TRUE)
+}
+# }}}
+
+# query_load {{{
+query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
+    checkmate::assert_file(file, "r", extension = "json")
+
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE)
+
+    # validate using predefined schema
+    schema_validate(json, schema)
+
+    if (length(json$parameter)) {
+        json$parameter <- restore_params(
+            input = json$parameter,
+            params = EsgfQuery$private_fields$parameter
+        )
+    }
+
+    if (length(json$response) && length(json$response$timestamp)) {
+        json$response$timestamp <- as.POSIXct(
+            json$response$timestamp, tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OSZ"
+        )
+    }
+
+    if (length(json$last_result) && length(json$last_result$response$timestamp)) {
+        json$last_result$response$timestamp <- as.POSIXct(
+            json$last_result$response$timestamp, tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OSZ"
+        )
+    }
+
+    json
+}
+# }}}
+
+# restore_params {{{
+restore_params <- function(input, params = EsgfQuery$private_fields$parameter) {
+    for (nm in names(input)) {
+        par <- input[[nm]]
+        if (!is.null(par)) {
+            par <- new_query_param(nm, par[c("value", "negate")])
+            if (nm %in% names(params)) {
+                params[[nm]] <- new_query_param(nm, par)
+            } else {
+                params$others[[nm]] <- new_query_param(nm, par)
+            }
+        }
+    }
+    params
 }
 # }}}
 

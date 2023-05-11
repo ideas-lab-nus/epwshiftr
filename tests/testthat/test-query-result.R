@@ -75,9 +75,39 @@ test_that("ESGF Query Result Dataset works", {
     expect_type(datasets$number_of_files, "integer")
     expect_length(datasets$number_of_files, 2L)
 
+    # $save() empty datasets
+    fe <- tempfile(fileext = ".json")
+    datasets$.__enclos_env__$private$response$responseHeader$QTime <- 10L
+    datasets$.__enclos_env__$private$response$timestamp <- as.POSIXct(
+        "2020-02-02 22:22:22.123456", "UTC"
+    )
+    expect_snapshot_file(datasets$save(fe), "dataset_empty.json")
+
+    # $load() empty datasets
+    expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(fe), "EsgfQueryResultDataset")
+    expect_equal(priv(datasets)$url_host,    priv(de)$url_host)
+    expect_equal(priv(datasets)$parameter,   priv(de)$parameter)
+    expect_equal(priv(datasets)$response,    priv(de)$response)
+    expect_equal(priv(datasets)$last_result, priv(de)$last_result)
+
     # $collect():
     ## $collect(): can specify dataset index
-    expect_s3_class(datasets$collect(1, fields = "id"), "EsgfQueryResultFile")
+    expect_s3_class(datasets$collect(1, limit = 2, fields = "id"), "EsgfQueryResultFile")
+
+    # $save() collected datasets
+    fc <- tempfile(fileext = ".json")
+    datasets$.__enclos_env__$private$last_result$response$timestamp <- as.POSIXct(
+        "2020-02-02 22:22:22.123456", "UTC"
+    )
+    datasets$.__enclos_env__$private$last_result$response$responseHeader$QTime <- 10L
+    expect_snapshot_file(datasets$save(fc), "dataset_collected.json")
+
+    # $load() collected datasets
+    expect_s3_class(dc <- new_query_result(EsgfQueryResultDataset)$load(fc), "EsgfQueryResultDataset")
+    expect_equal(priv(datasets)$url_host,    priv(dc)$url_host)
+    expect_equal(priv(datasets)$parameter,   priv(dc)$parameter)
+    expect_equal(priv(datasets)$response,    priv(dc)$response)
+    expect_equal(priv(datasets)$last_result, priv(dc)$last_result)
 
     ## $collect(): can specify dataset id
     expect_s3_class(datasets$collect(datasets$id[1], fields = "id"), "EsgfQueryResultFile")

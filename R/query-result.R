@@ -1,3 +1,4 @@
+# EsgfQueryResult {{{
 #' Base class for results for ESGF query
 #'
 #' @description
@@ -14,6 +15,7 @@
 EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     lock_class = TRUE,
     public = list(
+        # initialize {{{
         #' @description
         #' Create a new EsgfQueryResult object
         #'
@@ -24,17 +26,19 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'
         #' @param params A list of query parameters.
         #'
-        #' @param result The result of an query response.
+        #' @param response The result of an query response.
         #'
         #' @return An `EsgfQueryResult` object.
         #'
-        initialize = function(host, params, result) {
+        initialize = function(host, params, response) {
             private$url_host <- host
-            private$parameters <- params
-            private$result <- result
+            private$parameter <- params
+            private$response <- response
             self
         },
+        # }}}
 
+        # to_dt {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -81,7 +85,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             res
         },
+        # }}}
 
+        # count {{{
         #' @description
         #' Count the number of matched records in current result
         #'
@@ -89,24 +95,92 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'
         count = function() {
             length(self$id)
+        },
+        # }}}
+
+        # save {{{
+        #' @description
+        #' Save the result into a JSON file
+        #'
+        #' `$save()` puts main data of an `EsgfQueryResult` object into a JSON file
+        #' which can be loaded to restore the current state of result using
+        #' \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
+        #'
+        #' @param file A string indicating the JSON file path to save the data
+        #'        to. Default: `result.json`.
+        #'
+        #' @param pretty Whether to add indentation whitespace to JSON output.
+        #'        For details, please see [jsonlite::toJSON()]. Default: `TRUE`.
+        #'
+        #' @return The full path of the output JSON file.
+        #'
+        save = function(file = "result.json", pretty = TRUE) {
+            query_save(
+                host = private$url_host,
+                parameter = private$parameter,
+                response = private$response,
+                last_result = private$last_result,
+                file = file, pretty = pretty
+            )
+        },
+        # }}}
+
+        # load {{{
+        #' @description
+        #' Restore the result state from an JSON file
+        #'
+        #' `$load()` reads data of an `EsgfQueryResult` object from a JSON file
+        #' created using
+        #' \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
+        #'
+        #' @param file A string indicating the JSON file path to read the data
+        #'        from. Default: `result.json`.
+        #'
+        #' @return The modified `EsgfQueryResult` object itself.
+        #'
+        load = function(file = "result.json") {
+            q <- query_load(file, SCHEMA_RESULT_DATASET)
+
+            private$url_host <- q$host
+            private$parameter <- q$parameter
+            private$response <- q$response
+
+            if (length(q$last_result)) {
+                # restore parameters in last result
+                q$last_result$parameter <- restore_params(
+                    input = q$last_result$parameter,
+                    params = list(dataset_id = NULL, fields = NULL, latest = TRUE,
+                        distrib = TRUE, limit = NULL, type = NULL,
+                        format = "application/solr+json"
+                    )
+                )
+                private$last_result <- q$last_result
+            }
+
+            self
         }
+        # }}}
     ),
 
     active = list(
+        # id {{{
         #' @field id A character vector indicating globally unique record
         #'        identifiers.
         id = function() {
             private$get_field("id")
         },
+        # }}}
 
+        # url {{{
         #' @field url A list of [data.table][data.table::data.table()] with 3
         #'        columns:
-        #'        (a) `service` \\[`character`\\]: The service types, e.g.
-        #'        OPENDAP, HTTPServer, etc.;
-        #'        (b) `url` \\[`character`\\]: The actual URLs;
-        #'        (c) `mime_type` \\[`character`\\]: The MIME types indicating
-        #'        the nature and format of the corresponding document of the
-        #'        URLs.
+        #'
+        #' 1. `service` \\[`character`\\]: The service types, e.g. OPENDAP,
+        #'    HTTPServer, etc.;
+        #' 2. `url` \\[`character`\\]: The actual URLs;
+        #' 3. `mime_type` \\[`character`\\]: The MIME types indicating
+        #'    the nature and format of the corresponding document of the
+        #'    URLs.
         url = function() {
             urls <- private$get_field("url")
             # nocov start
@@ -128,14 +202,18 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 res
             })
         },
+        # }}}
 
+        # size {{{
         #' @field size A vector of [units][units::as_units()] indicating the
         #'        file sizes.
         size = function() {
             size <- private$get_field("size")
             set_size_units(size)
         },
+        # }}}
 
+        # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
@@ -143,25 +221,28 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             # nocov end
             sort(names(private$get_docs()))
         }
+        # }}}
     ),
 
     private = list(
         url_host = NULL,
-        parameters = NULL,
-        result = NULL,
-        last_response = NULL,
+        parameter = NULL,
+        response = NULL,
+        last_result = NULL,
 
         required_fields = c("id", "size", "url"),
+        query_fields = c("dataset_id", "fields", "latest", "distrib", "limit", "type", "format"),
 
         get_docs = function() {
-            private$result$response$docs
+            private$response$response$docs
         },
 
         get_field = function(field) {
-            val <- private$result$response$docs[[field]]
+            val <- private$response$response$docs[[field]]
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
 
+        # get_url {{{
         get_url = function(type, name = type) {
             vapply(self$url, function(dt_url) {
                 # nocov start
@@ -180,16 +261,20 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 res
             }, character(1L))
         },
+        # }}}
 
+        # print_header {{{
         print_header = function(type = "") {
             d <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
             cli::cli_rule("ESGF Query Result [{type}]")
             cli::cli_end(d)
         },
+        # }}}
 
+        # print_summary {{{
         print_summary = function(type = "") {
             cli::cli_bullets(c("*" = "Host: {private$url_host}"))
-            cli::cli_bullets(c("*" = "Collected at: {private$result$timestamp}"))
+            cli::cli_bullets(c("*" = "Collected at: {private$response$timestamp}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
             if (type == "Aggregation") {
                 cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
@@ -202,19 +287,23 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 cli::cli_bullets(c("*" = "Fields: {length(self$fields)} | [ {self$fields} ]"))
             }
         },
+        # }}}
 
+        # print_parameters {{{
         print_parameters = function() {
             cli::cli_h1("<Query Parameter>")
-            print_query_params(private$parameters)
+            print_query_params(private$parameter)
         },
+        # }}}
 
+        # print_contents {{{
         print_contents = function(type, n) {
             checkmate::assert_count(n, positive = TRUE, null.ok = TRUE)
 
-            if (is.null(self$data_node)) {
+            if (is.null(private$get_field("data_node"))) {
                 cli::cli_rule("<{type}>")
             } else {
-                cli::cli_rule("<{type}> (From {length(unique(self$data_node))} Data Nodes)")
+                cli::cli_rule("<{type}> (From {length(unique(private$get_field('data_node')))} Data Nodes)")
             }
 
             if (self$count() == 0L) {
@@ -234,22 +323,22 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             if (type == "Dataset") {
                 size <- sprintf("%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
-                    spc, self$number_of_files[ind],
+                    spc, private$get_field("number_of_files")[ind],
                     round(self$size[ind], 2), units(self$size)$numerator,
-                    if (is.null(self$number_of_aggregations)) {
+                    if (is.null(private$get_field("number_of_aggregations"))) {
                         "No Aggregations"
                     } else {
-                        agg <- self$number_of_aggregations
+                        agg <- private$get_field("number_of_aggregations")
                         agg[is.na(agg)] <- 0L
                         paste(agg,
                             vapply(agg, ngettext, "", "Aggregation", "Aggregations")
                         )
                     },
                     spc,
-                    if (is.null(self$access)) {
+                    if (is.null(private$get_field("access"))) {
                         "NONE"
                     } else {
-                        vapply(self$access[ind], paste0, "", collapse = ", ")
+                        vapply(private$get_field("access")[ind], paste0, "", collapse = ", ")
                     }
                 )
             } else {
@@ -274,9 +363,12 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             print_trunc(self$id, n)
         }
+        # }}}
     )
 )
+# }}}
 
+# EsgfQueryResultDataset {{{
 #' ESGF Query results for `Dataset` type
 #'
 #' @description
@@ -293,6 +385,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
+        # to_dt {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -309,25 +402,31 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         },
+        # }}}
 
+        # has_opendap {{{
         #' @description
         #' Check if there are OPeNDAP support for the datasets
         #'
         #' @return A logical vector.
         #'
         has_opendap = function() {
-            vapply(self$access, function(acc) "OPENDAP" %in% acc, logical(1L))
+            vapply(private$get_field("access"), function(acc) "OPENDAP" %in% acc, logical(1L))
         },
+        # }}}
 
+        # has_download {{{
         #' @description
         #' Check if there are HTTPServer download URL for the datasets
         #'
         #' @return A logical vector.
         #'
         has_download = function() {
-            vapply(self$access, function(acc) "HTTPServer" %in% acc, logical(1L))
+            vapply(private$get_field("access"), function(acc) "HTTPServer" %in% acc, logical(1L))
         },
+        # }}}
 
+        # collect {{{
         #' @description
         #' Collect file or aggregation information for current datasets
         #'
@@ -400,10 +499,16 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 private$url_host, params, required_fields = req_fld,
                 all = all, limit = limit, constraints = FALSE
             )
-            private$last_response <- result$response
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
+
+            # store last result
+            private$last_result <- list(
+                url_host = private$url_host,
+                parameter = params,
+                response = result$response
+            )
 
             # create new results
             if (type == "File") {
@@ -418,7 +523,9 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 )
             }
         },
+        # }}}
 
+        # print {{{
         #' @description
         #' Print a summary of the current dataset
         #'
@@ -434,6 +541,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             private$print_contents("Dataset", n)
             invisible(self)
         }
+        # }}}
     ),
 
     private = list(
@@ -442,6 +550,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             "index_node", "number_of_files", "number_of_aggregations", "access"
         ))),
 
+        # build_params {{{
         build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
             checkmate::assert_choice(type, c("File", "Aggregation"))
 
@@ -469,7 +578,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
 
             # create a new query to validate params
-            query <- query_esgf(private$url_host, build = private$url_host %in% names(this$cache$facet))
+            query <- query_esgf(private$url_host, listing = private$url_host %in% names(this$cache$facet))
 
             params <- list(
                 dataset_id = if (is.null(index)) self$id else self$id[index],
@@ -489,9 +598,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             # convert all inputs into query params and remove empty one
             query_param_flat(params)
         }
+        # }}}
     )
 )
+# }}}
 
+# EsgfQueryResultFile {{{
 #' ESGF Query results for `File` type
 #'
 #' @description
@@ -508,6 +620,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
+        # to_dt {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -524,7 +637,9 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         },
+        # }}}
 
+        # print {{{
         #' @description
         #' Print a summary of the current dataset
         #'
@@ -540,14 +655,19 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             private$print_contents("File", n)
             invisible(self)
         }
+        # }}}
     ),
     active = list(
+
+        # filename {{{
         #' @field filename A character vector indicating file names on the
         #'        sever.
         filename = function() {
             private$get_field("title")
         },
+        # }}}
 
+        # url_opendap {{{
         #' @field url_opendap A character vector of the OPeNDAP URLs of the
         #'        files.
         url_opendap = function() {
@@ -558,13 +678,17 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             }
             url
         },
+        # }}}
 
+        # url_download {{{
         #' @field url_download A character vector of the download URLs of the
         #'        files.
         url_download = function() {
             private$get_url("HTTPServer")
         },
+        # }}}
 
+        # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
@@ -572,6 +696,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             # nocov end
             sort(c("filename", "url_opendap", "url_download", super$fields))
         }
+        # }}}
     ),
     private = list(
         required_fields = sort(unique(c(
@@ -581,7 +706,9 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         )))
     )
 )
+# }}}
 
+# EsgfQueryResultAggregation {{{
 #' ESGF Query results for `Aggregation` type
 #'
 #' @description
@@ -598,6 +725,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
+        # to_dt {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -614,7 +742,9 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             checkmate::assert_flag(formatted)
             super$to_dt(fields, if (formatted) c("url", "size"))
         },
+        # }}}
 
+        # print {{{
         #' @description
         #' Print a summary of the current dataset
         #'
@@ -630,9 +760,11 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             private$print_contents("Aggregation", n)
             invisible(self)
         }
+        # }}}
     ),
 
     active = list(
+        # url_opendap {{{
         #' @field url_opendap A character vector of the OPeNDAP URLs of the
         #'        files.
         url_opendap = function() {
@@ -643,13 +775,17 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             }
             url
         },
+        # }}}
 
+        # url_download {{{
         #' @field url_download A character vector of the download URLs of the
         #'        files.
         url_download = function() {
             private$get_url("HTTPServer")
         },
+        # }}}
 
+        # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
@@ -657,6 +793,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             # nocov end
             sort(c("url_opendap", "url_download", super$fields))
         }
+        # }}}
     ),
 
     private = list(
@@ -666,8 +803,10 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         )))
     )
 )
+# }}}
 
-new_query_result <- function(generator, host, params, result, ..., .env = parent.frame()) {
+# new_query_result {{{
+new_query_result <- function(generator, host = NULL, params = NULL, result = NULL, ..., .env = parent.frame()) {
     if (generator$is_locked()) {
         generator$unlock()
         on.exit(generator$lock(), add = TRUE)
@@ -704,3 +843,6 @@ new_query_result <- function(generator, host, params, result, ..., .env = parent
     }
     generator$new(host, params, result, ...)
 }
+# }}}
+
+# vim: fdm=marker :
