@@ -365,6 +365,21 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
         # }}}
 
+        # has_listing {{{
+        #' @description
+        #' Check whether facet listing query has been sent
+        #'
+        #' @return `TRUE` or `FALSE`.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$has_listing()
+        #' }
+        has_listing = function() {
+            as.logical(private$has_facet_listing())
+        },
+        # }}}
+
         # list_all_facets {{{
         #' @description
         #' List all available facet names

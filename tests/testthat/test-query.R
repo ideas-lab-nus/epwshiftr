@@ -1,5 +1,6 @@
 host <- "https://esgf.ceda.ac.uk/esg-search"
 
+# ESGF Query Parameter {{{
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     expect_s3_class(
@@ -42,7 +43,9 @@ test_that("ESGF Query Parameter works", {
         )
     ))
 })
+# }}}
 
+# query_esgf() {{{
 test_that("query_esgf()", {
     expect_s3_class(EsgfQuery$new(listing = FALSE), "EsgfQuery")
     expect_s3_class(query_esgf(listing = FALSE), "EsgfQuery")
@@ -54,7 +57,20 @@ test_that("query_esgf()", {
     expect_s3_class(q <- EsgfQuery$new(host, TRUE), "EsgfQuery")
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
 })
+# }}}
 
+# EsgfQuery$build_listing() and EsgfQuery$has_listing() {{{
+test_that("EsgfQuery$build_listing() and EsgfQuery$has_listing()", {
+    expect_false(query_esgf()$has_listing())
+
+    skip_on_cran()
+
+    expect_s3_class(q <- query_esgf(host)$build_listing(), "EsgfQuery")
+    expect_true(q$has_listing())
+})
+# }}}
+
+# EsgfQuery$list_all_facets() {{{
 test_that("EsgfQuery$list_all_facets()", {
     expect_null(query_esgf(listing = FALSE)$list_all_facets())
 
@@ -64,7 +80,9 @@ test_that("EsgfQuery$list_all_facets()", {
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_facets(), "character")
 })
+# }}}
 
+# EsgfQuery$list_all_fields() {{{
 test_that("EsgfQuery$list_all_fields()", {
     expect_null(query_esgf(listing = FALSE)$list_all_fields())
 
@@ -73,7 +91,9 @@ test_that("EsgfQuery$list_all_fields()", {
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_fields(), "character")
 })
+# }}}
 
+# EsgfQuery$list_all_shards() {{{
 test_that("EsgfQuery$list_all_shards()", {
     expect_null(query_esgf(listing = FALSE)$list_all_shards())
 
@@ -82,7 +102,9 @@ test_that("EsgfQuery$list_all_shards()", {
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_shards(), "character")
 })
+# }}}
 
+# EsgfQuery$list_all_values() {{{
 test_that("EsgfQuery$list_all_values()", {
     expect_null(query_esgf(listing = FALSE)$list_all_values("activity_id"))
 
@@ -91,7 +113,9 @@ test_that("EsgfQuery$list_all_values()", {
     expect_s3_class(q <- query_esgf(host, TRUE), "EsgfQuery")
     expect_type(q$list_all_values("activity_id"), "character")
 })
+# }}}
 
+# EsgfQuery$project() and other facet methods {{{
 test_that("EsgfQuery$project() and other facet methods", {
     q <- query_esgf(listing = FALSE)
 
@@ -199,7 +223,9 @@ test_that("EsgfQuery$project() and other facet methods", {
     expect_equal(q$data_node("esgf.ceda.ac.uk")$data_node()$value, "esgf.ceda.ac.uk")
     expect_null(q$data_node(NULL)$data_node())
 })
+# }}}
 
+# EsgfQuery$facets() {{{
 test_that("EsgfQuery$facets()", {
     expect_null(query_esgf(listing = FALSE)$facets())
     expect_equal(query_esgf(listing = FALSE)$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
@@ -213,7 +239,9 @@ test_that("EsgfQuery$facets()", {
     expect_equal(q$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
     expect_null(q$facets(NULL)$facets())
 })
+# }}}
 
+# EsgfQuery$fields() {{{
 test_that("EsgfQuery$fields()", {
     expect_equal(query_esgf(listing = FALSE)$fields()$value, "*")
     expect_equal(query_esgf(listing = FALSE)$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
@@ -229,7 +257,9 @@ test_that("EsgfQuery$fields()", {
     expect_equal(q$fields("*")$fields()$value, "*")
     expect_null(q$fields(NULL)$fields())
 })
+# }}}
 
+# EsgfQuery$shards() {{{
 test_that("EsgfQuery$shards()", {
     expect_s3_class(q <- query_esgf(listing = FALSE), "EsgfQuery")
 
@@ -259,7 +289,9 @@ test_that("EsgfQuery$shards()", {
     )
     expect_null(q$shards(NULL)$shards())
 })
+# }}}
 
+# EsgfQuery$replica() {{{
 test_that("EsgfQuery$replica()", {
     expect_null(query_esgf(listing = FALSE)$replica())
     expect_equal(query_esgf(listing = FALSE)$replica(TRUE)$replica()$value, TRUE)
@@ -275,7 +307,9 @@ test_that("EsgfQuery$replica()", {
     expect_equal(q$replica(FALSE)$replica()$value, FALSE)
     expect_null(q$replica(NULL)$replica())
 })
+# }}}
 
+# EsgfQuery$latest() {{{
 test_that("EsgfQuery$latest()", {
     expect_true(query_esgf(listing = FALSE)$latest()$value)
     expect_false(query_esgf(listing = FALSE)$latest(FALSE)$latest()$value)
@@ -289,7 +323,9 @@ test_that("EsgfQuery$latest()", {
     expect_false(q$latest(FALSE)$latest()$value)
     expect_true(q$latest(TRUE)$latest()$value)
 })
+# }}}
 
+# EsgfQuery$limit() {{{
 test_that("EsgfQuery$limit()", {
     expect_equal(query_esgf(listing = FALSE)$limit()$value, 10L)
     expect_warning(lim <- query_esgf(listing = FALSE)$limit(12000)$limit(), "10,000")
@@ -305,7 +341,9 @@ test_that("EsgfQuery$limit()", {
     expect_equal(lim$value, 10000L)
     expect_equal(q$limit(10L)$limit()$value, 10L)
 })
+# }}}
 
+# EsgfQuery$offset() {{{
 test_that("EsgfQuery$offset()", {
     expect_equal(query_esgf(listing = FALSE)$offset()$value, 0L)
     expect_equal(query_esgf(listing = FALSE)$offset(0)$offset()$value, 0L)
@@ -317,7 +355,9 @@ test_that("EsgfQuery$offset()", {
     expect_equal(q$offset()$value, 0L)
     expect_equal(q$offset(0)$offset()$value, 0L)
 })
+# }}}
 
+# EsgfQuery$params() {{{
 test_that("EsgfQuery$params()", {
     expect_s3_class(q <- query_esgf(listing = FALSE), "EsgfQuery")
 
@@ -389,7 +429,9 @@ test_that("EsgfQuery$params()", {
     # can remove all paramters
     expect_equal(q$params(NULL)$params(), list())
 })
+# }}}
 
+# EsgfQuery$url() {{{
 test_that("EsgfQuery$url()", {
     expect_type(EsgfQuery$new(listing = FALSE)$nominal_resolution("100 km")$url(), "character")
     expect_type(EsgfQuery$new(listing = FALSE)$nominal_resolution("100 km")$url(TRUE), "character")
@@ -403,7 +445,9 @@ test_that("EsgfQuery$url()", {
     expect_type(q$nominal_resolution("100 km")$url(TRUE), "character")
     expect_type(q$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 })
+# }}}
 
+# EsgfQuery$count() {{{
 test_that("EsgfQuery$count()", {
     expect_type(EsgfQuery$new(host, FALSE)$frequency("1hr")$count(FALSE), "integer")
     expect_type(EsgfQuery$new(host, FALSE)$frequency("1hr")$count(TRUE), "integer")
@@ -419,7 +463,9 @@ test_that("EsgfQuery$count()", {
     expect_type(cnt <- EsgfQuery$new(host)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
 })
+# }}}
 
+# EsgfQuery$collect() {{{
 test_that("EsgfQuery$collect()", {
     skip_on_cran()
 
@@ -447,7 +493,9 @@ test_that("EsgfQuery$collect()", {
     ## with specified limits
     expect_s3_class(res <- q$collect(all = TRUE, limit = 30), "EsgfQueryResultDataset")
 })
+# }}}
 
+# EsgfQuery$save() & EsgfQuery$load() {{{
 test_that("EsgfQuery$save() & EsgfQuery$load()", {
     q <- EsgfQuery$new(host = host, listing = FALSE)$
         activity_id("ScenarioMIP")$
@@ -493,7 +541,9 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     expect_equal(priv(ql)$facet_listing, priv(q)$facet_listing)
     expect_equal(priv(ql)$last_result,   priv(q)$last_result)
 })
+# }}}
 
+# EsgfQuery$print() {{{
 test_that("EsgfQuery$print()", {
     skip_on_cran()
 
@@ -509,3 +559,6 @@ test_that("EsgfQuery$print()", {
         }
     )
 })
+# }}}
+
+# vim: fdm=marker :
