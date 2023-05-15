@@ -135,14 +135,11 @@ SCHEMA_RESPONSE <- local({
                             qf = list(type = "string"),
                             facet.method = list(type = "string"),
                             facet.mincount = list(type = "string", pattern = "[0-9]+"),
-                            facet = list(type = list("choice", c("true", "false"))),
+                            facet = list(type = list("choice", c("true", "false"), null.ok = TRUE)),
                             wt = list(type = list("choice", c("json", "xml"))),
                             facet.sort = list(type = list("choice", "lex")),
                             shards = list(type = "string"),
-                            fields = list(
-                                type = list("list", "character", any.missing = FALSE),
-                                "..." = list(type = list("list", rules = "S1"))
-                            )
+                            fields = list(type = list("character", any.missing = FALSE))
                         )
                     )
                 )
@@ -158,7 +155,7 @@ SCHEMA_RESPONSE <- local({
                 )
             ),
             facet_counts = list(
-                type = "list",
+                type = list("list", null.ok = TRUE),
                 name = list(must.include = "facet_fields"),
                 fields = list(
                     facet_fields = list(
@@ -282,6 +279,11 @@ SCHEMA_QUERY <- local({
     sch_resp$fields$responseHeader$fields$params$fields$facet.field <- NULL
     sch_resp$fields$responseHeader$fields$params$fields$fields <- NULL
 
+    sch_listing <- SCHEMA_RESPONSE
+    sch_listing$fields$response$fields$docs <- list(
+        type = list("list", len = 0)
+    )
+
     list(
         type = "list",
         names = list(must.include = c("host", "parameter", "last_result", "facet_listing")),
@@ -301,7 +303,7 @@ SCHEMA_QUERY <- local({
                     response = sch_resp
                 )
             ),
-            facet_listing = SCHEMA_RESPONSE
+            facet_listing = sch_listing
         )
     )
 })

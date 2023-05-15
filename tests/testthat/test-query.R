@@ -460,10 +460,10 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     fe <- tempfile(fileext = ".json")
     expect_snapshot_file(q$save(fe), "query_empty.json")
     expect_s3_class(qe <- query_esgf()$load(fe), "EsgfQuery")
-    expect_equal(priv(q)$url_host, priv(qe)$url_host)
-    expect_equal(priv(q)$parameter, priv(qe)$parameter)
-    expect_equal(priv(q)$facet_listing, priv(qe)$facet_listing)
-    expect_equal(priv(q)$last_result, priv(qe)$last_result)
+    expect_equal(priv(qe)$url_host,      priv(q)$url_host)
+    expect_equal(priv(qe)$parameter,     priv(q)$parameter)
+    expect_equal(priv(qe)$facet_listing, priv(q)$facet_listing)
+    expect_equal(priv(qe)$last_result,   priv(q)$last_result)
 
     # query object with results
     q$collect()
@@ -474,10 +474,24 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     )
     expect_snapshot_file(q$save(fc), "query_collected.json")
     expect_s3_class(qc <- query_esgf()$load(fc), "EsgfQuery")
-    expect_equal(priv(q)$url_host, priv(qc)$url_host)
-    expect_equal(priv(q)$parameter, priv(qc)$parameter)
-    expect_equal(priv(q)$facet_listing, priv(qc)$facet_listing)
-    expect_equal(priv(q)$last_result, priv(qc)$last_result)
+    expect_equal(priv(qc)$url_host,      priv(q)$url_host)
+    expect_equal(priv(qc)$parameter,     priv(q)$parameter)
+    expect_equal(priv(qc)$facet_listing, priv(q)$facet_listing)
+    expect_equal(priv(qc)$last_result,   priv(q)$last_result)
+
+    # query with facet listing
+    q <- query_esgf(host = host, listing = TRUE)
+    fl <- tempfile(fileext = ".json")
+    # reset timestamp before snapshoting so that it keeps the same between tests
+    q$.__enclos_env__$private$facet_listing$timestamp <- as.POSIXct(
+        "2020-02-02 22:22:22.123456", "UTC"
+    )
+    expect_snapshot_file(q$save(fl), "query_collected.json")
+    expect_s3_class(ql <- query_esgf()$load(fl), "EsgfQuery")
+    expect_equal(priv(ql)$url_host,      priv(q)$url_host)
+    expect_equal(priv(ql)$parameter,     priv(q)$parameter)
+    expect_equal(priv(ql)$facet_listing, priv(q)$facet_listing)
+    expect_equal(priv(ql)$last_result,   priv(q)$last_result)
 })
 
 test_that("EsgfQuery$print()", {

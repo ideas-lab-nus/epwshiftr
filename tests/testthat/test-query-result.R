@@ -85,10 +85,10 @@ test_that("ESGF Query Result Dataset works", {
 
     # $load() empty datasets
     expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(fe), "EsgfQueryResultDataset")
-    expect_equal(priv(datasets)$url_host,    priv(de)$url_host)
-    expect_equal(priv(datasets)$parameter,   priv(de)$parameter)
-    expect_equal(priv(datasets)$response,    priv(de)$response)
-    expect_equal(priv(datasets)$last_result, priv(de)$last_result)
+    expect_equal(priv(de)$url_host,    priv(datasets)$url_host)
+    expect_equal(priv(de)$parameter,   priv(datasets)$parameter)
+    expect_equal(priv(de)$response,    priv(datasets)$response)
+    expect_equal(priv(de)$last_result, priv(datasets)$last_result)
 
     # $collect():
     ## $collect(): can specify dataset index
@@ -104,10 +104,10 @@ test_that("ESGF Query Result Dataset works", {
 
     # $load() collected datasets
     expect_s3_class(dc <- new_query_result(EsgfQueryResultDataset)$load(fc), "EsgfQueryResultDataset")
-    expect_equal(priv(datasets)$url_host,    priv(dc)$url_host)
-    expect_equal(priv(datasets)$parameter,   priv(dc)$parameter)
-    expect_equal(priv(datasets)$response,    priv(dc)$response)
-    expect_equal(priv(datasets)$last_result, priv(dc)$last_result)
+    expect_equal(priv(dc)$url_host,    priv(datasets)$url_host)
+    expect_equal(priv(dc)$parameter,   priv(datasets)$parameter)
+    expect_equal(priv(dc)$response,    priv(datasets)$response)
+    expect_equal(priv(dc)$last_result, priv(datasets)$last_result)
 
     ## $collect(): can specify dataset id
     expect_s3_class(datasets$collect(datasets$id[1], fields = "id"), "EsgfQueryResultFile")
