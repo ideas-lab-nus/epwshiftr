@@ -180,6 +180,14 @@ q$build_listing()
 }
 
 ## ------------------------------------------------
+## Method `EsgfQuery$has_listing`
+## ------------------------------------------------
+
+\dontrun{
+q$has_listing()
+}
+
+## ------------------------------------------------
 ## Method `EsgfQuery$list_all_facets`
 ## ------------------------------------------------
 
@@ -616,6 +624,7 @@ Hongyuan Jia
 \itemize{
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
 \item \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}
+\item \href{#method-EsgfQuery-has_listing}{\code{EsgfQuery$has_listing()}}
 \item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}
 \item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}
 \item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}
@@ -722,6 +731,29 @@ The modified \code{EsgfQuery} object.
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
 q$build_listing()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-has_listing"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-has_listing}{}}}
+\subsection{Method \code{has_listing()}}{
+Check whether facet listing query has been sent
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$has_listing()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+\code{TRUE} or \code{FALSE}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$has_listing()
 }
 }
 \if{html}{\out{</div>}}
