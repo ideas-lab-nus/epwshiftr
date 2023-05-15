@@ -273,8 +273,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
         # print_summary {{{
         print_summary = function(type = "") {
+            ts <- format(private$response$timestamp, tz = Sys.timezone(), usetz = TRUE)
             cli::cli_bullets(c("*" = "Host: {private$url_host}"))
-            cli::cli_bullets(c("*" = "Collected at: {private$response$timestamp}"))
+            cli::cli_bullets(c("*" = "Collected at: {ts}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
             if (type == "Aggregation") {
                 cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
