@@ -1,3 +1,4 @@
+# EsgfQueryResultDataset {{{
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
@@ -140,7 +141,9 @@ test_that("ESGF Query Result Dataset works", {
         gsub("\\d+ Files, \\d+\\.\\d+ GiB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", out)
     })
 })
+# }}}
 
+# EsgfQueryResultFile {{{
 test_that("ESGF Query Result File works", {
     skip_on_cran()
 
@@ -221,7 +224,9 @@ test_that("ESGF Query Result File works", {
         gsub("\\d+\\.\\d+ MiB \\| Access", "XX MiB | Access", out)
     })
 })
+# }}}
 
+# EsgfQueryResultAggregation {{{
 test_that("ESGF Query Result Aggregation works", {
     skip_on_cran()
 
@@ -285,3 +290,14 @@ test_that("ESGF Query Result Aggregation works", {
         out
     })
 })
+# }}}
+
+# result_esgf() {{{
+test_that("result_esgf() works", {
+    expect_s3_class(result_esgf(), "EsgfQueryResultDataset")
+    expect_s3_class(result_esgf("file"), "EsgfQueryResultFile")
+    expect_s3_class(result_esgf("aggregation"), "EsgfQueryResultAggregation")
+})
+# }}}
+
+# vim: fdm=marker :
