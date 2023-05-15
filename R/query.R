@@ -1439,6 +1439,15 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             private$facet_listing <- q$facet_listing
             private$last_result <- q$last_result
 
+            if (length(q$last_result)) {
+                # restore parameters in last result
+                q$last_result$parameter <- restore_params(
+                    input = q$last_result$parameter,
+                    params = EsgfQuery$private_fields$parameter
+                )
+                private$last_result <- q$last_result
+            }
+
             self
         },
         # }}}
@@ -1466,7 +1475,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 cli::cli_li("Facet listing built at: {.emph <NONE>}")
                 cli::cli_bullets(c(" " = "{.emph NOTE: You may run `$build_listing()`} to create the listing"))
             } else {
-                cli::cli_li("Facet listing built at: {private$facet_listing$timestamp}")
+                ts <- format(private$facet_listing$timestamp, tz = Sys.timezone(), usetz = TRUE)
+                cli::cli_li("Facet listing built at: {ts}")
             }
 
             ts <- if (is.null(private$last_result)) {
@@ -1836,6 +1846,16 @@ query_save <- function(host, parameter, last_result, ..., file = "query.json", p
         )
     }
 
+    if (length(data$facet_listing) && length(data$facet_listing$timestamp)) {
+        # NOTE: the timestamp may include sub-seconds, but
+        # jsonlite::toJSON() will cut that part when converting POSIXct
+        # to string we can convert it to a string in advance
+        data$facet_listing$timestamp <- format.POSIXct(
+            data$facet_listing$timestamp, digits = 6, tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
+        )
+    }
+
     jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
 
     normalizePath(file, mustWork = TRUE)
@@ -1846,7 +1866,9 @@ query_save <- function(host, parameter, last_result, ..., file = "query.json", p
 query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
     checkmate::assert_file(file, "r", extension = "json")
 
-    json <- jsonlite::fromJSON(file, simplifyVector = TRUE)
+    # simplifyVector will convert facet counts to characters
+    # have to set simplifyMatrix to FALSE
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
     # validate using predefined schema
     schema_validate(json, schema)
@@ -1868,6 +1890,13 @@ query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
     if (length(json$last_result) && length(json$last_result$response$timestamp)) {
         json$last_result$response$timestamp <- as.POSIXct(
             json$last_result$response$timestamp, tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OSZ"
+        )
+    }
+
+    if (length(json$facet_listing) && length(json$facet_listing$timestamp)) {
+        json$facet_listing$timestamp <- as.POSIXct(
+            json$facet_listing$timestamp, tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
     }
