@@ -1,0 +1,370 @@
+---
+title: "Interacting with the ESGF search API"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Interacting with the ESGF search API}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    This vignette introduces you how to use epwshiftr to search and fetch data
+    using the ESGF search API.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, echo = FALSE, message = FALSE}
+library(epwshiftr)
+
+# show verbose messages
+options(epwshiftr.verbose = TRUE)
+```
+
+# ESGF search RESTful API
+
+The Earth System Grid Federation (ESGF) is an international collaboration for
+the software that powers most global climate change research, notably
+assessments by the Intergovernmental Panel on Climate Change (IPCC).
+
+The ESGF search service exposes RESTful APIs that can be used by clients to
+query the contents of the underlying search index, and return results matching
+the given constraints. The documentation of the APIs can be found using this
+[link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html).
+
+# Query the ESGF portal
+
+epwshiftr provides `query_esgf()` to interact with the ESGF serach API. It
+returns an `EsgfQuery` object, which is an `R6` object. `query_esgf()` requires
+a `host` input, which is the URL to the ESGF Search API service. This should be
+the URL of the ESGF search service excluding the final endpoint name. Usually
+this is `http://<hostname>/esg-search`. Default is set to the
+[LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov), i.e., `"https://esgf-node.llnl.gov/esg-search"`.
+
+```{r query}
+query <- query_esgf()
+
+class(query)
+```
+
+When created, an `EsgfQuery` object sets some default query parameters,
+including `project`, `fields`, `latest`, `type`, `offset`, `distrib`, `limit`
+and `format`. As you can see when print the `query` object we just created.
+
+```{r}
+query
+```
+
+The `EsgfQuery` class is the workhorse for dealing with ESGF search services
+with quite a few methods that can be classified into 3 categories:
+
+- **Value listing**: methods to list all possible values of facets, shards,
+  etc.
+- **Parameter getter & setter**: methods to get the query parameter values or
+  set them before sending the actual query to the ESGF search services.
+- **Query responses**: methods to collect results for the query response.
+
+## Value listing
+
+When creating an `EsgfQuery` object, a
+[facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
+can be sent to the index node to get all available facets and shards for the
+default project (CMIP6).
+
+```{r, eval = FALSE}
+query_esgf(listing = TRUE)
+```
+
+You can also call the `$build_listing()` method to send the facet listing after the `EsgfQuery` was created.
+
+> NOTE: Not all index nodes support facet listing query. You may encounter error
+> if your input host does not support it.
+
+```{r query-list}
+query$build_listing()
+```
+
+`EsgfQuery` class provides three value-listing methods to extract data from the
+response of the facet listing query:
+
+- `EsgfQuery$list_all_facets()`: List all available facet names.
+- `EsgfQuery$list_all_fields()`: List all available field names.
+- `EsgfQuery$list_all_shards()`: List all available shards.
+- `EsgfQuery$list_all_values()`: List all available values of a specific facet.
+
+```{r}
+str(query$list_all_facets())
+```
+
+```{r}
+str(query$list_all_fields())
+```
+
+```{r}
+str(query$list_all_shards())
+```
+
+```{r}
+str(query$list_all_values("project"))
+str(query$list_all_values("experiment_id"))
+str(query$list_all_values("source_id"))
+# and any fields listed via `$list_all_fields()`
+```
+
+## Parameter getter & setter
+
+The ESGF search services support a lot of parameters. The `EsgfQuery` class
+contains dedicated methods to specify most of them, including:
+
+- Most common keywords: `facets`, `offset`, `limit`, `fields`, `type`, `replica`,
+  `latest`, `distrib` and `shards`.
+- Most common facets: `project`, `activity_id`, `experiment_id`, `source_id`,
+  `variable_id`, `frequency`, `variant_label`, `nominal_resolution` and
+  `data_node`.
+
+All methods act in a similar way:
+
+If input is given, the corresponding parameter is set and the updated
+`EsgfQuery` object is returned. This makes it possible to chain different
+parameter setters, e.g. `EsgfQuery$project("CMIP6")$frequency("day")$limit(1)`
+sets the parameter `project`, `frequency` and `limit` sequentially.
+
+```{r}
+query$project("CMIP6")$frequency("day")$limit(1)
+```
+
+When the facet listing query information is available, it will be automatically
+used to validate parameter inputs.
+
+```{r, error = TRUE}
+query$has_listing()
+
+query$project("WRONG")
+
+query$frequency("SECOND")
+```
+
+You can also remove parameters by specifying a `NULL` value
+
+```{r}
+query$project(NULL)
+```
+
+For parameters that want character inputs, you can put a preceding `!` to negate
+the constraints, e.g. `EsgfQuery$project(!"CMIP6")` searches for all projects
+except for `CMIP6`.
+
+```{r}
+query$project(!"CMIP6")
+```
+
+If no input is given, the current parameter value is returned. For example,
+directly calling `EsgfQuery$project()` returns the current value of the
+`project` parameter.
+
+```{r}
+query$project()
+```
+
+The returned value can be two types: `NULL` or an `EsgfQueryParam` object.
+
+`NULL` is returned if there is no constraint on the corresponding parameter.
+
+```{r}
+query$source_id()
+```
+
+An `EsgfQueryParam` object is returned if the parameter has constraints. It is
+essentially a list of three elements:
+
++ `value`: The input values
++ `negate`: Whether there is a preceding `!` in the input
++ `name`: The parameter name
+
+```{r}
+str(query$project())
+```
+
+Despite methods for specific keywords and facets, you can specify arbitrary
+query parameters using `EsgfQuery$params()` method. `$params()` can be used to
+specify other parameters that do not have a dedicated method, e.g. `version`,
+`master_id`, `table_id`, etc. It can also be used to overwrite existing
+parameter values specified using methods like `$project()`.
+
+```{r}
+query$params(table_id = !c("3hr", "day"), project = "CMIP6")
+query$params()
+```
+
+## Count the matched records
+
+An `EsgfQuery` object does not sent any query unless related methods are called, including `EsgfQuery$count()` and `EsgfQuery$collect()`.
+
+`EsgfQuery$count()` counts the total number of records that match the query.
+
+You can return only the total number of matched record by setting `facets` to
+`FALSE`.
+
+```{r}
+query$project("CMIP6")$frequency("1hr")$params(table_id = NULL)
+query$count(facets = FALSE)
+```
+
+You can also count the matched records for specified facets by giving the facet names.
+
+```{r}
+query$count(facets = c("source_id", "activity_id"))
+```
+
+## Collect the actual records
+
+`EsgfQuery$collect()` sends the actual query with **`type=Dataset`** to the ESGF
+search services and returns the results as an `EsgfQueryResultDataset` object.
+
+```{r}
+query$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+
+res <- query$collect()
+res
+```
+
+You can list all fields included in the result using the `fields` field:
+
+```{r}
+res$fields
+```
+
+The fields included in the result depend on `fields` parameter and current
+facet parameters specified:
+
+- Some fields are always included in the dataset query results, including `id`,
+  `size`, `url`, `index_node`, `number_of_files`, `number_of_aggregations` and
+  `access`.
+- By default, all parameters having constrains are included. You can exclude
+  them by doing `$collect(params = FALSE)`.
+- All fields specified via `$fields()` are included.
+
+By default, the number of records are limited by the `limit` parameter.
+
+```{r}
+query$limit()
+
+res$count()
+```
+
+You can collect all match records by setting `all` to `TRUE` and `limit` to
+`FALSE`:
+
+```{r}
+res <- query$collect(all = TRUE, limit = FALSE)
+res$count()
+```
+
+## Get the actual query URL or wget script URL
+
+You can use `EsgfQuery$url()` to return the actual query URL or the wget script
+URL which can be used to download all files matching the given constraints.
+
+```{r}
+query$url()
+
+query$url(wget = TRUE)
+```
+
+## Save the query object and load it back
+
+You can save your current query into a JSON file using `EsgfQuery$save()`.
+
+```{r}
+path_json <- tempfile(fileext = ".json")
+query$save(path_json)
+
+readLines(path_json, n = 10)
+```
+The saved JSON file can be loaded to restore the saved query state using
+`EsgfQuery$load()`.
+
+```{r}
+query_esgf()$load(path_json)
+```
+
+# Work with the dataset query response
+
+## Get summary information 
+
+By default, `query_esgf()` always sends dataset queries.
+As said above, `EsgfQuery$collect()` returns the query result as an
+`EsgfQueryResultDataset` object.
+
+The default printing method shows a summary about the query result, including:
+
+- When the query was sent, how many dataset records are matched, total size of
+  the datasets and names of fields included in the response.
+- Query parameters sent to get current result
+- Brief information about each dataset, including its ID, file number, total
+  file size, number of aggregation datasets and access types.
+
+```{r}
+res
+```
+
+The total number of matched records can also be retrieved using `$count()`
+
+```{r}
+res$count()
+```
+
+You can get names of all attached fields using `$fields` field
+
+```{r}
+res$fields
+```
+
+You can check whether the datasets have OPeNDAP and HTTP download support using `$has_opendap()` and `has_download()`, respectively.
+
+```{r}
+res$has_opendap()
+res$has_download()
+```
+## Extract field values
+
+You can extract values of each field using `$FIELD`, e.g.:
+
+```{r}
+str(res$id)
+str(res$project)
+str(res$number_of_files)
+str(res$access)
+```
+
+You can format all fields into a `data.table` using `$to_dt()`:
+
+```{r}
+res$to_dt()
+```
+
+## Save the query result and load it back
+
+Similar as `EsgfQuery`, you can save your query result into a JSON file using
+`EsgfQueryResultDataset$save()`.
+
+```{r}
+path_dataset <- tempfile(fileext = ".json")
+res$save(path_dataset)
+
+readLines(path_dataset, n = 10)
+```
+
+You can create an empty query result using `result_esgf()` and load saved JSON
+back using `EsgfQueryResultDataset$load()` to restore the result state.
+
+```{r}
+result_esgf("dataset")$load(path_dataset)
+```
