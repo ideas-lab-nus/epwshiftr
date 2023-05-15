@@ -846,4 +846,32 @@ new_query_result <- function(generator, host = NULL, params = NULL, result = NUL
 }
 # }}}
 
+# result_esgf {{{
+
+#' Create empty query result object
+#'
+#' @description
+#' `result_esgf()` creates an empty query result object of input type, so that
+#' you can load the saved JSON file via `EsgfQueryResult$load()`.
+#'
+#' @param type A string indicating what type of ESGF query result should be
+#'        created. Should be one of `"dataset"`, `"file"` or "aggregation"`.
+#'
+#' @return An empty `EsgfQueryResult` object of given type.
+#'
+#' @export
+result_esgf <- function(type = c("dataset", "file", "aggregation")) {
+    type <- match.arg(type)
+
+    new_query_result(
+        switch(type,
+            "dataset" = EsgfQueryResultDataset,
+            "file" = EsgfQueryResultFile,
+            "aggregation" = EsgfQueryResultAggregation
+        ),
+        host = NULL, params = NULL, result = NULL
+    )
+}
+# }}}
+
 # vim: fdm=marker :
