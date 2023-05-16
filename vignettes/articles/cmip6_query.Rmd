@@ -231,14 +231,14 @@ search services and returns the results as an `EsgfQueryResultDataset` object.
 ```{r}
 query$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
 
-res <- query$collect()
-res
+datasets <- query$collect()
+datasets
 ```
 
 You can list all fields included in the result using the `fields` field:
 
 ```{r}
-res$fields
+datasets$fields
 ```
 
 The fields included in the result depend on `fields` parameter and current
@@ -256,15 +256,15 @@ By default, the number of records are limited by the `limit` parameter.
 ```{r}
 query$limit()
 
-res$count()
+datasets$count()
 ```
 
 You can collect all match records by setting `all` to `TRUE` and `limit` to
 `FALSE`:
 
 ```{r}
-res <- query$collect(all = TRUE, limit = FALSE)
-res$count()
+datasets <- query$collect(all = TRUE, limit = FALSE)
+datasets$count()
 ```
 
 ## Get the actual query URL or wget script URL
@@ -312,42 +312,42 @@ The default printing method shows a summary about the query result, including:
   file size, number of aggregation datasets and access types.
 
 ```{r}
-res
+datasets
 ```
 
 The total number of matched records can also be retrieved using `$count()`
 
 ```{r}
-res$count()
+datasets$count()
 ```
 
 You can get names of all attached fields using `$fields` field
 
 ```{r}
-res$fields
+datasets$fields
 ```
 
 You can check whether the datasets have OPeNDAP and HTTP download support using `$has_opendap()` and `has_download()`, respectively.
 
 ```{r}
-res$has_opendap()
-res$has_download()
+str(datasets$has_opendap())
+str(datasets$has_download())
 ```
 ## Extract field values
 
 You can extract values of each field using `$FIELD`, e.g.:
 
 ```{r}
-str(res$id)
-str(res$project)
-str(res$number_of_files)
-str(res$access)
+str(datasets$id)
+str(datasets$project)
+str(datasets$number_of_files)
+str(head(datasets$access))
 ```
 
 You can format all fields into a `data.table` using `$to_dt()`:
 
 ```{r}
-res$to_dt()
+datasets$to_dt()
 ```
 
 ## Save the query result and load it back
@@ -357,7 +357,7 @@ Similar as `EsgfQuery`, you can save your query result into a JSON file using
 
 ```{r}
 path_dataset <- tempfile(fileext = ".json")
-res$save(path_dataset)
+datasets$save(path_dataset)
 
 readLines(path_dataset, n = 10)
 ```
