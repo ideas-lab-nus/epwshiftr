@@ -274,10 +274,11 @@ SCHEMA_QUERY <- local({
     sch_resp <- SCHEMA_RESPONSE
     sch_resp$fields$responseHeader$fields$params$names$must.include <- setdiff(
         sch_resp$fields$responseHeader$fields$params$names$must.include,
-        c("facet.field", "fields")
+        c("facet.field", "fields", "facet")
     )
     sch_resp$fields$responseHeader$fields$params$fields$facet.field <- NULL
     sch_resp$fields$responseHeader$fields$params$fields$fields <- NULL
+    sch_resp$fields$responseHeader$fields$params$fields$facet <- NULL
 
     sch_listing <- SCHEMA_RESPONSE
     sch_listing$fields$response$fields$docs <- list(
