@@ -62,13 +62,17 @@ new_query_param <- function(name, value) {
 }
 # }}}
 
+# is_query_param {{{
 is_query_param <- function(x) inherits(x, "EsgfQueryParam")
+# }}}
 
 #' @export
+# print.EsgfQueryParam {{{
 print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
     cat(format.EsgfQueryParam(x, encode = encode, space = space), sep = "\n")
     invisible(x)
 }
+# }}}
 
 # format.EsgfQueryParam {{{
 format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
@@ -247,10 +251,20 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'        the ESGF search service excluding the final endpoint name. Usually
 #'        this is `http://<hostname>/esg-search`. Default is set to the
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
-#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`. Current possible
+#'        values could be:
+#'
+#' - USA, PCMDI/LLNL (California):
+#'   `https://esgf-node.llnl.gov/esg-search`. The default value.
+#' - IPSL (Institut Pierre-Simon Laplace), France:
+#'   `https://esgf-node.ipsl.upmc.fr/esg-search`
+#' - CEDA (Centre for Environment Data Analysis), UK:
+#'   `https://esgf.ceda.ac.uk/esg-search`
+#' - DKRZ (Deutsches Klimarechenzentrum), Germany:
+#'   `https://esgf-data.dkrz.de/esg-search`
 #'
 #' @param listing Whether to send the facet listing query used to validate
-#'        inputs. Default: `FALSE`.
+#'        inputs. Default: `FALSE`. See `r sQuote("Value listing")` in Details.
 #'
 #' @export
 query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE) {
@@ -274,6 +288,16 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        Default is to ses the [LLNL (Lawrence Livermore National
         #'        Laboratory)](http://esgf-node.llnl.gov) Index Node, which is
         #'        `"https://esgf-node.llnl.gov/esg-search"`.
+        #'        Current possible values could be:
+        #'
+        #' - USA, PCMDI/LLNL (California):
+        #'   `https://esgf-node.llnl.gov/esg-search`. The default value.
+        #' - IPSL (Institut Pierre-Simon Laplace), France:
+        #'   `https://esgf-node.ipsl.upmc.fr/esg-search`
+        #' - CEDA (Centre for Environment Data Analysis), UK:
+        #'   `https://esgf.ceda.ac.uk/esg-search`
+        #' - DKRZ (Deutsches Klimarechenzentrum), Germany:
+        #'   `https://esgf-data.dkrz.de/esg-search`
         #'
         #' @param listing Whether to send the facet listing query.
         #'        A [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)

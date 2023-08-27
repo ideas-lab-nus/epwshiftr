@@ -12,10 +12,21 @@ query_esgf(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE)
 the ESGF search service excluding the final endpoint name. Usually
 this is \verb{http://<hostname>/esg-search}. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
-which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+which is \code{"https://esgf-node.llnl.gov/esg-search"}. Current possible
+values could be:
+\itemize{
+\item USA, PCMDI/LLNL (California):
+\verb{https://esgf-node.llnl.gov/esg-search}. The default value.
+\item IPSL (Institut Pierre-Simon Laplace), France:
+\verb{https://esgf-node.ipsl.upmc.fr/esg-search}
+\item CEDA (Centre for Environment Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk/esg-search}
+\item DKRZ (Deutsches Klimarechenzentrum), Germany:
+\verb{https://esgf-data.dkrz.de/esg-search}
+}}
 
 \item{listing}{Whether to send the facet listing query used to validate
-inputs. Default: \code{FALSE}.}
+inputs. Default: \code{FALSE}. See 'Value listing' in Details.}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -672,7 +683,18 @@ Create a new EsgfQuery object
 the URL of the ESGF search service excluding the final
 endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
 Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
-\code{"https://esgf-node.llnl.gov/esg-search"}.}
+\code{"https://esgf-node.llnl.gov/esg-search"}.
+Current possible values could be:
+\itemize{
+\item USA, PCMDI/LLNL (California):
+\verb{https://esgf-node.llnl.gov/esg-search}. The default value.
+\item IPSL (Institut Pierre-Simon Laplace), France:
+\verb{https://esgf-node.ipsl.upmc.fr/esg-search}
+\item CEDA (Centre for Environment Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk/esg-search}
+\item DKRZ (Deutsches Klimarechenzentrum), Germany:
+\verb{https://esgf-data.dkrz.de/esg-search}
+}}
 
 \item{\code{listing}}{Whether to send the facet listing query.
 A \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
