@@ -11,7 +11,6 @@ status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.
 [![Codecov test
 coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
 [![CRAN Download Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
-[![status](https://joss.theoj.org/papers/794e8707a0bd5b38777d514650a0fd65/status.svg)](https://joss.theoj.org/papers/794e8707a0bd5b38777d514650a0fd65)
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data
