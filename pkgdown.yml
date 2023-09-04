@@ -1,8 +1,8 @@
-pandoc: 2.14.2
-pkgdown: 2.0.6
+pandoc: 2.19.2
+pkgdown: 2.0.7
 pkgdown_sha: ~
 articles:
   cmip6_dict: cmip6_dict.html
   paper: paper.html
-last_built: 2022-10-14T15:56Z
+last_built: 2023-09-04T07:48Z
 

@@ -99,57 +99,61 @@ columns:</p><table class="table table"><tr><td>Column</td><td>Type</td><td>Descr
     <h2>Examples</h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># \donttest{</span></span></span>
 <span class="r-in"><span><span class="fu">get_data_node</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                            data_node status</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  1:                   aims3.llnl.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  2:                  cmip.bcc.cma.cn     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  3:        cmip.dess.tsinghua.edu.cn     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  4:                  cmip.fio.org.cn     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  5:                 cordexesg.dmi.dk     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  6:            crd-esgf-drc.ec.gc.ca     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  7:             data.meteo.unican.es     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  8:         dataserver.nccs.nasa.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  9:           dpesgf03.nccs.nasa.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 10:               esg-dn1.nsc.liu.se     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 11:                 esg-dn1.ru.ac.th     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 12:               esg-dn2.nsc.liu.se     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 13:                   esg.camscma.cn     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 14:                   esg.lasg.ac.cn     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 15:               esg.pik-potsdam.de     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 16:                 esg1.umr-cnrm.fr     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 17:                 esg2.umr-cnrm.fr     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 18:            esgdata.gfdl.noaa.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 19:           esgf-cnr.hpc.cineca.it     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 20:                 esgf-data.csc.fi     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 21:               esgf-data.ucar.edu     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 22:            esgf-data1.diasjp.net     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 23:              esgf-data1.llnl.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 24:            esgf-data2.diasjp.net     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 25:              esgf-data2.llnl.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 26:          esgf-ictp.hpc.cineca.it     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 27:        esgf-nimscmip6.apcc21.org     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 28:                esgf-node.cmcc.it     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 29:               esgf-node2.cmcc.it     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 30: esgf-open.apps.onyx.ccs.ornl.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 31:                     esgf.anl.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 32:                  esgf.apcc21.org     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 33:                  esgf.ceda.ac.uk     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 34:                      esgf.dwd.de     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 35:               esgf.nccs.nasa.gov     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 36:                  esgf.nci.org.au     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 37:          esgf.rcec.sinica.edu.tw     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 38:                    esgf2.dkrz.de     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 39:                    esgf3.dkrz.de     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 40:            noresg.nird.sigma2.no     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 41:               polaris.pknu.ac.kr     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 42:                vesg.ipsl.upmc.fr     UP</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 43:             dist.nmlab.snu.ac.kr   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 44:              eridanus.eoc.dlr.de   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 45:          esg-cccr.tropmet.res.in   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 46:            esgf-data3.diasjp.net   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 47:                      esgf.bsc.es   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 48:                    esgf.ichec.ie   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 49:                    esgf1.dkrz.de   DOWN</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                            data_node status</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     data_node status</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  1:            aims3.llnl.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  2:           cmip.bcc.cma.cn     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  3: cmip.dess.tsinghua.edu.cn     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  4:           cmip.fio.org.cn     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  5:          cordexesg.dmi.dk     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  6:     crd-esgf-drc.ec.gc.ca     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  7:      data.meteo.unican.es     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  8:  dataserver.nccs.nasa.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  9:    dpesgf03.nccs.nasa.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 10:   esg-cccr.tropmet.res.in     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 11:        esg-dn1.nsc.liu.se     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 12:          esg-dn1.ru.ac.th     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 13:        esg-dn2.nsc.liu.se     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 14:        esg-dn3.nsc.liu.se     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 15:            esg.camscma.cn     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 16:            esg.lasg.ac.cn     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 17:          esg2.umr-cnrm.fr     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 18:     esgdata.gfdl.noaa.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 19:    esgf-cnr.hpc.cineca.it     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 20:        esgf-data.ucar.edu     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 21:    esgf-data01.diasjp.net     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 22:    esgf-data02.diasjp.net     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 23:    esgf-data03.diasjp.net     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 24:    esgf-data04.diasjp.net     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 25:     esgf-data1.diasjp.net     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 26:       esgf-data1.llnl.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 27:       esgf-data2.llnl.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 28:   esgf-ictp.hpc.cineca.it     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 29: esgf-nimscmip6.apcc21.org     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 30:         esgf-node.cmcc.it     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 31:        esgf-node.ornl.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 32:        esgf-node2.cmcc.it     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 33:           esgf.apcc21.org     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 34:               esgf.bsc.es     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 35:           esgf.ceda.ac.uk     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 36:               esgf.dwd.de     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 37:        esgf.nccs.nasa.gov     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 38:           esgf.nci.org.au     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 39:   esgf.rcec.sinica.edu.tw     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 40:             esgf1.dkrz.de     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 41:             esgf2.dkrz.de     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 42:             esgf3.dkrz.de     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 43:     noresg.nird.sigma2.no     UP</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 44:      dist.nmlab.snu.ac.kr   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 45:           dmiesgf0.dmi.dk   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 46:       eridanus.eoc.dlr.de   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 47:        esg.pik-potsdam.de   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 48:          esg1.umr-cnrm.fr   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 49:          esgf-data.csc.fi   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 50:              esgf.anl.gov   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 51:             esgf.ichec.ie   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 52:        polaris.pknu.ac.kr   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 53:         vesg.ipsl.upmc.fr   DOWN</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     data_node status</span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
@@ -166,7 +170,7 @@ columns:</p><table class="table table"><tr><td>Column</td><td>Type</td><td>Descr
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer></div>

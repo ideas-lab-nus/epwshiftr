@@ -95,7 +95,8 @@
   <div class="col-md-9 contents">
     <div class="page-header toc-ignore">
       <h1 data-toc-skip>Manage CMIP6 CVs and Data Request</h1>
-                        <h4 data-toc-skip class="author">Hongyuan Jia</h4>
+                        <h4 data-toc-skip class="author">Hongyuan
+Jia</h4>
             
       
       <small class="dont-index">Source: <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/HEAD/vignettes/articles/cmip6_dict.Rmd" class="external-link"><code>vignettes/articles/cmip6_dict.Rmd</code></a></small>
@@ -108,25 +109,46 @@
 <div class="section level2">
 <h2 id="controlled-vocabularies-cvs-and-data-request">Controlled Vocabularies (CVs) and Data Request<a class="anchor" aria-label="anchor" href="#controlled-vocabularies-cvs-and-data-request"></a>
 </h2>
-<p>All CMIP6 outputs are written in NetCDF files in conformance with the CMIP standards. The Controlled Vocabularies (CVs) and Data Request play a key role in ensuring uniformity in the description of data sets across all models.</p>
-<p>The CMIP6 CVs gives a well-defined set of global attributes that are recorded in each CMIP6 model output, providing information necessary for interpreting the data. The data of CVs for use in CMIP6 is stored as JSON files in a <a href="https://github.com/WCRP-CMIP/CMIP6_CVs" class="external-link">GitHub Repo</a>.</p>
-<p>The CMIP6 Data Request defines all the quantities from CMIP6 simulations that should be archived. This includes both quantities of general interest needed from most of the CMIP6-endorsed model intercomparison projects (MIPs) and quantities that are more specialized and only of interest to a single endorsed MIP. The Data Request data is stored a Microsoft Excel file (<code>CMIP6_MIP_tables.xlsx</code>) in a <a href="http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk" class="external-link">Subversion repo</a>.</p>
+<p>All CMIP6 outputs are written in NetCDF files in conformance with the
+CMIP standards. The Controlled Vocabularies (CVs) and Data Request play
+a key role in ensuring uniformity in the description of data sets across
+all models.</p>
+<p>The CMIP6 CVs gives a well-defined set of global attributes that are
+recorded in each CMIP6 model output, providing information necessary for
+interpreting the data. The data of CVs for use in CMIP6 is stored as
+JSON files in a <a href="https://github.com/WCRP-CMIP/CMIP6_CVs" class="external-link">GitHub
+Repo</a>.</p>
+<p>The CMIP6 Data Request defines all the quantities from CMIP6
+simulations that should be archived. This includes both quantities of
+general interest needed from most of the CMIP6-endorsed model
+intercomparison projects (MIPs) and quantities that are more specialized
+and only of interest to a single endorsed MIP. The Data Request data is
+stored a Microsoft Excel file (<code>CMIP6_MIP_tables.xlsx</code>) in a
+<a href="http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk" class="external-link">Subversion
+repo</a>.</p>
 <p>For more information, please see:</p>
 <ul>
-<li><a href="https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit" class="external-link">CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CVs</a></li>
-<li><a href="https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html" class="external-link">CMIP6 Data Request</a></li>
+<li><a href="https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit" class="external-link">CMIP6
+Global Attributes, DRS, Filenames, Directory Structure, and CVs</a></li>
+<li><a href="https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html" class="external-link">CMIP6
+Data Request</a></li>
 </ul>
 </div>
 <div class="section level2">
 <h2 id="introduce-the-cmip6dict-class">Introduce the <code>Cmip6Dict</code> class<a class="anchor" aria-label="anchor" href="#introduce-the-cmip6dict-class"></a>
 </h2>
-<p>{epwshiftr} provides a <code>Cmip6Dict</code> class to help you fetch, parse and store CMIP6 CVs and Data Request.</p>
+<p>{epwshiftr} provides a <code>Cmip6Dict</code> class to help you
+fetch, parse and store CMIP6 CVs and Data Request.</p>
 <div class="section level3">
 <h3 id="create-a-cmip6dict-object">Create a <code>Cmip6Dict</code> object<a class="anchor" aria-label="anchor" href="#create-a-cmip6dict-object"></a>
 </h3>
-<p>You can create a new <code>Cmip6Dict</code> object using the <code><a href="../reference/CMIP6Dict.html">cmip6_dict()</a></code> function. It takes no argument and simply returns an empty <code>Cmip6Dict</code> object.</p>
+<p>You can create a new <code>Cmip6Dict</code> object using the
+<code><a href="../reference/CMIP6Dict.html">cmip6_dict()</a></code> function. It takes no argument and simply
+returns an empty <code>Cmip6Dict</code> object.</p>
 <blockquote>
-<p>It is an <a href="https://r6.r-lib.org/" class="external-link">R6</a> object with reference semantics. All methods in an <code>R6</code> object can be invoked using the <code>$method_name()</code> style.</p>
+<p>It is an <a href="https://r6.r-lib.org/" class="external-link">R6</a> object with reference
+semantics. All methods in an <code>R6</code> object can be invoked using
+the <code>$method_name()</code> style.</p>
 </blockquote>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
@@ -139,7 +161,8 @@
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: &lt;Empty&gt;</span></span></code></pre></div>
-<p>You can use <code>$is_empty()</code> to check if there are any contents in current <code>Cmip6Dict</code>.</p>
+<p>You can use <code>$is_empty()</code> to check if there are any
+contents in current <code>Cmip6Dict</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">is_empty</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
@@ -147,63 +170,80 @@
 <div class="section level3">
 <h3 id="fetch-data-of-cvs-and-data-request">Fetch data of CVs and Data Request<a class="anchor" aria-label="anchor" href="#fetch-data-of-cvs-and-data-request"></a>
 </h3>
-<p>After created, you can use <code>$build()</code> to fetch all data of CMIP6 CVs and Data Request.</p>
-<p>The GitHub RESTful APIs are used to to fetch the latest tag of CVs and Data Request. You can specify your GitHub token by specifying the <code>token</code> argument in <code>$build()</code>. By default, it will uses <code>GITHUB_PAT</code> or <code>GITHUB_TOKEN</code> environment variable if exists.</p>
+<p>After created, you can use <code>$build()</code> to fetch all data of
+CMIP6 CVs and Data Request.</p>
+<p>The GitHub RESTful APIs are used to to fetch the latest tag of CVs
+and Data Request. You can specify your GitHub token by specifying the
+<code>token</code> argument in <code>$build()</code>. By default, it
+will uses <code>GITHUB_PAT</code> or <code>GITHUB_TOKEN</code>
+environment variable if exists.</p>
 <p>Currently, all supported CVs are:</p>
 <ol style="list-style-type: decimal">
 <li>
 <code>drs</code>: Data Reference Syntax (DRS).</li>
 <li>
-<code>activity_id</code>: Activity identifiers, e.g. <code>HighResMIP</code>, <code>ScenarioMIP</code>.</li>
+<code>activity_id</code>: Activity identifiers,
+e.g. <code>HighResMIP</code>, <code>ScenarioMIP</code>.</li>
 <li>
-<code>experiment_id</code>: Root experiment identifiers, e.g. <code>historical</code>, <code>ssp126</code>.</li>
+<code>experiment_id</code>: Root experiment identifiers,
+e.g. <code>historical</code>, <code>ssp126</code>.</li>
 <li>
-<code>frequency</code>: Sampling frequencies, e.g. <code>mon</code>, <code>day</code>.</li>
+<code>frequency</code>: Sampling frequencies, e.g. <code>mon</code>,
+<code>day</code>.</li>
 <li>
-<code>grid_label</code>: Grid identifiers, e.g. <code>gn</code>, <code>gr</code>.</li>
+<code>grid_label</code>: Grid identifiers, e.g. <code>gn</code>,
+<code>gr</code>.</li>
 <li>
-<code>institution_id</code>: Institution identifiers, e.g. <code>AWI</code>, <code>CAS</code>.</li>
+<code>institution_id</code>: Institution identifiers,
+e.g. <code>AWI</code>, <code>CAS</code>.</li>
 <li>
-<code>nominal_resolution</code>: Approximate horizontal resolutions, e.g. <code>50 km</code>, <code>100    km</code>.</li>
+<code>nominal_resolution</code>: Approximate horizontal resolutions,
+e.g. <code>50 km</code>, <code>100    km</code>.</li>
 <li>
-<code>realm</code>: Realms where variables are defined, e.g. <code>atmos</code>, <code>ocean</code>.</li>
+<code>realm</code>: Realms where variables are defined,
+e.g. <code>atmos</code>, <code>ocean</code>.</li>
 <li>
-<code>required_global_attributes</code>: Names of required global attributes.</li>
+<code>required_global_attributes</code>: Names of required global
+attributes.</li>
 <li>
-<code>source_id</code>: Model identifiers, e.g. <code>GFDL-CM2-1</code>, <code>ACCESS-CM2</code>.</li>
+<code>source_id</code>: Model identifiers,
+e.g. <code>GFDL-CM2-1</code>, <code>ACCESS-CM2</code>.</li>
 <li>
-<code>source_type</code>: Model configurations, e.g. <code>AGCM</code>, <code>OGCM</code>.</li>
+<code>source_type</code>: Model configurations,
+e.g. <code>AGCM</code>, <code>OGCM</code>.</li>
 <li>
-<code>sub_experiment_id</code>: Description of sub-experiment, e.g. <code>none</code>, <code>s1960</code>.</li>
+<code>sub_experiment_id</code>: Description of sub-experiment,
+e.g. <code>none</code>, <code>s1960</code>.</li>
 <li>
-<code>table_id</code>: Table identifiers, e.g. <code>Amon</code>, <code>Oday</code>.</li>
+<code>table_id</code>: Table identifiers, e.g. <code>Amon</code>,
+<code>Oday</code>.</li>
 </ol>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>dict<span class="sc">$</span><span class="fu">build</span>()</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching latest tag of  [1mCMIP6 CVs [22m...</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[293ms] [39m</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[508ms] [39m</span></span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>⠙ Downloading data of  [1mCMIP6 CVs [22m []...</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠹ Downloading data of  [1mCMIP6 CVs [22m [ [34mCMIP6_institution_id.json [39m]...</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[1.9s] [39m</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠹ Downloading data of  [1mCMIP6 CVs [22m [ [34mCMIP6_source_id.json [39m]...</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 CVs [22m successfully.  [38;5;249m[4.6s] [39m</span></span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>⠙ Fetching latest tag of  [1mCMIP6 DReq [22m...</span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[274ms] [39m</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Fetched latest tag of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[494ms] [39m</span></span>
 <span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
 <span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>⠙ Downloading data of  [1mCMIP6 DReq [22m...</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[531ms] [39m</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [32m✔ [39m Downloaded data of  [1mCMIP6 DReq [22m successfully.  [38;5;249m[985ms] [39m</span></span>
 <span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ⠙ Fetching  [1mCMIP6 Dictionary [22m...</span></span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a> [32m✔ [39m Fetched  [1mCMIP6 Dictionary [22m successfully at <span class="dv">2022-10-14</span> <span class="dv">15</span><span class="sc">:</span><span class="dv">57</span><span class="sc">:</span><span class="dv">15</span>  [<span class="dv">38</span>;<span class="dv">5</span>;249m[<span class="fl">3.3</span>s] [39m</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a> [32m✔ [39m Fetched  [1mCMIP6 Dictionary [22m successfully at <span class="dv">2023-09-04</span> <span class="dv">07</span><span class="sc">:</span><span class="dv">48</span><span class="sc">:</span><span class="fl">52.104267</span>  [<span class="dv">38</span>;<span class="dv">5</span>;249m[7s] [39m</span>
 <span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; • Built at: 2022-10-14 15:57:15</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; • Built at: 2023-09-04 07:48:52.103513</span></span>
 <span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [36m── [39m  [1mControlled Vocabularies (CVs) [22m  [36m─────────────────────────────────────────────── [39m</span></span>
-<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; •  [1mCV Version [22m: `6.2.58.48`</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; •  [1mCV Version [22m: `6.2.58.57`</span></span>
 <span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; •  [1mCV Contents [22m [13 types]:</span></span>
 <span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mdrs [22m [6 items]</span></span>
 <span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mactivity_id [22m [24 items]</span></span>
@@ -214,7 +254,7 @@
 <span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mnominal_resolution [22m [15 items]</span></span>
 <span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mrealm [22m [8 items]</span></span>
 <span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mrequired_global_attributes [22m [30 items]</span></span>
-<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1msource_id [22m [132 items]</span></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1msource_id [22m [131 items]</span></span>
 <span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1msource_type [22m [10 items]</span></span>
 <span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1msub_experiment_id [22m [74 items]</span></span>
 <span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   •  [1mtable_id [22m [43 items]</span></span>
@@ -224,20 +264,26 @@
 <span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; •  [1mDReq Contents [22m: 2062 Variables from 43 Tables and 9 Realms</span></span>
 <span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a>dict<span class="sc">$</span><span class="fu">is_empty</span>()</span>
 <span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
-<p>You can get the version of the CV collection and Data Request using <code>$version()</code> method. It returns a list of two <code>numeric_version</code>s giving you the current version of fetched CV collection (<code>cvs</code>) and Data Request (<code>dreq</code>):</p>
+<p>You can get the version of the CV collection and Data Request using
+<code>$version()</code> method. It returns a list of two
+<code>numeric_version</code>s giving you the current version of fetched
+CV collection (<code>cvs</code>) and Data Request
+(<code>dreq</code>):</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">version</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; $cvs</span></span>
-<span><span class="co">#&gt; [1] '6.2.58.48'</span></span>
+<span><span class="co">#&gt; [1] '6.2.58.57'</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $dreq</span></span>
 <span><span class="co">#&gt; [1] '1.0.33'</span></span></code></pre></div>
-<p>The last built time can be retrieved using the <code>$built_time()</code> method:</p>
+<p>The last built time can be retrieved using the
+<code>$built_time()</code> method:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">last_built</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">last_built</span></span>
-<span><span class="co">#&gt; [1] "2022-10-14 15:57:15 UTC"</span></span></code></pre></div>
-<p>The last modified time of the CV collection and each CV can be retrieved using the <code>$timestamp()</code> method:</p>
+<span><span class="co">#&gt; [1] "2023-09-04 07:48:52 UTC"</span></span></code></pre></div>
+<p>The last modified time of the CV collection and each CV can be
+retrieved using the <code>$timestamp()</code> method:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">timestamp</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; $cvs</span></span>
@@ -271,7 +317,7 @@
 <span><span class="co">#&gt; [1] "2019-12-19 23:32:17 UTC"</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $source_id</span></span>
-<span><span class="co">#&gt; [1] "2022-10-10 21:00:56 UTC"</span></span>
+<span><span class="co">#&gt; [1] "2023-07-26 16:52:24 UTC"</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $source_type</span></span>
 <span><span class="co">#&gt; [1] "2017-09-09 00:57:00 UTC"</span></span>
@@ -285,12 +331,20 @@
 <div class="section level3">
 <h3 id="extract-cv-and-data-request-data">Extract CV and Data Request data<a class="anchor" aria-label="anchor" href="#extract-cv-and-data-request-data"></a>
 </h3>
-<p>The CV and Data Request data can be extracted using the <code>$get(type)</code> method, where <code>type</code> is the data type of interest. For Data Request, you can use <code>"dreq"</code> as the type name.</p>
+<p>The CV and Data Request data can be extracted using the
+<code>$get(type)</code> method, where <code>type</code> is the data type
+of interest. For Data Request, you can use <code>"dreq"</code> as the
+type name.</p>
 <p>The returned data type are:</p>
 <ol style="list-style-type: decimal">
-<li><p>For type <code>"drs"</code>, “activity_id”<code>,</code>“frequency”<code>,</code>“grid_label”<code>,</code>“institution_id”<code>,</code>“source_type”<code>and</code>“sub_experiment_id”`, a [list].</p></li>
-<li><p>For type <code>"experiment_id"</code>, <code>"source_id"</code> and <code>"dreq"</code>, a [data.table].</p></li>
-<li><p>For <code>"nominal_resolution"</code>, <code>"required_global_attributes"</code> and <code>"table_id"</code>, a [character] vector.</p></li>
+<li><p>For type <code>"drs"</code>,
+“activity_id”<code>,</code>“frequency”<code>,</code>“grid_label”<code>,</code>“institution_id”<code>,</code>“source_type”<code>and</code>“sub_experiment_id”`,
+a [list].</p></li>
+<li><p>For type <code>"experiment_id"</code>, <code>"source_id"</code>
+and <code>"dreq"</code>, a [data.table].</p></li>
+<li><p>For <code>"nominal_resolution"</code>,
+<code>"required_global_attributes"</code> and <code>"table_id"</code>, a
+[character] vector.</p></li>
 </ol>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Data Request</span></span>
@@ -386,8 +440,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Data Reference Syntax (DRS)</span> ═════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DRS Modified</span>: 2022-06-07 21:29:45 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DRS Note</span>: <span style="color: #0000BB;">"Add CMIP6 Data Reference Syntax (DRS) templates"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -412,8 +466,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Activity ID</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ActivityId Modified</span>: 2018-03-06 00:39:09 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ActivityId Note</span>: <span style="color: #0000BB;">"Update activity_id to include CDRMIP and PAMIP"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -434,8 +488,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Experiment ID</span> ═══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ExperimentId Modified</span>: 2020-12-15 20:25:59 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ExperimentId Note</span>: <span style="color: #0000BB;">"Revise experiment_id historical parent experiments"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -496,8 +550,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Frequency</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency Modified</span>: 2021-05-24 14:48:15 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency Note</span>: <span style="color: #0000BB;">"Update description of 3hr and 6hr frequencies"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -517,8 +571,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Grid Label</span> ══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">GridLabel Modified</span>: 2017-09-09 01:12:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">GridLabel Note</span>: <span style="color: #0000BB;">"Issue395 durack1 augment grid_label with description</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#401)"</span></span></span>
@@ -539,8 +593,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Institution ID</span> ══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">InstitutionId Modified</span>: 2022-08-16 04:41:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">InstitutionId Note</span>: <span style="color: #0000BB;">"Register institution_id UCSB for E3SM-1-0"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -563,8 +617,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Nominal Resolution</span> ══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">NominalResolution Modified</span>: 2016-11-15 23:04:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">NominalResolution Note</span>: <span style="color: #0000BB;">"Issue141 durack1 update grid_resolution to</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">nominal_resolution (#143)"</span></span></span>
@@ -582,8 +636,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Realm</span> ═══════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Realm Modified</span>: 2017-04-18 19:03:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Realm Note</span>: <span style="color: #0000BB;">"Issue285 durack1 update realm format (#290)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -603,8 +657,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Required Global Attributes</span> ══════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ReqGlobAttr Modified</span>: 2019-12-19 23:32:17 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ReqGlobAttr Note</span>: <span style="color: #0000BB;">"Reverting addition of external_variables to</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">required_global_attributes"</span></span></span>
@@ -623,10 +677,10 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Source ID</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Modified</span>: 2022-10-10 21:00:56 UTC</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Note</span>: <span style="color: #0000BB;">"Revised SAM0-UNICON source_id license history"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Modified</span>: 2023-07-26 16:52:24 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Note</span>: <span style="color: #0000BB;">"Revised CAS-ESM2-0 source_id to add CDRMIP activity"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • Stored type: <span style="color: #0000BB;">&lt;data.table&gt;</span></span></span>
@@ -768,15 +822,15 @@
 <span><span class="co">#&gt;       • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
 <span><span class="co">#&gt;       • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #555555;"># ... with 129 more items</span></span></span>
+<span><span class="co">#&gt; <span style="color: #555555;"># ... with 128 more items</span></span></span>
 <span></span>
 <span><span class="co"># source_type</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"source_type"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Source Type</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceType Modified</span>: 2017-09-09 00:57:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceType Note</span>: <span style="color: #0000BB;">"Issue396 durack1 augment source_type with description</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#399)"</span></span></span>
@@ -805,8 +859,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Sub Experiment ID</span> ═══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SubExperimentId Modified</span>: 2019-06-17 18:01:51 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SubExperimentId Note</span>: <span style="color: #0000BB;">"Revise sub_experiment_id values"</span></span></span>
 <span><span class="co">#&gt; </span></span>
@@ -826,8 +880,8 @@
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Table ID</span> ════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2022-10-12 19:16:47 UTC</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2023-08-25 15:58:32 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">TableId Modified</span>: 2017-01-13 16:27:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">TableId Note</span>: <span style="color: #0000BB;">"Issue199 durack1 update table_id to Data Request v1.0</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#200)"</span></span></span>
@@ -843,20 +897,26 @@
 <div class="section level3">
 <h3 id="store-and-reuse-the-cmip6dict-object">Store and reuse the <code>Cmip6Dict</code> object<a class="anchor" aria-label="anchor" href="#store-and-reuse-the-cmip6dict-object"></a>
 </h3>
-<p><code>$save()</code> method stores all the core data of current <code>Cmip6Dict</code> object into an RDS file named <code>CMIP6DICT</code> in the specified folder. It returns the full path of the saved RDS file.</p>
+<p><code>$save()</code> method stores all the core data of current
+<code>Cmip6Dict</code> object into an RDS file named
+<code>CMIP6DICT</code> in the specified folder. It returns the full path
+of the saved RDS file.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/tmp/Rtmp1lBizL/CMIP6DICT"</span></span></code></pre></div>
-<p>This file can be reloaded via <code>$load()</code> method to restore the last state of current <code>Cmip6Dict</code> object. It reads the RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request data.</p>
+<span><span class="co">#&gt; [1] "/tmp/RtmpwtuzPI/CMIP6DICT"</span></span></code></pre></div>
+<p>This file can be reloaded via <code>$load()</code> method to restore
+the last state of current <code>Cmip6Dict</code> object. It reads the
+RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request
+data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">new_dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">new_dict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2022-10-14 15:57:15.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2023-09-04 07:48:52.103513.</span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2022-10-14 15:57:15</span></span>
+<span><span class="co">#&gt; • Built at: 2023-09-04 07:48:52.103513</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.48`</span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.57`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Contents</span> [13 types]:</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">drs</span> [6 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">activity_id</span> [24 items]</span></span>
@@ -867,7 +927,7 @@
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">nominal_resolution</span> [15 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">realm</span> [8 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">required_global_attributes</span> [30 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_id</span> [132 items]</span></span>
+<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_id</span> [131 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">source_type</span> [10 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">sub_experiment_id</span> [74 items]</span></span>
 <span><span class="co">#&gt;   • <span style="font-weight: bold;">table_id</span> [43 items]</span></span>
@@ -896,7 +956,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer>
