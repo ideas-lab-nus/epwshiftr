@@ -114,10 +114,10 @@ are determined by the <code>threshold</code> input.</p></dd>
 <p>An <code>epw_cmip6_coord</code> object, which is basically a list of 3 elements:</p><ul><li><p><code>epw</code>: An <a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a> object parsed from input <code>epw</code> argument</p></li>
 <li><p><code>meta</code>: A list containing basic meta data of input EPW, including <code>city</code>,
 <code>state_province</code>, <code>country</code>, <code>latitute</code> and <code>longitude</code>.</p></li>
-<li><p><code>coord</code>: A <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> which is basically CMIP6 index
+<li><p><code>coord</code>: A <code><a href="https://rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> which is basically CMIP6 index
 database with an appending new list column <code>coord</code> that contains
 matched latitudes and longitudes in each NetCDF file. Each element
-in <code>coord</code> is a <code><a href="https://Rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> of 6 columns describing
+in <code>coord</code> is a <code><a href="https://rdatatable.gitlab.io/data.table/reference/data.table.html" class="external-link">data.table::data.table()</a></code> of 6 columns describing
 the matched coordinates.</p><ul><li><p><code>index</code>: the indices of matched coordinates</p></li>
 <li><p><code>ind_lon</code>, <code>ind_lat</code>: The value indices of longitude or latitude in the
 NetCDF coordinate grids. These values are used to extract the
