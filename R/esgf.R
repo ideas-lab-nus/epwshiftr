@@ -771,48 +771,29 @@ get_data_dir <- function() {
 #'
 #' @export
 get_data_node <- function(speed_test = FALSE, timeout = 3) {
-    # read html page
-    f <- tempfile()
-    utils::download.file("https://esgf-node.llnl.gov/status/", f, "libcurl", quiet = TRUE)
-    l <- readLines(f)
-
-    # locate table
-    l_s <- grep("<!--load block main-->", l, fixed = TRUE)
-    # nocov start
-    if (!length(l_s)) stop("Internal Error: Failed to read data node table")
-    # nocov end
-    l <- l[l_s:length(l)]
-    l_s <- grep("<table>", l, fixed = TRUE)[1L]
-    l_e <- grep("</table>", l, fixed = TRUE)[1L]
-    # nocov start
-    if (!length(l_s) || !length(l_e)) stop("Internal Error: Failed to read data node table")
-    # nocov end
-    l <- l[l_s:l_e]
-
-    # extract nodes
-    loc <- regexec("\\t<td>(.+)</td>", l)
-    nodes <- vapply(seq_along(l), function(i) {
-        if (all(loc[[i]][1] == -1L)) {
-            return(NA_character_)
-        }
-        substr(l[i], loc[[i]][2], loc[[i]][2] + attr(loc[[i]], "match.length")[2] - 1L)
-    }, NA_character_)
-    nodes <- nodes[!is.na(nodes)]
-
-    # extract status
-    loc <- regexec('\\t\\t<font color="#\\S{6}"><b>(UP|DOWN)</b>', l)
-    status <- vapply(seq_along(l), function(i) {
-        if (all(loc[[i]][1] == -1L)) {
-            return(NA_character_)
-        }
-        substr(l[i], loc[[i]][2], loc[[i]][2] + attr(loc[[i]], "match.length")[2] - 1L)
-    }, NA_character_)
-    status <- status[!is.na(status)]
+    # use the metagrid-backend to get the data node status
+    # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
+    #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
+    res <- tryCatch(
+        jsonlite::fromJSON("https://aims2.llnl.gov/metagrid-backend/proxy/status"),
+        error = function(e) NULL
+    )
 
     # nocov start
-    if (length(nodes) != length(status)) stop("Internal Error: Failed to read data node table")
+    if (is.null(res) || res$status != "success") {
+        message("Failed to retrieve the data node status from aims2.llnl.gov.")
+        return(data.table::data.table())
+    }
     # nocov end
-    res <- data.table::data.table(data_node = nodes, status = status)
+
+    res <- data.table::data.table(
+        data_node = res$data$result$metric$instance,
+        status = data.table::fifelse(
+            vapply(res$data$result$value, .subset2, character(1L), 2L) == "1",
+            "UP", "DOWN"
+        )
+    )
+
     data.table::setorderv(res, "status", -1)
 
     if (!speed_test) {
