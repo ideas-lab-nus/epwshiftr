@@ -161,7 +161,7 @@ test_that("EsgfQuery$project() and other facet methods", {
 
     # data_node
     expect_null(q$data_node())
-    expect_equal(q$data_node("esg.lasg.ac.cn")$data_node()$value, "esg.lasg.ac.cn")
+    expect_equal(q$data_node(q$list_all_values("data_node")[1])$data_node()$value, q$list_all_values("data_node")[1])
     expect_null(q$data_node(NULL)$data_node())
 
     skip_on_cran()
