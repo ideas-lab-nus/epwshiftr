@@ -1,3 +1,6 @@
+# this host that currently supports facet listing
+host <- "https://esgf.ceda.ac.uk/esg-search"
+
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     expect_s3_class(
@@ -122,8 +125,8 @@ test_that("ESGF Query works", {
     expect_error(q$shards("a"), "distrib")
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_error(q$shards("a"), "Assertion")
-    sh <- q$list_all_shards()[1L]
-    expect_equal(q$shards(sh)$shards()$value, sh)
+    shard <- gsub("(?<=/solr).+", "", q$list_all_shards()[1L], perl = TRUE)
+    expect_equal(q$shards(shard)$shards()$value, shard)
     expect_null(q$shards(NULL)$shards())
 
     # replica
@@ -164,10 +167,10 @@ test_that("ESGF Query works", {
     expect_equal(q$params(frequency = NULL)$params(), list())
     expect_null(q$frequency())
     expect_equal(
-        q$params(table_id = "Amon", member_id = "00")$params(),
+        q$params(table_id = "Amon", member_id = "r1i1p1f1")$params(),
         list(
             table_id = new_query_param("table_id", "Amon"),
-            member_id = new_query_param("member_id", "00")
+            member_id = new_query_param("member_id", "r1i1p1f1")
         )
     )
     ## can reset format
@@ -200,7 +203,7 @@ test_that("ESGF Query works", {
     expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
     expect_type(q$limit(0)$frequency("1hr")$count(), "integer")
     expect_type(q$response(), "list")
-    expect_equal(names(q$response()), c("responseHeader", "response"))
+    expect_equal(names(q$response()), c("responseHeader", "response", "facet_counts"))
 
-    expect_snapshot_output(EsgfQuery$new(host)$params(table_id = "Amon", member_id = "00")$print())
+    expect_snapshot_output(EsgfQuery$new(host)$params(table_id = "Amon", member_id = "r1i1p1f1")$print())
 })
