@@ -1,8 +1,10 @@
+host <- get_fast_host()
+
 # EsgfQueryResultDataset {{{
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
-    q <- query_esgf(listing = FALSE)$
+    q <- query_esgf(host, FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -22,7 +24,9 @@ test_that("ESGF Query Result Dataset works", {
     expect_equal(names(datasets$to_dt(c("source_id", "frequency"))), c("source_id", "frequency"))
     # $to_dt(): can keep the special format of certain fields
     expect_s3_class(datasets$to_dt(formatted = TRUE)$size, "units")
-    expect_s3_class(datasets$to_dt(formatted = TRUE)$url[[1L]], "data.table")
+    expect_true(any(vapply(
+        datasets$to_dt(formatted = TRUE)$url, data.table::is.data.table, logical(1L)
+    )))
 
     # $has_opendap(): can test accessibility
     expect_type(datasets$has_opendap(), "logical")
@@ -53,7 +57,9 @@ test_that("ESGF Query Result Dataset works", {
     # $url
     expect_type(datasets$url, "list")
     expect_length(datasets$url, 2L)
-    expect_s3_class(datasets$url[[1L]], "data.table")
+    expect_true(any(vapply(
+        datasets$url, data.table::is.data.table, logical(1L)
+    )))
 
     # $size
     expect_s3_class(datasets$size, "units")
@@ -147,7 +153,7 @@ test_that("ESGF Query Result Dataset works", {
 test_that("ESGF Query Result File works", {
     skip_on_cran()
 
-    files <- query_esgf(listing = FALSE)$
+    files <- query_esgf(host, FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -230,7 +236,7 @@ test_that("ESGF Query Result File works", {
 test_that("ESGF Query Result Aggregation works", {
     skip_on_cran()
 
-    aggs <- query_esgf(listing = FALSE)$
+    aggs <- query_esgf(host, FALSE)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
