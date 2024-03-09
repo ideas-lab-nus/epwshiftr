@@ -45,8 +45,9 @@ test_that("ESGF Query Parameter works", {
 test_that("ESGF Query works", {
     skip_on_cran()
 
-    expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")
-    expect_s3_class(q <- query_esgf(), "EsgfQuery")
+    host <- "https://esgf.ceda.ac.uk/esg-search"
+    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
 
     # listing
     expect_type(q$list_all_facets(), "character")
@@ -100,7 +101,8 @@ test_that("ESGF Query works", {
 
     # data_node
     expect_null(q$data_node())
-    expect_equal(q$data_node("esg.lasg.ac.cn")$data_node()$value, "esg.lasg.ac.cn")
+    dn <- q$list_all_values("data_node")
+    expect_equal(q$data_node(dn)$data_node()$value, dn)
     expect_null(q$data_node(NULL)$data_node())
 
     # facets
@@ -180,27 +182,27 @@ test_that("ESGF Query works", {
     expect_equal(q$params(NULL)$params(), list())
 
     # can get url
-    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgfQuery$new()$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgfQuery$new()$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+    expect_type(EsgfQuery$new(host)$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgfQuery$new(host)$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(EsgfQuery$new(host)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 
     # can get count
-    expect_type(EsgfQuery$new()$frequency("1hr")$count(FALSE), "integer")
-    expect_type(EsgfQuery$new()$frequency("1hr")$count(TRUE), "integer")
-    expect_type(cnt <- EsgfQuery$new()$frequency("1hr")$count("activity_id"), "list")
+    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(FALSE), "integer")
+    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(TRUE), "integer")
+    expect_type(cnt <- EsgfQuery$new(host)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
 
     # can collect data
-    expect_equal(EsgfQuery$new()$limit(0)$frequency("1hr")$collect(), data.table::setDT(list()))
-    expect_s3_class(res <- EsgfQuery$new()$limit(1)$fields("source_id")$collect(), "data.table")
+    expect_equal(EsgfQuery$new(host)$limit(0)$frequency("1hr")$collect(), data.table::setDT(list()))
+    expect_s3_class(res <- EsgfQuery$new(host)$limit(1)$fields("source_id")$collect(), "data.table")
     expect_equal(names(res), "source_id")
 
     # can return last response
-    expect_null(EsgfQuery$new()$response())
-    expect_s3_class(q <- EsgfQuery$new(), "EsgfQuery")
+    expect_null(EsgfQuery$new(host)$response())
+    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
     expect_type(q$limit(0)$frequency("1hr")$count(), "integer")
     expect_type(q$response(), "list")
     expect_equal(names(q$response()), c("responseHeader", "response"))
 
-    expect_snapshot_output(EsgfQuery$new()$params(table_id = "Amon", member_id = "00")$print())
+    expect_snapshot_output(EsgfQuery$new(host)$params(table_id = "Amon", member_id = "00")$print())
 })
