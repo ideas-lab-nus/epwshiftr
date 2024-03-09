@@ -83,7 +83,7 @@ test_that("init_cmip6_index()", {
 
     expect_s3_class(
         idx <- init_cmip6_index(variable = "tas", source = "EC-Earth3",
-            experiment = "ssp858", years = 2060, limit = 1, save = TRUE
+            experiment = "ssp585", years = 2060, limit = 1, save = TRUE
         ),
         "data.table"
     )
