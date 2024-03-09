@@ -1,6 +1,7 @@
 # this host that currently supports facet listing
 host <- "https://esgf.ceda.ac.uk/esg-search"
 
+# new_query_param() {{{
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     expect_s3_class(
