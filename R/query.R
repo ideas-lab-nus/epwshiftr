@@ -1319,6 +1319,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 if (length(choices)) {
                     choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
                 }
+            } else if (facet == "project") {
+                # TODO: find a way to programmatically get all project names
+                # right now no validation is performed
+                return(value)
             } else {
                 choices <- self$list_all_values(facet)
             }
