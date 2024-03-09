@@ -11,10 +11,37 @@ status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.
 [![Codecov test
 coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
 [![CRAN Download Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
-[![status](https://joss.theoj.org/papers/794e8707a0bd5b38777d514650a0fd65/status.svg)](https://joss.theoj.org/papers/794e8707a0bd5b38777d514650a0fd65)
 <!-- badges: end -->
 
 > Create future EnergyPlus Weather files using CMIP6 data
+
+# How to cite
+
+To cite epwshiftr in publications use:
+
+    Jia, Hongyuan, Chong, Adrian, Ning, Baisong, 2023.
+    Epwshiftr: incorporating open data of climate change prediction into building performance simulation for future adaptation and mitigation,
+    in: Proceedings of Building Simulation 2023: 18th Conference of IBPSA, Building Simulation.
+    Presented at the Building Simulation 2023, IBPSA, Shanghai, China, pp. 3201–3207.
+    https://doi.org/10.26868/25222708.2023.1612
+
+A BibTeX entry for LaTeX users is:
+
+```bibtex
+@inproceedings{jia2023epwshiftr,
+  title = {Epwshiftr: Incorporating Open Data of Climate Change Prediction into Building Performance Simulation for Future Adaptation and Mitigation},
+  shorttitle = {Epwshiftr},
+  booktitle = {Proceedings of {{Building Simulation}} 2023: 18th {{Conference}} of {{IBPSA}}},
+  author = {Jia, Hongyuan and Chong, Adrian and Ning, Baisong},
+  year = {2023},
+  series = {Building {{Simulation}}},
+  volume = {18},
+  pages = {3201--3207},
+  publisher = {{IBPSA}},
+  address = {{Shanghai, China}},
+  doi = {10.26868/25222708.2023.1612}
+}
+```
 
 <!-- TOC GFM -->
 
