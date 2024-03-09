@@ -122,10 +122,8 @@ test_that("ESGF Query works", {
     expect_error(q$shards("a"), "distrib")
     expect_true(q$distrib(TRUE)$distrib()$value)
     expect_error(q$shards("a"), "Assertion")
-    expect_equal(
-        q$shards("esgf-node.llnl.gov:8985/solr")$shards()$value,
-        "esgf-node.llnl.gov:8985/solr"
-    )
+    sh <- q$list_all_shards()[1L]
+    expect_equal(q$shards(sh)$shards()$value, sh)
     expect_null(q$shards(NULL)$shards())
 
     # replica
