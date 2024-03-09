@@ -1420,10 +1420,15 @@ query_build <- function(host, params, type = "search") {
 }
 
 query_build_facet_cache <- function(host, project = "CMIP6") {
+    # NOTE: not all index nodes support facet listing without project one
+    # example is https://esgf-node.llnl.gov/esg-search/search
+    # It will return status '500' and 'Read timed out' for queries with large
+    # size. So currently we only support facet cache for a single project
+
     # build a query without project to get facet names and values
     url <- query_build(host,
         list(
-            project = NULL,
+            project = project,
             facets = "*",
             limit = 0,
             distrib = TRUE,
@@ -1435,7 +1440,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     # build a query with project to get the Shards
     url <- query_build(host,
         list(
-            project = "CMIP6",
+            project = project,
             limit = 0,
             distrib = TRUE,
             format = "application/solr+json"
