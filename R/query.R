@@ -1405,7 +1405,7 @@ query_build <- function(host, params, type = "search") {
     }
 
     # skip empty parameter
-    params <- params[!vapply(params, is.null, logical(1L))]
+    params <- params[vapply(params, length, integer(1L)) > 0L]
 
     if (type == "wget") {
         params <- params[!names(params) %in% c("type", "format")]
