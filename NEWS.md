@@ -96,6 +96,7 @@
   climate variables (#25).
 * Fix the wrong warning messages when `combined` method is used in
   `morphing_epw()` (#25).
+* Now `get_data_node()` works again (#80)
 
 ## Internal refactor
 
