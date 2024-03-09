@@ -1425,6 +1425,11 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     # It will return status '500' and 'Read timed out' for queries with large
     # size. So currently we only support facet cache for a single project
 
+    # set the timeout to 5 minutes temporarily
+    old <- getOption("timeout")
+    on.exit(options(timeout = old), add = TRUE)
+    options(timeout = 300)
+
     # build a query without project to get facet names and values
     url <- query_build(host,
         list(
