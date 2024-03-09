@@ -1638,6 +1638,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 if (length(choices)) {
                     choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
                 }
+            } else if (facet == "project") {
+                # TODO: find a way to programmatically get all project names
+                # right now no validation is performed
+                return(value)
             } else {
                 choices <- self$list_all_values(facet)
             }
@@ -1742,23 +1746,8 @@ query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE
         params <- utils::modifyList(params_base, params_other)
     }
 
-    if (!is.null(exclude)) {
-        params <- params[!names(params) %in% exclude]
-    }
-
-    if (!empty) {
-        # skip empty parameter
-        params <- params[!vapply(params, is.null, logical(1L))]
-    }
-
-    params
-}
-# }}}
-
-# query_build {{{
-query_build <- function(host, params, type = "search") {
-    checkmate::assert_choice(type, c("search", "wget"))
-    params <- query_param_flat(params)
+    # skip empty parameter
+    params <- params[vapply(params, length, integer(1L)) > 0L]
 
     if (type == "wget") {
         params <- params[!names(params) %in% c("type", "format")]
@@ -1773,12 +1762,21 @@ query_build <- function(host, params, type = "search") {
 }
 # }}}
 
-# query_build_facet_listing {{{
-query_build_facet_listing <- function(host, project = "CMIP6") {
+query_build_facet_cache <- function(host, project = "CMIP6") {
+    # NOTE: not all index nodes support facet listing without project one
+    # example is https://esgf-node.llnl.gov/esg-search/search
+    # It will return status '500' and 'Read timed out' for queries with large
+    # size. So currently we only support facet cache for a single project
+
+    # set the timeout to 5 minutes temporarily
+    old <- getOption("timeout")
+    on.exit(options(timeout = old), add = TRUE)
+    options(timeout = 300)
+
     # build a query without project to get facet names and values
     url <- query_build(host,
         list(
-            project = NULL,
+            project = project,
             facets = "*",
             limit = 0,
             distrib = TRUE,
@@ -1790,8 +1788,8 @@ query_build_facet_listing <- function(host, project = "CMIP6") {
     # build a query with project to get the Shards and field names
     url <- query_build(host,
         list(
-            project = "CMIP6",
-            limit = 1,
+            project = project,
+            limit = 0,
             distrib = TRUE,
             fields = "*",
             format = "application/solr+json"
