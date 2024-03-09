@@ -252,7 +252,7 @@ esgf_query <- function(activity = "ScenarioMIP",
     assert_choice(type, choices = c("Dataset", "File"))
     assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
-    url_base <- "http://esgf-node.llnl.gov/esg-search/search/?"
+    url_base <- "https://esgf-node.llnl.gov/esg-search/search?"
 
     dict <- c(
         activity = "activity_id",
