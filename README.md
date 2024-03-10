@@ -9,7 +9,7 @@
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
 [![Codecov test
-coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
+coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://app.codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
 [![CRAN Download Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
 <!-- badges: end -->
 
@@ -504,12 +504,12 @@ Hongyuan Jia and Adrian Chong
 ## Disclaimer
 
 CMIP6 model data is licensed under a [Creative Commons Attribution-ShareAlike
-4.0 International License](https://creativecommons.org/licenses).
-Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse) for terms of use
+4.0 International License](https://creativecommons.org/licenses/).
+Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/) for terms of use
 governing CMIP6 output, including citation requirements and proper
 acknowledgment. Further information about each GCM output data, including some
 limitations, can be found via the `further_info_url` (recorded as a **global
-attribute** in the NetCDF file) and at [EC-Earth](http://www.ec-earth.org). The
+attribute** in the NetCDF file) and at [EC-Earth](https://www.ec-earth.org). The
 data producers and data providers make no warranty, either express or implied,
 including, but not limited to, warranties of merchantability and fitness for a
 particular purpose. All liabilities arising from the supply of the information
