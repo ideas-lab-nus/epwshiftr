@@ -222,22 +222,22 @@ e.g. <code>none</code>, <code>s1960</code>.</li>
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">build</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...</span></span>
 <span><span class="co">#&gt; ⠙ Fetching latest tag of <span style="font-weight: bold;">CMIP6 CVs</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[280ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[275ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> []...</span></span>
-<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_source_id.json</span>]...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[1.9s]</span></span></span>
+<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_source_type.json</span>]...</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[1.8s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Fetching latest tag of <span style="font-weight: bold;">CMIP6 DReq</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[268ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[267ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Downloading data of <span style="font-weight: bold;">CMIP6 DReq</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[309ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[390ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 Dictionary</span> successfully at 2024-03-09 17:10:09.039807 <span style="color: #B2B2B2;">[3s]</span></span></span>
+<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 Dictionary</span> successfully at 2024-03-10 15:25:39.7618 <span style="color: #B2B2B2;">[2.9s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2024-03-09 17:10:09.039315</span></span>
+<span><span class="co">#&gt; • Built at: 2024-03-10 15:25:39.761336</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.63`</span></span>
@@ -278,7 +278,7 @@ CV collection (<code>cvs</code>) and Data Request
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">last_built</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">last_built</span></span>
-<span><span class="co">#&gt; [1] "2024-03-09 17:10:09 UTC"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "2024-03-10 15:25:39 UTC"</span></span></code></pre></div>
 <p>The last modified time of the CV collection and each CV can be
 retrieved using the <code>$timestamp()</code> method:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
@@ -900,7 +900,7 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 of the saved RDS file.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpEYZkNz/CMIP6DICT"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "/tmp/RtmpWUKF9b/CMIP6DICT"</span></span></code></pre></div>
 <p>This file can be reloaded via <code>$load()</code> method to restore
 the last state of current <code>Cmip6Dict</code> object. It reads the
 RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request
@@ -908,9 +908,9 @@ data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">new_dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">new_dict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2024-03-09 17:10:09.039315.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2024-03-10 15:25:39.761336.</span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2024-03-09 17:10:09.039315</span></span>
+<span><span class="co">#&gt; • Built at: 2024-03-10 15:25:39.761336</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.58.63`</span></span>
