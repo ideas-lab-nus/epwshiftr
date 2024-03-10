@@ -488,7 +488,7 @@ Hongyuan Jia and Adrian Chong
     
     epwshiftr is released under the terms of MIT License.
     
-    Copyright © 2019-2021 Hongyuan Jia and Adrian Chong
+    Copyright © 2019-2024 Hongyuan Jia and Adrian Chong
 
   - **CMIP6 data**
     
