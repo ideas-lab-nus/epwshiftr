@@ -15,7 +15,7 @@ coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badg
 
 > Create future EnergyPlus Weather files using CMIP6 data
 
-# How to cite
+## How to cite
 
 To cite epwshiftr in publications use:
 
@@ -71,7 +71,12 @@ install.packages("epwshiftr")
 Alternatively, you can install the development version from GitHub.
 
 ``` r
-install.packages("epwshiftr", repos = "https://hongyuanjia.r-universe.dev")
+install.packages("epwshiftr",
+    repos = c(
+        ideaslab = "https://ideas-lab-nus.r-universe.dev",
+        cran     = "https://cran.r-project.org"
+    )
+)
 ```
 
 ## Get started
@@ -488,7 +493,7 @@ Hongyuan Jia and Adrian Chong
     
     epwshiftr is released under the terms of MIT License.
     
-    Copyright © 2019-2021 Hongyuan Jia and Adrian Chong
+    Copyright © 2019-2024 Hongyuan Jia and Adrian Chong
 
   - **CMIP6 data**
     
@@ -509,7 +514,7 @@ Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/) for terms of us
 governing CMIP6 output, including citation requirements and proper
 acknowledgment. Further information about each GCM output data, including some
 limitations, can be found via the `further_info_url` (recorded as a **global
-attribute** in the NetCDF file) and at [EC-Earth](https://www.ec-earth.org). The
+attribute** in the NetCDF file) and at [EC-Earth](https://www.ec-earth.org/). The
 data producers and data providers make no warranty, either express or implied,
 including, but not limited to, warranties of merchantability and fitness for a
 particular purpose. All liabilities arising from the supply of the information
