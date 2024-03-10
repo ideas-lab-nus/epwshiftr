@@ -1020,6 +1020,8 @@ future_epw <- function (morphed, by = c("experiment", "source", "interval"),
             )
             # nocov end
         }
+        # fill abnormal data, including missing values with special values
+        new_epw$fill_abnormal(missing = TRUE, out_of_range = TRUE, special = TRUE)
         new_epw$save(output[i], overwrite = overwrite)
 
         new_epw

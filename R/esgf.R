@@ -765,7 +765,7 @@ get_data_dir <- function() {
 #' | `ping`      | double    | Data node response in milliseconds during speed test                            |
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' get_data_node()
 #' }
 #'
