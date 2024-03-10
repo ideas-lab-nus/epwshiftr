@@ -388,8 +388,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         project = function(value = "CMIP6") {
             if (missing(value)) return(private$param_project)
-            private$param_project <- private$new_facet_param("project", value)
-            self
+            # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_project <- eval(bquote(
+                private$new_facet_param("project", .(substitute(value)), env = env)
+            ))
+            invisible(self)
         },
 
         #' @description
@@ -417,8 +421,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         activity_id = function(value) {
             if (missing(value)) return(private$param_activity_id)
-            private$param_activity_id <- private$new_facet_param("activity_id", value)
-            self
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_activity_id <- eval(bquote(
+                private$new_facet_param("activity_id", .(substitute(value)), env = env)
+            ))
+            invisible(self)
         },
 
         #' @description
@@ -446,7 +454,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         experiment_id = function(value) {
             if (missing(value)) return(private$param_experiment_id)
-            private$param_experiment_id <- private$new_facet_param("experiment_id", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_experiment_id <- eval(bquote(
+                private$new_facet_param("experiment_id", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -475,7 +487,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         source_id = function(value) {
             if (missing(value)) return(private$param_source_id)
-            private$param_source_id <- private$new_facet_param("source_id", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_source_id <- eval(bquote(
+                private$new_facet_param("source_id", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -504,7 +520,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         variable_id = function(value) {
             if (missing(value)) return(private$param_variable_id)
-            private$param_variable_id <- private$new_facet_param("variable_id", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_variable_id <- eval(bquote(
+                private$new_facet_param("variable_id", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -533,7 +553,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         frequency = function(value) {
             if (missing(value)) return(private$param_frequency)
-            private$param_frequency <- private$new_facet_param("frequency", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_frequency <- eval(bquote(
+                private$new_facet_param("frequency", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -562,7 +586,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         variant_label = function(value) {
             if (missing(value)) return(private$param_variant_label)
-            private$param_variant_label <- private$new_facet_param("variant_label", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_variant_label <- eval(bquote(
+                private$new_facet_param("variant_label", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -591,7 +619,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         nominal_resolution = function(value) {
             if (missing(value)) return(private$param_nominal_resolution)
-            param <- private$new_facet_param("nominal_resolution", value)
+            # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            param <- eval(bquote(
+                private$new_facet_param("nominal_resolution", .(substitute(value)), env = env)
+            ))
 
             if (!is.null(param)) {
                 # handle nominal resolution specially
@@ -637,7 +669,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         data_node = function(value) {
             if (missing(value)) return(private$param_data_node)
-            private$param_data_node <- private$new_facet_param("data_node", value)
+            # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+            env <- parent.frame()
+            private$param_data_node <- eval(bquote(
+                private$new_facet_param("data_node", .(substitute(value)), env = env)
+            ))
             invisible(self)
         },
 
@@ -987,7 +1023,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 return(invisible(self))
             }
 
-            params <- eval_with_bang(...)
+            env <- parent.frame()
+            params <- eval_with_bang(..., .env = env)
             checkmate::assert_list(
                 lapply(params, .subset2, "value"),
                 # allow NULL
@@ -1319,6 +1356,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 if (length(choices)) {
                     choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
                 }
+            } else if (facet == "project") {
+                # TODO: find a way to programmatically get all project names
+                # right now no validation is performed
+                return(value)
             } else {
                 choices <- self$list_all_values(facet)
             }
@@ -1327,7 +1368,22 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
         new_facet_param = function(facet, value, allow_negate = TRUE, env = parent.frame()) {
             if (allow_negate) {
-                value <- eval(substitute(eval_with_bang(value)[[1L]], env))
+                # NOTE: We have to force `env` first otherwise R's lazy
+                # evaluation feature will cause lexical scoping error
+                # Take a look at the following example:
+                # q <- 1
+                # f1 <- function(x) {
+                #     eval(bquote(f2(.(substitute(x)), parent.frame())))
+                # }
+                # f2 <- function(y, env = parent.frame()) {
+                #     print(eval(substitute(y), env))
+                # }
+                #
+                # f1(q) will return `base::q()` instead of 1
+                force(env)
+
+                # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
+                value <- eval(bquote(eval_with_bang(.(substitute(value)), .env = env)[[1L]]))
             } else {
                 value <- list(value = value, negate = FALSE)
             }
@@ -1401,7 +1457,7 @@ query_build <- function(host, params, type = "search") {
     }
 
     # skip empty parameter
-    params <- params[!vapply(params, is.null, logical(1L))]
+    params <- params[vapply(params, length, integer(1L)) > 0L]
 
     if (type == "wget") {
         params <- params[!names(params) %in% c("type", "format")]
@@ -1416,10 +1472,20 @@ query_build <- function(host, params, type = "search") {
 }
 
 query_build_facet_cache <- function(host, project = "CMIP6") {
+    # NOTE: not all index nodes support facet listing without project one
+    # example is https://esgf-node.llnl.gov/esg-search/search
+    # It will return status '500' and 'Read timed out' for queries with large
+    # size. So currently we only support facet cache for a single project
+
+    # set the timeout to 5 minutes temporarily
+    old <- getOption("timeout")
+    on.exit(options(timeout = old), add = TRUE)
+    options(timeout = 300)
+
     # build a query without project to get facet names and values
     url <- query_build(host,
         list(
-            project = NULL,
+            project = project,
             facets = "*",
             limit = 0,
             distrib = TRUE,
@@ -1431,7 +1497,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     # build a query with project to get the Shards
     url <- query_build(host,
         list(
-            project = "CMIP6",
+            project = project,
             limit = 0,
             distrib = TRUE,
             format = "application/solr+json"
