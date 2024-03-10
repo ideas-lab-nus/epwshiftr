@@ -27,7 +27,7 @@ columns:\tabular{lll}{
 Get data nodes which store CMIP6 output
 }
 \examples{
-\donttest{
+\dontrun{
 get_data_node()
 }
 
