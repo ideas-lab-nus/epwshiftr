@@ -15,7 +15,7 @@ coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badg
 
 > Create future EnergyPlus Weather files using CMIP6 data
 
-# How to cite
+## How to cite
 
 To cite epwshiftr in publications use:
 
@@ -71,7 +71,12 @@ install.packages("epwshiftr")
 Alternatively, you can install the development version from GitHub.
 
 ``` r
-install.packages("epwshiftr", repos = "https://hongyuanjia.r-universe.dev")
+install.packages("epwshiftr",
+    repos = c(
+        ideaslab = "https://ideas-lab-nus.r-universe.dev",
+        cran     = "https://cran.r-project.org"
+    )
+)
 ```
 
 ## Get started
