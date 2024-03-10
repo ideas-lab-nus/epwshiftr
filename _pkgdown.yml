@@ -22,8 +22,6 @@ navbar:
       menu:
       - text: "Manage CMIP6 CVs and Data Request"
         href: articles/cmip6_dict.html
-      - text: "Work with ESGF search RESTful API"
-        href: reference/EsgfQuery.html
     reference:
       text: Manual
       href: reference/index.html
