@@ -170,5 +170,5 @@ utils::globalVariables(c(
     "variable", "wmo_number", "file_mtime", "i.file_path", "i.interval",
     "interval", "time_calendar", "time_units", "overlap", "frequency",
     "ind_lon", "ind_lat", "ord_lon", "ord_lat", "dist", "num_years", "type",
-    "year"
+    "year", "status"
 ))
