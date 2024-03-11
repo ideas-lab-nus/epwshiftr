@@ -53,6 +53,7 @@ test_that("query_esgf()", {
 
     skip_on_cran()
 
+    host <- "https://esgf.ceda.ac.uk/esg-search"
     expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
     expect_s3_class(q <- query_esgf(host), "EsgfQuery")
 
@@ -163,7 +164,8 @@ test_that("EsgfQuery$project() and other facet methods", {
 
     # data_node
     expect_null(q$data_node())
-    expect_equal(q$data_node(q$list_all_values("data_node")[1])$data_node()$value, q$list_all_values("data_node")[1])
+    dn <- q$list_all_values("data_node")
+    expect_equal(q$data_node(dn)$data_node()$value, dn)
     expect_null(q$data_node(NULL)$data_node())
 
     skip_on_cran()

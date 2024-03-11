@@ -22,8 +22,7 @@ be archived. This includes both quantities of general interest needed from
 most of the CMIP6-endorsed model intercomparison projects (MIPs) and
 quantities that are more specialized and only of interest to a single
 endorsed MIP. The raw data of DReq is stored a Microsoft Excel file
-(\code{CMIP6_MIP_tables.xlsx}) in a
-\href{http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk}{Subversion repo}.
+(\code{CMIP6_MIP_tables.xlsx}) in a Subversion repo.
 The \code{Cmip6Dict} object uses the parsed DReq data that is stored in the
 \href{https://github.com/PCMDI/cmip6-cmor-tables}{GitHub Repo}.
 
