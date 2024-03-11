@@ -74,6 +74,7 @@ print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
 }
 # }}}
 
+#' @export
 # format.EsgfQueryParam {{{
 format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
     if (is.logical(x$value)) {
