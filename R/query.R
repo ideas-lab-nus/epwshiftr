@@ -1746,8 +1746,23 @@ query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE
         params <- utils::modifyList(params_base, params_other)
     }
 
-    # skip empty parameter
-    params <- params[vapply(params, length, integer(1L)) > 0L]
+    if (!is.null(exclude)) {
+        params <- params[!names(params) %in% exclude]
+    }
+
+    if (!empty) {
+        # skip empty parameter
+        params <- params[vapply(params, length, integer(1L)) > 0L]
+    }
+
+    params
+}
+# }}}
+
+# query_build {{{
+query_build <- function(host, params, type = "search") {
+    checkmate::assert_choice(type, c("search", "wget"))
+    params <- query_param_flat(params)
 
     if (type == "wget") {
         params <- params[!names(params) %in% c("type", "format")]
@@ -1762,7 +1777,8 @@ query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE
 }
 # }}}
 
-query_build_facet_cache <- function(host, project = "CMIP6") {
+# query_build_facet_listing {{{
+query_build_facet_listing <- function(host, project = "CMIP6") {
     # NOTE: not all index nodes support facet listing without project one
     # example is https://esgf-node.llnl.gov/esg-search/search
     # It will return status '500' and 'Read timed out' for queries with large
@@ -1789,7 +1805,7 @@ query_build_facet_cache <- function(host, project = "CMIP6") {
     url <- query_build(host,
         list(
             project = project,
-            limit = 0,
+            limit = 1,
             distrib = TRUE,
             fields = "*",
             format = "application/solr+json"

@@ -8,7 +8,7 @@ test_that("Verbose message", {
 
 test_that("now()", {
     expect_s3_class(now(), "POSIXct")
-    expect_equal(attr(now(), "tzone"), Sys.timezone())
+    expect_equal(attr(now(), "tzone"), "UTC")
 })
 
 test_that("set_size_units()", {
@@ -27,7 +27,7 @@ test_that("set_size_units()", {
         "MiB"
     )
 
-    expect_equal(attr(now(), "tzone"), Sys.timezone())
+    expect_equal(attr(now(), "tzone"), "UTC")
 })
 
 
