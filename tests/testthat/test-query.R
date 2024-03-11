@@ -120,6 +120,8 @@ test_that("EsgfQuery$project() and other facet methods", {
     # project
     expect_equal(q$project()$value, "CMIP6")
     expect_equal(q$project("CMIP5")$project()$value, "CMIP5")
+    expect_equal(q$project(-"CMIP5")$project()$value, "CMIP5")
+    expect_equal(q$project(!"CMIP5")$project()$value, "CMIP5")
 
     # activity id
     expect_null(q$activity_id())

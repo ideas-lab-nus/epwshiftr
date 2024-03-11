@@ -33,7 +33,7 @@ eval_with_bang <- function(..., .env = parent.frame()) {
     l <- eval(substitute(alist(...)))
     checkmate::assert_list(l, .var.name = "Input", min.len = 1L)
     lapply(l, function(elem) {
-        if (!is.symbol(elem) && !is.null(elem) && elem[[1L]] == "!") {
+        if (!is.symbol(elem) && !is.null(elem) && (elem[[1L]] == "!" || elem[[1L]] == "-")) {
             negate <- TRUE
             elem[[1L]] <- as.name("c")
         } else {
@@ -83,10 +83,11 @@ rd_query_method_param <- function(method, type, negate, default, nullable = TRUE
         if (!missing(negate)) {
             sprintf(
                 paste(
-                    "Note that you can put a preceding \\code{!} to negate the facet constraints.",
-                    "For example, \\code{$%s(!c(%s))} searches for all \\code{%s}s except for",
+                    "Note that you can put a preceding \\code{!} or \\code{-} to negate the facet constraints.",
+                    "For example, \\code{$%s(!c(%s))} and \\code{$%s(-c(%s))} search for all \\code{%s}s except for",
                     "%s."
                 ),
+                method, paste0(val_quote, negate, val_quote, collapse = ", "),
                 method, paste0(val_quote, negate, val_quote, collapse = ", "),
                 method, paste0("\\code{", negate, "}", collapse = " and ")
             )
@@ -105,7 +106,7 @@ rd_query_method_return <- function() {
             "\\item Otherwise, an \\code{EsgfQueryParam} object which is essentially a list of three elements:",
             "\\itemize{",
                 "\\item \\code{value}: input values.",
-                "\\item \\code{negate}: Whether there is a preceding \\code{!}.",
+                "\\item \\code{negate}: Whether there is a preceding \\code{!} or \\code{-}.",
                 "\\item \\code{name}: Parameter name.",
             "}"
         ),
