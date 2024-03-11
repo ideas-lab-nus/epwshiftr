@@ -898,13 +898,13 @@ Get or set the \code{project} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} searches for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} and \code{$project(-c("CMIP5", "CMIP6"))} search for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -943,13 +943,13 @@ Get or set the \code{activity_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} searches for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} and \code{$activity_id(-c("C4MIP", "GeoMIP"))} search for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -988,13 +988,13 @@ Get or set the \code{experiment_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} searches for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} and \code{$experiment_id(-c("ssp126", "ssp245"))} search for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1033,13 +1033,13 @@ Get or set the \code{source_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} searches for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} and \code{$source_id(-c("CESM2", "CESM2-FV2"))} search for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1078,13 +1078,13 @@ Get or set the \code{variable_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} searches for all \code{variable_id}s except for \code{tas} and \code{pr}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} and \code{$variable_id(-c("tas", "pr"))} search for all \code{variable_id}s except for \code{tas} and \code{pr}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1123,13 +1123,13 @@ Get or set the \code{frequency} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} searches for all \code{frequency}s except for \code{day} and \code{mon}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} and \code{$frequency(-c("day", "mon"))} search for all \code{frequency}s except for \code{day} and \code{mon}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1168,13 +1168,13 @@ Get or set the \code{variant_label} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} searches for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} and \code{$variant_label(-c("r1i1p1f1", "r2i1p1f1"))} search for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1213,13 +1213,13 @@ Get or set the \code{nominal_resolution} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} searches for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} and \code{$nominal_resolution(-c("50 km", "1x1 degree"))} search for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1258,13 +1258,13 @@ Get or set the \code{data_node} parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} searches for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} and \code{$data_node(-c("cmip.bcc.cma.cn", "esg.camscma.cn"))} search for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1313,7 +1313,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1361,7 +1361,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1416,7 +1416,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1469,7 +1469,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1515,7 +1515,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1560,7 +1560,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1606,7 +1606,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1650,7 +1650,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
