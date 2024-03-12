@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">epwshiftr</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.3.9015</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.1.4</span>
       </span>
     </div>
 
@@ -64,9 +64,9 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
+<h2 class="page-header" data-toc-text="0.1.4" id="epwshiftr-014">epwshiftr 0.1.4<small>2024-03-12</small><a class="anchor" aria-label="anchor" href="#epwshiftr-014"></a></h2>
 <div class="section level3">
-<h3 id="major-changes-development-version">Major changes<a class="anchor" aria-label="anchor" href="#major-changes-development-version"></a></h3>
+<h3 id="major-changes-0-1-4">Major changes<a class="anchor" aria-label="anchor" href="#major-changes-0-1-4"></a></h3>
 <ul><li>
 <p><code><a href="../reference/match_coord.html">match_coord()</a></code> has been refactored to correct the calculation method of geographical distance. Previously, epwshiftr assumes that distance on longitude and latitude is the same which is not true. Now it uses a spheroid formula to calculate the tunnel distance (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>). For details, please see <a href="https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance" class="external-link">Tunnel Distance</a> . The structure of the returned <code>epw_cmip6_coord</code> object has also changed. The <code>coord</code> column in the <code>coord</code> <code>data.table</code> is also a <code>data.table</code> which contains 6 columns describing the matched coordinates:</p>
 <ul><li>
@@ -98,7 +98,7 @@
 </ul></li>
 </ul></div>
 <div class="section level3">
-<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<h3 id="new-features-0-1-4">New features<a class="anchor" aria-label="anchor" href="#new-features-0-1-4"></a></h3>
 <ul><li>A new parameter <code>full</code> is added to <code><a href="../reference/future_epw.html">future_epw()</a></code>. When setting to <code>TRUE</code>, a <code>data.table</code> containing information about how the data are split by the <code>by</code> argument and also the generated future EPWs and their paths are returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/18" class="external-link">#18</a>).</li>
 <li>Now <code><a href="../reference/summary_database.html">summary_database()</a></code> can append results to the previous scan and detect if any previously matched NetCDF files do not exist. It stores the metadata of those missing files as a new attribute <code>not_found</code> in the results. Warnings are issued if <code>warning</code> is set to <code>TRUE</code>. Also, a new parameter <code>miss</code> has been added to control how to manage those invalid entries. You can set it to <code>"keep"</code>, which is the default, to do nothing about it or <code>"overwrite"</code> to overwrite those entries based on the newly matched NetCDF files if possible (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/40" class="external-link">#40</a>).</li>
 <li>
@@ -111,7 +111,7 @@
 <li>New class <code>EsgfQuery</code> is added to support more flexible APIs for ESGF search services. Please see <code><a href="../reference/EsgfQuery.html">?EsgfQuery</a></code> for details (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/63" class="external-link">#63</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/69" class="external-link">#69</a>).</li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<h3 id="bug-fixes-0-1-4">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-4"></a></h3>
 <ul><li>Fix the error in <code><a href="../reference/summary_database.html">summary_database()</a></code> when no NetCDF files are found in the input directory (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
 <li>Fix the error about overwriting temporary EPW file when <code>epw</code> in <code><a href="../reference/match_coord.html">match_coord()</a></code> is a search string (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
 <li>Now <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> can correctly fall back to use “Shift” method when any missing values are detected in maximum and minimum prediction values of climate variables (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
@@ -119,7 +119,7 @@
 <li>Now <code><a href="../reference/get_data_node.html">get_data_node()</a></code> works again (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/80" class="external-link">#80</a>)</li>
 </ul></div>
 <div class="section level3">
-<h3 id="internal-refactor-development-version">Internal refactor<a class="anchor" aria-label="anchor" href="#internal-refactor-development-version"></a></h3>
+<h3 id="internal-refactor-0-1-4">Internal refactor<a class="anchor" aria-label="anchor" href="#internal-refactor-0-1-4"></a></h3>
 <ul><li>
 <code>fields</code> parameter is used to directly filter the ESGF query responses (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/66" class="external-link">#66</a>).</li>
 <li>Improve URL encoding (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/62" class="external-link">#62</a>).</li>
