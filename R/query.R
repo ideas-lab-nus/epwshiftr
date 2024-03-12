@@ -25,6 +25,7 @@ print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
     invisible(x)
 }
 
+#' @export
 format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
     if (is.logical(x$value)) {
         res <- tolower(if (x$negate) !x$value else x$value)
