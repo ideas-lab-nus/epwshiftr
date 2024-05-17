@@ -1,3 +1,10 @@
+# eplusr (development version)
+
+## Bug fixes
+
+* `future_epw()` now correctly handles missing values when generating future
+  weather files.
+
 # epwshiftr 0.1.4
 
 ## Major changes
