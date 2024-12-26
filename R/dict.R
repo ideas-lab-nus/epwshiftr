@@ -248,7 +248,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
             }
 
             dict <- cmip6dict_build(dict)
-            cli::cli_alert_success("Loaded CMIP6 Dictionary that was built at {dict$built_time}.")
+            cli::cli_alert_success("Loaded CMIP6 Dictionary that was built at {format(dict$built_time, usetz = TRUE)}.")
 
             for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
@@ -268,7 +268,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
             cli::cli_rule("CMIP6 Dictionary")
             cli::cli_end(d)
             if (length(private$m_version)) {
-                cli::cli_bullets(c("*" = "Built at: {private$m_built_time}"))
+                cli::cli_bullets(c("*" = "Built at: {format(private$m_built_time, usetz = TRUE)}"))
             } else {
                 cli::cli_bullets(c("*" = "Built at: {.emph <NONE>}"))
             }
