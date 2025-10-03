@@ -241,35 +241,36 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'   matching the given constraints..
 #'
 #' - \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-#'   of the current `EsgfQuery` object including the host URL, the built time of
+#'   of the current `EsgfQuery` object including the index node URL, the built time of
 #'   facet listing and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
 #' @name EsgfQuery
 #'
-#' @param host The URL to the ESGF Search API service. This should be the URL of
-#'        the ESGF search service excluding the final endpoint name. Usually
-#'        this is `http://<hostname>/esg-search`. Default is set to the
-#'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
-#'        which is `"https://esgf-node.llnl.gov/esg-search"`. Current possible
-#'        values could be:
+#' @param index_node The URL to the ESGF Index Node. Default is to use the
+#'        [ORNL (Oak Ridge National Laboratory) Index Node](https://esgf-node.ornl.gov).
+#'        Current possible values could be:
 #'
-#' - USA, PCMDI/LLNL (California):
-#'   `https://esgf-node.llnl.gov/esg-search`. The default value.
+#' - ORNL (Oak Ridge National Laboratory), USA:
+#'   `https://esgf-node.ornl.gov`. The default value.
+#' - NCI (National Computational Infrastructure), Australia:
+#'   `https://esgf.nci.org.au`
 #' - IPSL (Institut Pierre-Simon Laplace), France:
-#'   `https://esgf-node.ipsl.upmc.fr/esg-search`
-#' - CEDA (Centre for Environment Data Analysis), UK:
-#'   `https://esgf.ceda.ac.uk/esg-search`
+#'   `https://esgf-node.ipsl.upmc.fr`
 #' - DKRZ (Deutsches Klimarechenzentrum), Germany:
-#'   `https://esgf-data.dkrz.de/esg-search`
+#'   `https://esgf-data.dkrz.de`
+#' - LIU (National Academic Infrastructure for Supercomputing), Sweden:
+#'   `https://esg-dn1.nsc.liu.se`
+#' - CEDA (Climate Data Store), UK:
+#'   `https://esgf.ceda.ac.uk`
 #'
 #' @param listing Whether to send the facet listing query used to validate
 #'        inputs. Default: `FALSE`. See `r sQuote("Value listing")` in Details.
 #'
 #' @export
-query_esgf <- function(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE) {
-    EsgfQuery$new(host = host, listing = listing)
+query_esgf <- function(index_node = "https://esgf-node.ornl.gov", listing = FALSE) {
+    EsgfQuery$new(index_node = index_node, listing = listing)
 }
 # }}}
 
@@ -283,22 +284,22 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Create a new EsgfQuery object
         #'
-        #' @param host The URL to the ESGF Search API service. This should be
-        #'        the URL of the ESGF search service excluding the final
-        #'        endpoint name. Usually this is `http://<hostname>/esg-search`.
-        #'        Default is to ses the [LLNL (Lawrence Livermore National
-        #'        Laboratory)](http://esgf-node.llnl.gov) Index Node, which is
-        #'        `"https://esgf-node.llnl.gov/esg-search"`.
-        #'        Current possible values could be:
+        #' @param index_node The URL to the ESGF Index Node. Default is to use the
+        #'        [ORNL (Oak Ridge National Laboratory)](https://esgf-node.ornl.gov)
+        #'        Index Node. Current possible values could be:
         #'
-        #' - USA, PCMDI/LLNL (California):
-        #'   `https://esgf-node.llnl.gov/esg-search`. The default value.
-        #' - IPSL (Institut Pierre-Simon Laplace), France:
-        #'   `https://esgf-node.ipsl.upmc.fr/esg-search`
-        #' - CEDA (Centre for Environment Data Analysis), UK:
-        #'   `https://esgf.ceda.ac.uk/esg-search`
+        #' - ORNL (Oak Ridge National Laboratory), USA:
+        #'   `https://esgf-node.ornl.gov`. The default value.
+        #' - NCI (National Computational Infrastructure), Australia:
+        #'   `https://esgf.nci.org.au`
         #' - DKRZ (Deutsches Klimarechenzentrum), Germany:
-        #'   `https://esgf-data.dkrz.de/esg-search`
+        #'   `https://esgf-data.dkrz.de`
+        #' - IPSL (Institut Pierre-Simon Laplace), France:
+        #'   `https://esgf-node.ipsl.upmc.fr`
+        #' - LIU (National Academic Infrastructure for Supercomputing), Sweden:
+        #'   `https://esg-dn1.nsc.liu.se`
+        #' - CEDA (Climate Data Store), UK:
+        #'   `https://esgf.ceda.ac.uk`
         #'
         #' @param listing Whether to send the facet listing query.
         #'        A [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
@@ -306,25 +307,32 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        shards. When available, this information will be automatically
         #'        used to validate inputs for `activity_id`, `scource_id` facets
         #'        and etc. NOTE: Not all index nodes support facet listing
-        #'        query. You may encounter error if your input host does not
+        #'        query. You may encounter error if your input index node does not
         #'        support it. Default: `FALSE`.
         #'
         #' @return An `EsgfQuery` object.
         #'
         #' @examples
         #' \dontrun{
-        #' q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
+        #' q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
         #' q
         #' }
-        initialize = function(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE) {
-            checkmate::assert_string(host)
+        initialize = function(index_node = "https://esgf-node.ornl.gov", listing = FALSE) {
+            checkmate::assert_string(index_node)
             checkmate::assert_flag(listing)
 
-            # in case of a encoded URL
-            private$url_host <- utils::URLdecode(host)
-            if (grepl("/$", private$url_host)) {
-                private$url_host <- substring(private$url_host, 1L, nchar(private$url_host) - 1L)
+            # curl::curl_parse_url() requires scheme and host to present
+            if (!grepl("://", url, fixed = TRUE)) {
+                url <- paste0("https://", url)
             }
+            if (grepl("/+$", url)) {
+                url <- sub(url, "/+$", "")
+            }
+            url <- curl::curl_parse_url(url, decode = TRUE)$url
+            private$index_node <- list(
+                url = url,
+                bridge = grepl("esgf-1-5-bridge", url)
+            )
 
             if (listing) self$build_listing()
 
@@ -365,26 +373,26 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         build_listing = function(force = FALSE) {
             checkmate::assert_flag(force)
 
-            if (!force && !is.null(this$cache$facet[[private$url_host]])) {
+            if (!force && !is.null(this$cache$facet[[private$index_node]])) {
                 vb(cli::cli_progress_step(paste(
-                    "Loaded facet listing cache for host {.var {private$url_host}}",
+                    "Loaded facet listing cache for host {.var {private$index_node}}",
                     "built at {private$facet_listing$timestamp}."
                 )))
 
-                private$facet_listing <- this$cache$facet[[private$url_host]]
+                private$facet_listing <- this$cache$facet[[private$index_node]]
                 return(self)
             }
 
             vb(cli::cli_progress_step(
-                "Building facet listing for host {.var {private$url_host}}...",
+                "Building facet listing for index node {.var {private$index_node}}...",
                 paste(
-                    "Built facet listing for host {.var {private$url_host}}",
+                    "Built facet listing for index node {.var {private$index_node}}",
                     "built at {private$facet_listing$timestamp}."
                 )
             ))
 
             private$facet_listing <- query_build_facet_listing(
-                private$url_host, private$parameter$project
+                private$index_node, private$parameter$project
             )
             self
         },
@@ -475,7 +483,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 shard <- shard[-1L]
                 # replace localhost
                 if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
-                    shard[1L] <- strsplit(private$url_host, "/", fixed = TRUE)[[1L]][[3L]]
+                    shard[1L] <- strsplit(private$index_node, "/", fixed = TRUE)[[1L]][[3L]]
                 }
                 # exclude suffix
                 sprintf("%s:%s/solr%s", shard[[1L]], shard[[2L]], shard[[3L]])
@@ -1312,7 +1320,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         url = function(wget = FALSE) {
             checkmate::assert_flag(wget)
             query_build(
-                private$url_host,
+                private$index_node,
                 private$parameter,
                 type = if (wget) "wget" else "search"
             )
@@ -1370,7 +1378,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 }
             }
 
-            url <- query_build(private$url_host, params)
+            url <- query_build(private$index_node, params)
             res <- read_json_response(url, simplifyVector = FALSE)
 
             if (!facets) return(res$response$numFound)
@@ -1434,7 +1442,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
-                private$url_host, private$parameter,
+                private$index_node, private$parameter,
                 required_fields = EsgfQueryResultDataset$private_fields$required_fields,
                 all = all, limit = limit, constraints = params
             )
@@ -1444,14 +1452,14 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
             # store last result
             private$last_result <- list(
-                url_host = private$url_host,
+                index_node = private$index_node,
                 parameter = private$parameter,
                 response = result$response
             )
 
             # create new results
             new_query_result(EsgfQueryResultDataset,
-                private$url_host, private$parameter, result$response
+                private$index_node, private$parameter, result$response
             )
         },
         # }}}
@@ -1478,7 +1486,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         save = function(file = "query.json", pretty = TRUE) {
             query_save(
-                host = private$url_host,
+                index_node = private$index_node,
                 parameter = private$parameter,
                 last_result = private$last_result,
                 facet_listing = private$facet_listing,
@@ -1511,7 +1519,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         load = function(file = "query.json") {
             q <- query_load(file)
 
-            private$url_host <- q$host
+            private$index_node <- q$index_node
             private$parameter <- q$parameter
             private$facet_listing <- q$facet_listing
             private$last_result <- q$last_result
@@ -1534,7 +1542,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Print a summary of the current `EsgfQuery` object
         #'
         #' `$print()` gives the summary of current `EsgfQuery` object including
-        #' the host URL, the built time of facet listing and all query parameters.
+        #' the index node URL, the built time of facet listing and all query parameters.
         #'
         #' @return The `EsgfQuery` object itself, invisibly.
         #'
@@ -1547,7 +1555,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_rule("ESGF Query")
-            cli::cli_li("Host: {private$url_host}")
+            cli::cli_li("Index Node: {private$index_node}")
             if (!private$has_facet_listing()) {
                 cli::cli_li("Facet listing built at: {.emph <NONE>}")
                 cli::cli_bullets(c(" " = "{.emph NOTE: You may run `$build_listing()`} to create the listing"))
@@ -1572,7 +1580,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
     ),
 
     private = list(
-        url_host = NULL,
+        index_node = NULL,
         facet_listing = list(),
 
         # all query parameters
@@ -1760,7 +1768,7 @@ query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE
 # }}}
 
 # query_build {{{
-query_build <- function(host, params, type = "search") {
+query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
     params <- query_param_flat(params)
 
@@ -1778,12 +1786,12 @@ query_build <- function(host, params, type = "search") {
 # }}}
 
 # query_build_facet_listing {{{
-query_build_facet_listing <- function(host, project = "CMIP6") {
     # NOTE: not all index nodes support facet listing without project one
     # example is https://esgf-node.llnl.gov/esg-search/search
     # It will return status '500' and 'Read timed out' for queries with large
     # size. So currently we only support facet cache for a single project
 
+query_build_facet_listing <- function(index_node, project = "CMIP6") {
     # set the timeout to 5 minutes temporarily
     old <- getOption("timeout")
     on.exit(options(timeout = old), add = TRUE)
@@ -1823,7 +1831,7 @@ query_build_facet_listing <- function(host, project = "CMIP6") {
 # }}}
 
 # query_collect {{{
-query_collect <- function(host, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+query_collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
     checkmate::assert_flag(all)
     checkmate::assert_flag(constraints)
     checkmate::assert(
@@ -1870,7 +1878,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
         params$offset <- 0L
     }
 
-    response <- read_json_response(query_build(host, params))
+    response <- read_json_response(query_build(index_node, params))
     docs <- response$response$docs
 
     # check if the total number is less that the limit
@@ -1882,7 +1890,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
         while (left > 0L) {
             params$offset <- current
 
-            response <- read_json_response(query_build(host, params))
+            response <- read_json_response(query_build(index_node, params))
 
             # combine results
             docs <- rbind(docs, response$response$docs)
@@ -1906,7 +1914,7 @@ query_collect <- function(host, params, required_fields = NULL, all = FALSE, lim
 # }}}
 
 # query_save {{{
-query_save <- function(host, parameter, last_result, ..., file = "query.json", pretty = TRUE) {
+query_save <- function(index_node, parameter, last_result, ..., file = "query.json", pretty = TRUE) {
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
@@ -1934,7 +1942,7 @@ query_save <- function(host, parameter, last_result, ..., file = "query.json", p
     }
 
     data <- list(
-        host = host,
+        index_node = index_node,
         parameter = params,
         last_result = last_result
     )
