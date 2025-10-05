@@ -1,25 +1,34 @@
-get_fast_host <- function(force = FALSE) {
-    if (is.null(this$fast_host)) force <- TRUE
-    if (!force) return(this$fast_host)
+get_fast_index_node <- function(force = FALSE) {
+    cache <- get_test_cache()
+    cache_key <- "fast_index_node"
 
-    hosts <- c(
-        llnl = "https://esgf-node.llnl.gov/esg-search",
-        ipsl = "https://esgf-node.ipsl.upmc.fr/esg-search",
-        ceda = "https://esgf.ceda.ac.uk/esg-search",
-        dkrz = "https://esgf-data.dkrz.de/esg-search"
-    )
+    if (!force) {
+        cached <- cache$get(cache_key)
+        if (!is.key_missing(cached)) {
+            return(cached)
+        }
+    }
 
-    conn_time <- function(host) {
+    nodes <- INDEX_NODES
+
+    conn_time <- function(node) {
         before <- now()
-        res <- try(readLines(substr(host, 1L, nchar(host) - 11L), n = 1L, warn = FALSE), silent = TRUE)
+        res <- suppressWarnings(
+            try(readLines(substr(node, 1L, nchar(node) - 11L), n = 1L, warn = FALSE), silent = TRUE)
+        )
         if (inherits(res, "try-error")) res <- Inf
         after <- now()
         as.numeric(after - before)
     }
 
-    times <- vapply(hosts, conn_time, double(1L))
+    times <- vapply(nodes, conn_time, double(1L))
     # all failed to connect, just use the first one
-    if (all(is.infinite(times))) return(hosts[1L])
+    if (all(is.infinite(times))) {
+        result <- nodes[1L]
+    } else {
+        result <- nodes[which.min(times)]
+    }
 
-    (this$fast_host <- hosts[which.min(times)])
+    cache$set(cache_key, result)
+    result
 }
