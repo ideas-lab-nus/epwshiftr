@@ -1,32 +1,36 @@
-get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FALSE) {
-    if (is.na(path)) path <- tools::R_user_dir("epwshiftr", "cache")
-
-    cache <- normalizePath(path, mustWork = FALSE)
-    if (identical(Sys.getenv("NOT_CRAN"), "true") && !dir.exists(cache)) {
-        dir.create(cache, recursive = TRUE)
+get_test_cache <- function(dir = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), max_size = "1 GB", max_age = "30 mins") {
+    if (is.na(dir)) {
+        if (identical(Sys.getenv("TESTTHAT"), "true")) {
+            dir <- tempfile("epwshiftr-test-cache-")
+        } else {
+            dir <- tools::R_user_dir("epwshiftr", "cache")
+        }
     }
 
-    # cache ESGF facet listing query
-    facets <- file.path(cache, "facets")
-    if (!file.exists(facets)) {
-        query_build_facet_listing(formals(query_esgf)$host)
-        cache <- this$cache
-        saveRDS(cache, facets)
-        clear_facet_cache()
-    }
+    DiskCache$new(
+        dir = dir,
+        max_size = max_size,
+        max_age = max_age,
+        max_n = Inf
+    )
+}
 
-    # download weather
+get_cache_epw <- function() {
+    dir <- get_test_cache()$info()$dir
     file <- "SGP_Singapore.486980_IWEC.epw"
-    epw <- file.path(cache, file)
+    epw <- file.path(dir, file)
     if (!file.exists(epw)) {
-        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1L)
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = dir, type = "epw", ask = FALSE, max_match = 1L)
     }
+    normalizePath(epw)
+}
 
-    # download NetCDF
+get_cache_nc <- function(reset = FALSE) {
+    dir <- get_test_cache()$info()$dir
     withr::with_options(
-        list(epwshiftr.dir = cache),
+        list(epwshiftr.dir = dir),
         {
-            if (!reset && file.exists(file.path(cache, "cmip6_index.csv"))) {
+            if (!reset && file.exists(file.path(dir, "cmip6_index.csv"))) {
                 idx <- load_cmip6_index()
             } else {
                 idx <- init_cmip6_index(
@@ -37,7 +41,7 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
 
             # download output files
             for (f in idx$file_url) {
-                dest <- file.path(cache, basename(f))
+                dest <- file.path(dir, basename(f))
                 if (!file.exists(dest)) {
                     old <- getOption("timeout")
                     options(timeout = 60L * 100L)
@@ -48,21 +52,5 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
         }
     )
 
-    cache
-}
-
-save_facet_cache <- function() {
-    if (length(this$cache)) {
-        saveRDS(this$cache, file.path(get_cache(), "facets"))
-    }
-}
-
-attach_facet_cache <- function() {
-    if (file.exists(cache <- file.path(get_cache(), "facets"))) {
-        attach_cache(readRDS(cache))
-    }
-}
-
-clear_facet_cache <- function() {
-    attach_cache(list())
+    normalizePath(dir)
 }
