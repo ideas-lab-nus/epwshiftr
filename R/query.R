@@ -449,9 +449,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             # nocov end
 
             shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
-            # fix the host if it refers to the local server
 
-            shards_parts <- regmatches(shards, regexec("(.*):(\\d*)/solr(.*)", shards))
+            # fix the index_node if it refers to the local server
+            shards_parts <- regmatches(shards, regexec("(.*?)(?::(\\d*))?/solr(.*)", shards))
 
             # nocov start
             if (length(invld <- shards[lengths(shards_parts) != 4L])) {
@@ -469,7 +469,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     shard[1L] <- strsplit(private$index_node, "/", fixed = TRUE)[[1L]][[3L]]
                 }
                 # exclude suffix
-                sprintf("%s:%s/solr%s", shard[[1L]], shard[[2L]], shard[[3L]])
+                sprintf("%s%s%s/solr%s", shard[[1L]], if (shard[[2L]] != "") ":" else "", shard[[2L]], shard[[3L]])
             })
         },
         # }}}
