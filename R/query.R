@@ -5,8 +5,16 @@ NULL
 # TODO: be able to import query parameters?
 # read_json_response {{{
 read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
-    checkmate::assert(checkmate::check_flag(cache), checkmate::check_count(cache, positive = TRUE))
-    if (cache && url %in% names(this$cache$query)) return(this$cache$query[[url]])
+    checkmate::assert_flag(cache)
+    if (cache) {
+        disk_cache <- get_cache()
+        key <- paste0("response-", fast_hash(url))
+
+        cached <- disk_cache$get(key)
+        if (!is.key_missing(cached)) {
+            return(cached)
+        }
+    }
 
     timestamp <- now()
     res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
@@ -31,10 +39,7 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 
     # cache results
     if (cache) {
-        if (is.numeric(cache) && !url %in% names(this$cache$query) && length(this$cache$query) >= cache) {
-            this$cache$query <- this$cache$query[seq_len(length(this$cache$query))]
-        }
-        this$cache$query[[url]] <- res
+        disk_cache$set(key, res)
     }
 
     res
@@ -372,16 +377,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         build_listing = function(force = FALSE) {
             checkmate::assert_flag(force)
-
-            if (!force && !is.null(this$cache$facet[[private$index_node]])) {
-                vb(cli::cli_progress_step(paste(
-                    "Loaded facet listing cache for host {.var {private$index_node}}",
-                    "built at {private$facet_listing$timestamp}."
-                )))
-
-                private$facet_listing <- this$cache$facet[[private$index_node]]
-                return(self)
-            }
 
             vb(cli::cli_progress_step(
                 "Building facet listing for index node {.var {private$index_node}}...",
@@ -1826,7 +1821,7 @@ query_build_facet_listing <- function(index_node, project = "CMIP6") {
     # add timestamp
     res$timestamp <- now()
 
-    this$cache$facet[[host]] <- res
+    res
 }
 # }}}
 
