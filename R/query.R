@@ -325,19 +325,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         initialize = function(index_node = "https://esgf-node.ornl.gov", listing = FALSE) {
             checkmate::assert_string(index_node)
             checkmate::assert_flag(listing)
-
-            # curl::curl_parse_url() requires scheme and host to present
-            if (!grepl("://", url, fixed = TRUE)) {
-                url <- paste0("https://", url)
-            }
-            if (grepl("/+$", url)) {
-                url <- sub(url, "/+$", "")
-            }
-            url <- curl::curl_parse_url(url, decode = TRUE)$url
-            private$index_node <- list(
-                url = url,
-                bridge = grepl("esgf-1-5-bridge", url)
-            )
+            private$index_node <- normalize_index_node(index_node)
 
             if (listing) self$build_listing()
 
@@ -1762,6 +1750,38 @@ query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE
 }
 # }}}
 
+is_bridge_index_node <- function(index_node) {
+    grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
+}
+
+normalize_index_node <- function(index_node) {
+    index_node <- curl::curl_unescape(index_node)
+    # curl::curl_parse_url() requires scheme and host to present
+    if (!grepl("://", index_node, fixed = TRUE)) {
+        index_node <- paste0("https://", index_node)
+    }
+    if (grepl("/+$", index_node)) {
+        index_node <- sub("/+$", "", index_node)
+    }
+    parsed <- curl::curl_parse_url(index_node)
+
+    if (
+        (parsed$host == "esgf-node.ornl.gov" || parsed$host == "esgf-node.llnl.gov") &&
+            (is.null(parsed$path) || parsed$path == "/")
+    ) {
+        # since LLNL will redirect to ORNL bridge, we always use ORNL bridge
+        parsed$path <- "/esgf-1-5-bridge"
+        parsed$host <- "esgf-node.ornl.gov"
+    }
+
+    url <- do.call(curl::curl_modify_url, parsed)
+    # curl::curl_modify_url always appends a '/' at the end of the URL
+    if (is.null(parsed$path) || parsed$path == "/") {
+        url <- sub("/$", "", url)
+    }
+    url
+}
+
 # query_build {{{
 query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
@@ -1773,51 +1793,78 @@ query_build <- function(index_node, params, type = "search") {
 
     if (!length(params)) return(NULL)
 
+    # NOTE: handle special endpoint for bridge
+    if (is_bridge_index_node(index_node)) {
+        if (type == "wget") {
+            stop("Input index node is a bridge. Wget script is not supported.")
+        }
+        endpoint <- index_node
+    } else {
+        endpoint <- sprintf("%s/esg-search/%s", index_node, type)
+    }
+
     paste0(
-        sprintf("%s/%s?", host, type),
+        endpoint,
+        "?",
         paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
     )
 }
 # }}}
 
 # query_build_facet_listing {{{
-    # NOTE: not all index nodes support facet listing without project one
-    # example is https://esgf-node.llnl.gov/esg-search/search
-    # It will return status '500' and 'Read timed out' for queries with large
-    # size. So currently we only support facet cache for a single project
-
 query_build_facet_listing <- function(index_node, project = "CMIP6") {
     # set the timeout to 5 minutes temporarily
     old <- getOption("timeout")
     on.exit(options(timeout = old), add = TRUE)
     options(timeout = 300)
 
-    # build a query without project to get facet names and values
-    url <- query_build(host,
-        list(
-            project = project,
-            facets = "*",
-            limit = 0,
-            distrib = TRUE,
-            format = "application/solr+json"
+    vb(
+        cli::cli_progress_step(
+            "Building facet listing for {.strong {index_node}}...",
+            "Built facet listing for {.strong {index_node}} successfully.",
+            "Failed to build facet listing for {.strong {index_node}}."
         )
     )
-    res <- read_json_response(url, simplifyVector = FALSE)
-
-    # build a query with project to get the Shards and field names
-    url <- query_build(host,
-        list(
-            project = project,
-            limit = 1,
-            distrib = TRUE,
-            fields = "*",
-            format = "application/solr+json"
+    if (is_bridge_index_node(index_node)) {
+        # use the metadata of the first file to get the facet names
+        url <- query_build(index_node,
+            list(
+                project = project,
+                type = "File",
+                offset = 0,
+                limit = 1,
+                distrib = FALSE,
+                format = "application/solr+json"
+            )
         )
-    )
-    res2 <- read_json_response(url)
-    res$responseHeader$params$shards <- res2$responseHeader$params$shards
-    res$responseHeader$params$fields <- names(res2$response$docs)
+        res <- read_json_response(url, simplifyVector = FALSE)
+    } else {
+        # build a query to get facet names and values
+        url <- query_build(index_node,
+            list(
+                project = project,
+                facets = "*",
+                limit = 0,
+                distrib = TRUE,
+                format = "application/solr+json"
+            )
+        )
+        res <- read_json_response(url, simplifyVector = FALSE)
 
+        # build a query to get the Shards and field names
+        url <- query_build(index_node,
+            list(
+                project = project,
+                limit = 1,
+                distrib = TRUE,
+                fields = "*",
+                format = "application/solr+json"
+            )
+        )
+        res2 <- read_json_response(url)
+        res$responseHeader$params$shards <- res2$responseHeader$params$shards
+        res$responseHeader$params$fields <- names(res2$response$docs)
+    }
     # add timestamp
     res$timestamp <- now()
 
