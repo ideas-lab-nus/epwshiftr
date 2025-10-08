@@ -375,21 +375,39 @@ DiskCache <- R6::R6Class(
                 prune_limit = private$prune_limit
             )
 
-            if (!is.null(old) && !identical(old, current)) {
+            to_write <- FALSE
+            if (is.null(old)) {
+                to_write <- TRUE
+            } else if (!is.null(old) && !identical(old, current)) {
+                message("Cache configuration has changed:")
+                for (field in names(current)) {
+                    old_val <- old[[field]]
+                    new_val <- current[[field]]
+
+                    if (!identical(old_val, new_val)) {
+                        old_str <- if (is.infinite(old_val)) "Inf" else as.character(old_val)
+                        new_str <- if (is.infinite(new_val)) "Inf" else as.character(new_val)
+                        message(sprintf("  - %s: %s -> %s", field, old_str, new_str))
+                    }
+                }
+
                 if (prune) {
-                    message("Cache configuration has changed. Triggering prune...")
+                    message("Triggering prune...")
                     self$prune()
                 } else {
-                    message("Cache configuration has changed. Call `$prune()` to apply.")
+                    message("Call `$prune()` to apply.")
                 }
+                to_write <- TRUE
             }
 
-            tryCatch(
-                qs2::qs_save(current, metadata),
-                error = function(e) {
-                    warning("Failed to save cache metadata. ", conditionMessage(e))
-                }
-            )
+            if (to_write) {
+                tryCatch(
+                    qs2::qs_save(current, metadata),
+                    error = function(e) {
+                        warning("Failed to save cache metadata. ", conditionMessage(e))
+                    }
+                )
+            }
 
             invisible(self)
         },

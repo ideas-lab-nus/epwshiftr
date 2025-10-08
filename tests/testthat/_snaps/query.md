@@ -64,37 +64,10 @@
 # EsgfQuery$print()
 
     Code
-      EsgfQuery$new("a", listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
-        print()
-    Message <cliMessage>
+      EsgfQuery$new("a")$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+    Message
       == ESGF Query ==================================================================
-      * Host: a
-      * Facet listing built at: <NONE>
-        NOTE: You may run `$build_listing()` to create the listing
-      * Last query sent at: <NONE>
-      
-      -- <Query Parameter> -----------------------------------------------------------
-      * project = CMIP6
-      * fields = *
-      * latest = true
-      * type = Dataset
-      * offset = 0
-      * distrib = true
-      * limit = 10
-      * format = application/solr+json
-      * table_id = Amon
-      * member_id = r1i1p1f1
-
----
-
-    Code
-      EsgfQuery$new(host, listing = FALSE)$params(table_id = "Amon", member_id = "r1i1p1f1")$
-        print()
-    Message <cliMessage>
-      == ESGF Query ==================================================================
-      * Host: https://esgf.ceda.ac.uk/esg-search
-      * Facet listing built at: <NONE>
-        NOTE: You may run `$build_listing()` to create the listing
+      * Index Node: https://a
       * Last query sent at: <NONE>
       
       -- <Query Parameter> -----------------------------------------------------------

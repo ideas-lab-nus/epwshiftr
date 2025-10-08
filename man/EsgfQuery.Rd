@@ -5,28 +5,28 @@
 \alias{query_esgf}
 \title{Query CMIP6 data using ESGF search RESTful API}
 \usage{
-query_esgf(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE)
+query_esgf(index_node = "https://esgf-node.ornl.gov")
 }
 \arguments{
-\item{host}{The URL to the ESGF Search API service. This should be the URL of
-the ESGF search service excluding the final endpoint name. Usually
-this is \verb{http://<hostname>/esg-search}. Default is set to the
-\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
-which is \code{"https://esgf-node.llnl.gov/esg-search"}. Current possible
-values could be:
+\item{index_node}{The URL to the ESGF Index Node. Default is to use the
+\href{https://esgf-node.ornl.gov}{ORNL (Oak Ridge National Laboratory) Index Node}.
+Current possible values could be:
 \itemize{
-\item USA, PCMDI/LLNL (California):
-\verb{https://esgf-node.llnl.gov/esg-search}. The default value.
+\item ORNL (Oak Ridge National Laboratory), USA:
+\verb{https://esgf-node.ornl.gov}. The default value.
+\item LLNL (Lawrence Livermore National Laboratory), USA:
+\verb{https://esgf-node.llnl.gov}
+\item NCI (National Computational Infrastructure), Australia:
+\verb{https://esgf.nci.org.au}
 \item IPSL (Institut Pierre-Simon Laplace), France:
-\verb{https://esgf-node.ipsl.upmc.fr/esg-search}
-\item CEDA (Centre for Environment Data Analysis), UK:
-\verb{https://esgf.ceda.ac.uk/esg-search}
+\verb{https://esgf-node.ipsl.upmc.fr}
 \item DKRZ (Deutsches Klimarechenzentrum), Germany:
-\verb{https://esgf-data.dkrz.de/esg-search}
+\verb{https://esgf-data.dkrz.de}
+\item LIU (National Academic Infrastructure for Supercomputing), Sweden:
+\verb{https://esg-dn1.nsc.liu.se}
+\item CEDA (Centre for Environmental Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk}
 }}
-
-\item{listing}{Whether to send the facet listing query used to validate
-inputs. Default: \code{FALSE}. See 'Value listing' in Details.}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -41,33 +41,36 @@ using this
 
 \code{EsgfQuery} is the workhorse for dealing with ESGF search services.
 }
+\note{
+For bridge index nodes, only predefined common facets are returned.
+\verb{$list_fields()} can be used to get all available fields,
+including facets.
+}
 \section{\code{EsgfQuery} object}{
 \code{query_esgf()} returns an \code{EsgfQuery} object, which is an \link[R6:R6Class]{R6}
 object with quite a few methods that can be classified into 3 categories:
 \itemize{
-\item \strong{Value listing}: methods to list all possible values of facets, shards,
-etc.
+\item \strong{Value listing}: methods to list all possible values of facets, fields,
+and values.
 \item \strong{Parameter getter & setter}: methods to get the query parameter values or
 set them before sending the actual query to the ESGF search services.
 \item \strong{Query responses}: methods to collect results for the query response.
 }
 \subsection{Value listing}{
 
-When creating an \code{EsgfQuery} object, a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-is sent to the index node to get all available facets and shards for the
-default project (CMIP6).
-\code{EsgfQuery} object provides three value-listing methods to extract data from
-the response of the facet listing query:
+\code{EsgfQuery} object provides the following value-listing methods to query
+available facets, fields, and values from the ESGF index node:
 \itemize{
-\item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}:
-List all available facet names.
-\item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}:
-List all available field names.
-\item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}:
-List all available shards.
-\item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}:
-List all available values of a specific facet.
+\item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
+List all available facet names. When called, a
+\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
+is sent to the index node to get all available facets for the current
+project (default: CMIP6).
+\item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
+List all available field names. This is useful for bridge index nodes
+where facet listing is not available.
+\item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
+List all available values of specific facets.
 }
 }
 
@@ -150,23 +153,47 @@ query results and format it into an \link{EsgfQueryResultDataset} object.
 }
 }
 
+\subsection{Bridge Index Nodes}{
+
+Some ESGF index nodes are "bridge" nodes that have certain limitations
+compared to standard index nodes. When using a bridge index node (e.g.,
+\verb{https://esgf-node.ornl.gov/esgf-1-5-bridge}), the following restrictions
+apply:
+\itemize{
+\item The \code{fields} parameter is not supported. All available fields are always
+returned.
+\item The \code{retracted} parameter is not supported and will be ignored.
+\item Wget script generation is not supported. Calling \verb{$url(wget = TRUE)} will
+result in an error.
+\item Facet listing is not available. \verb{$list_facets()} will return a predefined
+set of common facets instead. Use \verb{$list_fields()} to get all available
+fields.
+}
+}
+
 \subsection{Other helpers}{
 
-\code{EsgfQuery} object also provide several other helper functions:
+\code{EsgfQuery} object also provides several other helper functions:
 \itemize{
-\item \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}:
-By default, \code{EsgfQuery$build_listing()} is not called when initialize a new
-\code{EsgfQuery} object. Basically, \code{EsgfQuery$build_listing()} sends a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-to the index node and stores the response internally. The response contains
-all available facets and shards and is used as a source for validating user
-input for parameter setters.
+\item \strong{Query URL generation}:
+\itemize{
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
 query URL or the wget script URL which can be used to download all files
-matching the given constraints..
-\item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-of the current \code{EsgfQuery} object including the host URL, the built time of
-facet listing and all query parameters.
+matching the given constraints.
+}
+\item \strong{State persistence}:
+\itemize{
+\item \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}: Save the query
+state to a JSON file for later use.
+\item \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}: Restore the
+query state from a JSON file created by \verb{$save()}.
+}
+\item \strong{Display}:
+\itemize{
+\item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a
+summary of the current \code{EsgfQuery} object including the index node URL,
+the last query timestamp, and all query parameters.
+}
 }
 }
 }
@@ -178,56 +205,32 @@ facet listing and all query parameters.
 ## ------------------------------------------------
 
 \dontrun{
-q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
+q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$build_listing`
+## Method `EsgfQuery$list_facets`
 ## ------------------------------------------------
 
 \dontrun{
-q$build_listing()
+q$list_facets()
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$has_listing`
+## Method `EsgfQuery$list_fields`
 ## ------------------------------------------------
 
 \dontrun{
-q$has_listing()
+q$list_fields()
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$list_all_facets`
+## Method `EsgfQuery$list_values`
 ## ------------------------------------------------
 
 \dontrun{
-q$list_all_facets()
-}
-
-## ------------------------------------------------
-## Method `EsgfQuery$list_all_fields`
-## ------------------------------------------------
-
-\dontrun{
-q$list_all_fields()
-}
-
-## ------------------------------------------------
-## Method `EsgfQuery$list_all_shards`
-## ------------------------------------------------
-
-\dontrun{
-q$list_all_shards()
-}
-
-## ------------------------------------------------
-## Method `EsgfQuery$list_all_values`
-## ------------------------------------------------
-
-\dontrun{
-q$list_all_values()
+q$list_values(c("activity_id", "experiment_id"))
 }
 
 ## ------------------------------------------------
@@ -240,9 +243,6 @@ q$project()
 
 # set the parameter
 q$project("CMIP6")
-
-# negate the project constraints
-q$project(!"CMIP6")
 
 # remove the parameter
 q$project(NULL)
@@ -634,12 +634,9 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
-\item \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}
-\item \href{#method-EsgfQuery-has_listing}{\code{EsgfQuery$has_listing()}}
-\item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}
-\item \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}
-\item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}
-\item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}
+\item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}
+\item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}
+\item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}
 \item \href{#method-EsgfQuery-project}{\code{EsgfQuery$project()}}
 \item \href{#method-EsgfQuery-activity_id}{\code{EsgfQuery$activity_id()}}
 \item \href{#method-EsgfQuery-experiment_id}{\code{EsgfQuery$experiment_id()}}
@@ -673,37 +670,31 @@ Hongyuan Jia
 \subsection{Method \code{new()}}{
 Create a new EsgfQuery object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search", listing = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{host}}{The URL to the ESGF Search API service. This should be
-the URL of the ESGF search service excluding the final
-endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
-Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
-\code{"https://esgf-node.llnl.gov/esg-search"}.
-Current possible values could be:
+\item{\code{index_node}}{The URL to the ESGF Index Node. Default is to use the
+\href{https://esgf-node.ornl.gov}{ORNL (Oak Ridge National Laboratory)}
+Index Node. Current possible values could be:
 \itemize{
-\item USA, PCMDI/LLNL (California):
-\verb{https://esgf-node.llnl.gov/esg-search}. The default value.
+\item ORNL (Oak Ridge National Laboratory), USA:
+\verb{https://esgf-node.ornl.gov}. The default value.
+\item LLNL (Lawrence Livermore National Laboratory), USA:
+\verb{https://esgf-node.llnl.gov}
+\item NCI (National Computational Infrastructure), Australia:
+\verb{https://esgf.nci.org.au}
 \item IPSL (Institut Pierre-Simon Laplace), France:
-\verb{https://esgf-node.ipsl.upmc.fr/esg-search}
-\item CEDA (Centre for Environment Data Analysis), UK:
-\verb{https://esgf.ceda.ac.uk/esg-search}
+\verb{https://esgf-node.ipsl.upmc.fr}
 \item DKRZ (Deutsches Klimarechenzentrum), Germany:
-\verb{https://esgf-data.dkrz.de/esg-search}
+\verb{https://esgf-data.dkrz.de}
+\item LIU (National Academic Infrastructure for Supercomputing), Sweden:
+\verb{https://esg-dn1.nsc.liu.se}
+\item CEDA (Centre for Environmental Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk}
 }}
-
-\item{\code{listing}}{Whether to send the facet listing query.
-A \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-can be sent to the index node to get all available facets and
-shards. When available, this information will be automatically
-used to validate inputs for \code{activity_id}, \code{scource_id} facets
-and etc. NOTE: Not all index nodes support facet listing
-query. You may encounter error if your input host does not
-support it. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -713,7 +704,7 @@ An \code{EsgfQuery} object.
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
+q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
 }
 }
@@ -723,17 +714,12 @@ q
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-build_listing"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-build_listing}{}}}
-\subsection{Method \code{build_listing()}}{
-Build facet listing used for input validation
-
-Facet listing is data that is fetched using a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-to the index node. It contains all available facets and shards that
-can be used as parameter values within a specific project.
+\if{html}{\out{<a id="method-EsgfQuery-list_facets"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_facets}{}}}
+\subsection{Method \code{list_facets()}}{
+List all available facet names
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_listing(force = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_facets(force = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -747,12 +733,12 @@ abandoned and a new query is re-sent and cached. Default:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-The modified \code{EsgfQuery} object.
+A character vector.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$build_listing()
+q$list_facets()
 }
 }
 \if{html}{\out{</div>}}
@@ -761,120 +747,68 @@ q$build_listing()
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-has_listing"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-has_listing}{}}}
-\subsection{Method \code{has_listing()}}{
-Check whether facet listing query has been sent
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$has_listing()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-\code{TRUE} or \code{FALSE}.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$has_listing()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_facets"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_facets}{}}}
-\subsection{Method \code{list_all_facets()}}{
-List all available facet names
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_facets()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-A character vector or \code{NULL} if no facet listing is found.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$list_all_facets()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_fields"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_fields}{}}}
-\subsection{Method \code{list_all_fields()}}{
+\if{html}{\out{<a id="method-EsgfQuery-list_fields"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_fields}{}}}
+\subsection{Method \code{list_fields()}}{
 List all available field names
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_fields()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-A character vector or \code{NULL} if no facet listing is found.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$list_all_fields()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_shards"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_shards}{}}}
-\subsection{Method \code{list_all_shards()}}{
-List all available shards
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_shards()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-A character vector or \code{NULL} if no facet listing is found.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$list_all_shards()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_values"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_values}{}}}
-\subsection{Method \code{list_all_values()}}{
-List all available values of a specific facet
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_values(facet)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_fields(force = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{facet}}{A single string giving the facet name.}
+\item{\code{force}}{By default, every field listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A named character vector or \code{NULL} if no facet listing is found.
+A character vector or \code{NULL} if no facet listing is found.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$list_all_values()
+q$list_fields()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_values"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_values}{}}}
+\subsection{Method \code{list_values()}}{
+List all available values of specific facets.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_values(facets, force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{facets}}{A character vector giving the facet names.}
+
+\item{\code{force}}{By default, every value listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{length(facets) == 1}, a named character vector giving
+the facet value counts. Otherwise, a list of named character
+vectors of the same length as \code{facets}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_values(c("activity_id", "experiment_id"))
 }
 }
 \if{html}{\out{</div>}}
@@ -898,7 +832,7 @@ Get or set the \code{project} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} and \code{$project(-c("CMIP5", "CMIP6"))} search for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$project(!c("CMIP6"))} and \code{$project(-c("CMIP6"))} search for all \code{project}s except for \code{CMIP6}.
 }}
 }
 \if{html}{\out{</div>}}
@@ -914,9 +848,6 @@ q$project()
 
 # set the parameter
 q$project("CMIP6")
-
-# negate the project constraints
-q$project(!"CMIP6")
 
 # remove the parameter
 q$project(NULL)
@@ -1395,10 +1326,6 @@ Get or set the \code{shards} parameter.
 By default, a distributed query targets all ESGF Nodes. \verb{$shards()}
 can be used to execute a distributed search that targets only one or
 more specific nodes.
-
-All available shards can be retrieved using
-\href{#method-EsgfQuery-list_all_shards}{\code{$list_all_shards()}}
-method.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$shards(value)}\if{html}{\out{</div>}}
 }
@@ -1739,6 +1666,11 @@ q$params(NULL)$params()
 \if{latex}{\out{\hypertarget{method-EsgfQuery-url}{}}}
 \subsection{Method \code{url()}}{
 Get the URL of actual query or wget script
+
+The wget script URL can be used to download a bash script that
+contains wget commands for downloading all files matching the query
+constraints. This is useful for batch downloading large amounts of
+data.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$url(wget = FALSE)}\if{html}{\out{</div>}}
 }
@@ -1793,7 +1725,8 @@ options:
 \item If \code{NULL} or \code{FALSE}, only the total number of matched records is
 returned.
 \item If \code{TRUE}, the value of \href{#method-EsgfQuery-facets}{\code{$facets()}}
-is used to limit the facets. This is the default value.
+is used to limit the facets. If \verb{$facets()} returns \code{NULL}, only the
+total count is returned. This is the default value.
 \item If a character vector, it is used to limit the facets.
 }}
 }
@@ -1857,8 +1790,10 @@ Default: \code{FALSE}.}
 
 \item{\code{params}}{Whether to include facet fields that have parameter
 constraints explicitly set using \code{EsgfQuery$project()},
-\code{EsgfQuery$activity_id()}, \code{EsgfQuery$params()} and etc.
-Default: \code{TRUE}.}
+\code{EsgfQuery$activity_id()}, \code{EsgfQuery$params()} and etc. in the
+returned fields. For example, if you set \verb{$experiment_id("ssp585")},
+the \code{experiment_id} field will be included in the results when
+\code{params = TRUE}. Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1913,7 +1848,7 @@ which can be loaded to restore the current state of query using
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{file}}{A string indicating the JSON file path to save the data
-to. Default: \code{query.json}.}
+to.}
 
 \item{\code{pretty}}{Whether to add indentation whitespace to JSON output.
 For details, please see \code{\link[jsonlite:fromJSON]{jsonlite::toJSON()}}. Default: \code{TRUE}.}
@@ -1944,14 +1879,14 @@ Restore the query state from an JSON file
 created using
 \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$load(file = "query.json")}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$load(file)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{file}}{A string indicating the JSON file path to read the data
-from. Default: \code{query.json}.}
+from.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1980,7 +1915,7 @@ q$load(f)
 Print a summary of the current \code{EsgfQuery} object
 
 \verb{$print()} gives the summary of current \code{EsgfQuery} object including
-the host URL, the built time of facet listing and all query parameters.
+the index node URL, the last query timestamp, and all query parameters.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$print()}\if{html}{\out{</div>}}
 }

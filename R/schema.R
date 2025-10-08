@@ -150,8 +150,11 @@ SCHEMA_RESPONSE <- local({
                 fields = list(
                     numFound = list(type = "int"),
                     start = list(type = "int"),
-                    maxScore = list(type = "int"),
-                    docs = list(type = "data_frame")
+                    maxScore = list(type = "number"),
+                    docs = list(
+                        type = list("data_frame", null.ok = TRUE, col.names = "unique"),
+                        names = list(subset.of = FIELDS_FACETS_ALL)
+                    )
                 )
             ),
             facet_counts = list(
@@ -287,9 +290,9 @@ SCHEMA_QUERY <- local({
 
     list(
         type = "list",
-        names = list(must.include = c("host", "parameter", "last_result", "facet_listing")),
+        names = list(must.include = c("index_node", "parameter", "last_result")),
         fields = list(
-            host = list(type = "string"),
+            index_node = list(type = "string"),
             parameter = sch_params,
             last_result = list(
                 type = list(
@@ -297,14 +300,13 @@ SCHEMA_QUERY <- local({
                     c("logical", "numeric", "character", "null", "list"),
                     null.ok = TRUE, names = "unique"
                 ),
-                names = list(must.include = c("url_host", "parameter", "response")),
+                names = list(must.include = c("index_node", "parameter", "response")),
                 fields = list(
-                    url_host = list(type = "string"),
+                    index_node = list(type = "string"),
                     parameter = sch_params,
                     response = sch_resp
                 )
-            ),
-            facet_listing = sch_listing
+            )
         )
     )
 })
@@ -314,7 +316,7 @@ SCHEMA_QUERY <- local({
 SCHEMA_RESULT_DATASET <- local({
     schema <- SCHEMA_QUERY
 
-    schema$names$must.include <- c("host", "parameter", "response", "last_result")
+    schema$names$must.include <- c("index_node", "parameter", "response", "last_result")
     schema$fields$response <- schema$fields$last_result$response
     schema$fields$facet_listing <- NULL
 

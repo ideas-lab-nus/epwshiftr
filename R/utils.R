@@ -18,29 +18,82 @@ priv <- function(x) {
     x$.__enclos_env__[["private"]]
 }
 
-verbose <- function (..., sep = "") {
-    if (getOption("epwshiftr.verbose", FALSE)) {
-        cat(..., "\n", sep = sep)
-    }
+`priv<-` <- function(x, value) {
+    checkmate::assert_r6(x)
+    x$.__enclos_env__[["private"]] <- value
+    invisible(x)
 }
 
-vb <- function(expr) {
+verbose <- function(expr) {
     if (!getOption("epwshiftr.verbose", FALSE)) return()
     force(expr)
 }
 
+with_silent <- function(expr) {
+    old <- options("epwshiftr.verbose" = FALSE)
+    on.exit(options(old), add = TRUE)
+    force(expr)
+}
+
+with_timeout <- function(secs = 300, expr) {
+    old <- options(timeout = secs)
+    on.exit(options(old), add = TRUE)
+    force(expr)
+}
+
+fast_hash <- function(x) {
+    # FNV-1a hash algorithm
+    FNV_PRIME <- 16777619      # 0x01000193
+    # have to use double here since integer overflow
+    FNV_OFFSET <- 2166136261   # 0x811c9dc5
+
+    # Convert to bytes
+    if (is.character(x) && length(x) == 1L) {
+        bytes <- as.integer(charToRaw(x))
+    } else {
+        bytes <- as.integer(serialize(x, connection = NULL, ascii = FALSE))
+    }
+
+    # FNV-1a algorithm
+    hash <- FNV_OFFSET
+    for (byte in bytes) {
+        # Split into 16-bit parts for XOR operation
+        hash_hi <- hash %/% 65536
+        hash_lo <- hash %% 65536
+
+        # XOR with byte (only affects low 16 bits since byte < 256)
+        hash_lo <- bitwXor(as.integer(hash_lo), byte)
+
+        # Rebuild and multiply by FNV_PRIME
+        hash <- (hash_hi * 65536 + hash_lo) * FNV_PRIME
+        hash <- hash %% (2^32)
+    }
+
+    # Format as 8-character hex string
+    if (hash <= .Machine$integer.max) {
+        sprintf("%08x", as.integer(hash))
+    } else {
+        hash_hi <- as.integer(hash %/% 65536)
+        hash_lo <- as.integer(hash %% 65536)
+        sprintf("%04x%04x", hash_hi, hash_lo)
+    }
+}
+
 eval_with_bang <- function(..., .env = parent.frame()) {
-    l <- eval(substitute(alist(...)))
-    checkmate::assert_list(l, .var.name = "Input", min.len = 1L)
-    lapply(l, function(elem) {
-        if (!is.symbol(elem) && !is.null(elem) && (elem[[1L]] == "!" || elem[[1L]] == "-")) {
-            negate <- TRUE
-            elem[[1L]] <- as.name("c")
-        } else {
-            negate <- FALSE
+    dots <- eval(substitute(alist(...)))
+
+    if (length(dots) == 0L) {
+        stop("At least one argument is required.")
+    }
+    checkmate::assert_list(dots, .var.name = "Input", min.len = 1L)
+
+    lapply(dots, function(expr) {
+        negate <- !is.symbol(expr) && !is.null(expr) && is.call(expr) && as.character(expr[[1L]]) %in% c("!", "-")
+        if (negate) {
+            expr[[1L]] <- as.name("c")
         }
 
-        list(value = eval(elem, .env), negate = negate)
+        list(value = eval(expr, .env), negate = negate)
     })
 }
 

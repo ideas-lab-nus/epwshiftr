@@ -329,7 +329,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                     if (is.null(private$get_field("number_of_aggregations"))) {
                         "No Aggregations"
                     } else {
-                        agg <- private$get_field("number_of_aggregations")
+                        agg <- private$get_field("number_of_aggregations")[ind]
                         agg[is.na(agg)] <- 0L
                         paste(agg,
                             vapply(agg, ngettext, "", "Aggregation", "Aggregations")
