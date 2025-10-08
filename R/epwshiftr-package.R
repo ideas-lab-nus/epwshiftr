@@ -52,9 +52,23 @@
 this <- new.env(parent = emptyenv())
 this$index_db <- NULL
 this$dict <- NULL
-this$cache <- list(facet = list(), query = list())
+this$cache <- NULL
 this$data_max_limit <- 10000L
 
 # nocov start
-attach_cache <- function(cache) this$cache <- cache
+get_cache <- function() {
+    if (is.null(this$cache)) {
+        cache_dir <- getOption(
+            "epwshiftr.cache_dir",
+            tools::R_user_dir("epwshiftr", "cache")
+        )
+        this$cache <- DiskCache$new(
+            dir = cache_dir,
+            max_size = getOption("epwshiftr.cache_max_size", 1024^3),
+            max_age = getOption("epwshiftr.cache_max_age", 30 * 60),
+            max_n = getOption("epwshiftr.cache_max_n", Inf)
+        )
+    }
+    this$cache
+}
 # nocov end

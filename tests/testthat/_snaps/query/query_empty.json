@@ -1,5 +1,5 @@
 {
-  "host": ["https://esgf.ceda.ac.uk/esg-search"],
+  "index_node": ["https://esgf.ceda.ac.uk"],
   "parameter": {
     "project": {
       "value": ["CMIP6"],
@@ -58,6 +58,5 @@
       "negate": [false]
     }
   },
-  "last_result": null,
-  "facet_listing": []
+  "last_result": null
 }

@@ -1,14 +1,165 @@
 #' @include query-result.R
 NULL
 
-# TODO: update doc about query type
-# TODO: be able to import query parameters?
+INDEX_NODES <- c(
+    ORNL = "https://esgf-node.ornl.gov",
+    LLNL = "https://esgf-node.llnl.gov",
+    NCI = "https://esgf.nci.org.au",
+    IPSL = "https://esgf-node.ipsl.upmc.fr",
+    DKRZ = "https://esgf-data.dkrz.de",
+    LIU = "https://esg-dn1.nsc.liu.se",
+    CEDA = "https://esgf.ceda.ac.uk"
+)
+
+FIELDS_FACETS_ALL <- c(
+    "Conventions",
+    "access",
+    "activity",
+    "activity_drs",
+    "activity_id",
+    "branch_method",
+    "cf_standard_name",
+    "cmor_table",
+    "collection",
+    "contact",
+    "creation_date",
+    "data_node",
+    "data_specs_version",
+    "data_structure",
+    "dataset_category",
+    "dataset_status",
+    "datetime_end",
+    "deprecated",
+    "directory_format_template_",
+    "domain",
+    "driving_model",
+    "ensemble",
+    "experiment",
+    "experiment_family",
+    "experiment_id",
+    "experiment_title",
+    "forcing",
+    "format",
+    "framework",
+    "frequency",
+    "globus_url",
+    "grid",
+    "grid_label",
+    "index_node",
+    "institute",
+    "institution",
+    "institution_id",
+    "master_gateway",
+    "member_id",
+    "metadata_format",
+    "mip_era",
+    "model",
+    "model_cohort",
+    "nominal_resolution",
+    "product",
+    "product_version",
+    "project",
+    "rcm_name",
+    "rcm_version",
+    "realm",
+    "region",
+    "short_description",
+    "source",
+    "source_id",
+    "source_type",
+    "source_version",
+    "source_version_number",
+    "start_date_string",
+    "sub_experiment_id",
+    "table_id",
+    "target_mip",
+    "target_mip_list",
+    "time_frequency",
+    "variable",
+    "variable_id",
+    "variable_long_name",
+    "variant_label",
+    "version",
+    "amodell",
+    "cera_acronym",
+    "data_type",
+    "dataset_version_number",
+    "doi",
+    "doi_author",
+    "doi_publication_year",
+    "doi_publisher",
+    "doi_title",
+    "exp",
+    "experiment_description",
+    "gebiet",
+    "grid_resolution",
+    "lta",
+    "modelvers",
+    "pid_prefix",
+    "rcm_model",
+    "shard",
+    "std_citation",
+    "std_citation_author",
+    "std_citation_publication_year",
+    "std_citation_publisher",
+    "std_citation_title",
+    "ACK",
+    "Acknowledgement",
+    "bias_adjustment",
+    "driving_ensemble",
+    "driving_reanalysis",
+    "project_name",
+    "project_under",
+    "reanalysis",
+    "reanalysis_ensemble",
+    "run_model",
+    "metadata_url",
+    "processing_level",
+    "realization",
+    "source_data_id",
+    "work_package",
+    "downscaling_model_type",
+    "driving_model_ensemble_member",
+    "driving_model_id",
+    "predictand_calibration_dataset",
+    "region_id"
+)
+FIELDS_FACETS_COMMON <- c(
+    "activity",
+    "activity_drs",
+    "activity_id",
+    "cmor_table",
+    "dataset_id",
+    "driving_model",
+    "domain",
+    "ensemble",
+    "experiment",
+    "experiment_id",
+    "frequency",
+    "index_node",
+    "institution",
+    "institution_id",
+    "member_id",
+    "mip_era",
+    "model",
+    "nominal_resolution",
+    "project",
+    "rcm_name",
+    "realm",
+    "source_id",
+    "table_id",
+    "time_frequency",
+    "variable",
+    "variable_id",
+    "variant_label"
+)
+
 # read_json_response {{{
 read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
     checkmate::assert_flag(cache)
     if (cache) {
         disk_cache <- get_cache()
-        key <- paste0("response-", fast_hash(url))
+        key <- get_response_cache_key(url)
 
         cached <- disk_cache$get(key)
         if (!is.key_missing(cached)) {
@@ -16,22 +167,23 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
         }
     }
 
-    timestamp <- now()
+    timestamp <- Sys.time()
     res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
 
     # nocov start
     if (inherits(res, "warning") || inherits(res, "error")) {
         cond_fun <- if (strict) stop else warning
         cond_fun(
-            "No matched data.",
-            "Please check network connection and the availability of ESGF index/data node. Details: \n",
+            "Failed to read the JSON response. Details: \n",
             conditionMessage(res)
         )
+
         res <- NULL
     # nocov end
     } else if (res$response$numFound == 0L) {
-        vb(cli::cli_alert_warning(
-            "No matched data. Please examine your query and the actual response."
+        verbose(warning(
+            "No matched data. ",
+            "Please examine your query and the actual response."
         ))
     }
 
@@ -39,6 +191,8 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 
     # cache results
     if (cache) {
+        # record the cache key
+        res$cache <- key
         disk_cache$set(key, res)
     }
 
@@ -67,8 +221,8 @@ new_query_param <- function(name, value) {
 }
 # }}}
 
-# is_query_param {{{
-is_query_param <- function(x) inherits(x, "EsgfQueryParam")
+# is.query_param {{{
+is.query_param <- function(x) inherits(x, "EsgfQueryParam")
 # }}}
 
 #' @export
@@ -103,7 +257,6 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 # }}}
 
 # query_esgf {{{
-
 #' Query CMIP6 data using ESGF search RESTful API
 #'
 #' @description
@@ -124,8 +277,8 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' `query_esgf()` returns an `EsgfQuery` object, which is an [R6][R6::R6Class]
 #' object with quite a few methods that can be classified into 3 categories:
 #'
-#' - **Value listing**: methods to list all possible values of facets, shards,
-#'   etc.
+#' - **Value listing**: methods to list all possible values of facets, fields,
+#'   and values.
 #'
 #' - **Parameter getter & setter**: methods to get the query parameter values or
 #'   set them before sending the actual query to the ESGF search services.
@@ -134,24 +287,21 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' ## Value listing
 #'
-#' When creating an `EsgfQuery` object, a
-#' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-#' is sent to the index node to get all available facets and shards for the
-#' default project (CMIP6).
-#' `EsgfQuery` object provides three value-listing methods to extract data from
-#' the response of the facet listing query:
+#' `EsgfQuery` object provides the following value-listing methods to query
+#' available facets, fields, and values from the ESGF index node:
 #'
-#' - \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}:
-#'   List all available facet names.
+#' - \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
+#'   List all available facet names. When called, a
+#'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
+#'   is sent to the index node to get all available facets for the current
+#'   project (default: CMIP6).
 #'
-#' - \href{#method-EsgfQuery-list_all_fields}{\code{EsgfQuery$list_all_fields()}}:
-#'   List all available field names.
+#' - \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
+#'   List all available field names. This is useful for bridge index nodes
+#'   where facet listing is not available.
 #'
-#' - \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}:
-#'   List all available shards.
-#'
-#' - \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}:
-#'   List all available values of a specific facet.
+#' - \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
+#'   List all available values of specific facets.
 #'
 #' ## Parameter getter & setter
 #'
@@ -229,25 +379,45 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' - \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
 #'   query results and format it into an [EsgfQueryResultDataset] object.
 #'
+#' ## Bridge Index Nodes
+#'
+#' Some ESGF index nodes are "bridge" nodes that have certain limitations
+#' compared to standard index nodes. When using a bridge index node (e.g.,
+#' `https://esgf-node.ornl.gov/esgf-1-5-bridge`), the following restrictions
+#' apply:
+#'
+#' - The `fields` parameter is not supported. All available fields are always
+#'   returned.
+#' - The `retracted` parameter is not supported and will be ignored.
+#' - Wget script generation is not supported. Calling `$url(wget = TRUE)` will
+#'   result in an error.
+#' - Facet listing is not available. `$list_facets()` will return a predefined
+#'   set of common facets instead. Use `$list_fields()` to get all available
+#'   fields.
+#'
 #' ## Other helpers
 #'
-#' `EsgfQuery` object also provide several other helper functions:
+#' `EsgfQuery` object also provides several other helper functions:
 #'
-#' - \href{#method-EsgfQuery-build_listing}{\code{EsgfQuery$build_listing()}}:
-#'   By default, `EsgfQuery$build_listing()` is not called when initialize a new
-#'   `EsgfQuery` object. Basically, `EsgfQuery$build_listing()` sends a
-#'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-#'   to the index node and stores the response internally. The response contains
-#'   all available facets and shards and is used as a source for validating user
-#'   input for parameter setters.
+#' - **Query URL generation**:
 #'
-#' - \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
-#'   query URL or the wget script URL which can be used to download all files
-#'   matching the given constraints..
+#'   * \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
+#'     query URL or the wget script URL which can be used to download all files
+#'     matching the given constraints.
 #'
-#' - \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-#'   of the current `EsgfQuery` object including the index node URL, the built time of
-#'   facet listing and all query parameters.
+#' - **State persistence**:
+#'
+#'   * \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}: Save the query
+#'     state to a JSON file for later use.
+#'
+#'   * \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}: Restore the
+#'     query state from a JSON file created by `$save()`.
+#'
+#' - **Display**:
+#'
+#'   * \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a
+#'     summary of the current `EsgfQuery` object including the index node URL,
+#'     the last query timestamp, and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
@@ -259,6 +429,8 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' - ORNL (Oak Ridge National Laboratory), USA:
 #'   `https://esgf-node.ornl.gov`. The default value.
+#' - LLNL (Lawrence Livermore National Laboratory), USA:
+#'   `https://esgf-node.llnl.gov`
 #' - NCI (National Computational Infrastructure), Australia:
 #'   `https://esgf.nci.org.au`
 #' - IPSL (Institut Pierre-Simon Laplace), France:
@@ -267,15 +439,12 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'   `https://esgf-data.dkrz.de`
 #' - LIU (National Academic Infrastructure for Supercomputing), Sweden:
 #'   `https://esg-dn1.nsc.liu.se`
-#' - CEDA (Climate Data Store), UK:
+#' - CEDA (Centre for Environmental Data Analysis), UK:
 #'   `https://esgf.ceda.ac.uk`
 #'
-#' @param listing Whether to send the facet listing query used to validate
-#'        inputs. Default: `FALSE`. See `r sQuote("Value listing")` in Details.
-#'
 #' @export
-query_esgf <- function(index_node = "https://esgf-node.ornl.gov", listing = FALSE) {
-    EsgfQuery$new(index_node = index_node, listing = listing)
+query_esgf <- function(index_node = "https://esgf-node.ornl.gov") {
+    EsgfQuery$new(index_node = index_node)
 }
 # }}}
 
@@ -295,25 +464,18 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' - ORNL (Oak Ridge National Laboratory), USA:
         #'   `https://esgf-node.ornl.gov`. The default value.
+        #' - LLNL (Lawrence Livermore National Laboratory), USA:
+        #'   `https://esgf-node.llnl.gov`
         #' - NCI (National Computational Infrastructure), Australia:
         #'   `https://esgf.nci.org.au`
-        #' - DKRZ (Deutsches Klimarechenzentrum), Germany:
-        #'   `https://esgf-data.dkrz.de`
         #' - IPSL (Institut Pierre-Simon Laplace), France:
         #'   `https://esgf-node.ipsl.upmc.fr`
+        #' - DKRZ (Deutsches Klimarechenzentrum), Germany:
+        #'   `https://esgf-data.dkrz.de`
         #' - LIU (National Academic Infrastructure for Supercomputing), Sweden:
         #'   `https://esg-dn1.nsc.liu.se`
-        #' - CEDA (Climate Data Store), UK:
+        #' - CEDA (Centre for Environmental Data Analysis), UK:
         #'   `https://esgf.ceda.ac.uk`
-        #'
-        #' @param listing Whether to send the facet listing query.
-        #'        A [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-        #'        can be sent to the index node to get all available facets and
-        #'        shards. When available, this information will be automatically
-        #'        used to validate inputs for `activity_id`, `scource_id` facets
-        #'        and etc. NOTE: Not all index nodes support facet listing
-        #'        query. You may encounter error if your input index node does not
-        #'        support it. Default: `FALSE`.
         #'
         #' @return An `EsgfQuery` object.
         #'
@@ -322,12 +484,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
         #' q
         #' }
-        initialize = function(index_node = "https://esgf-node.ornl.gov", listing = FALSE) {
+        initialize = function(index_node = "https://esgf-node.ornl.gov") {
             checkmate::assert_string(index_node)
-            checkmate::assert_flag(listing)
             private$index_node <- normalize_index_node(index_node)
-
-            if (listing) self$build_listing()
 
             # init parameter values
             params <- setdiff(names(private$parameter), "others")
@@ -343,154 +502,218 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
         # }}}
 
-        # build_listing {{{
+        # list_facets {{{
         #' @description
-        #' Build facet listing used for input validation
-        #'
-        #' Facet listing is data that is fetched using a
-        #' [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
-        #' to the index node. It contains all available facets and shards that
-        #' can be used as parameter values within a specific project.
+        #' List all available facet names
         #'
         #' @param force By default, every facet listing query is cached and
         #'        reused when possible. If `TRUE`, the previous cache is
         #'        abandoned and a new query is re-sent and cached. Default:
         #'        `FALSE`.
         #'
-        #' @return The modified `EsgfQuery` object.
+        #' @return A character vector.
+        #'
+        #' @note For bridge index nodes, only predefined common facets are returned.
+        #'       `$list_fields()` can be used to get all available fields,
+        #'       including facets.
         #'
         #' @examples
         #' \dontrun{
-        #' q$build_listing()
+        #' q$list_facets()
         #' }
-        build_listing = function(force = FALSE) {
+        list_facets = function(force = FALSE) {
             checkmate::assert_flag(force)
 
-            vb(cli::cli_progress_step(
-                "Building facet listing for index node {.var {private$index_node}}...",
-                paste(
-                    "Built facet listing for index node {.var {private$index_node}}",
-                    "built at {private$facet_listing$timestamp}."
+            # for bridge nodes, give a hint
+            if (is_bridge_index_node(private$index_node)) {
+                verbose(cli::cli_alert_info(paste(
+                    "Current index node is a bridge node. Facet listing is not available.",
+                    "Predefined common facets are returned.",
+                    "Please use '$list_fields()' instead to get all available fields."
+                )))
+                return(FIELDS_FACETS_COMMON)
+            }
+
+            url <- query_build(
+                private$index_node,
+                list(
+                    project = private$parameter$project,
+                    facets = "*",
+                    limit = 0,
+                    distrib = FALSE,
+                    format = "application/solr+json"
                 )
-            ))
-
-            private$facet_listing <- query_build_facet_listing(
-                private$index_node, private$parameter$project
             )
-            self
+
+            if (getOption("epwshiftr.cache", TRUE)) {
+                cache <- get_cache()
+                key <- get_response_cache_key(url)
+                cached <- cache$exists(key)
+                if (cached) {
+                    if (force) {
+                        cache$remove(key)
+                    } else {
+                        verbose(cli::cli_alert_info(paste(
+                            "Loaded cached facet listing for index node {.var {private$index_node}}",
+                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
+                        )))
+
+                        return(unlst(cache$get(key)$responseHeader$params$facet.field))
+                    }
+                }
+            }
+
+            verbose(cli::cli_progress_step(
+                "Retrieving facet listing for index node {.var {private$index_node}}...",
+                paste(
+                    "Retrieved facet listing for index node {.var {private$index_node}}",
+                    "at {format(Sys.time(), '%F %T %Z')}."
+                ),
+                "Failed to retrieve facet listing for index node {.var {private$index_node}}."
+            ))
+            res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
+
+            unlst(res$responseHeader$params$facet.field)
         },
         # }}}
 
-        # has_listing {{{
-        #' @description
-        #' Check whether facet listing query has been sent
-        #'
-        #' @return `TRUE` or `FALSE`.
-        #'
-        #' @examples
-        #' \dontrun{
-        #' q$has_listing()
-        #' }
-        has_listing = function() {
-            as.logical(private$has_facet_listing())
-        },
-        # }}}
-
-        # list_all_facets {{{
-        #' @description
-        #' List all available facet names
-        #'
-        #' @return A character vector or `NULL` if no facet listing is found.
-        #'
-        #' @examples
-        #' \dontrun{
-        #' q$list_all_facets()
-        #' }
-        list_all_facets = function() {
-            if (!private$has_facet_listing()) return(NULL)
-
-            unlst(private$facet_listing$responseHeader$params$facet.field)
-        },
-        # }}}
-
-        # list_all_fields {{{
+        # list_fields {{{
         #' @description
         #' List all available field names
         #'
-        #' @return A character vector or `NULL` if no facet listing is found.
-        #'
-        #' @examples
-        #' \dontrun{
-        #' q$list_all_fields()
-        #' }
-        list_all_fields = function() {
-            if (!private$has_facet_listing()) return(NULL)
-
-            unlst(private$facet_listing$responseHeader$params$fields)
-        },
-        # }}}
-
-        # list_all_shards {{{
-        #' @description
-        #' List all available shards
+        #' @param force By default, every field listing query is cached and
+        #'        reused when possible. If `TRUE`, the previous cache is
+        #'        abandoned and a new query is re-sent and cached. Default:
+        #'        `FALSE`.
         #'
         #' @return A character vector or `NULL` if no facet listing is found.
         #'
         #' @examples
         #' \dontrun{
-        #' q$list_all_shards()
+        #' q$list_fields()
         #' }
-        list_all_shards = function() {
-            if (!private$has_facet_listing()) return(NULL)
+        list_fields = function(force = FALSE) {
+            checkmate::assert_flag(force)
 
-            shards <- private$facet_listing$responseHeader$params$shards
-            # nocov start
-            if (!length(shards)) return(NULL)
-            # nocov end
+            url <- query_build(
+                private$index_node,
+                list(
+                    project = private$parameter$project,
+                    limit = 1,
+                    fields = "*",
+                    distrib = FALSE,
+                    format = "application/solr+json"
+                )
+            )
 
-            shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
+            if (getOption("epwshiftr.cache", TRUE)) {
+                cache <- get_cache()
+                key <- get_response_cache_key(url)
+                cached <- cache$exists(key)
+                if (cached) {
+                    if (force) {
+                        cache$remove(key)
+                    } else {
+                        verbose(cli::cli_alert_info(paste(
+                            "Loaded cached field listing for index node {.var {private$index_node}}",
+                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
+                        )))
 
-            # fix the index_node if it refers to the local server
-            shards_parts <- regmatches(shards, regexec("(.*?)(?::(\\d*))?/solr(.*)", shards))
-
-            # nocov start
-            if (length(invld <- shards[lengths(shards_parts) != 4L])) {
-                warning(sprintf(
-                    "Unrecognized Shard specification found: %s.",
-                    paste0("'", invld, "'", collapse = ", ")
-                ))
-            }
-            # nocov end
-
-            vapply(shards_parts, FUN.VALUE = "", function(shard) {
-                shard <- shard[-1L]
-                # replace localhost
-                if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
-                    shard[1L] <- strsplit(private$index_node, "/", fixed = TRUE)[[1L]][[3L]]
+                        return(names(cache$get(key)$response$docs[[1L]]))
+                    }
                 }
-                # exclude suffix
-                sprintf("%s%s%s/solr%s", shard[[1L]], if (shard[[2L]] != "") ":" else "", shard[[2L]], shard[[3L]])
-            })
+            }
+
+            verbose(cli::cli_progress_step(
+                "Retrieving field listing for index node {.var {private$index_node}}...",
+                paste(
+                    "Retrieved field listing for index node {.var {private$index_node}}",
+                    "at {format(Sys.time(), '%F %T %Z')}."
+                ),
+                "Failed to retrieve field listing for index node {.var {private$index_node}}."
+            ))
+            res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
+            names(res$response$docs[[1L]])
         },
         # }}}
 
-        # list_all_values {{{
+        # list_values {{{
         #' @description
-        #' List all available values of a specific facet
+        #' List all available values of specific facets.
         #'
-        #' @param facet A single string giving the facet name.
+        #' @param facets A character vector giving the facet names.
         #'
-        #' @return A named character vector or `NULL` if no facet listing is found.
+        #' @param force By default, every value listing query is cached and
+        #'        reused when possible. If `TRUE`, the previous cache is
+        #'        abandoned and a new query is re-sent and cached. Default:
+        #'        `FALSE`.
+        #'
+        #' @return If `length(facets) == 1`, a named character vector giving
+        #'         the facet value counts. Otherwise, a list of named character
+        #'         vectors of the same length as `facets`.
         #'
         #' @examples
         #' \dontrun{
-        #' q$list_all_values()
+        #' q$list_values(c("activity_id", "experiment_id"))
         #' }
-        list_all_values = function(facet) {
-            if (!private$has_facet_listing()) return(NULL)
+        list_values = function(facets, force = FALSE) {
+            checkmate::assert_subset(facets, FIELDS_FACETS_ALL)
+            checkmate::assert_flag(force)
 
-            checkmate::assert_choice(facet, self$list_all_facets())
-            names(private$facet_listing_count(facet))
+            url <- query_build(
+                private$index_node,
+                list(
+                    project = private$parameter$project,
+                    type = "Dataset",
+                    facets = paste0(facets, collapse = ","),
+                    offset = 0,
+                    limit = 0,
+                    distrib = private$parameter$distrib,
+                    format = "application/solr+json"
+                )
+            )
+
+            res <- NULL
+            if (getOption("epwshiftr.cache", TRUE)) {
+                cache <- get_cache()
+                key <- get_response_cache_key(url)
+                cached <- cache$exists(key)
+                if (cached) {
+                    if (force) {
+                        cache$remove(key)
+                    } else {
+                        verbose(cli::cli_alert_info(paste(
+                            "Loaded cached value listing for index node {.var {private$index_node}}",
+                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
+                        )))
+
+                        res <- cache$get(key)
+                    }
+                }
+            }
+
+            if (is.null(res)) {
+                verbose(cli::cli_progress_step(
+                    "Retrieving value listing for index node {.var {private$index_node}}...",
+                    paste(
+                        "Retrieved value listing for index node {.var {private$index_node}}",
+                        "at {format(Sys.time(), '%F %T %Z')}."
+                    ),
+                    "Failed to retrieve value listing for index node {.var {private$index_node}}."
+                ))
+                res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
+            }
+
+            out <- vector("list", length(facets))
+            names(out) <- facets
+            for (nm in facets) {
+                out[[nm]] <- private$format_facet_counts(
+                    res$facet_counts$facet_fields[[nm]]
+                )
+            }
+
+            if (length(facets) == 1L) out <- out[[1L]]
+            out
         },
         # }}}
 
@@ -499,7 +722,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `project` facet parameter.
         #'
         #' @param value
-        #' `r rd_query_method_param("project", "character vector", c("CMIP5", "CMIP6"), "CMIP6")`
+        #' `r rd_query_method_param("project", "character vector", c("CMIP6"), "CMIP6")`
         #'
         #' @return
         #' `r rd_query_method_return()`
@@ -511,9 +734,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' # set the parameter
         #' q$project("CMIP6")
-        #'
-        #' # negate the project constraints
-        #' q$project(!"CMIP6")
         #'
         #' # remove the parameter
         #' q$project(NULL)
@@ -905,10 +1125,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' can be used to execute a distributed search that targets only one or
         #' more specific nodes.
         #'
-        #' All available shards can be retrieved using
-        #' \href{#method-EsgfQuery-list_all_shards}{\code{$list_all_shards()}}
-        #' method.
-        #'
         #' @param value
         #' `r rd_query_method_param("shards", "character vector")`
         #'
@@ -1182,7 +1398,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             )
             nms <- names(params)
 
-            all_facets <- self$list_all_facets()
             predefined <- private$predefined_facets()
 
             if ("type" %in% nms && length(type <- params[[nms == "type"]])) {
@@ -1222,23 +1437,39 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 nms <- nms[nms != "format"]
             }
 
+            if (is_bridge_index_node(private$index_node) &&
+                "retracted" %in% nms && length(val <- params[[nms == "retracted"]]) && !is.null(val$value)) {
+                warning(sprintf(
+                    paste(
+                        "'retracted' is not supported for bridge index node.",
+                        "It has been removed."
+                    )
+                ))
+                params <- params[nms != "retracted"]
+                nms <- nms[nms != "retracted"]
+            }
+
             is_predefined <- nms %in% predefined
             params_base <- params[is_predefined]
             names_base <- nms[is_predefined]
             params_oth <- params[!is_predefined]
             names_oth <- nms[!is_predefined]
 
+            if (length(not_found <- setdiff(names_oth, FIELDS_FACETS_ALL))) {
+                warning(sprintf(
+                    paste(
+                        "The following facet(s) seems to be invalid or not supported:",
+                        "%s",
+                        "Unexpected response may be returned."
+                    ),
+                    paste(not_found, collapse = ", ")
+                ))
+            }
+
             if (length(params_oth)) {
                 private$parameter$others <- lapply(
                     seq_along(params_oth),
                     function(i) {
-                        if (names_oth[[i]] %in% all_facets) {
-                            checkmate::assert_subset(
-                                params_oth[[i]]$value,
-                                names(private$facet_listing_count(names_oth[[i]])),
-                                .var.name = names_oth[[i]]
-                            )
-                        }
                         new_query_param(names_oth[[i]], params_oth[[i]])
                     }
                 )
@@ -1281,6 +1512,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Get the URL of actual query or wget script
         #'
+        #' The wget script URL can be used to download a bash script that
+        #' contains wget commands for downloading all files matching the query
+        #' constraints. This is useful for batch downloading large amounts of
+        #' data.
+        #'
         #' @param wget Whether to return the URL of the wget script that can be
         #'        used to download all files matching the given constraints.
         #'        Default: `FALSE`.
@@ -1320,7 +1556,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' - If `NULL` or `FALSE`, only the total number of matched records is
         #'   returned.
         #' - If `TRUE`, the value of \href{#method-EsgfQuery-facets}{\code{$facets()}}
-        #'   is used to limit the facets. This is the default value.
+        #'   is used to limit the facets. If `$facets()` returns `NULL`, only the
+        #'   total count is returned. This is the default value.
         #' - If a character vector, it is used to limit the facets.
         #'
         #' @return
@@ -1394,8 +1631,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @param params Whether to include facet fields that have parameter
         #'        constraints explicitly set using `EsgfQuery$project()`,
-        #'        `EsgfQuery$activity_id()`, `EsgfQuery$params()` and etc.
-        #'        Default: `TRUE`.
+        #'        `EsgfQuery$activity_id()`, `EsgfQuery$params()` and etc. in the
+        #'        returned fields. For example, if you set `$experiment_id("ssp585")`,
+        #'        the `experiment_id` field will be included in the results when
+        #'        `params = TRUE`. Default: `TRUE`.
         #'
         #' @return An [EsgfQueryResultDataset] object.
         #'
@@ -1456,7 +1695,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
-        #'        to. Default: `query.json`.
+        #'        to.
         #'
         #' @param pretty Whether to add indentation whitespace to JSON output.
         #'        For details, please see [jsonlite::toJSON()]. Default: `TRUE`.
@@ -1472,7 +1711,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 index_node = private$index_node,
                 parameter = private$parameter,
                 last_result = private$last_result,
-                facet_listing = private$facet_listing,
                 file = file, pretty = pretty
             )
         },
@@ -1487,7 +1725,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
-        #'        from. Default: `query.json`.
+        #'        from.
         #'
         #' @return The modified `EsgfQuery` object itself.
         #'
@@ -1499,12 +1737,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' json <- q$save(f)
         #' q$load(f)
         #' }
-        load = function(file = "query.json") {
+        load = function(file) {
             q <- query_load(file)
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
-            private$facet_listing <- q$facet_listing
             private$last_result <- q$last_result
 
             if (length(q$last_result)) {
@@ -1525,7 +1762,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Print a summary of the current `EsgfQuery` object
         #'
         #' `$print()` gives the summary of current `EsgfQuery` object including
-        #' the index node URL, the built time of facet listing and all query parameters.
+        #' the index node URL, the last query timestamp, and all query parameters.
         #'
         #' @return The `EsgfQuery` object itself, invisibly.
         #'
@@ -1539,13 +1776,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             )
             cli::cli_rule("ESGF Query")
             cli::cli_li("Index Node: {private$index_node}")
-            if (!private$has_facet_listing()) {
-                cli::cli_li("Facet listing built at: {.emph <NONE>}")
-                cli::cli_bullets(c(" " = "{.emph NOTE: You may run `$build_listing()`} to create the listing"))
-            } else {
-                ts <- format(private$facet_listing$timestamp, tz = Sys.timezone(), usetz = TRUE)
-                cli::cli_li("Facet listing built at: {ts}")
-            }
 
             ts <- if (is.null(private$last_result)) {
                 "<NONE>"
@@ -1564,7 +1794,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
     private = list(
         index_node = NULL,
-        facet_listing = list(),
 
         # all query parameters
         parameter = list(
@@ -1593,14 +1822,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
         last_result = NULL,
 
-        has_facet_listing = function() length(private$facet_listing),
-
-        facet_listing_count = function(facet) {
-            private$format_facet_counts(
-                private$facet_listing$facet_counts$facet_fields[[facet]]
-            )
-        },
-
         format_facet_counts = function(counts) {
             ind <- seq_along(counts)
             nm <- unlst(.subset(counts, ind[ind %% 2L == 1L]))
@@ -1609,40 +1830,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
             value
         },
-
-        # validate_facet_value {{{
-        validate_facet_value = function(facet, value) {
-            if (!private$has_facet_listing()) return(value)
-
-            if (facet %in% c("facets", "fields")) {
-                if ("*" %in% value) {
-                    value <- "*"
-                }
-                if (facet == "facets") {
-                    choices <- c("*", self$list_all_facets())
-                } else {
-                    choices <- c("*", self$list_all_fields())
-                }
-            } else if (facet == "shards") {
-                # suffix should be excluded when query
-                choices <- self$list_all_shards()
-                if (length(choices)) {
-                    choices <- gsub("(?<=/solr).+", "", choices, perl = TRUE)
-                }
-            } else if (facet == "project") {
-                # TODO: find a way to programmatically get all project names
-                # right now no validation is performed
-                return(value)
-            } else {
-                choices <- self$list_all_values(facet)
-            }
-
-            if (length(choices)) {
-                checkmate::assert_subset(value, empty.ok = TRUE, .var.name = facet, choices = choices)
-            }
-            unique(value)
-        },
-        # }}}
 
         new_facet_param = function(facet, value, allow_negate = TRUE, env = parent.frame()) {
             if (allow_negate) {
@@ -1666,7 +1853,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 value <- list(value = value, negate = FALSE)
             }
 
-            value$value <- private$validate_facet_value(facet, value$value)
             new_query_param(facet, value)
         },
 
@@ -1677,83 +1863,13 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 )
 # }}}
 
-# query_param_encode {{{
-query_param_encode <- function(param) {
-    # nocov start
-    # only for character
-    if (!is.character(param)) return(param)
-    # nocov end
-
-    # escape encoding if needed
-    if (!is.null(attr(param, "encoded", TRUE)) && attr(param, "encoded", TRUE)) {
-        return(param)
-    }
-
-    # '*', '.', ':', '_', '|', '-' are kept
-    reg <- "[^a-zA-Z0-9*.:_|-]"
-
-    vapply(param, FUN.VALUE = character(1L), USE.NAMES = FALSE, function(value) {
-        s <- strsplit(value, "")[[1L]]
-        if (length(ind <- grep(reg, s))) {
-            esc <- vapply(
-                s[ind],
-                function(char) paste0("%", toupper(as.character(charToRaw(char))), collapse = ""),
-                character(1L)
-            )
-            s[ind] <- esc
-        }
-
-        paste(s, collapse = "")
-    })
-}
-# }}}
-
-# query_param_flat {{{
-query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE) {
-    checkmate::assert_names(names(params))
-    checkmate::assert_character(exclude, null.ok = TRUE, any.missing = FALSE)
-    checkmate::assert_flag(empty)
-    checkmate::assert_flag(merge)
-
-    params_other <- params[["others"]]
-    params_base <- params[names(params) != "others"]
-
-    # standardize params
-    for (i in seq_along(params_base)) {
-        if (!is.null(params_base[[i]]) && !is_query_param(params_base[[i]])) {
-            params_base[[i]] <- new_query_param(names(params_base[i]), params_base[[i]])
-        }
-    }
-    for (i in seq_along(params_other)) {
-        if (!is.null(params_other[[i]]) && !is_query_param(params_other[[i]])) {
-            params_other[[i]] <- new_query_param(names(params_other[i]), params_other[[i]])
-        }
-    }
-
-    if (!length(params_other)) {
-        params <- params_base
-    } else {
-        # merge
-        params <- utils::modifyList(params_base, params_other)
-    }
-
-    if (!is.null(exclude)) {
-        params <- params[!names(params) %in% exclude]
-    }
-
-    if (!empty) {
-        # skip empty parameter
-        params <- params[vapply(params, length, integer(1L)) > 0L]
-    }
-
-    params
-}
-# }}}
-
+# is_bridge_index_node {{{
 is_bridge_index_node <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
+# }}}
 
+# normalize_index_node {{{
 normalize_index_node <- function(index_node) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
@@ -1781,6 +1897,85 @@ normalize_index_node <- function(index_node) {
     }
     url
 }
+# }}}
+
+# get_response_cache_key {{{
+get_response_cache_key <- function(url) {
+    paste0("response-", fast_hash(url))
+}
+# }}}
+
+# query_param_encode {{{
+query_param_encode <- function(param) {
+    # nocov start
+    # only for character
+    if (!is.character(param)) return(param)
+    # nocov end
+
+    # escape encoding if needed
+    if (!is.null(attr(param, "encoded", TRUE)) && attr(param, "encoded", TRUE)) {
+        return(param)
+    }
+
+    # '*', '.', ':', '_', '|', '-' are kept
+    reg <- "[^a-zA-Z0-9*.:_|-]"
+
+    vapply(strsplit(param, ""), FUN.VALUE = character(1L), USE.NAMES = FALSE, function(s) {
+        if (length(ind <- grep(reg, s))) {
+            esc <- vapply(
+                s[ind],
+                function(char) paste0("%", toupper(as.character(charToRaw(char))), collapse = ""),
+                character(1L)
+            )
+            s[ind] <- esc
+        }
+
+        paste(s, collapse = "")
+    })
+}
+# }}}
+
+# query_param_flat {{{
+query_param_flat <- function(params, exclude = NULL, empty = FALSE, merge = TRUE) {
+    checkmate::assert_names(names(params))
+    checkmate::assert_character(exclude, null.ok = TRUE, any.missing = FALSE)
+    checkmate::assert_flag(empty)
+    checkmate::assert_flag(merge)
+
+    params_other <- params[["others"]]
+    params_base <- params[names(params) != "others"]
+
+    # standardize params
+    for (i in seq_along(params_base)) {
+        if (!is.null(params_base[[i]]) && !is.query_param(params_base[[i]])) {
+            params_base[[i]] <- new_query_param(names(params_base[i]), params_base[[i]])
+        }
+    }
+    for (i in seq_along(params_other)) {
+        if (!is.null(params_other[[i]]) && !is.query_param(params_other[[i]])) {
+            params_other[[i]] <- new_query_param(names(params_other[i]), params_other[[i]])
+        }
+    }
+
+    if (!length(params_other)) {
+        params <- params_base
+    } else {
+        # merge
+        params <- utils::modifyList(params_base, params_other)
+    }
+
+    if (!is.null(exclude)) {
+        params <- params[!names(params) %in% exclude]
+    }
+
+    if (!empty) {
+        # skip empty parameter
+        params <- params[vapply(params, length, integer(1L)) > 0L]
+    }
+
+    params
+}
+# }}}
 
 # query_build {{{
 query_build <- function(index_node, params, type = "search") {
@@ -1799,76 +1994,46 @@ query_build <- function(index_node, params, type = "search") {
             stop("Input index node is a bridge. Wget script is not supported.")
         }
         endpoint <- index_node
+
+        # remove 'retracted' since bridge does not support it
+        params <- params[!names(params) %in% "retracted"]
+
+        # remove 'fields=' since bridge does not support it
+        if (!is.null(params$fields)) {
+            params$fields <- NULL
+        }
     } else {
         endpoint <- sprintf("%s/esg-search/%s", index_node, type)
     }
 
+    is_negate <- vapply(params, function(param) param$negate, logical(1L))
+    # facet queries without any negated inputs
+    if (!is_bridge_index_node(index_node) || !any(is_negate)) {
+        facets <- paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
+        return(paste0(endpoint, "?", facets))
+    }
+
+    # format free text queries for negated inputs for bridge index node
+    # For negated facet inputs, free text queries formatted in Apache Lucene
+    # query syntax should be used since bridge does not support negate syntax
+    # like 'project!=CMIP6'.
+    # see: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#free-text-queries
+    facets <- paste(vapply(params[!is_negate], format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
+    query <- paste(vapply(params[is_negate], function(param) {
+        if (length(param$value) == 1L) {
+            value <- param$value
+        } else {
+            value <- sprintf("(%s)", paste(param$value, collapse = " "))
+        }
+        sprintf("%s:(NOT %s)", param$name, value)
+    }, FUN.VALUE = ""), collapse = " AND ")
+
     paste0(
         endpoint,
         "?",
-        paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
+        if (length(facets)) paste0(facets, "&"),
+        paste0("query=", query_param_encode(query))
     )
-}
-# }}}
-
-# query_build_facet_listing {{{
-query_build_facet_listing <- function(index_node, project = "CMIP6") {
-    # set the timeout to 5 minutes temporarily
-    old <- getOption("timeout")
-    on.exit(options(timeout = old), add = TRUE)
-    options(timeout = 300)
-
-    vb(
-        cli::cli_progress_step(
-            "Building facet listing for {.strong {index_node}}...",
-            "Built facet listing for {.strong {index_node}} successfully.",
-            "Failed to build facet listing for {.strong {index_node}}."
-        )
-    )
-    if (is_bridge_index_node(index_node)) {
-        # use the metadata of the first file to get the facet names
-        url <- query_build(index_node,
-            list(
-                project = project,
-                type = "File",
-                offset = 0,
-                limit = 1,
-                distrib = FALSE,
-                format = "application/solr+json"
-            )
-        )
-        res <- read_json_response(url, simplifyVector = FALSE)
-    } else {
-        # build a query to get facet names and values
-        url <- query_build(index_node,
-            list(
-                project = project,
-                facets = "*",
-                limit = 0,
-                distrib = TRUE,
-                format = "application/solr+json"
-            )
-        )
-        res <- read_json_response(url, simplifyVector = FALSE)
-
-        # build a query to get the Shards and field names
-        url <- query_build(index_node,
-            list(
-                project = project,
-                limit = 1,
-                distrib = TRUE,
-                fields = "*",
-                format = "application/solr+json"
-            )
-        )
-        res2 <- read_json_response(url)
-        res$responseHeader$params$shards <- res2$responseHeader$params$shards
-        res$responseHeader$params$fields <- names(res2$response$docs)
-    }
-    # add timestamp
-    res$timestamp <- now()
-
-    res
 }
 # }}}
 
@@ -1883,28 +2048,33 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 
     params <- query_param_flat(params)
     # include necessary fields
-    if (!is.null(params$fields) && !"*" %in% params$fields$value) {
-        params$fields <- params$fields$value
+    if (!is.null(params$fields)) {
+        if (is_bridge_index_node(index_node)) {
+            # bridge index node does not support 'fields='
+            params$fields <- NULL
+        } else if (!"*" %in% params$fields$value) {
+            params$fields <- params$fields$value
 
-        if (!is.null(required_fields)) {
-            params$fields <- unique(c(params$fields, required_fields))
+            if (!is.null(required_fields)) {
+                params$fields <- unique(c(params$fields, required_fields))
+            }
+
+            if (constraints) {
+                # all non-emtpy param names
+                par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
+                # exclude keywords
+                keywords <- c(
+                    "facets", "offset", "limit", "fields", "format", "type",
+                    "replica", "latest", "distrib", "shards", "bbox", "start",
+                    "end", "from", "to"
+                )
+                par_nms <- setdiff(par_nms, keywords)
+                params$fields <- unique(c(params$fields, par_nms))
+            }
+
+            # convert back to a query param in case steps below assume it to be one
+            params$fields <- new_query_param("fields", params$fields)
         }
-
-        if (constraints) {
-            # all non-emtpy param names
-            par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
-            # exclude keywords
-            keywords <- c(
-                "facets", "offset", "limit", "fields", "format", "type",
-                "replica", "latest", "distrib", "shards", "bbox", "start",
-                "end", "from", "to"
-            )
-            par_nms <- setdiff(par_nms, keywords)
-            params$fields <- unique(c(params$fields, par_nms))
-        }
-
-        # convert back to a query param in case steps below assume it to be one
-        params$fields <- new_query_param("fields", params$fields)
     }
 
     # reset limit to the allowed maximum number with zero offset
@@ -1991,26 +2161,6 @@ query_save <- function(index_node, parameter, last_result, ..., file = "query.js
 
     if (length(list(...))) data <- c(data, list(...))
 
-    if (length(data$response) && length(data$response$timestamp)) {
-        # NOTE: the timestamp may include sub-seconds, but
-        # jsonlite::toJSON() will cut that part when converting POSIXct
-        # to string we can convert it to a string in advance
-        data$response$timestamp <- format.POSIXct(
-            data$response$timestamp, digits = 6, tz = "UTC",
-            format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
-        )
-    }
-
-    if (length(data$facet_listing) && length(data$facet_listing$timestamp)) {
-        # NOTE: the timestamp may include sub-seconds, but
-        # jsonlite::toJSON() will cut that part when converting POSIXct
-        # to string we can convert it to a string in advance
-        data$facet_listing$timestamp <- format.POSIXct(
-            data$facet_listing$timestamp, digits = 6, tz = "UTC",
-            format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
-        )
-    }
-
     jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
 
     normalizePath(file, mustWork = TRUE)
@@ -2035,25 +2185,13 @@ query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
         )
     }
 
-    if (length(json$response) && length(json$response$timestamp)) {
-        json$response$timestamp <- as.POSIXct(
-            json$response$timestamp, tz = "UTC",
-            format = "%Y-%m-%dT%H:%M:%S:%OSZ"
-        )
-    }
-
     if (length(json$last_result) && length(json$last_result$response$timestamp)) {
         json$last_result$response$timestamp <- as.POSIXct(
             json$last_result$response$timestamp, tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
-    }
-
-    if (length(json$facet_listing) && length(json$facet_listing$timestamp)) {
-        json$facet_listing$timestamp <- as.POSIXct(
-            json$facet_listing$timestamp, tz = "UTC",
-            format = "%Y-%m-%dT%H:%M:%S:%OSZ"
-        )
+        # change the time zone to current time zone
+        attr(json$last_result$response$timestamp, "tzone") <- NULL
     }
 
     json

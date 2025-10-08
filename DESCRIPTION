@@ -31,6 +31,7 @@ Imports:
     PCICt,
     progressr,
     psychrolib,
+    qs2,
     R6,
     rappdirs,
     RNetCDF,
@@ -50,6 +51,7 @@ BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Collate:
+    'cache.R'
     'coord.R'
     'dict.R'
     'utils.R'
