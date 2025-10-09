@@ -573,7 +573,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 
                 limit = limit,
                 type = type,
-                format = "application/solr+json"
+                format = FORMAT_JSON
             )
 
             # convert all inputs into query params and remove empty one

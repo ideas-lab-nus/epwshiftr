@@ -1,6 +1,8 @@
 #' @include query-result.R
 NULL
 
+FORMAT_JSON <- "application/solr+json"
+
 INDEX_NODES <- c(
     ORNL = "https://esgf-node.ornl.gov",
     LLNL = "https://esgf-node.llnl.gov",
@@ -278,7 +280,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' object with quite a few methods that can be classified into 3 categories:
 #'
 #' - **Value listing**: methods to list all possible values of facets, fields,
-#'   and values.
+#'   shards, and values.
 #'
 #' - **Parameter getter & setter**: methods to get the query parameter values or
 #'   set them before sending the actual query to the ESGF search services.
@@ -288,7 +290,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' ## Value listing
 #'
 #' `EsgfQuery` object provides the following value-listing methods to query
-#' available facets, fields, and values from the ESGF index node:
+#' available facets, fields, shards, and values from the ESGF index node:
 #'
 #' - \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
 #'   List all available facet names. When called, a
@@ -299,6 +301,10 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' - \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
 #'   List all available field names. This is useful for bridge index nodes
 #'   where facet listing is not available.
+#'
+#' - \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}:
+#'   List all available shards (ESGF index nodes) that can be queried in
+#'   distributed searches.
 #'
 #' - \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
 #'   List all available values of specific facets.
@@ -541,37 +547,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     facets = "*",
                     limit = 0,
                     distrib = FALSE,
-                    format = "application/solr+json"
+                    format = FORMAT_JSON
                 )
             )
 
-            if (getOption("epwshiftr.cache", TRUE)) {
-                cache <- get_cache()
-                key <- get_response_cache_key(url)
-                cached <- cache$exists(key)
-                if (cached) {
-                    if (force) {
-                        cache$remove(key)
-                    } else {
-                        verbose(cli::cli_alert_info(paste(
-                            "Loaded cached facet listing for index node {.var {private$index_node}}",
-                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
-                        )))
-
-                        return(unlst(cache$get(key)$responseHeader$params$facet.field))
-                    }
-                }
-            }
-
-            verbose(cli::cli_progress_step(
-                "Retrieving facet listing for index node {.var {private$index_node}}...",
-                paste(
-                    "Retrieved facet listing for index node {.var {private$index_node}}",
-                    "at {format(Sys.time(), '%F %T %Z')}."
-                ),
-                "Failed to retrieve facet listing for index node {.var {private$index_node}}."
-            ))
-            res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
+            res <- private$query_listing_cached(url, force, "facet")
 
             unlst(res$responseHeader$params$facet.field)
         },
@@ -602,38 +582,72 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     limit = 1,
                     fields = "*",
                     distrib = FALSE,
-                    format = "application/solr+json"
+                    format = FORMAT_JSON
                 )
             )
 
-            if (getOption("epwshiftr.cache", TRUE)) {
-                cache <- get_cache()
-                key <- get_response_cache_key(url)
-                cached <- cache$exists(key)
-                if (cached) {
-                    if (force) {
-                        cache$remove(key)
-                    } else {
-                        verbose(cli::cli_alert_info(paste(
-                            "Loaded cached field listing for index node {.var {private$index_node}}",
-                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
-                        )))
+            res <- private$query_listing_cached(url, force, "field")
+            names(res$response$docs[[1L]])
+        },
+        # }}}
 
-                        return(names(cache$get(key)$response$docs[[1L]]))
-                    }
-                }
+        # list_shards {{{
+        #' @description
+        #' List all available shards.
+        #'
+        #' @param force By default, every shard listing query is cached and
+        #'        reused when possible. If `TRUE`, the previous cache is
+        #'        abandoned and a new query is re-sent and cached. Default:
+        #'        `FALSE`.
+        #'
+        #' @return A character vector or `NULL` if no shard listing is found.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$list_shards()
+        #' }
+        list_shards = function(force = FALSE) {
+            checkmate::assert_flag(force)
+
+            url <- query_build(
+                private$index_node,
+                list(
+                    project = private$parameter$project,
+                    type = "Dataset",
+                    offset = 0,
+                    limit = 0,
+                    # Shards are not available if distrib is set to FALSE.
+                    distrib = TRUE,
+                    format = FORMAT_JSON
+                )
+            )
+
+            res <- private$query_listing_cached(url, force, "shard")
+            shards <- res$responseHeader$params$shards
+
+            if (!length(shards)) return(NULL)
+
+            shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
+
+            # fix the index_node if it refers to the local server
+            shards_parts <- regmatches(shards, regexec("(.*?)(?::(\\d*))?/solr(.*)", shards))
+
+            if (length(invld <- shards[lengths(shards_parts) != 4L])) {
+                warning(sprintf(
+                    "Unrecognized Shard specification found: %s.",
+                    paste0("'", invld, "'", collapse = ", ")
+                ))
             }
 
-            verbose(cli::cli_progress_step(
-                "Retrieving field listing for index node {.var {private$index_node}}...",
-                paste(
-                    "Retrieved field listing for index node {.var {private$index_node}}",
-                    "at {format(Sys.time(), '%F %T %Z')}."
-                ),
-                "Failed to retrieve field listing for index node {.var {private$index_node}}."
-            ))
-            res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
-            names(res$response$docs[[1L]])
+            vapply(shards_parts, FUN.VALUE = "", function(shard) {
+                shard <- shard[-1L]
+                # replace localhost
+                if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
+                    shard[1L] <- strsplit(private$index_node, "/", fixed = TRUE)[[1L]][[3L]]
+                }
+                # exclude suffix
+                sprintf("%s%s%s/solr%s", shard[[1L]], if (shard[[2L]] != "") ":" else "", shard[[2L]], shard[[3L]])
+            })
         },
         # }}}
 
@@ -669,40 +683,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                     offset = 0,
                     limit = 0,
                     distrib = private$parameter$distrib,
-                    format = "application/solr+json"
+                    format = FORMAT_JSON
                 )
             )
 
-            res <- NULL
-            if (getOption("epwshiftr.cache", TRUE)) {
-                cache <- get_cache()
-                key <- get_response_cache_key(url)
-                cached <- cache$exists(key)
-                if (cached) {
-                    if (force) {
-                        cache$remove(key)
-                    } else {
-                        verbose(cli::cli_alert_info(paste(
-                            "Loaded cached value listing for index node {.var {private$index_node}}",
-                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
-                        )))
-
-                        res <- cache$get(key)
-                    }
-                }
-            }
-
-            if (is.null(res)) {
-                verbose(cli::cli_progress_step(
-                    "Retrieving value listing for index node {.var {private$index_node}}...",
-                    paste(
-                        "Retrieved value listing for index node {.var {private$index_node}}",
-                        "at {format(Sys.time(), '%F %T %Z')}."
-                    ),
-                    "Failed to retrieve value listing for index node {.var {private$index_node}}."
-                ))
-                res <- with_timeout(300, read_json_response(url, simplifyVector = FALSE))
-            }
+            res <- private$query_listing_cached(url, force, "value")
 
             out <- vector("list", length(facets))
             names(out) <- facets
@@ -1256,7 +1241,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 warning(sprintf(
                     paste(
                         "ESGF Search API only supports a maximum value of limit <= %s",
-                        "'limit' has been reset to '%s'."
+                        "'limit' will be reset to '%s'."
                     ),
                     format(this$data_max_limit, big.mark = ","),
                     this$data_max_limit
@@ -1410,7 +1395,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                         paste(
                             "Only 'Dataset' query is supported.",
                             "But 'type' found in input with value = '%s'.",
-                            "It has been reset to 'Dataset'.",
+                            "It will be reset to 'Dataset'.",
                             "If you want to perform a '%s' query,",
                             "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
                             "result, and then use 'EsgfQueryResultDataset$collect(type = '%s')'."
@@ -1423,15 +1408,16 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             }
 
             if ("format" %in% nms && length(fmt <- params[[nms == "format"]]) &&
-                (is.null(fmt) || fmt$value != "application/solr+json")
+                (is.null(fmt) || fmt$value != FORMAT_JSON)
             ) {
                 warning(sprintf(
                     paste(
                         "Only JSON response format is supported.",
                         "But 'format' found in input with value = '%s'.",
-                        "It has been reset to 'application/solr+json'."
+                        "It will be reset to '%s'."
                     ),
-                    if (is.null(fmt)) "NULL" else fmt$value
+                    if (is.null(fmt)) "NULL" else fmt$value,
+                    FORMAT_JSON
                 ))
                 params <- params[nms != "format"]
                 nms <- nms[nms != "format"]
@@ -1442,7 +1428,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 warning(sprintf(
                     paste(
                         "'retracted' is not supported for bridge index node.",
-                        "It has been removed."
+                        "It will be removed."
                     )
                 ))
                 params <- params[nms != "retracted"]
@@ -1459,10 +1445,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 warning(sprintf(
                     paste(
                         "The following facet(s) seems to be invalid or not supported:",
-                        "%s",
+                        "[%s].",
                         "Unexpected response may be returned."
                     ),
-                    paste(not_found, collapse = ", ")
+                    paste(sprintf("'%s'", not_found), collapse = ", ")
                 ))
             }
 
@@ -1832,6 +1818,36 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
         predefined_facets = function() {
             setdiff(names(private$parameter), c("type", "format", "others"))
+        },
+
+        query_listing_cached = function(url, force, type) {
+            if (getOption("epwshiftr.cache", TRUE)) {
+                cache <- get_cache()
+                key <- get_response_cache_key(url)
+                cached <- cache$exists(key)
+                if (cached) {
+                    if (force) {
+                        cache$remove(key)
+                    } else {
+                        verbose(cli::cli_alert_info(paste(
+                            "Loaded cached {type} listing for index node {.var {private$index_node}}",
+                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
+                        )))
+
+                        return(cache$get(key))
+                    }
+                }
+            }
+
+            verbose(cli::cli_progress_step(
+                "Retrieving {type} listing for index node {.var {private$index_node}}...",
+                paste(
+                    "Retrieved {type} listing for index node {.var {private$index_node}}",
+                    "at {format(Sys.time(), '%F %T %Z')}."
+                ),
+                "Failed to retrieve {type} listing for index node {.var {private$index_node}}."
+            ))
+            with_timeout(300, read_json_response(url, simplifyVector = FALSE))
         }
     )
 )

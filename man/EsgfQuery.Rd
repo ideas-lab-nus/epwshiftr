@@ -51,7 +51,7 @@ including facets.
 object with quite a few methods that can be classified into 3 categories:
 \itemize{
 \item \strong{Value listing}: methods to list all possible values of facets, fields,
-and values.
+shards, and values.
 \item \strong{Parameter getter & setter}: methods to get the query parameter values or
 set them before sending the actual query to the ESGF search services.
 \item \strong{Query responses}: methods to collect results for the query response.
@@ -59,7 +59,7 @@ set them before sending the actual query to the ESGF search services.
 \subsection{Value listing}{
 
 \code{EsgfQuery} object provides the following value-listing methods to query
-available facets, fields, and values from the ESGF index node:
+available facets, fields, shards, and values from the ESGF index node:
 \itemize{
 \item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
 List all available facet names. When called, a
@@ -69,6 +69,9 @@ project (default: CMIP6).
 \item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
 List all available field names. This is useful for bridge index nodes
 where facet listing is not available.
+\item \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}:
+List all available shards (ESGF index nodes) that can be queried in
+distributed searches.
 \item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
 List all available values of specific facets.
 }
@@ -223,6 +226,14 @@ q$list_facets()
 
 \dontrun{
 q$list_fields()
+}
+
+## ------------------------------------------------
+## Method `EsgfQuery$list_shards`
+## ------------------------------------------------
+
+\dontrun{
+q$list_shards()
 }
 
 ## ------------------------------------------------
@@ -636,6 +647,7 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
 \item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}
 \item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}
+\item \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}
 \item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}
 \item \href{#method-EsgfQuery-project}{\code{EsgfQuery$project()}}
 \item \href{#method-EsgfQuery-activity_id}{\code{EsgfQuery$activity_id()}}
@@ -772,6 +784,39 @@ A character vector or \code{NULL} if no facet listing is found.
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
 q$list_fields()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_shards"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_shards}{}}}
+\subsection{Method \code{list_shards()}}{
+List all available shards.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_shards(force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{force}}{By default, every shard listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector or \code{NULL} if no shard listing is found.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_shards()
 }
 }
 \if{html}{\out{</div>}}
@@ -1127,6 +1172,7 @@ q$variant_label(NULL)
 
 }
 
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQuery-nominal_resolution"></a>}}
