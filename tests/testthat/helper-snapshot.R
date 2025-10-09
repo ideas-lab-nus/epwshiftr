@@ -1,4 +1,4 @@
-transform_lines <- function(lines) {
+transform_json <- function(lines) {
     json <- jsonlite::fromJSON(lines, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
     if (!is.null(json$index_node)) json$index_node <- "..."
@@ -64,4 +64,28 @@ transform_json_response <- function(response) {
     }
 
     response
+}
+
+transform_print <- function(lines) {
+    lines[grepl("^\\* Collected at: \\d", lines)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
+    lines[grepl("^\\* Total size: [1-9]", lines)] <- "* Total size: XX [GiB]"
+
+    # replace date and data node
+    # datasets
+    lines <- gsub("\\d{8}\\|\\w.+(,)?$", "20200202|esgf.data.node\\1", lines)
+    # files
+    lines <- gsub("(_g\\w+_)\\d{8}-\\d{8}\\.nc\\|\\w.+$", "\\120200101-20211231.nc|esgf.data.node", lines)
+    # aggregations
+    lines <- gsub("\\d{8}.aggregation.*?\\|\\w.+$", "20200101.aggregration|esgf.data.node", lines)
+
+    # replace file size and access methods
+    # datasets
+    lines <- gsub("\\d+ Files, \\d+\\.\\d+ [MG]iB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", lines)
+    lines <- gsub("\\[ Access: <.+> \\]$", "[ Access: <...> ]", lines)
+    # files
+    lines <- gsub("\\d+\\.\\d+ [MGT]iB \\| Access: <.+>", "XX MiB | Access: <...>", lines)
+    # aggregations
+    lines <- gsub("(<Unknown> Byte \\| Access: )<.+>", "\\1<...>", lines)
+
+    lines
 }

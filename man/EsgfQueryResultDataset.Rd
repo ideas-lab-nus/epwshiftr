@@ -14,6 +14,7 @@ Usually, it is created by calling
 \author{
 Hongyuan Jia
 }
+\keyword{internal}
 \section{Super class}{
 \code{\link[epwshiftr:EsgfQueryResult]{epwshiftr::EsgfQueryResult}} -> \code{EsgfQueryResultDataset}
 }

@@ -2156,11 +2156,11 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
 
     if (length(json$response) && length(json$response$timestamp)) {
         json$response$timestamp <- as.POSIXct(
-            json$response$response$timestamp, tz = "UTC",
+            json$response$timestamp, tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
         # change the time zone to current time zone
-        attr(json$response$response$timestamp, "tzone") <- NULL
+        attr(json$response$timestamp, "tzone") <- NULL
     }
 
     json

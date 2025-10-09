@@ -338,7 +338,7 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     expect_true(file.exists(file_collected))
     file_collected_copied <- tempfile(fileext = ".json")
     expect_true(file.copy(file_collected, file_collected_copied))
-    expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_lines)
+    expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_json)
     expect_s3_class(q_collected <- query_esgf()$load(file_collected), "EsgfQuery")
     expect_equal(priv(q_collected)$index_node, priv(q)$index_node)
     expect_equal(priv(q_collected)$parameter,  priv(q)$parameter)

@@ -12,6 +12,7 @@
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResult
+#' @keywords internal
 EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     lock_class = TRUE,
     public = list(
@@ -19,10 +20,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @description
         #' Create a new EsgfQueryResult object
         #'
-        #' @param host The URL to the ESGF Search API service. This should be
-        #'        the URL of the ESGF search service excluding the final
-        #'        endpoint name. It should be the same as the `host` for an
-        #'        [EsgfQuery] object that collects the query results.
+        #' @param index_node The URL to the ESGF Index Node. It should be the
+        #'        same as the `index_node` for an [EsgfQuery] object that
+        #'        collects the query results.
         #'
         #' @param params A list of query parameters.
         #'
@@ -30,8 +30,8 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'
         #' @return An `EsgfQueryResult` object.
         #'
-        initialize = function(host, params, response) {
-            private$url_host <- host
+        initialize = function(index_node, params, response) {
+            private$index_node <- index_node
             private$parameter <- params
             private$response <- response
             self
@@ -107,19 +107,18 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
-        #'        to. Default: `result.json`.
+        #'        to.
         #'
         #' @param pretty Whether to add indentation whitespace to JSON output.
         #'        For details, please see [jsonlite::toJSON()]. Default: `TRUE`.
         #'
         #' @return The full path of the output JSON file.
         #'
-        save = function(file = "result.json", pretty = TRUE) {
+        save = function(file, pretty = TRUE) {
             query_save(
-                host = private$url_host,
+                index_node = private$index_node,
                 parameter = private$parameter,
                 response = private$response,
-                last_result = private$last_result,
                 file = file, pretty = pretty
             )
         },
@@ -134,28 +133,16 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
-        #'        from. Default: `result.json`.
+        #'        from.
         #'
         #' @return The modified `EsgfQueryResult` object itself.
         #'
-        load = function(file = "result.json") {
+        load = function(file) {
             q <- query_load(file, SCHEMA_RESULT_DATASET)
 
-            private$url_host <- q$host
+            private$index_node <- q$index_node
             private$parameter <- q$parameter
             private$response <- q$response
-
-            if (length(q$last_result)) {
-                # restore parameters in last result
-                q$last_result$parameter <- restore_params(
-                    input = q$last_result$parameter,
-                    params = list(dataset_id = NULL, fields = NULL, latest = TRUE,
-                        distrib = TRUE, limit = NULL, type = NULL,
-                        format = "application/solr+json"
-                    )
-                )
-                private$last_result <- q$last_result
-            }
 
             self
         }
@@ -225,10 +212,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
     ),
 
     private = list(
-        url_host = NULL,
+        index_node = NULL,
         parameter = NULL,
         response = NULL,
-        last_result = NULL,
 
         required_fields = c("id", "size", "url"),
         query_fields = c("dataset_id", "fields", "latest", "distrib", "limit", "type", "format"),
@@ -274,7 +260,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         # print_summary {{{
         print_summary = function(type = "") {
             ts <- format(private$response$timestamp, tz = Sys.timezone(), usetz = TRUE)
-            cli::cli_bullets(c("*" = "Host: {private$url_host}"))
+            cli::cli_bullets(c("*" = "Index Node: {private$index_node}"))
             cli::cli_bullets(c("*" = "Collected at: {ts}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
             if (type == "Aggregation") {
@@ -383,6 +369,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultDataset
+#' @keywords internal
 EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -497,30 +484,23 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             }
 
             result <- query_collect(
-                private$url_host, params, required_fields = req_fld,
+                private$index_node, params, required_fields = req_fld,
                 all = all, limit = limit, constraints = FALSE
             )
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
 
-            # store last result
-            private$last_result <- list(
-                url_host = private$url_host,
-                parameter = params,
-                response = result$response
-            )
-
             # create new results
             if (type == "File") {
                 new_query_result(
                     EsgfQueryResultFile,
-                    private$url_host, params, result$response
+                    private$index_node, params, result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgfQueryResultAggregation,
-                    private$url_host, params, result$response
+                    private$index_node, params, result$response
                 )
             }
         },
@@ -579,7 +559,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
 
             # create a new query to validate params
-            query <- query_esgf(private$url_host, listing = private$url_host %in% names(this$cache$facet))
+            query <- query_esgf(private$index_node)
 
             params <- list(
                 dataset_id = if (is.null(index)) self$id else self$id[index],
@@ -618,6 +598,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultFile
+#' @keywords internal
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -723,6 +704,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 #'
 #' @author Hongyuan Jia
 #' @name EsgfQueryResultAggregation
+#' @keywords internal
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
@@ -807,7 +789,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
 # }}}
 
 # new_query_result {{{
-new_query_result <- function(generator, host = NULL, params = NULL, result = NULL, ..., .env = parent.frame()) {
+new_query_result <- function(generator, index_node = NULL, params = NULL, result = NULL, ..., .env = parent.frame()) {
     if (generator$is_locked()) {
         generator$unlock()
         on.exit(generator$lock(), add = TRUE)
@@ -842,7 +824,7 @@ new_query_result <- function(generator, host = NULL, params = NULL, result = NUL
             }
         }, add = TRUE)
     }
-    generator$new(host, params, result, ...)
+    generator$new(index_node, params, result, ...)
 }
 # }}}
 
@@ -857,7 +839,7 @@ new_query_result <- function(generator, host = NULL, params = NULL, result = NUL
 #' @param type A string indicating what type of ESGF query result should be
 #'        created. Should be one of `"dataset"`, `"file"` or "aggregation"`.
 #'
-#' @return An empty `EsgfQueryResult` object of given type.
+#' @return An empty [EsgfQueryResult] object of given type.
 #'
 #' @export
 result_esgf <- function(type = c("dataset", "file", "aggregation")) {
@@ -869,7 +851,7 @@ result_esgf <- function(type = c("dataset", "file", "aggregation")) {
             "file" = EsgfQueryResultFile,
             "aggregation" = EsgfQueryResultAggregation
         ),
-        host = NULL, params = NULL, result = NULL
+        index_node = NULL, params = NULL, result = NULL
     )
 }
 # }}}
