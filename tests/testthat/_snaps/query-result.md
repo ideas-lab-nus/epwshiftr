@@ -2,9 +2,9 @@
 
     Code
       datasets$print()
-    Message <cliMessage>
+    Message
       == ESGF Query Result [Dataset] =================================================
-      * Host: https://esgf-node.llnl.gov/esg-search
+      * Index Node: https://esgf-data.dkrz.de
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
@@ -29,27 +29,27 @@
       * format = application/solr+json
     Output
       
-    Message <cliMessage>
+    Message
       -- <Dataset> -------------------------------------------------------------------
     Output
-      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov
+      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
           [ XX Files, XX GiB | X Aggregations ]
-          [ Access: <HTTPServer, GridFTP, OPENDAP, Globus, LAS> ]
-      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data04.diasjp.net
+          [ Access: <...> ]
+      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
           [ XX Files, XX GiB | X Aggregations ]
-          [ Access: <HTTPServer, OPENDAP> ]
+          [ Access: <...> ]
 
 # ESGF Query Result File works
 
     Code
       files$print()
-    Message <cliMessage>
+    Message
       == ESGF Query Result [File] ====================================================
-      * Host: https://esgf-node.llnl.gov/esg-search
+      * Index Node: https://esgf-data.dkrz.de
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
-      * Total size: XX [MiB]
-      * Fields: 55 | [ _timestamp, _version_, activity_drs, activity_id,
+      * Total size: XX [GiB]
+      * Fields: 56 | [ _timestamp, _version_, activity_drs, activity_id,
         cf_standard_name, checksum, checksum_type, citation_url, data_node,
         data_specs_version, dataset_id, dataset_id_template_,
         directory_format_template_, experiment_id, experiment_title, filename,
@@ -57,8 +57,8 @@
       
       -- <Query Parameter> -----------------------------------------------------------
       * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov,
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data04.diasjp.net
+        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
+        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
       * latest = true
       * distrib = true
       * limit = 1
@@ -66,19 +66,19 @@
       * format = application/solr+json
     Output
       
-    Message <cliMessage>
+    Message
       -- <File> (From 1 Data Nodes) --------------------------------------------------
     Output
-      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20150101-20151231.nc|esgf-data04.diasjp.net
-          [ XX MiB | Access: <HTTPServer, OPENDAP> ]
+      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
+          [ XX MiB | Access: <...> ]
 
 # ESGF Query Result Aggregation works
 
     Code
       aggs$print()
-    Message <cliMessage>
+    Message
       == ESGF Query Result [Aggregation] =============================================
-      * Host: https://esgf-node.llnl.gov/esg-search
+      * Index Node: https://esgf-data.dkrz.de
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: <Unknown> [Byte]
@@ -87,8 +87,8 @@
       
       -- <Query Parameter> -----------------------------------------------------------
       * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data1.llnl.gov,
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf-data04.diasjp.net
+        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
+        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
       * fields = id
       * latest = true
       * distrib = true
@@ -97,11 +97,71 @@
       * format = application/solr+json
     Output
       
-    Message <cliMessage>
-      -- <Aggregation> (From 2 Data Nodes) -------------------------------------------
+    Message
+      -- <Aggregation> (From 1 Data Nodes) -------------------------------------------
     Output
-      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.tas.20190529.aggregation|esgf-data04.diasjp.net
-          [ <Unknown> Byte | Access: <OPENDAP> ]
-      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.tas.20190529.aggregation|esgf-data1.llnl.gov
-          [ <Unknown> Byte | Access: <LAS> ]
+      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
+          [ <Unknown> Byte | Access: <...> ]
+      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
+          [ <Unknown> Byte | Access: <...> ]
+
+# result_esgf() works
+
+    Code
+      result_esgf("file")$print()
+    Message
+      == ESGF Query Result [File] ====================================================
+      * Index Node:
+      * Collected at: NULL
+      * Result count: 0
+      * Total size: 0 [Byte]
+      * Fields: 0
+      
+      -- <Query Parameter> -----------------------------------------------------------
+    Output
+      
+    Message
+      -- <File> ----------------------------------------------------------------------
+        <Empty>
+        NOTE: No matched data found. Please update query parameters and try again.
+
+---
+
+    Code
+      result_esgf("aggregation")$print()
+    Message
+      == ESGF Query Result [Aggregation] =============================================
+      * Index Node:
+      * Collected at: NULL
+      * Result count: 0
+      * Total size: <Unknown> [Byte]
+      * Fields: 0
+      
+      -- <Query Parameter> -----------------------------------------------------------
+    Output
+      
+    Message
+      -- <Aggregation> ---------------------------------------------------------------
+        <Empty>
+        NOTE: No matched data found. Please update query parameters and try again.
+
+---
+
+    Code
+      result_esgf("aggregation")$print()
+    Message
+      == ESGF Query Result [Aggregation] =============================================
+      * Index Node:
+      * Collected at: NULL
+      * Result count: 0
+      * Total size: <Unknown> [Byte]
+      * Fields: 0
+      
+      -- <Query Parameter> -----------------------------------------------------------
+    Output
+      
+    Message
+      -- <Aggregation> ---------------------------------------------------------------
+        <Empty>
+        NOTE: No matched data found. Please update query parameters and try again.
 

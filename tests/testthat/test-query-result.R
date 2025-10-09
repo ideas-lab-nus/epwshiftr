@@ -1,10 +1,9 @@
-host <- get_fast_host()
-
 # EsgfQueryResultDataset {{{
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
-    q <- query_esgf(host, FALSE)$
+    index_node <- INDEX_NODES[["DKRZ"]]
+    q <- query_esgf(index_node)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -83,38 +82,24 @@ test_that("ESGF Query Result Dataset works", {
     expect_length(datasets$number_of_files, 2L)
 
     # $save() empty datasets
-    fe <- tempfile(fileext = ".json")
-    datasets$.__enclos_env__$private$response$responseHeader$QTime <- 10L
-    datasets$.__enclos_env__$private$response$timestamp <- as.POSIXct(
-        "2020-02-02 22:22:22.123456", "UTC"
-    )
-    expect_snapshot_file(datasets$save(fe), "dataset_empty.json")
+    file_empty <- tempfile(fileext = ".json")
+    expect_snapshot_file(datasets$save(file_empty), "dataset_empty.json")
 
     # $load() empty datasets
-    expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(fe), "EsgfQueryResultDataset")
-    expect_equal(priv(de)$url_host,    priv(datasets)$url_host)
-    expect_equal(priv(de)$parameter,   priv(datasets)$parameter)
-    expect_equal(priv(de)$response,    priv(datasets)$response)
-    expect_equal(priv(de)$last_result, priv(datasets)$last_result)
+    expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(file_empty), "EsgfQueryResultDataset")
+    expect_equal(priv(de)$index_node, priv(datasets)$index_node)
+    expect_equal(priv(de)$parameter,  priv(datasets)$parameter)
+    # manually add the cache key since '$save()' will exclude it
+    priv(de)$response$cache <- priv(datasets)$response$cache
+    # keep the column order the same since '$save()' then '$load()' may change
+    # the order
+    priv(de)$response$response$docs <- priv(de)$response$response$docs[,
+        names(priv(datasets)$response$response$docs)]
+    expect_equal(priv(de)$response,   priv(datasets)$response)
 
     # $collect():
     ## $collect(): can specify dataset index
     expect_s3_class(datasets$collect(1, limit = 2, fields = "id"), "EsgfQueryResultFile")
-
-    # $save() collected datasets
-    fc <- tempfile(fileext = ".json")
-    datasets$.__enclos_env__$private$last_result$response$timestamp <- as.POSIXct(
-        "2020-02-02 22:22:22.123456", "UTC"
-    )
-    datasets$.__enclos_env__$private$last_result$response$responseHeader$QTime <- 10L
-    expect_snapshot_file(datasets$save(fc), "dataset_collected.json")
-
-    # $load() collected datasets
-    expect_s3_class(dc <- new_query_result(EsgfQueryResultDataset)$load(fc), "EsgfQueryResultDataset")
-    expect_equal(priv(dc)$url_host,    priv(datasets)$url_host)
-    expect_equal(priv(dc)$parameter,   priv(datasets)$parameter)
-    expect_equal(priv(dc)$response,    priv(datasets)$response)
-    expect_equal(priv(dc)$last_result, priv(datasets)$last_result)
 
     ## $collect(): can specify dataset id
     expect_s3_class(datasets$collect(datasets$id[1], fields = "id"), "EsgfQueryResultFile")
@@ -132,7 +117,7 @@ test_that("ESGF Query Result Dataset works", {
 
     ## $collect(): can collect all possible fields
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgfQueryResultFile")
-    expect_length(files$fields, 55L)
+    expect_length(files$fields, 56L)
 
     ## $collect(): can stop if unsupported parameters found
     expect_error(datasets$collect(experiment_id = "ssp585"), "Unsupported")
@@ -141,19 +126,16 @@ test_that("ESGF Query Result Dataset works", {
     expect_s3_class(datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgfQueryResultAggregation")
 
     # $print()
-    expect_snapshot(datasets$print(), transform = function(out) {
-        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
-        out[grepl("^\\* Total size: ", out)]   <- "* Total size: XX [GiB]"
-        gsub("\\d+ Files, \\d+\\.\\d+ GiB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", out)
-    })
+    expect_snapshot(datasets$print(), transform = transform_print)
 })
 # }}}
 
 # EsgfQueryResultFile {{{
 test_that("ESGF Query Result File works", {
     skip_on_cran()
+    index_node <- INDEX_NODES[["DKRZ"]]
 
-    files <- query_esgf(host, FALSE)$
+    files <- query_esgf(index_node)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -224,19 +206,16 @@ test_that("ESGF Query Result File works", {
     )
 
     # $print()
-    expect_snapshot(files$print(), transform = function(out) {
-        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
-        out[grepl("^\\* Total size: ", out)]   <- "* Total size: XX [MiB]"
-        gsub("\\d+\\.\\d+ MiB \\| Access", "XX MiB | Access", out)
-    })
+    expect_snapshot(files$print(), transform = transform_print)
 })
 # }}}
 
 # EsgfQueryResultAggregation {{{
 test_that("ESGF Query Result Aggregation works", {
     skip_on_cran()
+    index_node <- INDEX_NODES[["DKRZ"]]
 
-    aggs <- query_esgf(host, FALSE)$
+    aggs <- query_esgf(index_node)$
         activity_id("ScenarioMIP")$
         source_id("AWI-CM-1-1-MR")$
         frequency("day")$
@@ -291,10 +270,7 @@ test_that("ESGF Query Result Aggregation works", {
     )
 
     # $print()
-    expect_snapshot(aggs$print(), transform = function(out) {
-        out[grepl("^\\* Collected at: ", out)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
-        out
-    })
+    expect_snapshot(aggs$print(), transform = transform_print)
 })
 # }}}
 
@@ -302,7 +278,11 @@ test_that("ESGF Query Result Aggregation works", {
 test_that("result_esgf() works", {
     expect_s3_class(result_esgf(), "EsgfQueryResultDataset")
     expect_s3_class(result_esgf("file"), "EsgfQueryResultFile")
-    expect_s3_class(result_esgf("aggregation"), "EsgfQueryResultAggregation")
+    expect_s3_class(result_esgf(), "EsgfQueryResultDataset")
+
+    expect_snapshot(result_esgf("file")$print(), transform = transform_print)
+    expect_snapshot(result_esgf("aggregation")$print(), transform = transform_print)
+    expect_snapshot(result_esgf("aggregation")$print(), transform = transform_print)
 })
 # }}}
 

@@ -11,7 +11,7 @@ result_esgf(type = c("dataset", "file", "aggregation"))
 created. Should be one of \code{"dataset"}, \code{"file"} or "aggregation"`.}
 }
 \value{
-An empty \code{EsgfQueryResult} object of given type.
+An empty \link{EsgfQueryResult} object of given type.
 }
 \description{
 \code{result_esgf()} creates an empty query result object of input type, so that

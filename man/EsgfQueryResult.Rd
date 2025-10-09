@@ -14,6 +14,7 @@ In general, there is no need to create an \code{EsgfQueryResult} manually.
 \author{
 Hongyuan Jia
 }
+\keyword{internal}
 \section{Active bindings}{
 \if{html}{\out{<div class="r6-active-bindings">}}
 \describe{
@@ -55,16 +56,15 @@ file sizes.}
 \subsection{Method \code{new()}}{
 Create a new EsgfQueryResult object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(host, params, response)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$new(index_node, params, response)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{host}}{The URL to the ESGF Search API service. This should be
-the URL of the ESGF search service excluding the final
-endpoint name. It should be the same as the \code{host} for an
-\link{EsgfQuery} object that collects the query results.}
+\item{\code{index_node}}{The URL to the ESGF Index Node. It should be the
+same as the \code{index_node} for an \link{EsgfQuery} object that
+collects the query results.}
 
 \item{\code{params}}{A list of query parameters.}
 
@@ -125,14 +125,14 @@ Save the result into a JSON file
 which can be loaded to restore the current state of result using
 \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$save(file = "result.json", pretty = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$save(file, pretty = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{file}}{A string indicating the JSON file path to save the data
-to. Default: \code{result.json}.}
+to.}
 
 \item{\code{pretty}}{Whether to add indentation whitespace to JSON output.
 For details, please see \code{\link[jsonlite:fromJSON]{jsonlite::toJSON()}}. Default: \code{TRUE}.}
@@ -153,14 +153,14 @@ Restore the result state from an JSON file
 created using
 \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$load(file = "result.json")}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$load(file)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{file}}{A string indicating the JSON file path to read the data
-from. Default: \code{result.json}.}
+from.}
 }
 \if{html}{\out{</div>}}
 }
