@@ -1,22 +1,36 @@
 transform_lines <- function(lines) {
-    lines <- readLines("/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmpUqcafq/file91e62791276.json")
-
     json <- jsonlite::fromJSON(lines, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
-    json$index_node <- "..."
+    if (!is.null(json$index_node)) json$index_node <- "..."
 
-    json$last_result$index_node <- "..."
-    json$last_result$response$responseHeader$QTime <- -1L
-    json$last_result$response$responseHeader$params$shards <- "..."
-    json$last_result$response$response$numFound <- -1L
-    json$last_result$response$response$maxScore <- 0.5
-    json$last_result$response$timestamp <- as.POSIXct("2020-02-02 22:22:22.123456", "UTC")
-    if (!is.null(json$last_result$response$cache)) {
-        json$last_result$response$cache <- "response-a1b2c3d4"
+    if (!is.null(json$last_result)) {
+        if (!is.null(json$last_result$index_node)) {
+            json$last_result$index_node <- "..."
+        }
+
+        if (!is.null(json$last_result$response)) {
+            json$last_result$response <- transform_json_response(json$last_result$response)
+        }
     }
 
-    docs <- json$last_result$response$response$docs
-    if (nrow(docs)) {
+    strsplit(jsonlite::toJSON(json, null = "null", na = "null", digits = 8, pretty = TRUE), "\n")[[1L]]
+}
+
+transform_json_response <- function(response) {
+    response$responseHeader$QTime <- -1L
+    response$responseHeader$params$shards <- "..."
+    response$response$numFound <- -1L
+    response$response$maxScore <- 0.5
+
+    if (!is.null(response$timestamp)) {
+        response$timestamp <- as.POSIXct("2020-02-02 22:22:22.123456", "UTC")
+    }
+    if (!is.null(response$cache)) {
+        response$cache <- "response-a1b2c3d4"
+    }
+
+    docs <- response$response$docs
+    if (NROW(docs)) {
         for (i in seq_along(docs)) {
             col <- docs[[i]]
 
@@ -46,8 +60,8 @@ transform_lines <- function(lines) {
                 }
             }
         }
-        json$last_result$response$response$docs <- docs
+        response$response$docs <- docs
     }
 
-    strsplit(jsonlite::toJSON(json, null = "null", na = "null", digits = 8, pretty = TRUE), "\n")[[1L]]
+    response
 }

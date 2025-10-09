@@ -167,8 +167,8 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
         }
     }
 
-    timestamp <- Sys.time()
     res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    timestamp <- Sys.time()
 
     # nocov start
     if (inherits(res, "warning") || inherits(res, "error")) {
@@ -1672,13 +1672,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             # replace docs in the last response
             result$response$response$docs <- result$docs
 
-            # store last result
-            private$last_result <- list(
-                index_node = private$index_node,
-                parameter = private$parameter,
-                response = result$response
-            )
-
             # create new results
             new_query_result(EsgfQueryResultDataset,
                 private$index_node, private$parameter, result$response
@@ -1710,7 +1703,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             query_save(
                 index_node = private$index_node,
                 parameter = private$parameter,
-                last_result = private$last_result,
+                response = NULL,
                 file = file, pretty = pretty
             )
         },
@@ -1742,16 +1735,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
-            private$last_result <- q$last_result
-
-            if (length(q$last_result)) {
-                # restore parameters in last result
-                q$last_result$parameter <- restore_params(
-                    input = q$last_result$parameter,
-                    params = EsgfQuery$private_fields$parameter
-                )
-                private$last_result <- q$last_result
-            }
 
             self
         },
@@ -1776,13 +1759,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             )
             cli::cli_rule("ESGF Query")
             cli::cli_li("Index Node: {private$index_node}")
-
-            ts <- if (is.null(private$last_result)) {
-                "<NONE>"
-            } else {
-                private$last_result$response$timestamp
-            }
-            cli::cli_li("Last query sent at: {ts}")
 
             cli::cli_h1("<Query Parameter>")
             print_query_params(private$parameter)
@@ -1819,8 +1795,6 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             format = "application/solr+json",
             others = list()
         ),
-
-        last_result = NULL,
 
         format_facet_counts = function(counts) {
             ind <- seq_along(counts)
@@ -2126,7 +2100,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 # }}}
 
 # query_save {{{
-query_save <- function(index_node, parameter, last_result, ..., file = "query.json", pretty = TRUE) {
+query_save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE) {
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
@@ -2134,30 +2108,25 @@ query_save <- function(index_node, parameter, last_result, ..., file = "query.js
     # exclude name
     params <- lapply(params, .subset, c("value", "negate"))
 
-    if (length(last_result)) {
-        last_result$parameter <- query_param_flat(
-            last_result$parameter, empty = TRUE
-        )
-        # exclude name
-        last_result$parameter <- lapply(last_result$parameter,
-            .subset, c("value", "negate"))
-
+    if (length(response)) {
         # NOTE: the timestamp may include sub-seconds, but
         # jsonlite::toJSON() will cut that part when converting POSIXct
         # to string we can convert it to a string in advance
-        if (length(last_result$response$timestamp)) {
-            last_result$response$timestamp <- format.POSIXct(
-                last_result$response$timestamp, digits = 6, tz = "UTC",
+        if (length(response$timestamp)) {
+            response$timestamp <- format.POSIXct(
+                response$timestamp, digits = 6, tz = "UTC",
                 format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
             )
         }
+
+        # remove the cache key
+        if (length(response$cache)) {
+            response$cache <- NULL
+        }
     }
 
-    data <- list(
-        index_node = index_node,
-        parameter = params,
-        last_result = last_result
-    )
+    data <- list(index_node = index_node, parameter = params)
+    if (length(response)) data$response <- response
 
     if (length(list(...))) data <- c(data, list(...))
 
@@ -2168,7 +2137,7 @@ query_save <- function(index_node, parameter, last_result, ..., file = "query.js
 # }}}
 
 # query_load {{{
-query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
+query_load <- function(file, schema = SCHEMA_QUERY) {
     checkmate::assert_file(file, "r", extension = "json")
 
     # simplifyVector will convert facet counts to characters
@@ -2176,7 +2145,7 @@ query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
     # validate using predefined schema
-    schema_validate(json, schema)
+    schema_validate(json, schema, name = normalizePath(file, winslash = "/"))
 
     if (length(json$parameter)) {
         json$parameter <- restore_params(
@@ -2185,13 +2154,13 @@ query_load <- function(file = "query.json", schema = SCHEMA_QUERY) {
         )
     }
 
-    if (length(json$last_result) && length(json$last_result$response$timestamp)) {
-        json$last_result$response$timestamp <- as.POSIXct(
-            json$last_result$response$timestamp, tz = "UTC",
+    if (length(json$response) && length(json$response$timestamp)) {
+        json$response$timestamp <- as.POSIXct(
+            json$response$response$timestamp, tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
         # change the time zone to current time zone
-        attr(json$last_result$response$timestamp, "tzone") <- NULL
+        attr(json$response$response$timestamp, "tzone") <- NULL
     }
 
     json
