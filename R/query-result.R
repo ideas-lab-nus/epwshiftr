@@ -38,7 +38,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         },
         # }}}
 
-        # to_dt {{{
+        # to_data_table {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -52,7 +52,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
-        to_dt = function(fields = NULL, formatted = NULL) {
+        to_data_table = function(fields = NULL, formatted = NULL) {
             docs <- private$get_docs()
 
             checkmate::assert_subset(fields, names(docs))
@@ -373,7 +373,7 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
-        # to_dt {{{
+        # to_data_table {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -386,9 +386,9 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
-        to_dt = function(fields = NULL, formatted = FALSE) {
+        to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
-            super$to_dt(fields, if (formatted) c("url", "size"))
+            super$to_data_table(fields, if (formatted) c("url", "size"))
         },
         # }}}
 
@@ -602,7 +602,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
-        # to_dt {{{
+        # to_data_table {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -615,9 +615,9 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
-        to_dt = function(fields = NULL, formatted = FALSE) {
+        to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
-            super$to_dt(fields, if (formatted) c("url", "size"))
+            super$to_data_table(fields, if (formatted) c("url", "size"))
         },
         # }}}
 
@@ -708,7 +708,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
     inherit = EsgfQueryResult, lock_class = TRUE,
     public = list(
-        # to_dt {{{
+        # to_data_table {{{
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
@@ -721,9 +721,9 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
-        to_dt = function(fields = NULL, formatted = FALSE) {
+        to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
-            super$to_dt(fields, if (formatted) c("url", "size"))
+            super$to_data_table(fields, if (formatted) c("url", "size"))
         },
         # }}}
 

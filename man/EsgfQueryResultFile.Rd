@@ -37,7 +37,7 @@ files.}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-EsgfQueryResultFile-to_dt}{\code{EsgfQueryResultFile$to_dt()}}
+\item \href{#method-EsgfQueryResultFile-to_data_table}{\code{EsgfQueryResultFile$to_data_table()}}
 \item \href{#method-EsgfQueryResultFile-print}{\code{EsgfQueryResultFile$print()}}
 \item \href{#method-EsgfQueryResultFile-clone}{\code{EsgfQueryResultFile$clone()}}
 }
@@ -53,12 +53,12 @@ files.}
 </details>
 }}
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQueryResultFile-to_dt"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQueryResultFile-to_dt}{}}}
-\subsection{Method \code{to_dt()}}{
+\if{html}{\out{<a id="method-EsgfQueryResultFile-to_data_table"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultFile-to_data_table}{}}}
+\subsection{Method \code{to_data_table()}}{
 Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultFile$to_dt(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultFile$to_data_table(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{

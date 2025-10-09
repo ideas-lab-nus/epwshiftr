@@ -34,7 +34,7 @@ files.}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-EsgfQueryResultAggregation-to_dt}{\code{EsgfQueryResultAggregation$to_dt()}}
+\item \href{#method-EsgfQueryResultAggregation-to_data_table}{\code{EsgfQueryResultAggregation$to_data_table()}}
 \item \href{#method-EsgfQueryResultAggregation-print}{\code{EsgfQueryResultAggregation$print()}}
 \item \href{#method-EsgfQueryResultAggregation-clone}{\code{EsgfQueryResultAggregation$clone()}}
 }
@@ -50,12 +50,12 @@ files.}
 </details>
 }}
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQueryResultAggregation-to_dt"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-to_dt}{}}}
-\subsection{Method \code{to_dt()}}{
+\if{html}{\out{<a id="method-EsgfQueryResultAggregation-to_data_table"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-to_data_table}{}}}
+\subsection{Method \code{to_data_table()}}{
 Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultAggregation$to_dt(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultAggregation$to_data_table(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{

@@ -43,7 +43,7 @@ file sizes.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgfQueryResult-new}{\code{EsgfQueryResult$new()}}
-\item \href{#method-EsgfQueryResult-to_dt}{\code{EsgfQueryResult$to_dt()}}
+\item \href{#method-EsgfQueryResult-to_data_table}{\code{EsgfQueryResult$to_data_table()}}
 \item \href{#method-EsgfQueryResult-count}{\code{EsgfQueryResult$count()}}
 \item \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}
 \item \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}
@@ -77,12 +77,12 @@ An \code{EsgfQueryResult} object.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQueryResult-to_dt"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQueryResult-to_dt}{}}}
-\subsection{Method \code{to_dt()}}{
+\if{html}{\out{<a id="method-EsgfQueryResult-to_data_table"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResult-to_data_table}{}}}
+\subsection{Method \code{to_data_table()}}{
 Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$to_dt(fields = NULL, formatted = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResult$to_data_table(fields = NULL, formatted = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
