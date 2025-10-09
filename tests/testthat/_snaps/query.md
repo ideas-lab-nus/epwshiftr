@@ -68,7 +68,6 @@
     Message
       == ESGF Query ==================================================================
       * Index Node: https://a
-      * Last query sent at: <NONE>
       
       -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6

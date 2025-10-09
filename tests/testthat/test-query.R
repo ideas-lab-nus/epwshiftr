@@ -329,7 +329,7 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     expect_s3_class(q_empty <- query_esgf()$load(file_empty), "EsgfQuery")
     expect_equal(priv(q_empty)$url_index_node, priv(q)$url_index_node)
     expect_equal(priv(q_empty)$parameter,      priv(q)$parameter)
-    expect_equal(priv(q_empty)$last_result,    priv(q)$last_result)
+    expect_equal(priv(q_empty)$response,       priv(q)$response)
 
     # query object with results
     q$collect()
@@ -340,15 +340,8 @@ test_that("EsgfQuery$save() & EsgfQuery$load()", {
     expect_true(file.copy(file_collected, file_collected_copied))
     expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_lines)
     expect_s3_class(q_collected <- query_esgf()$load(file_collected), "EsgfQuery")
-    expect_equal(priv(q_collected)$url_index_node, priv(q)$url_index_node)
-    expect_equal(priv(q_collected)$parameter,      priv(q)$parameter)
-    # make sure the column order is the same
-    # this is because if the first dataset has less fields than the second one,
-    # the column order will be different
-    priv(q)$last_result$response$response$docs <- priv(q)$last_result$response$response$docs[
-        , names(priv(q_collected)$last_result$response$response$docs), drop = FALSE
-    ]
-    expect_equal(priv(q_collected)$last_result, priv(q)$last_result)
+    expect_equal(priv(q_collected)$index_node, priv(q)$index_node)
+    expect_equal(priv(q_collected)$parameter,  priv(q)$parameter)
 
     unlink(c(file_collected, file_collected_copied))
 })
