@@ -1,10 +1,6 @@
 get_test_cache <- function(dir = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), max_size = "1 GB", max_age = "24 hours") {
     if (is.na(dir)) {
-        if (identical(Sys.getenv("TESTTHAT"), "true")) {
-            dir <- tempfile("epwshiftr-test-cache-")
-        } else {
-            dir <- tools::R_user_dir("epwshiftr", "cache")
-        }
+        dir <- tempfile("epwshiftr-test-cache-", tmpdir = tempdir())
     }
 
     DiskCache$new(
