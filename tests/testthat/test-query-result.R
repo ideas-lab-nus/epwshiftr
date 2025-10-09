@@ -16,15 +16,15 @@ test_that("ESGF Query Result Dataset works", {
     # can create a new result dataset from EsgfQuery$collect
     expect_s3_class(datasets <- q$collect(), "EsgfQueryResultDataset")
 
-    # $to_dt(): can extract the data into a data.table
-    expect_s3_class(datasets$to_dt(), "data.table")
-    # $to_dt(): can only keep selected fields
-    expect_s3_class(datasets$to_dt(c("source_id", "frequency")), "data.table")
-    expect_equal(names(datasets$to_dt(c("source_id", "frequency"))), c("source_id", "frequency"))
-    # $to_dt(): can keep the special format of certain fields
-    expect_s3_class(datasets$to_dt(formatted = TRUE)$size, "units")
+    # $to_data_table(): can extract the data into a data.table
+    expect_s3_class(datasets$to_data_table(), "data.table")
+    # $to_data_table(): can only keep selected fields
+    expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
+    expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
+    # $to_data_table(): can keep the special format of certain fields
+    expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
     expect_true(any(vapply(
-        datasets$to_dt(formatted = TRUE)$url, data.table::is.data.table, logical(1L)
+        datasets$to_data_table(formatted = TRUE)$url, data.table::is.data.table, logical(1L)
     )))
 
     # $has_opendap(): can test accessibility
@@ -82,11 +82,15 @@ test_that("ESGF Query Result Dataset works", {
     expect_length(datasets$number_of_files, 2L)
 
     # $save() empty datasets
-    file_empty <- tempfile(fileext = ".json")
-    expect_snapshot_file(datasets$save(file_empty), "dataset_empty.json")
+    file <- tempfile(fileext = ".json")
+    expect_type(datasets$save(file), "character")
+    expect_true(file.exists(file))
+    file_copied <- tempfile(fileext = ".json")
+    expect_true(file.copy(file, file_copied))
+    expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
 
     # $load() empty datasets
-    expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(file_empty), "EsgfQueryResultDataset")
+    expect_s3_class(de <- new_query_result(EsgfQueryResultDataset)$load(file), "EsgfQueryResultDataset")
     expect_equal(priv(de)$index_node, priv(datasets)$index_node)
     expect_equal(priv(de)$parameter,  priv(datasets)$parameter)
     # manually add the cache key since '$save()' will exclude it
@@ -147,14 +151,14 @@ test_that("ESGF Query Result File works", {
         collect()$
         collect(limit = 1)
 
-    # $to_dt(): can extract the data into a data.table
-    expect_s3_class(files$to_dt(), "data.table")
-    # $to_dt(): can only keep selected fields
-    expect_s3_class(files$to_dt(c("checksum", "checksum_type")), "data.table")
-    expect_equal(names(files$to_dt(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
-    # $to_dt(): can keep the special format of certain fields
-    expect_s3_class(files$to_dt(formatted = TRUE)$size, "units")
-    expect_s3_class(files$to_dt(formatted = TRUE)$url[[1L]], "data.table")
+    # $to_data_table(): can extract the data into a data.table
+    expect_s3_class(files$to_data_table(), "data.table")
+    # $to_data_table(): can only keep selected fields
+    expect_s3_class(files$to_data_table(c("checksum", "checksum_type")), "data.table")
+    expect_equal(names(files$to_data_table(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
+    # $to_data_table(): can keep the special format of certain fields
+    expect_s3_class(files$to_data_table(formatted = TRUE)$size, "units")
+    expect_s3_class(files$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 
     # $id
     expect_type(files$id, "character")
@@ -227,14 +231,14 @@ test_that("ESGF Query Result Aggregation works", {
         collect()$
         collect(fields = "id", limit = 2, type = "Aggregation")
 
-    # $to_dt(): can extract the data into a data.table
-    expect_s3_class(aggs$to_dt(), "data.table")
-    # $to_dt(): can only keep selected fields
-    expect_s3_class(aggs$to_dt(c("url", "size")), "data.table")
-    expect_equal(names(aggs$to_dt(c("url", "size"))), c("url", "size"))
-    # $to_dt(): can keep the special format of certain fields
-    expect_s3_class(aggs$to_dt(formatted = TRUE)$size, "units")
-    expect_s3_class(aggs$to_dt(formatted = TRUE)$url[[1L]], "data.table")
+    # $to_data_table(): can extract the data into a data.table
+    expect_s3_class(aggs$to_data_table(), "data.table")
+    # $to_data_table(): can only keep selected fields
+    expect_s3_class(aggs$to_data_table(c("url", "size")), "data.table")
+    expect_equal(names(aggs$to_data_table(c("url", "size"))), c("url", "size"))
+    # $to_data_table(): can keep the special format of certain fields
+    expect_s3_class(aggs$to_data_table(formatted = TRUE)$size, "units")
+    expect_s3_class(aggs$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 
     # $id
     expect_type(aggs$id, "character")

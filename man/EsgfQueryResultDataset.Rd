@@ -21,7 +21,7 @@ Hongyuan Jia
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-EsgfQueryResultDataset-to_dt}{\code{EsgfQueryResultDataset$to_dt()}}
+\item \href{#method-EsgfQueryResultDataset-to_data_table}{\code{EsgfQueryResultDataset$to_data_table()}}
 \item \href{#method-EsgfQueryResultDataset-has_opendap}{\code{EsgfQueryResultDataset$has_opendap()}}
 \item \href{#method-EsgfQueryResultDataset-has_download}{\code{EsgfQueryResultDataset$has_download()}}
 \item \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}
@@ -40,12 +40,12 @@ Hongyuan Jia
 </details>
 }}
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQueryResultDataset-to_dt"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQueryResultDataset-to_dt}{}}}
-\subsection{Method \code{to_dt()}}{
+\if{html}{\out{<a id="method-EsgfQueryResultDataset-to_data_table"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultDataset-to_data_table}{}}}
+\subsection{Method \code{to_data_table()}}{
 Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$to_dt(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultDataset$to_data_table(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
