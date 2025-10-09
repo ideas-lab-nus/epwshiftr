@@ -83,7 +83,7 @@ The `EsgfQuery` class is the workhorse for dealing with ESGF search services
 with quite a few methods that can be classified into 3 categories:
 
 - **Value listing**: methods to list all possible values of facets, fields,
-  and values.
+  shards, and values.
 - **Parameter getter & setter**: methods to get the query parameter values or
   set them before sending the actual query to the ESGF search services.
 - **Query responses**: methods to collect results for the query response.
@@ -105,7 +105,7 @@ to standard index nodes. When using a bridge index node (e.g.,
 ## Value listing
 
 The `EsgfQuery` object provides the following value-listing methods to query
-available facets, fields, and values from the ESGF index node:
+available facets, fields, shards, and values from the ESGF index node:
 
 - `$list_facets()`: List all available facet names. When called, a
   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
@@ -113,6 +113,8 @@ available facets, fields, and values from the ESGF index node:
   (default: CMIP6).
 - `$list_fields()`: List all available field names. This is useful for bridge
   index nodes where facet listing is not available.
+- `$list_shards()`: List all available shards (ESGF index nodes) that can be
+  queried in distributed searches.
 - `$list_values()`: List all available values of specific facets.
 
 > **NOTE**: Not all index nodes support facet listing query. For bridge index

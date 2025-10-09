@@ -86,6 +86,19 @@ test_that("EsgfQuery$list_fields()", {
 })
 # }}}
 
+# EsgfQuery$list_shards() {{{
+test_that("EsgfQuery$list_shards()", {
+    skip_on_cran()
+    index_node_normal <- INDEX_NODES[["CEDA"]]
+    index_node_bridge <- INDEX_NODES[["ORNL"]]
+
+    expect_s3_class(q <- query_esgf(index_node_normal), "EsgfQuery")
+    expect_type(q$list_shards(), "character")
+    expect_s3_class(q <- query_esgf(index_node_bridge), "EsgfQuery")
+    expect_type(q$list_shards(), "character")
+})
+# }}}
+
 # EsgfQuery$list_values() {{{
 test_that("EsgfQuery$list_values()", {
     skip_on_cran()
