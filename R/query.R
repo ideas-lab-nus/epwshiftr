@@ -219,25 +219,25 @@ new_query_param <- function(name, value) {
     for (val in value) checkmate::assert_atomic(val, any.missing = FALSE)
 
     value$name <- name
-    structure(value, class = c("EsgfQueryParam", "list"))
+    structure(value, class = c("EsgQueryParam", "list"))
 }
 # }}}
 
 # is.query_param {{{
-is.query_param <- function(x) inherits(x, "EsgfQueryParam")
+is.query_param <- function(x) inherits(x, "EsgQueryParam")
 # }}}
 
 #' @export
-# print.EsgfQueryParam {{{
-print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
-    cat(format.EsgfQueryParam(x, encode = encode, space = space), sep = "\n")
+# print.EsgQueryParam {{{
+print.EsgQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
+    cat(format.EsgQueryParam(x, encode = encode, space = space), sep = "\n")
     invisible(x)
 }
 # }}}
 
 #' @export
-# format.EsgfQueryParam {{{
-format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
+# format.EsgQueryParam {{{
+format.EsgQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
     if (is.logical(x$value)) {
         res <- tolower(if (x$negate) !x$value else x$value)
     } else if (is.numeric(x$value)) {
@@ -258,7 +258,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 }
 # }}}
 
-# query_esgf {{{
+# esg_query {{{
 #' Query CMIP6 data using ESGF search RESTful API
 #'
 #' @description
@@ -272,11 +272,11 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' using this
 #' [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html).
 #'
-#' `EsgfQuery` is the workhorse for dealing with ESGF search services.
+#' `EsgQuery` is the workhorse for dealing with ESGF search services.
 #'
-#' # `EsgfQuery` object
+#' # `EsgQuery` object
 #'
-#' `query_esgf()` returns an `EsgfQuery` object, which is an [R6][R6::R6Class]
+#' `esg_query()` returns an `EsgQuery` object, which is an [R6][R6::R6Class]
 #' object with quite a few methods that can be classified into 3 categories:
 #'
 #' - **Value listing**: methods to list all possible values of facets, fields,
@@ -289,75 +289,76 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' ## Value listing
 #'
-#' `EsgfQuery` object provides the following value-listing methods to query
+#' `EsgQuery` object provides the following value-listing methods to query
 #' available facets, fields, shards, and values from the ESGF index node:
 #'
-#' - \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
+#' - \href{#method-EsgQuery-list_facets}{\code{EsgQuery$list_facets()}}:
 #'   List all available facet names. When called, a
 #'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
 #'   is sent to the index node to get all available facets for the current
 #'   project (default: CMIP6).
 #'
-#' - \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
+#' - \href{#method-EsgQuery-list_fields}{\code{EsgQuery$list_fields()}}:
 #'   List all available field names. This is useful for bridge index nodes
 #'   where facet listing is not available.
 #'
-#' - \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}:
+#' - \href{#method-EsgQuery-list_shards}{\code{EsgQuery$list_shards()}}:
 #'   List all available shards (ESGF index nodes) that can be queried in
 #'   distributed searches.
 #'
-#' - \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
+#' - \href{#method-EsgQuery-list_values}{\code{EsgQuery$list_values()}}:
 #'   List all available values of specific facets.
 #'
 #' ## Parameter getter & setter
 #'
-#' The ESGF search services support a lot of parameters. The `EsgfQuery`
+#' The ESGF search services support a lot of parameters. The `EsgQuery`
 #' contains dedicated methods to set values for most of them, including:
 #'
 #' - Most common keywords:
-#'   \href{#method-EsgfQuery-facets}{\code{facets}},
-#'   \href{#method-EsgfQuery-offset}{\code{offset}},
-#'   \href{#method-EsgfQuery-limit}{\code{limit}},
-#'   \href{#method-EsgfQuery-fields}{\code{fields}},
-#'   \href{#method-EsgfQuery-type}{\code{type}},
-#'   \href{#method-EsgfQuery-replica}{\code{replica}},
-#'   \href{#method-EsgfQuery-latest}{\code{latest}},
-#'   \href{#method-EsgfQuery-distrib}{\code{distrib}}
+#'   \href{#method-EsgQuery-facets}{\code{facets}},
+#'   \href{#method-EsgQuery-offset}{\code{offset}},
+#'   \href{#method-EsgQuery-limit}{\code{limit}},
+#'   \href{#method-EsgQuery-fields}{\code{fields}},
+#'   \href{#method-EsgQuery-type}{\code{type}},
+#'   \href{#method-EsgQuery-replica}{\code{replica}},
+#'   \href{#method-EsgQuery-latest}{\code{latest}},
+#'   \href{#method-EsgQuery-distrib}{\code{distrib}}
 #'   and
-#'   \href{#method-EsgfQuery-shards}{\code{shards}}.
+#'   \href{#method-EsgQuery-shards}{\code{shards}}.
 #'
 #' - Most common facets:
-#'   \href{#method-EsgfQuery-project}{\code{project}},
-#'   \href{#method-EsgfQuery-activity_id}{\code{activity_id}},
-#'   \href{#method-EsgfQuery-experiment_id}{\code{experiment_id}},
-#'   \href{#method-EsgfQuery-source_id}{\code{source_id}},
-#'   \href{#method-EsgfQuery-variable_id}{\code{variable_id}},
-#'   \href{#method-EsgfQuery-frequency}{\code{frequency}},
-#'   \href{#method-EsgfQuery-variant_label}{\code{variant_label}},
-#'   \href{#method-EsgfQuery-nominal_resolution}{\code{nominal_resolution}}
+#'   \href{#method-EsgQuery-project}{\code{project}},
+#'   \href{#method-EsgQuery-activity_id}{\code{activity_id}},
+#'   \href{#method-EsgQuery-experiment_id}{\code{experiment_id}},
+#'   \href{#method-EsgQuery-source_id}{\code{source_id}},
+#'   \href{#method-EsgQuery-variable_id}{\code{variable_id}},
+#'   \href{#method-EsgQuery-frequency}{\code{frequency}},
+#'   \href{#method-EsgQuery-variant_label}{\code{variant_label}},
+#'   \href{#method-EsgQuery-date_range}{\code{date_range}},
+#'   \href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}}
 #'   and
-#'   \href{#method-EsgfQuery-data_node}{\code{data_node}}.
+#'   \href{#method-EsgQuery-data_node}{\code{data_node}}.
 #'
 #' All methods act in a similar way:
 #'
 #' - If input is given, the corresponding parameter is set and the updated
-#'   `EsgfQuery` object is returned.
+#'   `EsgQuery` object is returned.
 #'
 #'   * This makes it possible to chain different parameter setters, e.g.
-#'     `EsgfQuery$project("CMIP6")$frequency("day")$limit(1)` sets the parameter
+#'     `EsgQuery$project("CMIP6")$frequency("day")$limit(1)` sets the parameter
 #'     `project`, `frequency` and `limit` sequentially.
 #'
 #'   * For parameters that want character inputs, you can put a preceding `!` to
-#'     negate the constraints, e.g. `EsgfQuery$project(!"CMIP6")` searches for
+#'     negate the constraints, e.g. `EsgQuery$project(!"CMIP6")` searches for
 #'     all projects except for `CMIP6`.
 #'
 #' - If no input is given, the current parameter value is returned. For example,
-#'   directly calling `EsgfQuery$project()` returns the current value of the
+#'   directly calling `EsgQuery$project()` returns the current value of the
 #'   `project` parameter. The returned value can be two types:
 #'
 #'   * `NULL`, i.e. there is no constraint on the corresponding parameter
 #'
-#'   * An `EsgfQueryParam` object which is essentially a list of three elements:
+#'   * An `EsgQueryParam` object which is essentially a list of three elements:
 #'
 #'     + `value`: The input values
 #'     + `negate`: Whether there is a preceding `!` in the input
@@ -365,25 +366,25 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' Despite methods for specific keywords and facets, you can specify arbitrary
 #' query parameters using
-#' \href{#method-EsgfQuery-params}{\code{EsgfQuery$params()}} method. For
+#' \href{#method-EsgQuery-params}{\code{EsgQuery$params()}} method. For
 #' details on the usage, please see the
-#' \href{#method-EsgfQuery-params}{documentation}.
+#' \href{#method-EsgQuery-params}{documentation}.
 #'
 #' ## Query responses
 #'
 #' The query is not sent unless related methods are called:
 #'
-#' - \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}}: Count the total
+#' - \href{#method-EsgQuery-count}{\code{EsgQuery$count()}}: Count the total
 #'   number of records that match the query.
 #'
 #'   * You can return only the total number of matched record by calling
-#'     `EsgfQuery$count(facets = FALSE)`
+#'     `EsgQuery$count(facets = FALSE)`
 #'
 #'   * You can also count the matched records for specified facets, e.g.
-#'     `EsgfQuery$count(facets = c("source_id", "activity_id"))`
+#'     `EsgQuery$count(facets = c("source_id", "activity_id"))`
 #'
-#' - \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
-#'   query results and format it into an [EsgfQueryResultDataset] object.
+#' - \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}: Collect the
+#'   query results and format it into an [EsgResultDataset] object.
 #'
 #' ## Bridge Index Nodes
 #'
@@ -403,31 +404,31 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' ## Other helpers
 #'
-#' `EsgfQuery` object also provides several other helper functions:
+#' `EsgQuery` object also provides several other helper functions:
 #'
 #' - **Query URL generation**:
 #'
-#'   * \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
+#'   * \href{#method-EsgQuery-url}{\code{EsgQuery$url()}}: Returns the actual
 #'     query URL or the wget script URL which can be used to download all files
 #'     matching the given constraints.
 #'
 #' - **State persistence**:
 #'
-#'   * \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}: Save the query
+#'   * \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}: Save the query
 #'     state to a JSON file for later use.
 #'
-#'   * \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}: Restore the
+#'   * \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}: Restore the
 #'     query state from a JSON file created by `$save()`.
 #'
 #' - **Display**:
 #'
-#'   * \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a
-#'     summary of the current `EsgfQuery` object including the index node URL,
+#'   * \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}: Print a
+#'     summary of the current `EsgQuery` object including the index node URL,
 #'     the last query timestamp, and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
-#' @name EsgfQuery
+#' @name EsgQuery
 #'
 #' @param index_node The URL to the ESGF Index Node. Default is to use the
 #'        [ORNL (Oak Ridge National Laboratory) Index Node](https://esgf-node.ornl.gov).
@@ -449,20 +450,20 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'   `https://esgf.ceda.ac.uk`
 #'
 #' @export
-query_esgf <- function(index_node = "https://esgf-node.ornl.gov") {
-    EsgfQuery$new(index_node = index_node)
+esg_query <- function(index_node = "https://esgf-node.ornl.gov") {
+    EsgQuery$new(index_node = index_node)
 }
 # }}}
 
-#' @name EsgfQuery
+#' @name EsgQuery
 #' @export
-# EsgfQuery {{{
-EsgfQuery <- R6::R6Class("EsgfQuery",
+# EsgQuery {{{
+EsgQuery <- R6::R6Class("EsgQuery",
     lock_class = TRUE,
     public = list(
         # initialize {{{
         #' @description
-        #' Create a new EsgfQuery object
+        #' Create a new EsgQuery object
         #'
         #' @param index_node The URL to the ESGF Index Node. Default is to use the
         #'        [ORNL (Oak Ridge National Laboratory)](https://esgf-node.ornl.gov)
@@ -483,11 +484,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' - CEDA (Centre for Environmental Data Analysis), UK:
         #'   `https://esgf.ceda.ac.uk`
         #'
-        #' @return An `EsgfQuery` object.
+        #' @return An `EsgQuery` object.
         #'
         #' @examples
         #' \dontrun{
-        #' q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
+        #' q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
         #' q
         #' }
         initialize = function(index_node = "https://esgf-node.ornl.gov") {
@@ -1036,7 +1037,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `facets` parameter for facet counting query.
         #'
         #' Note that `$facets()` only affects
-        #' \href{#method-EsgfQuery-count}{\code{$count()}}
+        #' \href{#method-EsgQuery-count}{\code{$count()}}
         #' method when sending a query of facet counting.
         #'
         #' @param value
@@ -1071,7 +1072,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' query. `$fields()` can be used to limit the number of fields returned
         #' in the query response. However, the following fields are always
         #' included in the results:
-        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
+        #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param value
         #' `r rd_query_method_param("fields", "character vector", default = "*")`
@@ -1258,7 +1259,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `offset` parameter.
         #'
         #' If the query returns records that exceed the
-        #' \href{#method-EsgfQuery-limit}{\code{limit}} number,
+        #' \href{#method-EsgQuery-limit}{\code{limit}} number,
         #' `$offset()` can be used to paginate through the available results.
         #'
         #' @param value
@@ -1321,7 +1322,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' `$params()` can be used to specify other parameters that do not have
         #' a dedicated method, e.g. `version`, `master_id`, etc. It can also be
         #' used to overwrite existing parameter values specified using methods
-        #' like \href{#method-EsgfQuery-activity_id}{\code{$activity_id()}}.
+        #' like \href{#method-EsgQuery-activity_id}{\code{$activity_id()}}.
         #'
         #' @param ... Parameter values to set. There are three options:
         #'
@@ -1337,10 +1338,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @return
         #'
-        #' - If parameters are specified, the modified `EsgfQuery` object.
+        #' - If parameters are specified, the modified `EsgQuery` object.
         #'
         #' - Otherwise, an empty list for `$params(NULL)` or a list of
-        #'   `EsgfQueryParam` objects.
+        #'   `EsgQueryParam` objects.
         #'
         #' @examples
         #' \dontrun{
@@ -1397,8 +1398,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                             "But 'type' found in input with value = '%s'.",
                             "It will be reset to 'Dataset'.",
                             "If you want to perform a '%s' query,",
-                            "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
-                            "result, and then use 'EsgfQueryResultDataset$collect(type = '%s')'."
+                            "please first run 'EsgQuery$collect()' to get the 'Dataset'",
+                            "result, and then use 'EsgResultDataset$collect(type = '%s')'."
                         ),
                         type$value, type$value, type$value
                     ))
@@ -1541,7 +1542,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' - If `NULL` or `FALSE`, only the total number of matched records is
         #'   returned.
-        #' - If `TRUE`, the value of \href{#method-EsgfQuery-facets}{\code{$facets()}}
+        #' - If `TRUE`, the value of \href{#method-EsgQuery-facets}{\code{$facets()}}
         #'   is used to limit the facets. If `$facets()` returns `NULL`, only the
         #'   total count is returned. This is the default value.
         #' - If a character vector, it is used to limit the facets.
@@ -1600,10 +1601,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' `$collect()` sends the actual query with **`type=Dataset`** to the
         #' ESGF search services and returns the results as an
-        #' [EsgfQueryResultDataset] object.
+        #' [EsgResultDataset] object.
         #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
-        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
+        #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param all Whether to collect all results despite of the value of
         #'        `offset`. Default: `FALSE`.
@@ -1616,18 +1617,18 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        Default: `FALSE`.
         #'
         #' @param params Whether to include facet fields that have parameter
-        #'        constraints explicitly set using `EsgfQuery$project()`,
-        #'        `EsgfQuery$activity_id()`, `EsgfQuery$params()` and etc. in the
+        #'        constraints explicitly set using `EsgQuery$project()`,
+        #'        `EsgQuery$activity_id()`, `EsgQuery$params()` and etc. in the
         #'        returned fields. For example, if you set `$experiment_id("ssp585")`,
         #'        the `experiment_id` field will be included in the results when
         #'        `params = TRUE`. Default: `TRUE`.
         #'
-        #' @return An [EsgfQueryResultDataset] object.
+        #' @return An [EsgResultDataset] object.
         #'
         #' @examples
         #' \dontrun{
         #' # by default, all fields with constrains are included in the results
-        #' query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+        #' query <- esg_query()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
         #' res1 <- query$collect()
         #' res1$fields
         #'
@@ -1651,7 +1652,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
                 private$index_node, private$parameter,
-                required_fields = EsgfQueryResultDataset$private_fields$required_fields,
+                required_fields = EsgResultDataset$private_fields$required_fields,
                 all = all, limit = limit, constraints = params
             )
 
@@ -1659,7 +1660,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             result$response$response$docs <- result$docs
 
             # create new results
-            new_query_result(EsgfQueryResultDataset,
+            new_query_result(EsgResultDataset,
                 private$index_node, private$parameter, result$response
             )
         },
@@ -1669,9 +1670,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Save the query into a JSON file
         #'
-        #' `$save()` puts main data of an `EsgfQuery` object into a JSON file
+        #' `$save()` puts main data of an `EsgQuery` object into a JSON file
         #' which can be loaded to restore the current state of query using
-        #' \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}.
+        #' \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
         #'        to.
@@ -1699,20 +1700,20 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Restore the query state from an JSON file
         #'
-        #' `$load()` reads data of an `EsgfQuery` object from a JSON file
+        #' `$load()` reads data of an `EsgQuery` object from a JSON file
         #' created using
-        #' \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
+        #' \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
         #'        from.
         #'
-        #' @return The modified `EsgfQuery` object itself.
+        #' @return The modified `EsgQuery` object itself.
         #'
         #' @examples
         #' \dontrun{
         #' f <- tempfile(fileext = "json")
         #'
-        #' q <- query_esgf()
+        #' q <- esg_query()
         #' json <- q$save(f)
         #' q$load(f)
         #' }
@@ -1728,12 +1729,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
         # print {{{
         #' @description
-        #' Print a summary of the current `EsgfQuery` object
+        #' Print a summary of the current `EsgQuery` object
         #'
-        #' `$print()` gives the summary of current `EsgfQuery` object including
+        #' `$print()` gives the summary of current `EsgQuery` object including
         #' the index node URL, the last query timestamp, and all query parameters.
         #'
-        #' @return The `EsgfQuery` object itself, invisibly.
+        #' @return The `EsgQuery` object itself, invisibly.
         #'
         #' @examples
         #' \dontrun{
@@ -1757,7 +1758,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
     private = list(
         index_node = NULL,
 
-        # all query parameters
+        # all query parameters {{{
         parameter = list(
             # facets
             project = "CMIP6",
@@ -2166,7 +2167,7 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
     if (length(json$parameter)) {
         json$parameter <- restore_params(
             input = json$parameter,
-            params = EsgfQuery$private_fields$parameter
+            params = EsgQuery$private_fields$parameter
         )
     }
 
@@ -2184,7 +2185,7 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
 # }}}
 
 # restore_params {{{
-restore_params <- function(input, params = EsgfQuery$private_fields$parameter) {
+restore_params <- function(input, params = EsgQuery$private_fields$parameter) {
     for (nm in names(input)) {
         par <- input[[nm]]
         if (!is.null(par)) {
