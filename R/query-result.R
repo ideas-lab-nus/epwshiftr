@@ -1,34 +1,34 @@
-# EsgfQueryResult {{{
+# EsgResult {{{
 #' Base class for results for ESGF query
 #'
 #' @description
 #'
-#' `EsgfQueryResult` is a base class that represents basic query results from
+#' `EsgResult` is a base class that represents basic query results from
 #' ESGF search RESTful API. It defines common fields and methods for results
 #' from all query types, including `Dataset`, `File` and `Aggregation`. Results
 #' from the three types are
 #'
-#' In general, there is no need to create an `EsgfQueryResult` manually.
+#' In general, there is no need to create an `EsgResult` manually.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResult
+#' @name EsgResult
 #' @keywords internal
-EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
+EsgResult <- R6::R6Class("EsgResult",
     lock_class = TRUE,
     public = list(
         # initialize {{{
         #' @description
-        #' Create a new EsgfQueryResult object
+        #' Create a new EsgResult object
         #'
         #' @param index_node The URL to the ESGF Index Node. It should be the
-        #'        same as the `index_node` for an [EsgfQuery] object that
+        #'        same as the `index_node` for an [EsgQuery] object that
         #'        collects the query results.
         #'
         #' @param params A list of query parameters.
         #'
         #' @param response The result of an query response.
         #'
-        #' @return An `EsgfQueryResult` object.
+        #' @return An `EsgResult` object.
         #'
         initialize = function(index_node, params, response) {
             private$index_node <- index_node
@@ -102,9 +102,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @description
         #' Save the result into a JSON file
         #'
-        #' `$save()` puts main data of an `EsgfQueryResult` object into a JSON file
+        #' `$save()` puts main data of an `EsgResult` object into a JSON file
         #' which can be loaded to restore the current state of result using
-        #' \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
+        #' \href{#method-EsgResult-load}{\code{EsgResult$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
         #'        to.
@@ -128,14 +128,14 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @description
         #' Restore the result state from an JSON file
         #'
-        #' `$load()` reads data of an `EsgfQueryResult` object from a JSON file
+        #' `$load()` reads data of an `EsgResult` object from a JSON file
         #' created using
-        #' \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
+        #' \href{#method-EsgResult-save}{\code{EsgResult$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
         #'        from.
         #'
-        #' @return The modified `EsgfQueryResult` object itself.
+        #' @return The modified `EsgResult` object itself.
         #'
         load = function(file) {
             q <- query_load(file, SCHEMA_RESULT_DATASET)
@@ -355,23 +355,23 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 )
 # }}}
 
-# EsgfQueryResultDataset {{{
+# EsgResultDataset {{{
 #' ESGF Query results for `Dataset` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultDataset` is a class that represents query results for
+#' `EsgResultDataset` is a class that represents query results for
 #' `Dataset` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' In general, there is no need to create an `EsgResultDataset` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}.
+#' \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultDataset
+#' @name EsgResultDataset
 #' @keywords internal
-EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultDataset <- R6::R6Class("EsgResultDataset",
+    inherit = EsgResult, lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -421,14 +421,14 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' `$collect()` sends a query with **`type=File`** or
         #' **`type=aggregation` (based on the specified `type`) for current
         #' datasets and returns an
-        #' [EsgfQueryResultFile] or
-        #' [EsgfQueryResultAggregation] object, respectively.
+        #' [EsgResultFile] or
+        #' [EsgResultAggregation] object, respectively.
         #'
         #' The following fields are always included in the results:
         #'
-        #' - For `File` query: `r paste0("\\verb{", EsgfQueryResultFile$private_fields$required_fields, "}", collapse = ", ")`.
+        #' - For `File` query: `r paste0("\\verb{", EsgResultFile$private_fields$required_fields, "}", collapse = ", ")`.
         #'
-        #' - For `Aggregation` query: `r paste0("\\verb{", EsgfQueryResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
+        #' - For `Aggregation` query: `r paste0("\\verb{", EsgResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param which A character vector giving the value of dataset ID or an
         #'        integer vector giving the indices of the dataset. If `NULL`,
@@ -449,12 +449,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #'
         #' @param ... Other parameters to set. Currently, there are 4 parameters
         #'        supported, including `replica`, `distrib`, `latest`, `shards`.
-        #'        For details on possible parameters, please see [query_esgf()].
+        #'        For details on possible parameters, please see [esg_query()].
         #'
         #' @return
         #'
-        #' - If `type="File"`, an [EsgfQueryResultFile] object
-        #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
+        #' - If `type="File"`, an [EsgResultFile] object
+        #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
         collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
             if (!is.null(which)) {
@@ -478,9 +478,9 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             )
 
             req_fld <- if (type == "File") {
-                EsgfQueryResultFile$private_fields$required_fields
+                EsgResultFile$private_fields$required_fields
             } else if (type == "Aggregation") {
-                EsgfQueryResultAggregation$private_fields$required_fields
+                EsgResultAggregation$private_fields$required_fields
             }
 
             result <- query_collect(
@@ -494,12 +494,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             # create new results
             if (type == "File") {
                 new_query_result(
-                    EsgfQueryResultFile,
+                    EsgResultFile,
                     private$index_node, params, result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
-                    EsgfQueryResultAggregation,
+                    EsgResultAggregation,
                     private$index_node, params, result$response
                 )
             }
@@ -513,7 +513,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultDataset` object itself, invisibly.
+        #' @return The `EsgResultDataset` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Dataset")
             private$print_summary("Dataset")
@@ -527,7 +527,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
+            EsgResult$private_fields$required_fields,
             "index_node", "number_of_files", "number_of_aggregations", "access"
         ))),
 
@@ -559,7 +559,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
 
             # create a new query to validate params
-            query <- query_esgf(private$index_node)
+            query <- esg_query(private$index_node)
 
             params <- list(
                 dataset_id = if (is.null(index)) self$id else self$id[index],
@@ -584,23 +584,23 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 )
 # }}}
 
-# EsgfQueryResultFile {{{
+# EsgResultFile {{{
 #' ESGF Query results for `File` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultFile` is a class that represents query results for
+#' `EsgResultFile` is a class that represents query results for
 #' `File` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' In general, there is no need to create an `EsgResultDataset` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#' \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultFile
+#' @name EsgResultFile
 #' @keywords internal
-EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultFile <- R6::R6Class("EsgResultFile",
+    inherit = EsgResult, lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -628,7 +628,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultFile` object itself, invisibly.
+        #' @return The `EsgResultFile` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("File")
             private$print_summary("File")
@@ -747,7 +747,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     ),
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
+            EsgResult$private_fields$required_fields,
             "dataset_id", "checksum", "checksum_type", "tracking_id", "title",
             "data_node"
         )))
@@ -755,23 +755,23 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
 )
 # }}}
 
-# EsgfQueryResultAggregation {{{
+# EsgResultAggregation {{{
 #' ESGF Query results for `Aggregation` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultAggregation` is a class that represents query results for
+#' `EsgResultAggregation` is a class that represents query results for
 #' `Aggregation` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultAggregation` manually.
+#' In general, there is no need to create an `EsgResultAggregation` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#' \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultAggregation
+#' @name EsgResultAggregation
 #' @keywords internal
-EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
+    inherit = EsgResult, lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -799,7 +799,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultAggregation` object itself, invisibly.
+        #' @return The `EsgResultAggregation` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Aggregation")
             private$print_summary("Aggregation")
@@ -921,7 +921,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
 
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
+            EsgResult$private_fields$required_fields,
             "dataset_id", "title", "data_node"
         )))
     )
@@ -968,28 +968,28 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
 }
 # }}}
 
-# result_esgf {{{
+# esg_result {{{
 
 #' Create empty query result object
 #'
 #' @description
-#' `result_esgf()` creates an empty query result object of input type, so that
-#' you can load the saved JSON file via `EsgfQueryResult$load()`.
+#' `esg_result()` creates an empty query result object of input type, so that
+#' you can load the saved JSON file via `EsgResult$load()`.
 #'
 #' @param type A string indicating what type of ESGF query result should be
 #'        created. Should be one of `"dataset"`, `"file"` or "aggregation"`.
 #'
-#' @return An empty [EsgfQueryResult] object of given type.
+#' @return An empty [EsgResult] object of given type.
 #'
 #' @export
-result_esgf <- function(type = c("dataset", "file", "aggregation")) {
+esg_result <- function(type = c("dataset", "file", "aggregation")) {
     type <- match.arg(type)
 
     new_query_result(
         switch(type,
-            "dataset" = EsgfQueryResultDataset,
-            "file" = EsgfQueryResultFile,
-            "aggregation" = EsgfQueryResultAggregation
+            "dataset" = EsgResultDataset,
+            "file" = EsgResultFile,
+            "aggregation" = EsgResultAggregation
         ),
         index_node = NULL, params = NULL, result = NULL
     )

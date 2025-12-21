@@ -154,9 +154,9 @@ rd_query_method_param <- function(method, type, negate, default, nullable = TRUE
 rd_query_method_return <- function() {
     paste(
         "\\itemize{",
-        "\\item If \\code{value} is given, the modified \\code{EsgfQuery} object.",
+        "\\item If \\code{value} is given, the modified \\code{EsgQuery} object.",
         paste(
-            "\\item Otherwise, an \\code{EsgfQueryParam} object which is essentially a list of three elements:",
+            "\\item Otherwise, an \\code{EsgQueryParam} object which is essentially a list of three elements:",
             "\\itemize{",
                 "\\item \\code{value}: input values.",
                 "\\item \\code{negate}: Whether there is a preceding \\code{!} or \\code{-}.",
