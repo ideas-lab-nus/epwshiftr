@@ -39,6 +39,7 @@ files.}
 \itemize{
 \item \href{#method-EsgfQueryResultFile-to_data_table}{\code{EsgfQueryResultFile$to_data_table()}}
 \item \href{#method-EsgfQueryResultFile-print}{\code{EsgfQueryResultFile$print()}}
+\item \href{#method-EsgfQueryResultFile-open_dataset}{\code{EsgfQueryResultFile$open_dataset()}}
 \item \href{#method-EsgfQueryResultFile-clone}{\code{EsgfQueryResultFile$clone()}}
 }
 }
@@ -96,6 +97,36 @@ all items will be printed. Default: \code{10L}.}
 }
 \subsection{Returns}{
 The \code{EsgfQueryResultFile} object itself, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResultFile-open_dataset"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultFile-open_dataset}{}}}
+\subsection{Method \code{open_dataset()}}{
+Open a file as an EsgDataset for remote data access via OPeNDAP
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultFile$open_dataset(
+  index = 1L,
+  fallback = c("ask", "auto", "error")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{index}}{Integer index of the file to open. Default: \code{1L}.}
+
+\item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
+\itemize{
+\item \code{"ask"}: Interactively ask the user (default)
+\item \code{"auto"}: Automatically download the file
+\item \code{"error"}: Raise an error
+}}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+An \code{EsgDataset} object with the connection already opened.
 }
 }
 \if{html}{\out{<hr>}}

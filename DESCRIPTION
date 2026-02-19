@@ -52,7 +52,7 @@ Encoding: UTF-8
 URL: https://github.com/ideas-lab-nus/epwshiftr
 BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Collate:
     'cache.R'
     'coord.R'
@@ -68,6 +68,7 @@ Collate:
     'query-result.R'
     'query.R'
     'schema.R'
+    'utils-solrdt.R'
     'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph

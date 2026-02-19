@@ -36,6 +36,7 @@ files.}
 \itemize{
 \item \href{#method-EsgfQueryResultAggregation-to_data_table}{\code{EsgfQueryResultAggregation$to_data_table()}}
 \item \href{#method-EsgfQueryResultAggregation-print}{\code{EsgfQueryResultAggregation$print()}}
+\item \href{#method-EsgfQueryResultAggregation-open_dataset}{\code{EsgfQueryResultAggregation$open_dataset()}}
 \item \href{#method-EsgfQueryResultAggregation-clone}{\code{EsgfQueryResultAggregation$clone()}}
 }
 }
@@ -93,6 +94,38 @@ all items will be printed. Default: \code{10L}.}
 }
 \subsection{Returns}{
 The \code{EsgfQueryResultAggregation} object itself, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQueryResultAggregation-open_dataset"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQueryResultAggregation-open_dataset}{}}}
+\subsection{Method \code{open_dataset()}}{
+Open aggregation files as an EsgDataset for remote data access via OPeNDAP
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQueryResultAggregation$open_dataset(
+  aggregate = TRUE,
+  fallback = c("ask", "auto", "error")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{aggregate}}{If \code{TRUE} (default), aggregate all files into a single
+logical dataset along the time dimension. If \code{FALSE}, open only the
+first file.}
+
+\item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
+\itemize{
+\item \code{"ask"}: Interactively ask the user (default)
+\item \code{"auto"}: Automatically download files
+\item \code{"error"}: Raise an error
+}}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+An \code{EsgDataset} object with the connection already opened.
 }
 }
 \if{html}{\out{<hr>}}
