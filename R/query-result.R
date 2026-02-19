@@ -636,6 +636,71 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             cli::cat_line()
             private$print_contents("File", n)
             invisible(self)
+        },
+        # }}}
+
+        # open_dataset {{{
+        #' @description
+        #' Open a file as an EsgDataset for remote data access via OPeNDAP
+        #'
+        #' @param index Integer index of the file to open. Default: `1L`.
+        #' @param fallback What to do if OPeNDAP is unavailable. One of:
+        #'   - `"ask"`: Interactively ask the user (default)
+        #'   - `"auto"`: Automatically download the file
+        #'   - `"error"`: Raise an error
+        #'
+        #' @return An `EsgDataset` object with the connection already opened.
+        open_dataset = function(index = 1L, fallback = c("ask", "auto", "error")) {
+            checkmate::assert_int(index, lower = 1L, upper = self$count())
+            fallback <- match.arg(fallback)
+
+            url <- self$url_opendap[index]
+
+            # Try OPeNDAP first
+            ds <- tryCatch({
+                d <- EsgDataset$new(url)
+                d$open()
+                d
+            }, error = function(e) NULL)
+
+            if (!is.null(ds)) return(ds)
+
+            # OPeNDAP failed — handle fallback
+            cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
+
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for this file.")
+            }
+
+            if (fallback == "ask" && interactive()) {
+                answer <- utils::menu(
+                    choices = c("Download via HTTP", "Cancel"),
+                    title = "OPeNDAP is not available. What would you like to do?"
+                )
+                if (answer != 1L) {
+                    cli::cli_abort("Operation cancelled by user.")
+                }
+            }
+
+            # Download as fallback
+            cli::cli_alert_info("Downloading file via HTTP as fallback...")
+            dl <- FileDownloader$new()
+
+            # Get file info
+            file_url <- self$url_download[index]
+            dt <- self$to_data_table()
+            checksum <- if ("checksum" %in% names(dt)) dt$checksum[index] else NULL
+            checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[index]) else NULL
+
+            local_path <- dl$download(
+                url = file_url,
+                checksum = checksum,
+                checksum_type = checksum_type
+            )
+
+            ds <- EsgDataset$new(local_path)
+            ds$open()
+            ds
         }
         # }}}
     ),
@@ -742,6 +807,81 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             cli::cat_line()
             private$print_contents("Aggregation", n)
             invisible(self)
+        },
+        # }}}
+
+        # open_dataset {{{
+        #' @description
+        #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
+        #'
+        #' @param aggregate If `TRUE` (default), aggregate all files into a single
+        #'   logical dataset along the time dimension. If `FALSE`, open only the
+        #'   first file.
+        #' @param fallback What to do if OPeNDAP is unavailable. One of:
+        #'   - `"ask"`: Interactively ask the user (default)
+        #'   - `"auto"`: Automatically download files
+        #'   - `"error"`: Raise an error
+        #'
+        #' @return An `EsgDataset` object with the connection already opened.
+        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error")) {
+            checkmate::assert_flag(aggregate)
+            fallback <- match.arg(fallback)
+
+            urls <- self$url_opendap
+
+            if (!aggregate) {
+                urls <- urls[1L]
+            }
+
+            # Try OPeNDAP
+            ds <- tryCatch({
+                d <- EsgDataset$new(urls, aggregate = aggregate && length(urls) > 1L)
+                d$open()
+                d
+            }, error = function(e) NULL)
+
+            if (!is.null(ds)) return(ds)
+
+            # OPeNDAP failed
+            cli::cli_alert_warning("OPeNDAP connection failed.")
+
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for these files.")
+            }
+
+            if (fallback == "ask" && interactive()) {
+                answer <- utils::menu(
+                    choices = c(
+                        sprintf("Download %d file(s) via HTTP", length(urls)),
+                        "Cancel"
+                    ),
+                    title = "OPeNDAP is not available. What would you like to do?"
+                )
+                if (answer != 1L) {
+                    cli::cli_abort("Operation cancelled by user.")
+                }
+            }
+
+            # Download as fallback
+            cli::cli_alert_info("Downloading {length(urls)} file(s) via HTTP as fallback...")
+            dl <- FileDownloader$new()
+
+            local_paths <- vapply(seq_along(urls), function(i) {
+                file_url <- self$url_download[i]
+                dt <- self$to_data_table()
+                checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
+                checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
+
+                dl$download(
+                    url = file_url,
+                    checksum = checksum,
+                    checksum_type = checksum_type
+                )
+            }, character(1L))
+
+            ds <- EsgDataset$new(local_paths, aggregate = aggregate && length(local_paths) > 1L)
+            ds$open()
+            ds
         }
         # }}}
     ),
