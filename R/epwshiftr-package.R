@@ -28,6 +28,7 @@
 #' @include utils.R
 #' @author Hongyuan Jia
 ## usethis namespace: start
+#' @importFrom abind abind
 #' @importFrom checkmate assert_count
 #' @importFrom cli cli_rule
 #' @importFrom data.table :=
@@ -36,6 +37,7 @@
 #' @importFrom fst write_fst
 #' @importFrom future.apply future_lapply
 #' @importFrom jsonlite fromJSON
+#' @importFrom mirai daemons mirai
 #' @importFrom PCICt as.PCICt
 #' @importFrom progressr with_progress
 #' @importFrom psychrolib GetTDewPointFromRelHum

@@ -1173,7 +1173,6 @@ q$variant_label(NULL)
 }
 
 }
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQuery-nominal_resolution"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQuery-nominal_resolution}{}}}
