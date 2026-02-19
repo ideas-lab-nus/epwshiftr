@@ -647,7 +647,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
                 dt
             } else {
                 # For 1D or other dimensions, just convert to data.table
-                data.table::data.table(value = as.vector(arr))
+                dt <- data.table::data.table(as.vector(arr))
+                data.table::setnames(dt, variable)
+                dt
             }
         }
         # }}}
