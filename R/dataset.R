@@ -71,7 +71,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' }
         open = function() {
             if (private$opened) {
-                cli::cli_warn("Dataset is already open.")
+                warning("Dataset is already open.")
                 return(invisible(self))
             }
 
@@ -90,7 +90,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
                 error = function(e) {
                     # Clean up any opened connections
                     self$close()
-                    cli::cli_abort("Failed to open OPeNDAP connection: {e$message}")
+                    stop(sprintf("Failed to open OPeNDAP connection: %s", e$message))
                 }
             )
 
@@ -127,9 +127,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get file information
         #'
-        #' Wraps [RNetCDF::file.inq.nc()].
-        #'
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return A list with file information.
         #'
@@ -148,10 +146,8 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get variable information
         #'
-        #' Wraps [RNetCDF::var.inq.nc()].
-        #'
         #' @param var Variable name or ID.
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return A list with variable information.
         #'
@@ -170,10 +166,8 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get dimension information
         #'
-        #' Wraps [RNetCDF::dim.inq.nc()].
-        #'
         #' @param dim Dimension name or ID.
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return A list with dimension information.
         #'
@@ -192,11 +186,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get attribute value
         #'
-        #' Wraps [RNetCDF::att.get.nc()].
-        #'
-        #' @param var Variable name or ID, or `"NC_GLOBAL"` for global attributes.
+        #' @param var Variable name or ID, or "NC_GLOBAL" for global attributes.
         #' @param att Attribute name.
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return The attribute value.
         #'
@@ -215,16 +207,11 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Read variable data
         #'
-        #' Wraps [RNetCDF::var.get.nc()].
-        #'
         #' @param var Variable name or ID.
-        #' @param start Integer vector. Starting indices (1-based). If `NULL`,
-        #'        starts from beginning. Default: `NULL`.
-        #' @param count Integer vector. Number of values to read along each
-        #'        dimension. If `NULL`, reads all. Default: `NULL`.
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
-        #' @param collapse Logical. Whether to collapse degenerate dimensions.
-        #'        Default: `TRUE`.
+        #' @param start Starting indices (1-based). If `NULL`, starts from beginning.
+        #' @param count Number of values to read. If `NULL`, reads all.
+        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param collapse Whether to collapse result. Default: `TRUE`.
         #'
         #' @return An array with variable data.
         #'
@@ -251,7 +238,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' List all variables in the dataset
         #'
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return A character vector of variable names.
         #'
@@ -277,7 +264,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' List all dimensions in the dataset
         #'
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
         #' @return A character vector of dimension names.
         #'
@@ -303,15 +290,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get time axis information
         #'
-        #' Results are cached in an internal metadata cache for subsequent calls.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
-        #'
-        #' @return A list containing:
-        #' - `values`: Numeric vector of time values
-        #' - `units`: Character string of time units
-        #' - `calendar`: Character string of calendar type
-        #' - `length`: Integer length of the time dimension
+        #' @return A list containing time values, units, and calendar.
         #'
         #' @examples
         #' \dontrun{
@@ -361,13 +342,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get spatial grid information (latitude and longitude)
         #'
-        #' Results are cached in an internal metadata cache for subsequent calls.
+        #' @param index File index for aggregated datasets. Default: `1L`.
         #'
-        #' @param index Integer. File index for aggregated datasets. Default: `1L`.
-        #'
-        #' @return A list containing:
-        #' - `lat`: Numeric vector of latitude values, or `NULL` if not found
-        #' - `lon`: Numeric vector of longitude values, or `NULL` if not found
+        #' @return A list containing latitude and longitude values.
         #'
         #' @examples
         #' \dontrun{
@@ -409,18 +386,11 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Read variable data as an array
         #'
-        #' If the dataset is aggregated and `aggregate = TRUE`, data from all
-        #' files is concatenated along the time dimension (first dimension)
-        #' using [abind::abind()].
-        #'
-        #' @param variable Character. Variable name.
-        #' @param start Integer vector. Starting indices. If `NULL`, starts from
-        #'        beginning. Default: `NULL`.
-        #' @param count Integer vector. Number of values to read. If `NULL`,
-        #'        reads all. Default: `NULL`.
-        #' @param aggregate Logical. If `TRUE` and dataset is aggregated,
-        #'        concatenate data across files along time dimension.
-        #'        Default: `TRUE`.
+        #' @param variable Variable name.
+        #' @param start Starting indices. If `NULL`, starts from beginning.
+        #' @param count Number of values to read. If `NULL`, reads all.
+        #' @param aggregate If `TRUE` and dataset is aggregated, concatenate
+        #'        data across files along time dimension. Default: `TRUE`.
         #'
         #' @return An array with variable data.
         #'
@@ -430,8 +400,6 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' }
         read_array = function(variable, start = NULL, count = NULL, aggregate = TRUE) {
             private$check_open()
-            checkmate::assert_string(variable)
-            checkmate::assert_flag(aggregate)
 
             if (!private$should_aggregate || !aggregate) {
                 # Single file read
@@ -439,29 +407,21 @@ EsgDataset <- R6::R6Class("EsgDataset",
             }
 
             # Aggregated read
-            private$read_aggregated(variable, start, count)
+            private$read_aggregated(variable, start, count, format = "array")
         },
         # }}}
 
         # read_data_table {{{
         #' @description
-        #' Read variable data as a [data.table][data.table::data.table()]
+        #' Read variable data as a data.table
         #'
-        #' Reads the variable as an array and converts it to long format.
-        #' For 3D arrays (time x lat x lon), the result has columns for
-        #' each dimension index and the variable value.
+        #' @param variable Variable name.
+        #' @param start Starting indices. If `NULL`, starts from beginning.
+        #' @param count Number of values to read. If `NULL`, reads all.
+        #' @param aggregate If `TRUE` and dataset is aggregated, concatenate
+        #'        data across files along time dimension. Default: `TRUE`.
         #'
-        #' @param variable Character. Variable name.
-        #' @param start Integer vector. Starting indices. If `NULL`, starts from
-        #'        beginning. Default: `NULL`.
-        #' @param count Integer vector. Number of values to read. If `NULL`,
-        #'        reads all. Default: `NULL`.
-        #' @param aggregate Logical. If `TRUE` and dataset is aggregated,
-        #'        concatenate data across files along time dimension.
-        #'        Default: `TRUE`.
-        #'
-        #' @return A [data.table][data.table::data.table()] with variable data
-        #'         in long format.
+        #' @return A data.table with variable data.
         #'
         #' @examples
         #' \dontrun{
@@ -479,29 +439,20 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #'
         #' @return The `EsgDataset` object itself, invisibly.
         print = function() {
-            d <- cli::cli_div(
-                theme = list(rule = list("line-type" = "double"))
-            )
-            cli::cli_rule("EsgDataset")
-            cli::cli_end(d)
-
-            cli::cli_li("URLs: {.val {length(private$urls)}}")
-            cli::cli_li("Status: {.field {if (private$opened) 'Open' else 'Closed'}}")
-            cli::cli_li("Aggregated: {.val {private$should_aggregate}}")
+            cli::cli_h1("ESGF Query Dataset")
+            cli::cli_li("URLs: {length(private$urls)}")
+            cli::cli_li("Status: {if (private$opened) 'Open' else 'Closed'}")
+            cli::cli_li("Aggregated: {private$should_aggregate}")
 
             if (private$opened) {
                 vars <- tryCatch(self$get_variables(1L), error = function(e) character())
                 dims <- tryCatch(self$get_dimensions(1L), error = function(e) character())
 
-                if (length(dims)) {
-                    cli::cli_h2("Dimensions")
-                    cli::cli_li("{paste(dims, collapse = ', ')}")
-                }
+                cli::cli_h2("Dimensions")
+                cli::cli_li("{paste(dims, collapse = ', ')}")
 
-                if (length(vars)) {
-                    cli::cli_h2("Variables")
-                    cli::cli_li("{paste(vars, collapse = ', ')}")
-                }
+                cli::cli_h2("Variables")
+                cli::cli_li("{paste(vars, collapse = ', ')}")
             }
 
             invisible(self)
@@ -511,28 +462,28 @@ EsgDataset <- R6::R6Class("EsgDataset",
 
     active = list(
         # url {{{
-        #' @field url The OPeNDAP URL(s).
+        #' @field url The OPeNDAP URL(s)
         url = function() {
             private$urls
         },
         # }}}
 
         # is_open {{{
-        #' @field is_open Logical. Whether the connection is open.
+        #' @field is_open Whether the connection is open
         is_open = function() {
             private$opened
         },
         # }}}
 
         # is_aggregated {{{
-        #' @field is_aggregated Logical. Whether the dataset is aggregated.
+        #' @field is_aggregated Whether the dataset is aggregated
         is_aggregated = function() {
             private$should_aggregate
         },
         # }}}
 
         # file_count {{{
-        #' @field file_count Integer. Number of files in the dataset.
+        #' @field file_count Number of files in the dataset
         file_count = function() {
             length(private$urls)
         }
@@ -556,20 +507,22 @@ EsgDataset <- R6::R6Class("EsgDataset",
         # check_open {{{
         check_open = function() {
             if (!private$opened) {
-                cli::cli_abort("Dataset is not open. Call {.code $open()} first.")
+                stop("Dataset is not open. Call $open() first.")
             }
         },
         # }}}
 
         # check_index {{{
         check_index = function(index) {
-            checkmate::assert_int(index, lower = 1L, upper = length(private$urls))
+            if (index < 1L || index > length(private$urls)) {
+                stop(sprintf("Invalid index %d. Must be between 1 and %d.", index, length(private$urls)))
+            }
         },
         # }}}
 
         # validate_aggregation {{{
         validate_aggregation = function() {
-            # Check that all files have compatible dimensions and variables
+            # Check that all files have compatible dimensions
             ref_dims <- self$get_dimensions(1L)
             ref_vars <- self$get_variables(1L)
 
@@ -578,15 +531,11 @@ EsgDataset <- R6::R6Class("EsgDataset",
                 vars <- self$get_variables(i)
 
                 if (!setequal(dims, ref_dims)) {
-                    cli::cli_warn(
-                        "File {i} has different dimensions than file 1. Aggregation may fail."
-                    )
+                    warning(sprintf("File %d has different dimensions. Aggregation may fail.", i))
                 }
 
                 if (!setequal(vars, ref_vars)) {
-                    cli::cli_warn(
-                        "File {i} has different variables than file 1. Some variables may be missing."
-                    )
+                    warning(sprintf("File %d has different variables. Some variables may be missing.", i))
                 }
             }
 
@@ -605,9 +554,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
         # }}}
 
         # read_aggregated {{{
-        read_aggregated = function(variable, start, count) {
-            if (!isTRUE(private$aggregation_info$validated)) {
-                cli::cli_abort("Aggregation not validated. This should not happen.")
+        read_aggregated = function(variable, start, count, format = "array") {
+            if (!private$aggregation_info$validated) {
+                stop("Aggregation not validated. This is a bug.")
             }
 
             # Read data from all files
@@ -622,37 +571,28 @@ EsgDataset <- R6::R6Class("EsgDataset",
 
         # array_to_data_table {{{
         array_to_data_table = function(arr, variable) {
-            # Convert array to data.table in long format
+            # Convert array to data.table
+            # Assuming dimensions are time, lat, lon
             dims <- dim(arr)
 
-            if (length(dims) == 3L) {
-                # Assuming dimensions are time, lat, lon
+            if (length(dims) == 3) {
+                # Create grid of indices
                 indices <- expand.grid(
-                    time = seq_len(dims[1L]),
-                    lat = seq_len(dims[2L]),
-                    lon = seq_len(dims[3L])
-                )
-
-                dt <- data.table::as.data.table(indices)
-                dt[[variable]] <- as.vector(arr)
-                dt
-            } else if (length(dims) == 2L) {
-                indices <- expand.grid(
-                    dim1 = seq_len(dims[1L]),
-                    dim2 = seq_len(dims[2L])
+                    time = seq_len(dims[1]),
+                    lat = seq_len(dims[2]),
+                    lon = seq_len(dims[3])
                 )
 
                 dt <- data.table::as.data.table(indices)
                 dt[[variable]] <- as.vector(arr)
                 dt
             } else {
-                # For 1D or other dimensions, just convert to data.table
-                dt <- data.table::data.table(as.vector(arr))
-                data.table::setnames(dt, variable)
-                dt
+                # For other dimensions, just convert to data.table
+                data.table::data.table(value = as.vector(arr))
             }
         }
         # }}}
     )
 )
 # }}}
+

@@ -144,13 +144,13 @@ Hongyuan Jia
 \section{Active bindings}{
 \if{html}{\out{<div class="r6-active-bindings">}}
 \describe{
-\item{\code{url}}{The OPeNDAP URL(s).}
+\item{\code{url}}{The OPeNDAP URL(s)}
 
-\item{\code{is_open}}{Logical. Whether the connection is open.}
+\item{\code{is_open}}{Whether the connection is open}
 
-\item{\code{is_aggregated}}{Logical. Whether the dataset is aggregated.}
+\item{\code{is_aggregated}}{Whether the dataset is aggregated}
 
-\item{\code{file_count}}{Integer. Number of files in the dataset.}
+\item{\code{file_count}}{Number of files in the dataset}
 }
 \if{html}{\out{</div>}}
 }
@@ -264,8 +264,6 @@ ds$close()
 \if{latex}{\out{\hypertarget{method-EsgDataset-file_inq}{}}}
 \subsection{Method \code{file_inq()}}{
 Get file information
-
-Wraps \code{\link[RNetCDF:file.inq.nc]{RNetCDF::file.inq.nc()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$file_inq(index = 1L)}\if{html}{\out{</div>}}
 }
@@ -273,7 +271,7 @@ Wraps \code{\link[RNetCDF:file.inq.nc]{RNetCDF::file.inq.nc()}}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -296,8 +294,6 @@ info <- ds$file_inq()
 \if{latex}{\out{\hypertarget{method-EsgDataset-var_inq}{}}}
 \subsection{Method \code{var_inq()}}{
 Get variable information
-
-Wraps \code{\link[RNetCDF:var.inq.nc]{RNetCDF::var.inq.nc()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$var_inq(var, index = 1L)}\if{html}{\out{</div>}}
 }
@@ -307,7 +303,7 @@ Wraps \code{\link[RNetCDF:var.inq.nc]{RNetCDF::var.inq.nc()}}.
 \describe{
 \item{\code{var}}{Variable name or ID.}
 
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -330,8 +326,6 @@ var_info <- ds$var_inq("tas")
 \if{latex}{\out{\hypertarget{method-EsgDataset-dim_inq}{}}}
 \subsection{Method \code{dim_inq()}}{
 Get dimension information
-
-Wraps \code{\link[RNetCDF:dim.inq.nc]{RNetCDF::dim.inq.nc()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$dim_inq(dim, index = 1L)}\if{html}{\out{</div>}}
 }
@@ -341,7 +335,7 @@ Wraps \code{\link[RNetCDF:dim.inq.nc]{RNetCDF::dim.inq.nc()}}.
 \describe{
 \item{\code{dim}}{Dimension name or ID.}
 
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -364,8 +358,6 @@ dim_info <- ds$dim_inq("time")
 \if{latex}{\out{\hypertarget{method-EsgDataset-att_get}{}}}
 \subsection{Method \code{att_get()}}{
 Get attribute value
-
-Wraps \code{\link[RNetCDF:att.get.nc]{RNetCDF::att.get.nc()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$att_get(var, att, index = 1L)}\if{html}{\out{</div>}}
 }
@@ -373,11 +365,11 @@ Wraps \code{\link[RNetCDF:att.get.nc]{RNetCDF::att.get.nc()}}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{var}}{Variable name or ID, or \code{"NC_GLOBAL"} for global attributes.}
+\item{\code{var}}{Variable name or ID, or "NC_GLOBAL" for global attributes.}
 
 \item{\code{att}}{Attribute name.}
 
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -400,8 +392,6 @@ units <- ds$att_get("tas", "units")
 \if{latex}{\out{\hypertarget{method-EsgDataset-var_get}{}}}
 \subsection{Method \code{var_get()}}{
 Read variable data
-
-Wraps \code{\link[RNetCDF:var.get.nc]{RNetCDF::var.get.nc()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$var_get(
   var,
@@ -417,16 +407,13 @@ Wraps \code{\link[RNetCDF:var.get.nc]{RNetCDF::var.get.nc()}}.
 \describe{
 \item{\code{var}}{Variable name or ID.}
 
-\item{\code{start}}{Integer vector. Starting indices (1-based). If \code{NULL},
-starts from beginning. Default: \code{NULL}.}
+\item{\code{start}}{Starting indices (1-based). If \code{NULL}, starts from beginning.}
 
-\item{\code{count}}{Integer vector. Number of values to read along each
-dimension. If \code{NULL}, reads all. Default: \code{NULL}.}
+\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 
-\item{\code{collapse}}{Logical. Whether to collapse degenerate dimensions.
-Default: \code{TRUE}.}
+\item{\code{collapse}}{Whether to collapse result. Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -457,7 +444,7 @@ List all variables in the dataset
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -487,7 +474,7 @@ List all dimensions in the dataset
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -510,8 +497,6 @@ dims <- ds$get_dimensions()
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_time_axis}{}}}
 \subsection{Method \code{get_time_axis()}}{
 Get time axis information
-
-Results are cached in an internal metadata cache for subsequent calls.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_time_axis(index = 1L)}\if{html}{\out{</div>}}
 }
@@ -519,18 +504,12 @@ Results are cached in an internal metadata cache for subsequent calls.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A list containing:
-\itemize{
-\item \code{values}: Numeric vector of time values
-\item \code{units}: Character string of time units
-\item \code{calendar}: Character string of calendar type
-\item \code{length}: Integer length of the time dimension
-}
+A list containing time values, units, and calendar.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -548,8 +527,6 @@ time_info <- ds$get_time_axis()
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_spatial_grid}{}}}
 \subsection{Method \code{get_spatial_grid()}}{
 Get spatial grid information (latitude and longitude)
-
-Results are cached in an internal metadata cache for subsequent calls.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_spatial_grid(index = 1L)}\if{html}{\out{</div>}}
 }
@@ -557,16 +534,12 @@ Results are cached in an internal metadata cache for subsequent calls.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer. File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A list containing:
-\itemize{
-\item \code{lat}: Numeric vector of latitude values, or \code{NULL} if not found
-\item \code{lon}: Numeric vector of longitude values, or \code{NULL} if not found
-}
+A list containing latitude and longitude values.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -584,10 +557,6 @@ grid <- ds$get_spatial_grid()
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_array}{}}}
 \subsection{Method \code{read_array()}}{
 Read variable data as an array
-
-If the dataset is aggregated and \code{aggregate = TRUE}, data from all
-files is concatenated along the time dimension (first dimension)
-using \code{\link[abind:abind]{abind::abind()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(variable, start = NULL, count = NULL, aggregate = TRUE)}\if{html}{\out{</div>}}
 }
@@ -595,17 +564,14 @@ using \code{\link[abind:abind]{abind::abind()}}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{variable}}{Character. Variable name.}
+\item{\code{variable}}{Variable name.}
 
-\item{\code{start}}{Integer vector. Starting indices. If \code{NULL}, starts from
-beginning. Default: \code{NULL}.}
+\item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
 
-\item{\code{count}}{Integer vector. Number of values to read. If \code{NULL},
-reads all. Default: \code{NULL}.}
+\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{aggregate}}{Logical. If \code{TRUE} and dataset is aggregated,
-concatenate data across files along time dimension.
-Default: \code{TRUE}.}
+\item{\code{aggregate}}{If \code{TRUE} and dataset is aggregated, concatenate
+data across files along time dimension. Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -627,11 +593,7 @@ data <- ds$read_array("tas")
 \if{html}{\out{<a id="method-EsgDataset-read_data_table"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_data_table}{}}}
 \subsection{Method \code{read_data_table()}}{
-Read variable data as a \link[data.table:data.table]{data.table}
-
-Reads the variable as an array and converts it to long format.
-For 3D arrays (time x lat x lon), the result has columns for
-each dimension index and the variable value.
+Read variable data as a data.table
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(
   variable,
@@ -644,23 +606,19 @@ each dimension index and the variable value.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{variable}}{Character. Variable name.}
+\item{\code{variable}}{Variable name.}
 
-\item{\code{start}}{Integer vector. Starting indices. If \code{NULL}, starts from
-beginning. Default: \code{NULL}.}
+\item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
 
-\item{\code{count}}{Integer vector. Number of values to read. If \code{NULL},
-reads all. Default: \code{NULL}.}
+\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{aggregate}}{Logical. If \code{TRUE} and dataset is aggregated,
-concatenate data across files along time dimension.
-Default: \code{TRUE}.}
+\item{\code{aggregate}}{If \code{TRUE} and dataset is aggregated, concatenate
+data across files along time dimension. Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A \link[data.table:data.table]{data.table} with variable data
-in long format.
+A data.table with variable data.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
