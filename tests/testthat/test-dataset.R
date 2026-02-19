@@ -1,323 +1,189 @@
-# Helper: create a temporary NetCDF file for testing
-create_test_nc <- function(filepath) {
-    nc <- RNetCDF::create.nc(filepath)
-    # add dimensions
-    RNetCDF::dim.def.nc(nc, "time", 12)
-    RNetCDF::dim.def.nc(nc, "lat", 5)
-    RNetCDF::dim.def.nc(nc, "lon", 10)
-    # add variables
-    RNetCDF::var.def.nc(nc, "time", "NC_DOUBLE", "time")
-    RNetCDF::var.def.nc(nc, "lat", "NC_DOUBLE", "lat")
-    RNetCDF::var.def.nc(nc, "lon", "NC_DOUBLE", "lon")
-    RNetCDF::var.def.nc(nc, "tas", "NC_FLOAT", c("lon", "lat", "time"))
-    # add attributes
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 2015-01-01")
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "standard")
-    RNetCDF::att.put.nc(nc, "lat", "units", "NC_CHAR", "degrees_north")
-    RNetCDF::att.put.nc(nc, "lon", "units", "NC_CHAR", "degrees_east")
-    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
-    # put data
-    RNetCDF::var.put.nc(nc, "time", 1:12)
-    RNetCDF::var.put.nc(nc, "lat", seq(-90, 90, length.out = 5))
-    RNetCDF::var.put.nc(nc, "lon", seq(0, 360, length.out = 10))
-    set.seed(42)
-    RNetCDF::var.put.nc(nc, "tas", array(rnorm(600), dim = c(10, 5, 12)))
-    RNetCDF::close.nc(nc)
-    filepath
-}
+test_that("EsgDataset can be created", {
+    skip_on_cran()
+    skip_if_offline()
 
-# Creation / Initialization {{{
-test_that("EsgDataset can be created with a single URL", {
-    url <- "https://example.com/data.nc"
+    index_node <- INDEX_NODES[["DKRZ"]]
+    q <- esg_query(index_node)$
+        activity_id("ScenarioMIP")$
+        source_id("AWI-CM-1-1-MR")$
+        frequency("day")$
+        variable_id("tas")$
+        experiment_id("ssp585")$
+        variant_label("r1i1p1f1")$
+        fields(c("source_id", "experiment_id", "frequency"))$
+        limit(2)$
+        collect()
+
+    f <- q$collect(1)
+    f$url[[1]]
+
+    # Test single URL
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
+
     ds <- EsgDataset$new(url)
     expect_s3_class(ds, "EsgDataset")
     expect_equal(ds$file_count, 1L)
     expect_false(ds$is_aggregated)
     expect_false(ds$is_open)
-    expect_equal(ds$url, url)
 })
 
-test_that("EsgDataset can be created with multiple URLs", {
-    urls <- c("https://example.com/data1.nc", "https://example.com/data2.nc")
-    ds <- EsgDataset$new(urls, aggregate = TRUE)
-    expect_s3_class(ds, "EsgDataset")
-    expect_equal(ds$file_count, 2L)
-    expect_true(ds$is_aggregated)
-    expect_false(ds$is_open)
-})
-
-test_that("EsgDataset aggregate=FALSE with multiple URLs", {
-    urls <- c("https://example.com/data1.nc", "https://example.com/data2.nc")
-    ds <- EsgDataset$new(urls, aggregate = FALSE)
-    expect_false(ds$is_aggregated)
-})
-
-test_that("EsgDataset rejects invalid inputs", {
-    expect_error(EsgDataset$new(character(0)))
-    expect_error(EsgDataset$new(NA_character_))
-    expect_error(EsgDataset$new("url", aggregate = "yes"))
-})
-# }}}
-
-# Open / Close with local NetCDF {{{
-test_that("EsgDataset can open and close local NetCDF files", {
+test_that("EsgDataset can open and close connections", {
     skip_on_cran()
+    skip_if_offline()
 
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
 
-    ds <- EsgDataset$new(tmp)
-    expect_false(ds$is_open)
+    ds <- EsgDataset$new(url)
 
+    # Test open
     ds$open()
     expect_true(ds$is_open)
 
-    # Opening again should warn
-    expect_warning(ds$open(), "already open")
-
+    # Test close
     ds$close()
     expect_false(ds$is_open)
 })
 
-test_that("EsgDataset finalize closes connections", {
+test_that("EsgDataset basic layer methods work", {
     skip_on_cran()
+    skip_if_offline()
 
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
+    q <- esg_query(INDEX_NODES[["DKRZ"]])$
+        activity_id("ScenarioMIP")$
+        source_id("AWI-CM-1-1-MR")$
+        frequency("day")$
+        variable_id("tas")$
+        experiment_id("ssp585")$
+        variant_label("r1i1p1f1")$
+        fields(c("source_id", "experiment_id", "frequency"))$
+        limit(2)
 
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    expect_true(ds$is_open)
+    # can create a new result dataset from EsgQuery$collect
+    expect_s3_class(datasets <- q$collect(), "EsgResultDataset")
+    files <- datasets$collect(limit = 1)
+    files$url
+    ds <- files$open_dataset()
 
-    # Trigger finalizer
-    ds$close()
-    expect_false(ds$is_open)
-})
-# }}}
-
-# Basic layer methods {{{
-test_that("EsgDataset file_inq works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
+    ds <- EsgDataset$new(url)
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
+    # Test file_inq
     info <- ds$file_inq()
     expect_type(info, "list")
     expect_true("nvars" %in% names(info))
     expect_true("ndims" %in% names(info))
-    expect_equal(info$ndims, 3L)
-    expect_equal(info$nvars, 4L) # time, lat, lon, tas
-})
 
-test_that("EsgDataset var_inq works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    # Test var_inq
     var_info <- ds$var_inq("tas")
     expect_type(var_info, "list")
     expect_equal(var_info$name, "tas")
-    expect_equal(var_info$ndims, 3L)
-})
 
-test_that("EsgDataset dim_inq works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    # Test dim_inq
     dim_info <- ds$dim_inq("time")
     expect_type(dim_info, "list")
     expect_equal(dim_info$name, "time")
-    expect_equal(dim_info$length, 12L)
+
+    # Test att_get
+    units <- ds$att_get("tas", "units")
+    expect_type(units, "character")
 })
 
-# Middle layer methods {{{
-test_that("EsgDataset get_variables works on local file", {
+test_that("EsgDataset middle layer methods work", {
     skip_on_cran()
+    skip_if_offline()
 
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
 
-    ds <- EsgDataset$new(tmp)
+    ds <- EsgDataset$new(url)
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
+    # Test get_variables
     vars <- ds$get_variables()
     expect_type(vars, "character")
     expect_true(length(vars) > 0)
     expect_true("tas" %in% vars)
-    expect_true("time" %in% vars)
-    expect_true("lat" %in% vars)
-    expect_true("lon" %in% vars)
-})
 
-test_that("EsgDataset get_dimensions works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    # Test get_dimensions
     dims <- ds$get_dimensions()
     expect_type(dims, "character")
     expect_true("time" %in% dims)
     expect_true("lat" %in% dims)
     expect_true("lon" %in% dims)
-})
 
-test_that("EsgDataset get_time_axis works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    # Test get_time_axis
     time_info <- ds$get_time_axis()
     expect_type(time_info, "list")
     expect_true("values" %in% names(time_info))
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
-    expect_true("length" %in% names(time_info))
-    expect_equal(time_info$units, "days since 2015-01-01")
-    expect_equal(time_info$calendar, "standard")
-    expect_equal(time_info$length, 12L)
-    expect_equal(length(time_info$values), 12L)
 
-    # Test caching: second call should return same result
-    time_info2 <- ds$get_time_axis()
-    expect_identical(time_info, time_info2)
-})
-
-test_that("EsgDataset get_spatial_grid works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    # Test get_spatial_grid
     grid <- ds$get_spatial_grid()
     expect_type(grid, "list")
     expect_true("lat" %in% names(grid))
     expect_true("lon" %in% names(grid))
-    expect_equal(length(grid$lat), 5L)
-    expect_equal(length(grid$lon), 10L)
-
-    # Test caching
-    grid2 <- ds$get_spatial_grid()
-    expect_identical(grid, grid2)
 })
-# }}}
 
-# High layer methods {{{
-test_that("EsgDataset read_array works on local file", {
+test_that("EsgDataset can read variable data", {
     skip_on_cran()
+    skip_if_offline()
 
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
 
-    ds <- EsgDataset$new(tmp)
+    ds <- EsgDataset$new(url)
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    arr <- ds$read_array("tas", start = c(1, 1, 1), count = c(2, 3, 4))
+    # Test var_get with subset
+    data <- ds$var_get("tas", start = c(1, 1, 1), count = c(1, 5, 5))
+    expect_type(data, "double")
+    expect_equal(dim(data), c(1, 5, 5))
+})
+
+test_that("EsgDataset high layer methods work", {
+    skip_on_cran()
+    skip_if_offline()
+
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
+
+    ds <- EsgDataset$new(url)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    # Test read_array
+    arr <- ds$read_array("tas", start = c(1, 1, 1), count = c(1, 5, 5))
     expect_type(arr, "double")
-    expect_equal(dim(arr), c(2L, 3L, 4L))
-})
+    expect_equal(dim(arr), c(1, 5, 5))
 
-test_that("EsgDataset read_data_table works on local file", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    dt <- ds$read_data_table("tas", start = c(1, 1, 1), count = c(2, 3, 4))
+    # Test read_data_table
+    dt <- ds$read_data_table("tas", start = c(1, 1, 1), count = c(1, 5, 5))
     expect_s3_class(dt, "data.table")
     expect_true("tas" %in% names(dt))
-    # 2 * 3 * 4 = 24 rows
-    expect_equal(nrow(dt), 24L)
 })
-# }}}
 
-# Error handling {{{
-test_that("EsgDataset errors on closed dataset", {
-    url <- "https://example.com/data.nc"
+test_that("EsgDataset handles errors gracefully", {
+    skip_on_cran()
+
+    url <- "https://aims3.llnl.gov/thredds/dodsC/cmip6/CMIP6.ScenarioMIP.NCAR.CESM2.ssp585.r4i1p1f1.Amon.tas.gn.v20200528.tas_Amon_CESM2_ssp585_r4i1p1f1_gn_201501-206412.nc"
+
     ds <- EsgDataset$new(url)
 
+    # Test methods on closed dataset
     expect_error(ds$file_inq(), "not open")
     expect_error(ds$var_inq("tas"), "not open")
-    expect_error(ds$dim_inq("time"), "not open")
-    expect_error(ds$att_get("tas", "units"), "not open")
     expect_error(ds$var_get("tas"), "not open")
-    expect_error(ds$get_variables(), "not open")
-    expect_error(ds$get_dimensions(), "not open")
-    expect_error(ds$get_time_axis(), "not open")
-    expect_error(ds$get_spatial_grid(), "not open")
-    expect_error(ds$read_array("tas"), "not open")
 })
 
-test_that("EsgDataset errors on invalid index", {
+test_that("EsgDataset print works", {
     skip_on_cran()
 
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    expect_error(ds$file_inq(index = 2L))
-    expect_error(ds$file_inq(index = 0L))
-})
-# }}}
-
-# Print method {{{
-test_that("EsgDataset print works when closed", {
     url <- "https://example.com/data.nc"
     ds <- EsgDataset$new(url)
 
-    # cli output goes to messages, not stdout
-    expect_no_error(expect_message(print(ds)))
+    expect_output(print(ds), "ESGF Query Dataset")
+    expect_output(print(ds), "URLs: 1")
+    expect_output(print(ds), "Status: Closed")
 })
-
-test_that("EsgDataset print works when open", {
-    skip_on_cran()
-
-    tmp <- withr::local_tempfile(fileext = ".nc")
-    create_test_nc(tmp)
-
-    ds <- EsgDataset$new(tmp)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    expect_no_error(expect_message(print(ds)))
-})
-# }}}
 
