@@ -832,6 +832,43 @@ test_that("with_url_cache() works in offline mode", {
     )
 })
 
+test_that("with_url_cache() validate parameter controls caching", {
+    cache <- local_test_cache()
+    local_cache_mode("normal")
+
+    call_count <- 0L
+    fn <- function() { call_count <<- call_count + 1L; NULL }
+
+    # With validate that rejects NULL: result returned but NOT cached
+    result1 <- with_url_cache("test", "validate_key", fn, validate = function(x) !is.null(x))
+    expect_null(result1)
+    expect_equal(call_count, 1L)
+
+    # Second call: fn IS called again (not cached)
+    result2 <- with_url_cache("test", "validate_key", fn, validate = function(x) !is.null(x))
+    expect_null(result2)
+    expect_equal(call_count, 2L)
+})
+
+test_that("with_url_cache() validate=NULL caches everything (default)", {
+    cache <- local_test_cache()
+    local_cache_mode("normal")
+
+    call_count <- 0L
+    fn <- function() { call_count <<- call_count + 1L; NULL }
+
+    # Without validate: NULL IS cached
+    result1 <- with_url_cache("test", "null_key", fn)
+    expect_null(result1)
+    expect_equal(call_count, 1L)
+
+    # Second call: fn NOT called (cached)
+    result2 <- with_url_cache("test", "null_key", fn)
+    expect_null(result2)
+    expect_equal(call_count, 1L)
+})
+
+
 test_that("with_download_cache() bypasses cache in off mode", {
     cache <- local_test_cache()
     local_cache_mode("off")

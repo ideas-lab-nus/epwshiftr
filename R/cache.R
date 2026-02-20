@@ -589,10 +589,12 @@ make_cache_key <- function(prefix, ...) {
 #' @param key_prefix A string prefix for the cache key.
 #' @param key_data Data to include in the cache key hash.
 #' @param fn A function (no arguments) that fetches the data.
+#' @param validate Optional function taking the result and returning TRUE if
+#'   it should be cached. If NULL (default), all results are cached.
 #'
 #' @return The result of `fn()` (possibly from cache).
 #' @noRd
-with_url_cache <- function(key_prefix, key_data, fn) {
+with_url_cache <- function(key_prefix, key_data, fn, validate = NULL) {
     mode <- cache_mode()
 
     # Off mode: bypass cache entirely
@@ -618,9 +620,11 @@ with_url_cache <- function(key_prefix, key_data, fn) {
         )
     }
 
-    # Normal mode: fetch, cache, return
+    # Normal mode: fetch, conditionally cache, return
     value <- fn()
-    cache$set(key, value)
+    if (is.null(validate) || isTRUE(validate(value))) {
+        cache$set(key, value)
+    }
     value
 }
 
