@@ -1,4 +1,5 @@
 # new_query_param() {{{
+local_test_cache()
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     param <- expect_s3_class(
@@ -24,7 +25,11 @@ test_that("ESGF Query Parameter works", {
     # can build query url
     index_node <- "https://esgf-node.llnl.gov/esg-search"
     expect_null(query_build(index_node, list(project = NULL)))
-    expect_true(grepl("CMIP5", query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5")))))
+    expect_true(grepl(
+        "CMIP5",
+        query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5"))),
+        fixed = TRUE
+    ))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
         query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon"))),
