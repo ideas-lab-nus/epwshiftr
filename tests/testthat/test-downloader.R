@@ -307,3 +307,34 @@ test_that("FileDownloader print works", {
     expect_no_error(expect_message(print(dl)))
 })
 # }}}
+
+# Offline Mode Tests {{{
+test_that("FileDownloader: offline mode blocks new downloads", {
+    local_cache_mode("offline")
+    dl <- FileDownloader$new(dest = tempdir(), n_workers = 0L)
+
+    expect_error(
+        dl$download(url = "https://example.com/nonexistent.nc"),
+        "offline"
+    )
+})
+
+test_that("FileDownloader: offline mode allows verified files", {
+    local_cache_mode("offline")
+
+    dest <- tempdir()
+    # Create a file that would be "verified"
+    test_file <- file.path(dest, "test-offline-verified.txt")
+    writeLines("test content", test_file)
+    on.exit(unlink(test_file), add = TRUE)
+
+    dl <- FileDownloader$new(dest = dest, n_workers = 0L)
+
+    # This should succeed because the file already exists (Verified status)
+    result <- dl$download(
+        url = "https://example.com/test-offline-verified.txt",
+        filename = "test-offline-verified.txt"
+    )
+    expect_equal(normalizePath(result), normalizePath(test_file))
+})
+# }}}

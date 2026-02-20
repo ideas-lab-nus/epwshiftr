@@ -352,6 +352,15 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 return(dest)
             }
 
+            # In offline mode, refuse to download files that don't exist locally
+            if (is_cache_offline() && status != FileStatus$Downloaded) {
+                stop(
+                    "Cannot download file in offline mode: ", url,
+                    "\nExpected file at: ", dest,
+                    call. = FALSE
+                )
+            }
+
             # if .done file exists and is valid, just move it
             if (status == FileStatus$Downloaded) {
                 verbose(cli::cli_alert_info("Moving completed download to final location..."))
@@ -939,6 +948,14 @@ FileDownloader <- R6::R6Class("FileDownloader",
         # download_async {{{
         download_async = function(url, filename, subdir, progress,
                                   overwrite, checksum, checksum_type, resume) {
+            # Check offline mode before launching async download
+            if (is_cache_offline()) {
+                stop(
+                    "Cannot download file in offline mode: ", url,
+                    call. = FALSE
+                )
+            }
+
             # Generate task ID
             task_id <- as.character(openssl::md5(paste(url, Sys.time())))
 
