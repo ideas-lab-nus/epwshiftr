@@ -27,7 +27,8 @@ test_that("ESGF Query Parameter works", {
     expect_true(grepl("CMIP5", query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5")))))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
-        query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon")))
+        query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon"))),
+        fixed = TRUE
     ))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
@@ -40,7 +41,8 @@ test_that("ESGF Query Parameter works", {
                     table_id = new_query_param("table_id", "Amon")
                 )
             )
-        )
+        ),
+        fixed = TRUE
     ))
 })
 # }}}
@@ -189,7 +191,7 @@ test_that("EsgQuery$fields()", {
 
 # EsgQuery$shards() {{{
 test_that("EsgQuery$shards()", {
-    expect_s3_class(q <- esg_query(), "EsgQuery")
+    q <- expect_s3_class(esg_query(), "EsgQuery")
 
     expect_null(q$shards())
     expect_false(q$distrib(FALSE)$distrib()$value)
@@ -287,7 +289,7 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
     # can get count
     expect_type(EsgQuery$new(index_node)$frequency("1hr")$count(FALSE), "integer")
     expect_type(EsgQuery$new(index_node)$frequency("1hr")$count(TRUE), "integer")
-    expect_type(cnt <- EsgQuery$new(index_node)$frequency("1hr")$count("activity_id"), "list")
+    cnt <- expect_type(EsgQuery$new(index_node)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
 })
 # }}}
@@ -300,10 +302,7 @@ test_that("EsgQuery$collect()", {
     q <- expect_s3_class(esg_query(index_node)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgQuery")
 
     # can collect the specified limit number of records
-    res <- expect_s3_class(
-        q$limit(1)$collect(),
-        "EsgResultDataset"
-    )
+    res <- expect_s3_class(q$limit(1)$collect(), "EsgResultDataset")
 
     # can collect fields with constraints
     expect_true(all(c("project", "frequency", "source_id") %in% names(res)))

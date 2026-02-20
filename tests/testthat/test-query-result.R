@@ -6,8 +6,6 @@ test_that("ESGF Query Result Dataset works", {
     q <- esg_query(index_node)$activity_id("ScenarioMIP")$source_id("AWI-CM-1-1-MR")$frequency("day")$variable_id(
         "tas"
     )$variant_label("r1i1p1f1")$fields(c("source_id", "experiment_id", "frequency"))$limit(2)
-    q$url()
-    # [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&source_id=AWI-CM-1-1-MR&variable_id=tas&frequency=day&variant_label=r1i1p1f1&fields=source_id,experiment_id,frequency&latest=true&type=Dataset&offset=0&distrib=true&limit=2&format=application%2Fsolr%2Bjson"
 
     # can create a new result dataset from Esg$collect
     datasets <- expect_s3_class(q$collect(), "EsgResultDataset")
