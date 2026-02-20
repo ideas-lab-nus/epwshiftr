@@ -11,20 +11,6 @@ In general, there is no need to create an \code{EsgResultAggregation} manually.
 Usually, it is created by calling
 \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}.
 }
-\examples{
-
-## ------------------------------------------------
-## Method `EsgResultAggregation$open_dataset`
-## ------------------------------------------------
-
-\dontrun{
-# Open and aggregate all files
-ds <- result$open_dataset()
-
-# Open without aggregation
-ds_list <- result$open_dataset(aggregate = FALSE)
-}
-}
 \author{
 Hongyuan Jia
 }
@@ -114,55 +100,33 @@ The \code{EsgResultAggregation} object itself, invisibly.
 \if{html}{\out{<a id="method-EsgResultAggregation-open_dataset"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultAggregation-open_dataset}{}}}
 \subsection{Method \code{open_dataset()}}{
-Open a remote aggregation dataset via OPeNDAP
-
-Opens aggregation files as a remote dataset using OPeNDAP protocol.
-By default, attempts to aggregate all files into a single dataset.
-If OPeNDAP is not available, can optionally download files first.
+Open aggregation files as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$open_dataset(
   aggregate = TRUE,
-  download_fallback = c("ask", "auto", "error"),
-  download_dir = NULL
+  fallback = c("ask", "auto", "error")
 )}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{aggregate}}{Whether to aggregate files into a single dataset.
-If \code{FALSE}, returns a list of individual datasets. Default: \code{TRUE}.}
+\item{\code{aggregate}}{If \code{TRUE} (default), aggregate all files into a single
+logical dataset along the time dimension. If \code{FALSE}, open only the
+first file.}
 
-\item{\code{download_fallback}}{Action when OPeNDAP is not available:
-- \code{"ask"}: Ask user for confirmation before downloading
-- \code{"auto"}: Automatically download if needed
-- \code{"error"}: Throw an error
-Default: \code{"ask"}.}
-
-\item{\code{download_dir}}{Directory to save downloaded files when using
-download fallback. If \code{NULL}, uses temporary directory.
-Default: \code{NULL}.}
+\item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
+\itemize{
+\item \code{"ask"}: Interactively ask the user (default)
+\item \code{"auto"}: Automatically download files
+\item \code{"error"}: Raise an error
+}}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-An \link{EsgDataset} object, or a list of \link{EsgDataset}
-objects if \code{aggregate = FALSE}.
+An \code{EsgDataset} object with the connection already opened.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# Open and aggregate all files
-ds <- result$open_dataset()
-
-# Open without aggregation
-ds_list <- result$open_dataset(aggregate = FALSE)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultAggregation-clone"></a>}}

@@ -181,7 +181,7 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
         )
 
         res <- NULL
-    # nocov end
+        # nocov end
     } else if (res$response$numFound == 0L) {
         verbose(warning(
             "No matched data. ",
@@ -206,17 +206,20 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 new_query_param <- function(name, value) {
     checkmate::assert_string(name)
 
-    if (!is.list(value)) value <- list(value = value, negate = FALSE)
-    if (is.null(value$value)) return(NULL)
+    if (!is.list(value)) {
+        value <- list(value = value, negate = FALSE)
+    }
+    if (is.null(value$value)) {
+        return(NULL)
+    }
 
-    checkmate::assert_list(value,
-        types = c("logical", "numeric", "character"),
-        any.missing = TRUE, names = "unique"
-    )
+    checkmate::assert_list(value, types = c("logical", "numeric", "character"), any.missing = TRUE, names = "unique")
     checkmate::assert_names(names(value), must.include = c("value", "negate"))
 
     # do not allow NAs
-    for (val in value) checkmate::assert_atomic(val, any.missing = FALSE)
+    for (val in value) {
+        checkmate::assert_atomic(val, any.missing = FALSE)
+    }
 
     value$name <- name
     structure(value, class = c("EsgQueryParam", "list"))
@@ -458,7 +461,8 @@ esg_query <- function(index_node = "https://esgf-node.ornl.gov") {
 #' @name EsgQuery
 #' @export
 # EsgQuery {{{
-EsgQuery <- R6::R6Class("EsgQuery",
+EsgQuery <- R6::R6Class(
+    "EsgQuery",
     lock_class = TRUE,
     public = list(
         # initialize {{{
@@ -500,7 +504,8 @@ EsgQuery <- R6::R6Class("EsgQuery",
             for (name in params) {
                 if (!is.null(.subset2(private$parameter, name))) {
                     private$parameter[[name]] <- new_query_param(
-                        name = name, value = .subset2(private$parameter, name)
+                        name = name,
+                        value = .subset2(private$parameter, name)
                     )
                 }
             }
@@ -626,7 +631,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
             res <- private$query_listing_cached(url, force, "shard")
             shards <- res$responseHeader$params$shards
 
-            if (!length(shards)) return(NULL)
+            if (!length(shards)) {
+                return(NULL)
+            }
 
             shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
 
@@ -698,7 +705,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
                 )
             }
 
-            if (length(facets) == 1L) out <- out[[1L]]
+            if (length(facets) == 1L) {
+                out <- out[[1L]]
+            }
             out
         },
         # }}}
@@ -725,7 +734,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$project(NULL)
         #' }
         project = function(value = "CMIP6") {
-            if (missing(value)) return(private$parameter$project)
+            if (missing(value)) {
+                return(private$parameter$project)
+            }
             # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$project <- eval(bquote(
@@ -760,7 +771,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$activity_id(NULL)
         #' }
         activity_id = function(value) {
-            if (missing(value)) return(private$parameter$activity_id)
+            if (missing(value)) {
+                return(private$parameter$activity_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$activity_id <- eval(bquote(
@@ -795,7 +808,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$experiment_id(NULL)
         #' }
         experiment_id = function(value) {
-            if (missing(value)) return(private$parameter$experiment_id)
+            if (missing(value)) {
+                return(private$parameter$experiment_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$experiment_id <- eval(bquote(
@@ -830,7 +845,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$source_id(NULL)
         #' }
         source_id = function(value) {
-            if (missing(value)) return(private$parameter$source_id)
+            if (missing(value)) {
+                return(private$parameter$source_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$source_id <- eval(bquote(
@@ -865,7 +882,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$variable_id(NULL)
         #' }
         variable_id = function(value) {
-            if (missing(value)) return(private$parameter$variable_id)
+            if (missing(value)) {
+                return(private$parameter$variable_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$variable_id <- eval(bquote(
@@ -900,7 +919,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$frequency(NULL)
         #' }
         frequency = function(value) {
-            if (missing(value)) return(private$parameter$frequency)
+            if (missing(value)) {
+                return(private$parameter$frequency)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$frequency <- eval(bquote(
@@ -935,7 +956,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$variant_label(NULL)
         #' }
         variant_label = function(value) {
-            if (missing(value)) return(private$parameter$variant_label)
+            if (missing(value)) {
+                return(private$parameter$variant_label)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$variant_label <- eval(bquote(
@@ -970,7 +993,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$nominal_resolution(NULL)
         #' }
         nominal_resolution = function(value) {
-            if (missing(value)) return(private$parameter$nominal_resolution)
+            if (missing(value)) {
+                return(private$parameter$nominal_resolution)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             param <- eval(bquote(
@@ -1022,7 +1047,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$data_node(NULL)
         #' }
         data_node = function(value) {
-            if (missing(value)) return(private$parameter$data_node)
+            if (missing(value)) {
+                return(private$parameter$data_node)
+            }
             # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$data_node <- eval(bquote(
@@ -1058,7 +1085,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$facets("*")
         #' }
         facets = function(value) {
-            if (missing(value)) return(private$parameter$facets)
+            if (missing(value)) {
+                return(private$parameter$facets)
+            }
             private$parameter$facets <- private$new_facet_param("facets", value, FALSE)
             invisible(self)
         },
@@ -1097,7 +1126,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$fields(NULL)
         #' }
         fields = function(value = "*") {
-            if (missing(value)) return(private$parameter$fields)
+            if (missing(value)) {
+                return(private$parameter$fields)
+            }
             private$parameter$fields <- private$new_facet_param("fields", value, FALSE)
             invisible(self)
         },
@@ -1135,7 +1166,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$shards(NULL)
         #' }
         shards = function(value) {
-            if (missing(value)) return(private$parameter$shards)
+            if (missing(value)) {
+                return(private$parameter$shards)
+            }
             if (!private$parameter$distrib$value && !is.null(value)) {
                 stop("'$distrib()' returns FALSE. Shard specification is only applicable for distributed queries.")
             }
@@ -1171,7 +1204,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$replica(NULL)
         #' }
         replica = function(value) {
-            if (missing(value)) return(private$parameter$replica)
+            if (missing(value)) {
+                return(private$parameter$replica)
+            }
             checkmate::assert_flag(value, null.ok = TRUE, .var.name = "replica")
             private$parameter$replica <- new_query_param("replica", value)
             self
@@ -1201,7 +1236,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$latest(TRUE)
         #' }
         latest = function(value = TRUE) {
-            if (missing(value)) return(private$parameter$latest)
+            if (missing(value)) {
+                return(private$parameter$latest)
+            }
             checkmate::assert_flag(value, .var.name = "latest")
             private$parameter$latest <- new_query_param("latest", value)
             self
@@ -1236,7 +1273,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$limit(12000L) # warning
         #' }
         limit = function(value = 10L) {
-            if (missing(value)) return(private$parameter$limit)
+            if (missing(value)) {
+                return(private$parameter$limit)
+            }
             checkmate::assert_count(value, .var.name = "limit")
             if (value > this$data_max_limit) {
                 warning(sprintf(
@@ -1277,7 +1316,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$offset(0L)
         #' }
         offset = function(value = 0L) {
-            if (missing(value)) return(private$parameter$offset)
+            if (missing(value)) {
+                return(private$parameter$offset)
+            }
             checkmate::assert_count(value, .var.name = "offset")
             private$parameter$offset <- new_query_param("offset", value)
             self
@@ -1308,7 +1349,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' q$distrib(TRUE)
         #' }
         distrib = function(value = TRUE) {
-            if (missing(value)) return(private$parameter$distrib)
+            if (missing(value)) {
+                return(private$parameter$distrib)
+            }
             checkmate::assert_flag(value, .var.name = "distrib")
             private$parameter$distrib <- new_query_param("distrib", value)
             self
@@ -1367,7 +1410,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
         params = function(...) {
             dots <- eval(substitute(alist(...)))
 
-            if (length(dots) == 0L) return(private$parameter$others)
+            if (length(dots) == 0L) {
+                return(private$parameter$others)
+            }
 
             if (length(dots) == 1L && is.null(names(dots)) && is.null(dots[[1L]])) {
                 private$parameter$others <- list()
@@ -1380,16 +1425,16 @@ EsgQuery <- R6::R6Class("EsgQuery",
                 lapply(params, .subset2, "value"),
                 # allow NULL
                 types = c("logical", "numeric", "character", "null"),
-                any.missing = TRUE, names = "unique", .var.name = "params"
+                any.missing = TRUE,
+                names = "unique",
+                .var.name = "params"
             )
             nms <- names(params)
 
             predefined <- private$predefined_facets()
 
             if ("type" %in% nms && length(type <- params[[nms == "type"]])) {
-                checkmate::assert_choice(type$value,
-                    c("Dataset", "File", "Aggregation"), .var.name = "type"
-                )
+                checkmate::assert_choice(type$value, c("Dataset", "File", "Aggregation"), .var.name = "type")
 
                 if (type$value != "Dataset") {
                     warning(sprintf(
@@ -1401,15 +1446,20 @@ EsgQuery <- R6::R6Class("EsgQuery",
                             "please first run 'EsgQuery$collect()' to get the 'Dataset'",
                             "result, and then use 'EsgResultDataset$collect(type = '%s')'."
                         ),
-                        type$value, type$value, type$value
+                        type$value,
+                        type$value,
+                        type$value
                     ))
                     params$type$value <- "Dataset"
                     params$type$negate <- FALSE
                 }
             }
 
-            if ("format" %in% nms && length(fmt <- params[[nms == "format"]]) &&
-                (is.null(fmt) || fmt$value != FORMAT_JSON)
+            if (
+                "format" %in%
+                    nms &&
+                    length(fmt <- params[[nms == "format"]]) &&
+                    (is.null(fmt) || fmt$value != FORMAT_JSON)
             ) {
                 warning(sprintf(
                     paste(
@@ -1424,8 +1474,12 @@ EsgQuery <- R6::R6Class("EsgQuery",
                 nms <- nms[nms != "format"]
             }
 
-            if (is_bridge_index_node(private$index_node) &&
-                "retracted" %in% nms && length(val <- params[[nms == "retracted"]]) && !is.null(val$value)) {
+            if (
+                is_bridge_index_node(private$index_node) &&
+                    "retracted" %in% nms &&
+                    length(val <- params[[nms == "retracted"]]) &&
+                    !is.null(val$value)
+            ) {
                 warning(sprintf(
                     paste(
                         "'retracted' is not supported for bridge index node.",
@@ -1588,7 +1642,9 @@ EsgQuery <- R6::R6Class("EsgQuery",
             url <- query_build(private$index_node, params)
             res <- read_json_response(url, simplifyVector = FALSE)
 
-            if (!facets) return(res$response$numFound)
+            if (!facets) {
+                return(res$response$numFound)
+            }
 
             counts <- lapply(res$facet_counts$facet_fields, private$format_facet_counts)
             c(list(total = res$response$numFound), counts)
@@ -1651,18 +1707,19 @@ EsgQuery <- R6::R6Class("EsgQuery",
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
-                private$index_node, private$parameter,
+                private$index_node,
+                private$parameter,
                 required_fields = EsgResultDataset$private_fields$required_fields,
-                all = all, limit = limit, constraints = params
+                all = all,
+                limit = limit,
+                constraints = params
             )
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
 
             # create new results
-            new_query_result(EsgResultDataset,
-                private$index_node, private$parameter, result$response
-            )
+            new_query_result(EsgResultDataset, private$index_node, private$parameter, result$response)
         },
         # }}}
 
@@ -1691,7 +1748,8 @@ EsgQuery <- R6::R6Class("EsgQuery",
                 index_node = private$index_node,
                 parameter = private$parameter,
                 response = NULL,
-                file = file, pretty = pretty
+                file = file,
+                pretty = pretty
             )
         },
         # }}}
@@ -1900,7 +1958,9 @@ get_response_cache_key <- function(url) {
 query_param_encode <- function(param) {
     # nocov start
     # only for character
-    if (!is.character(param)) return(param)
+    if (!is.character(param)) {
+        return(param)
+    }
     # nocov end
 
     # escape encoding if needed
@@ -1977,7 +2037,9 @@ query_build <- function(index_node, params, type = "search") {
         params <- params[!names(params) %in% c("type", "format")]
     }
 
-    if (!length(params)) return(NULL)
+    if (!length(params)) {
+        return(NULL)
+    }
 
     # NOTE: handle special endpoint for bridge
     if (is_bridge_index_node(index_node)) {
@@ -2000,7 +2062,7 @@ query_build <- function(index_node, params, type = "search") {
     is_negate <- vapply(params, function(param) param$negate, logical(1L))
     # facet queries without any negated inputs
     if (!is_bridge_index_node(index_node) || !any(is_negate)) {
-        facets <- paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
+        facets <- paste(vapply(params, format.EsgQueryParam, FUN.VALUE = ""), collapse = "&")
         return(paste0(endpoint, "?", facets))
     }
 
@@ -2009,15 +2071,22 @@ query_build <- function(index_node, params, type = "search") {
     # query syntax should be used since bridge does not support negate syntax
     # like 'project!=CMIP6'.
     # see: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#free-text-queries
-    facets <- paste(vapply(params[!is_negate], format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
-    query <- paste(vapply(params[is_negate], function(param) {
-        if (length(param$value) == 1L) {
-            value <- param$value
-        } else {
-            value <- sprintf("(%s)", paste(param$value, collapse = " "))
-        }
-        sprintf("%s:(NOT %s)", param$name, value)
-    }, FUN.VALUE = ""), collapse = " AND ")
+    facets <- paste(vapply(params[!is_negate], format.EsgQueryParam, FUN.VALUE = ""), collapse = "&")
+    query <- paste(
+        vapply(
+            params[is_negate],
+            function(param) {
+                if (length(param$value) == 1L) {
+                    value <- param$value
+                } else {
+                    value <- sprintf("(%s)", paste(param$value, collapse = " "))
+                }
+                sprintf("%s:(NOT %s)", param$name, value)
+            },
+            FUN.VALUE = ""
+        ),
+        collapse = " AND "
+    )
 
     paste0(
         endpoint,
@@ -2055,9 +2124,21 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
                 par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
                 # exclude keywords
                 keywords <- c(
-                    "facets", "offset", "limit", "fields", "format", "type",
-                    "replica", "latest", "distrib", "shards", "bbox", "start",
-                    "end", "from", "to"
+                    "facets",
+                    "offset",
+                    "limit",
+                    "fields",
+                    "format",
+                    "type",
+                    "replica",
+                    "latest",
+                    "distrib",
+                    "shards",
+                    "bbox",
+                    "start",
+                    "end",
+                    "from",
+                    "to"
                 )
                 par_nms <- setdiff(par_nms, keywords)
                 params$fields <- unique(c(params$fields, par_nms))
@@ -2073,7 +2154,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         # use specified batch
         if (is.numeric(limit)) {
             params$limit <- limit
-        # use 'unlimited' batch
+            # use 'unlimited' batch
         } else if (!limit) {
             params$limit <- this$data_max_limit
         }
@@ -2131,7 +2212,9 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
         # to string we can convert it to a string in advance
         if (length(response$timestamp)) {
             response$timestamp <- format.POSIXct(
-                response$timestamp, digits = 6, tz = "UTC",
+                response$timestamp,
+                digits = 6,
+                tz = "UTC",
                 format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
             )
         }
@@ -2143,9 +2226,13 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
     }
 
     data <- list(index_node = index_node, parameter = params)
-    if (length(response)) data$response <- response
+    if (length(response)) {
+        data$response <- response
+    }
 
-    if (length(list(...))) data <- c(data, list(...))
+    if (length(list(...))) {
+        data <- c(data, list(...))
+    }
 
     jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
 
@@ -2173,7 +2260,8 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
 
     if (length(json$response) && length(json$response$timestamp)) {
         json$response$timestamp <- as.POSIXct(
-            json$response$timestamp, tz = "UTC",
+            json$response$timestamp,
+            tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
         # change the time zone to current time zone

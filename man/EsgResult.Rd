@@ -21,12 +21,6 @@ Hongyuan Jia
 \item{\code{id}}{A character vector indicating globally unique record
 identifiers.}
 
-\item{\code{datetime_start}}{A POSIXct object indicating the start time of
-the dataset.}
-
-\item{\code{datetime_stop}}{A POSIXct object indicating the end time of
-the dataset.}
-
 \item{\code{url}}{A list of \link[data.table:data.table]{data.table} with 3
 columns:
 \enumerate{

@@ -104,8 +104,8 @@ datasets and returns an
 
 The following fields are always included in the results:
 \itemize{
-\item For \code{File} query: \verb{checksum}, \verb{checksum_type}, \verb{data_node}, \verb{dataset_id}, \verb{datetime_start}, \verb{datetime_stop}, \verb{id}, \verb{size}, \verb{title}, \verb{tracking_id}, \verb{url}.
-\item For \code{Aggregation} query: \verb{data_node}, \verb{dataset_id}, \verb{datetime_start}, \verb{datetime_stop}, \verb{id}, \verb{size}, \verb{title}, \verb{url}.
+\item For \code{File} query: \verb{checksum}, \verb{checksum_type}, \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{size}, \verb{title}, \verb{tracking_id}, \verb{url}.
+\item For \code{Aggregation} query: \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{size}, \verb{title}, \verb{url}.
 }
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultDataset$collect(
