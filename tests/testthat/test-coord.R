@@ -29,7 +29,7 @@ test_that("extract_location_dict()", {
 
 test_that("match_nc_coord()", {
     skip_on_cran()
-    cache <- get_cache()
+    cache <- get_test_cache()$info()$dir
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -65,7 +65,7 @@ test_that("match_nc_coord()", {
 
 test_that("match_location_coord()", {
     skip_on_cran()
-    cache <- get_cache()
+    cache <- get_test_cache()$info()$dir
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -81,7 +81,7 @@ test_that("match_location_coord()", {
 test_that("match_coord()", {
     skip_on_cran()
 
-    cache <- get_cache()
+    cache <- get_test_cache()$info()$dir
     file <- "SGP_Singapore.486980_IWEC.epw"
     path <- file.path(cache, file)
 
