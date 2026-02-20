@@ -1,6 +1,9 @@
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
-    DiskCache$new(dir = dir, ...)
+    cache <- DiskCache$new(dir = dir, ...)
+    # Reset set_count to 0 for deterministic pruning behavior in tests
+    cache$.__enclos_env__$private$set_count <- 0L
+    cache
 }
 
 # Basic functionality tests
