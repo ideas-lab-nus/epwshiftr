@@ -18,11 +18,6 @@ test_that("ESGF Query Result Dataset works", {
     expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
     # $to_data_table(): can keep the special format of certain fields
     expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
-    expect_true(any(vapply(
-        datasets$to_data_table(formatted = TRUE)$url,
-        data.table::is.data.table,
-        logical(1L)
-    )))
 
     # $has_opendap(): can test accessibility
     expect_type(datasets$has_opendap(), "logical")
@@ -45,12 +40,10 @@ test_that("ESGF Query Result Dataset works", {
             "frequency",
             "id",
             "index_node",
-            "number_of_aggregations",
             "number_of_files",
             "project",
             "size",
             "source_id",
-            "url",
             "variable_id",
             "variant_label"
         )
@@ -61,13 +54,7 @@ test_that("ESGF Query Result Dataset works", {
     expect_length(datasets$id, 2L)
 
     # $url
-    expect_type(datasets$url, "list")
-    expect_length(datasets$url, 2L)
-    expect_true(any(vapply(
-        datasets$url,
-        data.table::is.data.table,
-        logical(1L)
-    )))
+    expect_null(datasets$url)
 
     # $size
     expect_s3_class(datasets$size, "units")
