@@ -50,3 +50,29 @@ get_cache_nc <- function(reset = FALSE) {
 
     normalizePath(dir)
 }
+
+
+# Scoped cache mode switch for tests
+local_cache_mode <- function(mode, env = parent.frame()) {
+    old <- getOption("epwshiftr.cache")
+    withr::defer(options(epwshiftr.cache = old), envir = env)
+    opt_val <- switch(mode,
+        "normal" = TRUE,
+        "off" = FALSE,
+        "offline" = "offline",
+        stop(sprintf("Unknown cache mode: '%s'", mode))
+    )
+    options(epwshiftr.cache = opt_val)
+}
+
+# Create a temporary test cache and set it as the package cache
+local_test_cache <- function(env = parent.frame()) {
+    dir <- tempfile("epwshiftr-test-cache-")
+    cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
+    old_cache <- set_cache(cache)
+    withr::defer({
+        set_cache(old_cache)
+        unlink(dir, recursive = TRUE)
+    }, envir = env)
+    cache
+}
