@@ -13,7 +13,8 @@
 #' @author Hongyuan Jia
 #' @name EsgResult
 #' @keywords internal
-EsgResult <- R6::R6Class("EsgResult",
+EsgResult <- R6::R6Class(
+    "EsgResult",
     lock_class = TRUE,
     public = list(
         # initialize {{{
@@ -64,7 +65,9 @@ EsgResult <- R6::R6Class("EsgResult",
             if (!is.null(formatted)) {
                 for (field in formatted) {
                     # nocov start
-                    if (is.null(docs[[field]])) next
+                    if (is.null(docs[[field]])) {
+                        next
+                    }
                     # nocov end
                     docs[[field]] <- self[[field]]
                 }
@@ -119,7 +122,8 @@ EsgResult <- R6::R6Class("EsgResult",
                 index_node = private$index_node,
                 parameter = private$parameter,
                 response = private$response,
-                file = file, pretty = pretty
+                file = file,
+                pretty = pretty
             )
         },
         # }}}
@@ -170,17 +174,23 @@ EsgResult <- R6::R6Class("EsgResult",
         #'    URLs.
         url = function() {
             urls <- private$get_field("url")
-            # nocov start
-            if (!length(urls)) return(NULL)
-            # nocov end
+            if (!length(urls)) {
+                return(NULL)
+            }
 
             lapply(urls, function(url) {
-                if (!length(url)) return(NULL) # nocov
+                if (!length(url)) {
+                    return(NULL)
+                } # nocov
 
                 s <- strsplit(url, "|", fixed = TRUE)
                 # nocov start
-                if (any(unreco <- lengths(s) != 3L)) s[unreco] <- NULL
-                if (!length(s)) return(NULL)
+                if (any(unreco <- lengths(s) != 3L)) {
+                    s[unreco] <- NULL
+                }
+                if (!length(s)) {
+                    return(NULL)
+                }
                 # nocov end
 
                 res <- data.table::setDT(data.table::transpose(s))
@@ -204,7 +214,9 @@ EsgResult <- R6::R6Class("EsgResult",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(names(private$get_docs()))
         }
@@ -230,22 +242,30 @@ EsgResult <- R6::R6Class("EsgResult",
 
         # get_url {{{
         get_url = function(type, name = type) {
-            vapply(self$url, function(dt_url) {
-                # nocov start
-                if (!length(dt_url)) return(NA_character_)
-                # nocov end
+            vapply(
+                self$url,
+                function(dt_url) {
+                    # nocov start
+                    if (!length(dt_url)) {
+                        return(NA_character_)
+                    }
+                    # nocov end
 
-                res <- dt_url$url[dt_url$service == type]
-                if (!length(res)) return(NA_character_)
-                # nocov start
-                if (length(res) > 1L) {
-                    warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
-                    res <- res[[1L]]
-                }
-                # nocov end
+                    res <- dt_url$url[dt_url$service == type]
+                    if (!length(res)) {
+                        return(NA_character_)
+                    }
+                    # nocov start
+                    if (length(res) > 1L) {
+                        warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
+                        res <- res[[1L]]
+                    }
+                    # nocov end
 
-                res
-            }, character(1L))
+                    res
+                },
+                character(1L)
+            )
         },
         # }}}
 
@@ -295,7 +315,9 @@ EsgResult <- R6::R6Class("EsgResult",
 
             if (self$count() == 0L) {
                 cli::cli_bullets(c(" " = "{.strong <Empty>}"))
-                cli::cli_bullets(c(" " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"))
+                cli::cli_bullets(c(
+                    " " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"
+                ))
                 return()
             }
 
@@ -309,17 +331,18 @@ EsgResult <- R6::R6Class("EsgResult",
             spc <- strrep(" ", nchar(pre[1L], "width"))
 
             if (type == "Dataset") {
-                size <- sprintf("%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
-                    spc, private$get_field("number_of_files")[ind],
-                    round(self$size[ind], 2), units(self$size)$numerator,
+                size <- sprintf(
+                    "%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
+                    spc,
+                    private$get_field("number_of_files")[ind],
+                    round(self$size[ind], 2),
+                    units(self$size)$numerator,
                     if (is.null(private$get_field("number_of_aggregations"))) {
                         "No Aggregations"
                     } else {
                         agg <- private$get_field("number_of_aggregations")[ind]
                         agg[is.na(agg)] <- 0L
-                        paste(agg,
-                            vapply(agg, ngettext, "", "Aggregation", "Aggregations")
-                        )
+                        paste(agg, vapply(agg, ngettext, "", "Aggregation", "Aggregations"))
                     },
                     spc,
                     if (is.null(private$get_field("access"))) {
@@ -329,16 +352,17 @@ EsgResult <- R6::R6Class("EsgResult",
                     }
                 )
             } else {
-                size <- sprintf("%s   [ %s %s | Access: <%s> ]",
+                size <- sprintf(
+                    "%s   [ %s %s | Access: <%s> ]",
                     spc,
                     if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
                     units(self$size)$numerator,
                     if (is.null(self$url)) {
                         "NONE"
                     } else {
-                        vapply(self$url[ind], FUN.VALUE = character(1),
-                            function(url) paste0(url$service, collapse = ", ")
-                        )
+                        vapply(self$url[ind], FUN.VALUE = character(1), function(url) {
+                            paste0(url$service, collapse = ", ")
+                        })
                     }
                 )
             }
@@ -370,8 +394,10 @@ EsgResult <- R6::R6Class("EsgResult",
 #' @author Hongyuan Jia
 #' @name EsgResultDataset
 #' @keywords internal
-EsgResultDataset <- R6::R6Class("EsgResultDataset",
-    inherit = EsgResult, lock_class = TRUE,
+EsgResultDataset <- R6::R6Class(
+    "EsgResultDataset",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -463,8 +489,11 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
                 } else {
                     checkmate::assert(
                         checkmate::check_subset(which, self$id),
-                        checkmate::check_integerish(which,
-                            lower = 1L, upper = self$count(), any.missing = FALSE,
+                        checkmate::check_integerish(
+                            which,
+                            lower = 1L,
+                            upper = self$count(),
+                            any.missing = FALSE,
                             unique = TRUE
                         )
                     )
@@ -474,7 +503,11 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
             }
 
             params <- private$build_params(
-                fields = fields, limit = limit, type = type, index = which, ...
+                fields = fields,
+                limit = limit,
+                type = type,
+                index = which,
+                ...
             )
 
             req_fld <- if (type == "File") {
@@ -484,8 +517,12 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
             }
 
             result <- query_collect(
-                private$index_node, params, required_fields = req_fld,
-                all = all, limit = limit, constraints = FALSE
+                private$index_node,
+                params,
+                required_fields = req_fld,
+                all = all,
+                limit = limit,
+                constraints = FALSE
             )
 
             # replace docs in the last response
@@ -495,12 +532,16 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
             if (type == "File") {
                 new_query_result(
                     EsgResultFile,
-                    private$index_node, params, result$response
+                    private$index_node,
+                    params,
+                    result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgResultAggregation,
-                    private$index_node, params, result$response
+                    private$index_node,
+                    params,
+                    result$response
                 )
             }
         },
@@ -528,7 +569,10 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
     private = list(
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
-            "index_node", "number_of_files", "number_of_aggregations", "access"
+            "index_node",
+            "number_of_files",
+            "number_of_aggregations",
+            "access"
         ))),
 
         # build_params {{{
@@ -536,7 +580,9 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
             checkmate::assert_choice(type, c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
-            if (is.null(limit)) limit <- this$data_max_limit
+            if (is.null(limit)) {
+                limit <- this$data_max_limit
+            }
 
             params <- eval(substitute(alist(...)))
             if (length(params)) {
@@ -549,14 +595,19 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
                 if (any(invld <- !names_params %in% names_supp)) {
                     stop(sprintf(
                         "Unsupported query parameter found: [%s]. Should be subset of [%s].",
-                        names_params[invld], paste(names_supp, collapse = ", ")
+                        names_params[invld],
+                        paste(names_supp, collapse = ", ")
                     ))
                 }
             }
 
             # assign default values for distrib and latest
-            if (is.null(params$distrib)) params$distrib <- new_query_param("distrib", TRUE)
-            if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
+            if (is.null(params$distrib)) {
+                params$distrib <- new_query_param("distrib", TRUE)
+            }
+            if (is.null(params$latest)) {
+                params$latest <- new_query_param("latest", TRUE)
+            }
 
             # create a new query to validate params
             query <- esg_query(private$index_node)
@@ -599,8 +650,10 @@ EsgResultDataset <- R6::R6Class("EsgResultDataset",
 #' @author Hongyuan Jia
 #' @name EsgResultFile
 #' @keywords internal
-EsgResultFile <- R6::R6Class("EsgResultFile",
-    inherit = EsgResult, lock_class = TRUE,
+EsgResultFile <- R6::R6Class(
+    "EsgResultFile",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -657,13 +710,18 @@ EsgResultFile <- R6::R6Class("EsgResultFile",
             url <- self$url_opendap[index]
 
             # Try OPeNDAP first
-            ds <- tryCatch({
-                d <- EsgDataset$new(url)
-                d$open()
-                d
-            }, error = function(e) NULL)
+            ds <- tryCatch(
+                {
+                    d <- EsgDataset$new(url)
+                    d$open()
+                    d
+                },
+                error = function(e) NULL
+            )
 
-            if (!is.null(ds)) return(ds)
+            if (!is.null(ds)) {
+                return(ds)
+            }
 
             # OPeNDAP failed — handle fallback
             cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
@@ -705,7 +763,6 @@ EsgResultFile <- R6::R6Class("EsgResultFile",
         # }}}
     ),
     active = list(
-
         # filename {{{
         #' @field filename A character vector indicating file names on the
         #'        sever.
@@ -739,7 +796,9 @@ EsgResultFile <- R6::R6Class("EsgResultFile",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(c("filename", "url_opendap", "url_download", super$fields))
         }
@@ -748,7 +807,11 @@ EsgResultFile <- R6::R6Class("EsgResultFile",
     private = list(
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
-            "dataset_id", "checksum", "checksum_type", "tracking_id", "title",
+            "dataset_id",
+            "checksum",
+            "checksum_type",
+            "tracking_id",
+            "title",
             "data_node"
         )))
     )
@@ -770,8 +833,10 @@ EsgResultFile <- R6::R6Class("EsgResultFile",
 #' @author Hongyuan Jia
 #' @name EsgResultAggregation
 #' @keywords internal
-EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
-    inherit = EsgResult, lock_class = TRUE,
+EsgResultAggregation <- R6::R6Class(
+    "EsgResultAggregation",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -834,13 +899,18 @@ EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
             }
 
             # Try OPeNDAP
-            ds <- tryCatch({
-                d <- EsgDataset$new(urls, aggregate = aggregate && length(urls) > 1L)
-                d$open()
-                d
-            }, error = function(e) NULL)
+            ds <- tryCatch(
+                {
+                    d <- EsgDataset$new(urls, aggregate = aggregate && length(urls) > 1L)
+                    d$open()
+                    d
+                },
+                error = function(e) NULL
+            )
 
-            if (!is.null(ds)) return(ds)
+            if (!is.null(ds)) {
+                return(ds)
+            }
 
             # OPeNDAP failed
             cli::cli_alert_warning("OPeNDAP connection failed.")
@@ -866,18 +936,22 @@ EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
             cli::cli_alert_info("Downloading {length(urls)} file(s) via HTTP as fallback...")
             dl <- FileDownloader$new()
 
-            local_paths <- vapply(seq_along(urls), function(i) {
-                file_url <- self$url_download[i]
-                dt <- self$to_data_table()
-                checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
-                checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
+            local_paths <- vapply(
+                seq_along(urls),
+                function(i) {
+                    file_url <- self$url_download[i]
+                    dt <- self$to_data_table()
+                    checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
+                    checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
 
-                dl$download(
-                    url = file_url,
-                    checksum = checksum,
-                    checksum_type = checksum_type
-                )
-            }, character(1L))
+                    dl$download(
+                        url = file_url,
+                        checksum = checksum,
+                        checksum_type = checksum_type
+                    )
+                },
+                character(1L)
+            )
 
             ds <- EsgDataset$new(local_paths, aggregate = aggregate && length(local_paths) > 1L)
             ds$open()
@@ -912,7 +986,9 @@ EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(c("url_opendap", "url_download", super$fields))
         }
@@ -922,7 +998,9 @@ EsgResultAggregation <- R6::R6Class("EsgResultAggregation",
     private = list(
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
-            "dataset_id", "title", "data_node"
+            "dataset_id",
+            "title",
+            "data_node"
         )))
     )
 )
@@ -949,7 +1027,8 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
         for (field in fld_miss) {
             eval(substitute(
                 generator$set(
-                    "active", field,
+                    "active",
+                    field,
                     function() {
                         private$get_field(field)
                     }
@@ -958,11 +1037,14 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
             ))
         }
 
-        on.exit({
-            for (field in fld_miss) {
-                generator$active[[field]] <- NULL
-            }
-        }, add = TRUE)
+        on.exit(
+            {
+                for (field in fld_miss) {
+                    generator$active[[field]] <- NULL
+                }
+            },
+            add = TRUE
+        )
     }
     generator$new(index_node, params, result, ...)
 }
@@ -986,12 +1068,10 @@ esg_result <- function(type = c("dataset", "file", "aggregation")) {
     type <- match.arg(type)
 
     new_query_result(
-        switch(type,
-            "dataset" = EsgResultDataset,
-            "file" = EsgResultFile,
-            "aggregation" = EsgResultAggregation
-        ),
-        index_node = NULL, params = NULL, result = NULL
+        switch(type, "dataset" = EsgResultDataset, "file" = EsgResultFile, "aggregation" = EsgResultAggregation),
+        index_node = NULL,
+        params = NULL,
+        result = NULL
     )
 }
 # }}}
