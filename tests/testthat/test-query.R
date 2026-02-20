@@ -1,8 +1,8 @@
 # new_query_param() {{{
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
-    expect_s3_class(
-        param <- new_query_param("x", list(value = LETTERS[1:3], negate = TRUE)),
+    param <- expect_s3_class(
+        new_query_param("x", list(value = LETTERS[1:3], negate = TRUE)),
         "EsgQueryParam"
     )
 
@@ -31,7 +31,8 @@ test_that("ESGF Query Parameter works", {
     ))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
-        query_build(index_node,
+        query_build(
+            index_node,
             list(
                 project = new_query_param("project", "CMIP6"),
                 others = list(
@@ -52,8 +53,8 @@ test_that("esg_query()", {
     skip_on_cran()
 
     index_node <- get_fast_index_node()
-    expect_s3_class(q <- EsgQuery$new(index_node), "EsgQuery")
-    expect_s3_class(q <- esg_query(index_node), "EsgQuery")
+    q <- expect_s3_class(EsgQuery$new(index_node), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node), "EsgQuery")
 })
 # }}}
 
@@ -63,11 +64,11 @@ test_that("EsgQuery$list_facets()", {
     index_node_normal <- INDEX_NODES[["CEDA"]]
     index_node_bridge <- INDEX_NODES[["ORNL"]]
 
-    expect_s3_class(q <- esg_query(index_node_normal), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_normal), "EsgQuery")
     expect_type(q$list_facets(), "character")
 
     # bridge node directly returns predefined facet names
-    expect_s3_class(q <- esg_query(index_node_bridge), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_bridge), "EsgQuery")
     expect_type(q$list_facets(), "character")
     expect_equal(q$list_facets(), FIELDS_FACETS_COMMON)
 })
@@ -79,9 +80,9 @@ test_that("EsgQuery$list_fields()", {
     index_node_normal <- INDEX_NODES[["CEDA"]]
     index_node_bridge <- INDEX_NODES[["ORNL"]]
 
-    expect_s3_class(q <- esg_query(index_node_normal), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_normal), "EsgQuery")
     expect_type(q$list_fields(), "character")
-    expect_s3_class(q <- esg_query(index_node_bridge), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_bridge), "EsgQuery")
     expect_type(q$list_fields(), "character")
 })
 # }}}
@@ -92,9 +93,9 @@ test_that("EsgQuery$list_shards()", {
     index_node_normal <- INDEX_NODES[["CEDA"]]
     index_node_bridge <- INDEX_NODES[["ORNL"]]
 
-    expect_s3_class(q <- esg_query(index_node_normal), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_normal), "EsgQuery")
     expect_type(q$list_shards(), "character")
-    expect_s3_class(q <- esg_query(index_node_bridge), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_bridge), "EsgQuery")
     expect_type(q$list_shards(), "character")
 })
 # }}}
@@ -105,9 +106,9 @@ test_that("EsgQuery$list_values()", {
     index_node_normal <- INDEX_NODES[["CEDA"]]
     index_node_bridge <- INDEX_NODES[["ORNL"]]
 
-    expect_s3_class(q <- esg_query(index_node_normal), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_normal), "EsgQuery")
     expect_type(q$list_values("activity_id"), "integer")
-    expect_s3_class(q <- esg_query(index_node_bridge), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node_bridge), "EsgQuery")
     expect_type(q$list_values(c("activity_id", "experiment_id")), "list")
     expect_named(q$list_values(c("activity_id", "experiment_id")), c("activity_id", "experiment_id"))
 })
@@ -155,13 +156,11 @@ test_that("EsgQuery$project() and other facet methods", {
 
     # nominal_resolution
     expect_null(q$nominal_resolution())
-    expect_equal(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()$value,
-        {
-            res <- c("100+km", "1x1+degree", "100km")
-            attr(res, "encoded") <- TRUE
-            res
-        }
-    )
+    expect_equal(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()$value, {
+        res <- c("100+km", "1x1+degree", "100km")
+        attr(res, "encoded") <- TRUE
+        res
+    })
     expect_null(q$nominal_resolution(NULL)$nominal_resolution())
 
     # data_node
@@ -240,7 +239,7 @@ test_that("EsgQuery$offset()", {
 
 # EsgQuery$params() {{{
 test_that("EsgQuery$params()", {
-    expect_s3_class(q <- esg_query(), "EsgQuery")
+    q <- expect_s3_class(esg_query(), "EsgQuery")
 
     # can use existing method for common parameters
     expect_equal(q$params(), list())
@@ -263,7 +262,7 @@ test_that("EsgQuery$params()", {
     expect_warning(q$params(format = "xml"), "JSON")
 
     # can reset type
-    expect_warning(q$params(type = "File"))
+    expect_warning(expect_warning(q$params(type = "File")))
 
     # can restore original values in case of error
     expect_equal(q$frequency("day")$frequency()$value, "day")
@@ -298,11 +297,11 @@ test_that("EsgQuery$collect()", {
     skip_on_cran()
     index_node <- get_fast_index_node()
 
-    expect_s3_class(q <- esg_query(index_node)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgQuery")
+    q <- expect_s3_class(esg_query(index_node)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgQuery")
 
     # can collect the specified limit number of records
-    expect_s3_class(
-        res <- q$limit(1)$collect(),
+    res <- expect_s3_class(
+        q$limit(1)$collect(),
         "EsgResultDataset"
     )
 
@@ -318,9 +317,9 @@ test_that("EsgQuery$collect()", {
 
     # can collect all results with auto-pagination
     ## with maximum batch size
-    expect_s3_class(res <- q$collect(all = TRUE, limit = FALSE), "EsgResultDataset")
+    expect_s3_class(q$collect(all = TRUE, limit = FALSE), "EsgResultDataset")
     ## with specified limits
-    expect_s3_class(res <- q$collect(all = TRUE, limit = 30), "EsgResultDataset")
+    expect_s3_class(q$collect(all = TRUE, limit = 30), "EsgResultDataset")
 })
 # }}}
 
@@ -329,20 +328,17 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     skip_on_cran()
     index_node <- INDEX_NODES[["CEDA"]]
 
-    q <- EsgQuery$new(index_node)$
-        activity_id("ScenarioMIP")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2)$
-        params(table_id = c("Amon", "day"))
+    q <- EsgQuery$new(index_node)$activity_id("ScenarioMIP")$experiment_id("ssp585")$variable_id("tas")$limit(2)$params(
+        table_id = c("Amon", "day")
+    )
 
     # empty query object
     file_empty <- tempfile(fileext = ".json")
     expect_snapshot_file(q$save(file_empty), "query_empty.json")
-    expect_s3_class(q_empty <- esg_query()$load(file_empty), "EsgQuery")
+    q_empty <- expect_s3_class(esg_query()$load(file_empty), "EsgQuery")
     expect_equal(priv(q_empty)$url_index_node, priv(q)$url_index_node)
-    expect_equal(priv(q_empty)$parameter,      priv(q)$parameter)
-    expect_equal(priv(q_empty)$response,       priv(q)$response)
+    expect_equal(priv(q_empty)$parameter, priv(q)$parameter)
+    expect_equal(priv(q_empty)$response, priv(q)$response)
 
     # query object with results
     q$collect()
@@ -352,9 +348,9 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     file_collected_copied <- tempfile(fileext = ".json")
     expect_true(file.copy(file_collected, file_collected_copied))
     expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_json)
-    expect_s3_class(q_collected <- esg_query()$load(file_collected), "EsgQuery")
+    q_collected <- expect_s3_class(esg_query()$load(file_collected), "EsgQuery")
     expect_equal(priv(q_collected)$index_node, priv(q)$index_node)
-    expect_equal(priv(q_collected)$parameter,  priv(q)$parameter)
+    expect_equal(priv(q_collected)$parameter, priv(q)$parameter)
 
     unlink(c(file_collected, file_collected_copied))
 })
