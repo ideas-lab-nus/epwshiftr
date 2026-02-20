@@ -332,7 +332,27 @@ esgf_query <- function(activity = "ScenarioMIP",
         pair(fields) %and%
         pair(format)
 
-    q <- tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
+    # Cache the JSON response from ESGF query
+    q_url <- q  # save the URL before overwriting
+    mode <- cache_mode()
+    if (mode != "off") {
+        cache <- get_cache()
+        cache_key <- make_cache_key("esgf", q_url)
+        cached <- cache$get(cache_key)
+        if (!is.key_missing(cached)) {
+            q <- cached
+        } else if (mode == "offline") {
+            stop("Cache miss in offline mode for ESGF query. Cannot fetch data while offline.", call. = FALSE)
+        } else {
+            q <- tryCatch(jsonlite::fromJSON(q_url), warning = function(w) w, error = function(e) e)
+            # Only cache successful results
+            if (!inherits(q, "warning") && !inherits(q, "error")) {
+                cache$set(cache_key, q)
+            }
+        }
+    } else {
+        q <- tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
+    }
 
     # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
@@ -796,11 +816,33 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
     msg <- NULL
-    res <- tryCatch(
-        jsonlite::fromJSON("https://aims2.llnl.gov/metagrid-backend/proxy/status"),
-        warning = function(w) { msg <<- conditionMessage(w); NULL },
-        error   = function(e) { msg <<- conditionMessage(e); NULL }
-    )
+    node_url <- "https://aims2.llnl.gov/metagrid-backend/proxy/status"
+    mode <- cache_mode()
+    if (mode != "off") {
+        cache <- get_cache()
+        cache_key <- make_cache_key("datanode", node_url)
+        cached <- cache$get(cache_key)
+        if (!is.key_missing(cached)) {
+            res <- cached
+        } else if (mode == "offline") {
+            stop("Cache miss in offline mode for data node status. Cannot fetch data while offline.", call. = FALSE)
+        } else {
+            res <- tryCatch(
+                jsonlite::fromJSON(node_url),
+                warning = function(w) { msg <<- conditionMessage(w); NULL },
+                error   = function(e) { msg <<- conditionMessage(e); NULL }
+            )
+            if (!is.null(res)) {
+                cache$set(cache_key, res)
+            }
+        }
+    } else {
+        res <- tryCatch(
+            jsonlite::fromJSON(node_url),
+            warning = function(w) { msg <<- conditionMessage(w); NULL },
+            error   = function(e) { msg <<- conditionMessage(e); NULL }
+        )
+    }
 
     # nocov start
     if (is.null(res) || res$status != "success") {
