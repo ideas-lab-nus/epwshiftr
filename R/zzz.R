@@ -5,6 +5,7 @@
     .opts <- c(
         "epwshiftr.verbose" = "FALSE",
         "epwshiftr.threshold_alpha" = "3",
+        # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = "TRUE",
         "epwshiftr.cache_dir" = sprintf('"%s"', normalizePath(tools::R_user_dir("epwshiftr", "cache"), winslash = "/"))
     )

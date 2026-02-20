@@ -19,10 +19,10 @@
 #' * `epwshiftr.dir`: The directory to store package data, including CMIP6
 #'   model output file index and etc. If not set, the current user data
 #'   directory will be used.
-#' * `epwshiftr.cache`: If `TRUE`, ESGF queries will be cached so that
-#'   duplicated queries will instantly return. It can also be a positive integer
-#'   specifying the maximum number of queries can be cached. `TRUE` means
-#'   infinite. Default: `TRUE`
+#' * `epwshiftr.cache`: Controls caching behavior. `TRUE` enables normal
+#'   caching (default), `FALSE` disables caching entirely, and `"offline"`
+#'   enables offline mode where only cached data is used and no network
+#'   requests are made. Default: `TRUE`
 #'
 #'
 #' @include utils.R
@@ -57,7 +57,12 @@ this$dict <- NULL
 this$cache <- NULL
 this$data_max_limit <- 10000L
 
-# nocov start
+#' Get the package-level DiskCache instance
+#'
+#' Lazily creates the cache on first access using options for configuration.
+#'
+#' @return A [DiskCache] instance.
+#' @noRd
 get_cache <- function() {
     if (is.null(this$cache)) {
         cache_dir <- getOption(
@@ -73,4 +78,27 @@ get_cache <- function() {
     }
     this$cache
 }
-# nocov end
+
+#' Set or replace the package-level DiskCache instance
+#'
+#' @param cache A [DiskCache] instance to use as the package cache.
+#'
+#' @return The previous cache instance (invisibly), or `NULL` if none was set.
+#' @noRd
+set_cache <- function(cache) {
+    old <- this$cache
+    this$cache <- cache
+    invisible(old)
+}
+
+#' Reset the package-level cache
+#'
+#' Sets the internal cache reference to `NULL`, so the next call to
+#' [get_cache()] will create a fresh [DiskCache] instance.
+#'
+#' @return `NULL` (invisibly).
+#' @noRd
+reset_cache <- function() {
+    this$cache <- NULL
+    invisible(NULL)
+}
