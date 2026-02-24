@@ -1,7 +1,7 @@
 test_that("monthly_mean()", {
     skip_on_cran()
 
-    cache <- get_test_cache()$info()$dir
+    cache <- test_data_dir()
     file <- "SGP_Singapore.486980_IWEC.epw"
     path <- file.path(cache, file)
 
@@ -33,7 +33,7 @@ test_that("monthly_mean()", {
 test_that("preprocess_morphing()", {
     skip_on_cran()
 
-    cache <- get_test_cache()$info()$dir
+    cache <- test_data_dir()
     path <- file.path(cache, "EC-Earth3.ssp585.tas.fst")
 
     if (file.exists(path)) {
@@ -67,7 +67,7 @@ test_that("preprocess_morphing()", {
 test_that("morphing_from_mean()", {
     skip_on_cran()
 
-    cache <- get_test_cache()$info()$dir
+    cache <- test_data_dir()
     file <- "EC-Earth3.ssp585.tas.fst"
     path <- file.path(cache, file)
 
@@ -206,7 +206,7 @@ test_that("morphing_from_mean()", {
 test_that("morphing_epw()", {
     skip_on_cran()
 
-    cache <- get_test_cache()$info()$dir
+    cache <- test_data_dir()
     file <- "EC-Earth3.ssp585.tas.fst"
     path <- file.path(cache, file)
 
@@ -330,7 +330,7 @@ test_that("morphing_epw()", {
 test_that("future_epw()", {
     skip_on_cran()
 
-    cache <- get_test_cache()$info()$dir
+    cache <- test_data_dir()
     file <- "EC-Earth3.ssp585.tas.fst"
     path <- file.path(cache, file)
 

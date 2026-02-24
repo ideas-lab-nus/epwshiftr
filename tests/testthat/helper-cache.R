@@ -1,18 +1,18 @@
-get_test_cache <- function(dir = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), max_size = "1 GB", max_age = "24 hours") {
+# Get test data directory path (for EPW/NetCDF files, not DiskCache objects)
+#
+# Uses EPWSHIFTR_CHECK_CACHE env var in CI, otherwise a fixed subdir of tempdir().
+# The directory is created if it doesn't exist.
+test_data_dir <- function() {
+    dir <- Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)
     if (is.na(dir)) {
-        dir <- tempfile("epwshiftr-test-cache-", tmpdir = tempdir())
+        dir <- file.path(tempdir(), "epwshiftr-test-data")
     }
-
-    DiskCache$new(
-        dir = dir,
-        max_size = max_size,
-        max_age = max_age,
-        max_n = Inf
-    )
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+    dir
 }
 
 get_cache_epw <- function() {
-    dir <- get_test_cache()$info()$dir
+    dir <- test_data_dir()
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(dir, file)
     if (!file.exists(epw)) {
@@ -22,7 +22,7 @@ get_cache_epw <- function() {
 }
 
 get_cache_nc <- function(reset = FALSE) {
-    dir <- get_test_cache()$info()$dir
+    dir <- test_data_dir()
     withr::with_options(
         list(epwshiftr.dir = dir),
         {
@@ -70,14 +70,27 @@ local_cache_mode <- function(mode, env = parent.frame()) {
 }
 
 # Create a temporary test cache and set it as the package cache
-local_test_cache <- function(env = parent.frame()) {
-    dir <- tempfile("epwshiftr-test-cache-")
+#
+# @param scope Character. One of:
+#   - "test" (default): ephemeral cache in tempfile(), deleted on exit
+#   - "session": persists within the R session (tempdir()-based), not deleted
+#   - "persist": persists across R sessions (system temp dir), not deleted
+# @param env The environment for withr::defer cleanup
+local_test_cache <- function(scope = c("test", "session", "persist"), env = parent.frame()) {
+    scope <- match.arg(scope)
+
+    dir <- switch(scope,
+        "test" = tempfile("epwshiftr-test-cache-"),
+        "session" = file.path(tempdir(), "epwshiftr-test-cache"),
+        "persist" = file.path(dirname(tempdir()), "epwshiftr-test-cache")
+    )
+
     cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
     old_cache <- set_cache(cache)
     withr::defer(
         {
             set_cache(old_cache)
-            unlink(dir, recursive = TRUE)
+            if (scope == "test") unlink(dir, recursive = TRUE)
         },
         envir = env
     )

@@ -1,5 +1,5 @@
 # new_query_param() {{{
-local_test_cache()
+local_test_cache(scope = "persist")
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     param <- expect_s3_class(

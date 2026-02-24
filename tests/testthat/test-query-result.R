@@ -1,5 +1,5 @@
 # EsgResultDataset {{{
-local_test_cache()
+local_test_cache(scope = "persist")
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
