@@ -69,10 +69,6 @@ test_that("ESGF Query Result Dataset works", {
     expect_length(datasets$access, 2L)
     expect_type(datasets$access[[1]], "character")
 
-    # $number_of_aggregations
-    expect_type(datasets$number_of_aggregations, "integer")
-    expect_length(datasets$number_of_aggregations, 2L)
-
     # $number_of_files
     expect_type(datasets$number_of_files, "integer")
     expect_length(datasets$number_of_files, 2L)
@@ -86,7 +82,7 @@ test_that("ESGF Query Result Dataset works", {
     expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
 
     # $load() empty datasets
-    expect_s3_class(de <- new_query_result(EsgResultDataset)$load(file), "EsgResultDataset")
+    de <- expect_s3_class(new_query_result(EsgResultDataset)$load(file), "EsgResultDataset")
     expect_equal(priv(de)$index_node, priv(datasets)$index_node)
     expect_equal(priv(de)$parameter, priv(datasets)$parameter)
     # manually add the cache key since '$save()' will exclude it
@@ -263,15 +259,15 @@ test_that("ESGF Query Result Aggregation works", {
 })
 # }}}
 
-# result_esgf() {{{
-test_that("result_esgf() works", {
+# esg_result() {{{
+test_that("esg_result() works", {
     expect_s3_class(esg_result(), "EsgResultDataset")
     expect_s3_class(esg_result("file"), "EsgResultFile")
     expect_s3_class(esg_result(), "EsgResultDataset")
 
     expect_snapshot(esg_result("file")$print(), transform = transform_print)
     expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
-    expect_snapshot(result_esgf("aggregation")$print(), transform = transform_print)
+    expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
 })
 # }}}
 

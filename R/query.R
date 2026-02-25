@@ -3,14 +3,21 @@ NULL
 
 FORMAT_JSON <- "application/solr+json"
 
+# Federated ESGF Nodes
+# https://esgf.github.io/nodes.html
 INDEX_NODES <- c(
+    # Metagrid Nodes - Europe/AU
+    CEDA = "https://esgf.ceda.ac.uk",
+    DKRZ = "https://esgf-data.dkrz.de",
+    NCI = "https://esgf.nci.org.au",
+
+    # Metagrid Nodes - DOE/US
     ORNL = "https://esgf-node.ornl.gov",
     LLNL = "https://esgf-node.llnl.gov",
-    NCI = "https://esgf.nci.org.au",
+
+    # CoG Nodes - Europe/AU
     IPSL = "https://esgf-node.ipsl.upmc.fr",
-    DKRZ = "https://esgf-data.dkrz.de",
-    LIU = "https://esg-dn1.nsc.liu.se",
-    CEDA = "https://esgf.ceda.ac.uk"
+    LIU = "https://esg-dn1.nsc.liu.se"
 )
 
 FIELDS_FACETS_ALL <- c(
@@ -1933,7 +1940,7 @@ is_bridge_index_node <- function(index_node) {
 # }}}
 
 # normalize_index_node {{{
-normalize_index_node <- function(index_node) {
+normalize_index_node <- function(index_node, raw = FALSE) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
     if (!grepl("://", index_node, fixed = TRUE)) {
@@ -1951,6 +1958,10 @@ normalize_index_node <- function(index_node) {
         # since LLNL will redirect to ORNL bridge, we always use ORNL bridge
         parsed$path <- "/esgf-1-5-bridge"
         parsed$host <- "esgf-node.ornl.gov"
+    }
+
+    if (raw) {
+        return(parsed)
     }
 
     url <- do.call(curl::curl_modify_url, parsed)

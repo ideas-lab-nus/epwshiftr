@@ -57,11 +57,11 @@ this$dict <- NULL
 this$cache <- NULL
 this$data_max_limit <- 10000L
 
-#' Get the package-level DiskCache instance
+#' Get the package-level `DiskCache` instance
 #'
 #' Lazily creates the cache on first access using options for configuration.
 #'
-#' @return A [DiskCache] instance.
+#' @return A `DiskCache` instance.
 #' @noRd
 get_cache <- function() {
     if (is.null(this$cache)) {
@@ -79,9 +79,9 @@ get_cache <- function() {
     this$cache
 }
 
-#' Set or replace the package-level DiskCache instance
+#' Set or replace the package-level `DiskCache` instance
 #'
-#' @param cache A [DiskCache] instance to use as the package cache.
+#' @param cache A `DiskCache` instance to use as the package cache.
 #'
 #' @return The previous cache instance (invisibly), or `NULL` if none was set.
 #' @noRd
@@ -94,7 +94,7 @@ set_cache <- function(cache) {
 #' Reset the package-level cache
 #'
 #' Sets the internal cache reference to `NULL`, so the next call to
-#' [get_cache()] will create a fresh [DiskCache] instance.
+#' `get_cache` will create a fresh `DiskCache` instance.
 #'
 #' @return `NULL` (invisibly).
 #' @noRd

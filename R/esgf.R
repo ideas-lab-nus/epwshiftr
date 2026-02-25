@@ -985,14 +985,15 @@ get_data_dir <- function() {
 }
 # }}}
 
-# get_data_node {{{
-#' Get data nodes which store CMIP6 output
+# data_node_status {{{
+#' Get status of data nodes which store CMIP6 output
 #'
 #' @param speed_test If `TRUE`, use [pingr::ping()] to perform connection speed
 #'        test on each data node. A `ping` column is appended in returned
 #'        data.table which stores each data node response in milliseconds. This
 #'        feature needs pingr package already installed. Default: `FALSE`.
 #' @param timeout Timeout for a ping response in seconds. Default: `3`.
+#' @param index_node The index node to query the data node status. Default: `INDEX_NODES[["ORNL"]]`.
 #'
 #' @return A [data.table::data.table()] of 2 or 3 (when `speed_test` is `TRUE`)
 #' columns:
@@ -1005,19 +1006,26 @@ get_data_dir <- function() {
 #'
 #' @examples
 #' \dontrun{
-#' get_data_node()
+#' data_node_status()
 #' }
 #'
 #' @export
-get_data_node <- function(speed_test = FALSE, timeout = 3) {
+data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX_NODES[["ORNL"]]) {
     # use the metagrid-backend to get the data node status
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
+    path <- "proxy/status"
+    parsed <- normalize_index_node(index_node, raw = TRUE)
+    if (parsed$path == "/esgf-1-5-bridge") {
+        url <- curl::curl_modify_url(parsed$url, path = path)
+    } else {
+        url <- curl::curl_modify_url(parsed$url, path = paste(parsed$path, path, sep = "/"))
+    }
+
     msg <- NULL
-    node_url <- "https://esgf-node.ornl.gov/proxy/status"
     res <- with_url_cache(
         "datanode",
-        node_url,
+        url,
         function() {
             tryCatch(
                 jsonlite::fromJSON(node_url),

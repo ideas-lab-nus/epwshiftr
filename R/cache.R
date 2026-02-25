@@ -444,7 +444,8 @@ DiskCache <- R6::R6Class(
             }
 
             # convert to bytes
-            multiplier <- switch(unit,
+            multiplier <- switch(
+                unit,
                 "b" = 1,
                 "kb" = 1024,
                 "mb" = 1024^2,
@@ -553,7 +554,8 @@ is_cache_offline <- function() {
 #' @noRd
 with_cache_mode <- function(mode, expr) {
     # Convert string mode to option value
-    opt_val <- switch(mode,
+    opt_val <- switch(
+        mode,
         "normal" = TRUE,
         "off" = FALSE,
         "offline" = "offline",
@@ -569,7 +571,7 @@ with_cache_mode <- function(mode, expr) {
 #' Combines a prefix with a hash of the provided arguments.
 #'
 #' @param prefix A string prefix for the cache key (e.g., `"gh"`, `"esgf"`).
-#' @param ... Arguments to hash. Passed to [fast_hash()].
+#' @param ... Arguments to hash. Passed to `fast_hash`.
 #'
 #' @return A string in the format `"prefix-xxxxxxxx"` where `xxxxxxxx` is an
 #'   8-character hex hash.
@@ -614,7 +616,9 @@ with_url_cache <- function(key_prefix, key_data, fn, validate = NULL) {
     # Cache miss in offline mode: error
     if (mode == "offline") {
         stop(
-            "Cache miss in offline mode for key '", key, "'. ",
+            "Cache miss in offline mode for key '",
+            key,
+            "'. ",
             "Cannot fetch data while offline.",
             call. = FALSE
         )
@@ -666,7 +670,9 @@ with_download_cache <- function(url, destfile, fn) {
     # Cache miss in offline mode: error
     if (mode == "offline") {
         stop(
-            "Cache miss in offline mode for download '", url, "'. ",
+            "Cache miss in offline mode for download '",
+            url,
+            "'. ",
             "Cannot download files while offline.",
             call. = FALSE
         )
@@ -678,3 +684,4 @@ with_download_cache <- function(url, destfile, fn) {
     cache$set(key, raw_bytes)
     destfile
 }
+
