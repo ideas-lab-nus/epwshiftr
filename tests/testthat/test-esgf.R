@@ -10,25 +10,43 @@ test_that("esgf_query()", {
     if (nrow(qd)) {
         fq_qd <- unlist(attr(qd, "response")$responseHeader$params$fq)
         expect_true(
-            all(c("type:Dataset",
-              "project:\"CMIP6\"",
-              "activity_id:\"ScenarioMIP\"",
-              "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-              "source_id:\"EC-Earth3\"",
-              "variable_id:\"tas\"",
-              "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-              "frequency:\"day\"",
-              "replica:false",
-              "latest:true",
-              "variant_label:\"r1i1p1f1\""
-            ) %in% fq_qd)
+            all(
+                c(
+                    "type:Dataset",
+                    "project:\"CMIP6\"",
+                    "activity_id:\"ScenarioMIP\"",
+                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
+                    "source_id:\"EC-Earth3\"",
+                    "variable_id:\"tas\"",
+                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
+                    "frequency:\"day\"",
+                    "replica:false",
+                    "latest:true",
+                    "variant_label:\"r1i1p1f1\""
+                ) %in%
+                    fq_qd
+            )
         )
-        expect_named(qd,
+        expect_named(
+            qd,
             c(
-                "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
-                "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-                "version", "nominal_resolution", "variable_id", "variable_long_name",
-                "variable_units", "data_node", "dataset_pid"
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "data_node",
+                "dataset_pid"
             )
         )
     }
@@ -43,26 +61,48 @@ test_that("esgf_query()", {
     if (nrow(qf)) {
         fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
         expect_true(
-            all(c("type:File",
-              "project:\"CMIP6\"",
-              "activity_id:\"ScenarioMIP\"",
-              "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-              "source_id:\"EC-Earth3\"",
-              "variable_id:\"tas\"",
-              "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-              "frequency:\"day\"",
-              "replica:false",
-              "latest:true",
-              "variant_label:\"r1i1p1f1\""
-            ) %in% fq_qf)
+            all(
+                c(
+                    "type:File",
+                    "project:\"CMIP6\"",
+                    "activity_id:\"ScenarioMIP\"",
+                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
+                    "source_id:\"EC-Earth3\"",
+                    "variable_id:\"tas\"",
+                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
+                    "frequency:\"day\"",
+                    "replica:false",
+                    "latest:true",
+                    "variant_label:\"r1i1p1f1\""
+                ) %in%
+                    fq_qf
+            )
         )
-        expect_named(qf,
+        expect_named(
+            qf,
             c(
-                "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-                "source_id", "experiment_id", "member_id", "table_id", "frequency", 
-                "grid_label", "version", "nominal_resolution", "variable_id",
-                "variable_long_name", "variable_units", "datetime_start",
-                "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
+                "file_id",
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "datetime_start",
+                "datetime_end",
+                "file_size",
+                "data_node",
+                "file_url",
+                "tracking_id"
             )
         )
     }
@@ -82,21 +122,44 @@ test_that("init_cmip6_index()", {
     expect_s3_class(init_cmip6_index(resolution = "1 m"), "data.table")
 
     expect_s3_class(
-        idx <- init_cmip6_index(variable = "tas", source = "EC-Earth3",
-            experiment = "ssp585", years = 2060, limit = 1, save = TRUE
+        idx <- init_cmip6_index(
+            variable = "tas",
+            source = "EC-Earth3",
+            experiment = "ssp585",
+            years = 2060,
+            limit = 1,
+            save = TRUE
         ),
         "data.table"
     )
 
     # only check when LLNL ESGF node works
     if (nrow(idx)) {
-        expect_equal(names(idx),
+        expect_equal(
+            names(idx),
             c(
-                "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-                "source_id", "experiment_id", "member_id", "table_id", "frequency",
-                "grid_label", "version", "nominal_resolution", "variable_id",
-                "variable_long_name", "variable_units", "datetime_start",
-                "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
+                "file_id",
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "datetime_start",
+                "datetime_end",
+                "file_size",
+                "data_node",
+                "file_url",
+                "dataset_pid",
                 "tracking_id"
             )
         )
@@ -124,8 +187,12 @@ test_that("load_cmip6_index()", {
 
     expect_s3_class(
         idx <- init_cmip6_index(
-            variable = "tas", source = "EC-Earth3", years = 2060,
-            experiment = "ssp585", limit = 1, save = TRUE
+            variable = "tas",
+            source = "EC-Earth3",
+            years = 2060,
+            experiment = "ssp585",
+            limit = 1,
+            save = TRUE
         ),
         "data.table"
     )
@@ -172,10 +239,10 @@ test_that("get_data_dir()", {
 test_that("get_data_node()", {
     skip_on_cran()
 
-    expect_s3_class(node <- get_data_node(), "data.table")
+    node <- expect_s3_class(get_data_node(), "data.table")
     expect_named(node, c("data_node", "status"))
 
     # can test speed using pingr
-    expect_s3_class(node <- get_data_node(TRUE, 1), "data.table")
+    node <- expect_s3_class(get_data_node(TRUE, 1), "data.table")
     expect_named(node, c("data_node", "status", "ping"))
 })

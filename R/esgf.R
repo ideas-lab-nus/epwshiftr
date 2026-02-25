@@ -1,17 +1,44 @@
 RES_DATASET <- c(
     "id",
-    "mip_era", "activity_drs", "institution_id", "source_id",
-    "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-    "version", "nominal_resolution", "variable_id", "variable_long_name",
-    "variable_units", "data_node", "pid"
+    "mip_era",
+    "activity_drs",
+    "institution_id",
+    "source_id",
+    "experiment_id",
+    "member_id",
+    "table_id",
+    "frequency",
+    "grid_label",
+    "version",
+    "nominal_resolution",
+    "variable_id",
+    "variable_long_name",
+    "variable_units",
+    "data_node",
+    "pid"
 )
 
 RES_FILE <- c(
-    "id", "dataset_id",
-    "mip_era", "activity_drs", "institution_id", "source_id",
-    "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-    "version", "nominal_resolution", "variable_id", "variable_long_name",
-    "variable_units", "data_node", "size", "url", "tracking_id"
+    "id",
+    "dataset_id",
+    "mip_era",
+    "activity_drs",
+    "institution_id",
+    "source_id",
+    "experiment_id",
+    "member_id",
+    "table_id",
+    "frequency",
+    "grid_label",
+    "version",
+    "nominal_resolution",
+    "variable_id",
+    "variable_long_name",
+    "variable_units",
+    "data_node",
+    "size",
+    "url",
+    "tracking_id"
 )
 
 # esgf_query {{{
@@ -218,34 +245,99 @@ RES_FILE <- c(
 #' }
 #'
 #' @export
-esgf_query <- function(activity = "ScenarioMIP",
-                       variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
-                       frequency = "day",
-                       experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
-                       source = c(
-                           "AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
-                           "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
-                           "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"
-                       ),
-                       variant = "r1i1p1f1",
-                       replica = FALSE,
-                       latest = TRUE,
-                       resolution = c("100 km", "50 km"),
-                       type = "Dataset",
-                       limit = 10000L,
-                       data_node = NULL,
-                       host = "http://esgf-node.llnl.gov/esg-search") {
-    checkmate::assert_subset(activity, empty.ok = FALSE, choices = c(
-        "AerChemMIP", "C4MIP", "CDRMIP", "CFMIP", "CMIP", "CORDEX", "DAMIP",
-        "DCPP", "DynVarMIP", "FAFMIP", "GMMIP", "GeoMIP", "HighResMIP",
-        "ISMIP6", "LS3MIP", "LUMIP", "OMIP", "PAMIP", "PMIP", "RFMIP", "SIMIP",
-        "ScenarioMIP", "VIACSAB", "VolMIP"
-    ))
+esgf_query <- function(
+    activity = "ScenarioMIP",
+    variable = c(
+        "tas",
+        "tasmax",
+        "tasmin",
+        "hurs",
+        "hursmax",
+        "hursmin",
+        "pr",
+        "rsds",
+        "rlds",
+        "psl",
+        "sfcWind",
+        "clt"
+    ),
+    frequency = "day",
+    experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
+    source = c(
+        "AWI-CM-1-1-MR",
+        "BCC-CSM2-MR",
+        "CESM2",
+        "CESM2-WACCM",
+        "EC-Earth3",
+        "EC-Earth3-Veg",
+        "GFDL-ESM4",
+        "INM-CM4-8",
+        "INM-CM5-0",
+        "MPI-ESM1-2-HR",
+        "MRI-ESM2-0"
+    ),
+    variant = "r1i1p1f1",
+    replica = FALSE,
+    latest = TRUE,
+    resolution = c("100 km", "50 km"),
+    type = "Dataset",
+    limit = 10000L,
+    data_node = NULL,
+    host = "http://esgf-node.llnl.gov/esg-search"
+) {
+    checkmate::assert_subset(
+        activity,
+        empty.ok = FALSE,
+        choices = c(
+            "AerChemMIP",
+            "C4MIP",
+            "CDRMIP",
+            "CFMIP",
+            "CMIP",
+            "CORDEX",
+            "DAMIP",
+            "DCPP",
+            "DynVarMIP",
+            "FAFMIP",
+            "GMMIP",
+            "GeoMIP",
+            "HighResMIP",
+            "ISMIP6",
+            "LS3MIP",
+            "LUMIP",
+            "OMIP",
+            "PAMIP",
+            "PMIP",
+            "RFMIP",
+            "SIMIP",
+            "ScenarioMIP",
+            "VIACSAB",
+            "VolMIP"
+        )
+    )
     checkmate::assert_character(variable, any.missing = FALSE, null.ok = TRUE)
-    checkmate::assert_subset(frequency, empty.ok = TRUE, choices = c(
-        "1hr", "1hrCM", "1hrPt", "3hr", "3hrPt", "6hr", "6hrPt", "day", "dec",
-        "fx", "mon", "monC", "monPt", "subhrPt", "yr", "yrPt"
-    ))
+    checkmate::assert_subset(
+        frequency,
+        empty.ok = TRUE,
+        choices = c(
+            "1hr",
+            "1hrCM",
+            "1hrPt",
+            "3hr",
+            "3hrPt",
+            "6hr",
+            "6hrPt",
+            "day",
+            "dec",
+            "fx",
+            "mon",
+            "monC",
+            "monPt",
+            "subhrPt",
+            "yr",
+            "yrPt"
+        )
+    )
     checkmate::assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_character(source, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
@@ -279,11 +371,17 @@ esgf_query <- function(activity = "ScenarioMIP",
         }
         # get key name
         key <- dict[names(dict) == var]
-        if (!length(key)) key <- var
+        if (!length(key)) {
+            key <- var
+        }
 
-        if (is.logical(x)) x <- tolower(x)
+        if (is.logical(x)) {
+            x <- tolower(x)
+        }
 
-        if (encode) x <- query_param_encode(as.character(x))
+        if (encode) {
+            x <- query_param_encode(as.character(x))
+        }
 
         paste0(key, "=", paste0(x, collapse = query_param_encode(",")))
     }
@@ -333,9 +431,14 @@ esgf_query <- function(activity = "ScenarioMIP",
         pair(format)
 
     # Cache the JSON response from ESGF query
-    q <- with_url_cache("esgf", q, function() {
-        tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
-    }, validate = function(res) !inherits(res, "warning") && !inherits(res, "error"))
+    q <- with_url_cache(
+        "esgf",
+        q,
+        function() {
+            tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
+        },
+        validate = function(res) !inherits(res, "warning") && !inherits(res, "error")
+    )
 
     # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
@@ -382,7 +485,10 @@ extract_query_file <- function(q) {
     data.table::set(dt, NULL, setdiff(names(dt), RES_FILE), NULL)
     data.table::setcolorder(dt, RES_FILE)
 
-    data.table::set(dt, NULL, "url",
+    data.table::set(
+        dt,
+        NULL,
+        "url",
         vapply(seq_len(nrow(dt)), FUN.VALUE = "", function(i) {
             url <- grep("HTTPServer", .subset2(dt, "url")[[i]], fixed = TRUE, value = TRUE)
 
@@ -406,16 +512,37 @@ extract_query_file <- function(q) {
     dt[, c("datetime_start", "datetime_end") := parse_file_date(id, frequency)]
     dt[, url := gsub("\\|.+$", "", url)]
     data.table::setnames(
-        dt, c("id", "size", "url"),
+        dt,
+        c("id", "size", "url"),
         c("file_id", "file_size", "file_url")
     )
-    data.table::setcolorder(dt, c(
-        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "frequency",
-        "grid_label", "version", "nominal_resolution", "variable_id",
-        "variable_long_name", "variable_units", "datetime_start",
-        "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
-    ))
+    data.table::setcolorder(
+        dt,
+        c(
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "tracking_id"
+        )
+    )
 
     dt
 }
@@ -475,33 +602,65 @@ extract_query_file <- function(q) {
 #'
 #' @importFrom data.table copy fwrite rbindlist set setcolorder
 #' @export
-init_cmip6_index <- function(activity = "ScenarioMIP",
-                             variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
-                             frequency = "day",
-                             experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
-                             source = c(
-                                 "AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
-                                 "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
-                                 "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"
-                             ),
-                             variant = "r1i1p1f1",
-                             replica = FALSE,
-                             latest = TRUE,
-                             resolution = c("100 km", "50 km"),
-                             limit = 10000L,
-                             data_node = NULL,
-                             years = NULL,
-                             save = FALSE,
-                             host = "http://esgf-node.llnl.gov/esg-search") {
+init_cmip6_index <- function(
+    activity = "ScenarioMIP",
+    variable = c(
+        "tas",
+        "tasmax",
+        "tasmin",
+        "hurs",
+        "hursmax",
+        "hursmin",
+        "pr",
+        "rsds",
+        "rlds",
+        "psl",
+        "sfcWind",
+        "clt"
+    ),
+    frequency = "day",
+    experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
+    source = c(
+        "AWI-CM-1-1-MR",
+        "BCC-CSM2-MR",
+        "CESM2",
+        "CESM2-WACCM",
+        "EC-Earth3",
+        "EC-Earth3-Veg",
+        "GFDL-ESM4",
+        "INM-CM4-8",
+        "INM-CM5-0",
+        "MPI-ESM1-2-HR",
+        "MRI-ESM2-0"
+    ),
+    variant = "r1i1p1f1",
+    replica = FALSE,
+    latest = TRUE,
+    resolution = c("100 km", "50 km"),
+    limit = 10000L,
+    data_node = NULL,
+    years = NULL,
+    save = FALSE,
+    host = "http://esgf-node.llnl.gov/esg-search"
+) {
     checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_flag(save)
 
     verbose(message("Querying CMIP6 Dataset Information"))
     qd <- esgf_query(
-        activity = activity, variable = variable, frequency = frequency,
-        experiment = experiment, source = source, replica = replica, latest = latest,
-        variant = variant, resolution = resolution, limit = limit, type = "Dataset",
-        data_node = data_node, host = host
+        activity = activity,
+        variable = variable,
+        frequency = frequency,
+        experiment = experiment,
+        source = source,
+        replica = replica,
+        latest = latest,
+        variant = variant,
+        resolution = resolution,
+        limit = limit,
+        type = "Dataset",
+        data_node = data_node,
+        host = host
     )
 
     if (!nrow(qd)) {
@@ -534,10 +693,19 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         .SD <- NULL
 
         # use qd to construction query for files
-        q <- unique(nf[, .SD, .SDcols = c(
-            "activity_drs", "source_id", "member_id",
-            "experiment_id", "nominal_resolution", "table_id", "frequency", "variable_id"
-        )])
+        q <- unique(nf[,
+            .SD,
+            .SDcols = c(
+                "activity_drs",
+                "source_id",
+                "member_id",
+                "experiment_id",
+                "nominal_resolution",
+                "table_id",
+                "frequency",
+                "variable_id"
+            )
+        ])
 
         qf <- esgf_query(
             activity = unique(q$activity_drs),
@@ -555,16 +723,10 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         )
 
         # remove all common columns in file query except for "dataset_id"
-        data.table::set(qf, NULL,
-            value = NULL,
-            setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url"))
-        )
+        data.table::set(qf, NULL, value = NULL, setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url")))
 
         # remove all common column in nf except for "dataset_id"
-        data.table::set(nf, NULL,
-            value = NULL,
-            setdiff(intersect(names(qf), names(nf)), c("dataset_id"))
-        )
+        data.table::set(nf, NULL, value = NULL, setdiff(intersect(names(qf), names(nf)), c("dataset_id")))
 
         dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
     }
@@ -573,20 +735,44 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
     # nocov start
     if (anyNA(dt$file_url)) {
         warning(
-            "There are still ", length(unique(dt$dataset_id[is.na(dt$file_url)])), " Dataset that ",
-            "did not find any matched output file after ", retry, " retries."
+            "There are still ",
+            length(unique(dt$dataset_id[is.na(dt$file_url)])),
+            " Dataset that ",
+            "did not find any matched output file after ",
+            retry,
+            " retries."
         )
     }
     # nocov end
 
-    data.table::setcolorder(dt, c(
-        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "frequency",
-        "grid_label", "version", "nominal_resolution", "variable_id",
-        "variable_long_name", "variable_units", "datetime_start",
-        "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
-        "tracking_id"
-    ))
+    data.table::setcolorder(
+        dt,
+        c(
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "dataset_pid",
+            "tracking_id"
+        )
+    )
 
     # use non-equi join to extract matched rows
     # NOTE: CMIP6 output uses temporal amounts for saving date and time, e.g.
@@ -600,8 +786,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         )
 
         dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
-        dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][
-            , `:=`(expect_start = NULL, expect_end = NULL)
+        dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][,
+            `:=`(expect_start = NULL, expect_end = NULL)
         ]
     }
 
@@ -611,7 +797,11 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
     if (save) {
         # save database into the app data directory
         data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose(message("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'"))
+        verbose(message(
+            "Data file index saved to '",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")),
+            "'"
+        ))
 
         this$index_db <- data.table::copy(dt)
     }
@@ -636,14 +826,18 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
 #' @importFrom data.table copy fread
 #' @export
 load_cmip6_index <- function(force = FALSE) {
-    if (is.null(this$index_db)) force <- TRUE
+    if (is.null(this$index_db)) {
+        force <- TRUE
+    }
 
     if (!force) {
         idx <- data.table::copy(this$index_db)
     } else {
         f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
         if (!file.exists(f)) {
-            stop("CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'.")
+            stop(
+                "CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."
+            )
         }
 
         # nocov start
@@ -729,12 +923,33 @@ set_cmip6_index <- function(index, save = FALSE) {
     checkmate::assert_subset(
         names(index),
         c(
-            "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-            "source_id", "experiment_id", "member_id", "table_id", "frequency",
-            "grid_label", "version", "nominal_resolution", "variable_id",
-            "variable_long_name", "variable_units", "datetime_start",
-            "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
-            "tracking_id", "file_path", "file_realsize", "file_mtime", "time_units",
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "dataset_pid",
+            "tracking_id",
+            "file_path",
+            "file_realsize",
+            "file_mtime",
+            "time_units",
             "time_calendar"
         )
     )
@@ -799,14 +1014,25 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
     msg <- NULL
-    node_url <- "https://aims2.llnl.gov/metagrid-backend/proxy/status"
-    res <- with_url_cache("datanode", node_url, function() {
-        tryCatch(
-            jsonlite::fromJSON(node_url),
-            warning = function(w) { msg <<- conditionMessage(w); NULL },
-            error   = function(e) { msg <<- conditionMessage(e); NULL }
-        )
-    }, validate = function(res) !is.null(res))
+    node_url <- "https://esgf-node.ornl.gov/proxy/status"
+    res <- with_url_cache(
+        "datanode",
+        node_url,
+        function() {
+            tryCatch(
+                jsonlite::fromJSON(node_url),
+                warning = function(w) {
+                    msg <<- conditionMessage(w)
+                    NULL
+                },
+                error = function(e) {
+                    msg <<- conditionMessage(e)
+                    NULL
+                }
+            )
+        },
+        validate = function(res) !is.null(res)
+    )
 
     # nocov start
     if (is.null(res) || res$status != "success") {
@@ -819,7 +1045,8 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
         data_node = res$data$result$metric$instance,
         status = data.table::fifelse(
             vapply(res$data$result$value, .subset2, character(1L), 2L) == "1",
-            "UP", "DOWN"
+            "UP",
+            "DOWN"
         )
     )
 
@@ -846,10 +1073,14 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # nocov end
 
     # use the pingr package to test the connection speed
-    speed <- vapply(nodes_up, function(node) {
-        message(sprintf("Testing data node '%s'...", node))
-        pingr::ping(node, count = 1, timeout = timeout)
-    }, numeric(1))
+    speed <- vapply(
+        nodes_up,
+        function(node) {
+            message(sprintf("Testing data node '%s'...", node))
+            pingr::ping(node, count = 1, timeout = timeout)
+        },
+        numeric(1)
+    )
 
     res[status == "UP", ping := speed][order(ping)]
 }
@@ -859,13 +1090,17 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
 #' @importFrom data.table fifelse
 parse_file_date <- function(id, frequency) {
     dig <- fifelse(
-        grepl("hr", frequency, fixed = TRUE), 12L,
+        grepl("hr", frequency, fixed = TRUE),
+        12L,
         fifelse(
-            frequency == "day", 8L,
+            frequency == "day",
+            8L,
             fifelse(
-                frequency == "dec", 4L,
+                frequency == "dec",
+                4L,
                 fifelse(
-                    grepl("mon", frequency, fixed = TRUE), 6L,
+                    grepl("mon", frequency, fixed = TRUE),
+                    6L,
                     fifelse(grepl("yr", frequency, fixed = TRUE), 4L, 0L)
                 )
             )
@@ -876,21 +1111,27 @@ parse_file_date <- function(id, frequency) {
     reg[dig == 0L] <- NA_character_
 
     suf <- fifelse(
-        dig == 0L, "",
+        dig == 0L,
+        "",
         fifelse(
-            dig == 4L, "0101",
+            dig == 4L,
+            "0101",
             fifelse(dig == 6L, "01", "")
         )
     )
 
     fmt <- fifelse(
-        dig == 0L, NA_character_,
+        dig == 0L,
+        NA_character_,
         fifelse(
-            dig == 4L, "%Y%m%d",
+            dig == 4L,
+            "%Y%m%d",
             fifelse(
-                dig == 6L, "%Y%m%d",
+                dig == 6L,
+                "%Y%m%d",
                 fifelse(
-                    dig == 8L, "%Y%m%d",
+                    dig == 8L,
+                    "%Y%m%d",
                     fifelse(dig == 12L, "%Y%m%d%H%M%s", NA_character_)
                 )
             )
@@ -899,7 +1140,8 @@ parse_file_date <- function(id, frequency) {
 
     data.table::data.table(id, reg, suf, fmt)[
         !J(NA_character_),
-        on = "reg", by = "reg",
+        on = "reg",
+        by = "reg",
         c("datetime_start", "datetime_end") := {
             m <- regexpr(.BY$reg, id)
             s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)
