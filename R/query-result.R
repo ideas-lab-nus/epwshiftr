@@ -776,7 +776,8 @@ EsgResultFile <- R6::R6Class(
         #'        files.
         url_opendap = function() {
             url <- private$get_url("OPENDAP", "OPeNDAP")
-            has_html <- tools::file_ext(url) == "html"
+
+            has_html <- !is.na(url) & tools::file_ext(url) == "html"
             if (any(has_html)) {
                 url[has_html] <- tools::file_path_sans_ext(url[has_html])
             }
@@ -879,9 +880,8 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
         #'
-        #' @param aggregate If `TRUE` (default), aggregate all files into a single
-        #'   logical dataset along the time dimension. If `FALSE`, open only the
-        #'   first file.
+	        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
+	        #'   If `FALSE`, open only the first file.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default)
         #'   - `"auto"`: Automatically download files
@@ -901,7 +901,7 @@ EsgResultAggregation <- R6::R6Class(
             # Try OPeNDAP
             ds <- tryCatch(
                 {
-                    d <- EsgDataset$new(urls, aggregate = aggregate && length(urls) > 1L)
+	                    d <- EsgDataset$new(urls)
                     d$open()
                     d
                 },
@@ -953,7 +953,7 @@ EsgResultAggregation <- R6::R6Class(
                 character(1L)
             )
 
-            ds <- EsgDataset$new(local_paths, aggregate = aggregate && length(local_paths) > 1L)
+	            ds <- EsgDataset$new(local_paths)
             ds$open()
             ds
         }

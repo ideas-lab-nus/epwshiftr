@@ -29,8 +29,8 @@ automatically handling time dimension concatenation.
 # Single file
 ds <- EsgDataset$new("https://example.com/data.nc")
 
-# Multiple files with aggregation
-ds <- EsgDataset$new(c("url1.nc", "url2.nc"), aggregate = TRUE)
+# Multiple files
+ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 }
 
 ## ------------------------------------------------
@@ -127,7 +127,8 @@ grid <- ds$get_spatial_grid()
 ## ------------------------------------------------
 
 \dontrun{
-data <- ds$read_array("tas")
+data_list <- ds$read_array("tas")
+data <- data_list[[1]]
 }
 
 ## ------------------------------------------------
@@ -135,7 +136,9 @@ data <- ds$read_array("tas")
 ## ------------------------------------------------
 
 \dontrun{
-dt <- ds$read_data_table("tas")
+dt_list <- ds$read_data_table("tas")
+dt <- dt_list[[1]]
+dt_all <- ds$read_data_table("tas", rbind = TRUE)
 }
 }
 \author{
@@ -148,7 +151,7 @@ Hongyuan Jia
 
 \item{\code{is_open}}{Whether the connection is open}
 
-\item{\code{is_aggregated}}{Whether the dataset is aggregated}
+\item{\code{is_aggregated}}{Whether the dataset contains multiple files}
 
 \item{\code{file_count}}{Number of files in the dataset}
 }
@@ -181,17 +184,14 @@ Hongyuan Jia
 \subsection{Method \code{new()}}{
 Create a new EsgDataset object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$new(urls, aggregate = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$new(urls)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{urls}}{A character vector of OPeNDAP URLs. Can be a single URL
-or multiple URLs for aggregation.}
-
-\item{\code{aggregate}}{Logical. If \code{TRUE} and multiple URLs are provided,
-attempt to aggregate files into a single dataset. Default: \code{TRUE}.}
+or multiple URLs for a multi-file dataset.}
 }
 \if{html}{\out{</div>}}
 }
@@ -204,8 +204,8 @@ An \code{EsgDataset} object.
 # Single file
 ds <- EsgDataset$new("https://example.com/data.nc")
 
-# Multiple files with aggregation
-ds <- EsgDataset$new(c("url1.nc", "url2.nc"), aggregate = TRUE)
+# Multiple files
+ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 }
 }
 \if{html}{\out{</div>}}
@@ -271,7 +271,7 @@ Get file information
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -303,7 +303,7 @@ Get variable information
 \describe{
 \item{\code{var}}{Variable name or ID.}
 
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -335,7 +335,7 @@ Get dimension information
 \describe{
 \item{\code{dim}}{Dimension name or ID.}
 
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -369,7 +369,7 @@ Get attribute value
 
 \item{\code{att}}{Attribute name.}
 
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -398,7 +398,7 @@ Read variable data
   start = NULL,
   count = NULL,
   index = 1L,
-  collapse = TRUE
+  collapse = FALSE
 )}\if{html}{\out{</div>}}
 }
 
@@ -411,9 +411,9 @@ Read variable data
 
 \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 
-\item{\code{collapse}}{Whether to collapse result. Default: \code{TRUE}.}
+\item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -444,7 +444,7 @@ List all variables in the dataset
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -474,7 +474,7 @@ List all dimensions in the dataset
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -504,7 +504,7 @@ Get time axis information
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -534,7 +534,7 @@ Get spatial grid information (latitude and longitude)
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{File index for aggregated datasets. Default: \code{1L}.}
+\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -556,9 +556,9 @@ grid <- ds$get_spatial_grid()
 \if{html}{\out{<a id="method-EsgDataset-read_array"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_array}{}}}
 \subsection{Method \code{read_array()}}{
-Read variable data as an array
+Read variable data as a list of arrays (one per file)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(variable, start = NULL, count = NULL, aggregate = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(variable, start = NULL, count = NULL, collapse = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -570,18 +570,19 @@ Read variable data as an array
 
 \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{aggregate}}{If \code{TRUE} and dataset is aggregated, concatenate
-data across files along time dimension. Default: \code{TRUE}.}
+\item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-An array with variable data.
+A list of arrays with variable data. Each element
+corresponds to a file in the dataset.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-data <- ds$read_array("tas")
+data_list <- ds$read_array("tas")
+data <- data_list[[1]]
 }
 }
 \if{html}{\out{</div>}}
@@ -593,14 +594,9 @@ data <- ds$read_array("tas")
 \if{html}{\out{<a id="method-EsgDataset-read_data_table"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_data_table}{}}}
 \subsection{Method \code{read_data_table()}}{
-Read variable data as a data.table
+Read variable data as a list of data.table (one per file)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(
-  variable,
-  start = NULL,
-  count = NULL,
-  aggregate = TRUE
-)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(variable, start = NULL, count = NULL, rbind = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -612,18 +608,22 @@ Read variable data as a data.table
 
 \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
-\item{\code{aggregate}}{If \code{TRUE} and dataset is aggregated, concatenate
-data across files along time dimension. Default: \code{TRUE}.}
+\item{\code{rbind}}{If \code{TRUE}, return a single data.table by row-binding
+the per-file results with \code{data.table::rbindlist(..., idcol = "file_index")}.
+Default: \code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table with variable data.
+If \code{rbind = FALSE}, a list of data.table (one per file).
+If \code{rbind = TRUE}, a single data.table with an extra \code{file_index} column.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-dt <- ds$read_data_table("tas")
+dt_list <- ds$read_data_table("tas")
+dt <- dt_list[[1]]
+dt_all <- ds$read_data_table("tas", rbind = TRUE)
 }
 }
 \if{html}{\out{</div>}}

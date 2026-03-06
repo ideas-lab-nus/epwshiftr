@@ -111,9 +111,8 @@ Open aggregation files as an EsgDataset for remote data access via OPeNDAP
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{aggregate}}{If \code{TRUE} (default), aggregate all files into a single
-logical dataset along the time dimension. If \code{FALSE}, open only the
-first file.}
+\item{\code{aggregate}}{If \code{TRUE} (default), open all files as a multi-file dataset.
+If \code{FALSE}, open only the first file.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{

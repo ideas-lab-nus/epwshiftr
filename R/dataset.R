@@ -20,7 +20,8 @@
 #' @author Hongyuan Jia
 #' @name EsgDataset
 #' @export
-EsgDataset <- R6::R6Class("EsgDataset",
+EsgDataset <- R6::R6Class(
+    "EsgDataset",
     lock_class = TRUE,
     public = list(
         # initialize {{{
@@ -28,10 +29,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' Create a new EsgDataset object
         #'
         #' @param urls A character vector of OPeNDAP URLs. Can be a single URL
-        #'        or multiple URLs for aggregation.
-        #'
-        #' @param aggregate Logical. If `TRUE` and multiple URLs are provided,
-        #'        attempt to aggregate files into a single dataset. Default: `TRUE`.
+        #'        or multiple URLs for a multi-file dataset.
         #'
         #' @return An `EsgDataset` object.
         #'
@@ -40,15 +38,13 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' # Single file
         #' ds <- EsgDataset$new("https://example.com/data.nc")
         #'
-        #' # Multiple files with aggregation
-        #' ds <- EsgDataset$new(c("url1.nc", "url2.nc"), aggregate = TRUE)
+        #' # Multiple files
+        #' ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
         #' }
-        initialize = function(urls, aggregate = TRUE) {
+        initialize = function(urls) {
             checkmate::assert_character(urls, any.missing = FALSE, min.len = 1L)
-            checkmate::assert_flag(aggregate)
 
             private$urls <- urls
-            private$should_aggregate <- aggregate && length(urls) > 1L
             private$opened <- FALSE
             private$metadata_cache <- list()
 
@@ -81,11 +77,6 @@ EsgDataset <- R6::R6Class("EsgDataset",
                         private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
                     }
                     private$opened <- TRUE
-
-                    # If aggregation is requested, validate and prepare
-                    if (private$should_aggregate) {
-                        private$validate_aggregation()
-                    }
                 },
                 error = function(e) {
                     # Clean up any opened connections
@@ -115,7 +106,8 @@ EsgDataset <- R6::R6Class("EsgDataset",
                         RNetCDF::close.nc(private$nc_handles[[i]]),
                         error = function(e) NULL
                     )
-                    private$nc_handles[[i]] <- NULL
+                    # NOTE: Use single-bracket assignment to avoid shrinking the list.
+                    private$nc_handles[i] <- list(NULL)
                 }
             }
             private$opened <- FALSE
@@ -127,7 +119,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get file information
         #'
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list with file information.
         #'
@@ -147,7 +139,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' Get variable information
         #'
         #' @param var Variable name or ID.
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list with variable information.
         #'
@@ -167,7 +159,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' Get dimension information
         #'
         #' @param dim Dimension name or ID.
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list with dimension information.
         #'
@@ -188,7 +180,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #'
         #' @param var Variable name or ID, or "NC_GLOBAL" for global attributes.
         #' @param att Attribute name.
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return The attribute value.
         #'
@@ -210,8 +202,8 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @param var Variable name or ID.
         #' @param start Starting indices (1-based). If `NULL`, starts from beginning.
         #' @param count Number of values to read. If `NULL`, reads all.
-        #' @param index File index for aggregated datasets. Default: `1L`.
-        #' @param collapse Whether to collapse result. Default: `TRUE`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
+        #' @param collapse Whether to collapse result. Default: `FALSE`.
         #'
         #' @return An array with variable data.
         #'
@@ -220,16 +212,14 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' data <- ds$var_get("tas")
         #' data_subset <- ds$var_get("tas", start = c(1, 1, 1), count = c(10, 10, 1))
         #' }
-        var_get = function(var, start = NULL, count = NULL, index = 1L, collapse = TRUE) {
+        var_get = function(var, start = NULL, count = NULL, index = 1L, collapse = FALSE) {
             private$check_open()
             private$check_index(index)
 
             if (is.null(start) && is.null(count)) {
                 RNetCDF::var.get.nc(private$nc_handles[[index]], var, collapse = collapse)
             } else {
-                RNetCDF::var.get.nc(private$nc_handles[[index]], var,
-                    start = start, count = count, collapse = collapse
-                )
+                RNetCDF::var.get.nc(private$nc_handles[[index]], var, start = start, count = count, collapse = collapse)
             }
         },
         # }}}
@@ -238,7 +228,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' List all variables in the dataset
         #'
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A character vector of variable names.
         #'
@@ -264,7 +254,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' List all dimensions in the dataset
         #'
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A character vector of dimension names.
         #'
@@ -290,7 +280,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get time axis information
         #'
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list containing time values, units, and calendar.
         #'
@@ -342,7 +332,7 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #' @description
         #' Get spatial grid information (latitude and longitude)
         #'
-        #' @param index File index for aggregated datasets. Default: `1L`.
+        #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list containing latitude and longitude values.
         #'
@@ -384,52 +374,74 @@ EsgDataset <- R6::R6Class("EsgDataset",
 
         # read_array {{{
         #' @description
-        #' Read variable data as an array
+        #' Read variable data as a list of arrays (one per file)
         #'
         #' @param variable Variable name.
         #' @param start Starting indices. If `NULL`, starts from beginning.
         #' @param count Number of values to read. If `NULL`, reads all.
-        #' @param aggregate If `TRUE` and dataset is aggregated, concatenate
-        #'        data across files along time dimension. Default: `TRUE`.
+        #' @param collapse Whether to collapse result. Default: `FALSE`.
         #'
-        #' @return An array with variable data.
+        #' @return A list of arrays with variable data. Each element
+        #' corresponds to a file in the dataset.
         #'
         #' @examples
         #' \dontrun{
-        #' data <- ds$read_array("tas")
+        #' data_list <- ds$read_array("tas")
+        #' data <- data_list[[1]]
         #' }
-        read_array = function(variable, start = NULL, count = NULL, aggregate = TRUE) {
+        read_array = function(variable, start = NULL, count = NULL, collapse = FALSE) {
             private$check_open()
-
-            if (!private$should_aggregate || !aggregate) {
-                # Single file read
-                return(self$var_get(variable, start = start, count = count, index = 1L))
-            }
-
-            # Aggregated read
-            private$read_aggregated(variable, start, count, format = "array")
+            lapply(seq_along(private$urls), function(i) {
+                self$var_get(variable, start = start, count = count, index = i, collapse = collapse)
+            })
         },
         # }}}
 
         # read_data_table {{{
         #' @description
-        #' Read variable data as a data.table
+        #' Read variable data as a list of data.table (one per file)
         #'
         #' @param variable Variable name.
         #' @param start Starting indices. If `NULL`, starts from beginning.
         #' @param count Number of values to read. If `NULL`, reads all.
-        #' @param aggregate If `TRUE` and dataset is aggregated, concatenate
-        #'        data across files along time dimension. Default: `TRUE`.
+        #' @param rbind If `TRUE`, return a single data.table by row-binding
+        #' the per-file results with `data.table::rbindlist(..., idcol = "file_index")`.
+        #' Default: `FALSE`.
         #'
-        #' @return A data.table with variable data.
+        #' @return If `rbind = FALSE`, a list of data.table (one per file).
+        #' If `rbind = TRUE`, a single data.table with an extra `file_index` column.
         #'
         #' @examples
         #' \dontrun{
-        #' dt <- ds$read_data_table("tas")
+        #' dt_list <- ds$read_data_table("tas")
+        #' dt <- dt_list[[1]]
+        #' dt_all <- ds$read_data_table("tas", rbind = TRUE)
         #' }
-        read_data_table = function(variable, start = NULL, count = NULL, aggregate = TRUE) {
-            arr <- self$read_array(variable, start, count, aggregate)
-            private$array_to_data_table(arr, variable)
+        read_data_table = function(variable, start = NULL, count = NULL, rbind = FALSE) {
+            checkmate::assert_flag(rbind)
+            private$check_open()
+
+            # Always keep dimensions for table output
+            arr_list <- self$read_array(variable, start = start, count = count, collapse = FALSE)
+            dt_list <- lapply(seq_along(arr_list), function(i) {
+                private$array_to_data_table(
+                    arr_list[[i]],
+                    variable,
+                    start = start,
+                    count = count,
+                    index = i
+                )
+            })
+
+            if (!isTRUE(rbind)) {
+                return(dt_list)
+            }
+
+            dt <- data.table::rbindlist(dt_list, use.names = TRUE, fill = TRUE, idcol = "file_index")
+            if ("file_index" %in% names(dt) && is.character(dt[["file_index"]])) {
+                dt[["file_index"]] <- as.integer(dt[["file_index"]])
+            }
+            dt
         },
         # }}}
 
@@ -439,10 +451,10 @@ EsgDataset <- R6::R6Class("EsgDataset",
         #'
         #' @return The `EsgDataset` object itself, invisibly.
         print = function() {
-            cli::cli_h1("ESGF Query Dataset")
+            cli::cli_h1("ESGF Dataset")
             cli::cli_li("URLs: {length(private$urls)}")
             cli::cli_li("Status: {if (private$opened) 'Open' else 'Closed'}")
-            cli::cli_li("Aggregated: {private$should_aggregate}")
+            cli::cli_li("Multiple: {length(private$urls) > 1L}")
 
             if (private$opened) {
                 vars <- tryCatch(self$get_variables(1L), error = function(e) character())
@@ -476,9 +488,9 @@ EsgDataset <- R6::R6Class("EsgDataset",
         # }}}
 
         # is_aggregated {{{
-        #' @field is_aggregated Whether the dataset is aggregated
+        #' @field is_aggregated Whether the dataset contains multiple files
         is_aggregated = function() {
-            private$should_aggregate
+            length(private$urls) > 1L
         },
         # }}}
 
@@ -494,9 +506,57 @@ EsgDataset <- R6::R6Class("EsgDataset",
         urls = NULL,
         nc_handles = NULL,
         opened = FALSE,
-        should_aggregate = FALSE,
         metadata_cache = NULL,
-        aggregation_info = NULL,
+
+        # get_var_dim_meta {{
+        # NOTE: `start`/`count` are in NetCDF dimension order.
+        get_var_dim_meta = function(variable, index = 1L) {
+            cache_key <- sprintf("var_dim_meta_%s_%d", variable, index)
+            if (!is.null(private$metadata_cache[[cache_key]])) {
+                return(private$metadata_cache[[cache_key]])
+            }
+
+            vinfo <- self$var_inq(variable, index = index)
+            dimids <- vinfo$dimids
+            dnames <- vapply(dimids, function(id) self$dim_inq(id, index = index)$name, character(1L))
+            dlens <- vapply(dimids, function(id) as.integer(self$dim_inq(id, index = index)$length), integer(1L))
+
+            res <- list(ids = dimids, names = dnames, lengths = dlens)
+            private$metadata_cache[[cache_key]] <- res
+            res
+        },
+        # }}}
+
+        # infer_dim_perm {{
+        # Infer how NetCDF dimension order maps to the returned R array order.
+        # Returns an index vector `perm` such that:
+        #   dim_names_in_array_order <- dim_names_in_netcdf_order[perm]
+        infer_dim_perm = function(arr_dim, count = NULL, nc_lengths = NULL) {
+            nd <- length(arr_dim)
+            ref <- NULL
+            if (!is.null(count)) {
+                ref <- as.integer(count)
+            } else if (!is.null(nc_lengths)) {
+                ref <- as.integer(nc_lengths)
+            }
+
+            if (!is.null(ref) && length(ref) == nd) {
+                arr_dim <- as.integer(arr_dim)
+                if (identical(arr_dim, ref)) {
+                    return(seq_len(nd))
+                }
+                if (identical(arr_dim, rev(ref))) {
+                    return(rev(seq_len(nd)))
+                }
+            }
+
+            warning(
+                "Cannot infer dimension order between NetCDF metadata and returned R array; ",
+                "assuming they match NetCDF order."
+            )
+            seq_len(nd)
+        },
+        # }}}
 
         # finalize {{{
         finalize = function() {
@@ -520,79 +580,90 @@ EsgDataset <- R6::R6Class("EsgDataset",
         },
         # }}}
 
-        # validate_aggregation {{{
-        validate_aggregation = function() {
-            # Check that all files have compatible dimensions
-            ref_dims <- self$get_dimensions(1L)
-            ref_vars <- self$get_variables(1L)
-
-            for (i in 2:length(private$urls)) {
-                dims <- self$get_dimensions(i)
-                vars <- self$get_variables(i)
-
-                if (!setequal(dims, ref_dims)) {
-                    warning(sprintf("File %d has different dimensions. Aggregation may fail.", i))
-                }
-
-                if (!setequal(vars, ref_vars)) {
-                    warning(sprintf("File %d has different variables. Some variables may be missing.", i))
-                }
-            }
-
-            # Get time axis for all files
-            time_axes <- lapply(seq_along(private$urls), function(i) {
-                self$get_time_axis(i)
-            })
-
-            private$aggregation_info <- list(
-                time_axes = time_axes,
-                validated = TRUE
-            )
-
-            invisible(NULL)
-        },
-        # }}}
-
-        # read_aggregated {{{
-        read_aggregated = function(variable, start, count, format = "array") {
-            if (!private$aggregation_info$validated) {
-                stop("Aggregation not validated. This is a bug.")
-            }
-
-            # Read data from all files
-            data_list <- lapply(seq_along(private$urls), function(i) {
-                self$var_get(variable, start = start, count = count, index = i)
-            })
-
-            # Concatenate along time dimension (assuming first dimension is time)
-            do.call(abind::abind, c(data_list, list(along = 1)))
-        },
-        # }}}
-
         # array_to_data_table {{{
-        array_to_data_table = function(arr, variable) {
-            # Convert array to data.table
-            # Assuming dimensions are time, lat, lon
-            dims <- dim(arr)
-
-            if (length(dims) == 3) {
-                # Create grid of indices
-                indices <- expand.grid(
-                    time = seq_len(dims[1]),
-                    lat = seq_len(dims[2]),
-                    lon = seq_len(dims[3])
-                )
-
-                dt <- data.table::as.data.table(indices)
-                dt[[variable]] <- as.vector(arr)
-                dt
-            } else {
-                # For other dimensions, just convert to data.table
-                data.table::data.table(value = as.vector(arr))
+        array_to_data_table = function(arr, variable, start = NULL, count = NULL, index = 1L) {
+            meta <- private$get_var_dim_meta(variable, index = index)
+            if (length(meta$names) == 0L) {
+                dt <- data.table::data.table(val = as.vector(arr))
+                data.table::setnames(dt, "val", variable)
+                return(dt)
             }
+            dim_names_nc <- make.unique(meta$names, sep = "_")
+
+            # Ensure `arr` is treated as an array
+            arr_dim <- dim(arr)
+            if (is.null(arr_dim)) {
+                arr_dim <- length(arr)
+                dim(arr) <- arr_dim
+            }
+
+            nd <- length(arr_dim)
+            if (length(meta$names) != nd) {
+                stop("Dimension mismatch between NetCDF metadata and returned R array. Try using `collapse = FALSE`.")
+            }
+
+            perm <- private$infer_dim_perm(arr_dim, count = count, nc_lengths = meta$lengths)
+            dim_names_arr <- dim_names_nc[perm]
+
+            starts_nc <- if (is.null(start)) rep(1L, length(meta$names)) else as.integer(start)
+            if (length(starts_nc) != length(meta$names)) {
+                stop("`start` must have the same length as the variable's number of dimensions.")
+            }
+            starts_arr <- starts_nc[perm]
+            count_nc <- if (is.null(count)) NULL else as.integer(count)
+            if (!is.null(count_nc) && length(count_nc) != length(meta$names)) {
+                stop("`count` must have the same length as the variable's number of dimensions.")
+            }
+
+            # Build coordinates from linear index without assuming dimension count
+            idx_mat <- arrayInd(seq_len(length(arr)), .dim = arr_dim)
+            dt <- data.table::as.data.table(idx_mat)
+            data.table::setnames(dt, dim_names_arr)
+
+            # Replace indices with actual coordinate values when possible.
+            # For each dimension name `dname`, try to read coordinate variable `self$var_get(dname, ...)`.
+            for (j in seq_along(dim_names_arr)) {
+                col <- dim_names_arr[[j]]
+                k <- perm[[j]]
+                dname_nc <- meta$names[[k]]
+
+                coord <- NULL
+                start_k <- starts_nc[[k]]
+                len_k <- as.integer(arr_dim[[j]])
+                coord <- tryCatch(
+                    self$var_get(dname_nc, start = start_k, count = len_k, index = index, collapse = TRUE),
+                    error = function(e) NULL
+                )
+                if (!is.null(coord)) {
+                    coord <- as.vector(coord)
+                }
+
+                if (!is.null(coord) && length(coord) == as.integer(arr_dim[[j]])) {
+                    dt[[col]] <- coord[idx_mat[, j]]
+                } else {
+                    # Fallback to 1-based indices in original NetCDF space
+                    dt[[col]] <- as.integer(dt[[col]]) + starts_arr[[j]] - 1L
+                }
+            }
+
+            value_name <- variable
+            if (value_name %in% dim_names_arr) {
+                value_name <- paste0(variable, "_value")
+                warning(sprintf(
+                    "Value column name '%s' conflicts with a dimension name; using '%s'.",
+                    variable,
+                    value_name
+                ))
+            }
+            dt[[value_name]] <- as.vector(arr)
+
+            # Reorder columns to NetCDF dimension order when possible
+            keep_dims <- intersect(dim_names_nc, names(dt))
+            data.table::setcolorder(dt, c(keep_dims, value_name))
+
+            dt
         }
         # }}}
     )
 )
 # }}}
-
