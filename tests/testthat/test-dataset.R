@@ -44,6 +44,100 @@ local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along
     path
 }
 
+mirai_dataset_symbols <- c(
+    "EsgDataset",
+    "DatasetAsyncTask",
+    "dataset_async_error_condition",
+    "dataset_async_result_error"
+)
+
+start_mirai_dataset_runtime <- function(workers) {
+    testthat::skip_if_not_installed("mirai")
+
+    workers <- as.integer(workers[[1L]])
+    if (is.na(workers) || workers < 1L) {
+        workers <- 1L
+    }
+
+    compute_profile <- sprintf(
+        "test-dataset-%s-%s",
+        Sys.getpid(),
+        sprintf("%06d", sample.int(999999L, 1L))
+    )
+    started <- FALSE
+    on.exit(
+        {
+            if (!started) {
+                try(mirai::daemons(0, .compute = compute_profile), silent = TRUE)
+            }
+        },
+        add = TRUE
+    )
+
+    startup_error <- NULL
+    tryCatch(
+        {
+            mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+            started <- TRUE
+
+            ready <- mirai::collect_mirai(mirai::mirai(TRUE, .compute = compute_profile))
+            if (!isTRUE(ready)) {
+                stop("mirai readiness probe returned a non-TRUE result.")
+            }
+        },
+        error = function(err) {
+            startup_error <<- err
+        }
+    )
+
+    if (!is.null(startup_error)) {
+        testthat::skip(sprintf(
+            "Concurrent async test requires a working mirai runtime: %s",
+            conditionMessage(startup_error)
+        ))
+    }
+
+    list(compute_profile = compute_profile, workers = workers)
+}
+
+stop_mirai_dataset_runtime <- function(runtime) {
+    if (is.null(runtime$compute_profile)) {
+        return(invisible(NULL))
+    }
+
+    try(mirai::daemons(0, .compute = runtime$compute_profile), silent = TRUE)
+    invisible(NULL)
+}
+
+mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
+    if (!length(X)) {
+        return(vector("list", 0L))
+    }
+
+    runtime <- start_mirai_dataset_runtime(workers)
+    on.exit(stop_mirai_dataset_runtime(runtime), add = TRUE)
+
+    worker_symbols <- mget(mirai_dataset_symbols, envir = asNamespace("epwshiftr"), inherits = FALSE)
+    dot_args <- list(...)
+    tasks <- lapply(X, function(x) {
+        mirai::mirai(
+            {
+                list2env(worker_symbols, envir = .GlobalEnv)
+                on.exit(rm(list = names(worker_symbols), envir = .GlobalEnv), add = TRUE)
+                environment(FUN) <- list2env(worker_symbols, parent = environment(FUN))
+                try(do.call(FUN, c(list(x), dot_args)), silent = TRUE)
+            },
+            FUN = FUN,
+            x = x,
+            dot_args = dot_args,
+            worker_symbols = worker_symbols,
+            .compute = runtime$compute_profile
+        )
+    })
+
+    lapply(tasks, mirai::collect_mirai)
+}
+
 test_that("EsgDataset can work with a single file", {
     skip_on_cran()
     skip_if_offline()
@@ -273,6 +367,217 @@ test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like 
     expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
 
+test_that("EsgDataset public async open keeps the dataset opened after return", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    private <- ds$.__enclos_env__$private
+
+    returned <- ds$open(async = TRUE, timeout = 2)
+    on.exit(ds$close(), add = TRUE)
+
+    expect_identical(returned, ds)
+    expect_true(ds$is_open)
+    expect_identical(private$async_state, "completed")
+    expect_null(private$async_task)
+    expect_equal(
+        as.numeric(ds$var_get("tas", start = c(1L, 1L, 1L), count = c(2L, 1L, 1L), collapse = TRUE)),
+        c(11, 12)
+    )
+})
+
+test_that("EsgDataset public async reads match sync results and keep open-state checks", {
+    path1 <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    path2 <- local_dataset_table_file(
+        time_vals = c(3, 4, 5),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(21, 22, 23)
+    )
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds_closed <- EsgDataset$new(path1)
+    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = 2), "not open")
+    expect_error(ds_closed$var_get("tas", timeout = 2), "only supported")
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    start <- c(1L, 1L, 1L)
+    count <- c(2L, 1L, 1L)
+
+    expect_equal(
+        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE, async = TRUE, timeout = 2),
+        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE)
+    )
+
+    expect_equal(
+        ds$read_array("tas", start = start, count = count, collapse = FALSE, async = TRUE, timeout = 2),
+        ds$read_array("tas", start = start, count = count, collapse = FALSE)
+    )
+
+    expect_equal(
+        ds$read_data_table("tas", start = start, count = count, rbind = TRUE, async = TRUE, timeout = 2),
+        ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
+    )
+
+    expect_true(ds$is_open)
+})
+
+test_that("EsgDataset public async open supports concurrent local datasets", {
+    skip_on_cran()
+
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1, 2),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12, 13)
+        ),
+        local_dataset_table_file(
+            time_vals = c(3, 4, 5),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22, 23)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    results <- mirai_dataset_lapply(seq_along(paths), function(i, paths) {
+        ds <- EsgDataset$new(paths[[i]])
+        private <- ds$.__enclos_env__$private
+        on.exit(ds$close(), add = TRUE)
+
+        ds$open(async = TRUE, timeout = 2)
+
+        list(
+            is_open = ds$is_open,
+            async_state = private$async_state,
+            async_task_is_null = is.null(private$async_task),
+            values = as.numeric(ds$var_get("tas", collapse = TRUE))
+        )
+    }, paths = paths)
+
+    expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
+    expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
+    expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
+    expect_equal(vapply(results, `[[`, character(1L), "async_state"), rep("completed", 2L))
+    expect_equal(
+        lapply(results, `[[`, "values"),
+        list(c(11, 12, 13), c(21, 22, 23))
+    )
+})
+
+test_that("EsgDataset public async reads support concurrent local datasets", {
+    skip_on_cran()
+
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1, 2),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12, 13)
+        ),
+        local_dataset_table_file(
+            time_vals = c(3, 4, 5),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22, 23)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    start <- c(2L, 1L, 1L)
+    count <- c(2L, 1L, 1L)
+    results <- mirai_dataset_lapply(seq_along(paths), function(i, paths, start, count) {
+        ds <- EsgDataset$new(paths[[i]])
+        private <- ds$.__enclos_env__$private
+        ds$open()
+        on.exit(ds$close(), add = TRUE)
+
+        async_values <- as.numeric(ds$var_get(
+            "tas",
+            start = start,
+            count = count,
+            collapse = TRUE,
+            async = TRUE,
+            timeout = 2
+        ))
+
+        list(
+            is_open = ds$is_open,
+            async_state = private$async_state,
+            async_task_is_null = is.null(private$async_task),
+            async_values = async_values,
+            sync_values = as.numeric(ds$var_get(
+                "tas",
+                start = start,
+                count = count,
+                collapse = TRUE
+            ))
+        )
+    }, paths = paths, start = start, count = count)
+
+    expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
+    expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
+    expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
+    expect_equal(vapply(results, `[[`, character(1L), "async_state"), rep("completed", 2L))
+    expect_equal(
+        lapply(results, `[[`, "async_values"),
+        list(c(12, 13), c(22, 23))
+    )
+    expect_equal(
+        lapply(results, `[[`, "async_values"),
+        lapply(results, `[[`, "sync_values")
+    )
+})
+
+test_that("EsgDataset public async open failures leave the dataset closed and clean", {
+    path <- tempfile(fileext = ".nc")
+    if (file.exists(path)) {
+        unlink(path)
+    }
+
+    ds <- EsgDataset$new(path)
+    private <- ds$.__enclos_env__$private
+
+    expect_error(ds$open(async = TRUE, timeout = 2), "Failed to open OPeNDAP connection")
+
+    expect_false(ds$is_open)
+    expect_identical(private$async_state, "failed")
+    expect_null(private$async_task)
+    expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
+})
+
+test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    private <- ds$.__enclos_env__$private
+
+    expect_error(
+        ds$var_get("missing_var", async = TRUE, timeout = 2),
+        "Failed to read variable data"
+    )
+
+    expect_true(ds$is_open)
+    expect_identical(private$async_state, "failed")
+    expect_null(private$async_task)
+    expect_equal(as.numeric(ds$var_get("tas", collapse = TRUE)), c(11, 12, 13))
+})
+
 test_that("EsgDataset handles errors gracefully", {
     skip_on_cran()
 
@@ -294,4 +599,130 @@ test_that("EsgDataset print works", {
     expect_true(any(grepl("ESGF Dataset", msg, fixed = TRUE)))
     expect_true(any(grepl("URLs: 1", msg, fixed = TRUE)))
     expect_true(any(grepl("Status: Closed", msg, fixed = TRUE)))
+})
+
+test_that("EsgDataset internal async tasks keep sync handle state separate", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(101, 102, 103)
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    private <- ds$.__enclos_env__$private
+
+    task <- private$start_async_operation(
+        operation = "read variable data",
+        handler = function(urls, nc_handles, variable, start, count, collapse) {
+            RNetCDF::var.get.nc(nc_handles[[1L]], variable, start = start, count = count, collapse = collapse)
+        },
+        handler_args = list(
+            variable = "tas",
+            start = c(1L, 1L, 1L),
+            count = c(2L, 1L, 1L),
+            collapse = TRUE
+        ),
+        timeout = 2
+    )
+
+    expect_false(ds$is_open)
+    expect_identical(private$async_state, "running")
+
+    result <- private$collect_async_task(task)
+
+    expect_identical(private$async_state, "completed")
+    expect_null(private$async_task)
+    expect_true(task$backend_released)
+    expect_false(ds$is_open)
+    expect_equal(as.numeric(result), c(101, 102))
+})
+
+test_that("EsgDataset internal async tasks surface timeout errors and clear lifecycle state", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1),
+        time_units = "days since 2000-01-01 00:00:00"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    private <- ds$.__enclos_env__$private
+
+    task <- private$start_async_operation(
+        operation = "simulate timeout",
+        handler = function(urls, nc_handles) {
+            Sys.sleep(0.3)
+            TRUE
+        },
+        timeout = 0.05
+    )
+
+    expect_error(private$collect_async_task(task), "timed out")
+    expect_identical(private$async_state, "timed_out")
+    expect_null(private$async_task)
+    expect_true(task$backend_released)
+})
+
+test_that("EsgDataset close() best-effort cancels pending internal async work", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1),
+        time_units = "days since 2000-01-01 00:00:00"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    ds$open()
+    private <- ds$.__enclos_env__$private
+
+    task <- private$start_async_operation(
+        operation = "simulate cancellation",
+        handler = function(urls, nc_handles) {
+            Sys.sleep(5)
+            TRUE
+        },
+        timeout = 10
+    )
+
+    ds$close()
+
+    expect_false(ds$is_open)
+    expect_true(task$cancellation_requested)
+    expect_true(task$backend_released)
+    expect_identical(private$async_state, "cancelled")
+    expect_null(private$async_task)
+})
+
+test_that("EsgDataset internal async cancel race keeps cancelled terminal state", {
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1),
+        time_units = "days since 2000-01-01 00:00:00"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    private <- ds$.__enclos_env__$private
+
+    task <- private$start_async_operation(
+        operation = "cancel-race probe",
+        handler = function(urls, nc_handles) {
+            Sys.sleep(5)
+            TRUE
+        },
+        timeout = 10
+    )
+
+    expect_true(isTRUE(mirai::stop_mirai(task$mirai_obj)))
+    while (mirai::unresolved(task$mirai_obj)) {
+        Sys.sleep(0.01)
+    }
+
+    requested <- private$cancel_async_task(task = task, clear = TRUE)
+
+    expect_false(requested)
+    expect_identical(task$status, "cancelled")
+    expect_true(inherits(task$error, "epwshiftr_async_cancelled"))
+    expect_match(conditionMessage(task$error), "cancelled", fixed = TRUE)
+    expect_identical(private$async_state, "cancelled")
+    expect_true(task$backend_released)
+    expect_null(private$async_task)
 })

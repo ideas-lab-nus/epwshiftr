@@ -1,4 +1,166 @@
 # EsgDataset {{{
+# DatasetAsyncTask {{{
+dataset_async_error_condition <- function(class, message) {
+    structure(list(message = message, call = NULL), class = c(class, "error", "condition"))
+}
+
+dataset_async_result_error <- function(operation, result, timeout_ms = NULL) {
+    if (inherits(result, "miraiError")) {
+        message <- attr(result, "message", exact = TRUE)
+        if (is.null(message) || !nzchar(message)) {
+            message <- as.character(result)
+        }
+        return(dataset_async_error_condition(
+            "epwshiftr_async_failure",
+            sprintf("Failed to %s: %s", operation, message)
+        ))
+    }
+
+    if (!inherits(result, "errorValue")) {
+        return(NULL)
+    }
+
+    code <- unclass(result)[[1L]]
+    if (identical(code, 5L)) {
+        suffix <- if (is.null(timeout_ms)) "" else sprintf(" after %d ms", timeout_ms)
+        return(dataset_async_error_condition(
+            "epwshiftr_async_timeout",
+            sprintf("Failed to %s: async operation timed out%s.", operation, suffix)
+        ))
+    }
+
+    if (identical(code, 20L)) {
+        return(dataset_async_error_condition(
+            "epwshiftr_async_cancelled",
+            sprintf("Failed to %s: async operation was cancelled (best-effort).", operation)
+        ))
+    }
+
+    dataset_async_error_condition(
+        "epwshiftr_async_failure",
+        sprintf("Failed to %s: async operation failed with mirai error code %s.", operation, code)
+    )
+}
+
+DatasetAsyncTask <- R6::R6Class(
+    "DatasetAsyncTask",
+    lock_class = TRUE,
+    public = list(
+        operation = NULL,
+        status = "pending",
+        timeout_ms = NULL,
+        mirai_obj = NULL,
+        compute_profile = NULL,
+        started_at = NULL,
+        completed_at = NULL,
+        result = NULL,
+        error = NULL,
+        cancellation_requested = FALSE,
+        backend_released = FALSE,
+
+        initialize = function(operation, mirai_obj, compute_profile, timeout_ms = NULL) {
+            self$operation <- operation
+            self$mirai_obj <- mirai_obj
+            self$compute_profile <- compute_profile
+            self$timeout_ms <- timeout_ms
+            self$status <- "running"
+            self$started_at <- Sys.time()
+        },
+
+        release_backend = function() {
+            if (!isTRUE(self$backend_released) && !is.null(self$compute_profile)) {
+                try(mirai::daemons(0, .compute = self$compute_profile), silent = TRUE)
+                self$backend_released <- TRUE
+            }
+            invisible(self)
+        },
+
+        mark_terminal = function(status, result = NULL, error = NULL) {
+            self$status <- status
+            self$result <- result
+            self$error <- error
+            self$completed_at <- Sys.time()
+            invisible(self)
+        },
+
+        collect = function() {
+            if (identical(self$status, "completed")) {
+                return(self$result)
+            }
+
+            if (identical(self$status, "cancelled") || identical(self$status, "failed") || identical(self$status, "timed_out")) {
+                stop(self$error)
+            }
+
+            result <- mirai::collect_mirai(self$mirai_obj)
+            error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+            if (!is.null(error)) {
+                status <- if (inherits(error, "epwshiftr_async_timeout")) {
+                    "timed_out"
+                } else if (inherits(error, "epwshiftr_async_cancelled")) {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+                self$mark_terminal(status, error = error)
+                self$release_backend()
+                stop(error)
+            }
+
+            self$mark_terminal("completed", result = result)
+            self$release_backend()
+            result
+        },
+
+        cancel = function() {
+            self$cancellation_requested <- TRUE
+
+            if (is.null(self$mirai_obj)) {
+                self$mark_terminal(
+                    "cancelled",
+                    error = dataset_async_error_condition(
+                        "epwshiftr_async_cancelled",
+                        sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
+                    )
+                )
+                self$release_backend()
+                return(FALSE)
+            }
+
+            if (!mirai::unresolved(self$mirai_obj)) {
+                result <- self$mirai_obj$data
+                error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+                if (is.null(error)) {
+                    self$mark_terminal("completed", result = result)
+                } else {
+                    status <- if (inherits(error, "epwshiftr_async_timeout")) {
+                        "timed_out"
+                    } else if (inherits(error, "epwshiftr_async_cancelled")) {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    }
+                    self$mark_terminal(status, error = error)
+                }
+                self$release_backend()
+                return(FALSE)
+            }
+
+            requested <- isTRUE(mirai::stop_mirai(self$mirai_obj))
+            self$mark_terminal(
+                "cancelled",
+                error = dataset_async_error_condition(
+                    "epwshiftr_async_cancelled",
+                    sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
+                )
+            )
+            self$release_backend()
+            requested
+        }
+    )
+)
+# }}}
+
 #' Remote NetCDF Dataset Access via OPeNDAP
 #'
 #' @description
@@ -59,31 +221,50 @@ EsgDataset <- R6::R6Class(
         #' @description
         #' Open OPeNDAP connection(s)
         #'
+        #' @param async If `TRUE`, first validates opening in a one-shot worker,
+        #'        then re-opens caller-owned handles before returning so the
+        #'        dataset remains opened after `open()` returns. The caller still
+        #'        receives the final `EsgDataset` object itself rather than a
+        #'        `Mirai`/`Future`-like handle. Default: `FALSE`.
+        #' @param timeout Optional positive number of seconds for the async
+        #'        worker pre-open phase. Only supported when `async = TRUE`.
+        #'        It does not limit the final caller-owned reopen that makes the
+        #'        returned dataset stay opened.
+        #'
         #' @return The `EsgDataset` object itself, invisibly.
         #'
         #' @examples
         #' \dontrun{
         #' ds$open()
+        #' # Returns the opened dataset directly; no Mirai/Future to collect.
+        #' ds$open(async = TRUE, timeout = 10)
         #' }
-        open = function() {
+        open = function(async = FALSE, timeout = NULL) {
+            private$validate_async_request(async, timeout)
+
             if (private$opened) {
                 warning("Dataset is already open.")
                 return(invisible(self))
             }
 
-            tryCatch(
-                {
-                    for (i in seq_along(private$urls)) {
-                        private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
-                    }
-                    private$opened <- TRUE
-                },
-                error = function(e) {
-                    # Clean up any opened connections
-                    self$close()
-                    stop(sprintf("Failed to open OPeNDAP connection: %s", e$message))
-                }
+            if (!isTRUE(async)) {
+                private$open_handles()
+                return(invisible(self))
+            }
+
+            task <- private$start_async_operation(
+                operation = "open OPeNDAP connection",
+                handler = function(urls, nc_handles) TRUE,
+                timeout = timeout
             )
+            private$collect_async_task(task)
+
+            # NOTE: Worker-owned handles cannot be transferred back to the
+            # caller, so a successful async probe must be followed by a local
+            # handoff reopen to preserve the public `open()` post-condition.
+            # The async timeout only applies to the worker probe above; the
+            # caller-owned reopen below intentionally runs outside that timeout.
+            private$open_handles()
 
             invisible(self)
         },
@@ -100,17 +281,8 @@ EsgDataset <- R6::R6Class(
         #' ds$close()
         #' }
         close = function() {
-            for (i in seq_along(private$nc_handles)) {
-                if (!is.null(private$nc_handles[[i]])) {
-                    tryCatch(
-                        RNetCDF::close.nc(private$nc_handles[[i]]),
-                        error = function(e) NULL
-                    )
-                    # NOTE: Use single-bracket assignment to avoid shrinking the list.
-                    private$nc_handles[i] <- list(NULL)
-                }
-            }
-            private$opened <- FALSE
+            private$cancel_async_task()
+            private$close_handles()
             invisible(self)
         },
         # }}}
@@ -204,6 +376,11 @@ EsgDataset <- R6::R6Class(
         #' @param count Number of values to read. If `NULL`, reads all.
         #' @param index File index for multi-file datasets. Default: `1L`.
         #' @param collapse Whether to collapse result. Default: `FALSE`.
+        #' @param async If `TRUE`, perform the variable read in a one-shot
+        #'        worker and return the final array directly once complete.
+        #'        No `Mirai`/`Future` object is exposed. Default: `FALSE`.
+        #' @param timeout Optional positive number of seconds for the async
+        #'        worker phase. Only supported when `async = TRUE`.
         #'
         #' @return An array with variable data.
         #'
@@ -211,10 +388,25 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' data <- ds$var_get("tas")
         #' data_subset <- ds$var_get("tas", start = c(1, 1, 1), count = c(10, 10, 1))
+        #' # Returns the final array directly; no Mirai/Future handling required.
+        #' data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
         #' }
-        var_get = function(var, start = NULL, count = NULL, index = 1L, collapse = FALSE) {
+        var_get = function(var, start = NULL, count = NULL, index = 1L, collapse = FALSE,
+                           async = FALSE, timeout = NULL) {
+            private$validate_async_request(async, timeout)
             private$check_open()
             private$check_index(index)
+
+            if (isTRUE(async)) {
+                return(private$async_var_get(
+                    var = var,
+                    start = start,
+                    count = count,
+                    index = index,
+                    collapse = collapse,
+                    timeout = timeout
+                ))
+            }
 
             if (is.null(start) && is.null(count)) {
                 RNetCDF::var.get.nc(private$nc_handles[[index]], var, collapse = collapse)
@@ -381,6 +573,11 @@ EsgDataset <- R6::R6Class(
         #' @param start Starting indices. If `NULL`, starts from beginning.
         #' @param count Number of values to read. If `NULL`, reads all.
         #' @param collapse Whether to collapse result. Default: `FALSE`.
+        #' @param async If `TRUE`, read array values in a one-shot worker and
+        #'        return the final list directly once complete. No
+        #'        `Mirai`/`Future` object is exposed. Default: `FALSE`.
+        #' @param timeout Optional positive number of seconds for the async
+        #'        worker phase. Only supported when `async = TRUE`.
         #'
         #' @return A list of arrays with variable data. Each element
         #' corresponds to a file in the dataset.
@@ -389,9 +586,24 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' data_list <- ds$read_array("tas")
         #' data <- data_list[[1]]
+        #' # Returns the final list directly; no Mirai/Future handling required.
+        #' data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
         #' }
-        read_array = function(variable, start = NULL, count = NULL, collapse = FALSE) {
+        read_array = function(variable, start = NULL, count = NULL, collapse = FALSE,
+                              async = FALSE, timeout = NULL) {
+            private$validate_async_request(async, timeout)
             private$check_open()
+
+            if (isTRUE(async)) {
+                return(private$async_read_array(
+                    variable = variable,
+                    start = start,
+                    count = count,
+                    collapse = collapse,
+                    timeout = timeout
+                ))
+            }
+
             lapply(seq_along(private$urls), function(i) {
                 self$var_get(variable, start = start, count = count, index = i, collapse = collapse)
             })
@@ -408,6 +620,11 @@ EsgDataset <- R6::R6Class(
         #' @param rbind If `TRUE`, return a single data.table by row-binding
         #' the per-file results with `data.table::rbindlist(..., idcol = "file_index")`.
         #' Default: `FALSE`.
+        #' @param async If `TRUE`, offload the array read phase to a one-shot
+        #'        worker and still return the final data.table result directly.
+        #'        No `Mirai`/`Future` object is exposed. Default: `FALSE`.
+        #' @param timeout Optional positive number of seconds for the async
+        #'        worker phase. Only supported when `async = TRUE`.
         #'
         #' @return If `rbind = FALSE`, a list of data.table (one per file).
         #' If `rbind = TRUE`, a single data.table with an extra `file_index` column.
@@ -417,13 +634,24 @@ EsgDataset <- R6::R6Class(
         #' dt_list <- ds$read_data_table("tas")
         #' dt <- dt_list[[1]]
         #' dt_all <- ds$read_data_table("tas", rbind = TRUE)
+        #' # Returns the final data.table directly; no Mirai/Future handling required.
+        #' dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
         #' }
-        read_data_table = function(variable, start = NULL, count = NULL, rbind = FALSE) {
+        read_data_table = function(variable, start = NULL, count = NULL, rbind = FALSE,
+                                   async = FALSE, timeout = NULL) {
             checkmate::assert_flag(rbind)
+            private$validate_async_request(async, timeout)
             private$check_open()
 
             # Always keep dimensions for table output
-            arr_list <- self$read_array(variable, start = start, count = count, collapse = FALSE)
+            arr_list <- self$read_array(
+                variable,
+                start = start,
+                count = count,
+                collapse = FALSE,
+                async = async,
+                timeout = timeout
+            )
             dt_list <- lapply(seq_along(arr_list), function(i) {
                 private$array_to_data_table(
                     arr_list[[i]],
@@ -508,6 +736,9 @@ EsgDataset <- R6::R6Class(
         nc_handles = NULL,
         opened = FALSE,
         metadata_cache = NULL,
+        async_task = NULL,
+        async_state = "idle",
+        async_sequence = 0L,
 
         # get_var_dim_meta {{
         # NOTE: `start`/`count` are in NetCDF dimension order.
@@ -562,6 +793,229 @@ EsgDataset <- R6::R6Class(
         # finalize {{{
         finalize = function() {
             self$close()
+        },
+        # }}}
+
+        # validate_async_request {{{
+        validate_async_request = function(async, timeout) {
+            checkmate::assert_flag(async)
+            if (!isTRUE(async) && !is.null(timeout)) {
+                stop("`timeout` is only supported when `async = TRUE`.")
+            }
+            invisible(async)
+        },
+        # }}}
+
+        # open_handles {{{
+        open_handles = function() {
+            tryCatch(
+                {
+                    for (i in seq_along(private$urls)) {
+                        private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
+                    }
+                    private$opened <- TRUE
+                },
+                error = function(e) {
+                    private$close_handles()
+                    stop(sprintf("Failed to open OPeNDAP connection: %s", conditionMessage(e)))
+                }
+            )
+
+            invisible(NULL)
+        },
+        # }}}
+
+        # close_handles {{{
+        close_handles = function() {
+            for (i in seq_along(private$nc_handles)) {
+                if (!is.null(private$nc_handles[[i]])) {
+                    tryCatch(
+                        RNetCDF::close.nc(private$nc_handles[[i]]),
+                        error = function(e) NULL
+                    )
+                    # NOTE: Use single-bracket assignment to avoid shrinking the list.
+                    private$nc_handles[i] <- list(NULL)
+                }
+            }
+            private$opened <- FALSE
+            invisible(NULL)
+        },
+        # }}}
+
+        # normalize_async_timeout {{{
+        normalize_async_timeout = function(timeout) {
+            if (is.null(timeout)) {
+                return(NULL)
+            }
+
+            timeout <- as.numeric(timeout)
+            if (length(timeout) != 1L || is.na(timeout) || timeout <= 0) {
+                stop("`timeout` must be a single positive number of seconds.")
+            }
+
+            as.integer(ceiling(timeout * 1000))
+        },
+        # }}}
+
+        # next_async_compute_profile {{{
+        next_async_compute_profile = function() {
+            private$async_sequence <- private$async_sequence + 1L
+            sprintf("epwshiftr.esgdataset.%d.%d", Sys.getpid(), private$async_sequence)
+        },
+        # }}}
+
+        # start_async_operation {{{
+        start_async_operation = function(operation, handler, handler_args = list(), timeout = NULL) {
+            checkmate::assert_string(operation, min.chars = 1L)
+            checkmate::assert_function(handler)
+            if (!is.list(handler_args)) {
+                stop("`handler_args` must be a list.")
+            }
+
+            if (!is.null(private$async_task) && identical(private$async_state, "running")) {
+                stop("An async task is already running for this dataset.")
+            }
+
+            timeout_ms <- private$normalize_async_timeout(timeout)
+            compute_profile <- private$next_async_compute_profile()
+            mirai::daemons(1L, dispatcher = TRUE, .compute = compute_profile)
+
+            mirai_obj <- mirai::mirai(
+                {
+                    handles <- vector("list", length(urls))
+                    on.exit(
+                        {
+                            for (i in seq_along(handles)) {
+                                if (!is.null(handles[[i]])) {
+                                    try(RNetCDF::close.nc(handles[[i]]), silent = TRUE)
+                                }
+                            }
+                        },
+                        add = TRUE
+                    )
+
+                    for (i in seq_along(urls)) {
+                        handles[[i]] <- RNetCDF::open.nc(urls[[i]])
+                    }
+
+                    do.call(handler, c(list(urls = urls, nc_handles = handles), handler_args))
+                },
+                urls = private$urls,
+                handler = handler,
+                handler_args = handler_args,
+                .timeout = timeout_ms,
+                .compute = compute_profile
+            )
+
+            task <- DatasetAsyncTask$new(
+                operation = operation,
+                mirai_obj = mirai_obj,
+                compute_profile = compute_profile,
+                timeout_ms = timeout_ms
+            )
+            private$async_task <- task
+            private$async_state <- "running"
+            task
+        },
+        # }}}
+
+        # collect_async_task {{{
+        collect_async_task = function(task = private$async_task, clear = TRUE) {
+            if (is.null(task)) {
+                stop("No async task is registered for this dataset.")
+            }
+
+            on.exit(
+                {
+                    private$async_state <- task$status
+                    if (isTRUE(clear) && identical(private$async_task, task)) {
+                        private$async_task <- NULL
+                    }
+                },
+                add = TRUE
+            )
+
+            task$collect()
+        },
+        # }}}
+
+        # cancel_async_task {{{
+        cancel_async_task = function(task = private$async_task, clear = TRUE) {
+            if (is.null(task)) {
+                return(FALSE)
+            }
+
+            requested <- task$cancel()
+            private$async_state <- task$status
+            if (isTRUE(clear) && identical(private$async_task, task)) {
+                private$async_task <- NULL
+            }
+            requested
+        },
+        # }}}
+
+        # async_var_get {{{
+        async_var_get = function(var, start = NULL, count = NULL, index = 1L,
+                                 collapse = FALSE, timeout = NULL) {
+            task <- private$start_async_operation(
+                operation = "read variable data",
+                handler = function(urls, nc_handles, var, start, count, index, collapse) {
+                    if (is.null(start) && is.null(count)) {
+                        return(RNetCDF::var.get.nc(nc_handles[[index]], var, collapse = collapse))
+                    }
+
+                    RNetCDF::var.get.nc(
+                        nc_handles[[index]],
+                        var,
+                        start = start,
+                        count = count,
+                        collapse = collapse
+                    )
+                },
+                handler_args = list(
+                    var = var,
+                    start = start,
+                    count = count,
+                    index = index,
+                    collapse = collapse
+                ),
+                timeout = timeout
+            )
+
+            private$collect_async_task(task)
+        },
+        # }}}
+
+        # async_read_array {{{
+        async_read_array = function(variable, start = NULL, count = NULL,
+                                    collapse = FALSE, timeout = NULL) {
+            task <- private$start_async_operation(
+                operation = "read variable data",
+                handler = function(urls, nc_handles, variable, start, count, collapse) {
+                    lapply(seq_along(nc_handles), function(i) {
+                        if (is.null(start) && is.null(count)) {
+                            return(RNetCDF::var.get.nc(nc_handles[[i]], variable, collapse = collapse))
+                        }
+
+                        RNetCDF::var.get.nc(
+                            nc_handles[[i]],
+                            variable,
+                            start = start,
+                            count = count,
+                            collapse = collapse
+                        )
+                    })
+                },
+                handler_args = list(
+                    variable = variable,
+                    start = start,
+                    count = count,
+                    collapse = collapse
+                ),
+                timeout = timeout
+            )
+
+            private$collect_async_task(task)
         },
         # }}}
 

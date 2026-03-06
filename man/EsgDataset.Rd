@@ -39,6 +39,8 @@ ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 
 \dontrun{
 ds$open()
+# Returns the opened dataset directly; no Mirai/Future to collect.
+ds$open(async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
@@ -88,6 +90,8 @@ units <- ds$att_get("tas", "units")
 \dontrun{
 data <- ds$var_get("tas")
 data_subset <- ds$var_get("tas", start = c(1, 1, 1), count = c(10, 10, 1))
+# Returns the final array directly; no Mirai/Future handling required.
+data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
@@ -129,6 +133,8 @@ grid <- ds$get_spatial_grid()
 \dontrun{
 data_list <- ds$read_array("tas")
 data <- data_list[[1]]
+# Returns the final list directly; no Mirai/Future handling required.
+data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
@@ -139,6 +145,8 @@ data <- data_list[[1]]
 dt_list <- ds$read_data_table("tas")
 dt <- dt_list[[1]]
 dt_all <- ds$read_data_table("tas", rbind = TRUE)
+# Returns the final data.table directly; no Mirai/Future handling required.
+dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 }
 }
 \author{
@@ -219,9 +227,25 @@ ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 \subsection{Method \code{open()}}{
 Open OPeNDAP connection(s)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$open()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$open(async = FALSE, timeout = NULL)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{async}}{If \code{TRUE}, first validates opening in a one-shot worker,
+then re-opens caller-owned handles before returning so the
+dataset remains opened after \code{open()} returns. The caller still
+receives the final \code{EsgDataset} object itself rather than a
+\code{Mirai}/\code{Future}-like handle. Default: \code{FALSE}.}
+
+\item{\code{timeout}}{Optional positive number of seconds for the async
+worker pre-open phase. Only supported when \code{async = TRUE}.
+It does not limit the final caller-owned reopen that makes the
+returned dataset stay opened.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
 The \code{EsgDataset} object itself, invisibly.
 }
@@ -229,6 +253,8 @@ The \code{EsgDataset} object itself, invisibly.
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
 ds$open()
+# Returns the opened dataset directly; no Mirai/Future to collect.
+ds$open(async = TRUE, timeout = 10)
 }
 }
 \if{html}{\out{</div>}}
@@ -398,7 +424,9 @@ Read variable data
   start = NULL,
   count = NULL,
   index = 1L,
-  collapse = FALSE
+  collapse = FALSE,
+  async = FALSE,
+  timeout = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -414,6 +442,13 @@ Read variable data
 \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
 
 \item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
+
+\item{\code{async}}{If \code{TRUE}, perform the variable read in a one-shot
+worker and return the final array directly once complete.
+No \code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
+
+\item{\code{timeout}}{Optional positive number of seconds for the async
+worker phase. Only supported when \code{async = TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -425,6 +460,8 @@ An array with variable data.
 \preformatted{\dontrun{
 data <- ds$var_get("tas")
 data_subset <- ds$var_get("tas", start = c(1, 1, 1), count = c(10, 10, 1))
+# Returns the final array directly; no Mirai/Future handling required.
+data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 }
 }
 \if{html}{\out{</div>}}
@@ -558,7 +595,14 @@ grid <- ds$get_spatial_grid()
 \subsection{Method \code{read_array()}}{
 Read variable data as a list of arrays (one per file)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(variable, start = NULL, count = NULL, collapse = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(
+  variable,
+  start = NULL,
+  count = NULL,
+  collapse = FALSE,
+  async = FALSE,
+  timeout = NULL
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -571,6 +615,13 @@ Read variable data as a list of arrays (one per file)
 \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
 
 \item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
+
+\item{\code{async}}{If \code{TRUE}, read array values in a one-shot worker and
+return the final list directly once complete. No
+\code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
+
+\item{\code{timeout}}{Optional positive number of seconds for the async
+worker phase. Only supported when \code{async = TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -583,6 +634,8 @@ corresponds to a file in the dataset.
 \preformatted{\dontrun{
 data_list <- ds$read_array("tas")
 data <- data_list[[1]]
+# Returns the final list directly; no Mirai/Future handling required.
+data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
 }
 }
 \if{html}{\out{</div>}}
@@ -596,7 +649,14 @@ data <- data_list[[1]]
 \subsection{Method \code{read_data_table()}}{
 Read variable data as a list of data.table (one per file)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(variable, start = NULL, count = NULL, rbind = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(
+  variable,
+  start = NULL,
+  count = NULL,
+  rbind = FALSE,
+  async = FALSE,
+  timeout = NULL
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -611,6 +671,13 @@ Read variable data as a list of data.table (one per file)
 \item{\code{rbind}}{If \code{TRUE}, return a single data.table by row-binding
 the per-file results with \code{data.table::rbindlist(..., idcol = "file_index")}.
 Default: \code{FALSE}.}
+
+\item{\code{async}}{If \code{TRUE}, offload the array read phase to a one-shot
+worker and still return the final data.table result directly.
+No \code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
+
+\item{\code{timeout}}{Optional positive number of seconds for the async
+worker phase. Only supported when \code{async = TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -624,6 +691,8 @@ If \code{rbind = TRUE}, a single data.table with an extra \code{file_index} colu
 dt_list <- ds$read_data_table("tas")
 dt <- dt_list[[1]]
 dt_all <- ds$read_data_table("tas", rbind = TRUE)
+# Returns the final data.table directly; no Mirai/Future handling required.
+dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 }
 }
 \if{html}{\out{</div>}}
