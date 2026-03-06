@@ -1,3 +1,107 @@
+local_nc_time_file <- function(time_vals, units, calendar = "standard") {
+    path <- tempfile(fileext = ".nc")
+    nc <- RNetCDF::create.nc(path)
+
+    RNetCDF::dim.def.nc(nc, "time", length(time_vals))
+    RNetCDF::var.def.nc(nc, "time", "NC_DOUBLE", "time")
+    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "title", "NC_CHAR", "test")
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
+    RNetCDF::var.put.nc(nc, "time", time_vals, count = length(time_vals))
+    RNetCDF::close.nc(nc)
+
+    path
+}
+
+test_that("parse_cf_time() returns UTC POSIXct with CF metadata", {
+    time <- parse_cf_time(c(0, 1.5), "days since 2000-01-01 00:00:00", "standard")
+
+    expect_s3_class(time, "POSIXct")
+    expect_equal(as.numeric(time), c(946684800, 946814400))
+    expect_identical(attr(time, "tzone"), "UTC")
+    expect_identical(attr(time, "cf_units"), "days since 2000-01-01 00:00:00")
+    expect_identical(attr(time, "cf_calendar"), "standard")
+})
+
+test_that("parse_cf_time() returns POSIXct for common CF calendars", {
+    calendars <- c(
+        "standard",
+        "gregorian",
+        "proleptic_gregorian",
+        "noleap",
+        "365_day",
+        "360_day"
+    )
+
+    for (calendar in calendars) {
+        time <- parse_cf_time(58:62, "days since 2000-01-01 00:00:00", calendar)
+
+        expect_true(inherits(time, "POSIXct"), info = calendar)
+        expect_identical(attr(time, "tzone"), "UTC", info = calendar)
+        expect_identical(attr(time, "cf_units"), "days since 2000-01-01 00:00:00", info = calendar)
+        expect_identical(attr(time, "cf_calendar"), calendar, info = calendar)
+        expect_equal(length(time), 5L, info = calendar)
+        expect_equal(unname(diff(as.numeric(time))), rep(86400, 4L), info = calendar)
+    }
+})
+
+test_that("get_nc_time() and EsgDataset$get_time_axis() share CFtime parsing", {
+    path <- local_nc_time_file(
+        time_vals = c(0, 1.5),
+        units = "days since 2000-01-01 00:00:00",
+        calendar = "standard"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    expected <- as.POSIXct(c("2000-01-01 00:00:00", "2000-01-02 12:00:00"), tz = "UTC")
+
+    time <- get_nc_time(path)
+    expect_s3_class(time, "POSIXct")
+    expect_equal(as.numeric(time), as.numeric(expected))
+    expect_identical(attr(time, "cf_units"), "days since 2000-01-01 00:00:00")
+    expect_identical(attr(time, "cf_calendar"), "standard")
+
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    time_info <- ds$get_time_axis()
+    expect_s3_class(time_info$values, "POSIXct")
+    expect_equal(time_info$length, 2L)
+    expect_identical(time_info$units, "days since 2000-01-01 00:00:00")
+    expect_identical(time_info$calendar, "standard")
+    expect_equal(as.numeric(time_info$values), as.numeric(expected))
+    expect_identical(attr(time_info$values, "cf_units"), time_info$units)
+    expect_identical(attr(time_info$values, "cf_calendar"), time_info$calendar)
+})
+
+test_that("get_nc_time() and EsgDataset$get_time_axis() return POSIXct for 360_day", {
+    path <- local_nc_time_file(
+        time_vals = 58:62,
+        units = "days since 2000-01-01 00:00:00",
+        calendar = "360_day"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    time <- get_nc_time(path)
+    expect_s3_class(time, "POSIXct")
+    expect_identical(attr(time, "cf_units"), "days since 2000-01-01 00:00:00")
+    expect_identical(attr(time, "cf_calendar"), "360_day")
+    expect_equal(unname(diff(as.numeric(time))), rep(86400, 4L))
+
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    time_info <- ds$get_time_axis()
+    expect_s3_class(time_info$values, "POSIXct")
+    expect_identical(time_info$units, "days since 2000-01-01 00:00:00")
+    expect_identical(time_info$calendar, "360_day")
+    expect_equal(as.numeric(time_info$values), as.numeric(time))
+    expect_identical(attr(time_info$values, "cf_units"), time_info$units)
+    expect_identical(attr(time_info$values, "cf_calendar"), time_info$calendar)
+})
+
 test_that("get_nc_meta()", {
     skip_on_cran()
 
@@ -112,12 +216,12 @@ test_that("get_nc_time()", {
         # can stop if invalid calendar found
         mockery::stub(get_nc_time, "get_nc_atts",
             data.table(
-                variable = "time",
-                attribute = "calendar",
-                value = list("invalid")
+                variable = c("time", "time"),
+                attribute = c("calendar", "units"),
+                value = list("invalid", "days since 1850-01-01")
             )
         )
-        expect_error(get_nc_time(path), "Unsupported calendar")
+        expect_error(get_nc_time(path), "Invalid calendar specification")
 
         # can work with only date specification
         mockery::stub(get_nc_time, "get_nc_atts",
@@ -129,7 +233,7 @@ test_that("get_nc_time()", {
         )
         expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct")
 
-        # can warning if months resolution found
+        # can parse months resolution with CFtime
         mockery::stub(get_nc_time, "get_nc_atts",
             data.table(
                 variable = c("time", "time"),
@@ -137,7 +241,7 @@ test_that("get_nc_time()", {
                 value = list("standard", "months since 1850-01")
             )
         )
-        expect_warning(get_nc_time(path, range = TRUE), "Month time resolution")
+        expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct")
 
         # can stop if invlaid time unit string
         mockery::stub(get_nc_time, "get_nc_atts",
@@ -147,7 +251,7 @@ test_that("get_nc_time()", {
                 value = list("standard", "months 1850-01")
             )
         )
-        expect_error(get_nc_time(path, range = TRUE), "Invalid time units")
+        expect_error(get_nc_time(path, range = TRUE), "CF-compliant time coordinate")
     }
 })
 

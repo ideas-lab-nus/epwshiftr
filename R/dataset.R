@@ -301,24 +301,25 @@ EsgDataset <- R6::R6Class(
             # Get time dimension info
             time_dim <- self$dim_inq("time", index)
 
-            # Get time variable data
-            time_vals <- self$var_get("time", index = index)
-
             # Get time attributes
-            time_units <- tryCatch(
-                self$att_get("time", "units", index),
-                error = function(e) "unknown"
-            )
+            time_units <- self$att_get("time", "units", index)
 
             time_calendar <- tryCatch(
                 self$att_get("time", "calendar", index),
                 error = function(e) "standard"
             )
 
+            # Get and parse time variable data
+            time_vals <- parse_cf_time(
+                self$var_get("time", index = index),
+                time_units,
+                time_calendar
+            )
+
             result <- list(
                 values = time_vals,
                 units = time_units,
-                calendar = time_calendar,
+                calendar = normalize_cf_calendar(time_calendar),
                 length = time_dim$length
             )
 
@@ -615,6 +616,11 @@ EsgDataset <- R6::R6Class(
                 stop("`count` must have the same length as the variable's number of dimensions.")
             }
 
+            time_axis <- NULL
+            if ("time" %in% meta$names) {
+                time_axis <- self$get_time_axis(index = index)$values
+            }
+
             # Build coordinates from linear index without assuming dimension count
             idx_mat <- arrayInd(seq_len(length(arr)), .dim = arr_dim)
             dt <- data.table::as.data.table(idx_mat)
@@ -627,15 +633,21 @@ EsgDataset <- R6::R6Class(
                 k <- perm[[j]]
                 dname_nc <- meta$names[[k]]
 
-                coord <- NULL
                 start_k <- starts_nc[[k]]
                 len_k <- as.integer(arr_dim[[j]])
-                coord <- tryCatch(
-                    self$var_get(dname_nc, start = start_k, count = len_k, index = index, collapse = TRUE),
-                    error = function(e) NULL
-                )
-                if (!is.null(coord)) {
-                    coord <- as.vector(coord)
+                coord <- NULL
+
+                if (identical(dname_nc, "time") && !is.null(time_axis)) {
+                    coord_idx <- seq.int(from = start_k, length.out = len_k)
+                    coord <- time_axis[coord_idx]
+                } else {
+                    coord <- tryCatch(
+                        self$var_get(dname_nc, start = start_k, count = len_k, index = index, collapse = TRUE),
+                        error = function(e) NULL
+                    )
+                    if (!is.null(coord)) {
+                        coord <- as.vector(coord)
+                    }
                 }
 
                 if (!is.null(coord) && length(coord) == as.integer(arr_dim[[j]])) {

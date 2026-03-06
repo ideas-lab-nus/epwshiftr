@@ -16,6 +16,34 @@
 url_nc <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc"
 url_nc2 <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc"
 
+local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along(time_vals), calendar = "standard") {
+    path <- tempfile(fileext = ".nc")
+    nc <- RNetCDF::create.nc(path)
+
+    RNetCDF::dim.def.nc(nc, "time", length(time_vals))
+    RNetCDF::dim.def.nc(nc, "lat", 1L)
+    RNetCDF::dim.def.nc(nc, "lon", 1L)
+    RNetCDF::var.def.nc(nc, "time", "NC_DOUBLE", "time")
+    RNetCDF::var.def.nc(nc, "lat", "NC_DOUBLE", "lat")
+    RNetCDF::var.def.nc(nc, "lon", "NC_DOUBLE", "lon")
+    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
+
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", time_units)
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
+    RNetCDF::var.put.nc(nc, "time", time_vals, count = length(time_vals))
+    RNetCDF::var.put.nc(nc, "lat", 1, count = 1L)
+    RNetCDF::var.put.nc(nc, "lon", 2, count = 1L)
+    RNetCDF::var.put.nc(
+        nc,
+        "tas",
+        array(tas_vals, dim = c(length(time_vals), 1L, 1L)),
+        count = c(length(time_vals), 1L, 1L)
+    )
+    RNetCDF::close.nc(nc)
+
+    path
+}
+
 test_that("EsgDataset can work with a single file", {
     skip_on_cran()
     skip_if_offline()
@@ -80,6 +108,7 @@ test_that("EsgDataset can work with a single file", {
     expect_true("values" %in% names(time_info))
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
+    expect_s3_class(time_info$values, "POSIXct")
 
     # Test get_spatial_grid
     grid <- ds$get_spatial_grid()
@@ -126,8 +155,15 @@ test_that("EsgDataset can work with a single file", {
     expect_true(all(dim_names %in% names(dt)))
     for (j in seq_along(dim_names)) {
         nm <- dim_names[[j]]
-        coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], collapse = TRUE)
-        expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
+        if (identical(nm, "time")) {
+            coord <- ds$get_time_axis()$values[seq.int(start[[j]], length.out = count[[j]])]
+            expect_s3_class(dt[[nm]], "POSIXct")
+            expect_identical(attr(dt[[nm]], "tzone"), "UTC")
+            expect_equal(as.numeric(sort(unique(dt[[nm]]))), as.numeric(sort(coord)))
+        } else {
+            coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], collapse = TRUE)
+            expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
+        }
     }
 
     ds$close()
@@ -157,6 +193,7 @@ test_that("EsgDataset can work with multiple files", {
     expect_true("values" %in% names(time_info))
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
+    expect_s3_class(time_info$values, "POSIXct")
 
     # Test read_data_table
     start <- c(1, 1, 1)
@@ -174,8 +211,15 @@ test_that("EsgDataset can work with multiple files", {
         dti <- dt_list[[i]]
         for (j in seq_along(dim_names)) {
             nm <- dim_names[[j]]
-            coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], index = i, collapse = TRUE)
-            expect_equal(sort(unique(dti[[nm]])), sort(as.vector(coord)))
+            if (identical(nm, "time")) {
+                coord <- ds$get_time_axis(i)$values[seq.int(start[[j]], length.out = count[[j]])]
+                expect_s3_class(dti[[nm]], "POSIXct")
+                expect_identical(attr(dti[[nm]], "tzone"), "UTC")
+                expect_equal(as.numeric(sort(unique(dti[[nm]]))), as.numeric(sort(coord)))
+            } else {
+                coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], index = i, collapse = TRUE)
+                expect_equal(sort(unique(dti[[nm]])), sort(as.vector(coord)))
+            }
         }
     }
 
@@ -184,6 +228,49 @@ test_that("EsgDataset can work with multiple files", {
     expect_s3_class(dt_all, "data.table")
     expect_true("file_index" %in% names(dt_all))
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
+})
+
+test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
+    path1 <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 1850-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    path2 <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2010-01-01 00:00:00",
+        tas_vals = c(21, 22, 23)
+    )
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    start <- c(2, 1, 1)
+    count <- c(2, 1, 1)
+    expected <- list(
+        as.POSIXct(c("1850-01-02 00:00:00", "1850-01-03 00:00:00"), tz = "UTC"),
+        as.POSIXct(c("2010-01-02 00:00:00", "2010-01-03 00:00:00"), tz = "UTC")
+    )
+
+    dt_list <- ds$read_data_table("tas", start = start, count = count)
+    expect_length(dt_list, 2L)
+
+    for (i in seq_along(dt_list)) {
+        time <- dt_list[[i]]$time
+        expect_true(inherits(time, "POSIXct"))
+        expect_identical(attr(time, "tzone"), "UTC")
+        expect_length(time, count[[1L]])
+        expect_false(is.unsorted(as.numeric(time), strictly = TRUE))
+        expect_equal(as.numeric(time), as.numeric(expected[[i]]))
+    }
+
+    dt_all <- ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
+    expect_true(inherits(dt_all$time, "POSIXct"))
+    expect_identical(attr(dt_all$time, "tzone"), "UTC")
+    expect_equal(as.numeric(dt_all[file_index == 1L, time]), as.numeric(expected[[1L]]))
+    expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
 
 test_that("EsgDataset handles errors gracefully", {

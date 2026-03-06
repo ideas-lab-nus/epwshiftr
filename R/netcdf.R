@@ -557,8 +557,9 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' [match_coord()] and extracts CMIP6 data using the coordinates and years of
 #' interest specified.
 #'
-#' `extract_data()` supports common calendars, including `365_day` and
-#' `360_day`, thanks to the [PCICt][PCICt::as.PCICt] package.
+#' `extract_data()` uses [CFtime](https://cran.r-project.org/package=CFtime)
+#' to parse CF-compliant time coordinates into UTC `POSIXct` values when the
+#' calendar supports POSIX conversion.
 #'
 #' `extract_data()` uses [future.apply][future.apply::future_lapply()]
 #' underneath. You can use your preferable future backend to
@@ -798,6 +799,55 @@ get_nc_axes <- function (x) {
 # }}}
 
 # get_nc_time {{{
+normalize_cf_calendar <- function (calendar) {
+    if (!length(calendar) || is.na(calendar[[1L]]) || !nzchar(trimws(calendar[[1L]]))) {
+        return("standard")
+    }
+
+    tolower(as.character(calendar[[1L]]))
+}
+
+get_nc_time_att <- function (atts, attribute, default = NULL) {
+    idx <- which(atts$variable == "time" & atts$attribute == attribute)
+
+    if (!length(idx)) {
+        if (!is.null(default)) return(default)
+        stop(sprintf("Missing NetCDF 'time' attribute: '%s'.", attribute), call. = FALSE)
+    }
+
+    atts$value[[idx[[1L]]]]
+}
+
+parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
+    calendar <- normalize_cf_calendar(calendar)
+    units <- as.character(units[[1L]])
+
+    cf_time <- CFtime::CFtime(units, calendar = calendar, offsets = offsets)
+    posix_time <- tryCatch(
+        {
+            CFtime::as_timestamp(cf_time, asPOSIX = TRUE)
+        },
+        error = function(e) {
+            origin <- cf_time$cal$origin
+            origin_time <- ISOdatetime(origin$year[[1L]], origin$month[[1L]], 1L, 0L, 0L, 0, tz = tz)
+            origin_time <- origin_time + (origin$day[[1L]] - 1) * 86400 +
+                origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]]
+
+            fields <- cf_time$cal$offsets2time(cf_time$offsets)
+            day_offsets <- cf_time$cal$date2offset(fields)
+            second_offsets <- fields$hour * 3600 + fields$minute * 60 + fields$second -
+                (origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]])
+
+            origin_time + day_offsets * 86400 + second_offsets
+        }
+    )
+    posix_time <- as.POSIXct(posix_time, tz = tz)
+
+    data.table::setattr(posix_time, "cf_units", units)
+    data.table::setattr(posix_time, "cf_calendar", calendar)
+    posix_time
+}
+
 get_nc_time <- function (x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -811,54 +861,19 @@ get_nc_time <- function (x, range = FALSE) {
     # get variable attributes
     atts <- get_nc_atts(nc)
 
-    # get calendar
-    cal <- tolower(tolower(atts[variable == "time" & attribute == "calendar", value[[1L]]]))
-    CALENDARS <- c("gregorian", "standard", "proleptic_gregorian", "noleap",
-        "365_day", "all_leap", "366_day", "360_day")
-    if (!cal %in% CALENDARS) {
-        stop(sprintf("Unsupported calendar type found: '%s'.", cal))
-    }
-
-    # get time origin and units
-    time_spec <- atts[variable == "time" & attribute == "units", value[[1L]]]
-    time_units <- strsplit(time_spec, " ")[[1L]]
-    time_res <- tolower(time_units[1L])
-
-    if (length(time_units) >= 4L) {
-        time_ori_str <- paste(time_units[3L], time_units[4L:length(time_units)])
-    } else if (length(time_units) == 3L) {
-        time_ori_str <- time_units[3L]
-    } else {
-        stop(sprintf("Invalid time units found: '%s'.", time_spec))
-    }
-    # PCICt only handle standard format string
-    if (time_res %in% c("months", "month")) {
-        time_ori_str <- paste0(time_ori_str, "-01")
-        warning("Month time resolution found. Seconds in a month will be set to 86400 (seconds in day) * 30 (day). ",
-            "Time conversion may be not accurate.")
-    }
-    time_ori <- PCICt::as.PCICt.default(time_ori_str, cal = cal)
-
-    secs <- switch(time_res,
-        second = 1, seconds = 1,
-        minute = 60, minutes = 60,
-        hour = 3600, hours = 3600,
-        day = 86400, days = 86400,
-        month = 86400 * 30, months = 86400 * 30,
-        stop(sprintf("Unsupported time resolution found: '%s'. Should be one of [%s]",
-            time_res, paste0("'", c("second(s)", "minute(s)", "hour(s)", "day(s)", "month(s)"), "'", collapse = ", ")
-        ))
-    )
+    time_units <- get_nc_time_att(atts, "units")
+    time_calendar <- get_nc_time_att(atts, "calendar", default = "standard")
 
     if (range) {
-        time_num_start <- RNetCDF::var.get.nc(nc, "time", 1, 1)
-        time_num_end <- RNetCDF::var.get.nc(nc, "time", n, 1)
-        as.POSIXct(time_ori + c(time_num_start, time_num_end) * secs)
+        offsets <- c(
+            RNetCDF::var.get.nc(nc, "time", 1, 1),
+            RNetCDF::var.get.nc(nc, "time", n, 1)
+        )
     } else {
-        # create time sequences
-        time_num <- RNetCDF::var.get.nc(nc, "time", 1, n)
-        as.POSIXct(time_ori + time_num * secs)
+        offsets <- RNetCDF::var.get.nc(nc, "time", 1, n)
     }
+
+    parse_cf_time(offsets, time_units, time_calendar)
 }
 # }}}
 
