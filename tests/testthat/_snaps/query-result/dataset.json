@@ -1,0 +1,132 @@
+{
+  "index_node": ["..."],
+  "parameter": {
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
+    },
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
+    },
+    "experiment_id": null,
+    "source_id": {
+      "value": ["AWI-CM-1-1-MR"],
+      "negate": [false]
+    },
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": {
+      "value": ["day"],
+      "negate": [false]
+    },
+    "variant_label": {
+      "value": ["r1i1p1f1"],
+      "negate": [false]
+    },
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["source_id", "experiment_id", "frequency"],
+      "negate": [false]
+    },
+    "shards": null,
+    "replica": null,
+    "latest": {
+      "value": [true],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"],
+      "negate": [false]
+    },
+    "offset": {
+      "value": [0],
+      "negate": [false]
+    },
+    "distrib": {
+      "value": [true],
+      "negate": [false]
+    },
+    "limit": {
+      "value": [2],
+      "negate": [false]
+    },
+    "format": {
+      "value": ["application/solr+json"],
+      "negate": [false]
+    }
+  },
+  "response": {
+    "responseHeader": {
+      "status": [0],
+      "QTime": [51],
+      "params": {
+        "df": ["text"],
+        "q.alt": ["*:*"],
+        "indent": ["true"],
+        "echoParams": ["all"],
+        "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
+        "start": ["0"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "rows": ["2"],
+        "q": ["*:*"],
+        "shards": ["solr-slave:8983/solr/datasets,solr-replica-ipsl:8983/solr/datasets,solr-replica-ceda:8983/solr/datasets,solr-replica-nci:8983/solr/datasets,solr-replica-gfdl:8983/solr/datasets"],
+        "tie": ["0.01"],
+        "facet.limit": ["-1"],
+        "qf": ["text"],
+        "facet.method": ["enum"],
+        "facet.mincount": ["1"],
+        "wt": ["json"],
+        "facet": ["true"],
+        "facet.sort": ["lex"]
+      }
+    },
+    "response": {
+      "numFound": [6],
+      "start": [0],
+      "maxScore": [1],
+      "docs": [
+        {
+          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.v20190529|esgf.ceda.ac.uk",
+          "access": ["HTTPServer", "OPENDAP"],
+          "activity_id": ["ScenarioMIP"],
+          "experiment_id": ["ssp126"],
+          "frequency": ["day"],
+          "index_node": "esgf.ceda.ac.uk",
+          "number_of_files": 86,
+          "project": ["CMIP6"],
+          "size": 7084463060,
+          "source_id": ["AWI-CM-1-1-MR"],
+          "variable_id": ["tas"],
+          "variant_label": ["r1i1p1f1"]
+        },
+        {
+          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp370.r1i1p1f1.day.tas.gn.v20190529|esgf.ceda.ac.uk",
+          "access": ["HTTPServer", "OPENDAP"],
+          "activity_id": ["ScenarioMIP", "AerChemMIP"],
+          "experiment_id": ["ssp370"],
+          "frequency": ["day"],
+          "index_node": "esgf.ceda.ac.uk",
+          "number_of_files": 86,
+          "project": ["CMIP6"],
+          "size": 7076544027,
+          "source_id": ["AWI-CM-1-1-MR"],
+          "variable_id": ["tas"],
+          "variant_label": ["r1i1p1f1"]
+        }
+      ]
+    },
+    "facet_counts": {
+      "facet_queries": {},
+      "facet_fields": {},
+      "facet_ranges": {},
+      "facet_intervals": {},
+      "facet_heatmaps": {}
+    },
+    "timestamp": ["2026-02-24T09:34:58:58.005321Z"]
+  }
+}

@@ -1,4 +1,8 @@
-test_that("esgf_query()", {
+test_that("esgf_query() compatibility wrapper", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     options(epwshiftr.verbose = FALSE)
     # Dataset query
     expect_s3_class(
@@ -116,6 +120,10 @@ test_that("esgf_query()", {
 })
 
 test_that("init_cmip6_index()", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     options(epwshiftr.dir = tempdir())
 
     # can return if no data has been found
@@ -168,6 +176,10 @@ test_that("init_cmip6_index()", {
 })
 
 test_that("load_cmip6_index()", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     skip_on_cran()
 
     dir <- file.path(tempdir(), "test1")
@@ -236,13 +248,52 @@ test_that("get_data_dir()", {
     }
 })
 
-test_that("get_data_node()", {
+test_that("data_node_status()", {
+    response <- list(
+        status = "success",
+        data = list(
+            result = list(
+                metric = list(instance = "example.org"),
+                value = list(c("0", "1"))
+            )
+        )
+    )
+
+    testthat::local_mocked_bindings(
+        normalize_index_node = function(index_node, raw = TRUE) {
+            expect_true(raw)
+            list(url = "https://example.org", path = "/esgf-1-5-bridge")
+        },
+        with_url_cache = function(name, url, fn, validate) {
+            expect_identical(name, "datanode")
+            expect_identical(url, "https://example.org/proxy/status")
+            res <- fn()
+            expect_true(validate(res))
+            res
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        fromJSON = function(url) {
+            expect_identical(url, "https://example.org/proxy/status")
+            response
+        },
+        .package = "jsonlite"
+    )
+
+    node <- expect_s3_class(data_node_status(), "data.table")
+    expect_named(node, c("data_node", "status"))
+    expect_identical(node$data_node, "example.org")
+    expect_identical(node$status, "UP")
+})
+
+test_that("data_node_status() live query", {
     skip_on_cran()
 
-    node <- expect_s3_class(get_data_node(), "data.table")
+    node <- expect_s3_class(data_node_status(), "data.table")
     expect_named(node, c("data_node", "status"))
 
     # can test speed using pingr
-    node <- expect_s3_class(get_data_node(TRUE, 1), "data.table")
+    node <- expect_s3_class(data_node_status(TRUE, 1), "data.table")
     expect_named(node, c("data_node", "status", "ping"))
 })

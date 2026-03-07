@@ -107,6 +107,12 @@ install.packages("epwshiftr",
 
 ## Get started
 
+For direct ESGF API work, start with `esg_query()` / `EsgQuery`. The older
+`esgf_query()` remains available as a compatibility wrapper for legacy
+data.table workflows, emits a gentle deprecation warning, and keeps its
+legacy LLNL `host` semantics instead of `esg_query()`'s ORNL `index_node`
+default.
+
 ### Build CMIP6 output file index
 
 * The first step is to build CMIP6 experiment output file index based on queries
@@ -117,8 +123,8 @@ install.packages("epwshiftr",
 options(epwshiftr.dir = tempdir())
 options(epwshiftr.verbose = TRUE)
 
-# get CMIP6 data nodes
-(nodes <- get_data_node())
+# inspect CMIP6 data node status
+(nodes <- data_node_status())
 
 # create a CMIP6 output file index
 idx <- init_cmip6_index(

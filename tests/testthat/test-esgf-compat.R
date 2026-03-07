@@ -3,6 +3,8 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     this$esgf_query_deprecated_warned <- FALSE
     withr::defer(this$esgf_query_deprecated_warned <- old_warned)
 
+    calls <- list()
+
     dataset_response <- list(
         responseHeader = list(params = list(fq = "type:Dataset")),
         response = list(
@@ -63,11 +65,12 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
-            expect_match(index_node, "esgf-node\\.llnl\\.gov$")
             expect_null(required_fields)
             expect_false(all)
             expect_true(limit)
             expect_false(constraints)
+
+            calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params)
 
             type <- params$type$value
             response <- if (identical(type, "Dataset")) dataset_response else file_response
@@ -87,8 +90,17 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
         "variable_units", "data_node", "dataset_pid"
     ))
     expect_named(attr(qd, "response")$response$docs, RES_DATASET)
+    expect_match(calls[[1L]]$index_node, "esgf-node\\.llnl\\.gov$")
 
-    qf <- suppressWarnings(esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L, type = "File"))
+    resolution_value <- calls[[1L]]$params$nominal_resolution$value
+    attr(resolution_value, "encoded") <- NULL
+    expect_identical(resolution_value, c("100km", "50km", "100+km", "50+km"))
+    expect_true(isTRUE(attr(calls[[1L]]$params$nominal_resolution$value, "encoded")))
+
+    qf <- suppressWarnings(esgf_query(
+        variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L,
+        type = "File", host = "https%3A%2F%2Fesgf.ceda.ac.uk%2Fesg-search%2Fsearch%2F"
+    ))
     expect_named(qf, c(
         "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
         "source_id", "experiment_id", "member_id", "table_id", "frequency",
@@ -97,6 +109,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
         "file_size", "data_node", "file_url", "tracking_id"
     ))
     expect_named(attr(qf, "response")$response$docs, RES_FILE)
+    expect_identical(calls[[2L]]$index_node, "https://esgf.ceda.ac.uk")
 })
 
 test_that("esgf_query() keeps legacy empty-result behavior", {

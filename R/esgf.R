@@ -41,8 +41,118 @@ RES_FILE <- c(
     "tracking_id"
 )
 
+esgf_query_deprecate <- function() {
+    if (isTRUE(this$esgf_query_deprecated_warned)) {
+        return(invisible(FALSE))
+    }
+
+    this$esgf_query_deprecated_warned <- TRUE
+    warning(
+        "`esgf_query()` is deprecated; please use `esg_query()` / `EsgQuery` for new code. Returning legacy-compatible results for now.",
+        call. = FALSE
+    )
+
+    invisible(TRUE)
+}
+
+esgf_host_to_index_node <- function(host) {
+    checkmate::assert_string(host)
+
+    host <- curl::curl_unescape(host)
+    host <- sub("/search/?$", "", host)
+    host <- sub("/esg-search/?$", "", host)
+    sub("/+$", "", host)
+}
+
+esgf_subset_response_docs <- function(response, fields) {
+    docs <- response$response$docs
+    if (is.null(docs)) {
+        return(response)
+    }
+
+    keep <- intersect(fields, names(docs))
+    if (is.data.frame(docs)) {
+        response$response$docs <- docs[, keep, drop = FALSE]
+    } else if (is.list(docs)) {
+        response$response$docs <- docs[keep]
+    }
+
+    response
+}
+
+esgf_query_collect <- function(q) {
+    withCallingHandlers(
+        query_collect(
+            priv(q)$index_node,
+            priv(q)$parameter,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = FALSE
+        ),
+        warning = function(w) {
+            if (grepl("^No matched data\\.", conditionMessage(w))) {
+                invokeRestart("muffleWarning")
+            }
+        }
+    )
+}
+
+esgf_query_empty <- function(response) {
+    dt <- data.table::data.table()
+    data.table::setattr(dt, "response", response)
+    dt
+}
+
+esgf_query_build <- function(host, type, activity, variable, frequency, experiment, source, variant, replica, latest, resolution, limit, data_node) {
+    index_node <- esgf_host_to_index_node(host)
+    q <- esg_query(index_node)
+    resolution_param <- NULL
+
+    if (!is.null(resolution)) {
+        resolution_param <- unique(c(
+            gsub(" ", "", resolution, fixed = TRUE),
+            gsub(" ", "+", resolution, fixed = TRUE)
+        ))
+        attr(resolution_param, "encoded") <- TRUE
+    }
+
+    # keep the legacy host semantics and only reuse the new query stack for
+    # parameter normalization and request execution.
+    priv(q)$index_node <- index_node
+
+    q$project("CMIP6")
+    q$activity_id(activity)
+    q$variable_id(variable)
+    q$frequency(frequency)
+    q$experiment_id(experiment)
+    q$source_id(source)
+    q$variant_label(variant)
+    q$replica(replica)
+    q$latest(latest)
+    q$data_node(data_node)
+
+    priv(q)$parameter$nominal_resolution <- new_query_param("nominal_resolution", resolution_param)
+    priv(q)$parameter$limit <- new_query_param("limit", as.integer(limit))
+    priv(q)$parameter$type <- new_query_param("type", type)
+    priv(q)$parameter$fields <- new_query_param(
+        "fields",
+        if (type == "Dataset") RES_DATASET else RES_FILE
+    )
+
+    q
+}
+
 # esgf_query {{{
-#' Query CMIP6 data using ESGF search RESTful API
+#' Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API
+#'
+#' `esgf_query()` is a compatibility wrapper around [esg_query()] for the legacy
+#' data.table-oriented CMIP6 query workflow.
+#'
+#' For new code, start with [esg_query()] / [EsgQuery]. `esgf_query()` emits a
+#' gentle deprecation warning and preserves the historical `host` interface,
+#' including the default LLNL search host instead of `esg_query()`'s ORNL
+#' `index_node` default.
 #'
 #' @details
 #' The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -53,8 +163,9 @@ RES_FILE <- c(
 #' query the contents of the underlying search index, and return results
 #' matching the given constraints. With the distributed capabilities of the ESGF
 #' search, the URL at any Index Node can be used to query that Node only, or all
-#' Nodes in the ESGF system. `esgf_query()` uses the
-#' [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov).
+#' Nodes in the ESGF system. For compatibility, `esgf_query()` keeps the legacy
+#' [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov)
+#' `host` default instead of `esg_query()`'s ORNL `index_node` default.
 #'
 #' The core Controlled Vocabularies (CVs) for use in CMIP6, including all
 #' activities, experiment, sources (GCMs), frequencies can be found at the
@@ -176,9 +287,12 @@ RES_FILE <- c(
 #'
 #' @param host The URL to the ESGF Search API service. This should be the URL of
 #'        the ESGF search service excluding the final endpoint name. Usually
-#'        this is `http://<hostname>/esg-search`. Default is set to the
+#'        this is `http://<hostname>/esg-search`. This legacy `host` argument is
+#'        preserved for compatibility and keeps the legacy LLNL Search API
+#'        semantics. Default is set to the
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
-#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`. For new code,
+#'        prefer `esg_query(index_node = ...)`.
 #'
 #' @return A [data.table::data.table] with an attribute named `response` which
 #' is a list converted from json response. If no matched data is found, an empty
@@ -236,6 +350,8 @@ RES_FILE <- c(
 #'
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
+#'
+#' @seealso [esg_query()], [EsgQuery]
 #'
 #' @examples
 #' \dontrun{
@@ -348,113 +464,55 @@ esgf_query <- function(
     checkmate::assert_choice(type, choices = c("Dataset", "File"))
     checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
-    url_base <- file.path(host, "search/?")
+    esgf_query_deprecate()
 
-    dict <- c(
-        activity = "activity_id",
-        experiment = "experiment_id",
-        source = "source_id",
-        variable = "variable_id",
-        resolution = "nominal_resolution",
-        variant = "variant_label"
+    q <- esgf_query_build(
+        host = host,
+        type = type,
+        activity = activity,
+        variable = variable,
+        frequency = frequency,
+        experiment = experiment,
+        source = source,
+        variant = variant,
+        replica = replica,
+        latest = latest,
+        resolution = resolution,
+        limit = limit,
+        data_node = data_node
     )
 
-    pair <- function(x, encode = TRUE) {
-        checkmate::assert_vector(x, TRUE, null.ok = TRUE)
-
-        # get name
-        var <- deparse(substitute(x))
-
-        # skip if empty
-        if (is.null(x) || length(x) == 0) {
-            return()
-        }
-        # get key name
-        key <- dict[names(dict) == var]
-        if (!length(key)) {
-            key <- var
-        }
-
-        if (is.logical(x)) {
-            x <- tolower(x)
-        }
-
-        if (encode) {
-            x <- query_param_encode(as.character(x))
-        }
-
-        paste0(key, "=", paste0(x, collapse = query_param_encode(",")))
-    }
-
-    `%and%` <- function(lhs, rhs) {
-        if (is.null(rhs)) {
-            lhs
-        } else if (lhs == url_base) {
-            paste(lhs, rhs, sep = "", collapse = "")
-        } else {
-            paste(lhs, rhs, sep = "&", collapse = "&")
-        }
-    }
-
-    project <- "CMIP6"
-    format <- "application/solr+json"
-    offset <- 0L
-
-    resolution <- c(
-        gsub(" ", "", resolution, fixed = TRUE),
-        gsub(" ", "+", resolution, fixed = TRUE)
-    )
-
-    # use `fileds` to directly subset data from responses
-    if (type == "Dataset") {
-        fields <- RES_DATASET
-    } else if (type == "File") {
-        fields <- RES_FILE
-    }
-
-    q <- url_base %and%
-        pair(offset) %and%
-        pair(limit) %and%
-        pair(type) %and%
-        pair(replica) %and%
-        pair(latest) %and%
-        pair(project) %and%
-        pair(activity) %and%
-        pair(experiment) %and%
-        pair(source) %and%
-        pair(variable) %and%
-        pair(resolution, FALSE) %and%
-        pair(variant) %and%
-        pair(data_node) %and%
-        pair(frequency) %and%
-        pair(fields) %and%
-        pair(format)
-
-    # Cache the JSON response from ESGF query
-    q <- with_url_cache(
-        "esgf",
-        q,
-        function() {
-            tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
+    response <- tryCatch(
+        {
+            res <- esgf_query_collect(q)
+            res$response$response$docs <- res$docs
+            esgf_subset_response_docs(
+                res$response,
+                if (type == "Dataset") RES_DATASET else RES_FILE
+            )
         },
-        validate = function(res) !inherits(res, "warning") && !inherits(res, "error")
+        error = function(e) e
     )
 
     # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
+    if (inherits(response, "warning") || inherits(response, "error")) {
         message("No matched data. Please check network connection and the availability of LLNL ESGF node.")
-        dt <- data.table::data.table()
-        # nocov end
-    } else if (q$response$numFound == 0L) {
+        return(esgf_query_empty(response))
+    }
+    # nocov end
+
+    if (response$response$numFound == 0L) {
         message("No matched data. Please examine the actual response using 'attr(x, \"response\")'.")
-        dt <- data.table::data.table()
-    } else if (type == "Dataset") {
-        dt <- extract_query_dataset(q)
-    } else if (type == "File") {
-        dt <- extract_query_file(q)
+        return(esgf_query_empty(response))
     }
 
-    data.table::setattr(dt, "response", q)
+    dt <- if (type == "Dataset") {
+        extract_query_dataset(response)
+    } else {
+        extract_query_file(response)
+    }
+
+    data.table::setattr(dt, "response", response)
 
     dt
 }
@@ -551,15 +609,22 @@ extract_query_file <- function(q) {
 # init_cmip6_index {{{
 #' Build CMIP6 experiment output file index
 #'
-#' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
-#' , return a [data.table::data.table()] containing the actual NetCDF file url
-#' to download, and store it into user data directory for future use.
+#' `init_cmip6_index()` builds a CMIP6 file index by issuing Dataset/File
+#' lookups through the legacy-compatible [esgf_query()] wrapper so existing
+#' host-based workflows keep working. For new direct ESGF searches, start with
+#' [esg_query()] / [EsgQuery]. It returns a
+#' [data.table::data.table()] containing the actual NetCDF file url to
+#' download, and stores it into user data directory for future use.
 #'
 #' For details on where the file index is stored, see [rappdirs::user_data_dir()].
 #'
 #' @note
 #' Argument `limit` will only apply to `Dataset` query. `init_cmip6_index()` will
 #' try to get all model output files which match the dataset id.
+#'
+#' The inherited `host` argument keeps the legacy LLNL Search API semantics from
+#' [esgf_query()], so its default is not the same as `esg_query()`'s ORNL
+#' `index_node` default.
 #'
 #' @inheritParams esgf_query
 #' @param years An integer vector indicating the target years to be include in
@@ -988,6 +1053,9 @@ get_data_dir <- function() {
 # data_node_status {{{
 #' Get status of data nodes which store CMIP6 output
 #'
+#' `data_node_status()` is the user-facing replacement for the legacy
+#' data-node helper name used in earlier releases.
+#'
 #' @param speed_test If `TRUE`, use [pingr::ping()] to perform connection speed
 #'        test on each data node. A `ping` column is appended in returned
 #'        data.table which stores each data node response in milliseconds. This
@@ -1028,7 +1096,7 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
         url,
         function() {
             tryCatch(
-                jsonlite::fromJSON(node_url),
+                jsonlite::fromJSON(url),
                 warning = function(w) {
                     msg <<- conditionMessage(w)
                     NULL

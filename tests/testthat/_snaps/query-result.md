@@ -8,14 +8,12 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
-      * Fields: 14 | [ access, activity_id, experiment_id, frequency, id, index_node,
-        number_of_aggregations, number_of_files, project, size, source_id, url,
-        variable_id, and variant_label ]
+      * Fields: 12 | [ access, activity_id, experiment_id, frequency, id, index_node,
+        number_of_files, project, size, source_id, variable_id, and variant_label ]
       
       -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6
       * activity_id = ScenarioMIP
-      * experiment_id = ssp585
       * source_id = AWI-CM-1-1-MR
       * variable_id = tas
       * frequency = day
@@ -32,11 +30,11 @@
     Message
       -- <Dataset> -------------------------------------------------------------------
     Output
-      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ XX Files, XX GiB | X Aggregations ]
+      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
+          [ 86 Files, 6.6 GiB | No Aggregations ]
           [ Access: <...> ]
-      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ XX Files, XX GiB | X Aggregations ]
+      [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp370.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
+          [ 86 Files, 6.59 GiB | No Aggregations ]
           [ Access: <...> ]
 
 # ESGF Query Result File works
@@ -49,7 +47,7 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
       * Total size: XX [GiB]
-      * Fields: 56 | [ _timestamp, _version_, activity_drs, activity_id,
+      * Fields: 55 | [ _timestamp, _version_, activity_drs, activity_id,
         cf_standard_name, checksum, checksum_type, citation_url, data_node,
         data_specs_version, dataset_id, dataset_id_template_,
         directory_format_template_, experiment_id, experiment_title, filename,
@@ -57,7 +55,6 @@
       
       -- <Query Parameter> -----------------------------------------------------------
       * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
         CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
       * latest = true
       * distrib = true
@@ -88,7 +85,6 @@
       -- <Query Parameter> -----------------------------------------------------------
       * dataset_id =
         CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
       * fields = id
       * latest = true
       * distrib = true
@@ -105,10 +101,10 @@
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
           [ <Unknown> Byte | Access: <...> ]
 
-# result_esgf() works
+# esg_result() works
 
     Code
-      result_esgf("file")$print()
+      esg_result("file")$print()
     Message
       == ESGF Query Result [File] ====================================================
       * Index Node:
@@ -128,7 +124,7 @@
 ---
 
     Code
-      result_esgf("aggregation")$print()
+      esg_result("aggregation")$print()
     Message
       == ESGF Query Result [Aggregation] =============================================
       * Index Node:
@@ -148,7 +144,7 @@
 ---
 
     Code
-      result_esgf("aggregation")$print()
+      esg_result("aggregation")$print()
     Message
       == ESGF Query Result [Aggregation] =============================================
       * Index Node:

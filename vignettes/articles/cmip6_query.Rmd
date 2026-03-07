@@ -41,11 +41,11 @@ the given constraints. The documentation of the APIs can be found using this
 
 # Query the ESGF portal
 
-epwshiftr provides `query_esgf()` to interact with the ESGF search API. It
-returns an `EsgfQuery` object, which is an `R6` object. `query_esgf()` accepts
-an `index_node` input, which is the URL to the ESGF Index Node. Default is set
-to the [ORNL (Oak Ridge National Laboratory) Index Node](https://esgf-node.ornl.gov),
-i.e., `"https://esgf-node.ornl.gov"`.
+epwshiftr provides `esg_query()` as the main entry point to the ESGF search
+API. It returns an `EsgQuery` object, which is an `R6` object. `esg_query()`
+accepts an `index_node` input, which is the URL to the ESGF Index Node.
+Default is set to the [ORNL (Oak Ridge National Laboratory) Index
+Node](https://esgf-node.ornl.gov), i.e., `"https://esgf-node.ornl.gov"`.
 
 Other available index nodes include:
 
@@ -56,13 +56,18 @@ Other available index nodes include:
 - LIU (National Academic Infrastructure for Supercomputing), Sweden: `https://esg-dn1.nsc.liu.se`
 - CEDA (Centre for Environmental Data Analysis), UK: `https://esgf.ceda.ac.uk`
 
+If you need the old data.table-oriented workflow, `esgf_query()` is still
+available as a compatibility wrapper. It emits a gentle deprecation warning,
+keeps its historical `host` argument and LLNL default search host semantics,
+and is therefore not a drop-in alias for `esg_query()`.
+
 ```{r query}
-query <- query_esgf()
+query <- esg_query()
 
 class(query)
 ```
 
-When created, an `EsgfQuery` object sets some default query parameters:
+When created, an `EsgQuery` object sets some default query parameters:
 
 - `project`: `"CMIP6"`
 - `fields`: `"*"` (all fields)
@@ -79,7 +84,7 @@ As you can see when printing the `query` object we just created:
 query
 ```
 
-The `EsgfQuery` class is the workhorse for dealing with ESGF search services
+The `EsgQuery` class is the workhorse for dealing with ESGF search services
 with quite a few methods that can be classified into 3 categories:
 
 - **Value listing**: methods to list all possible values of facets, fields,
@@ -104,7 +109,7 @@ to standard index nodes. When using a bridge index node (e.g.,
 
 ## Value listing
 
-The `EsgfQuery` object provides the following value-listing methods to query
+The `EsgQuery` object provides the following value-listing methods to query
 available facets, fields, shards, and values from the ESGF index node:
 
 - `$list_facets()`: List all available facet names. When called, a
@@ -145,7 +150,7 @@ str(query$list_values("source_id"))
 
 ## Parameter getter & setter
 
-The ESGF search services support a lot of parameters. The `EsgfQuery` class
+The ESGF search services support a lot of parameters. The `EsgQuery` class
 contains dedicated methods to specify most of them, including:
 
 - Most common keywords: `facets`, `offset`, `limit`, `fields`, `type`, `replica`,
@@ -157,8 +162,8 @@ contains dedicated methods to specify most of them, including:
 All methods act in a similar way:
 
 If input is given, the corresponding parameter is set and the updated
-`EsgfQuery` object is returned. This makes it possible to chain different
-parameter setters, e.g. `EsgfQuery$project("CMIP6")$frequency("day")$limit(1)`
+`EsgQuery` object is returned. This makes it possible to chain different
+parameter setters, e.g. `EsgQuery$project("CMIP6")$frequency("day")$limit(1)`
 sets the parameter `project`, `frequency` and `limit` sequentially.
 
 ```{r}
@@ -172,7 +177,7 @@ query$project(NULL)
 ```
 
 For parameters that want character inputs, you can put a preceding `!` to negate
-the constraints, e.g. `EsgfQuery$project(!"CMIP6")` searches for all projects
+the constraints, e.g. `EsgQuery$project(!"CMIP6")` searches for all projects
 except for `CMIP6`.
 
 ```{r}
@@ -180,14 +185,14 @@ query$project(!"CMIP6")
 ```
 
 If no input is given, the current parameter value is returned. For example,
-directly calling `EsgfQuery$project()` returns the current value of the
+directly calling `EsgQuery$project()` returns the current value of the
 `project` parameter.
 
 ```{r}
 query$project()
 ```
 
-The returned value can be two types: `NULL` or an `EsgfQueryParam` object.
+The returned value can be two types: `NULL` or an `EsgQueryParam` object.
 
 `NULL` is returned if there is no constraint on the corresponding parameter.
 
@@ -195,7 +200,7 @@ The returned value can be two types: `NULL` or an `EsgfQueryParam` object.
 query$source_id()
 ```
 
-An `EsgfQueryParam` object is returned if the parameter has constraints. It is
+An `EsgQueryParam` object is returned if the parameter has constraints. It is
 essentially a list of three elements:
 
 + `value`: The input values
@@ -207,7 +212,7 @@ str(query$project())
 ```
 
 Despite methods for specific keywords and facets, you can specify arbitrary
-query parameters using `EsgfQuery$params()` method. `$params()` can be used to
+query parameters using `EsgQuery$params()` method. `$params()` can be used to
 specify other parameters that do not have a dedicated method, e.g. `version`,
 `master_id`, `table_id`, etc. It can also be used to overwrite existing
 parameter values specified using methods like `$project()`.
@@ -219,9 +224,9 @@ query$params()
 
 ## Count the matched records
 
-An `EsgfQuery` object does not sent any query unless related methods are called, including `EsgfQuery$count()` and `EsgfQuery$collect()`.
+An `EsgQuery` object does not sent any query unless related methods are called, including `EsgQuery$count()` and `EsgQuery$collect()`.
 
-`EsgfQuery$count()` counts the total number of records that match the query.
+`EsgQuery$count()` counts the total number of records that match the query.
 
 You can return only the total number of matched record by setting `facets` to
 `FALSE`.
@@ -239,8 +244,8 @@ query$count(facets = c("source_id", "activity_id"))
 
 ## Collect the actual records
 
-`EsgfQuery$collect()` sends the actual query with **`type=Dataset`** to the ESGF
-search services and returns the results as an `EsgfQueryResultDataset` object.
+`EsgQuery$collect()` sends the actual query with **`type=Dataset`** to the ESGF
+search services and returns the results as an `EsgResultDataset` object.
 
 ```{r}
 query$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
@@ -283,7 +288,7 @@ datasets$count()
 
 ## Get the actual query URL or wget script URL
 
-You can use `EsgfQuery$url()` to return the actual query URL or the wget script
+You can use `EsgQuery$url()` to return the actual query URL or the wget script
 URL. The wget script URL can be used to download a bash script that contains
 wget commands for downloading all files matching the query constraints. This is
 useful for batch downloading large amounts of data.
@@ -298,7 +303,7 @@ query$url(wget = TRUE)
 
 ## Save the query object and load it back
 
-You can save your current query into a JSON file using `EsgfQuery$save()`.
+You can save your current query into a JSON file using `EsgQuery$save()`.
 
 ```{r}
 path_json <- tempfile(fileext = ".json")
@@ -307,19 +312,19 @@ query$save(path_json)
 readLines(path_json, n = 10)
 ```
 The saved JSON file can be loaded to restore the saved query state using
-`EsgfQuery$load()`.
+`EsgQuery$load()`.
 
 ```{r}
-query_esgf()$load(path_json)
+esg_query()$load(path_json)
 ```
 
 # Work with the dataset query response
 
 ## Get summary information
 
-By default, `query_esgf()` always sends dataset queries.
-As said above, `EsgfQuery$collect()` returns the query result as an
-`EsgfQueryResultDataset` object.
+By default, `esg_query()` always sends dataset queries.
+As said above, `EsgQuery$collect()` returns the query result as an
+`EsgResultDataset` object.
 
 The default printing method shows a summary about the query result, including:
 
@@ -370,8 +375,8 @@ datasets$to_dt()
 
 ## Save the query result and load it back
 
-Similar as `EsgfQuery`, you can save your query result into a JSON file using
-`EsgfQueryResultDataset$save()`.
+Similar as `EsgQuery`, you can save your query result into a JSON file using
+`EsgResultDataset$save()`.
 
 ```{r}
 path_dataset <- tempfile(fileext = ".json")
@@ -380,9 +385,9 @@ datasets$save(path_dataset)
 readLines(path_dataset, n = 10)
 ```
 
-You can create an empty query result using `result_esgf()` and load saved JSON
-back using `EsgfQueryResultDataset$load()` to restore the result state.
+You can create an empty query result using `esg_result()` and load saved JSON
+back using `EsgResultDataset$load()` to restore the result state.
 
 ```{r}
-result_esgf("dataset")$load(path_dataset)
+esg_result("dataset")$load(path_dataset)
 ```

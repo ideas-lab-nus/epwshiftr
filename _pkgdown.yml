@@ -38,18 +38,18 @@ reference:
       - Cmip6Dict
 
   - title: ESGF search services
+    desc: Start with esg_query() / EsgQuery; esgf_query() is a gently deprecated compatibility wrapper with legacy LLNL host semantics.
     contents:
-      - EsgfQuery
-      - query_esgf
+      - esg_query
+      - esgf_query
 
   - title: CMIP6 Index
     desc: Build CMIP6 output index
     contents:
-      - esgf_query
       - init_cmip6_index
       - load_cmip6_index
       - set_cmip6_index
-      - get_data_node
+      - data_node_status
 
   - title: CMIP6 Output
     desc: Manage CMIP6 output files
@@ -71,3 +71,26 @@ reference:
     contents:
       - epwshiftr-package
       - get_data_dir
+
+  - title: Additional reference
+    contents:
+      - EsgDataset
+      - FileDownloader
+      - esg_result
+      - as.POSIXct.SolrDateTime
+      - as.character.SolrDateTime
+      - as.data.frame.Schema
+      - c.SolrDateTime
+      - format.SolrDateTime
+      - is.solrdt
+      - is_solrdt_end_unbounded
+      - is_solrdt_range
+      - is_solrdt_start_unbounded
+      - length.SolrDateTime
+      - print.Schema
+      - print.SolrDateTime
+      - solrdt_end
+      - solrdt_start
+      - str.Schema
+      - "[.SolrDateTime"
+      - summary.Schema

@@ -30,7 +30,8 @@ columns:\tabular{lll}{
 }
 }
 \description{
-Get status of data nodes which store CMIP6 output
+\code{data_node_status()} is the user-facing replacement for the legacy
+data-node helper name used in earlier releases.
 }
 \examples{
 \dontrun{
