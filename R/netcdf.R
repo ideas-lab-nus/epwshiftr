@@ -35,6 +35,24 @@ get_nc_meta <- function (file) {
 }
 # }}}
 
+summary_database_scan_file <- function (file) {
+    nc <- RNetCDF::open.nc(file)
+    on.exit(RNetCDF::close.nc(nc), add = TRUE)
+
+    time <- as.list(get_nc_time(nc, range = TRUE))
+    names(time) <- c("datetime_start", "datetime_end")
+
+    data.table::as.data.table(c(
+        get_nc_meta(nc),
+        time,
+        list(
+            file_path = file,
+            file_realsize = file.size(file),
+            file_mtime = file.mtime(file)
+        )
+    ))
+}
+
 # summary_database {{{
 #' Summary CMIP6 model output file status
 #'
@@ -185,21 +203,25 @@ summary_database <- function (
         left <- data.table::data.table()
         miss <- data.table::data.table()
     } else {
-        progressr::with_progress({
-            p <- progressr::progressor(along = ncfiles)
+        if (length(ncfiles) == 1L) {
+            ncmeta <- summary_database_scan_file(ncfiles)
+        } else {
+            progressr::with_progress({
+                p <- progressr::progressor(along = ncfiles)
 
-            ncmeta <- rbindlist(future.apply::future_lapply(seq_along(ncfiles),
-                function (i) {
-                    p(message = sprintf("[%i/%i]", i, length(ncfiles)))
-                    meta <- get_nc_meta(ncfiles[i])
-                    time <- as.list(get_nc_time(ncfiles[i], range = TRUE))
-                    names(time) <- c("datetime_start", "datetime_end")
-                    c(meta, time)
-                }
-            ))
-        })
+                ncmeta <- rbindlist(future.apply::future_lapply(seq_along(ncfiles),
+                    function (i) {
+                        p(message = sprintf("[%i/%i]", i, length(ncfiles)))
+                        meta <- get_nc_meta(ncfiles[i])
+                        time <- as.list(get_nc_time(ncfiles[i], range = TRUE))
+                        names(time) <- c("datetime_start", "datetime_end")
+                        c(meta, time)
+                    }
+                ))
+            })
 
-        ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
+            ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
+        }
 
         # store original column names
         cols_idx <- names(idx)
