@@ -90,7 +90,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
         "variable_units", "data_node", "dataset_pid"
     ))
     expect_named(attr(qd, "response")$response$docs, RES_DATASET)
-    expect_match(calls[[1L]]$index_node, "esgf-node\\.llnl\\.gov$")
+    expect_match(calls[[1L]]$index_node, "esgf-node\\.ornl\\.gov/esgf-1-5-bridge$")
 
     resolution_value <- calls[[1L]]$params$nominal_resolution$value
     attr(resolution_value, "encoded") <- NULL

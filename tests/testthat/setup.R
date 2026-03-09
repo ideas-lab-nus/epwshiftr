@@ -1,3 +1,5 @@
+get_cache_epw()
+
 if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
     old_verbose <- options("epwshiftr.verbose" = TRUE)
 

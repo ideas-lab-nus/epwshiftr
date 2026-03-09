@@ -688,7 +688,9 @@ test_that("extract_data()", {
         options(epwshiftr.dir = tempdir())
         summary_database(cache)
         idx <- load_cmip6_index()
-        set_cmip6_index(idx[2L])
+        target_idx <- idx[!is.na(file_path) & basename(file_path) == file]
+        expect_identical(nrow(target_idx), 1L)
+        set_cmip6_index(target_idx)
         coord <- match_coord(epw)
         set_cmip6_index(idx)
 

@@ -61,7 +61,9 @@ esgf_host_to_index_node <- function(host) {
     host <- curl::curl_unescape(host)
     host <- sub("/search/?$", "", host)
     host <- sub("/esg-search/?$", "", host)
-    sub("/+$", "", host)
+    host <- sub("/+$", "", host)
+
+    normalize_index_node(host)
 }
 
 esgf_subset_response_docs <- function(response, fields) {
