@@ -82,6 +82,29 @@ esgf_subset_response_docs <- function(response, fields) {
     response
 }
 
+esgf_query_normalize_legacy_fq <- function(response, replica, latest) {
+    params <- response$responseHeader$params
+    if (is.null(params) || is.null(params$fq)) {
+        return(response)
+    }
+
+    fq <- unlist(params$fq, use.names = FALSE)
+    set_flag <- function(x, name, value) {
+        x <- x[!grepl(sprintf("^%s:", name), x)]
+        c(x, sprintf("%s:%s", name, tolower(as.character(value))))
+    }
+
+    if (!is.null(replica)) {
+        fq <- set_flag(fq, "replica", replica)
+    }
+    if (!is.null(latest)) {
+        fq <- set_flag(fq, "latest", latest)
+    }
+
+    response$responseHeader$params$fq <- fq
+    response
+}
+
 esgf_query_collect <- function(q) {
     withCallingHandlers(
         query_collect(
@@ -488,9 +511,13 @@ esgf_query <- function(
         {
             res <- esgf_query_collect(q)
             res$response$response$docs <- res$docs
-            esgf_subset_response_docs(
-                res$response,
-                if (type == "Dataset") RES_DATASET else RES_FILE
+            esgf_query_normalize_legacy_fq(
+                esgf_subset_response_docs(
+                    res$response,
+                    if (type == "Dataset") RES_DATASET else RES_FILE
+                ),
+                replica = replica,
+                latest = latest
             )
         },
         error = function(e) e
@@ -532,6 +559,11 @@ extract_query_dataset <- function(q) {
         }
     }
     data.table::setnames(dt, c("id", "pid"), c("dataset_id", "dataset_pid"))
+    if ("version" %in% names(dt)) {
+        data.table::set(dt, NULL, "version", as.character(dt$version))
+    }
+
+    dt
 }
 # }}}
 
@@ -576,6 +608,9 @@ extract_query_file <- function(q) {
         c("id", "size", "url"),
         c("file_id", "file_size", "file_url")
     )
+    if ("version" %in% names(dt)) {
+        data.table::set(dt, NULL, "version", as.character(dt$version))
+    }
     data.table::setcolorder(
         dt,
         c(
@@ -713,7 +748,7 @@ init_cmip6_index <- function(
     checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_flag(save)
 
-    verbose(message("Querying CMIP6 Dataset Information"))
+    vmsg("Querying CMIP6 Dataset Information")
     qd <- esgf_query(
         activity = activity,
         variable = variable,
@@ -754,7 +789,7 @@ init_cmip6_index <- function(
     retry <- 10L
     while (nrow(nf <- dt[is.na(file_url)]) && attempt <= retry) {
         attempt <- attempt + 1L
-        verbose(message("Querying CMIP6 File Information [Attempt ", attempt, "]"))
+        vmsg(sprintf("Querying CMIP6 File Information [Attempt %s]", attempt))
 
         # to avoid No visible binding for global variable check NOTE
         .SD <- NULL
@@ -798,7 +833,7 @@ init_cmip6_index <- function(
         dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
     }
 
-    verbose(message("Checking if data is complete"))
+    vmsg("Checking if data is complete")
     # nocov start
     if (anyNA(dt$file_url)) {
         warning(
@@ -864,10 +899,9 @@ init_cmip6_index <- function(
     if (save) {
         # save database into the app data directory
         data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose(message(
-            "Data file index saved to '",
-            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")),
-            "'"
+        vmsg(sprintf(
+            "Data file index saved to '%s'",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
         ))
 
         this$index_db <- data.table::copy(dt)
@@ -919,7 +953,10 @@ load_cmip6_index <- function(force = FALSE) {
             }
         )
         # nocov end
-        verbose("Loading CMIP6 experiment output file index created at ", as.character(file.info(f)$mtime), ".")
+        vmsg(sprintf(
+            "Loading CMIP6 experiment output file index created at %s.",
+            as.character(file.info(f)$mtime)
+        ))
     }
 
     # fix column types in case of empty values
@@ -1024,7 +1061,10 @@ set_cmip6_index <- function(index, save = FALSE) {
     # save database into the app data directory
     if (save) {
         data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        vmsg(sprintf(
+            "Data file index saved to '%s'",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        ))
     }
 
     # udpate package internal stored file index

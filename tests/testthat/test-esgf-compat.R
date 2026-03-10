@@ -6,7 +6,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     calls <- list()
 
     dataset_response <- list(
-        responseHeader = list(params = list(fq = "type:Dataset")),
+        responseHeader = list(params = list(fq = c("type:Dataset", "latest:True"))),
         response = list(
             numFound = 1L,
             docs = data.frame(
@@ -20,7 +20,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
                 table_id = "day",
                 frequency = "day",
                 grid_label = "gr",
-                version = "v20240101",
+                version = 20240101L,
                 nominal_resolution = "100 km",
                 variable_id = "tas",
                 variable_long_name = "Near-Surface Air Temperature",
@@ -33,7 +33,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
         )
     )
     file_response <- list(
-        responseHeader = list(params = list(fq = "type:File")),
+        responseHeader = list(params = list(fq = c("type:File", "latest:True"))),
         response = list(
             numFound = 1L,
             docs = data.frame(
@@ -48,7 +48,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
                 table_id = "day",
                 frequency = "day",
                 grid_label = "gr",
-                version = "v20240101",
+                version = 20240101L,
                 nominal_resolution = "100 km",
                 variable_id = "tas",
                 variable_long_name = "Near-Surface Air Temperature",
@@ -91,6 +91,8 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     ))
     expect_named(attr(qd, "response")$response$docs, RES_DATASET)
     expect_match(calls[[1L]]$index_node, "esgf-node\\.ornl\\.gov/esgf-1-5-bridge$")
+    expect_type(qd$version, "character")
+    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qd, "response")$responseHeader$params$fq)))
 
     resolution_value <- calls[[1L]]$params$nominal_resolution$value
     attr(resolution_value, "encoded") <- NULL
@@ -110,6 +112,8 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     ))
     expect_named(attr(qf, "response")$response$docs, RES_FILE)
     expect_identical(calls[[2L]]$index_node, "https://esgf.ceda.ac.uk")
+    expect_type(qf$version, "character")
+    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qf, "response")$responseHeader$params$fq)))
 })
 
 test_that("esgf_query() keeps legacy empty-result behavior", {
@@ -132,6 +136,8 @@ test_that("esgf_query() keeps legacy empty-result behavior", {
         "No matched data\\. Please examine the actual response"
     )
     expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
+    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(q, "response")$responseHeader$params$fq)))
+    empty_response$responseHeader$params$fq <- c("type:Dataset", "replica:false", "latest:true")
     expect_identical(attr(q, "response"), empty_response)
 })
 
