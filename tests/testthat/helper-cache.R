@@ -91,36 +91,30 @@ get_cache_epw <- function() {
 
 get_cache_nc <- function(reset = FALSE) {
     dir <- test_data_dir()
-    withr::with_options(
-        list(epwshiftr.dir = dir),
-        {
-            if (!reset && file.exists(file.path(dir, "cmip6_index.csv"))) {
-                idx <- load_cmip6_index()
-            } else {
-                idx <- init_cmip6_index(
-                    variable = "tas",
-                    source = "EC-Earth3",
-                    years = 2060L,
-                    experiment = "ssp585",
-                    limit = 1L,
-                    save = TRUE
-                )
-            }
+    paths <- file.path(dir, vapply(local_cmip6_test_years, local_cmip6_nc_file, character(1)))
 
-            # download output files
-            for (f in idx$file_url) {
-                dest <- file.path(dir, basename(f))
-                if (!file.exists(dest)) {
-                    old <- getOption("timeout")
-                    options(timeout = 60L * 100L)
-                    on.exit(options(timeout = old), add = TRUE)
-                    download.file(f, dest, mode = "wb")
-                }
-            }
-        }
-    )
+    if (reset) unlink(c(paths, file.path(dir, "cmip6_index.csv")), force = TRUE)
+    unlink(paths[file.exists(paths)], force = TRUE)
+
+    for (i in seq_along(paths)) {
+        write_local_cmip6_netcdf_fixture(paths[[i]], local_cmip6_test_years[[i]])
+    }
+
+    withr::with_options(list(epwshiftr.dir = dir), {
+        set_cmip6_index(local_cmip6_index(paths), save = FALSE)
+    })
 
     normalizePath(dir)
+}
+
+get_cache_fst <- function(reset = FALSE) {
+    dir <- get_cache_nc(reset = reset)
+    path <- file.path(dir, "EC-Earth3.ssp585.tas.fst")
+
+    if (reset && file.exists(path)) unlink(path)
+    write_local_morph_tas_fixture(path)
+
+    normalizePath(path)
 }
 
 # Scoped cache mode switch for tests

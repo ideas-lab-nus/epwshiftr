@@ -315,44 +315,56 @@ test_that("get_nc_time()", {
         RNetCDF::close.nc(con)
 
         # can stop if invalid calendar found
-        mockery::stub(get_nc_time, "get_nc_atts",
-            data.table(
-                variable = c("time", "time"),
-                attribute = c("calendar", "units"),
-                value = list("invalid", "days since 1850-01-01")
-            )
+        testthat::with_mocked_bindings(
+            expect_error(get_nc_time(path), "Invalid calendar specification"),
+            get_nc_atts = function(...) {
+                data.table(
+                    variable = c("time", "time"),
+                    attribute = c("calendar", "units"),
+                    value = list("invalid", "days since 1850-01-01")
+                )
+            },
+            .package = "epwshiftr"
         )
-        expect_error(get_nc_time(path), "Invalid calendar specification")
 
         # can work with only date specification
-        mockery::stub(get_nc_time, "get_nc_atts",
-            data.table(
-                variable = c("time", "time"),
-                attribute = c("calendar", "units"),
-                value = list("standard", "days since 1850-01-01")
-            )
+        testthat::with_mocked_bindings(
+            expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
+            get_nc_atts = function(...) {
+                data.table(
+                    variable = c("time", "time"),
+                    attribute = c("calendar", "units"),
+                    value = list("standard", "days since 1850-01-01")
+                )
+            },
+            .package = "epwshiftr"
         )
-        expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct")
 
         # can parse months resolution with CFtime
-        mockery::stub(get_nc_time, "get_nc_atts",
-            data.table(
-                variable = c("time", "time"),
-                attribute = c("calendar", "units"),
-                value = list("standard", "months since 1850-01")
-            )
+        testthat::with_mocked_bindings(
+            expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
+            get_nc_atts = function(...) {
+                data.table(
+                    variable = c("time", "time"),
+                    attribute = c("calendar", "units"),
+                    value = list("standard", "months since 1850-01")
+                )
+            },
+            .package = "epwshiftr"
         )
-        expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct")
 
         # can stop if invlaid time unit string
-        mockery::stub(get_nc_time, "get_nc_atts",
-            data.table(
-                variable = c("time", "time"),
-                attribute = c("calendar", "units"),
-                value = list("standard", "months 1850-01")
-            )
+        testthat::with_mocked_bindings(
+            expect_error(get_nc_time(path, range = TRUE), "CF-compliant time coordinate"),
+            get_nc_atts = function(...) {
+                data.table(
+                    variable = c("time", "time"),
+                    attribute = c("calendar", "units"),
+                    value = list("standard", "months 1850-01")
+                )
+            },
+            .package = "epwshiftr"
         )
-        expect_error(get_nc_time(path, range = TRUE), "CF-compliant time coordinate")
     }
 })
 
@@ -686,6 +698,7 @@ test_that("extract_data()", {
 
     if (file.exists(path) && file.exists(epw)) {
         options(epwshiftr.dir = tempdir())
+        get_cache_nc()
         summary_database(cache)
         idx <- load_cmip6_index()
         target_idx <- idx[!is.na(file_path) & basename(file_path) == file]
