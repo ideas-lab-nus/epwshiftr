@@ -824,6 +824,19 @@ init_cmip6_index <- function(
             host = host
         )
 
+        required_qf_cols <- list(
+            file_id = character(),
+            dataset_id = character(),
+            datetime_start = as.POSIXct(character(), tz = "UTC"),
+            datetime_end = as.POSIXct(character(), tz = "UTC"),
+            file_size = character(),
+            file_url = character(),
+            tracking_id = character()
+        )
+        for (nm in setdiff(names(required_qf_cols), names(qf))) {
+            data.table::set(qf, NULL, nm, required_qf_cols[[nm]])
+        }
+
         # remove all common columns in file query except for "dataset_id"
         data.table::set(qf, NULL, value = NULL, setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url")))
 
