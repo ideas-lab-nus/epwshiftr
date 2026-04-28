@@ -40,7 +40,8 @@ Imports:
     R6,
     rappdirs,
     RNetCDF,
-    units
+    units,
+    S7
 Suggests:
     testthat (>= 3.0.0),
     withr,
@@ -65,10 +66,10 @@ Collate:
     'gh.R'
     'morph.R'
     'netcdf.R'
+    'solr_date.R'
     'query-result.R'
     'query.R'
     'schema.R'
-    'utils-solrdt.R'
     'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph

@@ -47,6 +47,8 @@
 #' @importFrom RNetCDF utcal.nc
 #' @importFrom units set_units
 #' @importFrom utils menu
+#' @importFrom S7 convert
+#' @rawNamespace if (getRversion() < "4.3.0") importFrom("S7", "@")
 ## usethis namespace: end
 "_PACKAGE"
 
