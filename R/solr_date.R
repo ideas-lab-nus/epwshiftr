@@ -270,7 +270,7 @@ SolrDate <- S7::new_class("SolrDate", abstract = TRUE)
 SolrDatePoint <- S7::new_class("SolrDatePoint", parent = SolrDate, abstract = TRUE)
 
 SolrDateRange <- S7::new_class(
-    "SolrDate",
+    "SolrDateRange",
     parent = SolrDate,
     properties = list(
         start = S7::new_property(SolrDatePoint),
