@@ -175,11 +175,11 @@ rd_query_method_return <- function() {
         "\\itemize{",
         "\\item If \\code{value} is given, the modified \\code{EsgQuery} object.",
         paste(
-            "\\item Otherwise, an \\code{EsgQueryParam} object which is essentially a list of three elements:",
+            "\\item Otherwise, a \\code{QueryParam} object:",
             "\\itemize{",
-            "\\item \\code{value}: input values.",
-            "\\item \\code{negate}: Whether there is a preceding \\code{!} or \\code{-}.",
-            "\\item \\code{name}: Parameter name.",
+            "\\item Use \\code{query_param_value()} to read the stored value.",
+            "\\item Use \\code{query_param_negate()} to read whether the facet is negated.",
+            "\\item Use \\code{query_param_name()} and \\code{query_param_kind()} to inspect metadata.",
             "}"
         ),
         "}"

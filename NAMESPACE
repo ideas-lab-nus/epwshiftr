@@ -3,7 +3,6 @@
 S3method(as.data.frame,Schema)
 S3method(print,Cmip6CV)
 S3method(print,Cmip6DReq)
-S3method(print,EsgQueryParam)
 S3method(print,Schema)
 S3method(str,Schema)
 S3method(summary,Schema)

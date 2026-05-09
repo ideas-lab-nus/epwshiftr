@@ -67,6 +67,7 @@ Collate:
     'morph.R'
     'netcdf.R'
     'solr_date.R'
+    'query-param.R'
     'query-result.R'
     'query.R'
     'schema.R'

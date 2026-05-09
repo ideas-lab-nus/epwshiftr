@@ -5,7 +5,7 @@ test_that("QueryParamFacet", {
         S7::props(facet),
         list(value = c("CMIP6", "CMIP5"), negate = FALSE, encoded = FALSE)
     )
-    expect_equal(query_param_render(facet, "project"), "project=CMIP6,CMIP5")
+    expect_equal(render(facet, "project"), "project=CMIP6,CMIP5")
 
     facet_negate <- QueryParamFacet(c("100km", "100 km"), negate = TRUE)
     expect_equal(
@@ -13,7 +13,7 @@ test_that("QueryParamFacet", {
         list(value = c("100km", "100 km"), negate = TRUE, encoded = FALSE)
     )
     expect_equal(
-        query_param_render(facet_negate, "nominal_resolution", encode = TRUE),
+        render(facet_negate, "nominal_resolution", encode = TRUE),
         "nominal_resolution!=100km&nominal_resolution!=100%20km"
     )
 
@@ -23,7 +23,7 @@ test_that("QueryParamFacet", {
         list(value = c("100km", "100 km"), negate = FALSE, encoded = TRUE)
     )
     expect_equal(
-        query_param_render(facet_encoded, "nominal_resolution", encode = TRUE),
+        render(facet_encoded, "nominal_resolution", encode = TRUE),
         "nominal_resolution=100km,100 km"
     )
 })
@@ -35,7 +35,7 @@ test_that("QueryParamCtrl", {
         S7::props(ctrl),
         list(value = TRUE)
     )
-    expect_equal(query_param_render(ctrl, "latest"), "latest=true")
+    expect_equal(render(ctrl, "latest"), "latest=true")
 })
 
 test_that("QueryParamDate", {
@@ -45,7 +45,7 @@ test_that("QueryParamDate", {
         S7::props(date),
         list(value = solr_date("[2017-02-03T05:06:07Z+2MONTHS TO *]"))
     )
-    expect_equal(query_param_render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
+    expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
 })
 
 test_that("QueryParamStore", {
@@ -91,19 +91,18 @@ test_that("QueryParamStore", {
     expect_named(dt, c("start", "stop"))
     expect_s3_class(dt$start, "S7_object")
     expect_s3_class(dt$stop, "S7_object")
-    expect_match(query_param_render(dt$start, "datetime_start"), "^datetime_start:")
-    expect_match(query_param_render(dt$stop, "datetime_stop"), "^datetime_stop:")
+    expect_match(render(dt$start, "datetime_start"), "^datetime_start:")
+    expect_match(render(dt$stop, "datetime_stop"), "^datetime_stop:")
 
-    q <- q$timestamp_range(from = "NOW-1YEAR", to = "2021")
+    q$timestamp_range(from = "NOW-1YEAR", to = "2021")
     ts <- q$timestamp_range()
     expect_named(ts, c("from", "to"))
     expect_s3_class(ts$from, "S7_object")
     expect_s3_class(ts$to, "S7_object")
     expect_true(any(grepl("^_timestamp:", q$render())))
 
-    q <- q$version_range(min = "2020", max = "2021")
+    q$version_range(min = "2020", max = "2021")
     expect_true(any(grepl("^version:", q$render())))
-    expect_false(any(grepl("^version:", q$render(exclude = "version"))))
 
     nr <- QueryParamStore$new()$nominal_resolution("100 km")
     expect_identical(nr$nominal_resolution()@value, c("100+km", "100km"))
@@ -132,6 +131,29 @@ test_that("QueryParamStore", {
         "reserved for control conditions"
     )
 
+    multi_params <- QueryParamStore$new()$params(
+        project = "CMIP6",
+        activity_id = !c("CFMIP", "ScenarioMIP"),
+        table_id = "Amon",
+        realm = !c("atmos", "ocean")
+    )
+    expect_identical(multi_params$project()@value, "CMIP6")
+    expect_true(multi_params$activity_id()@negate)
+    expect_identical(multi_params$activity_id()@value, c("CFMIP", "ScenarioMIP"))
+    expect_identical(multi_params$params()$table_id@value, "Amon")
+    expect_true(multi_params$params()$realm@negate)
+    expect_identical(multi_params$params()$realm@value, c("atmos", "ocean"))
+
+    repeated_vals <- c("Amon", "Omon")
+    expect_error(
+        QueryParamStore$new()$params(table_id = repeated_vals[[1]], table_id = repeated_vals[[2]]),
+        "unique"
+    )
+
+    cleared_params <- QueryParamStore$new()$params(table_id = "Amon", realm = "atmos")
+    expect_named(cleared_params$params(), c("table_id", "realm"))
+    expect_identical(cleared_params$params(NULL)$params(), list())
+
     expect_warning(capped <- QueryParamStore$new()$limit(12000L), "maximum value")
     expect_identical(capped$limit()@value, 10000L)
 
@@ -146,6 +168,26 @@ test_that("QueryParamStore", {
 
     serialized <- q$serialize()
     restored <- QueryParamStore$new()$restore(serialized)
+
+    subset_state <- q$state(name = c("activity_id", "version_max", "table_id", "limit"), null = TRUE)
+    expect_named(subset_state, c("facet", "query", "others", "control"))
+    expect_named(subset_state$facet, "activity_id")
+    expect_named(subset_state$query, "version_max")
+    expect_named(subset_state$control, "limit")
+    expect_named(subset_state$others, "table_id")
+
+    subset_serialized <- q$serialize(name = c("activity_id", "version_max"))
+    expect_named(subset_serialized$facet, "activity_id")
+    expect_named(subset_serialized$query, "version_max")
+    expect_identical(subset_serialized$control, list())
+    expect_identical(subset_serialized$others, list())
+
+    expect_equal(
+        q$render(name = c("limit", "project")),
+        c(limit = "limit=10", project = "project=CMIP6")
+    )
+    expect_true(any(grepl("^_timestamp:", q$render(name = "_timestamp"))))
+    expect_true(any(grepl("^version:", q$render(name = "version"))))
 
     expect_named(serialized, c("facet", "query", "control", "others"))
     expect_true(serialized$facet$activity_id$negate)
