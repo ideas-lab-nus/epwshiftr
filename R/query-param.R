@@ -132,47 +132,28 @@ FIELDS_FACETS_ALL <- c(
 # QueryParam {{{
 QueryParam <- S7::new_class("QueryParam", abstract = TRUE)
 
+prop_single_value <- checkmate_property(
+    checkmate_any(
+        checkmate_rule(S7::class_logical, checkmate::check_flag, branch = "flag"),
+        checkmate_rule(S7::class_double, checkmate::check_number, branch = "double"),
+        checkmate_rule(S7::class_integer, checkmate::check_number, branch = "integer"),
+        checkmate_rule(S7::class_character, checkmate::check_string, min.chars = 1L, branch = "string")
+    )
+)
+
 QueryParamCtrl <- S7::new_class(
     "QueryParamCtrl",
     parent = QueryParam,
-    properties = list(
-        value = S7::new_property(
-            S7::new_union(S7::class_logical, S7::class_numeric, S7::class_character),
-            validator = function(value) {
-                checkmate::check_scalar(value) %|>% "value"
-            }
-        )
-    )
+    properties = list(value = prop_single_value)
 )
 
 QueryParamFacet <- S7::new_class(
     "QueryParamFacet",
     parent = QueryParam,
     properties = list(
-        value = S7::new_property(
-            S7::new_union(S7::class_logical, S7::class_numeric, S7::class_character),
-            validator = function(value) {
-                if (is.logical(value)) {
-                    checkmate::check_flag(value) %|>% "value"
-                } else {
-                    checkmate::check_vector(value, any.missing = FALSE, min.len = 1L) %|>% "value"
-                }
-            }
-        ),
-        negate = S7::new_property(
-            S7::class_logical,
-            validator = function(value) {
-                checkmate::check_flag(value) %|>% "negate"
-            },
-            default = FALSE
-        ),
-        encoded = S7::new_property(
-            S7::class_logical,
-            validator = function(value) {
-                checkmate::check_flag(value) %|>% "encoded"
-            },
-            default = FALSE
-        )
+        value = prop_single_value,
+        negate = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE),
+        encoded = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE)
     )
 )
 

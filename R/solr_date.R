@@ -234,7 +234,7 @@ solrdate_na_posixct <- function() {
 # Valid Date Math operators: +, -, /
 # Valid units: YEAR(S), MONTH(S), DAY(S), DATE, HOUR(S), MINUTE(S), SECOND(S),
 #              MILLI, MILLIS, MILLISECOND(S)
-solrdate_validate_date_math_string <- function(x, label = deparse(substitute(x))) {
+check_date_math_string <- function(x) {
     UNITS <- paste(
         "YEARS?",
         "MONTHS?",
@@ -249,20 +249,49 @@ solrdate_validate_date_math_string <- function(x, label = deparse(substitute(x))
     )
     # Each segment: [+|-]<digits><UNIT> or /<UNIT>
     seg_pat <- sprintf("^([+\\-]\\d+(%s)|/(%s))+$", UNITS, UNITS)
-    checkmate::check_string(x, pattern = seg_pat, ignore.case = TRUE) %|>% label
+    checkmate::check_string(x, pattern = seg_pat, ignore.case = TRUE)
 }
 
-solrdate_validate_scalar_posixct <- function(x, allow_na = FALSE, label = deparse(substitute(x))) {
-    result <- checkmate::check_posixct(x, any.missing = allow_na, len = 1L) %|>% label
+check_datetime <- function(
+    x,
+    tz = "UTC",
+    lower = NULL,
+    upper = NULL,
+    any.missing = TRUE,
+    all.missing = TRUE,
+    len = NULL,
+    min.len = NULL,
+    max.len = NULL,
+    unique = FALSE,
+    sorted = FALSE,
+    null.ok = FALSE
+) {
+    checkmate::assert_string(tz, null.ok = TRUE)
+
+    result <- checkmate::check_posixct(
+        x,
+        lower = lower,
+        upper = upper,
+        any.missing = any.missing,
+        all.missing = all.missing,
+        len = len,
+        min.len = min.len,
+        max.len = max.len,
+        unique = unique,
+        sorted = sortedd,
+        null.ok = null.ok
+    )
     if (is.character(result)) {
         return(result)
     }
 
-    tz <- attr(x, "tzone", exact = TRUE)
-    if (!checkmate::test_string(tz) || !identical(tz, "UTC")) {
-        wrong <- if (length(tz)) as.character(tz[1L]) else "<Empty>"
+    tzone <- attr(x, "tzone", exact = TRUE)
+    if (!identical(tzone, tz)) {
+        wrong <- if (length(tzone)) as.character(tzone[1L]) else "<Empty>"
         return(sprintf("Must use 'UTC' timezone, not '%s'", wrong) %|>% label)
     }
+
+    TRUE
 }
 
 SolrDate <- S7::new_class("SolrDate", abstract = TRUE)
@@ -275,20 +304,8 @@ SolrDateRange <- S7::new_class(
     properties = list(
         start = S7::new_property(SolrDatePoint),
         end = S7::new_property(SolrDatePoint),
-        start_inclusive = S7::new_property(
-            S7::class_logical,
-            validator = function(value) {
-                checkmate::check_flag(value) %|>% "start_inclusive"
-            },
-            default = TRUE
-        ),
-        end_inclusive = S7::new_property(
-            S7::class_logical,
-            validator = function(value) {
-                checkmate::check_flag(value) %|>% "end_inclusive"
-            },
-            default = TRUE
-        )
+        start_inclusive = checkmate_property(S7::class_logical, checkmate::check_flag, default = TRUE),
+        end_inclusive = checkmate_property(S7::class_logical, checkmate::check_flag, default = TRUE)
     )
 )
 
@@ -301,12 +318,7 @@ SolrDateInstant <- S7::new_class(
     "SolrDateInstant",
     parent = SolrDatePoint,
     properties = list(
-        value = S7::new_property(
-            S7::new_union(S7::class_POSIXct, S7::class_Date),
-            validator = function(value) {
-                solrdate_validate_scalar_posixct(value, allow_na = TRUE, label = "value")
-            }
-        )
+        value = checkmate_property(S7::class_POSIXct, check_datetime, tz = "UTC")
     ),
     constructor = function(value) {
         if (inherits(value, "Date")) {
@@ -320,18 +332,8 @@ SolrDateMath <- S7::new_class(
     "SolrDateMath",
     parent = SolrDatePoint,
     properties = list(
-        value = S7::new_property(
-            S7::class_POSIXct,
-            validator = function(value) {
-                solrdate_validate_scalar_posixct(value, allow_na = TRUE, label = "value")
-            }
-        ),
-        math = S7::new_property(
-            S7::class_character,
-            validator = function(value) {
-                solrdate_validate_date_math_string(value, "math")
-            }
-        )
+        value = checkmate_property(S7::class_POSIXct, check_datetime, tz = "UTC"),
+        math = checkmate_property(S7::class_character, check_date_math_string)
     )
 )
 
