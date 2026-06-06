@@ -64,6 +64,7 @@ Collate:
     'epwshiftr-package.R'
     'esgf.R'
     'gh.R'
+    'import-standalone-schema.R'
     'morph.R'
     'netcdf.R'
     'solr_date.R'
