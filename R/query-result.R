@@ -603,10 +603,10 @@ EsgResultDataset <- R6::R6Class(
 
             # assign default values for distrib and latest
             if (is.null(params$distrib)) {
-                params$distrib <- new_query_param("distrib", TRUE)
+                params$distrib <- as_query_param("distrib", TRUE)
             }
             if (is.null(params$latest)) {
-                params$latest <- new_query_param("latest", TRUE)
+                params$latest <- as_query_param("latest", TRUE)
             }
 
             # create a new query to validate params
@@ -617,10 +617,12 @@ EsgResultDataset <- R6::R6Class(
 
                 # use query object to validate params
                 fields = query$fields(fields)$fields(),
-                shards = query$shards(params$shards$value)$shards(),
-                replica = query$replica(params$replica$value)$replica(),
-                latest = query$latest(params$latest$value)$latest(),
-                distrib = query$distrib(params$distrib$value)$distrib(),
+                shards = query$shards(if (is.null(params$shards)) NULL else query_param_value(params$shards))$shards(),
+                replica = query$replica(
+                    if (is.null(params$replica)) NULL else query_param_value(params$replica)
+                )$replica(),
+                latest = query$latest(query_param_value(params$latest))$latest(),
+                distrib = query$distrib(query_param_value(params$distrib))$distrib(),
 
                 limit = limit,
                 type = type,
@@ -628,7 +630,7 @@ EsgResultDataset <- R6::R6Class(
             )
 
             # convert all inputs into query params and remove empty one
-            query_param_flat(params)
+            query_params_flat(params)
         }
         # }}}
     )
@@ -880,8 +882,8 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
         #'
-	        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
-	        #'   If `FALSE`, open only the first file.
+        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
+        #'   If `FALSE`, open only the first file.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default)
         #'   - `"auto"`: Automatically download files
@@ -901,7 +903,7 @@ EsgResultAggregation <- R6::R6Class(
             # Try OPeNDAP
             ds <- tryCatch(
                 {
-	                    d <- EsgDataset$new(urls)
+                    d <- EsgDataset$new(urls)
                     d$open()
                     d
                 },
@@ -953,7 +955,7 @@ EsgResultAggregation <- R6::R6Class(
                 character(1L)
             )
 
-	            ds <- EsgDataset$new(local_paths)
+            ds <- EsgDataset$new(local_paths)
             ds$open()
             ds
         }

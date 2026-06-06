@@ -141,17 +141,24 @@ prop_single_value <- checkmate_property(
     )
 )
 
+prop_atomic_value <- checkmate_property(
+    S7::class_atomic,
+    checkmate::check_atomic,
+    any.missing = FALSE,
+    min.len = 1L
+)
+
 QueryParamCtrl <- S7::new_class(
     "QueryParamCtrl",
     parent = QueryParam,
-    properties = list(value = prop_single_value)
+    properties = list(value = prop_atomic_value)
 )
 
 QueryParamFacet <- S7::new_class(
     "QueryParamFacet",
     parent = QueryParam,
     properties = list(
-        value = prop_single_value,
+        value = prop_atomic_value,
         negate = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE),
         encoded = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE)
     )
@@ -172,8 +179,9 @@ render <- S7::new_generic("render", "x", function(x, name, ...) {
     checkmate::assert_string(name, null.ok = TRUE)
     S7::S7_dispatch()
 })
-S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE) {
+S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE, space = FALSE) {
     checkmate::assert_flag(encode)
+    checkmate::assert_flag(space)
     value <- x@value
 
     if (is.logical(value)) {
@@ -201,12 +209,14 @@ S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE) {
         res <- value
     }
 
+    spc <- if (space) " " else ""
     equal <- if (x@negate && !is.logical(value)) "!=" else "="
+    equal <- paste0(spc, equal, spc)
 
     if (x@negate && !is.logical(value)) {
-        paste0(name, "!=", res, collapse = "&")
+        paste0(name, equal, res, collapse = paste0(spc, "&", spc))
     } else {
-        paste0(name, "=", paste0(res, collapse = ","))
+        paste0(name, equal, paste0(res, collapse = paste0(",", spc)))
     }
 }
 S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso") {
@@ -250,6 +260,261 @@ S7::method(print, QueryParam) <- function(x) {
     cat(rendered, "\n", sep = "")
 }
 # }}}
+# }}}
+
+# QueryParam helpers {{{
+query_param_names <- function(class = c("facet", "query", "control", "all")) {
+    class <- match.arg(class)
+    facet <- c(
+        "project",
+        "activity_id",
+        "experiment_id",
+        "source_id",
+        "variable_id",
+        "frequency",
+        "variant_label",
+        "nominal_resolution",
+        "data_node",
+        "facets",
+        "fields",
+        "shards"
+    )
+    query <- c("datetime_start", "datetime_stop", "_timestamp", "version_min", "version_max")
+    control <- c("replica", "latest", "type", "offset", "distrib", "limit", "format")
+
+    switch(
+        class,
+        facet = facet,
+        query = query,
+        control = control,
+        all = c(facet, query, control)
+    )
+}
+
+query_param_store <- function() {
+    params <- list(
+        project = "CMIP6",
+        activity_id = NULL,
+        experiment_id = NULL,
+        source_id = NULL,
+        variable_id = NULL,
+        frequency = NULL,
+        variant_label = NULL,
+        nominal_resolution = NULL,
+        data_node = NULL,
+        facets = NULL,
+        fields = "*",
+        shards = NULL,
+        datetime_start = NULL,
+        datetime_stop = NULL,
+        `_timestamp` = NULL,
+        version_min = NULL,
+        version_max = NULL,
+        replica = NULL,
+        latest = TRUE,
+        type = "Dataset",
+        offset = 0L,
+        distrib = TRUE,
+        limit = 10L,
+        format = FORMAT_JSON,
+        others = list()
+    )
+
+    out <- query_param_flat(params, null = TRUE)
+    out$others <- list()
+    out
+}
+
+query_param_meta <- function(x, name = NULL, kind = NULL) {
+    if (!is.null(name)) {
+        attr(x, "name") <- name
+    }
+    if (!is.null(kind)) {
+        attr(x, "kind") <- kind
+    }
+    x
+}
+
+query_param_spec <- function(name) {
+    checkmate::assert_string(name, min.chars = 1L)
+
+    class <- if (name %in% query_param_names("query")) {
+        "query"
+    } else if (name %in% query_param_names("control")) {
+        "control"
+    } else {
+        "facet"
+    }
+
+    list(name = name, class = class)
+}
+
+query_param_kind <- function(x) {
+    kind <- attr(x, "kind", exact = TRUE)
+    if (!is.null(kind)) {
+        return(kind)
+    }
+
+    name <- query_param_name(x)
+    if (!is.null(name)) {
+        spec <- query_param_spec(name)
+        return(if (identical(spec$class, "query")) name else spec$class)
+    }
+    if (S7::S7_inherits(x, QueryParamDate)) {
+        return("query")
+    }
+    if (S7::S7_inherits(x, QueryParamCtrl)) {
+        return("control")
+    }
+    "facet"
+}
+
+query_param_name <- function(x) {
+    attr(x, "name", exact = TRUE)
+}
+
+query_param_value <- function(x) {
+    if (is.null(x)) {
+        return(NULL)
+    }
+
+    x@value
+}
+
+query_param_negate <- function(x) {
+    if (is.null(x) || !S7::S7_inherits(x, QueryParamFacet)) {
+        return(FALSE)
+    }
+
+    x@negate
+}
+
+as_query_param <- function(name, value, negate = FALSE) {
+    checkmate::assert_string(name, min.chars = 1L)
+    checkmate::assert_flag(negate)
+
+    if (is.null(value)) {
+        return(NULL)
+    }
+    if (S7::S7_inherits(value, QueryParam)) {
+        return(query_param_meta(value, name = name, kind = query_param_kind(value)))
+    }
+    if (is.list(value) && all(c("value", "negate") %in% names(value))) {
+        negate <- isTRUE(value$negate)
+        value <- value$value
+    }
+    if (is.null(value)) {
+        return(NULL)
+    }
+
+    spec <- query_param_spec(name)
+    param <- switch(
+        spec$class,
+        query = QueryParamDate(value),
+        control = QueryParamCtrl(value),
+        facet = QueryParamFacet(value, negate = negate)
+    )
+
+    query_param_meta(param, name = name, kind = if (spec$class == "query") name else spec$class)
+}
+
+query_param_render <- function(x, name = query_param_name(x), ...) {
+    kind <- query_param_kind(x)
+    if (kind %in% c("version_min", "version_max")) {
+        return(render(x, name = "version", as = "num"))
+    }
+    if (identical(kind, "timestamp_range")) {
+        return(render(x, name = "_timestamp", ...))
+    }
+
+    if (S7::S7_inherits(x, QueryParamFacet)) {
+        return(render(x, name = name, encode = TRUE, ...))
+    }
+
+    render(x, name = name, ...)
+}
+
+query_param_encode <- function(x) {
+    curl::curl_escape(x)
+}
+
+query_param_serialize <- function(x) {
+    if (is.null(x)) {
+        return(NULL)
+    }
+
+    out <- as.list(x)
+    if (S7::S7_inherits(x, QueryParamDate)) {
+        out$value <- query_param_render(x)
+        out <- c(list(kind = query_param_kind(x)), out)
+    } else if (S7::S7_inherits(x, QueryParamFacet) && !isTRUE(out$encoded)) {
+        out$encoded <- NULL
+    }
+    out
+}
+
+query_param_deserialize <- function(name, payload) {
+    if (is.null(payload)) {
+        return(NULL)
+    }
+
+    kind <- payload$kind
+    if (is.null(kind)) {
+        kind <- query_param_spec(name)$class
+    }
+    if (identical(kind, "facet")) {
+        return(query_param_meta(
+            QueryParamFacet(payload$value, negate = isTRUE(payload$negate), encoded = isTRUE(payload$encoded)),
+            name = name,
+            kind = kind
+        ))
+    }
+    if (identical(kind, "control")) {
+        return(query_param_meta(QueryParamCtrl(payload$value), name = name, kind = kind))
+    }
+
+    value <- payload$value
+    prefix <- paste0(name, ":")
+    if (is.character(value) && length(value) == 1L && startsWith(value, prefix)) {
+        value <- substring(value, nchar(prefix) + 1L)
+    }
+
+    query_param_meta(QueryParamDate(value), name = name, kind = kind)
+}
+
+query_param_flat <- function(params, null = FALSE) {
+    checkmate::assert_list(params, names = "unique")
+    checkmate::assert_flag(null)
+
+    out <- list()
+    for (name in names(params)) {
+        value <- params[[name]]
+        if (identical(name, "others")) {
+            if (length(value)) {
+                for (other_name in names(value)) {
+                    param <- as_query_param(other_name, value[[other_name]])
+                    if (is.null(param) && null) {
+                        out[other_name] <- list(NULL)
+                    } else if (!is.null(param)) {
+                        out[[other_name]] <- param
+                    }
+                }
+            }
+            next
+        }
+
+        param <- as_query_param(name, value)
+        if (is.null(param) && null) {
+            out[name] <- list(NULL)
+        } else if (!is.null(param)) {
+            out[[name]] <- param
+        }
+    }
+
+    out
+}
+
+query_params_flat <- query_param_flat
 # }}}
 
 # QueryParamStore {{{

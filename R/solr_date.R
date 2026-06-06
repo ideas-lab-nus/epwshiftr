@@ -201,7 +201,7 @@ solrdate_parse_boundary_string <- function(x) {
     if (!nzchar(math_str)) {
         SolrDateInstant(value = base_value)
     } else {
-        if (!is.null(solrdate_validate_date_math_string(math_str))) {
+        if (!isTRUE(check_date_math_string(math_str))) {
             stop(sprintf(
                 "`x` contains an invalid Date Math expression after the base datetime '%s': '%s'.",
                 dt_str,
@@ -278,7 +278,7 @@ check_datetime <- function(
         min.len = min.len,
         max.len = max.len,
         unique = unique,
-        sorted = sortedd,
+        sorted = sorted,
         null.ok = null.ok
     )
     if (is.character(result)) {
@@ -439,6 +439,9 @@ S7::method(as.POSIXct, SolrDateRange) <- function(x, tz = "UTC", ...) {
 is.solr_date <- function(x) {
     S7::S7_inherits(x, SolrDate)
 }
+
+solrdt <- solr_date
+is.solrdt <- is.solr_date
 
 #' @keywords internal
 #' @noRd
