@@ -123,7 +123,8 @@ EsgResult <- R6::R6Class(
                 parameter = private$parameter,
                 response = private$response,
                 file = file,
-                pretty = pretty
+                pretty = pretty,
+                schema = SCHEMA_RESULT_DATASET
             )
         },
         # }}}

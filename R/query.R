@@ -928,7 +928,8 @@ EsgQuery <- R6::R6Class(
                 parameter = private$parameter,
                 response = NULL,
                 file = file,
-                pretty = pretty
+                pretty = pretty,
+                schema = SCHEMA_QUERY
             )
         },
         # }}}
@@ -955,7 +956,7 @@ EsgQuery <- R6::R6Class(
         #' q$load(f)
         #' }
         load = function(file) {
-            q <- query_load(file)
+            q <- query_load(file, SCHEMA_QUERY)
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
@@ -1265,7 +1266,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 # }}}
 
 # query_save {{{
-query_save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE) {
+query_save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE, schema = NULL) {
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
@@ -1299,6 +1300,10 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
         data <- c(data, list(...))
     }
 
+    if (!is.null(schema)) {
+        schema_validate(schema, data, mode = "assert", name = file)
+    }
+
     jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
 
     normalizePath(file, mustWork = TRUE)
@@ -1312,6 +1317,10 @@ query_load <- function(file, schema = NULL) {
     # simplifyVector will convert facet counts to characters
     # have to set simplifyMatrix to FALSE
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+
+    if (!is.null(schema)) {
+        schema_validate(schema, json, mode = "assert", name = file)
+    }
 
     json$parameter <- if (length(json$parameter)) {
         QueryParamStore$new()$restore(json$parameter)

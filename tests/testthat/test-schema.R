@@ -34,6 +34,10 @@ test_that("schema validates saved query JSON fixtures", {
 
     query_json$parameter <- "not a parameter list"
     expect_false(schema_validate(SCHEMA_QUERY, query_json, mode = "test", name = "bad-query"))
+
+    bad_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(query_json, bad_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(bad_file))
 })
 
 test_that("schema validates saved dataset result JSON fixtures", {
@@ -44,4 +48,8 @@ test_that("schema validates saved dataset result JSON fixtures", {
 
     result_json$response$response$docs$not_a_solr_field <- seq_len(nrow(result_json$response$response$docs))
     expect_false(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = "bad-result"))
+
+    bad_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(result_json, bad_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_result()$load(bad_file))
 })
