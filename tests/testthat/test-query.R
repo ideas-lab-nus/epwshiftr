@@ -86,6 +86,30 @@ test_that("esg_query()", {
     expect_s3_class(EsgQuery$new(), "EsgQuery")
     expect_s3_class(esg_query(), "EsgQuery")
 
+    q_state <- esg_query("https://esgf.ceda.ac.uk")$experiment_id("ssp585")$fields("source_id")
+    expect_identical(q_state$index_node(), "https://esgf.ceda.ac.uk")
+
+    state <- q_state$state()
+    expect_named(state, c("index_node", "parameter"))
+    expect_identical(state$index_node, "https://esgf.ceda.ac.uk")
+    expect_named(state$parameter, c("facet", "control"))
+    expect_identical(query_param_value(state$parameter$facet$experiment_id), "ssp585")
+
+    state_all <- q_state$state(null = TRUE)
+    expect_named(state_all$parameter, c("facet", "query", "control", "others"))
+    expect_null(state_all$parameter$query$datetime_start)
+
+    expect_s3_class(q_state$index_node("esgf.nci.org.au"), "EsgQuery")
+    expect_identical(q_state$index_node(), "https://esgf.nci.org.au")
+    expect_identical(query_param_value(q_state$experiment_id()), "ssp585")
+    expect_identical(query_param_value(q_state$fields()), "source_id")
+
+    expect_s3_class(q_state$reset(), "EsgQuery")
+    expect_identical(q_state$index_node(), "https://esgf.nci.org.au")
+    expect_null(q_state$experiment_id())
+    expect_identical(query_param_value(q_state$project()), "CMIP6")
+    expect_identical(query_param_value(q_state$fields()), "*")
+
     skip_on_cran()
 
     index_node <- get_fast_index_node()

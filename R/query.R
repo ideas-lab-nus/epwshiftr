@@ -287,10 +287,38 @@ EsgQuery <- R6::R6Class(
         #' }
         initialize = function(index_node = "https://esgf-node.ornl.gov") {
             checkmate::assert_string(index_node)
-            private$index_node <- normalize_index_node(index_node)
+            private$index_node_url <- normalize_index_node(index_node)
 
             private$parameter <- QueryParamStore$new()
 
+            self
+        },
+        # }}}
+
+        # index_node {{{
+        #' @description
+        #' Get or set the ESGF index node.
+        #'
+        #' `$index_node()` returns the current normalized index node URL.
+        #' `$index_node(value)` updates the index node after applying the same
+        #' normalization used by \href{#method-EsgQuery-new}{\code{EsgQuery$new()}}.
+        #' Existing query parameters are kept unchanged.
+        #'
+        #' @param value A string giving the new index node URL. If omitted, the
+        #'        current index node is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a string.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$index_node()
+        #' q$index_node("https://esgf.ceda.ac.uk")
+        #' }
+        index_node = function(value) {
+            if (missing(value)) return(private$index_node_url)
+            checkmate::assert_string(value)
+            private$index_node_url <- normalize_index_node(value)
             self
         },
         # }}}
@@ -318,7 +346,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(force)
 
             # for bridge nodes, give a hint
-            if (is_bridge_index_node(private$index_node)) {
+            if (is_bridge_index_node(private$index_node_url)) {
                 verbose(cli::cli_alert_info(paste(
                     "Current index node is a bridge node. Facet listing is not available.",
                     "Predefined common facets are returned.",
@@ -328,7 +356,7 @@ EsgQuery <- R6::R6Class(
             }
 
             url <- query_build(
-                private$index_node,
+                private$index_node_url,
                 list(
                     project = private$parameter$project(),
                     facets = "*",
@@ -363,7 +391,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(force)
 
             url <- query_build(
-                private$index_node,
+                private$index_node_url,
                 list(
                     project = private$parameter$project(),
                     limit = 1,
@@ -397,7 +425,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(force)
 
             url <- query_build(
-                private$index_node,
+                private$index_node_url,
                 list(
                     project = private$parameter$project(),
                     type = "Dataset",
@@ -433,7 +461,7 @@ EsgQuery <- R6::R6Class(
                 shard <- shard[-1L]
                 # replace localhost
                 if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
-                    shard[1L] <- strsplit(private$index_node, "/", fixed = TRUE)[[1L]][[3L]]
+                    shard[1L] <- strsplit(private$index_node_url, "/", fixed = TRUE)[[1L]][[3L]]
                 }
                 # exclude suffix
                 sprintf("%s%s%s/solr%s", shard[[1L]], if (shard[[2L]] != "") ":" else "", shard[[2L]], shard[[3L]])
@@ -465,7 +493,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(force)
 
             url <- query_build(
-                private$index_node,
+                private$index_node_url,
                 list(
                     project = private$parameter$project(),
                     type = "Dataset",
@@ -891,7 +919,7 @@ EsgQuery <- R6::R6Class(
         url = function(wget = FALSE) {
             checkmate::assert_flag(wget)
             query_build(
-                private$index_node,
+                private$index_node_url,
                 private$parameter,
                 type = if (wget) "wget" else "search"
             )
@@ -950,7 +978,7 @@ EsgQuery <- R6::R6Class(
                 }
             }
 
-            url <- query_build(private$index_node, params)
+            url <- query_build(private$index_node_url, params)
             res <- read_json_response(url, simplifyVector = FALSE)
 
             if (!facets) {
@@ -1018,7 +1046,7 @@ EsgQuery <- R6::R6Class(
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
-                private$index_node,
+                private$index_node_url,
                 private$parameter,
                 required_fields = EsgResultDataset$private_fields$required_fields,
                 all = all,
@@ -1030,7 +1058,53 @@ EsgQuery <- R6::R6Class(
             result$response$response$docs <- result$docs
 
             # create new results
-            new_query_result(EsgResultDataset, private$index_node, private$parameter, result$response)
+            new_query_result(EsgResultDataset, private$index_node_url, private$parameter, result$response)
+        },
+        # }}}
+
+        # state {{{
+        #' @description
+        #' Get the current query state.
+        #'
+        #' `$state()` returns a read-only snapshot containing the current index
+        #' node and the current parameter state.
+        #'
+        #' @param name A character vector of parameter names to include, or
+        #'        `NULL` to include all parameters.
+        #' @param null If `TRUE`, include parameters whose current value is
+        #'        `NULL`. Otherwise, omit unset parameters.
+        #'
+        #' @return A named list with elements `index_node` and `parameter`.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$state()
+        #' q$state(null = TRUE)
+        #' }
+        state = function(name = NULL, null = FALSE) {
+            list(
+                index_node = private$index_node_url,
+                parameter = private$parameter$state(name = name, null = null)
+            )
+        },
+        # }}}
+
+        # reset {{{
+        #' @description
+        #' Reset query parameters to their defaults.
+        #'
+        #' `$reset()` clears the current parameter store and restores the default
+        #' query parameters. The current index node is kept unchanged.
+        #'
+        #' @return The modified `EsgQuery` object itself.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' q$experiment_id("ssp585")$reset()
+        #' }
+        reset = function() {
+            private$parameter <- query_param_store()
+            self
         },
         # }}}
 
@@ -1056,7 +1130,7 @@ EsgQuery <- R6::R6Class(
         #' }
         save = function(file = "query.json", pretty = TRUE) {
             query_save(
-                index_node = private$index_node,
+                index_node = private$index_node_url,
                 parameter = private$parameter,
                 response = NULL,
                 file = file,
@@ -1091,7 +1165,7 @@ EsgQuery <- R6::R6Class(
             q <- query_load(file, SCHEMA_QUERY)
             private$validate_query_state(q$parameter)
 
-            private$index_node <- q$index_node
+            private$index_node_url <- q$index_node
             private$parameter <- q$parameter
 
             self
@@ -1116,7 +1190,7 @@ EsgQuery <- R6::R6Class(
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_rule("ESGF Query")
-            cli::cli_li("Index Node: {private$index_node}")
+            cli::cli_li("Index Node: {private$index_node_url}")
 
             cli::cli_h1("<Query Parameter>")
             print_query_params(private$parameter)
@@ -1127,7 +1201,7 @@ EsgQuery <- R6::R6Class(
     ),
 
     private = list(
-        index_node = NULL,
+        index_node_url = NULL,
 
         parameter = NULL,
 
@@ -1187,7 +1261,7 @@ EsgQuery <- R6::R6Class(
 
                 if (!is.key_missing(cached)) {
                     verbose(cli::cli_alert_info(paste(
-                        "Loaded cached {type} listing for index node {.var {private$index_node}}",
+                        "Loaded cached {type} listing for index node {.var {private$index_node_url}}",
                         "built at {format(cached$timestamp, '%F %T %Z')}."
                     )))
 
@@ -1199,12 +1273,12 @@ EsgQuery <- R6::R6Class(
             }
 
             verbose(cli::cli_progress_step(
-                "Retrieving {type} listing for index node {.var {private$index_node}}...",
+                "Retrieving {type} listing for index node {.var {private$index_node_url}}...",
                 paste(
-                    "Retrieved {type} listing for index node {.var {private$index_node}}",
+                    "Retrieved {type} listing for index node {.var {private$index_node_url}}",
                     "at {format(Sys.time(), '%F %T %Z')}."
                 ),
-                "Failed to retrieve {type} listing for index node {.var {private$index_node}}."
+                "Failed to retrieve {type} listing for index node {.var {private$index_node_url}}."
             ))
             with_timeout(300, read_json_response(url, simplifyVector = FALSE))
         }
