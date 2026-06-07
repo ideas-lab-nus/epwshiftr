@@ -13,6 +13,8 @@ PARAM_BUCKETS <- c(
 )
 # }}}
 
+QUERY_PARAM_NON_RESULT_FIELDS <- c("facets", "fields", "shards", "bbox", "start", "end", "from", "to")
+
 # FIELDS_FACETS_ALL {{{
 FIELDS_FACETS_ALL <- c(
     "Conventions",
@@ -326,7 +328,7 @@ query_param_spec <- function(name) {
 
     role <- if (
         class == "facet" &&
-            !name %in% c("facets", "fields", "shards", "bbox", "start", "end", "from", "to")
+            !name %in% QUERY_PARAM_NON_RESULT_FIELDS
     ) {
         "result_field"
     } else {

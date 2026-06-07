@@ -57,6 +57,11 @@ test_that("QueryParamStore", {
     expect_identical(query_param_spec("datetime_start")$role, "query")
     expect_identical(query_param_spec("limit")$role, "control")
     expect_identical(query_param_spec("bbox")$role, "facet")
+    expect_true(all(vapply(
+        QUERY_PARAM_NON_RESULT_FIELDS,
+        function(name) query_param_spec(name)$role != "result_field",
+        logical(1L)
+    )))
 
     state_all <- store$state(null = TRUE)
     expect_named(state_all, c("facet", "query", "control", "others"))
