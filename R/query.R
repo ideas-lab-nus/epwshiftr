@@ -114,7 +114,6 @@ FIELDS_FACETS_COMMON <- c(
 #'   \href{#method-EsgQuery-offset}{\code{offset}},
 #'   \href{#method-EsgQuery-limit}{\code{limit}},
 #'   \href{#method-EsgQuery-fields}{\code{fields}},
-#'   \href{#method-EsgQuery-type}{\code{type}},
 #'   \href{#method-EsgQuery-replica}{\code{replica}},
 #'   \href{#method-EsgQuery-latest}{\code{latest}},
 #'   \href{#method-EsgQuery-distrib}{\code{distrib}}
@@ -781,21 +780,6 @@ EsgQuery <- R6::R6Class(
         },
 
         #' @description
-        #' Get or set the ESGF search record `type` parameter.
-        #'
-        #' @param value One of `"Dataset"`, `"File"`, or `"Aggregation"`. If
-        #'        omitted, the current value is returned. Default when setting
-        #'        without an explicit value: `"Dataset"`.
-        #'
-        #' @return If `value` is supplied, the modified `EsgQuery` object.
-        #'         Otherwise, a `QueryParam` object or `NULL`.
-        type = function(value = "Dataset") {
-            if (missing(value)) return(private$parameter$type())
-            private$parameter$type(value)
-            self
-        },
-
-        #' @description
         #' Get or set the `limit` parameter.
         #'
         #' @param value A positive integer. If omitted, the current value is
@@ -838,28 +822,14 @@ EsgQuery <- R6::R6Class(
         },
 
         #' @description
-        #' Get or set the response `format` parameter.
-        #'
-        #' Only JSON responses are currently supported. Unsupported formats are
-        #' reset to `"application/solr+json"` by the parameter store.
-        #'
-        #' @param value A format string or `NULL`. If omitted, the current value
-        #'        is returned. Default when setting without an explicit value:
-        #'        `"application/solr+json"`.
-        #'
-        #' @return If `value` is supplied, the modified `EsgQuery` object.
-        #'         Otherwise, a `QueryParam` object or `NULL`.
-        format = function(value = FORMAT_JSON) {
-            if (missing(value)) return(private$parameter$format())
-            private$parameter$format(value)
-            self
-        },
-
-        #' @description
         #' Get or set ad hoc query parameters.
         #'
         #' `$params()` handles parameters without dedicated methods and can also
         #' update supported dedicated parameters by name.
+        #' The `type` and `format` control parameters cannot be changed here:
+        #' `EsgQuery` always performs Dataset queries and always parses JSON
+        #' responses. Use `EsgResultDataset$collect()` to collect File or
+        #' Aggregation records from Dataset results.
         #'
         #' @param ... Named parameter values. If omitted, existing ad hoc
         #'        parameters are returned. If a single unnamed `NULL` is supplied,
@@ -870,6 +840,20 @@ EsgQuery <- R6::R6Class(
         params = function(...) {
             dots <- eval(substitute(alist(...)))
             if (length(dots) == 0L) return(private$parameter$params())
+
+            nms <- names(dots)
+            if (is.null(nms)) nms <- rep("", length(dots))
+            reserved <- intersect(nms, c("type", "format"))
+            if (length(reserved)) {
+                stop(sprintf(
+                    paste(
+                        "The following parameter(s) cannot be set using 'EsgQuery$params()': [%s].",
+                        "'EsgQuery' always uses Dataset queries with JSON responses;",
+                        "use 'EsgResultDataset$collect(type = ...)' for File or Aggregation records."
+                    ),
+                    paste(sprintf("'%s'", reserved), collapse = ", ")
+                ), call. = FALSE)
+            }
 
             private$eval_param_call(substitute(private$parameter$params(...)), parent.frame())
             self
@@ -1105,6 +1089,7 @@ EsgQuery <- R6::R6Class(
         #' }
         load = function(file) {
             q <- query_load(file, SCHEMA_QUERY)
+            private$validate_query_state(q$parameter)
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
@@ -1145,6 +1130,33 @@ EsgQuery <- R6::R6Class(
         index_node = NULL,
 
         parameter = NULL,
+
+        validate_query_state = function(parameter) {
+            type <- parameter$type()
+            type_value <- query_param_value(type)
+            if (!identical(type_value, "Dataset")) {
+                stop(sprintf(
+                    paste(
+                        "'EsgQuery' only supports Dataset queries.",
+                        "Loaded query has 'type' = %s.",
+                        "Use 'EsgResultDataset$collect(type = ...)' for File or Aggregation records."
+                    ),
+                    if (is.null(type_value)) "NULL" else sprintf("'%s'", type_value)
+                ), call. = FALSE)
+            }
+
+            format <- parameter$format()
+            format_value <- query_param_value(format)
+            if (!identical(format_value, FORMAT_JSON)) {
+                stop(sprintf(
+                    "'EsgQuery' only supports JSON response format '%s'. Loaded query has 'format' = %s.",
+                    FORMAT_JSON,
+                    if (is.null(format_value)) "NULL" else sprintf("'%s'", format_value)
+                ), call. = FALSE)
+            }
+
+            invisible(parameter)
+        },
 
         format_facet_counts = function(counts) {
             ind <- seq_along(counts)

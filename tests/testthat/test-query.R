@@ -540,6 +540,8 @@ test_that("EsgQuery$params()", {
     q <- expect_s3_class(esg_query(), "EsgQuery")
 
     # can use existing method for common parameters
+    expect_false("type" %in% names(q))
+    expect_false("format" %in% names(q))
     expect_equal(q$params(), list())
     expect_equal(q$params(nominal_resolution = !c("10 km", "25 km"))$params(), list())
     expect_error(q$params(table_id = "day", table_id = "hour"), "unique names")
@@ -555,11 +557,10 @@ test_that("EsgQuery$params()", {
     expect_identical(query_param_value(params$table_id), "Amon")
     expect_identical(query_param_value(params$member_id), "r1i1p1f1")
 
-    # can reset format
-    expect_warning(q$params(format = "xml"), "JSON")
-
-    # can reset type
-    expect_warning(q$params(type = "File"), "Dataset")
+    # cannot set query orchestration controls
+    expect_error(q$params(format = "xml"), "cannot be set")
+    expect_error(q$params(type = "File"), "cannot be set")
+    expect_named(q$params(), c("table_id", "member_id"))
 
     # can restore original values in case of error
     expect_equal(query_param_value(q$frequency("day")$frequency()), "day")
@@ -705,6 +706,19 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
         priv(q_query)$parameter$serialize(null = TRUE)
     )
 
+    query_json <- jsonlite::fromJSON(file_query, simplifyVector = TRUE, simplifyMatrix = FALSE)
+
+    file_invalid_type <- tempfile(fileext = ".json")
+    query_json$parameter$control$type$value <- "File"
+    jsonlite::write_json(query_json, file_invalid_type, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(file_invalid_type), "Dataset queries")
+
+    file_invalid_format <- tempfile(fileext = ".json")
+    query_json$parameter$control$type$value <- "Dataset"
+    query_json$parameter$control$format$value <- "application/xml"
+    jsonlite::write_json(query_json, file_invalid_format, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(file_invalid_format), "JSON response format")
+
     # query object with results
     q$collect()
     file_collected <- tempfile(fileext = ".json")
@@ -720,7 +734,7 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
         priv(q)$parameter$serialize(null = TRUE)
     )
 
-    unlink(c(file_query, file_collected, file_collected_copied))
+    unlink(c(file_query, file_invalid_type, file_invalid_format, file_collected, file_collected_copied))
 })
 # }}}
 

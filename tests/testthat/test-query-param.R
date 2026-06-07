@@ -74,6 +74,12 @@ test_that("QueryParamStore", {
     expect_identical(store$offset()@value, 0L)
     expect_identical(store$distrib()@value, TRUE)
     expect_identical(store$format()@value, FORMAT_JSON)
+    expect_error(QueryParamStore$new()$format("application/xml"), "Only JSON")
+    expect_null(QueryParamStore$new()$format(NULL)$format())
+    expect_identical(QueryParamStore$new()$type("File")$type()@value, "File")
+    expect_identical(QueryParamStore$new()$type("Aggregation")$type()@value, "Aggregation")
+    expect_error(QueryParamStore$new()$params(format = "application/xml"), "Only JSON")
+    expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
     expect_null(state_all$query$datetime_start)
 
     store$project(NULL)$fields(NULL)

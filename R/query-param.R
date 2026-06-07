@@ -1220,8 +1220,7 @@ QueryParamStore <- R6::R6Class(
         #' Get or set the `format` parameter.
         #'
         #' Only JSON responses are currently supported. If a value other than
-        #' `r FORMAT_JSON` is supplied, a warning is issued and the stored value
-        #' is reset to `r FORMAT_JSON`.
+        #' `r FORMAT_JSON` is supplied, an error is raised.
         #'
         #' @param value
         #' The response format string. If not given, current value is returned.
@@ -1237,7 +1236,7 @@ QueryParamStore <- R6::R6Class(
         #' # set the parameter
         #' q$format("application/solr+json")
         #'
-        #' # unsupported formats are reset to JSON with a warning
+        #' # unsupported formats are rejected
         #' q$format("application/xml")
         #' }
         format = function(value = FORMAT_JSON) {
@@ -1246,14 +1245,10 @@ QueryParamStore <- R6::R6Class(
             }
 
             if (!is.null(value) && !identical(value, FORMAT_JSON)) {
-                warning(sprintf(
-                    paste(
-                        "Only JSON response format is supported.",
-                        "'format' will be reset to '%s'."
-                    ),
+                stop(sprintf(
+                    "Only JSON response format '%s' is supported.",
                     FORMAT_JSON
-                ))
-                value <- FORMAT_JSON
+                ), call. = FALSE)
             }
 
             private$get_or_set_control("format", value, type = "string")
@@ -2214,47 +2209,6 @@ QueryParamStore <- R6::R6Class(
             )
             nms <- names(params)
 
-            # protect 'format'
-            fmt <- if ("format" %in% nms) params[["format"]] else NULL
-            if ("format" %in% nms && length(fmt) && (is.null(fmt$value) || fmt$value != FORMAT_JSON)) {
-                warning(sprintf(
-                    paste(
-                        "Only JSON response format is supported.",
-                        "But 'format' found in input with value = '%s'.",
-                        "It will be reset to '%s'."
-                    ),
-                    if (is.null(fmt)) "NULL" else fmt$value,
-                    FORMAT_JSON
-                ))
-                params <- params[nms != "format"]
-                nms <- nms[nms != "format"]
-            }
-
-            # protect 'type'
-            # TODO: move this to EsgQuery class
-            type <- if ("type" %in% nms) params[["type"]] else NULL
-            if ("type" %in% nms && length(type) && !is.null(type$value)) {
-                checkmate::assert_choice(type$value, c("Dataset", "File", "Aggregation"), .var.name = "type")
-
-                if (type$value != "Dataset") {
-                    warning(sprintf(
-                        paste(
-                            "Only 'Dataset' query is supported.",
-                            "But 'type' found in input with value = '%s'.",
-                            "It will be reset to 'Dataset'.",
-                            "If you want to perform a '%s' query,",
-                            "please first run 'EsgQuery$collect()' to get the 'Dataset'",
-                            "result, and then use 'EsgResultDataset$collect(type = '%s')'."
-                        ),
-                        type$value,
-                        type$value,
-                        type$value
-                    ))
-                    params$type$value <- "Dataset"
-                    params$type$negate <- FALSE
-                }
-            }
-
             predefined <- c(names(private$facet), "type", "format")
 
             is_predefined <- nms %in% predefined
@@ -2327,7 +2281,13 @@ QueryParamStore <- R6::R6Class(
                 tryCatch(
                     {
                         # restore the original parameter values in case of errors
-                        params_base_ori <- private$facet[names_base]
+                        params_base_ori <- lapply(names_base, function(name) {
+                            if (name %in% names(private$facet)) {
+                                private$facet[[name]]
+                            } else {
+                                private$control[[name]]
+                            }
+                        })
 
                         for (i in seq_along(params_base)) {
                             name <- names_base[[i]]
@@ -2356,7 +2316,12 @@ QueryParamStore <- R6::R6Class(
                     },
                     error = function(e) {
                         for (i in seq_along(names_base)) {
-                            private$facet[[names_base[[i]]]] <- params_base_ori[[i]]
+                            name <- names_base[[i]]
+                            if (name %in% names(private$facet)) {
+                                private$facet[[name]] <- params_base_ori[[i]]
+                            } else {
+                                private$control[[name]] <- params_base_ori[[i]]
+                            }
                         }
                         stop(e)
                     }
