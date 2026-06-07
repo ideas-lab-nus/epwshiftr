@@ -186,8 +186,10 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 #'   \href{#method-EsgQuery-variable_id}{\code{variable_id}},
 #'   \href{#method-EsgQuery-frequency}{\code{frequency}},
 #'   \href{#method-EsgQuery-variant_label}{\code{variant_label}},
-#'   \href{#method-EsgQuery-date_range}{\code{date_range}},
-#'   \href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}}
+#'   \href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}},
+#'   \href{#method-EsgQuery-datetime_range}{\code{datetime_range}},
+#'   \href{#method-EsgQuery-timestamp_range}{\code{timestamp_range}},
+#'   \href{#method-EsgQuery-version_range}{\code{version_range}}
 #'   and
 #'   \href{#method-EsgQuery-data_node}{\code{data_node}}.
 #'
@@ -272,8 +274,8 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 #' - **Display**:
 #'
 #'   * \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}: Print a
-#'     summary of the current `EsgQuery` object including the index node URL,
-#'     the last query timestamp, and all query parameters.
+#'     summary of the current `EsgQuery` object including the index node URL
+#'     and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
@@ -508,8 +510,8 @@ EsgQuery <- R6::R6Class(
         #'        abandoned and a new query is re-sent and cached. Default:
         #'        `FALSE`.
         #'
-        #' @return If `length(facets) == 1`, a named character vector giving
-        #'         the facet value counts. Otherwise, a list of named character
+        #' @return If `length(facets) == 1`, a named integer vector giving
+        #'         the facet value counts. Otherwise, a list of named integer
         #'         vectors of the same length as `facets`.
         #'
         #' @examples
@@ -551,6 +553,16 @@ EsgQuery <- R6::R6Class(
         # }}}
 
         # parameter methods {{{
+        #' @description
+        #' Get or set the `project` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression such as `!"CMIP6"`. If omitted, the current value is
+        #'        returned. Default when setting without an explicit value:
+        #'        `"CMIP6"`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         project = function(value = "CMIP6") {
             if (missing(value)) return(private$parameter$project())
             private$eval_param_call(
@@ -560,6 +572,15 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `activity_id` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression such as `!c("CFMIP", "ScenarioMIP")`. If omitted,
+        #'        the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         activity_id = function(value) {
             if (missing(value)) return(private$parameter$activity_id())
             private$eval_param_call(
@@ -569,6 +590,15 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `experiment_id` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression such as `!c("ssp126", "ssp585")`. If omitted, the
+        #'        current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         experiment_id = function(value) {
             if (missing(value)) return(private$parameter$experiment_id())
             private$eval_param_call(
@@ -578,6 +608,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `source_id` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         source_id = function(value) {
             if (missing(value)) return(private$parameter$source_id())
             private$eval_param_call(
@@ -587,6 +625,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `variable_id` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         variable_id = function(value) {
             if (missing(value)) return(private$parameter$variable_id())
             private$eval_param_call(
@@ -596,6 +642,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `frequency` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         frequency = function(value) {
             if (missing(value)) return(private$parameter$frequency())
             private$eval_param_call(
@@ -605,6 +659,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `variant_label` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         variant_label = function(value) {
             if (missing(value)) return(private$parameter$variant_label())
             private$eval_param_call(
@@ -614,6 +676,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `nominal_resolution` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         nominal_resolution = function(value) {
             if (missing(value)) return(private$parameter$nominal_resolution())
             private$eval_param_call(
@@ -623,6 +693,14 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `data_node` facet parameter.
+        #'
+        #' @param value A character vector, `NULL`, or a negated character
+        #'        expression. If omitted, the current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         data_node = function(value) {
             if (missing(value)) return(private$parameter$data_node())
             private$eval_param_call(
@@ -632,24 +710,58 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `facets` parameter used by `$count()`.
+        #'
+        #' @param value A character vector, `"*"`, or `NULL`. If omitted, the
+        #'        current value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         facets = function(value) {
             if (missing(value)) return(private$parameter$facets())
             private$parameter$facets(value)
             self
         },
 
+        #' @description
+        #' Get or set the `fields` parameter.
+        #'
+        #' @param value A character vector, `"*"`, or `NULL`. If omitted, the
+        #'        current value is returned. Default when setting without an
+        #'        explicit value: `"*"`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         fields = function(value = "*") {
             if (missing(value)) return(private$parameter$fields())
             private$parameter$fields(value)
             self
         },
 
+        #' @description
+        #' Get or set the `shards` parameter for distributed searches.
+        #'
+        #' @param value A character vector or `NULL`. If omitted, the current
+        #'        value is returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         shards = function(value) {
             if (missing(value)) return(private$parameter$shards())
             private$parameter$shards(value)
             self
         },
 
+        #' @description
+        #' Get or set temporal coverage overlap constraints.
+        #'
+        #' @param start,stop Temporal boundary strings accepted by `solr_date()`,
+        #'        complete Solr range expressions, `"*"`, or `NULL`. If both are
+        #'        omitted, the current range state is returned.
+        #'
+        #' @return If either boundary is supplied, the modified `EsgQuery`
+        #'         object. Otherwise, a list with `start` and `stop` elements.
         datetime_range = function(start, stop) {
             if (missing(start) && missing(stop)) {
                 return(private$parameter$datetime_range())
@@ -659,6 +771,16 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set Solr index timestamp range constraints.
+        #'
+        #' @param from,to Timestamp boundary strings accepted by `solr_date()`,
+        #'        `"*"`, or `NULL`. Complete Solr range expressions are not
+        #'        accepted here. If both are omitted, the current range state is
+        #'        returned.
+        #'
+        #' @return If either boundary is supplied, the modified `EsgQuery`
+        #'         object. Otherwise, a list with `from` and `to` elements.
         timestamp_range = function(from, to) {
             if (missing(from) && missing(to)) {
                 return(private$parameter$timestamp_range())
@@ -668,6 +790,16 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set version range constraints.
+        #'
+        #' @param min,max Version boundary strings such as `"20200101"`,
+        #'        simplified dates, `"*"`, or `NULL`. Solr Date Math and complete
+        #'        range expressions are not accepted here. If both are omitted,
+        #'        the current range state is returned.
+        #'
+        #' @return If either boundary is supplied, the modified `EsgQuery`
+        #'         object. Otherwise, a list with `min` and `max` elements.
         version_range = function(min, max) {
             if (missing(min) && missing(max)) {
                 return(private$parameter$version_range())
@@ -677,48 +809,121 @@ EsgQuery <- R6::R6Class(
             self
         },
 
+        #' @description
+        #' Get or set the `replica` parameter.
+        #'
+        #' @param value A flag or `NULL`. If omitted, the current value is
+        #'        returned.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         replica = function(value) {
             if (missing(value)) return(private$parameter$replica())
             private$parameter$replica(value)
             self
         },
 
+        #' @description
+        #' Get or set the `latest` parameter.
+        #'
+        #' @param value A flag. If omitted, the current value is returned.
+        #'        Default when setting without an explicit value: `TRUE`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         latest = function(value = TRUE) {
             if (missing(value)) return(private$parameter$latest())
             private$parameter$latest(value)
             self
         },
 
+        #' @description
+        #' Get or set the ESGF search record `type` parameter.
+        #'
+        #' @param value One of `"Dataset"`, `"File"`, or `"Aggregation"`. If
+        #'        omitted, the current value is returned. Default when setting
+        #'        without an explicit value: `"Dataset"`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         type = function(value = "Dataset") {
             if (missing(value)) return(private$parameter$type())
             private$parameter$type(value)
             self
         },
 
+        #' @description
+        #' Get or set the `limit` parameter.
+        #'
+        #' @param value A positive integer. If omitted, the current value is
+        #'        returned. Default when setting without an explicit value: `10L`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         limit = function(value = 10L) {
             if (missing(value)) return(private$parameter$limit())
             private$parameter$limit(value)
             self
         },
 
+        #' @description
+        #' Get or set the `offset` parameter.
+        #'
+        #' @param value A non-negative integer. If omitted, the current value is
+        #'        returned. Default when setting without an explicit value: `0L`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         offset = function(value = 0L) {
             if (missing(value)) return(private$parameter$offset())
             private$parameter$offset(value)
             self
         },
 
+        #' @description
+        #' Get or set the `distrib` parameter.
+        #'
+        #' @param value A flag. If omitted, the current value is returned.
+        #'        Default when setting without an explicit value: `TRUE`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         distrib = function(value = TRUE) {
             if (missing(value)) return(private$parameter$distrib())
             private$parameter$distrib(value)
             self
         },
 
+        #' @description
+        #' Get or set the response `format` parameter.
+        #'
+        #' Only JSON responses are currently supported. Unsupported formats are
+        #' reset to `"application/solr+json"` by the parameter store.
+        #'
+        #' @param value A format string or `NULL`. If omitted, the current value
+        #'        is returned. Default when setting without an explicit value:
+        #'        `"application/solr+json"`.
+        #'
+        #' @return If `value` is supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a `QueryParam` object or `NULL`.
         format = function(value = FORMAT_JSON) {
             if (missing(value)) return(private$parameter$format())
             private$parameter$format(value)
             self
         },
 
+        #' @description
+        #' Get or set ad hoc query parameters.
+        #'
+        #' `$params()` handles parameters without dedicated methods and can also
+        #' update supported dedicated parameters by name.
+        #'
+        #' @param ... Named parameter values. If omitted, existing ad hoc
+        #'        parameters are returned. If a single unnamed `NULL` is supplied,
+        #'        all ad hoc parameters are removed.
+        #'
+        #' @return If parameters are supplied, the modified `EsgQuery` object.
+        #'         Otherwise, a named list of `QueryParam` objects.
         params = function(...) {
             dots <- eval(substitute(alist(...)))
             if (length(dots) == 0L) return(private$parameter$params())
@@ -849,7 +1054,7 @@ EsgQuery <- R6::R6Class(
         #'        matched records. If `FALSE`, the allowed maximum limit number
         #'        `r this$data_max_limit` is used. It can also be a positive
         #'        integer which will be used as a temporary limit per query.
-        #'        Default: `FALSE`.
+        #'        Default: `TRUE`.
         #'
         #' @param params Whether to include facet fields that have parameter
         #'        constraints explicitly set using `EsgQuery$project()`,
@@ -970,7 +1175,7 @@ EsgQuery <- R6::R6Class(
         #' Print a summary of the current `EsgQuery` object
         #'
         #' `$print()` gives the summary of current `EsgQuery` object including
-        #' the index node URL, the last query timestamp, and all query parameters.
+        #' the index node URL and all query parameters.
         #'
         #' @return The `EsgQuery` object itself, invisibly.
         #'
