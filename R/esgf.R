@@ -156,14 +156,10 @@ esgf_query_build <- function(host, type, activity, variable, frequency, experime
     q$replica(replica)
     q$latest(latest)
     q$data_node(data_node)
-
-    priv(q)$parameter$nominal_resolution <- as_query_param("nominal_resolution", resolution_param)
-    priv(q)$parameter$limit <- as_query_param("limit", as.integer(limit))
-    priv(q)$parameter$type <- as_query_param("type", type)
-    priv(q)$parameter$fields <- as_query_param(
-        "fields",
-        if (type == "Dataset") RES_DATASET else RES_FILE
-    )
+    q$nominal_resolution(resolution_param)
+    q$limit(as.integer(limit))
+    q$type(type)
+    q$fields(if (type == "Dataset") RES_DATASET else RES_FILE)
 
     q
 }

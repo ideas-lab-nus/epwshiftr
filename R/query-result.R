@@ -33,7 +33,7 @@ EsgResult <- R6::R6Class(
         #'
         initialize = function(index_node, params, response) {
             private$index_node <- index_node
-            private$parameter <- params
+            private$parameter <- query_param_clone(params)
             private$response <- response
             self
         },
@@ -629,8 +629,7 @@ EsgResultDataset <- R6::R6Class(
                 format = FORMAT_JSON
             )
 
-            # convert all inputs into query params and remove empty one
-            query_params_flat(params)
+            query_param_as_store(params)
         }
         # }}}
     )

@@ -193,6 +193,8 @@ test_that("QueryParamStore", {
     expect_true(serialized$facet$activity_id$negate)
     expect_identical(serialized$others$table_id$value, "Amon")
     expect_true("datetime_start" %in% names(serialized$query))
+    expect_identical(serialized$query$version_min$value, "[20200101 TO *]")
+    expect_identical(serialized$query$version_max$value, "[* TO 20210101]")
 
     expect_s3_class(restored$activity_id(), "S7_object")
     expect_true(restored$activity_id()@negate)

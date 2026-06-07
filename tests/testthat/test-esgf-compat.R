@@ -72,7 +72,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
 
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params)
 
-            type <- params$type$value
+            type <- query_param_value(params$flat()$type)
             response <- if (identical(type, "Dataset")) dataset_response else file_response
             list(response = response, docs = response$response$docs)
         },
@@ -94,10 +94,10 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_type(qd$version, "character")
     expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qd, "response")$responseHeader$params$fq)))
 
-    resolution_value <- calls[[1L]]$params$nominal_resolution$value
-    attr(resolution_value, "encoded") <- NULL
+    resolution_param <- calls[[1L]]$params$nominal_resolution()
+    resolution_value <- query_param_value(resolution_param)
     expect_identical(resolution_value, c("100km", "50km", "100+km", "50+km"))
-    expect_true(isTRUE(attr(calls[[1L]]$params$nominal_resolution$value, "encoded")))
+    expect_true(resolution_param@encoded)
 
     qf <- suppressWarnings(esgf_query(
         variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L,
@@ -183,4 +183,3 @@ test_that("init_cmip6_index() consumes the compatibility wrapper contract", {
         "file_size", "data_node", "file_url", "dataset_pid", "tracking_id"
     ))
 })
-

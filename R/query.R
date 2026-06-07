@@ -345,7 +345,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_string(index_node)
             private$index_node <- normalize_index_node(index_node)
 
-            private$parameter <- query_param_store()
+            private$parameter <- QueryParamStore$new()
 
             self
         },
@@ -386,7 +386,7 @@ EsgQuery <- R6::R6Class(
             url <- query_build(
                 private$index_node,
                 list(
-                    project = private$parameter$project,
+                    project = private$parameter$project(),
                     facets = "*",
                     limit = 0,
                     distrib = FALSE,
@@ -421,7 +421,7 @@ EsgQuery <- R6::R6Class(
             url <- query_build(
                 private$index_node,
                 list(
-                    project = private$parameter$project,
+                    project = private$parameter$project(),
                     limit = 1,
                     fields = "*",
                     distrib = FALSE,
@@ -455,7 +455,7 @@ EsgQuery <- R6::R6Class(
             url <- query_build(
                 private$index_node,
                 list(
-                    project = private$parameter$project,
+                    project = private$parameter$project(),
                     type = "Dataset",
                     offset = 0,
                     limit = 0,
@@ -523,12 +523,12 @@ EsgQuery <- R6::R6Class(
             url <- query_build(
                 private$index_node,
                 list(
-                    project = private$parameter$project,
+                    project = private$parameter$project(),
                     type = "Dataset",
                     facets = paste0(facets, collapse = ","),
                     offset = 0,
                     limit = 0,
-                    distrib = private$parameter$distrib,
+                    distrib = private$parameter$distrib(),
                     format = FORMAT_JSON
                 )
             )
@@ -550,666 +550,180 @@ EsgQuery <- R6::R6Class(
         },
         # }}}
 
-        # facet parameter methods {{{
+        # parameter methods {{{
         project = function(value = "CMIP6") {
-            if (missing(value)) {
-                return(private$parameter$project)
-            }
-            env <- parent.frame()
-            private$parameter$project <- eval(bquote(
-                private$new_facet_param("project", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$project())
+            private$eval_param_call(
+                substitute(private$parameter$project(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         activity_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$activity_id)
-            }
-            env <- parent.frame()
-            private$parameter$activity_id <- eval(bquote(
-                private$new_facet_param("activity_id", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$activity_id())
+            private$eval_param_call(
+                substitute(private$parameter$activity_id(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         experiment_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$experiment_id)
-            }
-            env <- parent.frame()
-            private$parameter$experiment_id <- eval(bquote(
-                private$new_facet_param("experiment_id", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$experiment_id())
+            private$eval_param_call(
+                substitute(private$parameter$experiment_id(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         source_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$source_id)
-            }
-            env <- parent.frame()
-            private$parameter$source_id <- eval(bquote(
-                private$new_facet_param("source_id", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$source_id())
+            private$eval_param_call(
+                substitute(private$parameter$source_id(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         variable_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$variable_id)
-            }
-            env <- parent.frame()
-            private$parameter$variable_id <- eval(bquote(
-                private$new_facet_param("variable_id", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$variable_id())
+            private$eval_param_call(
+                substitute(private$parameter$variable_id(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         frequency = function(value) {
-            if (missing(value)) {
-                return(private$parameter$frequency)
-            }
-            env <- parent.frame()
-            private$parameter$frequency <- eval(bquote(
-                private$new_facet_param("frequency", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$frequency())
+            private$eval_param_call(
+                substitute(private$parameter$frequency(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         variant_label = function(value) {
-            if (missing(value)) {
-                return(private$parameter$variant_label)
-            }
-            env <- parent.frame()
-            private$parameter$variant_label <- eval(bquote(
-                private$new_facet_param("variant_label", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$variant_label())
+            private$eval_param_call(
+                substitute(private$parameter$variant_label(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         nominal_resolution = function(value) {
-            if (missing(value)) {
-                return(private$parameter$nominal_resolution)
-            }
-            env <- parent.frame()
-            param <- eval(bquote(
-                private$new_facet_param("nominal_resolution", .(substitute(value)), env = env)
-            ))
-
-            if (!is.null(param)) {
-                values <- param@value
-                if ("100 km" %in% values && !"100km" %in% values) {
-                    values <- c(values, "100km")
-                }
-                values <- gsub(" ", "+", values, fixed = TRUE)
-                attr(values, "encoded") <- TRUE
-                param@value <- values
-                param@encoded <- TRUE
-            }
-
-            private$parameter$nominal_resolution <- param
+            if (missing(value)) return(private$parameter$nominal_resolution())
+            private$eval_param_call(
+                substitute(private$parameter$nominal_resolution(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         data_node = function(value) {
-            if (missing(value)) {
-                return(private$parameter$data_node)
-            }
-            env <- parent.frame()
-            private$parameter$data_node <- eval(bquote(
-                private$new_facet_param("data_node", .(substitute(value)), env = env)
-            ))
+            if (missing(value)) return(private$parameter$data_node())
+            private$eval_param_call(
+                substitute(private$parameter$data_node(value), list(value = substitute(value))),
+                parent.frame()
+            )
             self
         },
 
         facets = function(value) {
-            if (missing(value)) {
-                return(private$parameter$facets)
-            }
-            private$parameter$facets <- private$new_facet_param("facets", value, FALSE)
+            if (missing(value)) return(private$parameter$facets())
+            private$parameter$facets(value)
             self
         },
 
         fields = function(value = "*") {
-            if (missing(value)) {
-                return(private$parameter$fields)
-            }
-            private$parameter$fields <- private$new_facet_param("fields", value, FALSE)
+            if (missing(value)) return(private$parameter$fields())
+            private$parameter$fields(value)
             self
         },
 
         shards = function(value) {
-            if (missing(value)) {
-                return(private$parameter$shards)
-            }
-            if (!is.null(value) && !query_param_value(private$parameter$distrib)) {
-                stop("'$distrib()' returns FALSE. Shard specification is only applicable for distributed queries.")
-            }
-            private$parameter$shards <- private$new_facet_param("shards", value, FALSE)
+            if (missing(value)) return(private$parameter$shards())
+            private$parameter$shards(value)
             self
         },
-        # }}}
 
-        # structured query parameter methods {{{
-        datetime_range = function(start, end) {
-            if (missing(start) && missing(end)) {
-                return(list(
-                    start = private$parameter$datetime_start,
-                    end = private$parameter$datetime_stop
-                ))
+        datetime_range = function(start, stop) {
+            if (missing(start) && missing(stop)) {
+                return(private$parameter$datetime_range())
             }
-
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(NULL)
-                }
-
-                bound <- QueryParamDate(value)
-                if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
-                    return(NULL)
-                }
-                if (S7::S7_inherits(bound@value, SolrDatePoint)) {
-                    bound@value <- if (name == "start") {
-                        SolrDateRange(start = SolrDateUnbounded(), end = bound@value)
-                    } else {
-                        SolrDateRange(start = bound@value, end = SolrDateUnbounded())
-                    }
-                }
-                query_param_meta(bound, name = if (name == "start") "datetime_start" else "datetime_stop")
-            }
-
-            if (!missing(start)) {
-                private$parameter$datetime_start <- ensure_bound("start", start)
-            }
-            if (!missing(end)) {
-                private$parameter$datetime_stop <- ensure_bound("end", end)
-            }
-
+            if (!missing(start)) private$parameter$datetime_range(start = start)
+            if (!missing(stop)) private$parameter$datetime_range(stop = stop)
             self
         },
 
         timestamp_range = function(from, to) {
             if (missing(from) && missing(to)) {
-                return(private$parameter$`_timestamp`)
+                return(private$parameter$timestamp_range())
             }
-
-            current <- private$parameter$`_timestamp`
-            if (is.null(current)) {
-                from_value <- SolrDateUnbounded()
-                to_value <- SolrDateUnbounded()
-            } else {
-                from_value <- current@value@start
-                to_value <- current@value@end
-            }
-
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(SolrDateUnbounded())
-                }
-
-                bound <- QueryParamDate(value)
-                if (S7::S7_inherits(bound@value, SolrDateRange)) {
-                    stop(sprintf(
-                        "`%s` does not support range syntax like '[... TO ...]'. Provide a single datetime value instead.",
-                        name
-                    ))
-                }
-                bound@value
-            }
-
-            if (!missing(from)) {
-                from_value <- ensure_bound("from", from)
-            }
-            if (!missing(to)) {
-                to_value <- ensure_bound("to", to)
-            }
-
-            private$parameter$`_timestamp` <- if (
-                S7::S7_inherits(from_value, SolrDateUnbounded) &&
-                    S7::S7_inherits(to_value, SolrDateUnbounded)
-            ) {
-                NULL
-            } else {
-                query_param_meta(
-                    QueryParamDate(SolrDateRange(start = from_value, end = to_value)),
-                    name = "_timestamp",
-                    kind = "timestamp_range"
-                )
-            }
-
+            if (!missing(from)) private$parameter$timestamp_range(from = from)
+            if (!missing(to)) private$parameter$timestamp_range(to = to)
             self
         },
 
-        version_range = function(start, end) {
-            if (missing(start) && missing(end)) {
-                return(list(
-                    start = private$parameter$version_min,
-                    end = private$parameter$version_max
-                ))
+        version_range = function(min, max) {
+            if (missing(min) && missing(max)) {
+                return(private$parameter$version_range())
             }
-
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(NULL)
-                }
-
-                bound <- QueryParamDate(value)
-                if (S7::S7_inherits(bound@value, SolrDateRange)) {
-                    stop(sprintf(
-                        "`%s` must not contain range syntax like '[... TO ...]'. Use 'start' and 'end' separately.",
-                        name
-                    ))
-                }
-                if (S7::S7_inherits(bound@value, SolrDateMath)) {
-                    stop(sprintf(
-                        "'%s' does not support Solr Date Math expressions because the 'version' field is not a date field.",
-                        name
-                    ))
-                }
-                if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
-                    return(NULL)
-                }
-
-                bound@value <- if (name == "start") {
-                    SolrDateRange(start = bound@value, end = SolrDateUnbounded())
-                } else {
-                    SolrDateRange(start = SolrDateUnbounded(), end = bound@value)
-                }
-                query_param_meta(
-                    bound,
-                    name = "version",
-                    kind = if (name == "start") "version_min" else "version_max"
-                )
-            }
-
-            if (!missing(start)) {
-                private$parameter$version_min <- ensure_bound("start", start)
-            }
-            if (!missing(end)) {
-                private$parameter$version_max <- ensure_bound("end", end)
-            }
-
+            if (!missing(min)) private$parameter$version_range(min = min)
+            if (!missing(max)) private$parameter$version_range(max = max)
             self
         },
-        # }}}
 
-        # replica {{{
-        #' @description
-        #' Get or set the `replica` parameter.
-        #'
-        #' By default, a query returns all records (masters and replicas)
-        #' matching the search criteria, i.e. `$replica(NULL)`.
-        #' To return only master records, use `$replica(FALSE)`; to return only
-        #' replicas, use `$replica(TRUE)`.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("replica", "flag", default = NULL, nullable = TRUE)`
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$replica()
-        #'
-        #' # set the parameter
-        #' q$replica(TRUE)
-        #'
-        #' # remove the parameter
-        #' q$replica(NULL)
-        #' }
         replica = function(value) {
-            if (missing(value)) {
-                return(private$parameter$replica)
-            }
-            checkmate::assert_flag(value, null.ok = TRUE, .var.name = "replica")
-            private$parameter$replica <- as_query_param("replica", value)
+            if (missing(value)) return(private$parameter$replica())
+            private$parameter$replica(value)
             self
         },
-        # }}}
 
-        # latest {{{
-        #' @description
-        #' Get or set the `latest` parameter.
-        #'
-        #' By default, a query to the ESGF search services returns only the very
-        #' last, up-to-date version of the matching records, i.e.
-        #' `$latest(TRUE)`. You can use `$latest(FALSE)` to return all versions.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("latest", "flag", default = TRUE, nullable = FALSE)`
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$latest()
-        #'
-        #' # set the parameter
-        #' q$latest(TRUE)
-        #' }
         latest = function(value = TRUE) {
-            if (missing(value)) {
-                return(private$parameter$latest)
-            }
-            checkmate::assert_flag(value, .var.name = "latest")
-            private$parameter$latest <- as_query_param("latest", value)
+            if (missing(value)) return(private$parameter$latest())
+            private$parameter$latest(value)
             self
         },
-        # }}}
 
-        # limit {{{
-        #' @description
-        #' Get or set the `limit` parameter.
-        #'
-        #' `$limit()` can be used to limit the number of records to return.
-        #' Note that the maximum number of records to return per query for ESGF
-        #' search services is `r format(this$data_max_limit, big.mark = ',')`.
-        #' A warning is issued if input value is greater than that. In this
-        #' case, `limit` will be reset to `r format(this$data_max_limit, big.mark = ',')`.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("limit", "integer", default = 10L, nullable = FALSE)`
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$limit()
-        #'
-        #' # set the parameter
-        #' q$limit(10L)
-        #'
-        #' # `limit` is reset to the allowed maximum query limit if input is greater than that
-        #' q$limit(12000L) # warning
-        #' }
+        type = function(value = "Dataset") {
+            if (missing(value)) return(private$parameter$type())
+            private$parameter$type(value)
+            self
+        },
+
         limit = function(value = 10L) {
-            if (missing(value)) {
-                return(private$parameter$limit)
-            }
-            checkmate::assert_count(value, .var.name = "limit")
-            if (value > this$data_max_limit) {
-                warning(sprintf(
-                    paste(
-                        "ESGF Search API only supports a maximum value of limit <= %s",
-                        "'limit' will be reset to '%s'."
-                    ),
-                    format(this$data_max_limit, big.mark = ","),
-                    this$data_max_limit
-                ))
-                value <- this$data_max_limit
-            }
-            private$parameter$limit <- as_query_param("limit", value)
+            if (missing(value)) return(private$parameter$limit())
+            private$parameter$limit(value)
             self
         },
-        # }}}
 
-        # offset {{{
-        #' @description
-        #' Get or set the `offset` parameter.
-        #'
-        #' If the query returns records that exceed the
-        #' \href{#method-EsgQuery-limit}{\code{limit}} number,
-        #' `$offset()` can be used to paginate through the available results.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("offset", "integer", default = 0L, nullable = FALSE)`
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$offset()
-        #'
-        #' # set the parameter
-        #' q$offset(0L)
-        #' }
         offset = function(value = 0L) {
-            if (missing(value)) {
-                return(private$parameter$offset)
-            }
-            checkmate::assert_count(value, .var.name = "offset")
-            private$parameter$offset <- as_query_param("offset", value)
+            if (missing(value)) return(private$parameter$offset())
+            private$parameter$offset(value)
             self
         },
-        # }}}
 
-        # distrib {{{
-        #' @description
-        #' Get or set the `distrib` facet
-        #'
-        #' By default, the query is sent to all ESGF Nodes, i.e.
-        #' `$distrib(TRUE)`.
-        #' `$distrib(FALSE)` can be used to execute the query only on the
-        #' target node.
-        #'
-        #' @param value
-        #' `r rd_query_method_param("distrib", "flag", default = TRUE, nullable = FALSE)`
-        #'
-        #' @return
-        #' `r rd_query_method_return()`
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current value
-        #' q$distrib()
-        #'
-        #' # set the parameter
-        #' q$distrib(TRUE)
-        #' }
         distrib = function(value = TRUE) {
-            if (missing(value)) {
-                return(private$parameter$distrib)
-            }
-            checkmate::assert_flag(value, .var.name = "distrib")
-            private$parameter$distrib <- as_query_param("distrib", value)
+            if (missing(value)) return(private$parameter$distrib())
+            private$parameter$distrib(value)
             self
         },
-        # }}}
 
-        # params {{{
-        #' @description
-        #' Get or set other parameters.
-        #'
-        #' `$params()` can be used to specify other parameters that do not have
-        #' a dedicated method, e.g. `version`, `master_id`, etc. It can also be
-        #' used to overwrite existing parameter values specified using methods
-        #' like \href{#method-EsgQuery-activity_id}{\code{$activity_id()}}.
-        #'
-        #' @param ... Parameter values to set. There are three options:
-        #'
-        #' - If not given, existing parameters that do not have a dedicated
-        #'   method are returned.
-        #' - If `NULL`, all existing parameters that do not have a dedicated
-        #'   method are removed.
-        #' - A named vector, e.g. `$params(score = 1, table_id = "day")` will
-        #'   set `score` to `1` and `table_id` to `day`.
-        #'   The `!` notation can still be used to negate the constraints, e.g.
-        #'   `$params(table_id = !c("3hr", "day"))` searches for all `table_id`
-        #'   except for `3hr` and `day`.
-        #'
-        #' @return
-        #'
-        #' - If parameters are specified, the modified `EsgQuery` object.
-        #'
-        #' - Otherwise, an empty list for `$params(NULL)` or a list of
-        #'   `QueryParam` objects.
-        #'
-        #' @examples
-        #' \dontrun{
-        #' # get current values
-        #' # default is an empty list (`list()`)
-        #' q$params()
-        #'
-        #' # set the parameter
-        #' q$params(table_id = c("3hr", "day"), member_id = "00")
-        #' q$params()
-        #'
-        #' # reset existing parameters
-        #' q$frequency("day")
-        #' q$params(frequency = "mon")
-        #' q$frequency() # frequency value has been changed using $params()
-        #'
-        #' # negating the constraints is also supported
-        #' q$params(table_id = !c("3hr", "day"))
-        #'
-        #' # use NULL to remove all parameters
-        #' q$params(NULL)$params()
-        #' }
+        format = function(value = FORMAT_JSON) {
+            if (missing(value)) return(private$parameter$format())
+            private$parameter$format(value)
+            self
+        },
+
         params = function(...) {
             dots <- eval(substitute(alist(...)))
+            if (length(dots) == 0L) return(private$parameter$params())
 
-            if (length(dots) == 0L) {
-                return(private$parameter$others)
-            }
-
-            if (length(dots) == 1L && is.null(names(dots)) && is.null(dots[[1L]])) {
-                private$parameter$others <- list()
-                return(self)
-            }
-
-            env <- parent.frame()
-            params <- eval_with_bang(..., .env = env)
-            checkmate::assert_list(
-                lapply(params, .subset2, "value"),
-                # allow NULL
-                types = c("logical", "numeric", "character", "null"),
-                any.missing = TRUE,
-                names = "unique",
-                .var.name = "params"
-            )
-            nms <- names(params)
-
-            predefined <- private$predefined_facets()
-
-            type <- if ("type" %in% nms) params[["type"]] else NULL
-            if ("type" %in% nms && length(type)) {
-                checkmate::assert_choice(type$value, c("Dataset", "File", "Aggregation"), .var.name = "type")
-
-                if (type$value != "Dataset") {
-                    warning(sprintf(
-                        paste(
-                            "Only 'Dataset' query is supported.",
-                            "But 'type' found in input with value = '%s'.",
-                            "It will be reset to 'Dataset'.",
-                            "If you want to perform a '%s' query,",
-                            "please first run 'EsgQuery$collect()' to get the 'Dataset'",
-                            "result, and then use 'EsgResultDataset$collect(type = '%s')'."
-                        ),
-                        type$value,
-                        type$value,
-                        type$value
-                    ))
-                    params$type$value <- "Dataset"
-                    params$type$negate <- FALSE
-                }
-            }
-
-            fmt <- if ("format" %in% nms) params[["format"]] else NULL
-            if (
-                "format" %in%
-                    nms &&
-                    length(fmt) &&
-                    (is.null(fmt) || fmt$value != FORMAT_JSON)
-            ) {
-                warning(sprintf(
-                    paste(
-                        "Only JSON response format is supported.",
-                        "But 'format' found in input with value = '%s'.",
-                        "It will be reset to '%s'."
-                    ),
-                    if (is.null(fmt)) "NULL" else fmt$value,
-                    FORMAT_JSON
-                ))
-                params <- params[nms != "format"]
-                nms <- nms[nms != "format"]
-            }
-
-            val <- if ("retracted" %in% nms) params[["retracted"]] else NULL
-            if (
-                is_bridge_index_node(private$index_node) &&
-                    "retracted" %in% nms &&
-                    length(val) &&
-                    !is.null(val$value)
-            ) {
-                warning(sprintf(
-                    paste(
-                        "'retracted' is not supported for bridge index node.",
-                        "It will be removed."
-                    )
-                ))
-                params <- params[nms != "retracted"]
-                nms <- nms[nms != "retracted"]
-            }
-
-            is_predefined <- nms %in% predefined
-            params_base <- params[is_predefined]
-            names_base <- nms[is_predefined]
-            params_oth <- params[!is_predefined]
-            names_oth <- nms[!is_predefined]
-
-            not_found <- setdiff(names_oth, FIELDS_FACETS_ALL)
-            if (length(not_found)) {
-                warning(sprintf(
-                    paste(
-                        "The following facet(s) seems to be invalid or not supported:",
-                        "[%s].",
-                        "Unexpected response may be returned."
-                    ),
-                    paste(sprintf("'%s'", not_found), collapse = ", ")
-                ))
-            }
-
-            if (length(params_oth)) {
-                private$parameter$others <- lapply(
-                    seq_along(params_oth),
-                    function(i) {
-                        as_query_param(
-                            names_oth[[i]],
-                            params_oth[[i]]$value,
-                            negate = isTRUE(params_oth[[i]]$negate)
-                        )
-                    }
-                )
-                names(private$parameter$others) <- names_oth
-            }
-
-            if (length(params_base)) {
-                tryCatch(
-                    {
-                        # restore the original parameter values in case of errors
-                        params_base_ori <- private$parameter[names_base]
-
-                        for (i in seq_along(params_base)) {
-                            name <- names_base[[i]]
-                            value <- params_base[[i]]
-
-                            checkmate::assert_atomic(value$value, any.missing = FALSE, .var.name = "param")
-
-                            if (!is.null(value) && isTRUE(value$negate)) {
-                                eval(substitute(self[[name]](!value), list(value = value$value)))
-                            } else {
-                                eval(substitute(self[[name]](value), list(value = value$value)))
-                            }
-                        }
-                    },
-                    error = function(e) {
-                        for (i in seq_along(names_base)) {
-                            private$parameter[[names_base[[i]]]] <- params_base_ori[[i]]
-                        }
-                        stop(e)
-                    }
-                )
-            }
-
+            private$eval_param_call(substitute(private$parameter$params(...)), parent.frame())
             self
         },
         # }}}
@@ -1286,21 +800,21 @@ EsgQuery <- R6::R6Class(
         #' q$count(facets = c("activity_id", "source_id"))
         #' }
         count = function(facets = TRUE) {
-            params <- private$parameter
-            params$limit <- as_query_param("limit", 0L)
+            params <- private$parameter$copy()
+            params$limit(0L)
 
             # reset facets
             if (!checkmate::test_flag(facets)) {
-                params$facets <- private$new_facet_param("facets", facets, FALSE)
+                params$facets(facets)
                 facets <- !is.null(facets)
             } else {
                 # use current stored facets
                 if (facets) {
                     # if current facets is set to empty, returns the total
                     # number
-                    if (is.null(params$facets)) facets <- FALSE
+                    if (is.null(params$facets())) facets <- FALSE
                 } else {
-                    params$facets <- NULL
+                    params$facets(NULL)
                 }
             }
 
@@ -1481,31 +995,7 @@ EsgQuery <- R6::R6Class(
     private = list(
         index_node = NULL,
 
-        # all query parameters {{{
-        parameter = list(
-            # facets
-            project = "CMIP6",
-            activity_id = NULL,
-            experiment_id = NULL,
-            source_id = NULL,
-            variable_id = NULL,
-            frequency = NULL,
-            variant_label = NULL,
-            nominal_resolution = NULL,
-            data_node = NULL,
-            facets = NULL,
-            fields = "*",
-            shards = NULL,
-            replica = NULL,
-            latest = TRUE,
-            type = "Dataset",
-            offset = 0L,
-            distrib = TRUE,
-            limit = 10L,
-            format = "application/solr+json",
-            others = list()
-        ),
-        # }}}
+        parameter = NULL,
 
         format_facet_counts = function(counts) {
             ind <- seq_along(counts)
@@ -1516,33 +1006,10 @@ EsgQuery <- R6::R6Class(
             value
         },
 
-        new_facet_param = function(facet, value, allow_negate = TRUE, env = parent.frame()) {
-            if (allow_negate) {
-                # NOTE: We have to force `env` first otherwise R's lazy
-                # evaluation feature will cause lexical scoping error
-                # Take a look at the following example:
-                # q <- 1
-                # f1 <- function(x) {
-                #     eval(bquote(f2(.(substitute(x)), parent.frame())))
-                # }
-                # f2 <- function(y, env = parent.frame()) {
-                #     print(eval(substitute(y), env))
-                # }
-                #
-                # f1(q) will return `base::q()` instead of 1
-                force(env)
-
-                # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
-                value <- eval(bquote(eval_with_bang(.(substitute(value)), .env = env)[[1L]]))
-            } else {
-                value <- list(value = value, negate = FALSE)
-            }
-
-            as_query_param(facet, value$value, negate = isTRUE(value$negate))
-        },
-
-        predefined_facets = function() {
-            setdiff(names(private$parameter), c("type", "format", "others", query_param_names("query")))
+        eval_param_call = function(expr, env) {
+            call_env <- new.env(parent = env)
+            call_env$private <- private
+            eval(expr, envir = call_env)
         },
 
         query_listing_cached = function(url, force, type) {
@@ -1630,14 +1097,11 @@ get_response_cache_key <- function(url) {
 # query_build {{{
 query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
-    params <- query_params_flat(params)
+    store <- query_param_clone(params)
 
     if (type == "wget") {
-        params <- params[!names(params) %in% c("type", "format")]
-    }
-
-    if (!length(params)) {
-        return(NULL)
+        store$type(NULL)
+        store$format(NULL)
     }
 
     # NOTE: handle special endpoint for bridge
@@ -1648,56 +1112,39 @@ query_build <- function(index_node, params, type = "search") {
         endpoint <- index_node
 
         # remove 'retracted' since bridge does not support it
-        params <- params[!names(params) %in% "retracted"]
+        store$params(retracted = NULL)
 
         # remove 'fields=' since bridge does not support it
-        if (!is.null(params$fields)) {
-            params$fields <- NULL
-        }
+        store$fields(NULL)
     } else {
         endpoint <- sprintf("%s/esg-search/%s", index_node, type)
     }
 
+    params <- store$flat()
+    if (!length(params)) {
+        return(NULL)
+    }
+
     # separate query= params from regular facet params
-    is_query_param <- vapply(
-        params,
-        function(param) {
-            query_param_kind(param) %in% c(
-                "datetime_start",
-                "datetime_stop",
-                "timestamp_range",
-                "version_min",
-                "version_max"
-            )
-        },
-        logical(1L)
+    query_names <- intersect(
+        names(params),
+        c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
     )
-    query_parts <- params[is_query_param]
-    params <- params[!is_query_param]
-    query_clauses <- vapply(
-        seq_along(query_parts),
-        function(i) {
-            clause <- query_param_render(query_parts[[i]])
-            if (is.null(clause)) "" else clause
-        },
-        FUN.VALUE = ""
-    )
+    query_clauses <- if (length(query_names)) store$render(query_names) else character()
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
+    params <- params[!names(params) %in% query_names]
 
     is_negate <- vapply(params, function(param) isTRUE(query_param_negate(param)), logical(1L))
     # facet queries without any negated inputs
     if (!is_bridge_index_node(index_node) || !any(is_negate)) {
-        facets <- paste(vapply(params, query_param_render, FUN.VALUE = ""), collapse = "&")
-        if (length(query_clauses)) {
-            query_str <- paste(query_clauses, collapse = " AND ")
-            query_encoded <- paste0("query=", query_param_encode(query_str))
-            if (nchar(facets)) {
-                return(paste0(endpoint, "?", facets, "&", query_encoded))
-            } else {
-                return(paste0(endpoint, "?", query_encoded))
-            }
+        rendered <- c(vapply(params, query_param_render, FUN.VALUE = ""), if (length(query_clauses)) {
+            paste0("query=", query_param_encode(paste(query_clauses, collapse = " AND ")))
+        })
+        rendered <- rendered[nchar(rendered) > 0L]
+        if (!length(rendered)) {
+            return(NULL)
         }
-        return(paste0(endpoint, "?", facets))
+        return(paste0(endpoint, "?", paste(rendered, collapse = "&")))
     }
 
     # format free text queries for negated inputs for bridge index node
@@ -1730,7 +1177,7 @@ query_build <- function(index_node, params, type = "search") {
     paste0(
         endpoint,
         "?",
-        if (length(facets)) paste0(facets, "&"),
+        if (nchar(facets)) paste0(facets, "&"),
         paste0("query=", query_param_encode(query))
     )
 }
@@ -1745,17 +1192,19 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
     )
 
-    params <- query_params_flat(params)
+    store <- query_param_clone(params)
+    params <- store$flat()
+
     # include necessary fields
     if (!is.null(params$fields)) {
         if (is_bridge_index_node(index_node)) {
             # bridge index node does not support 'fields='
-            params$fields <- NULL
+            store$fields(NULL)
         } else if (!"*" %in% query_param_value(params$fields)) {
-            params$fields <- query_param_value(params$fields)
+            fields <- query_param_value(params$fields)
 
             if (!is.null(required_fields)) {
-                params$fields <- unique(c(params$fields, required_fields))
+                fields <- unique(c(fields, required_fields))
             }
 
             if (constraints) {
@@ -1781,11 +1230,10 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
                     query_param_names("query")
                 )
                 par_nms <- setdiff(par_nms, keywords)
-                params$fields <- unique(c(params$fields, par_nms))
+                fields <- unique(c(fields, par_nms))
             }
 
-            # convert back to a query param in case steps below assume it to be one
-            params$fields <- as_query_param("fields", params$fields)
+            store$fields(fields)
         }
     }
 
@@ -1793,16 +1241,16 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
     if (all) {
         # use specified batch
         if (is.numeric(limit)) {
-            params$limit <- as_query_param("limit", as.integer(limit))
+            store$limit(as.integer(limit))
             # use 'unlimited' batch
         } else if (!limit) {
-            params$limit <- as_query_param("limit", this$data_max_limit)
+            store$limit(this$data_max_limit)
         }
 
-        params$offset <- as_query_param("offset", 0L)
+        store$offset(0L)
     }
 
-    response <- read_json_response(query_build(index_node, params))
+    response <- read_json_response(query_build(index_node, store))
     docs <- response$response$docs
 
     # check if the total number is less that the limit
@@ -1812,9 +1260,9 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         left <- total - current
 
         while (left > 0L) {
-            params$offset <- as_query_param("offset", current)
+            store$offset(current)
 
-            response <- read_json_response(query_build(index_node, params))
+            response <- read_json_response(query_build(index_node, store))
 
             # combine results
             docs <- rbind(docs, response$response$docs)
@@ -1826,7 +1274,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 
     # 'score' is always returned in the response
     # remove if unless explicitly required
-    fields <- params$fields
+    fields <- store$fields()
     if ("score" %in% names(docs) && !is.null(fields)) {
         in_facets <- "score" %in% query_param_value(fields)
         if ((in_facets && query_param_negate(fields)) || (!in_facets && !query_param_negate(fields))) {
@@ -1843,11 +1291,7 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
-    params <- query_params_flat(parameter, null = TRUE)
-    params <- stats::setNames(
-        lapply(params, query_param_serialize),
-        names(params)
-    )
+    params <- query_param_as_store(parameter)$serialize(null = TRUE)
 
     if (length(response)) {
         # NOTE: the timestamp may include sub-seconds, but
@@ -1884,21 +1328,17 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
 # }}}
 
 # query_load {{{
-query_load <- function(file, schema = SCHEMA_QUERY) {
+query_load <- function(file, schema = NULL) {
     checkmate::assert_file(file, "r", extension = "json")
 
     # simplifyVector will convert facet counts to characters
     # have to set simplifyMatrix to FALSE
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
-    # validate using predefined schema
-    schema_validate(schema, json, name = normalizePath(file, winslash = "/"))
-
-    if (length(json$parameter)) {
-        json$parameter <- restore_params(
-            input = json$parameter,
-            params = query_param_store()
-        )
+    json$parameter <- if (length(json$parameter)) {
+        QueryParamStore$new()$restore(json$parameter)
+    } else {
+        QueryParamStore$new()
     }
 
     if (length(json$response) && length(json$response$timestamp)) {
@@ -1917,18 +1357,7 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
 
 # restore_params {{{
 restore_params <- function(input, params = query_param_store()) {
-    for (nm in names(input)) {
-        par <- input[[nm]]
-        if (!is.null(par)) {
-            restored <- query_param_deserialize(nm, par)
-            if (nm %in% names(params)) {
-                params[nm] <- list(restored)
-            } else {
-                params$others[nm] <- list(restored)
-            }
-        }
-    }
-    params
+    query_param_as_store(input)
 }
 # }}}
 

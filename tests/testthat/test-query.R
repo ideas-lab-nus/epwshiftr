@@ -20,21 +20,15 @@ test_that("QueryParam helpers use typed objects", {
     expect_identical(query_param_spec("_timestamp")$class, "query")
     expect_identical(
         query_param_names("query"),
-        c("datetime_start", "datetime_stop", "_timestamp", "version_min", "version_max")
-    )
-
-    restored_facet <- query_param_deserialize("project", list(kind = "facet", value = "CMIP6", negate = FALSE))
-    expect_s3_class(restored_facet, "S7_object")
-    expect_identical(query_param_value(restored_facet), "CMIP6")
-
-    restored_query <- query_param_deserialize(
-        "datetime_start",
-        list(kind = "datetime_start", value = "datetime_start:[* TO 2017-12-31T23:59:59Z]")
-    )
-    expect_s3_class(restored_query, "S7_object")
-    expect_identical(
-        query_param_serialize(restored_query),
-        list(kind = "datetime_start", value = "datetime_start:[* TO 2017-12-31T23:59:59Z]")
+        c(
+            "datetime_start",
+            "datetime_stop",
+            "timestamp_from",
+            "timestamp_to",
+            "_timestamp",
+            "version_min",
+            "version_max"
+        )
     )
 
     flat_params <- query_param_flat(list(
@@ -202,10 +196,9 @@ test_that("EsgQuery$project() and other facet methods", {
     # nominal_resolution
     expect_null(q$nominal_resolution())
     expect_equal(query_param_value(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()), {
-        res <- c("100+km", "1x1+degree", "100km")
-        attr(res, "encoded") <- TRUE
-        res
+        c("100+km", "1x1+degree", "100km")
     })
+    expect_true(q$nominal_resolution()@encoded)
     expect_null(q$nominal_resolution(NULL)$nominal_resolution())
 
     # data_node
@@ -280,7 +273,7 @@ test_that("EsgQuery$datetime_range()", {
     # getter: initially returns NULL for both
     result <- q$datetime_range()
     expect_null(result$start)
-    expect_null(result$end)
+    expect_null(result$stop)
 
     # --- normal inputs ---
 
@@ -288,8 +281,8 @@ test_that("EsgQuery$datetime_range()", {
     q$datetime_range(start = "2017-01-01T00:00:00Z")
     expect_match(decode_query(q$url()), "datetime_start:[* TO 2017-01-01T00:00:00Z]", fixed = TRUE)
 
-    # full ISO 8601: end -> datetime_stop:[... TO *]
-    q2 <- esg_query()$datetime_range(end = "2025-01-01T00:00:00Z")
+    # full ISO 8601: stop -> datetime_stop:[... TO *]
+    q2 <- esg_query()$datetime_range(stop = "2025-01-01T00:00:00Z")
     expect_match(decode_query(q2$url()), "datetime_stop:[2025-01-01T00:00:00Z TO *]", fixed = TRUE)
 
     # simplified date: auto-completed to ISO 8601
@@ -300,7 +293,7 @@ test_that("EsgQuery$datetime_range()", {
     q4 <- esg_query()$datetime_range(start = "NOW-1YEAR")
     expect_match(decode_query(q4$url()), "datetime_start:[* TO NOW-1YEAR]", fixed = TRUE)
 
-    q5 <- esg_query()$datetime_range(end = "NOW+6MONTHS")
+    q5 <- esg_query()$datetime_range(stop = "NOW+6MONTHS")
     expect_match(decode_query(q5$url()), "datetime_stop:[NOW+6MONTHS TO *]", fixed = TRUE)
 
     # complete Range expression: used directly as the field value
@@ -314,7 +307,7 @@ test_that("EsgQuery$datetime_range()", {
     # both start and end: two conditions joined by AND in query=
     q7 <- esg_query()$datetime_range(
         start = "2017-01-01T00:00:00Z",
-        end = "2025-01-01T00:00:00Z"
+        stop = "2025-01-01T00:00:00Z"
     )
     query7 <- decode_query(q7$url())
     expect_match(query7, "datetime_start:[* TO 2017-01-01T00:00:00Z]", fixed = TRUE)
@@ -337,8 +330,10 @@ test_that("EsgQuery$datetime_range()", {
 test_that("EsgQuery$timestamp_range()", {
     q <- esg_query()
 
-    # getter: initially NULL
-    expect_null(q$timestamp_range())
+    # getter: initially returns NULL for both
+    result <- q$timestamp_range()
+    expect_null(result$from)
+    expect_null(result$to)
 
     # --- normal inputs ---
 
@@ -347,9 +342,15 @@ test_that("EsgQuery$timestamp_range()", {
         from = "2020-01-01T00:00:00Z",
         to = "2021-01-01T00:00:00Z"
     )
-    expect_s3_class(priv(q1)$parameter$`_timestamp`, "S7_object")
-    expect_identical(query_param_kind(priv(q1)$parameter$`_timestamp`), "timestamp_range")
-    expect_true(is.solrdt(query_param_value(priv(q1)$parameter$`_timestamp`)))
+    ts1 <- q1$timestamp_range()
+    expect_s3_class(ts1$from, "S7_object")
+    expect_s3_class(ts1$to, "S7_object")
+    expect_true(is.solrdt(query_param_value(ts1$from)))
+    expect_true(is.solrdt(query_param_value(ts1$to)))
+    expect_identical(
+        unname(priv(q1)$parameter$render("_timestamp")),
+        "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]"
+    )
     expect_match(
         decode_query(q1$url()),
         "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]",
@@ -389,11 +390,13 @@ test_that("EsgQuery$timestamp_range()", {
     # NULL clears the parameter
     q7 <- esg_query()$timestamp_range(from = "2020-01-01T00:00:00Z")
     q7$timestamp_range(from = NULL)
-    expect_null(q7$timestamp_range())
+    expect_null(q7$timestamp_range()$from)
+    expect_null(q7$timestamp_range()$to)
 
     # fully unbounded range is normalized away
     q8 <- esg_query()$timestamp_range(from = "*", to = "*")
-    expect_null(q8$timestamp_range())
+    expect_null(q8$timestamp_range()$from)
+    expect_null(q8$timestamp_range()$to)
     expect_identical(decode_query(q8$url()), character(0L))
 
     # --- error inputs ---
@@ -412,44 +415,44 @@ test_that("EsgQuery$version_range()", {
 
     # getter: initially returns NULL for both
     result <- q$version_range()
-    expect_null(result$start)
-    expect_null(result$end)
+    expect_null(result$min)
+    expect_null(result$max)
 
     # --- normal inputs ---
 
     # YYYYMMDD: used as-is
-    q1 <- esg_query()$version_range(start = "20200101")
+    q1 <- esg_query()$version_range(min = "20200101")
     expect_match(decode_query(q1$url()), "version:[20200101 TO *]", fixed = TRUE)
 
     # simplified year: converted to YYYYMMDD
-    q2 <- esg_query()$version_range(start = "2020")
+    q2 <- esg_query()$version_range(min = "2020")
     expect_match(decode_query(q2$url()), "version:[20200101 TO *]", fixed = TRUE)
 
     # simplified year-month: converted to YYYYMMDD
-    q3 <- esg_query()$version_range(end = "2020-06")
+    q3 <- esg_query()$version_range(max = "2020-06")
     expect_match(decode_query(q3$url()), "version:[* TO 20200601]", fixed = TRUE)
 
-    # both start and end
-    q4 <- esg_query()$version_range(start = "20200101", end = "20211231")
+    # both min and max
+    q4 <- esg_query()$version_range(min = "20200101", max = "20211231")
     query4 <- decode_query(q4$url())
     expect_match(query4, "version:[20200101 TO *]", fixed = TRUE)
     expect_match(query4, "version:[* TO 20211231]", fixed = TRUE)
 
     # NULL clears the parameter
-    q5 <- esg_query()$version_range(start = "20200101")
-    q5$version_range(start = NULL)
-    expect_null(q5$version_range()$start)
+    q5 <- esg_query()$version_range(min = "20200101")
+    q5$version_range(min = NULL)
+    expect_null(q5$version_range()$min)
 
     # --- error inputs ---
 
     # Range syntax not supported
-    expect_error(esg_query()$version_range(start = "[2020 TO 2025]"), "range")
+    expect_error(esg_query()$version_range(min = "[2020 TO 2025]"), "range")
 
     # Date Math not supported
-    expect_error(esg_query()$version_range(start = "NOW-1YEAR"), "[Dd]ate [Mm]ath")
+    expect_error(esg_query()$version_range(min = "NOW-1YEAR"), "[Dd]ate [Mm]ath")
 
     # invalid format
-    expect_error(esg_query()$version_range(start = "not-a-date"))
+    expect_error(esg_query()$version_range(min = "not-a-date"))
 })
 # }}}
 
@@ -501,7 +504,7 @@ test_that("EsgQuery$params()", {
     expect_warning(q$params(format = "xml"), "JSON")
 
     # can reset type
-    expect_warning(expect_warning(q$params(type = "File")))
+    expect_warning(q$params(type = "File"), "Dataset")
 
     # can restore original values in case of error
     expect_equal(query_param_value(q$frequency("day")$frequency()), "day")
@@ -572,22 +575,28 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     file_empty <- tempfile(fileext = ".json")
     expect_snapshot_file(q$save(file_empty), "query_empty.json")
     q_empty <- expect_s3_class(esg_query()$load(file_empty), "EsgQuery")
-    expect_equal(priv(q_empty)$url_index_node, priv(q)$url_index_node)
-    expect_equal(priv(q_empty)$parameter, priv(q)$parameter)
-    expect_equal(priv(q_empty)$response, priv(q)$response)
+    expect_equal(priv(q_empty)$index_node, priv(q)$index_node)
+    expect_equal(
+        priv(q_empty)$parameter$serialize(null = TRUE),
+        priv(q)$parameter$serialize(null = TRUE)
+    )
 
     # structured query= parameters round-trip through save/load
     q_query <- EsgQuery$new(index_node)$datetime_range(start = "2017")$timestamp_range(
         from = "NOW-1YEAR",
         to = "2021"
-    )$version_range(start = "2020")
-    expect_s3_class(priv(q_query)$parameter$datetime_start, "S7_object")
-    expect_s3_class(priv(q_query)$parameter$`_timestamp`, "S7_object")
-    expect_s3_class(priv(q_query)$parameter$version_min, "S7_object")
+    )$version_range(min = "2020")
+    expect_s3_class(priv(q_query)$parameter$datetime_range()$start, "S7_object")
+    expect_s3_class(priv(q_query)$parameter$timestamp_range()$from, "S7_object")
+    expect_s3_class(priv(q_query)$parameter$timestamp_range()$to, "S7_object")
+    expect_s3_class(priv(q_query)$parameter$version_range()$min, "S7_object")
     file_query <- tempfile(fileext = ".json")
     expect_type(q_query$save(file_query), "character")
     q_query_loaded <- expect_s3_class(esg_query()$load(file_query), "EsgQuery")
-    expect_equal(priv(q_query_loaded)$parameter, priv(q_query)$parameter)
+    expect_equal(
+        priv(q_query_loaded)$parameter$serialize(null = TRUE),
+        priv(q_query)$parameter$serialize(null = TRUE)
+    )
 
     # query object with results
     q$collect()
@@ -599,7 +608,10 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_json)
     q_collected <- expect_s3_class(esg_query()$load(file_collected), "EsgQuery")
     expect_equal(priv(q_collected)$index_node, priv(q)$index_node)
-    expect_equal(priv(q_collected)$parameter, priv(q)$parameter)
+    expect_equal(
+        priv(q_collected)$parameter$serialize(null = TRUE),
+        priv(q)$parameter$serialize(null = TRUE)
+    )
 
     unlink(c(file_query, file_collected, file_collected_copied))
 })

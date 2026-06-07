@@ -279,7 +279,15 @@ query_param_names <- function(class = c("facet", "query", "control", "all")) {
         "fields",
         "shards"
     )
-    query <- c("datetime_start", "datetime_stop", "_timestamp", "version_min", "version_max")
+    query <- c(
+        "datetime_start",
+        "datetime_stop",
+        "timestamp_from",
+        "timestamp_to",
+        "_timestamp",
+        "version_min",
+        "version_max"
+    )
     control <- c("replica", "latest", "type", "offset", "distrib", "limit", "format")
 
     switch(
@@ -292,37 +300,7 @@ query_param_names <- function(class = c("facet", "query", "control", "all")) {
 }
 
 query_param_store <- function() {
-    params <- list(
-        project = "CMIP6",
-        activity_id = NULL,
-        experiment_id = NULL,
-        source_id = NULL,
-        variable_id = NULL,
-        frequency = NULL,
-        variant_label = NULL,
-        nominal_resolution = NULL,
-        data_node = NULL,
-        facets = NULL,
-        fields = "*",
-        shards = NULL,
-        datetime_start = NULL,
-        datetime_stop = NULL,
-        `_timestamp` = NULL,
-        version_min = NULL,
-        version_max = NULL,
-        replica = NULL,
-        latest = TRUE,
-        type = "Dataset",
-        offset = 0L,
-        distrib = TRUE,
-        limit = 10L,
-        format = FORMAT_JSON,
-        others = list()
-    )
-
-    out <- query_param_flat(params, null = TRUE)
-    out$others <- list()
-    out
+    QueryParamStore$new()
 }
 
 query_param_meta <- function(x, name = NULL, kind = NULL) {
@@ -438,51 +416,11 @@ query_param_encode <- function(x) {
     curl::curl_escape(x)
 }
 
-query_param_serialize <- function(x) {
-    if (is.null(x)) {
-        return(NULL)
-    }
-
-    out <- as.list(x)
-    if (S7::S7_inherits(x, QueryParamDate)) {
-        out$value <- query_param_render(x)
-        out <- c(list(kind = query_param_kind(x)), out)
-    } else if (S7::S7_inherits(x, QueryParamFacet) && !isTRUE(out$encoded)) {
-        out$encoded <- NULL
-    }
-    out
-}
-
-query_param_deserialize <- function(name, payload) {
-    if (is.null(payload)) {
-        return(NULL)
-    }
-
-    kind <- payload$kind
-    if (is.null(kind)) {
-        kind <- query_param_spec(name)$class
-    }
-    if (identical(kind, "facet")) {
-        return(query_param_meta(
-            QueryParamFacet(payload$value, negate = isTRUE(payload$negate), encoded = isTRUE(payload$encoded)),
-            name = name,
-            kind = kind
-        ))
-    }
-    if (identical(kind, "control")) {
-        return(query_param_meta(QueryParamCtrl(payload$value), name = name, kind = kind))
-    }
-
-    value <- payload$value
-    prefix <- paste0(name, ":")
-    if (is.character(value) && length(value) == 1L && startsWith(value, prefix)) {
-        value <- substring(value, nchar(prefix) + 1L)
-    }
-
-    query_param_meta(QueryParamDate(value), name = name, kind = kind)
-}
-
 query_param_flat <- function(params, null = FALSE) {
+    if (inherits(params, "QueryParamStore")) {
+        return(params$flat(null = null))
+    }
+
     checkmate::assert_list(params, names = "unique")
     checkmate::assert_flag(null)
 
@@ -515,6 +453,79 @@ query_param_flat <- function(params, null = FALSE) {
 }
 
 query_params_flat <- query_param_flat
+
+query_param_as_store <- function(params) {
+    if (inherits(params, "QueryParamStore")) {
+        return(params)
+    }
+
+    store <- QueryParamStore$new()
+    if (is.null(params)) {
+        return(store)
+    }
+
+    checkmate::assert_list(params, names = "named")
+    buckets <- stats::setNames(rep(list(list()), length(PARAM_BUCKETS)), PARAM_BUCKETS)
+
+    add_param <- function(name, value) {
+        if (!name %in% query_param_names("all")) {
+            buckets$others[[name]] <<- if (is.null(value) || S7::S7_inherits(value, QueryParam)) {
+                value
+            } else {
+                as_query_param(name, value)
+            }
+            return(invisible())
+        }
+
+        spec <- query_param_spec(name)
+        bucket <- spec$class
+        if (identical(name, "_timestamp")) {
+            bucket <- "query"
+        }
+
+        buckets[[bucket]][[name]] <<- if (is.null(value) || S7::S7_inherits(value, QueryParam)) {
+            value
+        } else {
+            as_query_param(name, value)
+        }
+    }
+
+    for (name in names(params)) {
+        if (identical(name, "others")) {
+            if (!length(params$others)) {
+                next
+            }
+            for (other_name in names(params$others)) {
+                value <- params$others[[other_name]]
+                add_param(other_name, value)
+            }
+            next
+        }
+
+        add_param(name, params[[name]])
+    }
+
+    store$restore(buckets)
+}
+
+query_param_clone <- function(params) {
+    query_param_as_store(params)$copy()
+}
+
+print_query_params <- function(params) {
+    store <- query_param_as_store(params)
+    rendered <- store$render()
+    if (!length(rendered)) {
+        cli::cli_bullets(c(" " = "<Empty>"))
+        return(invisible(params))
+    }
+
+    for (line in rendered) {
+        cli::cli_bullets(c("*" = line))
+    }
+
+    invisible(params)
+}
 # }}}
 
 # QueryParamStore {{{
@@ -826,7 +837,9 @@ QueryParamStore <- R6::R6Class(
                 }
 
                 # ESGF uses '+' for spaces in nominal resolution
-                param@value <- gsub(" ", "+", values, fixed = TRUE)
+                values <- gsub(" ", "+", values, fixed = TRUE)
+                attr(values, "encoded") <- NULL
+                param@value <- values
 
                 # explictly mark it as realdy encoded, otherwise '+' will not be
                 # perserved
@@ -1221,7 +1234,7 @@ QueryParamStore <- R6::R6Class(
                 return(private$get_or_set_control("format"))
             }
 
-            if (!missing(value) && !identical(value, FORMAT_JSON)) {
+            if (!is.null(value) && !identical(value, FORMAT_JSON)) {
                 warning(sprintf(
                     paste(
                         "Only JSON response format is supported.",
@@ -1480,8 +1493,8 @@ QueryParamStore <- R6::R6Class(
         #' specified range. Each boundary generates an independent Solr range
         #' condition placed in the `query=` parameter:
         #'
-        #' - `start` → `version:[start TO *]`
-        #' - `end`   → `version:[* TO end]`
+        #' - `min` → `version:[min TO *]`
+        #' - `max` → `version:[* TO max]`
         #'
         #' Because `version` is a **string** field, lexicographic comparison is
         #' used. ESGF stores versions in `YYYYMMDD` format, so lexicographic
@@ -1491,7 +1504,7 @@ QueryParamStore <- R6::R6Class(
         #' `version` is not a date field.
         #'
         #' Range expressions (e.g. `[2020 TO 2025]`) are **not** accepted as
-        #' input; use the `start` and `end` parameters separately instead.
+        #' input; use the `min` and `max` parameters separately instead.
         #'
         #' @param min,max A single string specifying the version boundary,
         #'   e.g. `"20200101"`, `"2020"`, or `"2020-06"`. Simplified date
@@ -1688,6 +1701,35 @@ QueryParamStore <- R6::R6Class(
         },
         # }}}
 
+        # flat {{{
+        #' @description
+        #' Get the current parameter state as a flat named list.
+        #'
+        #' `$flat()` is mainly used by request builders that need to inspect or
+        #' temporarily adjust individual parameters regardless of their internal
+        #' bucket.
+        #'
+        #' @param name A character vector of parameter names to include, or
+        #'   `NULL` to include all parameters.
+        #' @param null If `TRUE`, include parameters whose current value is
+        #'   `NULL`. Otherwise, omit unset parameters.
+        #'
+        #' @return A flat named list of `QueryParam` objects.
+        flat = function(name = NULL, null = FALSE) {
+            private$subset_params(name = name, null = null, flat = TRUE)
+        },
+        # }}}
+
+        # copy {{{
+        #' @description
+        #' Create an independent copy of the current parameter store.
+        #'
+        #' @return A new `QueryParamStore` object with the same parameter state.
+        copy = function() {
+            QueryParamStore$new()$restore(self$serialize(null = TRUE))
+        },
+        # }}}
+
         # serialize {{{
         #' @description
         #' Serialize the current parameter state.
@@ -1718,7 +1760,7 @@ QueryParamStore <- R6::R6Class(
                 function(bucket) {
                     lapply(
                         bucket,
-                        function(param) if (!is.null(param)) return(as.list(param))
+                        private$serialize_param
                     )
                 }
             )
@@ -1853,19 +1895,25 @@ QueryParamStore <- R6::R6Class(
         # Initialize all parameter buckets from class defaults, coercing
         # non-NULL defaults into the corresponding QueryParam subclasses.
         init_params = function() {
-            private$facet <- lapply(
-                QueryParamStore$private_fields$facet,
-                function(value) if (is.null(value)) NULL else QueryParamFacet(value)
+            private$facet <- stats::setNames(
+                lapply(names(QueryParamStore$private_fields$facet), function(name) {
+                    as_query_param(name, QueryParamStore$private_fields$facet[[name]])
+                }),
+                names(QueryParamStore$private_fields$facet)
             )
 
-            private$query <- lapply(
-                QueryParamStore$private_fields$query,
-                function(value) if (is.null(value)) NULL else QueryParamDate(value)
+            private$query <- stats::setNames(
+                lapply(names(QueryParamStore$private_fields$query), function(name) {
+                    as_query_param(name, QueryParamStore$private_fields$query[[name]])
+                }),
+                names(QueryParamStore$private_fields$query)
             )
 
-            private$control <- lapply(
-                QueryParamStore$private_fields$control,
-                function(value) if (is.null(value)) NULL else QueryParamCtrl(value)
+            private$control <- stats::setNames(
+                lapply(names(QueryParamStore$private_fields$control), function(name) {
+                    as_query_param(name, QueryParamStore$private_fields$control[[name]])
+                }),
+                names(QueryParamStore$private_fields$control)
             )
 
             private$others <- list()
@@ -1935,7 +1983,17 @@ QueryParamStore <- R6::R6Class(
             if (is.null(param)) {
                 NULL
             } else {
-                as.list(param)
+                out <- as.list(param)
+                out$value <- if (S7::S7_inherits(param, QueryParamDate)) {
+                    as <- if (query_param_kind(param) %in% c("version_min", "version_max")) "num" else "iso"
+                    format(param@value, as = as)
+                } else {
+                    param@value
+                }
+                if (S7::S7_inherits(param, QueryParamFacet) && !isTRUE(out$encoded)) {
+                    out$encoded <- NULL
+                }
+                out
             }
         },
         # }}}
@@ -1945,26 +2003,50 @@ QueryParamStore <- R6::R6Class(
         # reconstructing each entry with the appropriate QueryParam class.
         restore_bucket = function(bucket, state) {
             checkmate::assert_choice(bucket, PARAM_BUCKETS)
-            checkmate::assert_list(state, names = "named")
-
-            constructor <- switch(
-                bucket,
-                query = QueryParamDate,
-                control = QueryParamCtrl,
-                facet = QueryParamFacet,
-                others = QueryParamFacet
-            )
-
-            if (bucket != "others") {
-                checkmate::assert_names(names(state), subset.of = names(private[[bucket]]))
+            checkmate::assert_list(state)
+            if (length(state)) {
+                checkmate::assert_names(names(state), type = "unique")
             }
 
-            private[[bucket]] <- lapply(state, function(payload) {
+            if (bucket != "others" && length(state)) {
+                checkmate::assert_names(names(state), subset.of = names(private[[bucket]]))
+            }
+            if (bucket != "others") {
+                private[[bucket]] <- QueryParamStore$private_fields[[bucket]]
+            } else {
+                private[[bucket]] <- list()
+            }
+            private[[bucket]] <- lapply(private[[bucket]], function(value) NULL)
+
+            for (name in names(state)) {
+                payload <- state[[name]]
                 if (is.null(payload)) {
-                    return(NULL)
+                    if (bucket != "others") {
+                        private[[bucket]][name] <- list(NULL)
+                    }
+                    next
                 }
-                do.call(constructor, payload)
-            })
+
+                if (S7::S7_inherits(payload, QueryParam)) {
+                    param <- payload
+                } else if (bucket == "query") {
+                    param <- QueryParamDate(payload$value)
+                } else if (bucket == "control") {
+                    param <- QueryParamCtrl(payload$value)
+                } else {
+                    param <- QueryParamFacet(
+                        payload$value,
+                        negate = isTRUE(payload$negate),
+                        encoded = isTRUE(payload$encoded)
+                    )
+                }
+
+                if (bucket == "others") {
+                    private$others[[name]] <- query_param_meta(param, name = name, kind = "facet")
+                } else {
+                    private$set_param_value(bucket, name, param)
+                }
+            }
         },
         # }}}
 
@@ -1982,7 +2064,11 @@ QueryParamStore <- R6::R6Class(
                 return(NULL)
             }
 
-            QueryParamDate(SolrDateRange(from_value, to_value))
+            query_param_meta(
+                QueryParamDate(SolrDateRange(from_value, to_value)),
+                name = "_timestamp",
+                kind = "timestamp_range"
+            )
         },
         # }}}
 
@@ -2032,7 +2118,7 @@ QueryParamStore <- R6::R6Class(
         # get_or_set_control {{{
         # Shared getter/setter for scalar control parameters such as flags,
         # strings, and counts, with validation delegated to checkmate.
-        get_or_set_control = function(name, value, type = c("flag", "string", "count"), ...) {
+        get_or_set_control = function(name, value, type = c("flag", "string", "count", "choice"), ...) {
             type <- match.arg(type)
             if (missing(value)) {
                 return(private$control[[name]])
@@ -2124,13 +2210,22 @@ QueryParamStore <- R6::R6Class(
                 }
             }
 
-            predefined <- names(private$facet)
+            predefined <- c(names(private$facet), "type", "format")
 
             is_predefined <- nms %in% predefined
             params_base <- params[is_predefined]
             names_base <- nms[is_predefined]
             params_oth <- params[!is_predefined]
             names_oth <- nms[!is_predefined]
+
+            if (length(params_oth)) {
+                clear <- vapply(params_oth, function(param) is.null(param$value), logical(1L))
+                if (any(clear)) {
+                    private$others[names_oth[clear]] <- NULL
+                    params_oth <- params_oth[!clear]
+                    names_oth <- names_oth[!clear]
+                }
+            }
 
             # stop for query and control parameters
             reserved_query <- names_oth[names_oth %in% c(names(private$query), "_timestamp")]
@@ -2140,7 +2235,7 @@ QueryParamStore <- R6::R6Class(
                     paste(sprintf("'%s'", reserved_query), collapse = ", ")
                 ))
             }
-            reserved_control <- names_oth[names_oth %in% names(private$control)]
+            reserved_control <- names_oth[names_oth %in% setdiff(names(private$control), c("type", "format"))]
             if (length(reserved_control)) {
                 stop(sprintf(
                     "The following parameter(s) are reserved for control conditions and cannot be set using '$params()': [%s].",
@@ -2168,10 +2263,14 @@ QueryParamStore <- R6::R6Class(
                             return(NULL)
                         }
 
-                        QueryParamFacet(
-                            param$value,
-                            negate = isTRUE(param$negate),
-                            encoded = FALSE
+                        query_param_meta(
+                            QueryParamFacet(
+                                param$value,
+                                negate = isTRUE(param$negate),
+                                encoded = FALSE
+                            ),
+                            name = names_oth[[i]],
+                            kind = "facet"
                         )
                     }),
                     names_oth
@@ -2189,9 +2288,21 @@ QueryParamStore <- R6::R6Class(
                             name <- names_base[[i]]
                             value <- params_base[[i]]
 
+                            if (is.null(value$value)) {
+                                eval(substitute(self[[name]](NULL)))
+                                next
+                            }
+
+                            if (name %in% names(private$control) && isTRUE(value$negate)) {
+                                stop(sprintf(
+                                    "Control parameter '%s' does not support negation.",
+                                    name
+                                ))
+                            }
+
                             checkmate::assert_vector(value$value, any.missing = FALSE, .var.name = "param")
 
-                            if (!is.null(value) && isTRUE(value$negate)) {
+                            if (isTRUE(value$negate)) {
                                 eval(substitute(self[[name]](!value), list(value = value$value)))
                             } else {
                                 eval(substitute(self[[name]](value), list(value = value$value)))
@@ -2220,7 +2331,8 @@ QueryParamStore <- R6::R6Class(
             if (is.null(value)) {
                 private[[bucket]][name] <- list(NULL)
             } else if (S7::S7_inherits(value, QueryParam)) {
-                private[[bucket]][[name]] <- value
+                kind <- if (bucket == "query") name else bucket
+                private[[bucket]][[name]] <- query_param_meta(value, name = name, kind = kind)
             } else {
                 stop("Invalid parameter value. Must be NULL or an instance of QueryParam.")
             }
@@ -2243,7 +2355,7 @@ QueryParamStore <- R6::R6Class(
             rendered <- character(length(params))
             names(rendered) <- names(params)
             for (i in seq_along(params)) {
-                rendered[i] <- render(params[[i]], names(params)[[i]])
+                rendered[i] <- query_param_render(params[[i]], names(params)[[i]])
             }
 
             rendered
@@ -2279,7 +2391,7 @@ QueryParamStore <- R6::R6Class(
             rendered <- character(length(params))
             names(rendered) <- names(params)
             for (i in seq_along(params)) {
-                rendered[i] <- render(params[[i]], names(params)[[i]])
+                rendered[i] <- query_param_render(params[[i]], names(params)[[i]])
             }
 
             rendered
