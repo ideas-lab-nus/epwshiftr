@@ -324,7 +324,16 @@ query_param_spec <- function(name) {
         "facet"
     }
 
-    list(name = name, class = class)
+    role <- if (
+        class == "facet" &&
+            !name %in% c("facets", "fields", "shards", "bbox", "start", "end", "from", "to")
+    ) {
+        "result_field"
+    } else {
+        class
+    }
+
+    list(name = name, class = class, role = role)
 }
 
 query_param_kind <- function(x) {
@@ -1717,6 +1726,40 @@ QueryParamStore <- R6::R6Class(
         #' @return A flat named list of `QueryParam` objects.
         flat = function(name = NULL, null = FALSE) {
             private$subset_params(name = name, null = null, flat = TRUE)
+        },
+        # }}}
+
+        # param_names {{{
+        #' @description
+        #' Get current parameter names, optionally filtered by parameter role.
+        #'
+        #' `$param_names()` is an internal introspection helper for request
+        #' builders that need parameter names without duplicating parameter
+        #' classification rules.
+        #'
+        #' @param role A character vector of roles to include, or `NULL` to
+        #'   include all roles.
+        #' @param null If `TRUE`, include parameters whose current value is
+        #'   `NULL`. Otherwise, omit unset parameters.
+        #'
+        #' @return A character vector of parameter names.
+        param_names = function(role = NULL, null = FALSE) {
+            checkmate::assert_character(role, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_subset(role, c("result_field", "facet", "query", "control"), empty.ok = TRUE)
+            checkmate::assert_flag(null)
+
+            params <- self$flat(null = null)
+            nms <- names(params)
+            if (!length(nms)) {
+                return(character())
+            }
+
+            roles <- vapply(nms, function(name) query_param_spec(name)$role, character(1L))
+            if (!is.null(role)) {
+                nms <- nms[roles %in% role]
+            }
+
+            unique(nms)
         },
         # }}}
 

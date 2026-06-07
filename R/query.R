@@ -1126,10 +1126,7 @@ query_build <- function(index_node, params, type = "search") {
     }
 
     # separate query= params from regular facet params
-    query_names <- intersect(
-        names(params),
-        c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
-    )
+    query_names <- names(store$state()$query)
     query_clauses <- if (length(query_names)) store$render(query_names) else character()
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
     params <- params[!names(params) %in% query_names]
@@ -1208,29 +1205,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
             }
 
             if (constraints) {
-                # all non-emtpy param names
-                par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
-                # exclude keywords
-                keywords <- c(
-                    "facets",
-                    "offset",
-                    "limit",
-                    "fields",
-                    "format",
-                    "type",
-                    "replica",
-                    "latest",
-                    "distrib",
-                    "shards",
-                    "bbox",
-                    "start",
-                    "end",
-                    "from",
-                    "to",
-                    query_param_names("query")
-                )
-                par_nms <- setdiff(par_nms, keywords)
-                fields <- unique(c(fields, par_nms))
+                fields <- unique(c(fields, store$param_names(role = "result_field")))
             }
 
             store$fields(fields)

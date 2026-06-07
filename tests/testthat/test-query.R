@@ -535,6 +535,58 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
 # }}}
 
 # EsgQuery$collect() {{{
+test_that("query_collect includes only result-field constraints in fields", {
+    captured_url <- character()
+    testthat::local_mocked_bindings(
+        read_json_response = function(url, ...) {
+            captured_url <<- c(captured_url, url)
+            list(response = list(
+                numFound = 1L,
+                docs = data.frame(
+                    id = "dataset-id",
+                    source_id = "source",
+                    project = "CMIP6",
+                    activity_id = "CMIP",
+                    table_id = "Amon",
+                    score = 1,
+                    check.names = FALSE
+                )
+            ))
+        },
+        .package = "epwshiftr"
+    )
+
+    params <- suppressWarnings(
+        QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+            table_id = "Amon",
+            bbox = "0,0,1,1",
+            start = "2020",
+            end = "2021",
+            from = "2020",
+            to = "2021"
+        )
+    )
+
+    res <- query_collect(
+        "https://example.org",
+        params,
+        required_fields = "id",
+        constraints = TRUE
+    )
+    decoded_url <- utils::URLdecode(captured_url[[1L]])
+    fields <- strsplit(
+        regmatches(decoded_url, regexpr("(?<=fields=)[^&]*", decoded_url, perl = TRUE)),
+        ",",
+        fixed = TRUE
+    )[[1L]]
+
+    expect_identical(fields, c("source_id", "id", "project", "activity_id", "table_id"))
+    expect_false("bbox" %in% fields)
+    expect_false("start" %in% fields)
+    expect_false("facets" %in% fields)
+    expect_named(res$docs, c("id", "source_id", "project", "activity_id", "table_id"), ignore.order = TRUE)
+})
+
 test_that("EsgQuery$collect()", {
     skip_on_cran()
     index_node <- get_fast_index_node()

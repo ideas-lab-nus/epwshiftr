@@ -52,6 +52,11 @@ test_that("QueryParamStore", {
     store <- QueryParamStore$new()
 
     expect_s3_class(store, "QueryParamStore")
+    expect_identical(query_param_spec("project")$role, "result_field")
+    expect_identical(query_param_spec("fields")$role, "facet")
+    expect_identical(query_param_spec("datetime_start")$role, "query")
+    expect_identical(query_param_spec("limit")$role, "control")
+    expect_identical(query_param_spec("bbox")$role, "facet")
 
     state_all <- store$state(null = TRUE)
     expect_named(state_all, c("facet", "query", "control", "others"))
@@ -202,6 +207,29 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
+    expect_setequal(
+        q$param_names(role = "result_field"),
+        c("project", "activity_id", "table_id")
+    )
+    expect_setequal(
+        q$param_names(role = "query"),
+        c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
+    )
+
+    role_store <- suppressWarnings(
+        QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+            table_id = "Amon",
+            bbox = "0,0,1,1",
+            start = "2020",
+            end = "2021",
+            from = "2020",
+            to = "2021"
+        )
+    )
+    expect_setequal(
+        role_store$param_names(role = "result_field"),
+        c("project", "activity_id", "table_id")
+    )
 
     serialized_all <- q$serialize(null = TRUE)
     restored_all <- QueryParamStore$new()$restore(serialized_all)
