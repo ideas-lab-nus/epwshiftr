@@ -49,63 +49,6 @@ FIELDS_FACETS_COMMON <- c(
     "variant_label"
 )
 
-# read_json_response {{{
-read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
-    # Determine effective cache mode
-    # cache parameter can be TRUE, FALSE, or "offline" (from option)
-    if (isFALSE(cache)) {
-        mode <- "off"
-    } else {
-        mode <- cache_mode()
-    }
-
-    if (mode != "off") {
-        disk_cache <- get_cache()
-        key <- get_response_cache_key(url)
-
-        cached <- disk_cache$get(key)
-        if (!is.key_missing(cached)) {
-            return(cached)
-        }
-
-        if (mode == "offline") {
-            stop("Cache miss in offline mode for URL '", url, "'. Cannot fetch data while offline.", call. = FALSE)
-        }
-    }
-
-    res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
-    timestamp <- Sys.time()
-
-    # nocov start
-    if (inherits(res, "warning") || inherits(res, "error")) {
-        cond_fun <- if (strict) stop else warning
-        cond_fun(
-            "Failed to read the JSON response. Details: \n",
-            conditionMessage(res)
-        )
-
-        res <- NULL
-        # nocov end
-    } else if (res$response$numFound == 0L) {
-        verbose(warning(
-            "No matched data. ",
-            "Please examine your query and the actual response."
-        ))
-    }
-
-    res$timestamp <- timestamp
-
-    # cache successful results only
-    if (mode != "off" && !is.null(res)) {
-        # record the cache key
-        res$cache <- key
-        disk_cache$set(key, res)
-    }
-
-    res
-}
-# }}}
-
 # esg_query {{{
 #' Query CMIP6 data using ESGF search RESTful API
 #'
@@ -1294,12 +1237,6 @@ normalize_index_node <- function(index_node, raw = FALSE) {
         url <- sub("/$", "", url)
     }
     url
-}
-# }}}
-
-# get_response_cache_key {{{
-get_response_cache_key <- function(url) {
-    paste0("response-", fast_hash(url))
 }
 # }}}
 
