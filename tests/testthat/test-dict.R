@@ -40,8 +40,8 @@ local_write_dreq <- function(dir, table_id, realm, variables) {
 }
 
 local_raw_cmip6_cache <- function(root) {
-    cv_dir <- file.path(root, "cvs", "test-cv")
-    dreq_dir <- file.path(root, "dreq", "test-dreq")
+    cv_dir <- file.path(root, "vocab", "test-cv")
+    dreq_dir <- file.path(root, "request", "test-request")
     dir.create(cv_dir, recursive = TRUE)
     dir.create(dreq_dir, recursive = TRUE)
 
@@ -213,13 +213,15 @@ local_raw_cmip6_cache <- function(root) {
 
 local_test_esgdict <- function() {
     raw_root <- local_raw_cmip6_cache(withr::local_tempdir())
+    spec <- esgdict__project_spec("CMIP6")
     fetched <- list(
-        cvs = cmip6dict__fetch_cv("test-cv", use_cache = TRUE, cache_dir = file.path(raw_root, "cvs", "test-cv")),
-        dreq = cmip6dict__fetch_dreq("test-dreq", use_cache = TRUE, cache_dir = file.path(raw_root, "dreq", "test-dreq")),
+        project = "CMIP6",
+        vocab = cmip6dict__fetch_cv("test-cv", use_cache = TRUE, cache_dir = file.path(raw_root, "vocab", "test-cv")),
+        request = cmip6dict__fetch_dreq("test-request", use_cache = TRUE, cache_dir = file.path(raw_root, "request", "test-request")),
         built_time = as.POSIXct("2025-01-04 00:00:00", tz = "UTC"),
         sources = list(
-            cvs = list(repo = REPO_CV, tag = "test-cv", commit = "abc123", cache_dir = file.path(raw_root, "cvs", "test-cv")),
-            dreq = list(repo = REPO_DREQ, tag = "test-dreq", commit = "def456", cache_dir = file.path(raw_root, "dreq", "test-dreq"))
+            vocab = list(repo = spec$vocab$repo, tag = "test-cv", commit = "abc123", cache_dir = file.path(raw_root, "vocab", "test-cv")),
+            request = list(repo = spec$request$repo, tag = "test-request", commit = "def456", cache_dir = file.path(raw_root, "request", "test-request"))
         )
     )
 
@@ -228,6 +230,34 @@ local_test_esgdict <- function() {
     private <- priv(dict)
     private$replace(built, status = "built")
     dict
+}
+
+local_raw_esgvoc_cache <- function(root) {
+    vocab_dir <- file.path(root, "vocab", "test-vocab")
+    dir.create(file.path(vocab_dir, "activity"), recursive = TRUE)
+    dir.create(file.path(vocab_dir, "experiment"), recursive = TRUE)
+    dir.create(file.path(vocab_dir, "table"), recursive = TRUE)
+
+    jsonlite::write_json(
+        list(id = "CMIP", description = "CMIP activity"),
+        file.path(vocab_dir, "activity", "CMIP.json"),
+        auto_unbox = TRUE,
+        pretty = TRUE
+    )
+    jsonlite::write_json(
+        list(id = "historical", description = "historical experiment"),
+        file.path(vocab_dir, "experiment", "historical.json"),
+        auto_unbox = TRUE,
+        pretty = TRUE
+    )
+    jsonlite::write_json(
+        list(id = "day", description = "daily table"),
+        file.path(vocab_dir, "table", "day.json"),
+        auto_unbox = TRUE,
+        pretty = TRUE
+    )
+
+    root
 }
 
 local_esgdict_disk_cache <- function(env = parent.frame()) {
@@ -271,14 +301,13 @@ test_that("esgdict() and explicit default dictionary helpers", {
     esgdict_set_default(dict)
     expect_identical(esgdict_get_default(), dict)
 
-    other <- esgdict(project = "CMIP5")
-    expect_equal(other$project(), "CMIP5")
-    expect_equal(other$profile(), "cmip5")
+    other <- esgdict(project = "CMIP6PLUS")
+    expect_equal(other$project(), "CMIP6PLUS")
+    expect_equal(other$profile(), "cmip6plus")
     esgdict_set_default(other)
-    expect_identical(esgdict_get_default("CMIP5"), other)
+    expect_identical(esgdict_get_default("CMIP6PLUS"), other)
     expect_identical(esgdict_get_default("CMIP6"), dict)
 
-    expect_error(other$build(), "not implemented")
     expect_error(esgdict_option("activity_id", project = "CMIP5"), "not implemented")
     expect_error(esgdict_check(activity = "CMIP", project = "CMIP5"), "not implemented")
 })
@@ -295,18 +324,18 @@ test_that("EsgDict state, getters, and print are explicit", {
     expect_true(dict$has_data())
     expect_false(dict$is_empty())
     expect_s3_class(dict$built_time(), "POSIXct")
-    expect_named(dict$timestamp(), c("cvs", tolower(CV_TYPES)))
-    expect_named(dict$sources(), c("cvs", "dreq"))
+    expect_named(dict$timestamp(), c("vocab", tolower(CV_TYPES)))
+    expect_named(dict$sources(), c("vocab", "request"))
     expect_s3_class(dict$get("EXPERIMENT_ID"), "data.table")
     expect_s3_class(dict$get("experiment_id"), "data.table")
-    expect_s3_class(dict$get("dreq"), "data.table")
-    expect_s3_class(dict$indices("dreq"), "data.table")
-    expect_error(dict$get(c("dreq", "activity_id")), "Must have length 1")
-    expect_error(dict$indices(c("dreq", "values")), "Must have length 1")
+    expect_s3_class(dict$get("request"), "data.table")
+    expect_s3_class(dict$indices("variable"), "data.table")
+    expect_error(dict$get(c("request", "activity_id")), "Must have length 1")
+    expect_error(dict$indices(c("variable", "values")), "Must have length 1")
 
     out <- testthat::capture_messages(expect_invisible(dict$print()))
     expect_true(any(grepl("Status", out, fixed = TRUE)))
-    expect_true(any(grepl("CV Contents [13 types]", out, fixed = TRUE)))
+    expect_true(any(grepl("Vocab Contents [13 types]", out, fixed = TRUE)))
 })
 
 test_that("EsgDict save/load uses typed schema-validated JSON", {
@@ -322,16 +351,16 @@ test_that("EsgDict save/load uses typed schema-validated JSON", {
     expect_true(schema_validate(SCHEMA_ESG_DICT, payload, mode = "test", name = path))
     expect_true(esgdict__validate_payload(payload, name = path))
     expect_equal(payload$format, "epwshiftr_esg_dict")
-    expect_equal(payload$format_version, "1")
+    expect_equal(payload$format_version, "2")
     expect_equal(payload$project, "CMIP6")
     expect_equal(payload$profile, "cmip6")
-    expect_true(all(vapply(payload$payload$dreq$columns, function(col) all(c("name", "type") %in% names(col)), logical(1L))))
+    expect_true(all(vapply(payload$payload$request$columns, function(col) all(c("name", "type") %in% names(col)), logical(1L))))
 
     loaded <- EsgDict$new()
     expect_s3_class(loaded$load(dir), "EsgDict")
     expect_equal(loaded$status(), "loaded")
     expect_true(loaded$has_data())
-    expect_equal(loaded$sources()$cvs$tag, "test-cv")
+    expect_equal(loaded$sources()$vocab$tag, "test-cv")
     expect_equal(loaded$get("source_id")$release_year, as.integer(c(2019, 2020)))
     expect_s3_class(loaded$indices("activity_experiment"), "data.table")
 })
@@ -354,10 +383,12 @@ test_that("EsgDict load rejects malformed JSON and old RDS name is ignored", {
             sources = NULL,
             project = "CMIP6",
             profile = "cmip6",
-            cvs = list(activity_id = list(kind = "list", class = c("Cmip6CV", "list"), version = NULL, values = list(CMIP = "CMIP"))),
-            dreq = NULL,
-            dreq_metadata = NULL,
-            indices = NULL
+            payload = list(
+                vocab = list(activity_id = list(kind = "list", class = c("Cmip6CV", "list"), version = NULL, values = list(CMIP = "CMIP"))),
+                request = NULL,
+                request_metadata = NULL,
+                indices = NULL
+            )
         ),
         file.path(dir, "bad.json"),
         auto_unbox = TRUE,
@@ -435,10 +466,52 @@ test_that("esgdict_check() returns rich value and relationship diagnostics", {
         dict = dict,
         relationship = "all_pairs"
     )
-    expect_true(any(!all_pairs$valid & all_pairs$rule == "dreq"))
+    expect_true(any(!all_pairs$valid & all_pairs$rule == "variable"))
 
     expect_error(esgdict_check(experiment = "historial", dict = dict, error = TRUE))
     expect_s3_class(dict$check(activity = "CMIP", experiment = "historical"), "esgdict_check_result")
+})
+
+test_that("CV-only ESG projects can build and report unchecked relationships", {
+    projects <- c("CMIP6PLUS", "INPUT4MIP", "OBS4REF", "CORDEX-CMIP6", "CMIP7", "EMD")
+    for (project in projects) {
+        dict <- esgdict(project = project)
+        expect_equal(dict$project(), project)
+        expect_equal(dict$profile(), tolower(project))
+    }
+
+    local_esgdict_disk_cache()
+    raw_root <- local_raw_esgvoc_cache(withr::local_tempdir())
+    dict <- EsgDict$new("CMIP6PLUS")
+    expect_s3_class(
+        dict$build(cv_tag = "test-vocab", cache_dir = raw_root),
+        "EsgDict"
+    )
+    expect_true(dict$has_data())
+    expect_true(dict$capabilities()$vocab)
+    expect_false(dict$capabilities()$request)
+
+    activity <- esgdict_option("activity_id", dict = dict)
+    expect_equal(activity$value, "CMIP")
+
+    ok <- esgdict_check(activity_id = "CMIP", dict = dict)
+    expect_true(all(ok$valid))
+
+    unchecked <- esgdict_check(variable_id = "tas", table_id = "day", dict = dict)
+    expect_false(any(!is.na(unchecked$valid) & !unchecked$valid))
+    expect_true(any(is.na(unchecked$valid) & unchecked$type == "not_checked" & unchecked$rule == "variable"))
+
+    dir <- withr::local_tempdir()
+    path <- dict$save(dir, file = "CMIP6PLUSDICT.json")
+    payload <- jsonlite::read_json(path, simplifyVector = FALSE)
+    expect_true(schema_validate(SCHEMA_ESG_DICT, payload, mode = "test", name = path))
+    expect_true(esgdict__validate_payload(payload, name = path))
+    expect_null(payload$payload$request)
+
+    loaded <- EsgDict$new("CMIP6PLUS")
+    loaded$load(dir, file = "CMIP6PLUSDICT.json")
+    expect_true(loaded$has_data())
+    expect_equal(loaded$options("activity_id")$value, "CMIP")
 })
 
 test_that("EsgDict cache policy follows package cache mode", {
@@ -472,8 +545,8 @@ test_that("EsgDict cache policy follows package cache mode", {
 test_that("raw cache can rebuild parsed data without network", {
     raw_root <- local_raw_cmip6_cache(withr::local_tempdir())
 
-    cvs <- cmip6dict__fetch_cv("test-cv", use_cache = TRUE, cache_dir = file.path(raw_root, "cvs", "test-cv"))
-    dreq <- cmip6dict__fetch_dreq("test-dreq", use_cache = TRUE, cache_dir = file.path(raw_root, "dreq", "test-dreq"))
+    cvs <- cmip6dict__fetch_cv("test-cv", use_cache = TRUE, cache_dir = file.path(raw_root, "vocab", "test-cv"))
+    dreq <- cmip6dict__fetch_dreq("test-request", use_cache = TRUE, cache_dir = file.path(raw_root, "request", "test-request"))
 
     expect_named(cvs, tolower(CV_TYPES))
     expect_s3_class(cvs$experiment_id, "data.table")
@@ -488,7 +561,7 @@ test_that("offline EsgDict build can use raw cache but rejects raw misses", {
 
     dict <- EsgDict$new()
     expect_s3_class(
-        dict$build(cv_tag = "test-cv", dreq_tag = "test-dreq", cache_dir = raw_root),
+        dict$build(cv_tag = "test-cv", request_tag = "test-request", cache_dir = raw_root),
         "EsgDict"
     )
     expect_true(dict$has_data())
@@ -496,7 +569,7 @@ test_that("offline EsgDict build can use raw cache but rejects raw misses", {
 
     empty_raw <- withr::local_tempdir()
     expect_error(
-        EsgDict$new()$build(cv_tag = "test-cv", dreq_tag = "test-dreq", cache_dir = empty_raw),
+        EsgDict$new()$build(cv_tag = "test-cv", request_tag = "test-request", cache_dir = empty_raw),
         "raw cache miss in offline cache mode"
     )
 })
@@ -507,14 +580,14 @@ test_that("parsed EsgDict cache can satisfy offline builds without raw files", {
     raw_root <- local_raw_cmip6_cache(withr::local_tempdir())
 
     first <- EsgDict$new()
-    first$build(cv_tag = "test-cv", dreq_tag = "test-dreq", cache_dir = raw_root)
+    first$build(cv_tag = "test-cv", request_tag = "test-request", cache_dir = raw_root)
     expect_true(first$has_data())
     expect_equal(get_cache()$size(), 1L)
 
     local_cache_mode_for_test("offline")
     empty_raw <- withr::local_tempdir()
     second <- EsgDict$new()
-    second$build(cv_tag = "test-cv", dreq_tag = "test-dreq", cache_dir = empty_raw)
+    second$build(cv_tag = "test-cv", request_tag = "test-request", cache_dir = empty_raw)
 
     expect_true(second$has_data())
     expect_equal(second$options("experiment_id", activity_id = "CMIP")$value, "historical")

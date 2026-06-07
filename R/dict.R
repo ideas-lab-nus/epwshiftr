@@ -1,11 +1,47 @@
 ESGDICT_FORMAT <- "epwshiftr_esg_dict"
-ESGDICT_FORMAT_VERSION <- "1"
-ESGDICT_IMPLEMENTED_PROFILES <- c(CMIP6 = "cmip6")
+ESGDICT_FORMAT_VERSION <- "2"
 
 CMIP6DICT_VARIANT_PATTERN <- "^r\\d+i\\d+p\\d+f\\d+$"
 
-REPO_CV <- "WCRP-CMIP/CMIP6_CVs"
-REPO_DREQ <- "PCMDI/cmip6-cmor-tables"
+# Each project has a required vocab source and an optional request source.
+# Request data powers variable/table/frequency relationship checks when present.
+ESGDICT_PROJECTS <- list(
+    CMIP6 = list(
+        profile = "cmip6",
+        vocab = list(source = "github", repo = "WCRP-CMIP/CMIP6_CVs", reader = "cmip6_cvs", tagged = TRUE),
+        request = list(source = "github", repo = "PCMDI/cmip6-cmor-tables", reader = "cmip6_cmor", tagged = TRUE)
+    ),
+    CMIP6PLUS = list(
+        profile = "cmip6plus",
+        vocab = list(source = "github", repo = "WCRP-CMIP/CMIP6Plus_CVs", reader = "esgvoc", ref = "esgvoc"),
+        request = NULL
+    ),
+    INPUT4MIP = list(
+        profile = "input4mip",
+        vocab = list(source = "github", repo = "PCMDI/input4MIPs_CVs", reader = "esgvoc", ref = "esgvoc"),
+        request = NULL
+    ),
+    OBS4REF = list(
+        profile = "obs4ref",
+        vocab = list(source = "github", repo = "Climate-REF/Obs4REF_CVs", reader = "esgvoc", ref = "main"),
+        request = NULL
+    ),
+    `CORDEX-CMIP6` = list(
+        profile = "cordex-cmip6",
+        vocab = list(source = "github", repo = "WCRP-CORDEX/cordex-cmip6-cv", reader = "esgvoc", ref = "esgvoc"),
+        request = NULL
+    ),
+    CMIP7 = list(
+        profile = "cmip7",
+        vocab = list(source = "github", repo = "WCRP-CMIP/CMIP7-CVs", reader = "esgvoc", ref = "esgvoc"),
+        request = NULL
+    ),
+    EMD = list(
+        profile = "emd",
+        vocab = list(source = "github", repo = "WCRP-CMIP/Essential-Model-Documentation", reader = "esgvoc", ref = "esgvoc"),
+        request = NULL
+    )
+)
 
 CV_TYPES <- c(
     "DRS",
@@ -58,12 +94,25 @@ esgdict__normalize_project <- function(project = "CMIP6") {
     toupper(project)
 }
 
-esgdict__profile <- function(project = "CMIP6") {
+esgdict__project_spec <- function(project = "CMIP6") {
     project <- esgdict__normalize_project(project)
-    if (project %in% names(ESGDICT_IMPLEMENTED_PROFILES)) {
-        return(unname(ESGDICT_IMPLEMENTED_PROFILES[[project]]))
+    spec <- ESGDICT_PROJECTS[[project]]
+    if (is.null(spec)) {
+        stop(
+            sprintf(
+                "ESG dictionary project `%s` is not implemented. Supported projects: %s.",
+                project,
+                paste(names(ESGDICT_PROJECTS), collapse = ", ")
+            ),
+            call. = FALSE
+        )
     }
-    tolower(project)
+    spec$project <- project
+    spec
+}
+
+esgdict__profile <- function(project = "CMIP6") {
+    esgdict__project_spec(project)$profile
 }
 
 esgdict__default_file <- function(project = "CMIP6") {
@@ -78,14 +127,7 @@ esgdict__default_env <- function() {
 }
 
 esgdict__assert_implemented <- function(project) {
-    project <- esgdict__normalize_project(project)
-    profile <- esgdict__profile(project)
-    if (!identical(profile, "cmip6")) {
-        stop(
-            sprintf("ESG dictionary project `%s` is not implemented.", project),
-            call. = FALSE
-        )
-    }
+    esgdict__project_spec(project)
     invisible(TRUE)
 }
 
@@ -117,10 +159,9 @@ esgdict__cache_policy <- function(use_cache = TRUE) {
 #'
 #' `EsgDict` stores project-specific ESG controlled vocabulary data, query
 #' indices, and validation metadata for local option discovery and legality
-#' checks. The current implementation provides a CMIP6 backend only.
+#' checks.
 #'
-#' @param project ESG project identifier. `"CMIP6"` is the only implemented
-#'   backend.
+#' @param project ESG project identifier, such as `"CMIP6"` or `"CMIP6PLUS"`.
 #'
 #' @seealso [esgdict_option()] and [esgdict_check()] for user-facing discovery
 #' and validation helpers.
@@ -128,7 +169,7 @@ esgdict__cache_policy <- function(use_cache = TRUE) {
 #' @examples
 #' \dontrun{
 #' dict <- esgdict(project = "CMIP6")
-#' dict$build(cv_tag = "6.2.58", dreq_tag = "01.00.33")
+#' dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
 #' dict$save()
 #'
 #' esgdict_set_default(dict)
@@ -206,14 +247,15 @@ EsgDict <- R6::R6Class("EsgDict",
         },
 
         status = function() {
-            has_cvs <- !is.null(private$m_data$cvs) && length(private$m_data$cvs) > 0L
-            has_dreq <- !is.null(private$m_data$dreq) && nrow(private$m_data$dreq) > 0L
+            has_vocab <- !is.null(private$m_data$vocab) && length(private$m_data$vocab) > 0L
+            has_request <- !is.null(private$m_data$request) && NROW(private$m_data$request) > 0L
+            needs_request <- !is.null(esgdict__project_spec(private$m_project)$request)
 
-            if (!has_cvs && !has_dreq) {
+            if (!has_vocab && !has_request) {
                 "empty"
-            } else if (has_cvs && has_dreq && !is.null(private$m_version)) {
+            } else if (has_vocab && (!needs_request || has_request) && !is.null(private$m_version)) {
                 if (!is.null(private$m_status)) private$m_status else "loaded"
-            } else if (has_cvs && has_dreq) {
+            } else if (has_vocab && (!needs_request || has_request)) {
                 if (!is.null(private$m_status)) private$m_status else "loaded"
             } else {
                 "partial"
@@ -232,25 +274,31 @@ EsgDict <- R6::R6Class("EsgDict",
             token = NULL,
             force = FALSE,
             cv_tag = NULL,
+            request_tag = NULL,
             dreq_tag = NULL,
             use_cache = TRUE,
-            cache_dir = cmip6dict__raw_cache_dir()
+            cache_dir = esgdict__raw_cache_dir(project = private$m_project)
         ) {
             esgdict__assert_implemented(private$m_project)
             checkmate::assert_flag(force)
             checkmate::assert_flag(use_cache)
             checkmate::assert_string(cv_tag, null.ok = TRUE)
+            checkmate::assert_string(request_tag, null.ok = TRUE)
             checkmate::assert_string(dreq_tag, null.ok = TRUE)
+            if (is.null(request_tag) && !is.null(dreq_tag)) {
+                request_tag <- dreq_tag
+            }
 
             # Empty dictionaries need data, but only an explicit user `force`
             # should bypass the parsed dictionary cache.
             rebuild <- force || self$is_empty()
             if (!rebuild) return(self)
 
-            dict <- cmip6dict__build(cmip6dict__fetch_cached(
+            dict <- esgdict__build(esgdict__fetch_cached(
+                project = private$m_project,
                 token = token,
                 cv_tag = cv_tag,
-                dreq_tag = dreq_tag,
+                request_tag = request_tag,
                 policy = esgdict__cache_policy(use_cache),
                 cache_dir = cache_dir,
                 force = force
@@ -263,12 +311,38 @@ EsgDict <- R6::R6Class("EsgDict",
             private$assert_has_data("get dictionary data")
             checkmate::assert_string(type, min.chars = 1L)
             type <- tolower(type)
-            checkmate::assert_choice(type, c(tolower(CV_TYPES), "dreq"))
 
-            if (type == "dreq") {
-                data.table::copy(private$m_data$dreq)
+            if (identical(type, "dreq")) {
+                type <- "request"
+            }
+            if (identical(type, "vocab")) {
+                return(data.table::copy(private$m_data$vocab))
+            }
+            if (identical(type, "request")) {
+                return(data.table::copy(private$m_data$request))
+            }
+
+            if (!type %in% names(private$m_data$vocab)) {
+                stop(sprintf("Unknown ESG dictionary data type `%s`.", type), call. = FALSE)
+            }
+
+            data.table::copy(private$m_data$vocab[[type]])
+        },
+
+        capabilities = function() {
+            private$make_capabilities()
+        },
+
+        relation_fields = function() {
+            esgdict__relation_fields(private$m_project)
+        },
+
+        fields = function() {
+            values <- private$m_indices$values
+            if (is.null(values) || !nrow(values)) {
+                return(character())
             } else {
-                data.table::copy(private$m_data$cvs[[type]])
+                sort(unique(values$field))
             }
         },
 
@@ -284,9 +358,8 @@ EsgDict <- R6::R6Class("EsgDict",
         },
 
         options = function(field, ...) {
-            esgdict__assert_implemented(private$m_project)
             private$assert_has_data("discover ESG dictionary options")
-            cmip6dict__options(self, field, list(...))
+            esgdict__options(self, field, list(...))
         },
 
         check = function(
@@ -296,9 +369,8 @@ EsgDict <- R6::R6Class("EsgDict",
             n_suggestions = 5L,
             relationship = c("any", "all_pairs")
         ) {
-            esgdict__assert_implemented(private$m_project)
             private$assert_has_data("check ESG dictionary values")
-            cmip6dict__check(
+            esgdict__check(
                 self,
                 list(...),
                 error = error,
@@ -346,8 +418,7 @@ EsgDict <- R6::R6Class("EsgDict",
                 return(self)
             }
 
-            esgdict__assert_implemented(dict$project)
-            dict <- cmip6dict__build(dict)
+            dict <- esgdict__build(dict)
             if (is.null(dict$built_time)) {
                 cli::cli_alert_success("Loaded empty ESG Dictionary.")
             } else {
@@ -375,29 +446,33 @@ EsgDict <- R6::R6Class("EsgDict",
             }
 
             if (!self$has_data()) {
-                cli::cli_h1("Controlled Vocabularies (CVs)")
-                cli::cli_bullets(c("*" = "{.strong CV Version}: {.emph <Empty>}"))
-                cli::cli_h1("Data Request (DReq)")
-                cli::cli_bullets(c("*" = "{.strong DReq Version}: {.emph <Empty>}"))
+                cli::cli_h1("Vocabulary")
+                cli::cli_bullets(c("*" = "{.strong Vocab Version}: {.emph <Empty>}"))
+                cli::cli_h1("Request")
+                cli::cli_bullets(c("*" = "{.strong Request Version}: {.emph <Empty>}"))
                 return(invisible(self))
             }
 
-            cli::cli_h1("Controlled Vocabularies (CVs)")
-            cli::cli_bullets(c("*" = "{.strong CV Version}: {.var {private$m_version$cvs}}"))
+            cli::cli_h1("Vocabulary")
+            cli::cli_bullets(c("*" = "{.strong Vocab Version}: {.var {private$m_version$vocab}}"))
 
-            cvs <- private$m_data$cvs
-            cli::cli_bullets(c("*" = "{.strong CV Contents} [{length(cvs)} type{?s}]: "))
-            fmt <- sprintf("{.strong %s} [%s items]", names(cvs), vapply(cvs, NROW, integer(1)))
+            vocab <- private$m_data$vocab
+            cli::cli_bullets(c("*" = "{.strong Vocab Contents} [{length(vocab)} type{?s}]: "))
+            fmt <- sprintf("{.strong %s} [%s items]", names(vocab), vapply(vocab, NROW, integer(1)))
             names(fmt) <- rep("*", length(fmt))
             div <- cli::cli_div(theme = list(".bullets .bullet-*" = list("padding-left" = 2)))
             cli::cli_bullets(fmt)
             cli::cli_end(div)
 
-            cli::cli_h1("Data Request (DReq)")
-            cli::cli_bullets(c("*" = "{.strong DReq Version}: {.var {private$m_version$dreq}}"))
-            dreq <- private$m_data$dreq
-            meta <- attr(dreq, "metadata", TRUE)
-            cli::cli_bullets(c("*" = "{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms"))
+            cli::cli_h1("Request")
+            if (is.null(private$m_data$request)) {
+                cli::cli_bullets(c("*" = "{.strong Request Version}: {.emph <None>}"))
+            } else {
+                cli::cli_bullets(c("*" = "{.strong Request Version}: {.var {private$m_version$request}}"))
+                request <- private$m_data$request
+                meta <- attr(request, "metadata", TRUE)
+                cli::cli_bullets(c("*" = "{.strong Request Contents}: {nrow(request)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms"))
+            }
 
             invisible(self)
         }
@@ -411,7 +486,7 @@ EsgDict <- R6::R6Class("EsgDict",
         m_sources = NULL,
         m_built_time = NULL,
         m_timestamps = NULL,
-        m_data = list(cvs = NULL, dreq = NULL),
+        m_data = list(vocab = NULL, request = NULL),
         m_indices = list(),
 
         replace = function(dict, status = NULL) {
@@ -420,9 +495,18 @@ EsgDict <- R6::R6Class("EsgDict",
             }
             private$m_status <- status
             if (is.null(private$m_indices) && self$has_data()) {
-                private$m_indices <- cmip6dict__indices(private$m_data)
+                private$m_indices <- esgdict__indices(private$m_project, private$m_data)
             }
             invisible(self)
+        },
+
+        make_capabilities = function() {
+            caps <- list(
+                vocab = !is.null(private$m_data$vocab) && length(private$m_data$vocab) > 0L,
+                request = !is.null(private$m_data$request) && NROW(private$m_data$request) > 0L,
+                relations = setdiff(names(private$m_indices), "values")
+            )
+            caps
         },
 
         assert_has_data = function(action) {

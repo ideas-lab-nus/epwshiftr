@@ -17,7 +17,7 @@
     "format_version": {
       "check": {
         "kind": "choice",
-        "choices": ["1"]
+        "choices": ["2"]
       }
     },
     "project": {
@@ -136,11 +136,11 @@
           },
           "keys": {
             "type": "named",
-            "subset.of": ["cvs", "dreq", "dreq_metadata", "indices"],
-            "must.include": ["cvs", "dreq", "dreq_metadata", "indices"]
+            "subset.of": ["vocab", "request", "request_metadata", "indices"],
+            "must.include": ["vocab", "request", "request_metadata", "indices"]
           },
           "fields": {
-            "cvs": {
+            "vocab": {
               "any": [
                 {
                   "check": {
@@ -167,7 +167,7 @@
                 }
               ]
             },
-            "dreq": {
+            "request": {
               "any": [
                 {
                   "check": {
@@ -193,7 +193,7 @@
                 }
               ]
             },
-            "dreq_metadata": {
+            "request_metadata": {
               "any": [
                 {
                   "check": {

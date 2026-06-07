@@ -22,8 +22,8 @@ test_that("schema constants expose expected logical paths", {
     dict_paths <- schema_paths(SCHEMA_ESG_DICT)
     expect_true("$project" %in% dict_paths)
     expect_true("$profile" %in% dict_paths)
-    expect_true("$payload$any[2]$cvs" %in% dict_paths)
-    expect_true("$payload$any[2]$dreq" %in% dict_paths)
+    expect_true("$payload$any[2]$vocab" %in% dict_paths)
+    expect_true("$payload$any[2]$request" %in% dict_paths)
 })
 
 test_that("schema validates saved query JSON fixtures", {
