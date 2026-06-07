@@ -1017,19 +1017,22 @@ EsgQuery <- R6::R6Class(
             if (mode != "off") {
                 cache <- get_cache()
                 key <- get_response_cache_key(url)
-                cached <- cache$exists(key)
-                if (cached) {
-                    if (force) {
-                        cache$remove(key)
-                    } else {
-                        verbose(cli::cli_alert_info(paste(
-                            "Loaded cached {type} listing for index node {.var {private$index_node}}",
-                            "built at {format(cache$get(key)$timestamp, '%F %T %Z')}."
-                        )))
+                cached <- if (force) {
+                    cache$remove(key)
+                    structure(list(), class = "key_missing")
+                } else {
+                    cache$get(key)
+                }
 
-                        return(cache$get(key))
-                    }
-                } else if (mode == "offline") {
+                if (!is.key_missing(cached)) {
+                    verbose(cli::cli_alert_info(paste(
+                        "Loaded cached {type} listing for index node {.var {private$index_node}}",
+                        "built at {format(cached$timestamp, '%F %T %Z')}."
+                    )))
+
+                    return(cached)
+                }
+                if (mode == "offline") {
                     stop("Cache miss in offline mode. Cannot fetch data while offline.", call. = FALSE)
                 }
             }

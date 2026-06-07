@@ -150,6 +150,61 @@ test_that("EsgQuery$list_values()", {
 })
 # }}}
 
+# EsgQuery listing cache {{{
+test_that("EsgQuery listing cache respects max_age", {
+    dir <- tempfile("epwshiftr-expired-cache-")
+    cache <- DiskCache$new(dir, max_age = 0.1)
+    old_cache <- set_cache(cache)
+    withr::defer({
+        set_cache(old_cache)
+        cache$destroy()
+    })
+    local_cache_mode("normal")
+
+    url <- "https://example.org/esg-search/search?project=CMIP6"
+    key <- get_response_cache_key(url)
+    cached <- list(timestamp = Sys.time() - 3600, value = "old")
+    cache$set(key, cached)
+    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".qs")), Sys.time() - 3600)
+
+    calls <- 0L
+    fetched <- list(timestamp = Sys.time(), value = "new")
+    testthat::local_mocked_bindings(
+        read_json_response = function(...) {
+            calls <<- calls + 1L
+            fetched
+        },
+        .package = "epwshiftr"
+    )
+
+    q <- esg_query("https://example.org")
+    expect_identical(priv(q)$query_listing_cached(url, force = FALSE, type = "facet"), fetched)
+    expect_equal(calls, 1L)
+})
+
+test_that("EsgQuery listing cache treats expired offline entries as misses", {
+    dir <- tempfile("epwshiftr-expired-cache-")
+    cache <- DiskCache$new(dir, max_age = 0.1)
+    old_cache <- set_cache(cache)
+    withr::defer({
+        set_cache(old_cache)
+        cache$destroy()
+    })
+    local_cache_mode("offline")
+
+    url <- "https://example.org/esg-search/search?project=CMIP6"
+    key <- get_response_cache_key(url)
+    cache$set(key, list(timestamp = Sys.time() - 3600, value = "old"))
+    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".qs")), Sys.time() - 3600)
+
+    q <- esg_query("https://example.org")
+    expect_error(
+        priv(q)$query_listing_cached(url, force = FALSE, type = "facet"),
+        "Cache miss in offline mode"
+    )
+})
+# }}}
+
 # EsgQuery$project() and other facet methods {{{
 test_that("EsgQuery$project() and other facet methods", {
     q <- esg_query()
