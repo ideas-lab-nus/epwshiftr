@@ -91,7 +91,6 @@ contains dedicated methods to set values for most of them, including:
 \href{#method-EsgQuery-offset}{\code{offset}},
 \href{#method-EsgQuery-limit}{\code{limit}},
 \href{#method-EsgQuery-fields}{\code{fields}},
-\href{#method-EsgQuery-type}{\code{type}},
 \href{#method-EsgQuery-replica}{\code{replica}},
 \href{#method-EsgQuery-latest}{\code{latest}},
 \href{#method-EsgQuery-distrib}{\code{distrib}}
@@ -216,6 +215,15 @@ q
 }
 
 ## ------------------------------------------------
+## Method `EsgQuery$index_node`
+## ------------------------------------------------
+
+\dontrun{
+q$index_node()
+q$index_node("https://esgf.ceda.ac.uk")
+}
+
+## ------------------------------------------------
 ## Method `EsgQuery$list_facets`
 ## ------------------------------------------------
 
@@ -308,6 +316,23 @@ identical(res2$count(), res4$count())
 }
 
 ## ------------------------------------------------
+## Method `EsgQuery$state`
+## ------------------------------------------------
+
+\dontrun{
+q$state()
+q$state(null = TRUE)
+}
+
+## ------------------------------------------------
+## Method `EsgQuery$reset`
+## ------------------------------------------------
+
+\dontrun{
+q$experiment_id("ssp585")$reset()
+}
+
+## ------------------------------------------------
 ## Method `EsgQuery$save`
 ## ------------------------------------------------
 
@@ -342,6 +367,7 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgQuery-new}{\code{EsgQuery$new()}}
+\item \href{#method-EsgQuery-index_node}{\code{EsgQuery$index_node()}}
 \item \href{#method-EsgQuery-list_facets}{\code{EsgQuery$list_facets()}}
 \item \href{#method-EsgQuery-list_fields}{\code{EsgQuery$list_fields()}}
 \item \href{#method-EsgQuery-list_shards}{\code{EsgQuery$list_shards()}}
@@ -363,15 +389,15 @@ Hongyuan Jia
 \item \href{#method-EsgQuery-version_range}{\code{EsgQuery$version_range()}}
 \item \href{#method-EsgQuery-replica}{\code{EsgQuery$replica()}}
 \item \href{#method-EsgQuery-latest}{\code{EsgQuery$latest()}}
-\item \href{#method-EsgQuery-type}{\code{EsgQuery$type()}}
 \item \href{#method-EsgQuery-limit}{\code{EsgQuery$limit()}}
 \item \href{#method-EsgQuery-offset}{\code{EsgQuery$offset()}}
 \item \href{#method-EsgQuery-distrib}{\code{EsgQuery$distrib()}}
-\item \href{#method-EsgQuery-format}{\code{EsgQuery$format()}}
 \item \href{#method-EsgQuery-params}{\code{EsgQuery$params()}}
 \item \href{#method-EsgQuery-url}{\code{EsgQuery$url()}}
 \item \href{#method-EsgQuery-count}{\code{EsgQuery$count()}}
 \item \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}
+\item \href{#method-EsgQuery-state}{\code{EsgQuery$state()}}
+\item \href{#method-EsgQuery-reset}{\code{EsgQuery$reset()}}
 \item \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}
 \item \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}
 \item \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}
@@ -420,6 +446,44 @@ An \code{EsgQuery} object.
 \preformatted{\dontrun{
 q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-index_node"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-index_node}{}}}
+\subsection{Method \code{index_node()}}{
+Get or set the ESGF index node.
+
+\verb{$index_node()} returns the current normalized index node URL.
+\verb{$index_node(value)} updates the index node after applying the same
+normalization used by \href{#method-EsgQuery-new}{\code{EsgQuery$new()}}.
+Existing query parameters are kept unchanged.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$index_node(value)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{value}}{A string giving the new index node URL. If omitted, the
+current index node is returned.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a string.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$index_node()
+q$index_node("https://esgf.ceda.ac.uk")
 }
 }
 \if{html}{\out{</div>}}
@@ -948,29 +1012,6 @@ Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgQuery-type"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgQuery-type}{}}}
-\subsection{Method \code{type()}}{
-Get or set the ESGF search record \code{type} parameter.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$type(value = "Dataset")}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{value}}{One of \code{"Dataset"}, \code{"File"}, or \code{"Aggregation"}. If
-omitted, the current value is returned. Default when setting
-without an explicit value: \code{"Dataset"}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-If \code{value} is supplied, the modified \code{EsgQuery} object.
-Otherwise, a \code{QueryParam} object or \code{NULL}.
-}
-}
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-limit"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-limit}{}}}
 \subsection{Method \code{limit()}}{
@@ -1037,32 +1078,6 @@ Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgQuery-format"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgQuery-format}{}}}
-\subsection{Method \code{format()}}{
-Get or set the response \code{format} parameter.
-
-Only JSON responses are currently supported. Unsupported formats are
-reset to \code{"application/solr+json"} by the parameter store.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$format(value = FORMAT_JSON)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{value}}{A format string or \code{NULL}. If omitted, the current value
-is returned. Default when setting without an explicit value:
-\code{"application/solr+json"}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-If \code{value} is supplied, the modified \code{EsgQuery} object.
-Otherwise, a \code{QueryParam} object or \code{NULL}.
-}
-}
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-params"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-params}{}}}
 \subsection{Method \code{params()}}{
@@ -1070,6 +1085,10 @@ Get or set ad hoc query parameters.
 
 \verb{$params()} handles parameters without dedicated methods and can also
 update supported dedicated parameters by name.
+The \code{type} and \code{format} control parameters cannot be changed here:
+\code{EsgQuery} always performs Dataset queries and always parses JSON
+responses. Use \code{EsgResultDataset$collect()} to collect File or
+Aggregation records from Dataset results.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$params(...)}\if{html}{\out{</div>}}
 }
@@ -1251,6 +1270,70 @@ identical(res2$count(), res3$count())
 # per query
 res4 <- query$collect(all = TRUE, limit = 30)
 identical(res2$count(), res4$count())
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-state"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-state}{}}}
+\subsection{Method \code{state()}}{
+Get the current query state.
+
+\verb{$state()} returns a read-only snapshot containing the current index
+node and the current parameter state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$state(name = NULL, null = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{name}}{A character vector of parameter names to include, or
+\code{NULL} to include all parameters.}
+
+\item{\code{null}}{If \code{TRUE}, include parameters whose current value is
+\code{NULL}. Otherwise, omit unset parameters.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named list with elements \code{index_node} and \code{parameter}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$state()
+q$state(null = TRUE)
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-reset"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-reset}{}}}
+\subsection{Method \code{reset()}}{
+Reset query parameters to their defaults.
+
+\verb{$reset()} clears the current parameter store and restores the default
+query parameters. The current index node is kept unchanged.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$reset()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+The modified \code{EsgQuery} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$experiment_id("ssp585")$reset()
 }
 }
 \if{html}{\out{</div>}}
