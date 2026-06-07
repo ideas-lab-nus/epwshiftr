@@ -35,7 +35,9 @@ navbar:
 reference:
   - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
     contents:
-      - Cmip6Dict
+      - EsgDict
+      - esgdict_option
+      - esgdict_check
 
   - title: ESGF search services
     desc: Start with esg_query() / EsgQuery; esgf_query() is a gently deprecated compatibility wrapper with legacy LLNL host semantics.
@@ -80,7 +82,6 @@ reference:
       - as.POSIXct.SolrDateTime
       - as.character.SolrDateTime
       - as.data.frame.Schema
-      - c.SolrDateTime
       - format.SolrDateTime
       - is.solrdt
       - is_solrdt_end_unbounded
@@ -92,5 +93,4 @@ reference:
       - solrdt_end
       - solrdt_start
       - str.Schema
-      - "[.SolrDateTime"
       - summary.Schema
