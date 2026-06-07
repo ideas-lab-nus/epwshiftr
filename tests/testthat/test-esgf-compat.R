@@ -65,12 +65,15 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
-            expect_null(required_fields)
             expect_false(all)
-            expect_true(limit)
             expect_false(constraints)
 
-            calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params)
+            calls[[length(calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                required_fields = required_fields,
+                limit = limit
+            )
 
             type <- query_param_value(params$flat()$type)
             response <- if (identical(type, "Dataset")) dataset_response else file_response
@@ -112,6 +115,10 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     ))
     expect_named(attr(qf, "response")$response$docs, RES_FILE)
     expect_identical(calls[[2L]]$index_node, "https://esgf.ceda.ac.uk")
+    expect_identical(query_param_value(calls[[2L]]$params$type()), "Dataset")
+    expect_identical(calls[[3L]]$index_node, "https://esgf.ceda.ac.uk")
+    expect_identical(query_param_value(calls[[3L]]$params$type()), "File")
+    expect_setequal(calls[[3L]]$required_fields, EsgResultFile$private_fields$required_fields)
     expect_type(qf$version, "character")
     expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qf, "response")$responseHeader$params$fq)))
 })

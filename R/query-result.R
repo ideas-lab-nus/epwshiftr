@@ -610,6 +610,17 @@ EsgResultDataset <- R6::R6Class(
                 params$latest <- as_query_param("latest", TRUE)
             }
 
+            param_value <- function(name) {
+                param <- params[[name]]
+                if (is.null(param)) {
+                    return(NULL)
+                }
+                if (S7::S7_inherits(param, QueryParam)) {
+                    return(query_param_value(param))
+                }
+                param$value
+            }
+
             # create a new query to validate params
             query <- esg_query(private$index_node)
 
@@ -618,12 +629,10 @@ EsgResultDataset <- R6::R6Class(
 
                 # use query object to validate params
                 fields = query$fields(fields)$fields(),
-                shards = query$shards(if (is.null(params$shards)) NULL else query_param_value(params$shards))$shards(),
-                replica = query$replica(
-                    if (is.null(params$replica)) NULL else query_param_value(params$replica)
-                )$replica(),
-                latest = query$latest(query_param_value(params$latest))$latest(),
-                distrib = query$distrib(query_param_value(params$distrib))$distrib(),
+                shards = query$shards(param_value("shards"))$shards(),
+                replica = query$replica(param_value("replica"))$replica(),
+                latest = query$latest(param_value("latest"))$latest(),
+                distrib = query$distrib(param_value("distrib"))$distrib(),
 
                 limit = limit,
                 type = type,
