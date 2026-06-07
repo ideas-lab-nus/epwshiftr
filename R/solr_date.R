@@ -288,7 +288,7 @@ check_datetime <- function(
     tzone <- attr(x, "tzone", exact = TRUE)
     if (!identical(tzone, tz)) {
         wrong <- if (length(tzone)) as.character(tzone[1L]) else "<Empty>"
-        return(sprintf("Must use 'UTC' timezone, not '%s'", wrong) %|>% label)
+        return(sprintf("Must use 'UTC' timezone, not '%s'", wrong))
     }
 
     TRUE
