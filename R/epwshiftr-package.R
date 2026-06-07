@@ -55,7 +55,7 @@
 # package internal environment
 this <- new.env(parent = emptyenv())
 this$index_db <- NULL
-this$dict <- NULL
+this$dicts <- new.env(parent = emptyenv())
 this$cache <- NULL
 this$data_max_limit <- 10000L
 
