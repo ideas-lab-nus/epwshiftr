@@ -17,9 +17,10 @@ test_that("schema constants expose expected logical paths", {
 
     result_paths <- schema_paths(SCHEMA_RESULT_DATASET)
     expect_true("$parameter" %in% result_paths)
-    expect_true("$response$responseHeader$params" %in% result_paths)
-    expect_true("$response$response$docs" %in% result_paths)
-    expect_true("$response$facet_counts$facet_fields" %in% result_paths)
+    expect_true("$response" %in% result_paths)
+    expect_true("$defs$response_header$params" %in% result_paths)
+    expect_true("$defs$response_body$docs" %in% result_paths)
+    expect_true("$defs$facet_counts$facet_fields" %in% result_paths)
 
     expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_FILE))
     expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_AGGREGATION))
@@ -29,6 +30,34 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$profile" %in% dict_paths)
     expect_true("$payload$any[2]$vocab" %in% dict_paths)
     expect_true("$payload$any[2]$request" %in% dict_paths)
+})
+
+test_that("result schema JSON files use local reusable definitions", {
+    required_defs <- c(
+        "index_node",
+        "parameter",
+        "parameter_facet",
+        "parameter_query",
+        "parameter_control",
+        "parameter_others",
+        "response",
+        "response_header",
+        "response_body",
+        "response_docs",
+        "facet_counts",
+        "timestamp"
+    )
+
+    for (filename in c("result-dataset.json", "result-file.json", "result-aggregation.json")) {
+        schema_file <- test_path("..", "..", "inst", "extdata", "schema", filename)
+        json <- jsonlite::fromJSON(schema_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+
+        expect_named(json$fields, c("index_node", "parameter", "response"))
+        expect_identical(json$fields$index_node$`$ref`, "#/$defs/index_node")
+        expect_identical(json$fields$parameter$`$ref`, "#/$defs/parameter")
+        expect_identical(json$fields$response$`$ref`, "#/$defs/response")
+        expect_true(all(required_defs %in% names(json[["$defs"]])))
+    }
 })
 
 test_that("schema validates saved query JSON fixtures", {

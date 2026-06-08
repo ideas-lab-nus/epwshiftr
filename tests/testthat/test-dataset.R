@@ -554,6 +554,50 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
 
+test_that("EsgDataset reuses partially opened handles when opening", {
+    path_opened <- local_dataset_table_file(
+        time_vals = c(0, 1),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12)
+    )
+    path_pending <- local_dataset_table_file(
+        time_vals = c(2, 3),
+        time_units = "days since 2000-01-03 00:00:00",
+        tas_vals = c(13, 14)
+    )
+    on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
+
+    handle <- RNetCDF::open.nc(path_opened)
+    handle_owner <- TRUE
+    on.exit(
+        if (isTRUE(handle_owner)) {
+            try(RNetCDF::close.nc(handle), silent = TRUE)
+        },
+        add = TRUE
+    )
+
+    ds <- EsgDataset$new(c(path_opened, path_pending), nc_handles = list(handle, NULL))
+    handle_owner <- FALSE
+    on.exit(ds$close(), add = TRUE)
+    private <- ds$.__enclos_env__$private
+
+    expect_false(ds$is_open)
+    expect_false(is.null(private$nc_handles[[1L]]))
+    expect_null(private$nc_handles[[2L]])
+
+    ds$open()
+
+    expect_true(ds$is_open)
+    expect_false(is.null(private$nc_handles[[1L]]))
+    expect_false(is.null(private$nc_handles[[2L]]))
+    expect_equal(as.numeric(ds$var_get("tas", index = 1L)), c(11, 12))
+    expect_equal(as.numeric(ds$var_get("tas", index = 2L)), c(13, 14))
+
+    ds$close()
+    expect_false(ds$is_open)
+    expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
+})
+
 test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),

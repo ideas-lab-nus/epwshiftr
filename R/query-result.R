@@ -252,13 +252,25 @@ EsgResult <- R6::R6Class(
 
         # result_schema {{{
         result_schema = function() {
-            switch(
-                private$result_type,
+            type <- private$result_type
+            if (!is.character(type) || length(type) != 1L || is.na(type)) {
+                cli::cli_abort(
+                    "Cannot select a saved-result schema for an untyped ESGF result. Use {.code esg_result('dataset')}, {.code esg_result('file')} or {.code esg_result('aggregation')}."
+                )
+            }
+
+            schema <- switch(
+                type,
                 Dataset = SCHEMA_RESULT_DATASET,
                 File = SCHEMA_RESULT_FILE,
                 Aggregation = SCHEMA_RESULT_AGGREGATION,
-                SCHEMA_RESULT_DATASET
+                NULL
             )
+            if (is.null(schema)) {
+                cli::cli_abort("Cannot select a saved-result schema for result type {.val {type}}.")
+            }
+
+            schema
         },
         # }}}
 
@@ -414,14 +426,43 @@ EsgResult <- R6::R6Class(
                 }
 
                 value <- value[[index]]
-                if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+                value <- private$format_record_context_value(value)
+                if (is.null(value)) {
                     next
                 }
 
-                return(sprintf(" (%s: %s)", field, as.character(value[[1L]])))
+                return(sprintf(" (%s: %s)", field, value))
             }
 
             ""
+        },
+        # }}}
+
+        # format_record_context_value {{{
+        format_record_context_value = function(value) {
+            if (is.null(value) || !length(value)) {
+                return(NULL)
+            }
+
+            if (is.data.frame(value) || is.list(value)) {
+                value <- unlist(value, recursive = TRUE, use.names = FALSE)
+            }
+            if (!length(value)) {
+                return(NULL)
+            }
+
+            value <- tryCatch(as.character(value), error = function(e) character())
+            value <- value[!is.na(value) & nzchar(value)]
+            if (!length(value)) {
+                return(NULL)
+            }
+
+            value <- value[[1L]]
+            if (nchar(value, type = "width") > 80L) {
+                value <- paste0(substr(value, 1L, 77L), "...")
+            }
+
+            value
         },
         # }}}
 
@@ -1126,23 +1167,69 @@ EsgResultAggregation <- R6::R6Class(
                 urls <- urls[1L]
                 indices <- 1L
             }
+            if (!length(urls)) {
+                cli::cli_abort("No aggregation records are available to open.")
+            }
 
             targets <- urls
+            nc_handles <- vector("list", length(urls))
             opendap_errors <- vector("list", length(urls))
             failed <- rep(FALSE, length(urls))
             missing <- is.na(urls)
+
+            take_dataset_handles <- function(dataset) {
+                private_env <- dataset$.__enclos_env__$private
+                handles <- private_env$nc_handles
+                if (is.null(handles)) {
+                    stop("Opened EsgDataset does not expose transferable NetCDF handles.", call. = FALSE)
+                }
+                private_env$nc_handles <- vector("list", length(handles))
+                private_env$opened <- FALSE
+                handles
+            }
+            close_preopened_handles <- function() {
+                for (j in seq_along(nc_handles)) {
+                    handle <- nc_handles[[j]]
+                    if (is.null(handle)) {
+                        next
+                    }
+
+                    holder <- tryCatch(
+                        EsgDataset$new(targets[[j]], nc_handles = list(handle)),
+                        error = function(e) NULL
+                    )
+                    if (!is.null(holder) && is.function(holder$close)) {
+                        holder$close()
+                    }
+                    nc_handles[j] <<- list(NULL)
+                }
+            }
+            cleanup_preopened <- TRUE
+            on.exit(
+                if (isTRUE(cleanup_preopened)) {
+                    close_preopened_handles()
+                },
+                add = TRUE
+            )
+
             if (length(urls)) {
                 for (j in which(!missing)) {
+                    d <- NULL
                     ok <- tryCatch(
                         {
                             d <- EsgDataset$new(urls[[j]])
                             d$open()
-                            if (is.function(d$close)) {
-                                d$close()
+                            handles <- take_dataset_handles(d)
+                            if (!length(handles) || is.null(handles[[1L]])) {
+                                stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                             }
+                            nc_handles[j] <- handles[1L]
                             TRUE
                         },
                         error = function(e) {
+                            if (!is.null(d) && is.function(d$close)) {
+                                d$close()
+                            }
                             opendap_errors[[j]] <<- e
                             FALSE
                         }
@@ -1214,8 +1301,11 @@ EsgResultAggregation <- R6::R6Class(
                 )
             }
 
-            ds <- EsgDataset$new(targets)
-            ds$open()
+            ds <- EsgDataset$new(targets, nc_handles = nc_handles)
+            cleanup_preopened <- FALSE
+            if (!isTRUE(ds$is_open)) {
+                ds$open()
+            }
             ds
         }
         # }}}

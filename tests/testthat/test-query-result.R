@@ -123,6 +123,19 @@ test_that("loaded ESGF query results validate result type", {
     expect_s3_class(esg_result("file")$load("file.json"), "EsgResultFile")
 })
 
+test_that("base ESGF query results cannot choose a saved-result schema", {
+    result <- new_query_result(
+        EsgResult,
+        index_node = "https://example.org",
+        params = query_result_test_params("Dataset"),
+        result = query_result_test_response(query_result_test_dataset_docs())
+    )
+    file <- tempfile(fileext = ".json")
+    expect_error(result$save(file), "untyped ESGF result")
+    writeLines("{}", file)
+    expect_error(result$load(file), "untyped ESGF result")
+})
+
 test_that("ESGF query results save/load through real JSON files", {
     cases <- list(
         dataset = list(
@@ -334,6 +347,23 @@ test_that("URL helpers preserve result length for missing and malformed URLs", {
     expect_identical(aggs_opendap, opendap)
 })
 
+test_that("URL warning context is robust for nested or missing field values", {
+    docs <- query_result_test_file_docs(c(
+        "https://example.org/dods/file-1.html|application/netcdf|OPENDAP",
+        "https://example.org/dods/file-1-replica.html|application/netcdf|OPENDAP"
+    ))
+    docs$id <- I(list(list(NA_character_, character())))
+    docs$dataset_id <- I(list(c("dataset-1", "extra-context")))
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    expect_warning(
+        opendap <- files$url_opendap,
+        "record 1 \\(dataset_id: dataset-1\\)"
+    )
+    expect_identical(opendap, "https://example.org/dods/file-1")
+})
+
 test_that("open_dataset fallback behavior is explicit before side effects", {
     http_only <- query_result_test_object(
         "File",
@@ -362,21 +392,47 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     calls <- new.env(parent = emptyenv())
     calls$opened <- list()
     calls$downloads <- character()
+    calls$closed <- list()
 
     FakeEsgDataset <- R6::R6Class(
         "FakeEsgDataset",
+        lock_objects = FALSE,
         public = list(
             target = NULL,
-            initialize = function(target) {
+            initialize = function(target, nc_handles = NULL) {
                 self$target <- target
+                private$nc_handles <- if (is.null(nc_handles)) {
+                    vector("list", length(target))
+                } else {
+                    nc_handles
+                }
+                private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
             },
             open = function() {
-                calls$opened[[length(calls$opened) + 1L]] <- self$target
-                if (any(grepl("fail-opendap", self$target))) {
+                missing <- vapply(private$nc_handles, is.null, logical(1L))
+                calls$opened[[length(calls$opened) + 1L]] <- self$target[missing]
+                if (any(grepl("fail-opendap", self$target[missing]))) {
                     stop("remote boom", call. = FALSE)
                 }
+                private$nc_handles[missing] <- as.list(sprintf("handle:%s", self$target[missing]))
+                private$opened <- TRUE
                 self
+            },
+            close = function() {
+                calls$closed[[length(calls$closed) + 1L]] <- private$nc_handles
+                private$nc_handles <- vector("list", length(self$target))
+                private$opened <- FALSE
+                invisible(self)
             }
+        ),
+        active = list(
+            is_open = function() {
+                private$opened
+            }
+        ),
+        private = list(
+            nc_handles = NULL,
+            opened = FALSE
         )
     )
     FakeFileDownloader <- R6::R6Class(
@@ -436,12 +492,16 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     ))
     agg_result <- query_result_test_object("Aggregation", agg_docs, query_result_test_params("Aggregation"))
 
+    opened_before <- length(calls$opened)
     downloads_before <- calls$downloads
     agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
     expect_length(agg_ds$target, 2L)
     expect_identical(agg_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_ds$target[[2L]]))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
+    new_open_calls <- calls$opened[(opened_before + 1L):length(calls$opened)]
+    expect_identical(new_open_calls[[1L]], "https://example.org/dods/file-1.nc")
+    expect_identical(new_open_calls[[2L]], agg_ds$target[[2L]])
 
     agg_fail_docs <- agg_docs
     agg_fail_docs$url <- I(list(
@@ -460,6 +520,9 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_s3_class(err, "error")
     expect_match(conditionMessage(err), "OPeNDAP is not available")
     expect_match(conditionMessage(err$parent), "remote boom")
+    expect_true(any(vapply(calls$closed, function(handles) {
+        identical(handles, list("handle:https://example.org/dods/file-1.nc"))
+    }, logical(1L))))
 
     downloads_before <- calls$downloads
     agg_fail_ds <- expect_s3_class(agg_fail_result$open_dataset(fallback = "auto"), "FakeEsgDataset")

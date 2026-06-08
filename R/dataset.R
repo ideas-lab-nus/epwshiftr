@@ -192,6 +192,9 @@ EsgDataset <- R6::R6Class(
         #'
         #' @param urls A character vector of OPeNDAP URLs. Can be a single URL
         #'        or multiple URLs for a multi-file dataset.
+        #' @param nc_handles Optional list of already opened NetCDF handles for
+        #'        internal result orchestration. Entries may be `NULL`; `$open()`
+        #'        will only open missing handles.
         #'
         #' @return An `EsgDataset` object.
         #'
@@ -203,15 +206,13 @@ EsgDataset <- R6::R6Class(
         #' # Multiple files
         #' ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
         #' }
-        initialize = function(urls) {
+        initialize = function(urls, nc_handles = NULL) {
             checkmate::assert_character(urls, any.missing = FALSE, min.len = 1L)
 
             private$urls <- urls
-            private$opened <- FALSE
             private$metadata_cache <- list()
-
-            # Initialize file handles list
-            private$nc_handles <- vector("list", length(urls))
+            private$nc_handles <- private$normalize_nc_handles(nc_handles, length(urls))
+            private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
 
             self
         },
@@ -811,6 +812,9 @@ EsgDataset <- R6::R6Class(
             tryCatch(
                 {
                     for (i in seq_along(private$urls)) {
+                        if (!is.null(private$nc_handles[[i]])) {
+                            next
+                        }
                         private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
                     }
                     private$opened <- TRUE
@@ -822,6 +826,23 @@ EsgDataset <- R6::R6Class(
             )
 
             invisible(NULL)
+        },
+        # }}}
+
+        # normalize_nc_handles {{{
+        normalize_nc_handles = function(nc_handles, n) {
+            if (is.null(nc_handles)) {
+                return(vector("list", n))
+            }
+
+            if (!is.list(nc_handles)) {
+                stop("`nc_handles` must be a list or NULL.", call. = FALSE)
+            }
+            if (length(nc_handles) != n) {
+                stop("`nc_handles` must have the same length as `urls`.", call. = FALSE)
+            }
+
+            nc_handles
         },
         # }}}
 
