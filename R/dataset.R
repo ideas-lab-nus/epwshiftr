@@ -192,10 +192,6 @@ EsgDataset <- R6::R6Class(
         #'
         #' @param urls A character vector of OPeNDAP URLs. Can be a single URL
         #'        or multiple URLs for a multi-file dataset.
-        #' @param nc_handles Optional list of already opened NetCDF handles for
-        #'        internal result orchestration. Entries may be `NULL`; `$open()`
-        #'        will only open missing handles.
-        #'
         #' @return An `EsgDataset` object.
         #'
         #' @examples
@@ -206,13 +202,13 @@ EsgDataset <- R6::R6Class(
         #' # Multiple files
         #' ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
         #' }
-        initialize = function(urls, nc_handles = NULL) {
+        initialize = function(urls) {
             checkmate::assert_character(urls, any.missing = FALSE, min.len = 1L)
 
             private$urls <- urls
             private$metadata_cache <- list()
-            private$nc_handles <- private$normalize_nc_handles(nc_handles, length(urls))
-            private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
+            private$opened <- FALSE
+            private$nc_handles <- vector("list", length(urls))
 
             self
         },
@@ -829,23 +825,6 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
-        # normalize_nc_handles {{{
-        normalize_nc_handles = function(nc_handles, n) {
-            if (is.null(nc_handles)) {
-                return(vector("list", n))
-            }
-
-            if (!is.list(nc_handles)) {
-                stop("`nc_handles` must be a list or NULL.", call. = FALSE)
-            }
-            if (length(nc_handles) != n) {
-                stop("`nc_handles` must have the same length as `urls`.", call. = FALSE)
-            }
-
-            nc_handles
-        },
-        # }}}
-
         # close_handles {{{
         close_handles = function() {
             for (i in seq_along(private$nc_handles)) {
@@ -1153,4 +1132,59 @@ EsgDataset <- R6::R6Class(
         # }}}
     )
 )
+# }}}
+
+# esg_dataset_private {{{
+esg_dataset_private <- function(dataset) {
+    private <- dataset$.__enclos_env__$private
+    if (is.null(private) || is.null(private$nc_handles) || is.null(private$opened)) {
+        stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
+    }
+
+    private
+}
+# }}}
+
+# esg_dataset_detach_handles {{{
+esg_dataset_detach_handles <- function(dataset) {
+    private <- esg_dataset_private(dataset)
+    handles <- private$nc_handles
+    private$nc_handles <- vector("list", length(handles))
+    private$opened <- FALSE
+    handles
+}
+# }}}
+
+# esg_dataset_adopt_handles {{{
+esg_dataset_adopt_handles <- function(dataset, handles) {
+    checkmate::assert_list(handles)
+
+    private <- esg_dataset_private(dataset)
+    if (length(handles) != length(private$nc_handles)) {
+        stop("`handles` must have the same length as the target dataset.", call. = FALSE)
+    }
+
+    private$nc_handles <- handles
+    private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
+
+    invisible(dataset)
+}
+# }}}
+
+# esg_dataset_close_handles {{{
+esg_dataset_close_handles <- function(urls, handles) {
+    checkmate::assert_character(urls, any.missing = FALSE)
+    checkmate::assert_list(handles)
+    if (length(urls) != length(handles)) {
+        stop("`urls` and `handles` must have the same length.", call. = FALSE)
+    }
+    if (!length(handles) || all(vapply(handles, is.null, logical(1L)))) {
+        return(invisible(NULL))
+    }
+
+    holder <- EsgDataset$new(urls)
+    esg_dataset_adopt_handles(holder, handles)
+    holder$close()
+    invisible(NULL)
+}
 # }}}

@@ -219,6 +219,33 @@ test_that("empty query result fields are stable character vectors", {
     expect_identical(empty_aggregation_without_fields$fields, character())
 })
 
+test_that("to_data_table accepts all advertised fields", {
+    docs <- query_result_test_file_docs(c(
+        "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    expect_identical(names(files$to_data_table()), files$fields)
+    expect_identical(names(files$to_data_table(files$fields)), files$fields)
+    expect_identical(
+        names(files$to_data_table(c("filename", "url_opendap", "url_download"))),
+        c("filename", "url_opendap", "url_download")
+    )
+    expect_identical(files$to_data_table("filename")$filename, "file.nc")
+    expect_identical(files$to_data_table("url_opendap")$url_opendap, "https://example.org/dods/file.nc")
+    expect_identical(files$to_data_table("url_download")$url_download, "https://example.org/file.nc")
+    expect_error(files$to_data_table(character()), "Must have length")
+
+    aggs <- query_result_test_object("Aggregation", docs, query_result_test_params("Aggregation"))
+    expect_identical(names(aggs$to_data_table()), aggs$fields)
+    expect_identical(names(aggs$to_data_table(aggs$fields)), aggs$fields)
+    expect_identical(
+        names(aggs$to_data_table(c("url_opendap", "url_download"))),
+        c("url_opendap", "url_download")
+    )
+})
+
 test_that("empty child query results save/load through real JSON files", {
     empty_file_docs <- query_result_test_file_docs(character())[0L, ]
 
@@ -399,14 +426,10 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         lock_objects = FALSE,
         public = list(
             target = NULL,
-            initialize = function(target, nc_handles = NULL) {
+            initialize = function(target) {
                 self$target <- target
-                private$nc_handles <- if (is.null(nc_handles)) {
-                    vector("list", length(target))
-                } else {
-                    nc_handles
-                }
-                private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
+                private$nc_handles <- vector("list", length(target))
+                private$opened <- FALSE
             },
             open = function() {
                 missing <- vapply(private$nc_handles, is.null, logical(1L))

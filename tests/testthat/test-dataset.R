@@ -554,7 +554,7 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
 
-test_that("EsgDataset reuses partially opened handles when opening", {
+test_that("EsgDataset internal helpers transfer partially opened handles", {
     path_opened <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00",
@@ -567,19 +567,22 @@ test_that("EsgDataset reuses partially opened handles when opening", {
     )
     on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
 
-    handle <- RNetCDF::open.nc(path_opened)
-    handle_owner <- TRUE
-    on.exit(
-        if (isTRUE(handle_owner)) {
-            try(RNetCDF::close.nc(handle), silent = TRUE)
-        },
-        add = TRUE
-    )
+    expect_error(EsgDataset$new(path_opened, nc_handles = list(NULL)), "unused argument")
 
-    ds <- EsgDataset$new(c(path_opened, path_pending), nc_handles = list(handle, NULL))
-    handle_owner <- FALSE
-    on.exit(ds$close(), add = TRUE)
+    source <- EsgDataset$new(path_opened)
+    source$open()
+    handles <- esg_dataset_detach_handles(source)
+    on.exit(esg_dataset_close_handles(path_opened, handles), add = TRUE)
+    source_private <- source$.__enclos_env__$private
+
+    expect_false(source$is_open)
+    expect_true(all(vapply(source_private$nc_handles, is.null, logical(1L))))
+
+    ds <- EsgDataset$new(c(path_opened, path_pending))
+    esg_dataset_adopt_handles(ds, list(handles[[1L]], NULL))
+    handles <- vector("list", length(handles))
     private <- ds$.__enclos_env__$private
+    on.exit(ds$close(), add = TRUE)
 
     expect_false(ds$is_open)
     expect_false(is.null(private$nc_handles[[1L]]))
@@ -596,6 +599,22 @@ test_that("EsgDataset reuses partially opened handles when opening", {
     ds$close()
     expect_false(ds$is_open)
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
+
+    missing_path <- tempfile(fileext = ".nc")
+    if (file.exists(missing_path)) {
+        unlink(missing_path)
+    }
+    failing_source <- EsgDataset$new(path_opened)
+    failing_source$open()
+    failing_handles <- esg_dataset_detach_handles(failing_source)
+    failing <- EsgDataset$new(c(path_opened, missing_path))
+    esg_dataset_adopt_handles(failing, list(failing_handles[[1L]], NULL))
+    failing_handles <- vector("list", length(failing_handles))
+    failing_private <- failing$.__enclos_env__$private
+
+    expect_error(failing$open(), "Failed to open OPeNDAP connection")
+    expect_false(failing$is_open)
+    expect_true(all(vapply(failing_private$nc_handles, is.null, logical(1L))))
 })
 
 test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {

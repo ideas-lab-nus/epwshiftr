@@ -192,7 +192,7 @@ Hongyuan Jia
 \subsection{Method \code{new()}}{
 Create a new EsgDataset object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$new(urls, nc_handles = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$new(urls)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -200,10 +200,6 @@ Create a new EsgDataset object
 \describe{
 \item{\code{urls}}{A character vector of OPeNDAP URLs. Can be a single URL
 or multiple URLs for a multi-file dataset.}
-
-\item{\code{nc_handles}}{Optional list of already opened NetCDF handles for
-internal result orchestration. Entries may be \code{NULL}; \verb{$open()}
-will only open missing handles.}
 }
 \if{html}{\out{</div>}}
 }

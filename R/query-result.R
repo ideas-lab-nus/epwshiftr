@@ -56,40 +56,25 @@ EsgResult <- R6::R6Class(
         #' @return A [data.table][data.table::data.table()].
         #'
         to_data_table = function(fields = NULL, formatted = NULL) {
-            docs <- private$get_docs()
-
             checkmate::assert_character(fields, any.missing = FALSE, unique = TRUE, min.len = 1L, null.ok = TRUE)
-            checkmate::assert_subset(fields, names(docs))
             checkmate::assert_character(formatted, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
 
-            if (length(fields)) {
-                docs <- docs[match(fields, names(docs))]
-            }
-            if (!is.null(formatted)) {
-                for (field in formatted) {
-                    # nocov start
-                    if (is.null(docs[[field]])) {
-                        next
-                    }
-                    # nocov end
-                    docs[[field]] <- self[[field]]
-                }
+            if (is.null(fields)) {
+                fields <- self$fields
+            } else {
+                checkmate::assert_subset(fields, self$fields)
             }
 
-            res <- data.table::setDT(
-                lapply(docs, function(doc) {
-                    if (typeof(doc) == "list") {
-                        len <- lengths(doc)
-                        if (all(len <= 1L)) {
-                            doc[len == 0L] <- list(NA)
-                            doc <- unlst(doc)
-                        }
-                    }
-                    doc
-                })
+            res <- stats::setNames(
+                lapply(fields, function(field) {
+                    private$normalize_output_field(
+                        private$get_output_field(field, formatted = field %in% formatted)
+                    )
+                }),
+                fields
             )
 
-            res
+            data.table::setDT(res)
         },
         # }}}
 
@@ -295,10 +280,6 @@ EsgResult <- R6::R6Class(
         # validate_loaded_result {{{
         validate_loaded_result = function(q) {
             expected <- private$result_type
-            if (is.null(expected)) {
-                return(invisible(q))
-            }
-
             actual <- query_param_value(q$parameter$type())
             if (!identical(actual, expected)) {
                 stop(sprintf(
@@ -411,6 +392,32 @@ EsgResult <- R6::R6Class(
                 },
                 character(1L)
             )
+        },
+        # }}}
+
+        # get_output_field {{{
+        get_output_field = function(field, formatted = FALSE) {
+            docs <- private$get_docs()
+            value <- docs[[field]]
+            if (isTRUE(formatted) || is.null(value)) {
+                return(self[[field]])
+            }
+
+            value
+        },
+        # }}}
+
+        # normalize_output_field {{{
+        normalize_output_field = function(value) {
+            if (typeof(value) == "list") {
+                len <- lengths(value)
+                if (all(len <= 1L)) {
+                    value[len == 0L] <- list(NA)
+                    value <- unlst(value)
+                }
+            }
+
+            value
         },
         # }}}
 
@@ -1177,32 +1184,15 @@ EsgResultAggregation <- R6::R6Class(
             failed <- rep(FALSE, length(urls))
             missing <- is.na(urls)
 
-            take_dataset_handles <- function(dataset) {
-                private_env <- dataset$.__enclos_env__$private
-                handles <- private_env$nc_handles
-                if (is.null(handles)) {
-                    stop("Opened EsgDataset does not expose transferable NetCDF handles.", call. = FALSE)
-                }
-                private_env$nc_handles <- vector("list", length(handles))
-                private_env$opened <- FALSE
-                handles
-            }
             close_preopened_handles <- function() {
-                for (j in seq_along(nc_handles)) {
-                    handle <- nc_handles[[j]]
-                    if (is.null(handle)) {
-                        next
-                    }
-
-                    holder <- tryCatch(
-                        EsgDataset$new(targets[[j]], nc_handles = list(handle)),
-                        error = function(e) NULL
-                    )
-                    if (!is.null(holder) && is.function(holder$close)) {
-                        holder$close()
-                    }
-                    nc_handles[j] <<- list(NULL)
+                open_pos <- which(!vapply(nc_handles, is.null, logical(1L)))
+                if (!length(open_pos)) {
+                    return(invisible(NULL))
                 }
+
+                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                nc_handles[open_pos] <<- vector("list", length(open_pos))
+                invisible(NULL)
             }
             cleanup_preopened <- TRUE
             on.exit(
@@ -1219,7 +1209,7 @@ EsgResultAggregation <- R6::R6Class(
                         {
                             d <- EsgDataset$new(urls[[j]])
                             d$open()
-                            handles <- take_dataset_handles(d)
+                            handles <- esg_dataset_detach_handles(d)
                             if (!length(handles) || is.null(handles[[1L]])) {
                                 stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                             }
@@ -1301,7 +1291,8 @@ EsgResultAggregation <- R6::R6Class(
                 )
             }
 
-            ds <- EsgDataset$new(targets, nc_handles = nc_handles)
+            ds <- EsgDataset$new(targets)
+            esg_dataset_adopt_handles(ds, nc_handles)
             cleanup_preopened <- FALSE
             if (!isTRUE(ds$is_open)) {
                 ds$open()
