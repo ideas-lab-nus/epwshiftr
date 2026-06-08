@@ -338,6 +338,49 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(query_param_value(calls[[2L]]$params$replica()))
 })
 
+test_that("dataset result collect accepts child facets and applies time strategies", {
+    params <- query_result_test_params("Dataset")
+    params$datetime_range(
+        start = "2050-01-01T00:00:00Z",
+        stop = "2080-12-31T23:59:59Z"
+    )
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = "dataset-1", size = 1, check.names = FALSE),
+        params
+    )
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            calls[[length(calls) + 1L]] <<- list(params = params, limit = limit)
+            response <- query_result_test_response(query_result_test_file_docs())
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_s3_class(
+        datasets$collect(fields = "id", limit = 1L, source_id = "AWI-CM-1-1-MR"),
+        "EsgResultFile"
+    )
+    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
+    rendered <- calls[[1L]]$params$render(c("datetime_start", "datetime_stop"))
+    expect_true(any(grepl("datetime_start:.*2080-12-31T23:59:59Z", rendered)))
+    expect_true(any(grepl("datetime_stop:.*2050-01-01T00:00:00Z", rendered)))
+
+    expect_s3_class(datasets$collect(limit = 1L, time = "cover"), "EsgResultFile")
+    rendered <- calls[[2L]]$params$render(c("datetime_start", "datetime_stop"))
+    expect_true(any(grepl("datetime_start:.*2050-01-01T00:00:00Z", rendered)))
+    expect_true(any(grepl("datetime_stop:.*2080-12-31T23:59:59Z", rendered)))
+
+    expect_s3_class(datasets$collect(limit = 1L, time = "all"), "EsgResultFile")
+    expect_identical(calls[[3L]]$params$render(c("datetime_start", "datetime_stop")), character())
+
+    expect_error(datasets$collect(datetime_start = "2050"), "controlled")
+})
+
 test_that("dataset access helpers tolerate missing access fields", {
     datasets <- query_result_test_object("Dataset", query_result_test_dataset_docs(access = FALSE))
     expect_identical(datasets$has_opendap(), c(FALSE, FALSE))
@@ -510,6 +553,38 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     ds <- expect_s3_class(file_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
     expect_true(file.exists(ds$target))
     expect_identical(tail(calls$downloads, 1L), "https://example.org/file.nc")
+    expect_error(file_result$open_dataset(index = 1L), "unused argument")
+
+    multi_file_docs <- data.frame(
+        id = c("file-1", "file-2"),
+        dataset_id = "dataset-1",
+        size = c(1, 2),
+        checksum = c("abc", "def"),
+        checksum_type = "SHA256",
+        tracking_id = c("hdl:21.14100/mock-file-1", "hdl:21.14100/mock-file-2"),
+        title = c("file-1.nc", "file-2.nc"),
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    multi_file_docs$url <- I(list(
+        "https://example.org/dods/file-1.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/dods/file-2.nc.html|application/netcdf|OPENDAP"
+    ))
+    multi_files <- query_result_test_object("File", multi_file_docs, query_result_test_params("File"))
+    opened_before <- length(calls$opened)
+    ds_all <- expect_s3_class(multi_files$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_identical(ds_all$target, c(
+        "https://example.org/dods/file-1.nc",
+        "https://example.org/dods/file-2.nc"
+    ))
+    expect_equal(length(calls$opened) - opened_before, 2L)
+
+    ds_one <- expect_s3_class(
+        multi_files$open_dataset(which = "file-2", aggregate = FALSE, fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(ds_one$target, "https://example.org/dods/file-2.nc")
+    expect_error(multi_files$open_dataset(which = 1:2, aggregate = FALSE), "aggregate = FALSE")
 
     agg_docs <- data.frame(
         id = c("file-1", "file-2"),
@@ -693,8 +768,11 @@ test_that("ESGF Query Result Dataset works", {
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgResultFile")
     expect_length(files$fields, 56L)
 
-    ## $collect(): can stop if unsupported parameters found
-    expect_error(datasets$collect(experiment_id = "ssp585"), "Unsupported")
+    ## $collect(): can specify additional child-result facet filters
+    expect_s3_class(datasets$collect(fields = "id", limit = 1, experiment_id = "ssp585"), "EsgResultFile")
+
+    ## $collect(): can stop if controlled query parameters are supplied through dots
+    expect_error(datasets$collect(datetime_start = "2050"), "controlled")
 
     ## $collect(): can collect aggregation
     expect_s3_class(datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgResultAggregation")

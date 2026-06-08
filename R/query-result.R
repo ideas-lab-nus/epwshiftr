@@ -605,6 +605,93 @@ EsgResult <- R6::R6Class(
 )
 # }}}
 
+# result collection helpers {{{
+query_result_normalize_type <- function(type, choices = c("Dataset", "File", "Aggregation")) {
+    checkmate::assert_string(type)
+    type <- tolower(type)
+    map <- c(dataset = "Dataset", file = "File", aggregation = "Aggregation")
+    if (!type %in% names(map)) {
+        stop(sprintf(
+            "`type` must be one of %s.",
+            paste(sprintf("'%s'", choices), collapse = ", ")
+        ), call. = FALSE)
+    }
+
+    type <- unname(map[[type]])
+    checkmate::assert_choice(type, choices)
+    type
+}
+
+query_result_datetime_range_boundary <- function(param, name) {
+    if (is.null(param)) {
+        return(NULL)
+    }
+    if (!S7::S7_inherits(param, QueryParamDate) || !S7::S7_inherits(param@value, SolrDateRange)) {
+        stop(sprintf(
+            "Cannot apply time = 'overlap' because the parent datetime '%s' constraint is not a standard range.",
+            name
+        ), call. = FALSE)
+    }
+
+    value <- param@value
+    if (identical(name, "datetime_start")) {
+        if (!S7::S7_inherits(value@start, SolrDateUnbounded) || S7::S7_inherits(value@end, SolrDateUnbounded)) {
+            stop("Cannot apply time = 'overlap' because the parent datetime_start constraint is not a single upper boundary.", call. = FALSE)
+        }
+        return(format(value@end, as = "iso"))
+    }
+
+    if (identical(name, "datetime_stop")) {
+        if (S7::S7_inherits(value@start, SolrDateUnbounded) || !S7::S7_inherits(value@end, SolrDateUnbounded)) {
+            stop("Cannot apply time = 'overlap' because the parent datetime_stop constraint is not a single lower boundary.", call. = FALSE)
+        }
+        return(format(value@start, as = "iso"))
+    }
+
+    stop(sprintf("Unknown datetime boundary '%s'.", name), call. = FALSE)
+}
+
+query_result_apply_time <- function(store, time = NULL) {
+    time <- if (is.null(time)) "overlap" else match.arg(time, c("overlap", "cover", "all"))
+
+    if (identical(time, "cover")) {
+        return(store)
+    }
+
+    current <- store$datetime_range()
+    target_start <- query_result_datetime_range_boundary(current$start, "datetime_start")
+    target_stop <- query_result_datetime_range_boundary(current$stop, "datetime_stop")
+
+    store$datetime_range(start = NULL, stop = NULL)
+    if (identical(time, "all")) {
+        return(store)
+    }
+
+    if (!is.null(target_stop)) {
+        store$datetime_range(start = target_stop)
+    }
+    if (!is.null(target_start)) {
+        store$datetime_range(stop = target_start)
+    }
+
+    store
+}
+
+query_result_merge_params <- function(store, params) {
+    if (!length(params)) {
+        return(store)
+    }
+
+    extra <- query_param_as_store(params)$state(null = FALSE)
+    state <- store$state(null = TRUE)
+    for (bucket in names(extra)) {
+        state[[bucket]][names(extra[[bucket]])] <- extra[[bucket]]
+    }
+
+    store$restore(state)
+}
+# }}}
+
 # EsgResultDataset {{{
 #' ESGF Query results for `Dataset` type
 #'
@@ -702,11 +789,19 @@ EsgResultDataset <- R6::R6Class(
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
         #'
-        #' @param ... Other parameters to set. Currently, there are 4 parameters
-        #'        supported, including `replica`, `distrib`, `latest`, `shards`.
-        #'        If omitted, these controls are inherited from the dataset
-        #'        query when available, with `distrib = TRUE` and
-        #'        `latest = TRUE` as fallbacks.
+        #' @param time Time strategy for inherited Dataset temporal
+        #'        constraints. `"overlap"` returns File/Aggregation records
+        #'        overlapping the Dataset query time window, `"cover"` keeps
+        #'        the inherited Dataset time constraints, and `"all"` removes
+        #'        inherited time constraints. Default: `"overlap"`.
+        #'
+        #' @param ... Additional child-result facet filters, plus the control
+        #'        parameters `replica`, `distrib`, `latest`, and `shards`.
+        #'        Query-level parameters such as `datetime_start` and
+        #'        `datetime_stop` are controlled by `time` and cannot be passed
+        #'        through `...`. If control parameters are omitted, they are
+        #'        inherited from the dataset query when available, with
+        #'        `distrib = TRUE` and `latest = TRUE` as fallbacks.
         #'        For details on possible parameters, please see [esg_query()].
         #'
         #' @return
@@ -714,7 +809,9 @@ EsgResultDataset <- R6::R6Class(
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
-        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File",
+                           time = NULL, ...) {
+            type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
             if (!is.null(which)) {
                 if (!self$count()) {
                     stop("Cannot select records from an empty Dataset result.", call. = FALSE)
@@ -738,6 +835,7 @@ EsgResultDataset <- R6::R6Class(
                 fields = fields,
                 limit = limit,
                 type = type,
+                time = time,
                 index = which,
                 ...
             )
@@ -817,8 +915,8 @@ EsgResultDataset <- R6::R6Class(
         ))),
 
         # build_params {{{
-        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
-            checkmate::assert_choice(type, c("File", "Aggregation"))
+        build_params = function(fields = NULL, limit = 100L, type = "File", time = NULL, index = NULL, ...) {
+            type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
             if (is.null(limit)) {
@@ -826,19 +924,66 @@ EsgResultDataset <- R6::R6Class(
             }
 
             overrides <- eval(substitute(alist(...)))
+            extra_params <- list()
             if (length(overrides)) {
-                # other parameters
-                names_supp <- c("replica", "distrib", "latest", "shards")
+                names_reserved <- c(
+                    "dataset_id", "fields", "facets", "type", "format",
+                    "limit", "offset", "query", "_timestamp",
+                    query_param_names("query")
+                )
                 overrides <- eval_with_bang(...)
 
                 # stop if unsupported parameter found
                 names_params <- names(overrides)
-                if (any(invld <- !names_params %in% names_supp)) {
+                checkmate::assert_names(names_params, type = "unique", .var.name = "...")
+                if (any(!nzchar(names_params))) {
+                    stop("All additional query filters in `...` must be named.", call. = FALSE)
+                }
+                if (any(invld <- names_params %in% names_reserved)) {
                     stop(sprintf(
-                        "Unsupported query parameter found: [%s]. Should be subset of [%s].",
-                        names_params[invld],
-                        paste(names_supp, collapse = ", ")
-                    ))
+                        "The following query parameter(s) are controlled by `$collect()` and cannot be set in `...`: [%s].",
+                        paste(sprintf("'%s'", names_params[invld]), collapse = ", ")
+                    ), call. = FALSE)
+                }
+
+                names_ctrl <- c("replica", "distrib", "latest", "shards")
+                extra_params <- overrides[!names_params %in% names_ctrl]
+                names_extra <- names(extra_params)
+                if (length(names_extra)) {
+                    not_found <- setdiff(names_extra, FIELDS_FACETS_ALL)
+                    if (length(not_found)) {
+                        warning(
+                            sprintf(
+                                "The following facet(s) are not listed in the built-in ESGF facet dictionary and will be sent as-is: [%s].",
+                                paste(sprintf("'%s'", not_found), collapse = ", ")
+                            ),
+                            call. = FALSE
+                        )
+                    }
+                }
+                extra_params <- stats::setNames(
+                    lapply(seq_along(extra_params), function(i) {
+                        param <- extra_params[[i]]
+                        if (is.null(param$value)) {
+                            return(NULL)
+                        }
+                        query_param_meta(
+                            QueryParamFacet(
+                                param$value,
+                                negate = isTRUE(param$negate),
+                                encoded = FALSE
+                            ),
+                            name = names(extra_params)[[i]],
+                            kind = "facet"
+                        )
+                    }),
+                    names(extra_params)
+                )
+                extra_params <- extra_params[!vapply(extra_params, is.null, logical(1L))]
+
+                overrides <- overrides[names_params %in% names_ctrl]
+                if (length(overrides) && any(vapply(overrides, function(param) isTRUE(param$negate), logical(1L)))) {
+                    stop("Control parameters in `...` do not support negation.", call. = FALSE)
                 }
             }
 
@@ -871,30 +1016,30 @@ EsgResultDataset <- R6::R6Class(
                 controls$distrib <- TRUE
             }
 
-            # create a new query to validate params
-            query <- esg_query(private$index_node)
-            query$distrib(controls$distrib)
             dataset_id <- if (is.null(index)) self$id else self$id[index]
             if (!length(dataset_id)) {
                 dataset_id <- NULL
             }
 
-            params <- list(
-                dataset_id = dataset_id,
+            # create a new query to validate params
+            query <- esg_query(private$index_node)
+            query$distrib(controls$distrib)
 
-                # use query object to validate params
-                fields = query$fields(fields)$fields(),
-                shards = query$shards(controls$shards)$shards(),
-                replica = query$replica(controls$replica)$replica(),
-                latest = query$latest(controls$latest)$latest(),
-                distrib = query$distrib(),
+            store <- private$parameter$copy()
+            query_result_merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
+            store$fields(query_param_value(query$fields(fields)$fields()))
+            store$shards(query_param_value(query$shards(controls$shards)$shards()))
+            store$replica(query_param_value(query$replica(controls$replica)$replica()))
+            store$latest(query_param_value(query$latest(controls$latest)$latest()))
+            store$distrib(query_param_value(query$distrib()))
+            store$limit(limit)
+            store$offset(0L)
+            store$type(type)
+            store$format(FORMAT_JSON)
+            store$facets(NULL)
+            query_result_apply_time(store, time)
 
-                limit = limit,
-                type = type,
-                format = FORMAT_JSON
-            )
-
-            list(params = query_param_as_store(params), limit = limit)
+            list(params = store, limit = limit)
         }
         # }}}
     )
@@ -963,7 +1108,13 @@ EsgResultFile <- R6::R6Class(
         #' @description
         #' Open a file as an EsgDataset for remote data access via OPeNDAP
         #'
-        #' @param index Integer index of the file to open. Default: `1L`.
+        #' @param which File records to open. Use integer indices or file IDs.
+        #'        If `NULL`, all file records are opened when `aggregate = TRUE`
+        #'        and the first record is opened when `aggregate = FALSE`.
+        #'        Default: `NULL`.
+        #' @param aggregate Whether to open multiple selected files as one
+        #'        aggregated [EsgDataset]. If `FALSE`, exactly one file record
+        #'        must be selected. Default: `TRUE`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default). In a
         #'     non-interactive session this raises an error.
@@ -971,80 +1122,171 @@ EsgResultFile <- R6::R6Class(
         #'   - `"error"`: Raise an error.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(index = 1L, fallback = c("ask", "auto", "error")) {
-            checkmate::assert_int(index, lower = 1L, upper = self$count())
+        open_dataset = function(which = NULL, aggregate = TRUE, fallback = c("ask", "auto", "error")) {
+            checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
-            url <- self$url_opendap[index]
-            opendap_error <- NULL
-            ds <- NULL
+            if (!self$count()) {
+                cli::cli_abort("No file records are available to open.")
+            }
 
-            if (!is.na(url)) {
-                # Try OPeNDAP first
-                ds <- tryCatch(
+            if (is.null(which)) {
+                indices <- if (isTRUE(aggregate)) seq_len(self$count()) else 1L
+            } else if (is.character(which)) {
+                checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
+                checkmate::assert_subset(which, self$id, empty.ok = FALSE)
+                indices <- match(which, self$id)
+            } else {
+                checkmate::assert_integerish(
+                    which,
+                    lower = 1L,
+                    upper = self$count(),
+                    any.missing = FALSE,
+                    min.len = 1L,
+                    unique = TRUE
+                )
+                indices <- as.integer(which)
+            }
+
+            if (!isTRUE(aggregate) && length(indices) != 1L) {
+                cli::cli_abort("`aggregate = FALSE` can only open one file record.")
+            }
+
+            urls <- self$url_opendap[indices]
+            targets <- urls
+            nc_handles <- vector("list", length(urls))
+            opendap_errors <- vector("list", length(urls))
+            failed <- rep(FALSE, length(urls))
+            missing <- is.na(urls)
+
+            close_preopened_handles <- function() {
+                open_pos <- base::which(!vapply(nc_handles, is.null, logical(1L)))
+                if (!length(open_pos)) {
+                    return(invisible(NULL))
+                }
+
+                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                nc_handles[open_pos] <<- vector("list", length(open_pos))
+                invisible(NULL)
+            }
+            cleanup_preopened <- TRUE
+            on.exit(
+                if (isTRUE(cleanup_preopened)) {
+                    close_preopened_handles()
+                },
+                add = TRUE
+            )
+
+            for (j in base::which(!missing)) {
+                d <- NULL
+                ok <- tryCatch(
                     {
-                        d <- EsgDataset$new(url)
+                        d <- EsgDataset$new(urls[[j]])
                         d$open()
-                        d
+                        handles <- esg_dataset_detach_handles(d)
+                        if (!length(handles) || is.null(handles[[1L]])) {
+                            stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
+                        }
+                        nc_handles[j] <- handles[1L]
+                        TRUE
                     },
                     error = function(e) {
-                        opendap_error <<- e
-                        NULL
+                        if (!is.null(d) && is.function(d$close)) {
+                            d$close()
+                        }
+                        opendap_errors[[j]] <<- e
+                        FALSE
                     }
+                )
+                failed[[j]] <- !ok
+            }
+
+            fallback_pos <- base::which(missing | failed)
+            if (length(fallback_pos)) {
+                missing_pos <- base::which(missing)
+                failed_pos <- base::which(failed)
+                if (length(missing_pos)) {
+                    cli::cli_alert_warning(
+                        "OPeNDAP URLs are missing for {private$record_labels(indices[missing_pos])}."
+                    )
+                }
+                if (length(failed_pos)) {
+                    cli::cli_alert_warning(
+                        "OPeNDAP connection failed for {private$record_labels(indices[failed_pos])}."
+                    )
+                }
+
+                opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
+                if (fallback == "error") {
+                    details <- c(
+                        if (length(missing_pos)) {
+                            "x" = "Missing OPeNDAP URL: {private$record_labels(indices[missing_pos])}"
+                        },
+                        if (length(failed_pos)) {
+                            "x" = "Failed OPeNDAP open: {private$record_labels(indices[failed_pos])}"
+                        }
+                    )
+                    cli::cli_abort(
+                        c("OPeNDAP is not available for these file records.", details),
+                        parent = opendap_error
+                    )
+                }
+
+                if (fallback == "ask") {
+                    if (!interactive()) {
+                        cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
+                    } else {
+                        answer <- utils::menu(
+                            choices = c(
+                                sprintf("Download %d file(s) via HTTP", length(fallback_pos)),
+                                "Cancel"
+                            ),
+                            title = "OPeNDAP is not available. What would you like to do?"
+                        )
+                        if (answer != 1L) {
+                            cli::cli_abort("Operation cancelled by user.")
+                        }
+                    }
+                }
+
+                download_urls <- self$url_download[indices[fallback_pos]]
+                if (any(is.na(download_urls))) {
+                    http_missing_pos <- fallback_pos[is.na(download_urls)]
+                    cli::cli_abort(c(
+                        "HTTPServer download URLs are missing for one or more file records.",
+                        "x" = "Missing HTTPServer URL: {private$record_labels(indices[http_missing_pos])}"
+                    ))
+                }
+
+                cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
+                dl <- FileDownloader$new()
+                dt <- self$to_data_table()
+
+                targets[fallback_pos] <- vapply(
+                    seq_along(fallback_pos),
+                    function(k) {
+                        j <- fallback_pos[[k]]
+                        i <- indices[[j]]
+                        file_url <- download_urls[[k]]
+                        checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
+                        checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
+
+                        dl$download(
+                            url = file_url,
+                            checksum = checksum,
+                            checksum_type = checksum_type
+                        )
+                    },
+                    character(1L)
                 )
             }
 
-            if (!is.null(ds)) {
-                return(ds)
+            ds <- EsgDataset$new(targets)
+            esg_dataset_adopt_handles(ds, nc_handles)
+            if (!isTRUE(ds$is_open)) {
+                ds$open()
             }
-
-            # OPeNDAP failed or is unavailable: handle fallback
-            if (is.na(url)) {
-                cli::cli_alert_warning("No OPeNDAP URL is available for file index {index}.")
-            } else {
-                cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
-            }
-
-            if (fallback == "error") {
-                cli::cli_abort("OPeNDAP is not available for this file.", parent = opendap_error)
-            }
-
-            if (fallback == "ask") {
-                if (!interactive()) {
-                    cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
-                } else {
-                    answer <- utils::menu(
-                        choices = c("Download via HTTP", "Cancel"),
-                        title = "OPeNDAP is not available. What would you like to do?"
-                    )
-                    if (answer != 1L) {
-                        cli::cli_abort("Operation cancelled by user.")
-                    }
-                }
-            }
-
-            # Download as fallback
-            file_url <- self$url_download[index]
-            if (is.na(file_url)) {
-                cli::cli_abort("No HTTPServer download URL is available for file index {index}.")
-            }
-
-            cli::cli_alert_info("Downloading file via HTTP as fallback...")
-            dl <- FileDownloader$new()
-
-            # Get file info
-            dt <- self$to_data_table()
-            checksum <- if ("checksum" %in% names(dt)) dt$checksum[index] else NULL
-            checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[index]) else NULL
-
-            local_path <- dl$download(
-                url = file_url,
-                checksum = checksum,
-                checksum_type = checksum_type
-            )
-
-            ds <- EsgDataset$new(local_path)
-            ds$open()
+            cleanup_preopened <- FALSE
             ds
         }
         # }}}

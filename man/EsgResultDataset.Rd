@@ -115,6 +115,7 @@ The following fields are always included in the results:
   all = FALSE,
   limit = 100L,
   type = "File",
+  time = NULL,
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -141,11 +142,19 @@ fetch per query. If \code{NULL}, the allowed maximum limit number
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}
 
-\item{\code{...}}{Other parameters to set. Currently, there are 4 parameters
-supported, including \code{replica}, \code{distrib}, \code{latest}, \code{shards}.
-If omitted, these controls are inherited from the dataset
-query when available, with \code{distrib = TRUE} and
-\code{latest = TRUE} as fallbacks.
+\item{\code{time}}{Time strategy for inherited Dataset temporal
+constraints. \code{"overlap"} returns File/Aggregation records
+overlapping the Dataset query time window, \code{"cover"} keeps
+the inherited Dataset time constraints, and \code{"all"} removes
+inherited time constraints. Default: \code{"overlap"}.}
+
+\item{\code{...}}{Additional child-result facet filters, plus the control
+parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
+Query-level parameters such as \code{datetime_start} and
+\code{datetime_stop} are controlled by \code{time} and cannot be passed
+through \code{...}. If control parameters are omitted, they are
+inherited from the dataset query when available, with
+\code{distrib = TRUE} and \code{latest = TRUE} as fallbacks.
 For details on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.}
 }
 \if{html}{\out{</div>}}

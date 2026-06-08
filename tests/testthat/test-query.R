@@ -665,6 +665,94 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
 # }}}
 
 # EsgQuery$collect() {{{
+test_that("EsgQuery$collect(type=) collects child results through Dataset workflow", {
+    q <- esg_query("https://example.org")$
+        project("CMIP6")$
+        datetime_range(start = "2050-01-01T00:00:00Z", stop = "2080-12-31T23:59:59Z")$
+        limit(3L)
+
+    calls <- list()
+    local_response <- function(docs) {
+        list(
+            responseHeader = list(status = 0L, QTime = 0L, params = stats::setNames(list(), character())),
+            response = list(numFound = nrow(docs), start = 0L, docs = docs, maxScore = 1),
+            facet_counts = list(
+                facet_queries = stats::setNames(list(), character()),
+                facet_fields = stats::setNames(list(), character()),
+                facet_ranges = stats::setNames(list(), character()),
+                facet_intervals = stats::setNames(list(), character()),
+                facet_heatmaps = stats::setNames(list(), character())
+            ),
+            timestamp = Sys.time()
+        )
+    }
+    local_dataset_docs <- data.frame(
+        id = c("dataset-1", "dataset-2"),
+        source_id = c("source-a", "source-b"),
+        experiment_id = c("ssp126", "ssp585"),
+        size = c(1, 2),
+        access = I(list(c("OPENDAP", "HTTPServer"), "HTTPServer")),
+        check.names = FALSE
+    )
+    local_file_docs <- data.frame(
+        id = "file-1",
+        dataset_id = "dataset-1",
+        size = 1,
+        checksum = "abc",
+        checksum_type = "SHA256",
+        tracking_id = "hdl:21.14100/mock-file",
+        title = "file.nc",
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    local_file_docs$url <- I(list(c(
+        "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/file.nc|application/netcdf|HTTPServer"
+    )))
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            calls[[length(calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                required_fields = required_fields,
+                all = all,
+                limit = limit,
+                constraints = constraints
+            )
+
+            type <- query_param_value(params$type())
+            docs <- if (identical(type, "Dataset")) {
+                local_dataset_docs
+            } else {
+                local_file_docs
+            }
+            response <- local_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(
+        q$collect(type = "file", fields = "id", source_id = "AWI-CM-1-1-MR"),
+        "EsgResultFile"
+    )
+    expect_length(calls, 2L)
+    expect_true(calls[[1L]]$all)
+    expect_false(calls[[1L]]$limit)
+    expect_identical(query_param_value(calls[[1L]]$params$type()), "Dataset")
+    expect_false(calls[[2L]]$all)
+    expect_equal(calls[[2L]]$limit, 3L)
+    expect_identical(query_param_value(calls[[2L]]$params$type()), "File")
+    expect_identical(query_param_value(calls[[2L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_identical(files$count(), 1L)
+
+    expect_error(q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"), "Additional query filters")
+    expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
+    expect_error(q$collect(type = "Dataset", time = "all"), "`time`")
+})
+
 test_that("query_collect includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(

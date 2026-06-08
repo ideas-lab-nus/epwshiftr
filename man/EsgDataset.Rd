@@ -148,6 +148,19 @@ dt_all <- ds$read_data_table("tas", rbind = TRUE)
 # Returns the final data.table directly; no Mirai/Future handling required.
 dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 }
+
+## ------------------------------------------------
+## Method `EsgDataset$read_region`
+## ------------------------------------------------
+
+\dontrun{
+dt <- ds$read_region(
+    variable = c("tas", "hurs"),
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2050-01-01", "2050-12-31")
+)
+}
 }
 \author{
 Hongyuan Jia
@@ -182,6 +195,7 @@ Hongyuan Jia
 \item \href{#method-EsgDataset-get_spatial_grid}{\code{EsgDataset$get_spatial_grid()}}
 \item \href{#method-EsgDataset-read_array}{\code{EsgDataset$read_array()}}
 \item \href{#method-EsgDataset-read_data_table}{\code{EsgDataset$read_data_table()}}
+\item \href{#method-EsgDataset-read_region}{\code{EsgDataset$read_region()}}
 \item \href{#method-EsgDataset-print}{\code{EsgDataset$print()}}
 \item \href{#method-EsgDataset-clone}{\code{EsgDataset$clone()}}
 }
@@ -693,6 +707,69 @@ dt <- dt_list[[1]]
 dt_all <- ds$read_data_table("tas", rbind = TRUE)
 # Returns the final data.table directly; no Mirai/Future handling required.
 dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgDataset-read_region"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-read_region}{}}}
+\subsection{Method \code{read_region()}}{
+Read variable values near a target coordinate and optional time range
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_region(
+  variable,
+  lon,
+  lat,
+  time = NULL,
+  nearest = 1L,
+  rbind = TRUE,
+  async = FALSE,
+  timeout = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{variable}}{Character vector of variable names.}
+
+\item{\code{lon}}{Target longitude.}
+
+\item{\code{lat}}{Target latitude.}
+
+\item{\code{time}}{Optional length-2 time range. Character, \code{Date}, and
+\code{POSIXt} inputs are accepted and parsed in UTC.}
+
+\item{\code{nearest}}{Number of nearest grid cells to keep. Default: \code{1L}.}
+
+\item{\code{rbind}}{If \code{TRUE}, return one data.table. If \code{FALSE}, return a
+list of per-file, per-variable data.tables. Default: \code{TRUE}.}
+
+\item{\code{async}}{If \code{TRUE}, offload each NetCDF variable read to a
+one-shot worker. Default: \code{FALSE}.}
+
+\item{\code{timeout}}{Optional positive number of seconds for each async
+read. Only supported when \code{async = TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table or list of data.tables with columns including
+\code{file_index}, \code{variable}, \code{time}, \code{lon}, \code{lat}, \code{dist}, and \code{value}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+dt <- ds$read_region(
+    variable = c("tas", "hurs"),
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2050-01-01", "2050-12-31")
+)
 }
 }
 \if{html}{\out{</div>}}

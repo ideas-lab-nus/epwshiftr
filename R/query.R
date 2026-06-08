@@ -994,9 +994,11 @@ EsgQuery <- R6::R6Class(
         #' @description
         #' Send the actual query and fetch the results
         #'
-        #' `$collect()` sends the actual query with **`type=Dataset`** to the
-        #' ESGF search services and returns the results as an
-        #' [EsgResultDataset] object.
+        #' `$collect()` sends the actual query to the ESGF search services.
+        #' By default it collects **`type=Dataset`** results and returns an
+        #' [EsgResultDataset] object. If `type` is `"File"` or
+        #' `"Aggregation"`, it first collects matching Dataset results and then
+        #' collects child File or Aggregation results for those datasets.
         #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
         #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
@@ -1018,7 +1020,25 @@ EsgQuery <- R6::R6Class(
         #'        the `experiment_id` field will be included in the results when
         #'        `params = TRUE`. Default: `TRUE`.
         #'
-        #' @return An [EsgResultDataset] object.
+        #' @param type Result type to collect. One of `"Dataset"`, `"File"`,
+        #'        or `"Aggregation"`. Default: `"Dataset"`.
+        #'
+        #' @param fields Optional fields used only when `type` is `"File"` or
+        #'        `"Aggregation"`. Dataset fields should be configured with
+        #'        `$fields()` before collecting.
+        #'
+        #' @param time Time strategy used only when `type` is `"File"` or
+        #'        `"Aggregation"`. `"overlap"` converts a Dataset time window
+        #'        into File/Aggregation records overlapping that window,
+        #'        `"cover"` keeps the inherited Dataset time constraints, and
+        #'        `"all"` removes inherited time constraints. Default:
+        #'        `"overlap"` for child results.
+        #'
+        #' @param ... Additional File/Aggregation facet filters used only when
+        #'        `type` is `"File"` or `"Aggregation"`.
+        #'
+        #' @return An [EsgResultDataset], [EsgResultFile], or
+        #' [EsgResultAggregation] object.
         #'
         #' @examples
         #' \dontrun{
@@ -1044,22 +1064,52 @@ EsgQuery <- R6::R6Class(
         #' res4 <- query$collect(all = TRUE, limit = 30)
         #' identical(res2$count(), res4$count())
         #' }
-        collect = function(all = FALSE, limit = TRUE, params = TRUE) {
-            result <- query_collect(
-                private$index_node_url,
-                private$parameter,
-                required_fields = EsgResultDataset$private_fields$required_fields,
+        collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL,
+                           time = NULL, ...) {
+            type <- query_result_normalize_type(type)
+            dots <- eval(substitute(alist(...)))
+
+            collect_dataset <- function(all, limit) {
+                result <- query_collect(
+                    private$index_node_url,
+                    private$parameter,
+                    required_fields = EsgResultDataset$private_fields$required_fields,
+                    all = all,
+                    limit = limit,
+                    constraints = params
+                )
+
+                # replace docs in the last response
+                result$response$response$docs <- result$docs
+                result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
+
+                # create new results
+                new_query_result(EsgResultDataset, private$index_node_url, result_params, result$response)
+            }
+
+            if (identical(type, "Dataset")) {
+                if (length(dots)) {
+                    stop("Additional query filters in `...` are only supported when `type` is 'File' or 'Aggregation'.", call. = FALSE)
+                }
+                if (!is.null(fields)) {
+                    stop("`fields` in `$collect()` is only supported when `type` is 'File' or 'Aggregation'. Use `$fields()` before collecting Dataset results.", call. = FALSE)
+                }
+                if (!is.null(time)) {
+                    stop("`time` in `$collect()` is only supported when `type` is 'File' or 'Aggregation'.", call. = FALSE)
+                }
+                return(collect_dataset(all = all, limit = limit))
+            }
+
+            child_limit <- private$collect_child_limit(limit)
+            datasets <- collect_dataset(all = TRUE, limit = FALSE)
+            datasets$collect(
+                fields = fields,
                 all = all,
-                limit = limit,
-                constraints = params
+                limit = child_limit,
+                type = type,
+                time = time,
+                ...
             )
-
-            # replace docs in the last response
-            result$response$response$docs <- result$docs
-            result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
-
-            # create new results
-            new_query_result(EsgResultDataset, private$index_node_url, result_params, result$response)
         },
         # }}}
 
@@ -1205,6 +1255,26 @@ EsgQuery <- R6::R6Class(
         index_node_url = NULL,
 
         parameter = NULL,
+
+        collect_child_limit = function(limit) {
+            checkmate::assert(
+                checkmate::check_flag(limit),
+                checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
+            )
+
+            if (isTRUE(limit)) {
+                value <- query_param_value(private$parameter$limit())
+                if (is.null(value)) {
+                    value <- 10L
+                }
+                return(as.integer(value))
+            }
+            if (identical(limit, FALSE)) {
+                return(NULL)
+            }
+
+            as.integer(limit)
+        },
 
         validate_query_state = function(parameter) {
             type <- parameter$type()

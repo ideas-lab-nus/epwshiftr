@@ -1211,14 +1211,24 @@ q$count(facets = c("activity_id", "source_id"))
 \subsection{Method \code{collect()}}{
 Send the actual query and fetch the results
 
-\verb{$collect()} sends the actual query with \strong{\code{type=Dataset}} to the
-ESGF search services and returns the results as an
-\link{EsgResultDataset} object.
+\verb{$collect()} sends the actual query to the ESGF search services.
+By default it collects \strong{\code{type=Dataset}} results and returns an
+\link{EsgResultDataset} object. If \code{type} is \code{"File"} or
+\code{"Aggregation"}, it first collects matching Dataset results and then
+collects child File or Aggregation results for those datasets.
 The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
 \verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$collect(all = FALSE, limit = TRUE, params = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$collect(
+  all = FALSE,
+  limit = TRUE,
+  params = TRUE,
+  type = "Dataset",
+  fields = NULL,
+  time = NULL,
+  ...
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -1240,11 +1250,29 @@ constraints explicitly set using \code{EsgQuery$project()},
 returned fields. For example, if you set \verb{$experiment_id("ssp585")},
 the \code{experiment_id} field will be included in the results when
 \code{params = TRUE}. Default: \code{TRUE}.}
+
+\item{\code{type}}{Result type to collect. One of \code{"Dataset"}, \code{"File"},
+or \code{"Aggregation"}. Default: \code{"Dataset"}.}
+
+\item{\code{fields}}{Optional fields used only when \code{type} is \code{"File"} or
+\code{"Aggregation"}. Dataset fields should be configured with
+\verb{$fields()} before collecting.}
+
+\item{\code{time}}{Time strategy used only when \code{type} is \code{"File"} or
+\code{"Aggregation"}. \code{"overlap"} converts a Dataset time window
+into File/Aggregation records overlapping that window,
+\code{"cover"} keeps the inherited Dataset time constraints, and
+\code{"all"} removes inherited time constraints. Default:
+\code{"overlap"} for child results.}
+
+\item{\code{...}}{Additional File/Aggregation facet filters used only when
+\code{type} is \code{"File"} or \code{"Aggregation"}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-An \link{EsgResultDataset} object.
+An \link{EsgResultDataset}, \link{EsgResultFile}, or
+\link{EsgResultAggregation} object.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}

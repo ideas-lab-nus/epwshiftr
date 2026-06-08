@@ -367,6 +367,71 @@ test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like 
     expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
 
+test_that("EsgDataset read_region() reads nearest grid cells and time windows", {
+    path1 <- tempfile(fileext = ".nc")
+    path2 <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path1, 2060L)
+    write_local_cmip6_netcdf_fixture(path2, 2061L)
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    dt <- ds$read_region(
+        variable = "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02", "2060-01-03"),
+        nearest = 2L
+    )
+    expect_s3_class(dt, "data.table")
+    expect_named(dt, c("file_index", "variable", "time", "lon", "lat", "dist", "value"))
+    expect_identical(unique(dt$file_index), 1L)
+    expect_identical(unique(dt$variable), "tas")
+    expect_equal(nrow(dt), 4L)
+    expect_equal(
+        sort(unique(as.Date(dt$time))),
+        as.Date(c("2060-01-02", "2060-01-03"))
+    )
+
+    coords <- data.table::CJ(lat = c(1.0, 2.0, 41.0), lon = c(103.5, 104.0, 104.5, 254.0))
+    coords[, dist := local_tunnel_dist(lat, lon, 1.37, 103.98)]
+    data.table::setorder(coords, dist)
+    expected_coords <- coords[1:2, .(lat, lon)]
+    got_coords <- unique(dt[, .(lat, lon)])
+    data.table::setorder(got_coords, lat, lon)
+    data.table::setorder(expected_coords, lat, lon)
+    expect_equal(got_coords, expected_coords)
+
+    dt_list <- ds$read_region(
+        variable = "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02", "2060-01-03"),
+        nearest = 1L,
+        rbind = FALSE
+    )
+    expect_type(dt_list, "list")
+    expect_length(dt_list, 2L)
+    expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
+
+    dt_neg_lon <- ds$read_region(
+        variable = "tas",
+        lon = -106,
+        lat = 41,
+        time = c("2060-01-01", "2060-01-01"),
+        nearest = 1L
+    )
+    expect_identical(unique(dt_neg_lon$lon), 254)
+    expect_identical(unique(dt_neg_lon$lat), 41)
+
+    expect_error(
+        ds$read_region("hurs", lon = 103.98, lat = 1.37),
+        "None of the requested variable"
+    )
+})
+
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
