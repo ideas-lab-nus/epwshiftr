@@ -221,16 +221,51 @@ S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE, sp
         paste0(name, equal, paste0(res, collapse = paste0(",", spc)))
     }
 }
-S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso") {
+query_param_quote_range_bound <- function(x) {
+    if (!nzchar(x) || identical(x, "*") || grepl('^".*"$', x)) {
+        return(x)
+    }
+
+    sprintf('"%s"', gsub('"', '\\"', x, fixed = TRUE))
+}
+
+query_param_quote_range <- function(x) {
+    vapply(x, function(value) {
+        match <- regexec("^([\\[{])\\s*(.*?)\\s+TO\\s+(.*?)\\s*([\\]}])$", value, perl = TRUE)
+        parts <- regmatches(value, match)[[1L]]
+        if (length(parts) != 5L) {
+            return(query_param_quote_range_bound(value))
+        }
+
+        paste0(
+            parts[[2L]],
+            query_param_quote_range_bound(parts[[3L]]),
+            " TO ",
+            query_param_quote_range_bound(parts[[4L]]),
+            parts[[5L]]
+        )
+    }, character(1L), USE.NAMES = FALSE)
+}
+
+S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso", quote_date = FALSE) {
     checkmate::assert_string(as)
-    paste0(name, ":", format(x@value, as = as))
+    checkmate::assert_flag(quote_date)
+
+    value <- format(x@value, as = as)
+    if (quote_date && !identical(as, "num")) {
+        value <- query_param_quote_range(value)
+    }
+
+    paste0(name, ":", value)
 }
 S7::method(render, QueryParamCtrl) <- function(x, name, ...) {
     value <- x@value
     if (is.logical(value)) {
         res <- tolower(value)
-    } else {
+    } else if (is.numeric(value)) {
         res <- as.character(value)
+    } else {
+        res <- query_param_encode(as.character(value))
     }
     paste0(name, "=", paste0(res, collapse = ","))
 }
@@ -1630,7 +1665,10 @@ QueryParamStore <- R6::R6Class(
         #' # render only selected parameters
         #' q$render(c("project", "limit"))
         #' }
-        render = function(name = NULL) {
+        render = function(name = NULL, quote_date = FALSE, datetime_end_alias = FALSE) {
+            checkmate::assert_flag(quote_date)
+            checkmate::assert_flag(datetime_end_alias)
+
             if (!is.null(name)) {
                 checkmate::assert_character(name, any.missing = FALSE, unique = TRUE)
 
@@ -1671,7 +1709,11 @@ QueryParamStore <- R6::R6Class(
             }
             if (length(bucket_query)) {
                 for (bucket in bucket_query) {
-                    rendered <- c(rendered, private$render_query(names(params[[bucket]])))
+                    rendered <- c(rendered, private$render_query(
+                        names(params[[bucket]]),
+                        quote_date = quote_date,
+                        datetime_end_alias = datetime_end_alias
+                    ))
                 }
             }
 
@@ -2379,7 +2421,10 @@ QueryParamStore <- R6::R6Class(
         # Render free-text query constraints. This helper folds timestamp
         # boundaries into `_timestamp` and normalizes version boundary names so
         # downstream consumers see the final Solr query representation.
-        render_query = function(name = NULL, null = FALSE) {
+        render_query = function(name = NULL, null = FALSE, quote_date = FALSE, datetime_end_alias = FALSE) {
+            checkmate::assert_flag(quote_date)
+            checkmate::assert_flag(datetime_end_alias)
+
             params <- private$subset_params(
                 name = name,
                 bucket = "query",
@@ -2404,7 +2449,15 @@ QueryParamStore <- R6::R6Class(
             rendered <- character(length(params))
             names(rendered) <- names(params)
             for (i in seq_along(params)) {
-                rendered[i] <- query_param_render(params[[i]], names(params)[[i]])
+                name <- names(params)[[i]]
+                rendered[i] <- query_param_render(params[[i]], name, quote_date = quote_date)
+                if (datetime_end_alias && identical(name, "datetime_stop")) {
+                    rendered[i] <- sprintf(
+                        "(%s OR %s)",
+                        rendered[i],
+                        query_param_render(params[[i]], "datetime_end", quote_date = quote_date)
+                    )
+                }
             }
 
             rendered

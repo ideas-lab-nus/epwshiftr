@@ -78,6 +78,43 @@ test_that("QueryParam helpers use typed objects", {
         ),
         fixed = TRUE
     ))
+
+    encoded_url <- esg_query("https://example.org")$
+        nominal_resolution("100 km")$
+        datetime_range(start = "2050", stop = "2080")$
+        url()
+    expect_true(grepl("format=application%2Fsolr%2Bjson", encoded_url, fixed = TRUE))
+    expect_true(grepl("nominal_resolution=100+km,100km", encoded_url, fixed = TRUE))
+    expect_true(grepl(
+        "query=datetime_start%3A%5B%2A%20TO%202050-01-01T00%3A00%3A00Z%5D",
+        encoded_url,
+        fixed = TRUE
+    ))
+    expect_true(grepl(
+        "%20AND%20datetime_stop%3A%5B2080-01-01T00%3A00%3A00Z%20TO%20%2A%5D",
+        encoded_url,
+        fixed = TRUE
+    ))
+
+    bridge_date_url <- esg_query("https://esgf-node.ornl.gov")$
+        datetime_range(start = "2050", stop = "2080")$
+        url()
+    expect_true(grepl(
+        "query=datetime_start%3A%5B%2A%20TO%20%222050-01-01T00%3A00%3A00Z%22%5D",
+        bridge_date_url,
+        fixed = TRUE
+    ))
+    expect_true(grepl(
+        "%20AND%20%28datetime_stop%3A%5B%222080-01-01T00%3A00%3A00Z%22%20TO%20%2A%5D%20OR%20datetime_end%3A%5B%222080-01-01T00%3A00%3A00Z%22%20TO%20%2A%5D%29",
+        bridge_date_url,
+        fixed = TRUE
+    ))
+
+    bridge_url <- query_build(
+        "https://esgf-node.ornl.gov/esgf-1-5-bridge",
+        list(activity_id = as_query_param("activity_id", list(value = "ScenarioMIP", negate = TRUE)))
+    )
+    expect_true(grepl("query=NOT%20%28activity_id%3A%22ScenarioMIP%22%29", bridge_url, fixed = TRUE))
 })
 # }}}
 
@@ -358,28 +395,37 @@ test_that("EsgQuery$datetime_range()", {
 
     # full ISO 8601: start -> datetime_start:[* TO ...]
     q$datetime_range(start = "2017-01-01T00:00:00Z")
-    expect_match(decode_query(q$url()), "datetime_start:[* TO 2017-01-01T00:00:00Z]", fixed = TRUE)
+    expect_match(decode_query(q$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
 
     # full ISO 8601: stop -> datetime_stop:[... TO *]
     q2 <- esg_query()$datetime_range(stop = "2025-01-01T00:00:00Z")
-    expect_match(decode_query(q2$url()), "datetime_stop:[2025-01-01T00:00:00Z TO *]", fixed = TRUE)
+    expect_match(
+        decode_query(q2$url()),
+        '(datetime_stop:["2025-01-01T00:00:00Z" TO *] OR datetime_end:["2025-01-01T00:00:00Z" TO *])',
+        fixed = TRUE
+    )
 
     # simplified date: auto-completed to ISO 8601
     q3 <- esg_query()$datetime_range(start = "2017")
-    expect_match(decode_query(q3$url()), "datetime_start:[* TO 2017-01-01T00:00:00Z]", fixed = TRUE)
+    expect_match(decode_query(q3$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
 
     # Date Math: passed through verbatim
     q4 <- esg_query()$datetime_range(start = "NOW-1YEAR")
-    expect_match(decode_query(q4$url()), "datetime_start:[* TO NOW-1YEAR]", fixed = TRUE)
+    expect_match(decode_query(q4$url()), 'datetime_start:[* TO "NOW-1YEAR"]', fixed = TRUE)
 
     q5 <- esg_query()$datetime_range(stop = "NOW+6MONTHS")
-    expect_match(decode_query(q5$url()), "datetime_stop:[NOW+6MONTHS TO *]", fixed = TRUE)
+    expect_match(
+        decode_query(q5$url()),
+        '(datetime_stop:["NOW+6MONTHS" TO *] OR datetime_end:["NOW+6MONTHS" TO *])',
+        fixed = TRUE
+    )
+    expect_true(grepl("NOW%2B6MONTHS", q5$url(), fixed = TRUE))
 
     # complete Range expression: used directly as the field value
     q6 <- esg_query()$datetime_range(start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]")
     expect_match(
         decode_query(q6$url()),
-        "datetime_start:[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]",
+        'datetime_start:["2017-01-01T00:00:00Z" TO "2020-01-01T00:00:00Z"]',
         fixed = TRUE
     )
 
@@ -389,8 +435,12 @@ test_that("EsgQuery$datetime_range()", {
         stop = "2025-01-01T00:00:00Z"
     )
     query7 <- decode_query(q7$url())
-    expect_match(query7, "datetime_start:[* TO 2017-01-01T00:00:00Z]", fixed = TRUE)
-    expect_match(query7, "datetime_stop:[2025-01-01T00:00:00Z TO *]", fixed = TRUE)
+    expect_match(query7, 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        query7,
+        '(datetime_stop:["2025-01-01T00:00:00Z" TO *] OR datetime_end:["2025-01-01T00:00:00Z" TO *])',
+        fixed = TRUE
+    )
     expect_match(query7, " AND ", fixed = TRUE)
 
     # NULL: clears the parameter
@@ -432,28 +482,28 @@ test_that("EsgQuery$timestamp_range()", {
     )
     expect_match(
         decode_query(q1$url()),
-        "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]",
+        '_timestamp:["2020-01-01T00:00:00Z" TO "2021-01-01T00:00:00Z"]',
         fixed = TRUE
     )
 
     # simplified date: auto-completed, to defaults to *
     q2 <- esg_query()$timestamp_range(from = "2020")
-    expect_match(decode_query(q2$url()), "_timestamp:[2020-01-01T00:00:00Z TO *]", fixed = TRUE)
+    expect_match(decode_query(q2$url()), '_timestamp:["2020-01-01T00:00:00Z" TO *]', fixed = TRUE)
 
     # Date Math
     q3 <- esg_query()$timestamp_range(from = "NOW-1YEAR")
-    expect_match(decode_query(q3$url()), "_timestamp:[NOW-1YEAR TO *]", fixed = TRUE)
+    expect_match(decode_query(q3$url()), '_timestamp:["NOW-1YEAR" TO *]', fixed = TRUE)
 
     # only to
     q4 <- esg_query()$timestamp_range(to = "2021-01-01T00:00:00Z")
-    expect_match(decode_query(q4$url()), "_timestamp:[* TO 2021-01-01T00:00:00Z]", fixed = TRUE)
+    expect_match(decode_query(q4$url()), '_timestamp:[* TO "2021-01-01T00:00:00Z"]', fixed = TRUE)
 
     # update existing lower boundary by setting upper boundary later
     q5 <- esg_query()$timestamp_range(from = "2020")
     q5$timestamp_range(to = "2021")
     expect_match(
         decode_query(q5$url()),
-        "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]",
+        '_timestamp:["2020-01-01T00:00:00Z" TO "2021-01-01T00:00:00Z"]',
         fixed = TRUE
     )
 
@@ -462,7 +512,7 @@ test_that("EsgQuery$timestamp_range()", {
     q6$timestamp_range(to = "2021")
     expect_match(
         decode_query(q6$url()),
-        "_timestamp:[NOW-1YEAR TO 2021-01-01T00:00:00Z]",
+        '_timestamp:["NOW-1YEAR" TO "2021-01-01T00:00:00Z"]',
         fixed = TRUE
     )
 

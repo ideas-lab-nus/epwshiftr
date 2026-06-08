@@ -36,6 +36,11 @@ test_that("QueryParamCtrl", {
         list(value = TRUE)
     )
     expect_equal(render(ctrl, "latest"), "latest=true")
+    expect_equal(render(QueryParamCtrl(1L), "limit"), "limit=1")
+    expect_equal(
+        render(QueryParamCtrl(FORMAT_JSON), "format"),
+        "format=application%2Fsolr%2Bjson"
+    )
 })
 
 test_that("QueryParamDate", {
@@ -46,6 +51,10 @@ test_that("QueryParamDate", {
         list(value = solr_date("[2017-02-03T05:06:07Z+2MONTHS TO *]"))
     )
     expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
+    expect_equal(
+        render(date, "datetime_start", quote_date = TRUE),
+        'datetime_start:["2017-02-03T05:06:07Z+2MONTHS" TO *]'
+    )
 })
 
 test_that("QueryParamStore", {

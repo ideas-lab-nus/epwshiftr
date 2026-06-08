@@ -1328,6 +1328,19 @@ normalize_index_node <- function(index_node, raw = FALSE) {
 # }}}
 
 # query_build {{{
+query_render_free_text <- function(query) {
+    if (!length(query) || !nchar(query)) {
+        return(character())
+    }
+
+    paste0("query=", query_param_encode(query))
+}
+
+query_render_globus_value <- function(value) {
+    value <- as.character(value)
+    ifelse(grepl("*", value, fixed = TRUE), value, query_param_quote_range_bound(value))
+}
+
 query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
     store <- query_param_clone(params)
@@ -1360,15 +1373,20 @@ query_build <- function(index_node, params, type = "search") {
 
     # separate query= params from regular facet params
     query_names <- names(store$state()$query)
-    query_clauses <- if (length(query_names)) store$render(query_names) else character()
+    is_bridge <- is_bridge_index_node(index_node)
+    query_clauses <- if (length(query_names)) {
+        store$render(query_names, quote_date = is_bridge, datetime_end_alias = is_bridge)
+    } else {
+        character()
+    }
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
     params <- params[!names(params) %in% query_names]
 
     is_negate <- vapply(params, function(param) isTRUE(query_param_negate(param)), logical(1L))
     # facet queries without any negated inputs
-    if (!is_bridge_index_node(index_node) || !any(is_negate)) {
+    if (!is_bridge || !any(is_negate)) {
         rendered <- c(vapply(params, query_param_render, FUN.VALUE = ""), if (length(query_clauses)) {
-            paste0("query=", query_param_encode(paste(query_clauses, collapse = " AND ")))
+            query_render_free_text(paste(query_clauses, collapse = " AND "))
         })
         rendered <- rendered[nchar(rendered) > 0L]
         if (!length(rendered)) {
@@ -1387,13 +1405,13 @@ query_build <- function(index_node, params, type = "search") {
         vapply(
             params[is_negate],
             function(param) {
-                value <- query_param_value(param)
+                value <- query_render_globus_value(query_param_value(param))
                 if (length(value) == 1L) {
                     value <- value
                 } else {
                     value <- sprintf("(%s)", paste(value, collapse = " "))
                 }
-                sprintf("%s:(NOT %s)", query_param_name(param), value)
+                sprintf("NOT (%s:%s)", query_param_name(param), value)
             },
             FUN.VALUE = ""
         ),
@@ -1408,7 +1426,7 @@ query_build <- function(index_node, params, type = "search") {
         endpoint,
         "?",
         if (nchar(facets)) paste0(facets, "&"),
-        paste0("query=", query_param_encode(query))
+        query_render_free_text(query)
     )
 }
 # }}}
