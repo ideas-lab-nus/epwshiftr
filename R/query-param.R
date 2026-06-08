@@ -1837,6 +1837,9 @@ QueryParamStore <- R6::R6Class(
         #' }
         restore = function(state) {
             checkmate::assert_list(state, names = "named")
+            if (length(state)) {
+                checkmate::assert_names(names(state), subset.of = PARAM_BUCKETS)
+            }
             # store current state in a temp variable and roll back if restore fails at any point
             original <- self$state(name = NULL, null = TRUE)
 

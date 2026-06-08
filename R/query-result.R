@@ -46,9 +46,9 @@ EsgResult <- R6::R6Class(
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
         #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL`, all fields in the query result
-        #'        will be used. Possible field names can be retrieved using
-        #'        `$fields`. Default: `NULL`.
+        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
+        #'        the query result will be used. Possible field names can be
+        #'        retrieved using `$fields`. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -362,8 +362,9 @@ EsgResult <- R6::R6Class(
             }
 
             vapply(
-                urls,
-                function(dt_url) {
+                seq_along(urls),
+                function(i) {
+                    dt_url <- urls[[i]]
                     # nocov start
                     if (!length(dt_url)) {
                         return(NA_character_)
@@ -376,7 +377,12 @@ EsgResult <- R6::R6Class(
                     }
                     # nocov start
                     if (length(res) > 1L) {
-                        warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
+                        warning(sprintf(
+                            "Multiple %s URLs found for record %d%s. Only the first is returned.",
+                            name,
+                            i,
+                            private$record_context(i)
+                        ))
                         res <- res[[1L]]
                     }
                     # nocov end
@@ -385,6 +391,27 @@ EsgResult <- R6::R6Class(
                 },
                 character(1L)
             )
+        },
+        # }}}
+
+        # record_context {{{
+        record_context = function(index) {
+            docs <- private$get_docs()
+            for (field in c("id", "dataset_id", "instance_id", "title", "filename")) {
+                value <- docs[[field]]
+                if (is.null(value) || length(value) < index) {
+                    next
+                }
+
+                value <- value[[index]]
+                if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+                    next
+                }
+
+                return(sprintf(" (%s: %s)", field, as.character(value[[1L]])))
+            }
+
+            ""
         },
         # }}}
 
@@ -527,8 +554,8 @@ EsgResultDataset <- R6::R6Class(
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
         #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL`, all fields in the query result
-        #'        will be used. Default: `NULL`.
+        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
+        #'        the query result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -822,8 +849,8 @@ EsgResultFile <- R6::R6Class(
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
         #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL`, all fields in the query result
-        #'        will be used. Default: `NULL`.
+        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
+        #'        the query result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -1029,8 +1056,8 @@ EsgResultAggregation <- R6::R6Class(
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
         #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL`, all fields in the query result
-        #'        will be used. Default: `NULL`.
+        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
+        #'        the query result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.

@@ -218,6 +218,7 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
+    expect_error(QueryParamStore$new()$restore(list(project = serialized$facet$project)), "subset")
     expect_setequal(
         q$param_names(role = "result_field"),
         c("project", "activity_id", "table_id")

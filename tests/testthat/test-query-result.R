@@ -15,11 +15,11 @@ query_result_test_response <- function(docs) {
             maxScore = 1
         ),
         facet_counts = list(
-            facet_queries = list(),
-            facet_fields = list(),
-            facet_ranges = list(),
-            facet_intervals = list(),
-            facet_heatmaps = list()
+            facet_queries = stats::setNames(list(), character()),
+            facet_fields = stats::setNames(list(), character()),
+            facet_ranges = stats::setNames(list(), character()),
+            facet_intervals = stats::setNames(list(), character()),
+            facet_heatmaps = stats::setNames(list(), character())
         ),
         timestamp = Sys.time()
     )
@@ -123,6 +123,66 @@ test_that("loaded ESGF query results validate result type", {
     expect_s3_class(esg_result("file")$load("file.json"), "EsgResultFile")
 })
 
+test_that("ESGF query results save/load through real JSON files", {
+    cases <- list(
+        dataset = list(
+            type = "Dataset",
+            docs = query_result_test_dataset_docs()
+        ),
+        file = list(
+            type = "File",
+            docs = query_result_test_file_docs(c(
+                "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+                "https://example.org/file.nc|application/netcdf|HTTPServer"
+            ))
+        ),
+        aggregation = list(
+            type = "Aggregation",
+            docs = query_result_test_file_docs(c(
+                "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+                "https://example.org/file.nc|application/netcdf|HTTPServer"
+            ))
+        )
+    )
+
+    for (case_name in names(cases)) {
+        case <- cases[[case_name]]
+        result <- query_result_test_object(case$type, case$docs, query_result_test_params(case$type))
+        file <- tempfile(fileext = ".json")
+
+        expect_type(result$save(file), "character")
+        json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+        expect_named(json$parameter, c("facet", "query", "control", "others"))
+
+        loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
+        expect_identical(loaded$id, result$id)
+        expect_identical(
+            priv(loaded)$parameter$serialize(null = TRUE),
+            priv(result)$parameter$serialize(null = TRUE)
+        )
+        expect_identical(names(loaded$to_data_table(character())), names(loaded$to_data_table()))
+
+        unlink(file)
+    }
+})
+
+test_that("empty child query results save/load through real JSON files", {
+    empty_file_docs <- query_result_test_file_docs(character())[0L, ]
+
+    for (case_name in c("file", "aggregation")) {
+        type <- switch(case_name, file = "File", aggregation = "Aggregation")
+        result <- query_result_test_object(type, empty_file_docs, query_result_test_params(type))
+        file <- tempfile(fileext = ".json")
+
+        expect_type(result$save(file), "character")
+        loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
+        expect_equal(loaded$count(), 0L)
+        expect_s3_class(loaded$to_data_table(), "data.table")
+
+        unlink(file)
+    }
+})
+
 test_that("empty dataset results collect empty child results without querying", {
     docs <- data.frame(id = character(), size = numeric(), check.names = FALSE)
     datasets <- query_result_test_object("Dataset", docs)
@@ -206,6 +266,7 @@ test_that("URL helpers preserve result length for missing and malformed URLs", {
         "https://example.org/file-3.nc|application/netcdf|HTTPServer",
         c(
             "https://example.org/dods/file-4.html|application/netcdf|OPENDAP",
+            "https://example.org/dods/file-4-replica.html|application/netcdf|OPENDAP",
             "https://example.org/file-4.nc|application/netcdf|HTTPServer"
         )
     ))
@@ -217,12 +278,17 @@ test_that("URL helpers preserve result length for missing and malformed URLs", {
         files$url_download,
         c(NA_character_, NA_character_, "https://example.org/file-3.nc", "https://example.org/file-4.nc")
     )
-    expect_identical(
-        files$url_opendap,
-        c(NA_character_, NA_character_, NA_character_, "https://example.org/dods/file-4")
+    expect_warning(
+        opendap <- files$url_opendap,
+        "record 4 \\(id: file-4\\)"
     )
+    expect_identical(opendap, c(NA_character_, NA_character_, NA_character_, "https://example.org/dods/file-4"))
     expect_identical(aggs$url_download, files$url_download)
-    expect_identical(aggs$url_opendap, files$url_opendap)
+    expect_warning(
+        aggs_opendap <- aggs$url_opendap,
+        "record 4 \\(id: file-4\\)"
+    )
+    expect_identical(aggs_opendap, opendap)
 })
 
 test_that("open_dataset fallback behavior is explicit before side effects", {
@@ -247,6 +313,90 @@ test_that("open_dataset fallback behavior is explicit before side effects", {
         query_result_test_params("Aggregation")
     )
     expect_error(aggs_no_urls$open_dataset(fallback = "auto"), "HTTPServer download URLs")
+})
+
+test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
+    calls <- new.env(parent = emptyenv())
+    calls$opened <- list()
+    calls$downloads <- character()
+
+    FakeEsgDataset <- R6::R6Class(
+        "FakeEsgDataset",
+        public = list(
+            target = NULL,
+            initialize = function(target) {
+                self$target <- target
+            },
+            open = function() {
+                calls$opened[[length(calls$opened) + 1L]] <- self$target
+                if (any(grepl("fail-opendap", self$target))) {
+                    stop("remote boom", call. = FALSE)
+                }
+                self
+            }
+        )
+    )
+    FakeFileDownloader <- R6::R6Class(
+        "FakeFileDownloader",
+        public = list(
+            download = function(url, ...) {
+                calls$downloads <- c(calls$downloads, url)
+                local_path <- tempfile(fileext = ".nc")
+                writeLines("netcdf", local_path)
+                local_path
+            }
+        )
+    )
+
+    testthat::local_mocked_bindings(
+        EsgDataset = FakeEsgDataset,
+        FileDownloader = FakeFileDownloader,
+        .package = "epwshiftr"
+    )
+
+    file_result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(c(
+            "https://example.org/fail-opendap.nc.html|application/netcdf|OPENDAP",
+            "https://example.org/file.nc|application/netcdf|HTTPServer"
+        )),
+        query_result_test_params("File")
+    )
+
+    err <- tryCatch(file_result$open_dataset(fallback = "error"), error = function(e) e)
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "OPeNDAP is not available")
+    expect_match(conditionMessage(err$parent), "remote boom")
+    expect_error(file_result$open_dataset(fallback = "ask"), "non-interactive")
+
+    ds <- expect_s3_class(file_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_true(file.exists(ds$target))
+    expect_identical(tail(calls$downloads, 1L), "https://example.org/file.nc")
+
+    agg_docs <- data.frame(
+        id = c("file-1", "file-2"),
+        dataset_id = "dataset-1",
+        size = c(1, 2),
+        checksum = c("abc", "def"),
+        checksum_type = "SHA256",
+        tracking_id = c("hdl:21.14100/mock-file-1", "hdl:21.14100/mock-file-2"),
+        title = c("file-1.nc", "file-2.nc"),
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    agg_docs$url <- I(list(
+        c(
+            "https://example.org/dods/file-1.nc.html|application/netcdf|OPENDAP",
+            "https://example.org/file-1.nc|application/netcdf|HTTPServer"
+        ),
+        "https://example.org/file-2.nc|application/netcdf|HTTPServer"
+    ))
+    agg_result <- query_result_test_object("Aggregation", agg_docs, query_result_test_params("Aggregation"))
+
+    agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_length(agg_ds$target, 2L)
+    expect_true(all(file.exists(agg_ds$target)))
+    expect_true(all(c("https://example.org/file-1.nc", "https://example.org/file-2.nc") %in% calls$downloads))
 })
 
 test_that("ESGF Query Result Dataset works", {

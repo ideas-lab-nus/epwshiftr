@@ -694,6 +694,53 @@ test_that("EsgQuery$collect()", {
 })
 # }}}
 
+# EsgQuery local save/load round-trip {{{
+test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
+    q <- EsgQuery$new("https://example.org")$activity_id("ScenarioMIP")$experiment_id("ssp585")$variable_id("tas")$limit(
+        2L
+    )$datetime_range(start = "2017")$timestamp_range(from = "NOW-1YEAR", to = "2021")$version_range(
+        min = "2020",
+        max = "2021"
+    )$params(table_id = c("Amon", "day"))
+
+    file <- tempfile(fileext = ".json")
+    expect_type(q$save(file), "character")
+    q_loaded <- expect_s3_class(esg_query()$load(file), "EsgQuery")
+    expect_identical(
+        priv(q_loaded)$parameter$serialize(null = TRUE),
+        priv(q)$parameter$serialize(null = TRUE)
+    )
+
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_named(json$parameter, c("facet", "query", "control", "others"))
+
+    invalid_type <- json
+    invalid_type$parameter$control$type$value <- "File"
+    invalid_type_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(invalid_type, invalid_type_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(invalid_type_file), "Dataset queries")
+
+    invalid_format <- json
+    invalid_format$parameter$control$format$value <- "application/xml"
+    invalid_format_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(invalid_format, invalid_format_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(invalid_format_file), "JSON response format")
+
+    flat_parameter <- json
+    flat_parameter$parameter <- c(
+        json$parameter$facet,
+        json$parameter$query,
+        json$parameter$control,
+        json$parameter$others
+    )
+    flat_parameter_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(flat_parameter, flat_parameter_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(flat_parameter_file), "subset")
+
+    unlink(c(file, invalid_type_file, invalid_format_file, flat_parameter_file))
+})
+# }}}
+
 # EsgQuery$save() & EsgQuery$load() {{{
 test_that("EsgQuery$save() & EsgQuery$load()", {
     skip_on_cran()

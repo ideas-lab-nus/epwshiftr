@@ -47,6 +47,7 @@ files.}
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
@@ -63,8 +64,8 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+the \code{data.table}. If \code{NULL} or \code{character(0)}, all fields in
+the query result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
@@ -116,9 +117,10 @@ If \code{FALSE}, open only the first file.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{
-\item \code{"ask"}: Interactively ask the user (default)
-\item \code{"auto"}: Automatically download files
-\item \code{"error"}: Raise an error
+\item \code{"ask"}: Interactively ask the user (default). In a
+non-interactive session this raises an error.
+\item \code{"auto"}: Automatically download files via HTTPServer.
+\item \code{"error"}: Raise an error.
 }}
 }
 \if{html}{\out{</div>}}

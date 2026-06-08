@@ -36,6 +36,7 @@ Hongyuan Jia
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
@@ -52,8 +53,8 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+the \code{data.table}. If \code{NULL} or \code{character(0)}, all fields in
+the query result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
@@ -123,7 +124,9 @@ The following fields are always included in the results:
 \describe{
 \item{\code{which}}{A character vector giving the value of dataset ID or an
 integer vector giving the indices of the dataset. If \code{NULL},
-all datasets will be sent. Default: \code{NULL}.}
+all datasets will be sent. Empty dataset results return empty
+child results without sending another ESGF query. Default:
+\code{NULL}.}
 
 \item{\code{fields}}{A character vector indicating the value of \code{fields}
 parameter when sending the query. If \code{NULL}, all available
@@ -140,6 +143,9 @@ fetch per query. If \code{NULL}, the allowed maximum limit number
 
 \item{\code{...}}{Other parameters to set. Currently, there are 4 parameters
 supported, including \code{replica}, \code{distrib}, \code{latest}, \code{shards}.
+If omitted, these controls are inherited from the dataset
+query when available, with \code{distrib = TRUE} and
+\code{latest = TRUE} as fallbacks.
 For details on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.}
 }
 \if{html}{\out{</div>}}

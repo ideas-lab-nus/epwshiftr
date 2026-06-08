@@ -44,6 +44,7 @@ file sizes.}
 \itemize{
 \item \href{#method-EsgResult-new}{\code{EsgResult$new()}}
 \item \href{#method-EsgResult-to_data_table}{\code{EsgResult$to_data_table()}}
+\item \href{#method-EsgResult-to_dt}{\code{EsgResult$to_dt()}}
 \item \href{#method-EsgResult-count}{\code{EsgResult$count()}}
 \item \href{#method-EsgResult-save}{\code{EsgResult$save()}}
 \item \href{#method-EsgResult-load}{\code{EsgResult$load()}}
@@ -89,12 +90,32 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Possible field names can be retrieved using
-\verb{$fields}. Default: \code{NULL}.}
+the \code{data.table}. If \code{NULL} or \code{character(0)}, all fields in
+the query result will be used. Possible field names can be
+retrieved using \verb{$fields}. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-to_dt"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-to_dt}{}}}
+\subsection{Method \code{to_dt()}}{
+Alias of \verb{$to_data_table()}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$to_dt(...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{Arguments passed to \verb{$to_data_table()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -151,7 +172,9 @@ Restore the result state from an JSON file
 
 \verb{$load()} reads data of an \code{EsgResult} object from a JSON file
 created using
-\href{#method-EsgResult-save}{\code{EsgResult$save()}}.
+\href{#method-EsgResult-save}{\code{EsgResult$save()}}. Saved
+result fields are restored as read-only active bindings. A saved
+file can only be loaded by the matching result type.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResult$load(file)}\if{html}{\out{</div>}}
 }

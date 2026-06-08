@@ -1546,6 +1546,17 @@ query_load <- function(file, schema = NULL) {
     # have to set simplifyMatrix to FALSE
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
+    if (
+        length(json$response) &&
+            length(json$response$response) &&
+            "docs" %in% names(json$response$response) &&
+            is.list(json$response$response$docs) &&
+            !inherits(json$response$response$docs, "data.frame") &&
+            !length(json$response$response$docs)
+    ) {
+        json$response$response$docs <- data.frame()
+    }
+
     if (!is.null(schema)) {
         schema_validate(schema, json, mode = "assert", name = file)
     }
