@@ -160,10 +160,50 @@ test_that("ESGF query results save/load through real JSON files", {
             priv(loaded)$parameter$serialize(null = TRUE),
             priv(result)$parameter$serialize(null = TRUE)
         )
-        expect_identical(names(loaded$to_data_table(character())), names(loaded$to_data_table()))
+        expect_identical(names(loaded$to_data_table()), names(result$to_data_table()))
+        expect_error(loaded$to_data_table(character()), "Must have length")
 
         unlink(file)
     }
+})
+
+test_that("empty query result fields are stable character vectors", {
+    empty_dataset <- query_result_test_object(
+        "Dataset",
+        data.frame(check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+    expect_identical(empty_dataset$fields, character())
+
+    empty_file_with_fields <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(character())[0L, ],
+        query_result_test_params("File")
+    )
+    expect_true(is.character(empty_file_with_fields$fields))
+    expect_true(all(c("filename", "url_opendap", "url_download") %in% empty_file_with_fields$fields))
+
+    empty_file_without_fields <- query_result_test_object(
+        "File",
+        data.frame(check.names = FALSE),
+        query_result_test_params("File")
+    )
+    expect_identical(empty_file_without_fields$fields, character())
+
+    empty_aggregation_with_fields <- query_result_test_object(
+        "Aggregation",
+        query_result_test_file_docs(character())[0L, ],
+        query_result_test_params("Aggregation")
+    )
+    expect_true(is.character(empty_aggregation_with_fields$fields))
+    expect_true(all(c("url_opendap", "url_download") %in% empty_aggregation_with_fields$fields))
+
+    empty_aggregation_without_fields <- query_result_test_object(
+        "Aggregation",
+        data.frame(check.names = FALSE),
+        query_result_test_params("Aggregation")
+    )
+    expect_identical(empty_aggregation_without_fields$fields, character())
 })
 
 test_that("empty child query results save/load through real JSON files", {
@@ -177,6 +217,7 @@ test_that("empty child query results save/load through real JSON files", {
         expect_type(result$save(file), "character")
         loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
         expect_equal(loaded$count(), 0L)
+        expect_identical(loaded$fields, character())
         expect_s3_class(loaded$to_data_table(), "data.table")
 
         unlink(file)
@@ -194,10 +235,12 @@ test_that("empty dataset results collect empty child results without querying", 
 
     files <- expect_s3_class(datasets$collect(type = "File"), "EsgResultFile")
     expect_equal(files$count(), 0L)
+    expect_identical(files$fields, character())
     expect_identical(query_param_value(priv(files)$parameter$type()), "File")
 
     aggs <- expect_s3_class(datasets$collect(type = "Aggregation"), "EsgResultAggregation")
     expect_equal(aggs$count(), 0L)
+    expect_identical(aggs$fields, character())
     expect_identical(query_param_value(priv(aggs)$parameter$type()), "Aggregation")
 })
 
@@ -393,10 +436,36 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     ))
     agg_result <- query_result_test_object("Aggregation", agg_docs, query_result_test_params("Aggregation"))
 
+    downloads_before <- calls$downloads
     agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
     expect_length(agg_ds$target, 2L)
-    expect_true(all(file.exists(agg_ds$target)))
-    expect_true(all(c("https://example.org/file-1.nc", "https://example.org/file-2.nc") %in% calls$downloads))
+    expect_identical(agg_ds$target[[1L]], "https://example.org/dods/file-1.nc")
+    expect_true(file.exists(agg_ds$target[[2L]]))
+    expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
+
+    agg_fail_docs <- agg_docs
+    agg_fail_docs$url <- I(list(
+        c(
+            "https://example.org/dods/file-1.nc.html|application/netcdf|OPENDAP",
+            "https://example.org/file-1.nc|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://example.org/fail-opendap-file-2.nc.html|application/netcdf|OPENDAP",
+            "https://example.org/file-2.nc|application/netcdf|HTTPServer"
+        )
+    ))
+    agg_fail_result <- query_result_test_object("Aggregation", agg_fail_docs, query_result_test_params("Aggregation"))
+
+    err <- tryCatch(agg_fail_result$open_dataset(fallback = "error"), error = function(e) e)
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "OPeNDAP is not available")
+    expect_match(conditionMessage(err$parent), "remote boom")
+
+    downloads_before <- calls$downloads
+    agg_fail_ds <- expect_s3_class(agg_fail_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_identical(agg_fail_ds$target[[1L]], "https://example.org/dods/file-1.nc")
+    expect_true(file.exists(agg_fail_ds$target[[2L]]))
+    expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
 })
 
 test_that("ESGF Query Result Dataset works", {

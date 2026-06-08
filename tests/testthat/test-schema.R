@@ -2,6 +2,8 @@ test_that("schema constants are standalone SchemaDoc objects", {
     expect_true(S7::S7_inherits(SCHEMA_QUERY, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESPONSE, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESULT_DATASET, SchemaDoc))
+    expect_true(S7::S7_inherits(SCHEMA_RESULT_FILE, SchemaDoc))
+    expect_true(S7::S7_inherits(SCHEMA_RESULT_AGGREGATION, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_ESG_DICT, SchemaDoc))
 })
 
@@ -18,6 +20,9 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$response$responseHeader$params" %in% result_paths)
     expect_true("$response$response$docs" %in% result_paths)
     expect_true("$response$facet_counts$facet_fields" %in% result_paths)
+
+    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_FILE))
+    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_AGGREGATION))
 
     dict_paths <- schema_paths(SCHEMA_ESG_DICT)
     expect_true("$project" %in% dict_paths)
@@ -40,16 +45,120 @@ test_that("schema validates saved query JSON fixtures", {
     expect_error(esg_query()$load(bad_file))
 })
 
-test_that("schema validates saved dataset result JSON fixtures", {
+schema_test_response <- function(docs) {
+    list(
+        responseHeader = list(
+            status = 0L,
+            QTime = 0L,
+            params = stats::setNames(list(), character())
+        ),
+        response = list(
+            numFound = nrow(docs),
+            start = 0L,
+            docs = docs,
+            maxScore = 1
+        ),
+        facet_counts = list(
+            facet_queries = stats::setNames(list(), character()),
+            facet_fields = stats::setNames(list(), character()),
+            facet_ranges = stats::setNames(list(), character()),
+            facet_intervals = stats::setNames(list(), character()),
+            facet_heatmaps = stats::setNames(list(), character())
+        ),
+        timestamp = format.POSIXct(
+            Sys.time(),
+            digits = 6,
+            tz = "UTC",
+            format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
+        )
+    )
+}
+
+schema_test_result_json <- function(type, docs) {
+    list(
+        index_node = "https://example.org",
+        parameter = query_param_as_store(list(type = type, format = FORMAT_JSON))$serialize(null = TRUE),
+        response = schema_test_response(docs)
+    )
+}
+
+schema_test_dataset_docs <- function() {
+    data.frame(
+        id = "dataset-1",
+        size = 1,
+        source_id = "source-a",
+        check.names = FALSE
+    )
+}
+
+schema_test_file_docs <- function() {
+    docs <- data.frame(
+        id = "file-1",
+        dataset_id = "dataset-1",
+        size = 1,
+        checksum = "abc",
+        checksum_type = "SHA256",
+        tracking_id = "hdl:21.14100/mock-file",
+        title = "file.nc",
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    docs$url <- I(list(c(
+        "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/file.nc|application/netcdf|HTTPServer"
+    )))
+    docs
+}
+
+test_that("schema validates saved query result JSON fixtures", {
     result_file <- test_path("_snaps", "query-result", "dataset.json")
-    result_json <- jsonlite::fromJSON(result_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    dataset_json <- jsonlite::fromJSON(result_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    file_json <- schema_test_result_json("File", schema_test_file_docs())
+    aggregation_json <- schema_test_result_json("Aggregation", schema_test_file_docs())
 
-    expect_true(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = result_file))
+    expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_json, mode = "test", name = result_file))
+    expect_true(schema_validate(SCHEMA_RESULT_FILE, file_json, mode = "test", name = "file-result"))
+    expect_true(schema_validate(SCHEMA_RESULT_AGGREGATION, aggregation_json, mode = "test", name = "aggregation-result"))
 
-    result_json$response$response$docs$not_a_solr_field <- seq_len(nrow(result_json$response$response$docs))
-    expect_false(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = "bad-result"))
+    expect_false(schema_validate(SCHEMA_RESULT_DATASET, file_json, mode = "test", name = "file-as-dataset"))
+    expect_false(schema_validate(SCHEMA_RESULT_FILE, aggregation_json, mode = "test", name = "aggregation-as-file"))
+
+    dataset_json$response$response$docs$not_a_solr_field <- seq_len(nrow(dataset_json$response$response$docs))
+    expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_json, mode = "test", name = "bad-result"))
+
+    file_missing_required <- file_json
+    file_missing_required$response$response$docs$dataset_id <- NULL
+    expect_false(schema_validate(SCHEMA_RESULT_FILE, file_missing_required, mode = "test", name = "bad-file-result"))
+
+    aggregation_missing_required <- aggregation_json
+    aggregation_missing_required$response$response$docs$title <- NULL
+    expect_false(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_missing_required,
+        mode = "test",
+        name = "bad-aggregation-result"
+    ))
+
+    empty_file_json <- schema_test_result_json("File", schema_test_file_docs()[0L, ])
+    empty_file_json$response$response$docs <- data.frame()
+    expect_true(schema_validate(SCHEMA_RESULT_FILE, empty_file_json, mode = "test", name = "empty-file-result"))
 
     bad_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_result("file")$load(bad_file))
+
+    bad_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(dataset_json, bad_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_result()$load(bad_file))
+})
+
+test_that("dataset result schema validates local minimal results", {
+    result_json <- schema_test_result_json("Dataset", schema_test_dataset_docs())
+
+    expect_true(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = "local-dataset-result"))
+
+    bad_file <- tempfile(fileext = ".json")
+    result_json$response$response$docs$not_a_solr_field <- seq_len(nrow(result_json$response$response$docs))
     jsonlite::write_json(result_json, bad_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_result()$load(bad_file))
 })

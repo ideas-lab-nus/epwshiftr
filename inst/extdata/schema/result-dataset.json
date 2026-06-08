@@ -4,7 +4,11 @@
   },
   "keys": {
     "type": "named",
-    "must.include": ["index_node", "parameter", "response"]
+    "must.include": [
+      "index_node",
+      "parameter",
+      "response"
+    ]
   },
   "fields": {
     "index_node": {
@@ -18,7 +22,12 @@
       },
       "keys": {
         "type": "named",
-        "subset.of": ["facet", "query", "control", "others"]
+        "subset.of": [
+          "facet",
+          "query",
+          "control",
+          "others"
+        ]
       },
       "fields": {
         "facet": {
@@ -38,7 +47,12 @@
                 },
                 "keys": {
                   "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
+                  "subset.of": [
+                    "kind",
+                    "value",
+                    "negate",
+                    "encoded"
+                  ],
                   "must.include": "value"
                 },
                 "fields": {
@@ -112,7 +126,12 @@
                 },
                 "keys": {
                   "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
+                  "subset.of": [
+                    "kind",
+                    "value",
+                    "negate",
+                    "encoded"
+                  ],
                   "must.include": "value"
                 },
                 "fields": {
@@ -186,7 +205,12 @@
                 },
                 "keys": {
                   "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
+                  "subset.of": [
+                    "kind",
+                    "value",
+                    "negate",
+                    "encoded"
+                  ],
                   "must.include": "value"
                 },
                 "fields": {
@@ -241,6 +265,52 @@
                 }
               }
             ]
+          },
+          "keys": {
+            "type": "named",
+            "must.include": "type"
+          },
+          "fields": {
+            "type": {
+              "check": {
+                "kind": "list"
+              },
+              "keys": {
+                "type": "named",
+                "subset.of": [
+                  "kind",
+                  "value",
+                  "negate",
+                  "encoded"
+                ],
+                "must.include": "value"
+              },
+              "fields": {
+                "kind": {
+                  "check": {
+                    "kind": "string"
+                  }
+                },
+                "value": {
+                  "check": {
+                    "kind": "choice",
+                    "choices": [
+                      "Dataset"
+                    ]
+                  }
+                },
+                "negate": {
+                  "check": {
+                    "kind": "flag"
+                  }
+                },
+                "encoded": {
+                  "check": {
+                    "kind": "flag"
+                  }
+                }
+              }
+            }
           }
         },
         "others": {
@@ -260,7 +330,12 @@
                 },
                 "keys": {
                   "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
+                  "subset.of": [
+                    "kind",
+                    "value",
+                    "negate",
+                    "encoded"
+                  ],
                   "must.include": "value"
                 },
                 "fields": {
@@ -325,7 +400,12 @@
       },
       "keys": {
         "type": "named",
-        "must.include": ["responseHeader", "response", "facet_counts", "timestamp"]
+        "must.include": [
+          "responseHeader",
+          "response",
+          "facet_counts",
+          "timestamp"
+        ]
       },
       "fields": {
         "responseHeader": {
@@ -334,7 +414,11 @@
           },
           "keys": {
             "type": "named",
-            "must.include": ["status", "QTime", "params"]
+            "must.include": [
+              "status",
+              "QTime",
+              "params"
+            ]
           },
           "fields": {
             "params": {
@@ -1167,7 +1251,10 @@
           },
           "groups": [
             {
-              "names": ["status", "QTime"],
+              "names": [
+                "status",
+                "QTime"
+              ],
               "check": {
                 "kind": "int"
               }
@@ -1180,7 +1267,12 @@
           },
           "keys": {
             "type": "named",
-            "must.include": ["numFound", "start", "docs", "maxScore"]
+            "must.include": [
+              "numFound",
+              "start",
+              "docs",
+              "maxScore"
+            ]
           },
           "fields": {
             "docs": {
@@ -1189,7 +1281,155 @@
               },
               "keys": {
                 "type": "named",
-                "subset.of": ["_timestamp", "_version_", "access", "ACK", "Acknowledgement", "activity", "activity_drs", "activity_id", "amodell", "bias_adjustment", "branch_method", "cera_acronym", "cf_standard_name", "checksum", "checksum_type", "citation_url", "cmor_table", "collection", "contact", "Conventions", "creation_date", "data_node", "data_specs_version", "data_structure", "data_type", "dataset_category", "dataset_id", "dataset_id_template_", "dataset_status", "dataset_version_number", "datetime_end", "datetime_start", "deprecated", "directory_format_template_", "doi", "doi_author", "doi_publication_year", "doi_publisher", "doi_title", "domain", "downscaling_model_type", "driving_ensemble", "driving_model", "driving_model_ensemble_member", "driving_model_id", "driving_reanalysis", "east_degrees", "ensemble", "exp", "experiment", "experiment_description", "experiment_family", "experiment_id", "experiment_title", "filename", "forcing", "format", "framework", "frequency", "further_info_url", "gebiet", "geo_units", "globus_url", "grid", "grid_label", "grid_resolution", "height_bottom", "height_top", "id", "index_node", "instance_id", "institute", "institution", "institution_id", "latest", "lta", "master_gateway", "master_id", "member_id", "metadata_format", "metadata_url", "mip_era", "model", "model_cohort", "modelvers", "nominal_resolution", "north_degrees", "number_of_aggregations", "number_of_files", "pid", "pid_prefix", "predictand_calibration_dataset", "processing_level", "product", "product_version", "project", "project_name", "project_under", "rcm_model", "rcm_name", "rcm_version", "realization", "realm", "reanalysis", "reanalysis_ensemble", "region", "region_id", "replica", "retracted", "run_model", "score", "shard", "short_description", "size", "source", "source_data_id", "source_id", "source_type", "source_version", "source_version_number", "south_degrees", "start_date_string", "std_citation", "std_citation_author", "std_citation_publication_year", "std_citation_publisher", "std_citation_title", "sub_experiment_id", "table_id", "target_mip", "target_mip_list", "time_frequency", "title", "tracking_id", "type", "url", "url_download", "url_opendap", "variable", "variable_id", "variable_long_name", "variable_units", "variant_label", "version", "west_degrees", "work_package", "xlink"]
+                "subset.of": [
+                  "_timestamp",
+                  "_version_",
+                  "access",
+                  "ACK",
+                  "Acknowledgement",
+                  "activity",
+                  "activity_drs",
+                  "activity_id",
+                  "amodell",
+                  "bias_adjustment",
+                  "branch_method",
+                  "cera_acronym",
+                  "cf_standard_name",
+                  "checksum",
+                  "checksum_type",
+                  "citation_url",
+                  "cmor_table",
+                  "collection",
+                  "contact",
+                  "Conventions",
+                  "creation_date",
+                  "data_node",
+                  "data_specs_version",
+                  "data_structure",
+                  "data_type",
+                  "dataset_category",
+                  "dataset_id",
+                  "dataset_id_template_",
+                  "dataset_status",
+                  "dataset_version_number",
+                  "datetime_end",
+                  "datetime_start",
+                  "deprecated",
+                  "directory_format_template_",
+                  "doi",
+                  "doi_author",
+                  "doi_publication_year",
+                  "doi_publisher",
+                  "doi_title",
+                  "domain",
+                  "downscaling_model_type",
+                  "driving_ensemble",
+                  "driving_model",
+                  "driving_model_ensemble_member",
+                  "driving_model_id",
+                  "driving_reanalysis",
+                  "east_degrees",
+                  "ensemble",
+                  "exp",
+                  "experiment",
+                  "experiment_description",
+                  "experiment_family",
+                  "experiment_id",
+                  "experiment_title",
+                  "filename",
+                  "forcing",
+                  "format",
+                  "framework",
+                  "frequency",
+                  "further_info_url",
+                  "gebiet",
+                  "geo_units",
+                  "globus_url",
+                  "grid",
+                  "grid_label",
+                  "grid_resolution",
+                  "height_bottom",
+                  "height_top",
+                  "id",
+                  "index_node",
+                  "instance_id",
+                  "institute",
+                  "institution",
+                  "institution_id",
+                  "latest",
+                  "lta",
+                  "master_gateway",
+                  "master_id",
+                  "member_id",
+                  "metadata_format",
+                  "metadata_url",
+                  "mip_era",
+                  "model",
+                  "model_cohort",
+                  "modelvers",
+                  "nominal_resolution",
+                  "north_degrees",
+                  "number_of_aggregations",
+                  "number_of_files",
+                  "pid",
+                  "pid_prefix",
+                  "predictand_calibration_dataset",
+                  "processing_level",
+                  "product",
+                  "product_version",
+                  "project",
+                  "project_name",
+                  "project_under",
+                  "rcm_model",
+                  "rcm_name",
+                  "rcm_version",
+                  "realization",
+                  "realm",
+                  "reanalysis",
+                  "reanalysis_ensemble",
+                  "region",
+                  "region_id",
+                  "replica",
+                  "retracted",
+                  "run_model",
+                  "score",
+                  "shard",
+                  "short_description",
+                  "size",
+                  "source",
+                  "source_data_id",
+                  "source_id",
+                  "source_type",
+                  "source_version",
+                  "source_version_number",
+                  "south_degrees",
+                  "start_date_string",
+                  "std_citation",
+                  "std_citation_author",
+                  "std_citation_publication_year",
+                  "std_citation_publisher",
+                  "std_citation_title",
+                  "sub_experiment_id",
+                  "table_id",
+                  "target_mip",
+                  "target_mip_list",
+                  "time_frequency",
+                  "title",
+                  "tracking_id",
+                  "type",
+                  "url",
+                  "url_download",
+                  "url_opendap",
+                  "variable",
+                  "variable_id",
+                  "variable_long_name",
+                  "variable_units",
+                  "variant_label",
+                  "version",
+                  "west_degrees",
+                  "work_package",
+                  "xlink"
+                ]
               },
               "fields": {
                 "master_id": {
@@ -3487,7 +3727,10 @@
           },
           "groups": [
             {
-              "names": ["numFound", "start"],
+              "names": [
+                "numFound",
+                "start"
+              ],
               "check": {
                 "kind": "int"
               }
@@ -3500,7 +3743,13 @@
           },
           "keys": {
             "type": "named",
-            "must.include": ["facet_queries", "facet_fields", "facet_ranges", "facet_intervals", "facet_heatmaps"]
+            "must.include": [
+              "facet_queries",
+              "facet_fields",
+              "facet_ranges",
+              "facet_intervals",
+              "facet_heatmaps"
+            ]
           },
           "fields": {
             "facet_fields": {
@@ -3509,7 +3758,155 @@
               },
               "keys": {
                 "type": "named",
-                "subset.of": ["_timestamp", "_version_", "access", "ACK", "Acknowledgement", "activity", "activity_drs", "activity_id", "amodell", "bias_adjustment", "branch_method", "cera_acronym", "cf_standard_name", "checksum", "checksum_type", "citation_url", "cmor_table", "collection", "contact", "Conventions", "creation_date", "data_node", "data_specs_version", "data_structure", "data_type", "dataset_category", "dataset_id", "dataset_id_template_", "dataset_status", "dataset_version_number", "datetime_end", "datetime_start", "deprecated", "directory_format_template_", "doi", "doi_author", "doi_publication_year", "doi_publisher", "doi_title", "domain", "downscaling_model_type", "driving_ensemble", "driving_model", "driving_model_ensemble_member", "driving_model_id", "driving_reanalysis", "east_degrees", "ensemble", "exp", "experiment", "experiment_description", "experiment_family", "experiment_id", "experiment_title", "filename", "forcing", "format", "framework", "frequency", "further_info_url", "gebiet", "geo_units", "globus_url", "grid", "grid_label", "grid_resolution", "height_bottom", "height_top", "id", "index_node", "instance_id", "institute", "institution", "institution_id", "latest", "lta", "master_gateway", "master_id", "member_id", "metadata_format", "metadata_url", "mip_era", "model", "model_cohort", "modelvers", "nominal_resolution", "north_degrees", "number_of_aggregations", "number_of_files", "pid", "pid_prefix", "predictand_calibration_dataset", "processing_level", "product", "product_version", "project", "project_name", "project_under", "rcm_model", "rcm_name", "rcm_version", "realization", "realm", "reanalysis", "reanalysis_ensemble", "region", "region_id", "replica", "retracted", "run_model", "score", "shard", "short_description", "size", "source", "source_data_id", "source_id", "source_type", "source_version", "source_version_number", "south_degrees", "start_date_string", "std_citation", "std_citation_author", "std_citation_publication_year", "std_citation_publisher", "std_citation_title", "sub_experiment_id", "table_id", "target_mip", "target_mip_list", "time_frequency", "title", "tracking_id", "type", "url", "url_download", "url_opendap", "variable", "variable_id", "variable_long_name", "variable_units", "variant_label", "version", "west_degrees", "work_package", "xlink"]
+                "subset.of": [
+                  "_timestamp",
+                  "_version_",
+                  "access",
+                  "ACK",
+                  "Acknowledgement",
+                  "activity",
+                  "activity_drs",
+                  "activity_id",
+                  "amodell",
+                  "bias_adjustment",
+                  "branch_method",
+                  "cera_acronym",
+                  "cf_standard_name",
+                  "checksum",
+                  "checksum_type",
+                  "citation_url",
+                  "cmor_table",
+                  "collection",
+                  "contact",
+                  "Conventions",
+                  "creation_date",
+                  "data_node",
+                  "data_specs_version",
+                  "data_structure",
+                  "data_type",
+                  "dataset_category",
+                  "dataset_id",
+                  "dataset_id_template_",
+                  "dataset_status",
+                  "dataset_version_number",
+                  "datetime_end",
+                  "datetime_start",
+                  "deprecated",
+                  "directory_format_template_",
+                  "doi",
+                  "doi_author",
+                  "doi_publication_year",
+                  "doi_publisher",
+                  "doi_title",
+                  "domain",
+                  "downscaling_model_type",
+                  "driving_ensemble",
+                  "driving_model",
+                  "driving_model_ensemble_member",
+                  "driving_model_id",
+                  "driving_reanalysis",
+                  "east_degrees",
+                  "ensemble",
+                  "exp",
+                  "experiment",
+                  "experiment_description",
+                  "experiment_family",
+                  "experiment_id",
+                  "experiment_title",
+                  "filename",
+                  "forcing",
+                  "format",
+                  "framework",
+                  "frequency",
+                  "further_info_url",
+                  "gebiet",
+                  "geo_units",
+                  "globus_url",
+                  "grid",
+                  "grid_label",
+                  "grid_resolution",
+                  "height_bottom",
+                  "height_top",
+                  "id",
+                  "index_node",
+                  "instance_id",
+                  "institute",
+                  "institution",
+                  "institution_id",
+                  "latest",
+                  "lta",
+                  "master_gateway",
+                  "master_id",
+                  "member_id",
+                  "metadata_format",
+                  "metadata_url",
+                  "mip_era",
+                  "model",
+                  "model_cohort",
+                  "modelvers",
+                  "nominal_resolution",
+                  "north_degrees",
+                  "number_of_aggregations",
+                  "number_of_files",
+                  "pid",
+                  "pid_prefix",
+                  "predictand_calibration_dataset",
+                  "processing_level",
+                  "product",
+                  "product_version",
+                  "project",
+                  "project_name",
+                  "project_under",
+                  "rcm_model",
+                  "rcm_name",
+                  "rcm_version",
+                  "realization",
+                  "realm",
+                  "reanalysis",
+                  "reanalysis_ensemble",
+                  "region",
+                  "region_id",
+                  "replica",
+                  "retracted",
+                  "run_model",
+                  "score",
+                  "shard",
+                  "short_description",
+                  "size",
+                  "source",
+                  "source_data_id",
+                  "source_id",
+                  "source_type",
+                  "source_version",
+                  "source_version_number",
+                  "south_degrees",
+                  "start_date_string",
+                  "std_citation",
+                  "std_citation_author",
+                  "std_citation_publication_year",
+                  "std_citation_publisher",
+                  "std_citation_title",
+                  "sub_experiment_id",
+                  "table_id",
+                  "target_mip",
+                  "target_mip_list",
+                  "time_frequency",
+                  "title",
+                  "tracking_id",
+                  "type",
+                  "url",
+                  "url_download",
+                  "url_opendap",
+                  "variable",
+                  "variable_id",
+                  "variable_long_name",
+                  "variable_units",
+                  "variant_label",
+                  "version",
+                  "west_degrees",
+                  "work_package",
+                  "xlink"
+                ]
               },
               "fields": {
                 "sub_experiment_id": {
@@ -3613,7 +4010,12 @@
           },
           "groups": [
             {
-              "names": ["facet_queries", "facet_ranges", "facet_intervals", "facet_heatmaps"],
+              "names": [
+                "facet_queries",
+                "facet_ranges",
+                "facet_intervals",
+                "facet_heatmaps"
+              ],
               "check": {
                 "kind": "list"
               }

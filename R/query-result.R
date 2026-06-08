@@ -45,10 +45,10 @@ EsgResult <- R6::R6Class(
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
-        #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
-        #'        the query result will be used. Possible field names can be
-        #'        retrieved using `$fields`. Default: `NULL`.
+        #' @param fields A non-empty character vector indicating the fields to
+        #'        put into the `data.table`. If `NULL`, all fields in the query
+        #'        result will be used. Possible field names can be retrieved
+        #'        using `$fields`. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -58,6 +58,7 @@ EsgResult <- R6::R6Class(
         to_data_table = function(fields = NULL, formatted = NULL) {
             docs <- private$get_docs()
 
+            checkmate::assert_character(fields, any.missing = FALSE, unique = TRUE, min.len = 1L, null.ok = TRUE)
             checkmate::assert_subset(fields, names(docs))
             checkmate::assert_character(formatted, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
 
@@ -139,7 +140,7 @@ EsgResult <- R6::R6Class(
                 response = private$response,
                 file = file,
                 pretty = pretty,
-                schema = SCHEMA_RESULT_DATASET
+                schema = private$result_schema()
             )
         },
         # }}}
@@ -160,7 +161,7 @@ EsgResult <- R6::R6Class(
         #' @return The modified `EsgResult` object itself.
         #'
         load = function(file) {
-            q <- query_load(file, SCHEMA_RESULT_DATASET)
+            q <- query_load(file, private$result_schema())
             private$validate_loaded_result(q)
 
             private$index_node <- q$index_node
@@ -233,11 +234,6 @@ EsgResult <- R6::R6Class(
         # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
-            # nocov start
-            if (!self$count()) {
-                return(NULL)
-            }
-            # nocov end
             sort(names(private$get_docs()))
         }
         # }}}
@@ -253,6 +249,18 @@ EsgResult <- R6::R6Class(
         required_fields = c("id", "size", "url"),
         query_fields = c("dataset_id", "fields", "latest", "distrib", "limit", "type", "format"),
         static_fields = c("id", "url", "size", "fields", "filename", "url_opendap", "url_download"),
+
+        # result_schema {{{
+        result_schema = function() {
+            switch(
+                private$result_type,
+                Dataset = SCHEMA_RESULT_DATASET,
+                File = SCHEMA_RESULT_FILE,
+                Aggregation = SCHEMA_RESULT_AGGREGATION,
+                SCHEMA_RESULT_DATASET
+            )
+        },
+        # }}}
 
         get_docs = function() {
             docs <- private$response$response$docs
@@ -396,6 +404,8 @@ EsgResult <- R6::R6Class(
 
         # record_context {{{
         record_context = function(index) {
+            checkmate::assert_int(index, lower = 1L)
+
             docs <- private$get_docs()
             for (field in c("id", "dataset_id", "instance_id", "title", "filename")) {
                 value <- docs[[field]]
@@ -426,6 +436,7 @@ EsgResult <- R6::R6Class(
         # print_summary {{{
         print_summary = function(type = "") {
             ts <- format(private$response$timestamp, tz = Sys.timezone(), usetz = TRUE)
+            fields <- self$fields
             cli::cli_bullets(c("*" = "Index Node: {private$index_node}"))
             cli::cli_bullets(c("*" = "Collected at: {ts}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
@@ -434,10 +445,10 @@ EsgResult <- R6::R6Class(
             } else {
                 cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
             }
-            if (is.null(self$fields)) {
+            if (!length(fields)) {
                 cli::cli_bullets(c("*" = "Fields: 0"))
             } else {
-                cli::cli_bullets(c("*" = "Fields: {length(self$fields)} | [ {self$fields} ]"))
+                cli::cli_bullets(c("*" = "Fields: {length(fields)} | [ {fields} ]"))
             }
         },
         # }}}
@@ -553,9 +564,9 @@ EsgResultDataset <- R6::R6Class(
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
-        #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
-        #'        the query result will be used. Default: `NULL`.
+        #' @param fields A non-empty character vector indicating the fields to
+        #'        put into the `data.table`. If `NULL`, all fields in the query
+        #'        result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -641,16 +652,16 @@ EsgResultDataset <- R6::R6Class(
             if (!is.null(which)) {
                 if (!self$count()) {
                     which <- NULL
+                } else if (is.character(which)) {
+                    checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
+                    checkmate::assert_subset(which, self$id, empty.ok = FALSE)
                 } else {
-                    checkmate::assert(
-                        checkmate::check_subset(which, self$id),
-                        checkmate::check_integerish(
-                            which,
-                            lower = 1L,
-                            upper = self$count(),
-                            any.missing = FALSE,
-                            unique = TRUE
-                        )
+                    checkmate::assert_integerish(
+                        which,
+                        lower = 1L,
+                        upper = self$count(),
+                        any.missing = FALSE,
+                        unique = TRUE
                     )
                 }
 
@@ -848,9 +859,9 @@ EsgResultFile <- R6::R6Class(
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
-        #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
-        #'        the query result will be used. Default: `NULL`.
+        #' @param fields A non-empty character vector indicating the fields to
+        #'        put into the `data.table`. If `NULL`, all fields in the query
+        #'        result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -1005,12 +1016,15 @@ EsgResultFile <- R6::R6Class(
         # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
-            # nocov start
-            if (!self$count()) {
-                return(NULL)
+            fields <- super$fields
+            derived <- character()
+            if ("title" %in% fields) {
+                derived <- c(derived, "filename")
             }
-            # nocov end
-            sort(c("filename", "url_opendap", "url_download", super$fields))
+            if ("url" %in% fields) {
+                derived <- c(derived, "url_opendap", "url_download")
+            }
+            sort(unique(c(derived, fields)))
         }
         # }}}
     ),
@@ -1055,9 +1069,9 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
         #'
-        #' @param fields A character vector indicating the fields to put into
-        #'        the `data.table`. If `NULL` or `character(0)`, all fields in
-        #'        the query result will be used. Default: `NULL`.
+        #' @param fields A non-empty character vector indicating the fields to
+        #'        put into the `data.table`. If `NULL`, all fields in the query
+        #'        result will be used. Default: `NULL`.
         #'
         #' @param formatted Whether to use formatted values for special fields,
         #'        including `url` and `size`. Default: `FALSE`.
@@ -1113,85 +1127,94 @@ EsgResultAggregation <- R6::R6Class(
                 indices <- 1L
             }
 
-            opendap_error <- NULL
-            ds <- NULL
-            if (length(urls) && all(!is.na(urls))) {
-                # Try OPeNDAP
-                ds <- tryCatch(
-                    {
-                        d <- EsgDataset$new(urls)
-                        d$open()
-                        d
-                    },
-                    error = function(e) {
-                        opendap_error <<- e
-                        NULL
-                    }
-                )
-            }
-
-            if (!is.null(ds)) {
-                return(ds)
-            }
-
-            # OPeNDAP failed or is unavailable
-            if (!length(urls) || all(is.na(urls))) {
-                cli::cli_alert_warning("No OPeNDAP URLs are available for these aggregation records.")
-            } else if (any(is.na(urls))) {
-                cli::cli_alert_warning("OPeNDAP URLs are missing for one or more aggregation records.")
-            } else {
-                cli::cli_alert_warning("OPeNDAP connection failed.")
-            }
-
-            if (fallback == "error") {
-                cli::cli_abort("OPeNDAP is not available for these files.", parent = opendap_error)
-            }
-
-            if (fallback == "ask") {
-                if (!interactive()) {
-                    cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
-                } else {
-                    answer <- utils::menu(
-                        choices = c(
-                            sprintf("Download %d file(s) via HTTP", length(indices)),
-                            "Cancel"
-                        ),
-                        title = "OPeNDAP is not available. What would you like to do?"
+            targets <- urls
+            opendap_errors <- vector("list", length(urls))
+            failed <- rep(FALSE, length(urls))
+            missing <- is.na(urls)
+            if (length(urls)) {
+                for (j in which(!missing)) {
+                    ok <- tryCatch(
+                        {
+                            d <- EsgDataset$new(urls[[j]])
+                            d$open()
+                            if (is.function(d$close)) {
+                                d$close()
+                            }
+                            TRUE
+                        },
+                        error = function(e) {
+                            opendap_errors[[j]] <<- e
+                            FALSE
+                        }
                     )
-                    if (answer != 1L) {
-                        cli::cli_abort("Operation cancelled by user.")
-                    }
+                    failed[[j]] <- !ok
                 }
             }
 
-            # Download as fallback
-            download_urls <- self$url_download[indices]
-            if (any(is.na(download_urls))) {
-                cli::cli_abort("HTTPServer download URLs are missing for one or more aggregation records.")
+            fallback_pos <- which(missing | failed)
+            if (length(fallback_pos)) {
+                if (all(missing)) {
+                    cli::cli_alert_warning("No OPeNDAP URLs are available for these aggregation records.")
+                } else if (any(missing) && any(failed)) {
+                    cli::cli_alert_warning("Some aggregation records are missing OPeNDAP URLs and some OPeNDAP connections failed.")
+                } else if (any(missing)) {
+                    cli::cli_alert_warning("OPeNDAP URLs are missing for one or more aggregation records.")
+                } else {
+                    cli::cli_alert_warning("OPeNDAP connection failed for one or more aggregation records.")
+                }
+
+                failed_pos <- which(failed)
+                opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
+                if (fallback == "error") {
+                    cli::cli_abort("OPeNDAP is not available for these files.", parent = opendap_error)
+                }
+
+                if (fallback == "ask") {
+                    if (!interactive()) {
+                        cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
+                    } else {
+                        answer <- utils::menu(
+                            choices = c(
+                                sprintf("Download %d file(s) via HTTP", length(fallback_pos)),
+                                "Cancel"
+                            ),
+                            title = "OPeNDAP is not available. What would you like to do?"
+                        )
+                        if (answer != 1L) {
+                            cli::cli_abort("Operation cancelled by user.")
+                        }
+                    }
+                }
+
+                download_urls <- self$url_download[indices[fallback_pos]]
+                if (any(is.na(download_urls))) {
+                    cli::cli_abort("HTTPServer download URLs are missing for one or more aggregation records.")
+                }
+
+                cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
+                dl <- FileDownloader$new()
+                dt <- self$to_data_table()
+
+                targets[fallback_pos] <- vapply(
+                    seq_along(fallback_pos),
+                    function(k) {
+                        j <- fallback_pos[[k]]
+                        i <- indices[[j]]
+                        file_url <- download_urls[[k]]
+                        checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
+                        checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
+
+                        dl$download(
+                            url = file_url,
+                            checksum = checksum,
+                            checksum_type = checksum_type
+                        )
+                    },
+                    character(1L)
+                )
             }
 
-            cli::cli_alert_info("Downloading {length(indices)} file(s) via HTTP as fallback...")
-            dl <- FileDownloader$new()
-            dt <- self$to_data_table()
-
-            local_paths <- vapply(
-                seq_along(indices),
-                function(j) {
-                    i <- indices[[j]]
-                    file_url <- download_urls[[j]]
-                    checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
-                    checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
-
-                    dl$download(
-                        url = file_url,
-                        checksum = checksum,
-                        checksum_type = checksum_type
-                    )
-                },
-                character(1L)
-            )
-
-            ds <- EsgDataset$new(local_paths)
+            ds <- EsgDataset$new(targets)
             ds$open()
             ds
         }
@@ -1223,12 +1246,12 @@ EsgResultAggregation <- R6::R6Class(
         # fields {{{
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
-            # nocov start
-            if (!self$count()) {
-                return(NULL)
+            fields <- super$fields
+            derived <- character()
+            if ("url" %in% fields) {
+                derived <- c("url_opendap", "url_download")
             }
-            # nocov end
-            sort(c("url_opendap", "url_download", super$fields))
+            sort(unique(c(derived, fields)))
         }
         # }}}
     ),

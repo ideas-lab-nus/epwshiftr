@@ -63,9 +63,9 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL} or \code{character(0)}, all fields in
-the query result will be used. Default: \code{NULL}.}
+\item{\code{fields}}{A non-empty character vector indicating the fields to
+put into the \code{data.table}. If \code{NULL}, all fields in the query
+result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
