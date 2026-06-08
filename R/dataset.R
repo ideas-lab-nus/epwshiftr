@@ -1136,9 +1136,19 @@ EsgDataset <- R6::R6Class(
 
 # esg_dataset_private {{{
 esg_dataset_private <- function(dataset) {
-    private <- dataset$.__enclos_env__$private
-    if (is.null(private) || is.null(private$nc_handles) || is.null(private$opened)) {
+    private <- tryCatch(dataset$.__enclos_env__$private, error = function(e) NULL)
+    if (is.null(private) || !is.environment(private)) {
         stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
+    }
+    missing <- setdiff(c("nc_handles", "opened"), names(private))
+    if (length(missing)) {
+        stop(sprintf(
+            "`dataset` is missing required internal field(s): %s.",
+            paste(sprintf("`%s`", missing), collapse = ", ")
+        ), call. = FALSE)
+    }
+    if (!is.list(private$nc_handles)) {
+        stop("`dataset` internal `nc_handles` field must be a list.", call. = FALSE)
     }
 
     private

@@ -665,6 +665,46 @@ test_that("query_collect includes only result-field constraints in fields", {
     expect_false("start" %in% fields)
     expect_false("facets" %in% fields)
     expect_named(res$docs, c("id", "source_id", "project", "activity_id", "table_id"), ignore.order = TRUE)
+    expect_s3_class(res$parameter, "QueryParamStore")
+    expect_identical(
+        query_param_value(res$parameter$fields()),
+        c("source_id", "id", "project", "activity_id", "table_id")
+    )
+})
+
+test_that("query_collect returns normalized effective parameters", {
+    captured_url <- character()
+    testthat::local_mocked_bindings(
+        read_json_response = function(url, ...) {
+            captured_url <<- c(captured_url, url)
+            list(response = list(
+                numFound = 1L,
+                docs = data.frame(id = "dataset-id", score = 1, check.names = FALSE)
+            ))
+        },
+        .package = "epwshiftr"
+    )
+
+    params <- QueryParamStore$new()$fields("id")$limit(5L)$offset(2L)
+    res <- query_collect(
+        "https://example.org",
+        params,
+        required_fields = c("size", "url"),
+        all = TRUE,
+        limit = 3L
+    )
+
+    expect_s3_class(res$parameter, "QueryParamStore")
+    expect_identical(query_param_value(res$parameter$fields()), c("id", "size", "url", "project"))
+    expect_identical(query_param_value(res$parameter$limit()), 3L)
+    expect_identical(query_param_value(res$parameter$offset()), 0L)
+
+    bridge <- query_collect(
+        "https://esgf-node.ornl.gov/esgf-1-5-bridge",
+        params,
+        required_fields = c("size", "url")
+    )
+    expect_null(bridge$parameter$fields())
 })
 
 test_that("EsgQuery$collect()", {

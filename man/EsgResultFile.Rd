@@ -30,7 +30,9 @@ files.}
 \item{\code{url_download}}{A character vector of the download URLs of the
 files.}
 
-\item{\code{fields}}{A character vector indicating all fields in the results.}
+\item{\code{fields}}{A character vector indicating all response fields,
+followed by derived fields such as \code{filename}, \code{url_opendap}
+and \code{url_download} when their source fields are available.}
 }
 \if{html}{\out{</div>}}
 }

@@ -1056,9 +1056,10 @@ EsgQuery <- R6::R6Class(
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
+            result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
 
             # create new results
-            new_query_result(EsgResultDataset, private$index_node_url, private$parameter, result$response)
+            new_query_result(EsgResultDataset, private$index_node_url, result_params, result$response)
         },
         # }}}
 
@@ -1457,6 +1458,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         store$offset(0L)
     }
 
+    effective_store <- store$copy()
     response <- read_json_response(query_build(index_node, store))
     docs <- response$response$docs
 
@@ -1489,7 +1491,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         }
     }
 
-    list(response = response, docs = docs)
+    list(response = response, docs = docs, parameter = effective_store)
 }
 # }}}
 

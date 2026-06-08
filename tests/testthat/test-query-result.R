@@ -226,11 +226,15 @@ test_that("to_data_table accepts all advertised fields", {
     ))
 
     files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    expect_identical(
+        files$fields,
+        c(names(docs), "filename", "url_opendap", "url_download")
+    )
     expect_identical(names(files$to_data_table()), files$fields)
     expect_identical(names(files$to_data_table(files$fields)), files$fields)
     expect_identical(
-        names(files$to_data_table(c("filename", "url_opendap", "url_download"))),
-        c("filename", "url_opendap", "url_download")
+        names(files$to_data_table(c("url_download", "id", "filename"))),
+        c("url_download", "id", "filename")
     )
     expect_identical(files$to_data_table("filename")$filename, "file.nc")
     expect_identical(files$to_data_table("url_opendap")$url_opendap, "https://example.org/dods/file.nc")
@@ -238,6 +242,10 @@ test_that("to_data_table accepts all advertised fields", {
     expect_error(files$to_data_table(character()), "Must have length")
 
     aggs <- query_result_test_object("Aggregation", docs, query_result_test_params("Aggregation"))
+    expect_identical(
+        aggs$fields,
+        c(names(docs), "url_opendap", "url_download")
+    )
     expect_identical(names(aggs$to_data_table()), aggs$fields)
     expect_identical(names(aggs$to_data_table(aggs$fields)), aggs$fields)
     expect_identical(
@@ -273,6 +281,9 @@ test_that("empty dataset results collect empty child results without querying", 
         .package = "epwshiftr"
     )
 
+    expect_error(datasets$collect(which = 1L, type = "File"), "empty Dataset result")
+    expect_error(datasets$collect(which = "dataset-1", type = "Aggregation"), "empty Dataset result")
+
     files <- expect_s3_class(datasets$collect(type = "File"), "EsgResultFile")
     expect_equal(files$count(), 0L)
     expect_identical(files$fields, character())
@@ -304,16 +315,18 @@ test_that("dataset result collect inherits controls and normalizes limit", {
                 constraints = constraints
             )
             response <- query_result_test_response(query_result_test_file_docs())
-            list(response = response, docs = response$response$docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
     )
 
-    expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
+    files <- expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
     expect_equal(calls[[1L]]$limit, this$data_max_limit)
     expect_false(query_param_value(calls[[1L]]$params$latest()))
     expect_false(query_param_value(calls[[1L]]$params$distrib()))
     expect_false(query_param_value(calls[[1L]]$params$replica()))
+    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param_value(priv(files)$parameter$fields())))
 
     expect_s3_class(
         datasets$collect(fields = "id", limit = 1L, latest = TRUE, distrib = TRUE, replica = TRUE),
@@ -412,7 +425,10 @@ test_that("open_dataset fallback behavior is explicit before side effects", {
         query_result_test_file_docs(character()),
         query_result_test_params("Aggregation")
     )
-    expect_error(aggs_no_urls$open_dataset(fallback = "auto"), "HTTPServer download URLs")
+    expect_error(
+        aggs_no_urls$open_dataset(fallback = "auto"),
+        "record 1 \\(id: file-1\\)"
+    )
 })
 
 test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
@@ -517,7 +533,10 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
 
     opened_before <- length(calls$opened)
     downloads_before <- calls$downloads
-    agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_message(
+        agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset"),
+        "record 2 \\(id: file-2\\)"
+    )
     expect_length(agg_ds$target, 2L)
     expect_identical(agg_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_ds$target[[2L]]))
@@ -542,13 +561,17 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     err <- tryCatch(agg_fail_result$open_dataset(fallback = "error"), error = function(e) e)
     expect_s3_class(err, "error")
     expect_match(conditionMessage(err), "OPeNDAP is not available")
+    expect_match(conditionMessage(err), "record 2 \\(id: file-2\\)")
     expect_match(conditionMessage(err$parent), "remote boom")
     expect_true(any(vapply(calls$closed, function(handles) {
         identical(handles, list("handle:https://example.org/dods/file-1.nc"))
     }, logical(1L))))
 
     downloads_before <- calls$downloads
-    agg_fail_ds <- expect_s3_class(agg_fail_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    expect_message(
+        agg_fail_ds <- expect_s3_class(agg_fail_result$open_dataset(fallback = "auto"), "FakeEsgDataset"),
+        "record 2 \\(id: file-2\\)"
+    )
     expect_identical(agg_fail_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_fail_ds$target[[2L]]))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")

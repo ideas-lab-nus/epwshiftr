@@ -35,7 +35,8 @@ URLs.
 \item{\code{size}}{A vector of \link[units:units]{units} indicating the
 file sizes.}
 
-\item{\code{fields}}{A character vector indicating all fields in the results.}
+\item{\code{fields}}{A character vector indicating all fields in the results,
+preserving the order returned by the response.}
 }
 \if{html}{\out{</div>}}
 }

@@ -217,9 +217,10 @@ EsgResult <- R6::R6Class(
         # }}}
 
         # fields {{{
-        #' @field fields A character vector indicating all fields in the results.
+        #' @field fields A character vector indicating all fields in the results,
+        #'        preserving the order returned by the response.
         fields = function() {
-            sort(names(private$get_docs()))
+            names(private$get_docs())
         }
         # }}}
     ),
@@ -442,6 +443,23 @@ EsgResult <- R6::R6Class(
             }
 
             ""
+        },
+        # }}}
+
+        # record_label {{{
+        record_label = function(index) {
+            checkmate::assert_int(index, lower = 1L)
+            sprintf("record %d%s", index, private$record_context(index))
+        },
+        # }}}
+
+        # record_labels {{{
+        record_labels = function(index) {
+            checkmate::assert_integerish(index, lower = 1L, any.missing = FALSE, min.len = 1L)
+            paste(
+                vapply(as.integer(index), private$record_label, character(1L)),
+                collapse = ", "
+            )
         },
         # }}}
 
@@ -699,7 +717,7 @@ EsgResultDataset <- R6::R6Class(
         collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
             if (!is.null(which)) {
                 if (!self$count()) {
-                    which <- NULL
+                    stop("Cannot select records from an empty Dataset result.", call. = FALSE)
                 } else if (is.character(which)) {
                     checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
                     checkmate::assert_subset(which, self$id, empty.ok = FALSE)
@@ -747,20 +765,21 @@ EsgResultDataset <- R6::R6Class(
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
+            result_params <- if (!is.null(result$parameter)) result$parameter else params
 
             # create new results
             if (type == "File") {
                 new_query_result(
                     EsgResultFile,
                     private$index_node,
-                    params,
+                    result_params,
                     result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgResultAggregation,
                     private$index_node,
-                    params,
+                    result_params,
                     result$response
                 )
             }
@@ -1062,7 +1081,9 @@ EsgResultFile <- R6::R6Class(
         # }}}
 
         # fields {{{
-        #' @field fields A character vector indicating all fields in the results.
+        #' @field fields A character vector indicating all response fields,
+        #'        followed by derived fields such as `filename`, `url_opendap`
+        #'        and `url_download` when their source fields are available.
         fields = function() {
             fields <- super$fields
             derived <- character()
@@ -1072,7 +1093,7 @@ EsgResultFile <- R6::R6Class(
             if ("url" %in% fields) {
                 derived <- c(derived, "url_opendap", "url_download")
             }
-            sort(unique(c(derived, fields)))
+            unique(c(fields, derived))
         }
         # }}}
     ),
@@ -1230,20 +1251,33 @@ EsgResultAggregation <- R6::R6Class(
 
             fallback_pos <- which(missing | failed)
             if (length(fallback_pos)) {
-                if (all(missing)) {
-                    cli::cli_alert_warning("No OPeNDAP URLs are available for these aggregation records.")
-                } else if (any(missing) && any(failed)) {
-                    cli::cli_alert_warning("Some aggregation records are missing OPeNDAP URLs and some OPeNDAP connections failed.")
-                } else if (any(missing)) {
-                    cli::cli_alert_warning("OPeNDAP URLs are missing for one or more aggregation records.")
-                } else {
-                    cli::cli_alert_warning("OPeNDAP connection failed for one or more aggregation records.")
+                missing_pos <- which(missing)
+                failed_pos <- which(failed)
+                if (length(missing_pos)) {
+                    cli::cli_alert_warning(
+                        "OPeNDAP URLs are missing for {private$record_labels(indices[missing_pos])}."
+                    )
+                }
+                if (length(failed_pos)) {
+                    cli::cli_alert_warning(
+                        "OPeNDAP connection failed for {private$record_labels(indices[failed_pos])}."
+                    )
                 }
 
-                failed_pos <- which(failed)
                 opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
                 if (fallback == "error") {
-                    cli::cli_abort("OPeNDAP is not available for these files.", parent = opendap_error)
+                    details <- c(
+                        if (length(missing_pos)) {
+                            "x" = "Missing OPeNDAP URL: {private$record_labels(indices[missing_pos])}"
+                        },
+                        if (length(failed_pos)) {
+                            "x" = "Failed OPeNDAP open: {private$record_labels(indices[failed_pos])}"
+                        }
+                    )
+                    cli::cli_abort(
+                        c("OPeNDAP is not available for these aggregation records.", details),
+                        parent = opendap_error
+                    )
                 }
 
                 if (fallback == "ask") {
@@ -1265,7 +1299,11 @@ EsgResultAggregation <- R6::R6Class(
 
                 download_urls <- self$url_download[indices[fallback_pos]]
                 if (any(is.na(download_urls))) {
-                    cli::cli_abort("HTTPServer download URLs are missing for one or more aggregation records.")
+                    http_missing_pos <- fallback_pos[is.na(download_urls)]
+                    cli::cli_abort(c(
+                        "HTTPServer download URLs are missing for one or more aggregation records.",
+                        "x" = "Missing HTTPServer URL: {private$record_labels(indices[http_missing_pos])}"
+                    ))
                 }
 
                 cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
@@ -1293,10 +1331,10 @@ EsgResultAggregation <- R6::R6Class(
 
             ds <- EsgDataset$new(targets)
             esg_dataset_adopt_handles(ds, nc_handles)
-            cleanup_preopened <- FALSE
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
+            cleanup_preopened <- FALSE
             ds
         }
         # }}}
@@ -1325,14 +1363,16 @@ EsgResultAggregation <- R6::R6Class(
         # }}}
 
         # fields {{{
-        #' @field fields A character vector indicating all fields in the results.
+        #' @field fields A character vector indicating all response fields,
+        #'        followed by derived URL fields when their source fields are
+        #'        available.
         fields = function() {
             fields <- super$fields
             derived <- character()
             if ("url" %in% fields) {
                 derived <- c("url_opendap", "url_download")
             }
-            sort(unique(c(derived, fields)))
+            unique(c(fields, derived))
         }
         # }}}
     ),
@@ -1376,7 +1416,7 @@ query_result_empty_response <- function(params) {
         timestamp = Sys.time()
     )
 
-    list(response = response, docs = response$response$docs)
+    list(response = response, docs = response$response$docs, parameter = query_param_clone(params))
 }
 # }}}
 

@@ -512,7 +512,7 @@ esgf_query <- function(
                 datasets <- new_query_result(
                     EsgResultDataset,
                     priv(q)$index_node_url,
-                    priv(q)$parameter,
+                    if (!is.null(res$parameter)) res$parameter else priv(q)$parameter,
                     res$response
                 )
                 collect_args <- list(
