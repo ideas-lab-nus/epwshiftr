@@ -16,6 +16,7 @@
 EsgResult <- R6::R6Class(
     "EsgResult",
     lock_class = TRUE,
+    lock_objects = FALSE,
     public = list(
         # initialize {{{
         #' @description
@@ -35,6 +36,7 @@ EsgResult <- R6::R6Class(
             private$index_node <- index_node
             private$parameter <- query_param_clone(params)
             private$response <- response
+            private$register_dynamic_fields()
             self
         },
         # }}}
@@ -90,6 +92,19 @@ EsgResult <- R6::R6Class(
         },
         # }}}
 
+        # to_dt {{{
+        #' @description
+        #' Alias of `$to_data_table()`.
+        #'
+        #' @param ... Arguments passed to `$to_data_table()`.
+        #'
+        #' @return A [data.table][data.table::data.table()].
+        #'
+        to_dt = function(...) {
+            self$to_data_table(...)
+        },
+        # }}}
+
         # count {{{
         #' @description
         #' Count the number of matched records in current result
@@ -135,7 +150,9 @@ EsgResult <- R6::R6Class(
         #'
         #' `$load()` reads data of an `EsgResult` object from a JSON file
         #' created using
-        #' \href{#method-EsgResult-save}{\code{EsgResult$save()}}.
+        #' \href{#method-EsgResult-save}{\code{EsgResult$save()}}. Saved
+        #' result fields are restored as read-only active bindings. A saved
+        #' file can only be loaded by the matching result type.
         #'
         #' @param file A string indicating the JSON file path to read the data
         #'        from.
@@ -144,10 +161,12 @@ EsgResult <- R6::R6Class(
         #'
         load = function(file) {
             q <- query_load(file, SCHEMA_RESULT_DATASET)
+            private$validate_loaded_result(q)
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
             private$response <- q$response
+            private$register_dynamic_fields()
 
             self
         }
@@ -228,23 +247,122 @@ EsgResult <- R6::R6Class(
         index_node = NULL,
         parameter = NULL,
         response = NULL,
+        dynamic_fields = character(),
+        result_type = NULL,
 
         required_fields = c("id", "size", "url"),
         query_fields = c("dataset_id", "fields", "latest", "distrib", "limit", "type", "format"),
+        static_fields = c("id", "url", "size", "fields", "filename", "url_opendap", "url_download"),
 
         get_docs = function() {
-            private$response$response$docs
+            docs <- private$response$response$docs
+            if (is.null(docs)) {
+                data.frame()
+            } else {
+                docs
+            }
         },
 
         get_field = function(field) {
-            val <- private$response$response$docs[[field]]
+            docs <- private$get_docs()
+            val <- docs[[field]]
+            if (is.null(val)) {
+                return(NULL)
+            }
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
 
+        # validate_loaded_result {{{
+        validate_loaded_result = function(q) {
+            expected <- private$result_type
+            if (is.null(expected)) {
+                return(invisible(q))
+            }
+
+            actual <- query_param_value(q$parameter$type())
+            if (!identical(actual, expected)) {
+                stop(sprintf(
+                    "Cannot load %s result into %s object. Use esg_result('%s')$load() instead.",
+                    if (is.null(actual)) "NULL" else sprintf("'%s'", actual),
+                    class(self)[[1L]],
+                    tolower(expected)
+                ), call. = FALSE)
+            }
+
+            invisible(q)
+        },
+        # }}}
+
+        # register_dynamic_fields {{{
+        register_dynamic_fields = function() {
+            if (length(private$dynamic_fields)) {
+                for (field in private$dynamic_fields) {
+                    if (exists(field, envir = self, inherits = FALSE) && bindingIsActive(field, self)) {
+                        rm(list = field, envir = self)
+                    }
+                }
+                private$dynamic_fields <- character()
+            }
+
+            docs <- private$get_docs()
+            fields <- setdiff(names(docs), private$static_fields)
+            if (!length(fields)) {
+                return(invisible(character()))
+            }
+
+            fields <- fields[!vapply(fields, exists, logical(1L), envir = self, inherits = FALSE)]
+            for (field in fields) {
+                makeActiveBinding(
+                    field,
+                    local({
+                        field <- field
+                        function(value) {
+                            if (!missing(value)) {
+                                stop("ESGF result fields are read-only.", call. = FALSE)
+                            }
+                            private$get_field(field)
+                        }
+                    }),
+                    self
+                )
+            }
+            private$dynamic_fields <- fields
+
+            invisible(fields)
+        },
+        # }}}
+
+        # has_access {{{
+        has_access = function(type) {
+            n <- self$count()
+            if (!n) {
+                return(logical())
+            }
+
+            access <- private$get_field("access")
+            if (is.null(access)) {
+                return(rep(FALSE, n))
+            }
+            if (!is.list(access)) {
+                access <- as.list(access)
+            }
+            if (length(access) < n) {
+                access <- c(access, rep(list(character()), n - length(access)))
+            }
+
+            vapply(access[seq_len(n)], function(acc) type %in% acc, logical(1L))
+        },
+        # }}}
+
         # get_url {{{
         get_url = function(type, name = type) {
+            urls <- self$url
+            if (is.null(urls)) {
+                return(rep(NA_character_, self$count()))
+            }
+
             vapply(
-                self$url,
+                urls,
                 function(dt_url) {
                     # nocov start
                     if (!length(dt_url)) {
@@ -362,6 +480,9 @@ EsgResult <- R6::R6Class(
                         "NONE"
                     } else {
                         vapply(self$url[ind], FUN.VALUE = character(1), function(url) {
+                            if (is.null(url)) {
+                                return("NONE")
+                            }
                             paste0(url$service, collapse = ", ")
                         })
                     }
@@ -399,6 +520,7 @@ EsgResultDataset <- R6::R6Class(
     "EsgResultDataset",
     inherit = EsgResult,
     lock_class = TRUE,
+    lock_objects = FALSE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -426,7 +548,7 @@ EsgResultDataset <- R6::R6Class(
         #' @return A logical vector.
         #'
         has_opendap = function() {
-            vapply(private$get_field("access"), function(acc) "OPENDAP" %in% acc, logical(1L))
+            private$has_access("OPENDAP")
         },
         # }}}
 
@@ -437,7 +559,7 @@ EsgResultDataset <- R6::R6Class(
         #' @return A logical vector.
         #'
         has_download = function() {
-            vapply(private$get_field("access"), function(acc) "HTTPServer" %in% acc, logical(1L))
+            private$has_access("HTTPServer")
         },
         # }}}
 
@@ -459,7 +581,9 @@ EsgResultDataset <- R6::R6Class(
         #'
         #' @param which A character vector giving the value of dataset ID or an
         #'        integer vector giving the indices of the dataset. If `NULL`,
-        #'        all datasets will be sent. Default: `NULL`.
+        #'        all datasets will be sent. Empty dataset results return empty
+        #'        child results without sending another ESGF query. Default:
+        #'        `NULL`.
         #'
         #' @param fields A character vector indicating the value of `fields`
         #'        parameter when sending the query. If `NULL`, all available
@@ -476,6 +600,9 @@ EsgResultDataset <- R6::R6Class(
         #'
         #' @param ... Other parameters to set. Currently, there are 4 parameters
         #'        supported, including `replica`, `distrib`, `latest`, `shards`.
+        #'        If omitted, these controls are inherited from the dataset
+        #'        query when available, with `distrib = TRUE` and
+        #'        `latest = TRUE` as fallbacks.
         #'        For details on possible parameters, please see [esg_query()].
         #'
         #' @return
@@ -503,13 +630,15 @@ EsgResultDataset <- R6::R6Class(
                 which <- if (is.character(which)) match(which, self$id) else as.integer(which)
             }
 
-            params <- private$build_params(
+            built <- private$build_params(
                 fields = fields,
                 limit = limit,
                 type = type,
                 index = which,
                 ...
             )
+            params <- built$params
+            limit <- built$limit
 
             req_fld <- if (type == "File") {
                 EsgResultFile$private_fields$required_fields
@@ -517,14 +646,18 @@ EsgResultDataset <- R6::R6Class(
                 EsgResultAggregation$private_fields$required_fields
             }
 
-            result <- query_collect(
-                private$index_node,
-                params,
-                required_fields = req_fld,
-                all = all,
-                limit = limit,
-                constraints = FALSE
-            )
+            if (self$count() == 0L) {
+                result <- query_result_empty_response(params)
+            } else {
+                result <- query_collect(
+                    private$index_node,
+                    params,
+                    required_fields = req_fld,
+                    all = all,
+                    limit = limit,
+                    constraints = FALSE
+                )
+            }
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
@@ -568,6 +701,8 @@ EsgResultDataset <- R6::R6Class(
     ),
 
     private = list(
+        result_type = "Dataset",
+
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
             "index_node",
@@ -585,14 +720,14 @@ EsgResultDataset <- R6::R6Class(
                 limit <- this$data_max_limit
             }
 
-            params <- eval(substitute(alist(...)))
-            if (length(params)) {
+            overrides <- eval(substitute(alist(...)))
+            if (length(overrides)) {
                 # other parameters
                 names_supp <- c("replica", "distrib", "latest", "shards")
-                params <- eval_with_bang(...)
+                overrides <- eval_with_bang(...)
 
                 # stop if unsupported parameter found
-                names_params <- names(params)
+                names_params <- names(overrides)
                 if (any(invld <- !names_params %in% names_supp)) {
                     stop(sprintf(
                         "Unsupported query parameter found: [%s]. Should be subset of [%s].",
@@ -602,16 +737,7 @@ EsgResultDataset <- R6::R6Class(
                 }
             }
 
-            # assign default values for distrib and latest
-            if (is.null(params$distrib)) {
-                params$distrib <- as_query_param("distrib", TRUE)
-            }
-            if (is.null(params$latest)) {
-                params$latest <- as_query_param("latest", TRUE)
-            }
-
-            param_value <- function(name) {
-                param <- params[[name]]
+            param_value <- function(param) {
                 if (is.null(param)) {
                     return(NULL)
                 }
@@ -620,26 +746,50 @@ EsgResultDataset <- R6::R6Class(
                 }
                 param$value
             }
+            inherited_value <- function(name) {
+                if (name %in% names(overrides)) {
+                    return(param_value(overrides[[name]]))
+                }
+                param_value(.subset2(private$parameter, name)())
+            }
+
+            controls <- list(
+                shards = inherited_value("shards"),
+                replica = inherited_value("replica"),
+                latest = inherited_value("latest"),
+                distrib = inherited_value("distrib")
+            )
+            if (is.null(controls$latest)) {
+                controls$latest <- TRUE
+            }
+            if (is.null(controls$distrib)) {
+                controls$distrib <- TRUE
+            }
 
             # create a new query to validate params
             query <- esg_query(private$index_node)
+            query$distrib(controls$distrib)
+            dataset_id <- if (is.null(index)) self$id else self$id[index]
+            if (!length(dataset_id)) {
+                dataset_id <- NULL
+            }
 
             params <- list(
-                dataset_id = if (is.null(index)) self$id else self$id[index],
+                dataset_id = dataset_id,
 
                 # use query object to validate params
                 fields = query$fields(fields)$fields(),
-                shards = query$shards(param_value("shards"))$shards(),
-                replica = query$replica(param_value("replica"))$replica(),
-                latest = query$latest(param_value("latest"))$latest(),
-                distrib = query$distrib(param_value("distrib"))$distrib(),
+                shards = query$shards(controls$shards)$shards(),
+                replica = query$replica(controls$replica)$replica(),
+                latest = query$latest(controls$latest)$latest(),
+                distrib = query$distrib(),
 
                 limit = limit,
                 type = type,
                 format = FORMAT_JSON
             )
 
-            query_param_as_store(params)
+            list(params = query_param_as_store(params), limit = limit)
         }
         # }}}
     )
@@ -665,6 +815,7 @@ EsgResultFile <- R6::R6Class(
     "EsgResultFile",
     inherit = EsgResult,
     lock_class = TRUE,
+    lock_objects = FALSE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -709,9 +860,10 @@ EsgResultFile <- R6::R6Class(
         #'
         #' @param index Integer index of the file to open. Default: `1L`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
-        #'   - `"ask"`: Interactively ask the user (default)
-        #'   - `"auto"`: Automatically download the file
-        #'   - `"error"`: Raise an error
+        #'   - `"ask"`: Interactively ask the user (default). In a
+        #'     non-interactive session this raises an error.
+        #'   - `"auto"`: Automatically download the file via HTTPServer.
+        #'   - `"error"`: Raise an error.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
         open_dataset = function(index = 1L, fallback = c("ask", "auto", "error")) {
@@ -719,44 +871,63 @@ EsgResultFile <- R6::R6Class(
             fallback <- match.arg(fallback)
 
             url <- self$url_opendap[index]
+            opendap_error <- NULL
+            ds <- NULL
 
-            # Try OPeNDAP first
-            ds <- tryCatch(
-                {
-                    d <- EsgDataset$new(url)
-                    d$open()
-                    d
-                },
-                error = function(e) NULL
-            )
+            if (!is.na(url)) {
+                # Try OPeNDAP first
+                ds <- tryCatch(
+                    {
+                        d <- EsgDataset$new(url)
+                        d$open()
+                        d
+                    },
+                    error = function(e) {
+                        opendap_error <<- e
+                        NULL
+                    }
+                )
+            }
 
             if (!is.null(ds)) {
                 return(ds)
             }
 
-            # OPeNDAP failed — handle fallback
-            cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
-
-            if (fallback == "error") {
-                cli::cli_abort("OPeNDAP is not available for this file.")
+            # OPeNDAP failed or is unavailable: handle fallback
+            if (is.na(url)) {
+                cli::cli_alert_warning("No OPeNDAP URL is available for file index {index}.")
+            } else {
+                cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
             }
 
-            if (fallback == "ask" && interactive()) {
-                answer <- utils::menu(
-                    choices = c("Download via HTTP", "Cancel"),
-                    title = "OPeNDAP is not available. What would you like to do?"
-                )
-                if (answer != 1L) {
-                    cli::cli_abort("Operation cancelled by user.")
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for this file.", parent = opendap_error)
+            }
+
+            if (fallback == "ask") {
+                if (!interactive()) {
+                    cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
+                } else {
+                    answer <- utils::menu(
+                        choices = c("Download via HTTP", "Cancel"),
+                        title = "OPeNDAP is not available. What would you like to do?"
+                    )
+                    if (answer != 1L) {
+                        cli::cli_abort("Operation cancelled by user.")
+                    }
                 }
             }
 
             # Download as fallback
+            file_url <- self$url_download[index]
+            if (is.na(file_url)) {
+                cli::cli_abort("No HTTPServer download URL is available for file index {index}.")
+            }
+
             cli::cli_alert_info("Downloading file via HTTP as fallback...")
             dl <- FileDownloader$new()
 
             # Get file info
-            file_url <- self$url_download[index]
             dt <- self$to_data_table()
             checksum <- if ("checksum" %in% names(dt)) dt$checksum[index] else NULL
             checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[index]) else NULL
@@ -817,6 +988,8 @@ EsgResultFile <- R6::R6Class(
         # }}}
     ),
     private = list(
+        result_type = "File",
+
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
             "dataset_id",
@@ -849,6 +1022,7 @@ EsgResultAggregation <- R6::R6Class(
     "EsgResultAggregation",
     inherit = EsgResult,
     lock_class = TRUE,
+    lock_objects = FALSE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -894,9 +1068,10 @@ EsgResultAggregation <- R6::R6Class(
         #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
         #'   If `FALSE`, open only the first file.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
-        #'   - `"ask"`: Interactively ask the user (default)
-        #'   - `"auto"`: Automatically download files
-        #'   - `"error"`: Raise an error
+        #'   - `"ask"`: Interactively ask the user (default). In a
+        #'     non-interactive session this raises an error.
+        #'   - `"auto"`: Automatically download files via HTTPServer.
+        #'   - `"error"`: Raise an error.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
         open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error")) {
@@ -904,54 +1079,79 @@ EsgResultAggregation <- R6::R6Class(
             fallback <- match.arg(fallback)
 
             urls <- self$url_opendap
+            indices <- seq_along(urls)
 
             if (!aggregate) {
                 urls <- urls[1L]
+                indices <- 1L
             }
 
-            # Try OPeNDAP
-            ds <- tryCatch(
-                {
-                    d <- EsgDataset$new(urls)
-                    d$open()
-                    d
-                },
-                error = function(e) NULL
-            )
+            opendap_error <- NULL
+            ds <- NULL
+            if (length(urls) && all(!is.na(urls))) {
+                # Try OPeNDAP
+                ds <- tryCatch(
+                    {
+                        d <- EsgDataset$new(urls)
+                        d$open()
+                        d
+                    },
+                    error = function(e) {
+                        opendap_error <<- e
+                        NULL
+                    }
+                )
+            }
 
             if (!is.null(ds)) {
                 return(ds)
             }
 
-            # OPeNDAP failed
-            cli::cli_alert_warning("OPeNDAP connection failed.")
-
-            if (fallback == "error") {
-                cli::cli_abort("OPeNDAP is not available for these files.")
+            # OPeNDAP failed or is unavailable
+            if (!length(urls) || all(is.na(urls))) {
+                cli::cli_alert_warning("No OPeNDAP URLs are available for these aggregation records.")
+            } else if (any(is.na(urls))) {
+                cli::cli_alert_warning("OPeNDAP URLs are missing for one or more aggregation records.")
+            } else {
+                cli::cli_alert_warning("OPeNDAP connection failed.")
             }
 
-            if (fallback == "ask" && interactive()) {
-                answer <- utils::menu(
-                    choices = c(
-                        sprintf("Download %d file(s) via HTTP", length(urls)),
-                        "Cancel"
-                    ),
-                    title = "OPeNDAP is not available. What would you like to do?"
-                )
-                if (answer != 1L) {
-                    cli::cli_abort("Operation cancelled by user.")
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for these files.", parent = opendap_error)
+            }
+
+            if (fallback == "ask") {
+                if (!interactive()) {
+                    cli::cli_abort("Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP.")
+                } else {
+                    answer <- utils::menu(
+                        choices = c(
+                            sprintf("Download %d file(s) via HTTP", length(indices)),
+                            "Cancel"
+                        ),
+                        title = "OPeNDAP is not available. What would you like to do?"
+                    )
+                    if (answer != 1L) {
+                        cli::cli_abort("Operation cancelled by user.")
+                    }
                 }
             }
 
             # Download as fallback
-            cli::cli_alert_info("Downloading {length(urls)} file(s) via HTTP as fallback...")
+            download_urls <- self$url_download[indices]
+            if (any(is.na(download_urls))) {
+                cli::cli_abort("HTTPServer download URLs are missing for one or more aggregation records.")
+            }
+
+            cli::cli_alert_info("Downloading {length(indices)} file(s) via HTTP as fallback...")
             dl <- FileDownloader$new()
+            dt <- self$to_data_table()
 
             local_paths <- vapply(
-                seq_along(urls),
-                function(i) {
-                    file_url <- self$url_download[i]
-                    dt <- self$to_data_table()
+                seq_along(indices),
+                function(j) {
+                    i <- indices[[j]]
+                    file_url <- download_urls[[j]]
                     checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
                     checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
 
@@ -1007,6 +1207,8 @@ EsgResultAggregation <- R6::R6Class(
     ),
 
     private = list(
+        result_type = "Aggregation",
+
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
             "dataset_id",
@@ -1017,46 +1219,38 @@ EsgResultAggregation <- R6::R6Class(
 )
 # }}}
 
+# query_result_empty_response {{{
+query_result_empty_response <- function(params) {
+    force(params)
+
+    response <- list(
+        responseHeader = list(
+            status = 0L,
+            QTime = 0L,
+            params = stats::setNames(list(), character())
+        ),
+        response = list(
+            numFound = 0L,
+            start = 0L,
+            docs = data.frame(check.names = FALSE),
+            maxScore = 0
+        ),
+        facet_counts = list(
+            facet_queries = list(),
+            facet_fields = list(),
+            facet_ranges = list(),
+            facet_intervals = list(),
+            facet_heatmaps = list()
+        ),
+        timestamp = Sys.time()
+    )
+
+    list(response = response, docs = response$response$docs)
+}
+# }}}
+
 # new_query_result {{{
-new_query_result <- function(generator, index_node = NULL, params = NULL, result = NULL, ..., .env = parent.frame()) {
-    if (generator$is_locked()) {
-        generator$unlock()
-        on.exit(generator$lock(), add = TRUE)
-    }
-
-    fld_exist <- names(generator$active)
-    # also check super class
-    super <- generator$inherit
-    while (!is.null(super <- eval(super, .env))) {
-        fld_exist <- union(fld_exist, names(super$active))
-        super <- super$inherit
-    }
-
-    fld_all <- names(result$response$docs)
-    fld_miss <- setdiff(fld_all, fld_exist)
-    if (length(fld_miss)) {
-        for (field in fld_miss) {
-            eval(substitute(
-                generator$set(
-                    "active",
-                    field,
-                    function() {
-                        private$get_field(field)
-                    }
-                ),
-                list(field = field)
-            ))
-        }
-
-        on.exit(
-            {
-                for (field in fld_miss) {
-                    generator$active[[field]] <- NULL
-                }
-            },
-            add = TRUE
-        )
-    }
+new_query_result <- function(generator, index_node = NULL, params = NULL, result = NULL, ...) {
     generator$new(index_node, params, result, ...)
 }
 # }}}

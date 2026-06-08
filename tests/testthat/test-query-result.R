@@ -1,5 +1,254 @@
 # EsgResultDataset {{{
 local_test_cache(scope = "persist")
+
+query_result_test_response <- function(docs) {
+    list(
+        responseHeader = list(
+            status = 0L,
+            QTime = 0L,
+            params = stats::setNames(list(), character())
+        ),
+        response = list(
+            numFound = nrow(docs),
+            start = 0L,
+            docs = docs,
+            maxScore = 1
+        ),
+        facet_counts = list(
+            facet_queries = list(),
+            facet_fields = list(),
+            facet_ranges = list(),
+            facet_intervals = list(),
+            facet_heatmaps = list()
+        ),
+        timestamp = Sys.time()
+    )
+}
+
+query_result_test_params <- function(type = "Dataset", ...) {
+    values <- list(...)
+    params <- list(
+        project = "CMIP6",
+        latest = TRUE,
+        distrib = TRUE,
+        limit = 1L,
+        type = type,
+        format = FORMAT_JSON
+    )
+    params[names(values)] <- values
+
+    query_param_as_store(params)
+}
+
+query_result_test_object <- function(type = "Dataset", docs, params = query_result_test_params(type)) {
+    generator <- switch(
+        type,
+        Dataset = EsgResultDataset,
+        File = EsgResultFile,
+        Aggregation = EsgResultAggregation
+    )
+    new_query_result(
+        generator,
+        index_node = "https://example.org",
+        params = params,
+        result = query_result_test_response(docs)
+    )
+}
+
+query_result_test_state <- function(type = "Dataset", docs, params = query_result_test_params(type)) {
+    list(
+        index_node = "https://example.org",
+        parameter = params,
+        response = query_result_test_response(docs)
+    )
+}
+
+query_result_test_dataset_docs <- function(access = TRUE) {
+    docs <- data.frame(
+        id = c("dataset-1", "dataset-2"),
+        source_id = c("source-a", "source-b"),
+        experiment_id = c("ssp126", "ssp585"),
+        size = c(1, 2),
+        check.names = FALSE
+    )
+    if (access) {
+        docs$access <- I(list(c("OPENDAP", "HTTPServer"), "HTTPServer"))
+    }
+    docs
+}
+
+query_result_test_file_docs <- function(url = "https://example.org/file.nc|application/netcdf|HTTPServer") {
+    docs <- data.frame(
+        id = "file-1",
+        dataset_id = "dataset-1",
+        size = 1,
+        checksum = "abc",
+        checksum_type = "SHA256",
+        tracking_id = "hdl:21.14100/mock-file",
+        title = "file.nc",
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    docs$url <- I(list(url))
+    docs
+}
+
+test_that("loaded ESGF query results restore dynamic fields", {
+    state <- query_result_test_state("Dataset", query_result_test_dataset_docs())
+    testthat::local_mocked_bindings(
+        query_load = function(file, schema = NULL) state,
+        .package = "epwshiftr"
+    )
+
+    loaded <- expect_s3_class(esg_result("dataset")$load("dataset.json"), "EsgResultDataset")
+    expect_identical(loaded$source_id, c("source-a", "source-b"))
+    expect_identical(loaded$experiment_id, c("ssp126", "ssp585"))
+    expect_true(all(c("source_id", "experiment_id") %in% loaded$fields))
+    expect_s3_class(loaded$to_data_table(), "data.table")
+    expect_s3_class(loaded$to_dt(), "data.table")
+
+    loaded_in_place <- esg_result("dataset")
+    expect_s3_class(loaded_in_place$load("dataset.json"), "EsgResultDataset")
+    expect_identical(loaded_in_place$source_id, c("source-a", "source-b"))
+})
+
+test_that("loaded ESGF query results validate result type", {
+    state <- query_result_test_state("File", query_result_test_file_docs(), query_result_test_params("File"))
+    testthat::local_mocked_bindings(
+        query_load = function(file, schema = NULL) state,
+        .package = "epwshiftr"
+    )
+
+    expect_error(esg_result("dataset")$load("file.json"), "Cannot load 'File' result")
+    expect_s3_class(esg_result("file")$load("file.json"), "EsgResultFile")
+})
+
+test_that("empty dataset results collect empty child results without querying", {
+    docs <- data.frame(id = character(), size = numeric(), check.names = FALSE)
+    datasets <- query_result_test_object("Dataset", docs)
+
+    testthat::local_mocked_bindings(
+        query_collect = function(...) stop("query_collect should not be called"),
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(datasets$collect(type = "File"), "EsgResultFile")
+    expect_equal(files$count(), 0L)
+    expect_identical(query_param_value(priv(files)$parameter$type()), "File")
+
+    aggs <- expect_s3_class(datasets$collect(type = "Aggregation"), "EsgResultAggregation")
+    expect_equal(aggs$count(), 0L)
+    expect_identical(query_param_value(priv(aggs)$parameter$type()), "Aggregation")
+})
+
+test_that("dataset result collect inherits controls and normalizes limit", {
+    params <- query_result_test_params("Dataset", latest = FALSE, distrib = FALSE, replica = FALSE)
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = "dataset-1", size = 1, check.names = FALSE),
+        params
+    )
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            calls[[length(calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                required_fields = required_fields,
+                all = all,
+                limit = limit,
+                constraints = constraints
+            )
+            response <- query_result_test_response(query_result_test_file_docs())
+            list(response = response, docs = response$response$docs)
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
+    expect_equal(calls[[1L]]$limit, this$data_max_limit)
+    expect_false(query_param_value(calls[[1L]]$params$latest()))
+    expect_false(query_param_value(calls[[1L]]$params$distrib()))
+    expect_false(query_param_value(calls[[1L]]$params$replica()))
+
+    expect_s3_class(
+        datasets$collect(fields = "id", limit = 1L, latest = TRUE, distrib = TRUE, replica = TRUE),
+        "EsgResultFile"
+    )
+    expect_equal(calls[[2L]]$limit, 1L)
+    expect_true(query_param_value(calls[[2L]]$params$latest()))
+    expect_true(query_param_value(calls[[2L]]$params$distrib()))
+    expect_true(query_param_value(calls[[2L]]$params$replica()))
+})
+
+test_that("dataset access helpers tolerate missing access fields", {
+    datasets <- query_result_test_object("Dataset", query_result_test_dataset_docs(access = FALSE))
+    expect_identical(datasets$has_opendap(), c(FALSE, FALSE))
+    expect_identical(datasets$has_download(), c(FALSE, FALSE))
+})
+
+test_that("URL helpers preserve result length for missing and malformed URLs", {
+    docs <- data.frame(
+        id = paste0("file-", 1:4),
+        dataset_id = "dataset-1",
+        size = 1,
+        checksum = "abc",
+        checksum_type = "SHA256",
+        tracking_id = "hdl:21.14100/mock-file",
+        title = paste0("file-", 1:4, ".nc"),
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        character(),
+        "malformed",
+        "https://example.org/file-3.nc|application/netcdf|HTTPServer",
+        c(
+            "https://example.org/dods/file-4.html|application/netcdf|OPENDAP",
+            "https://example.org/file-4.nc|application/netcdf|HTTPServer"
+        )
+    ))
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    aggs <- query_result_test_object("Aggregation", docs, query_result_test_params("Aggregation"))
+
+    expect_identical(
+        files$url_download,
+        c(NA_character_, NA_character_, "https://example.org/file-3.nc", "https://example.org/file-4.nc")
+    )
+    expect_identical(
+        files$url_opendap,
+        c(NA_character_, NA_character_, NA_character_, "https://example.org/dods/file-4")
+    )
+    expect_identical(aggs$url_download, files$url_download)
+    expect_identical(aggs$url_opendap, files$url_opendap)
+})
+
+test_that("open_dataset fallback behavior is explicit before side effects", {
+    http_only <- query_result_test_object(
+        "File",
+        query_result_test_file_docs("https://example.org/file.nc|application/netcdf|HTTPServer"),
+        query_result_test_params("File")
+    )
+    expect_error(http_only$open_dataset(fallback = "error"), "OPeNDAP is not available")
+    expect_error(http_only$open_dataset(fallback = "ask"), "non-interactive")
+
+    no_urls <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(character()),
+        query_result_test_params("File")
+    )
+    expect_error(no_urls$open_dataset(fallback = "auto"), "HTTPServer download URL")
+
+    aggs_no_urls <- query_result_test_object(
+        "Aggregation",
+        query_result_test_file_docs(character()),
+        query_result_test_params("Aggregation")
+    )
+    expect_error(aggs_no_urls$open_dataset(fallback = "auto"), "HTTPServer download URLs")
+})
+
 test_that("ESGF Query Result Dataset works", {
     skip_on_cran()
 
