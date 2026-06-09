@@ -746,11 +746,11 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_equal(calls[[2L]]$limit, 3L)
     expect_identical(query_param_value(calls[[2L]]$params$type()), "File")
     expect_identical(query_param_value(calls[[2L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_identical(calls[[2L]]$params$render(c("datetime_start", "datetime_stop")), character())
     expect_identical(files$count(), 1L)
 
     expect_error(q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"), "Additional query filters")
     expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
-    expect_error(q$collect(type = "Dataset", time = "all"), "`time`")
 })
 
 test_that("query_collect includes only result-field constraints in fields", {

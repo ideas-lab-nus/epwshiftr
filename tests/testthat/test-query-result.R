@@ -478,7 +478,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(query_param_value(calls[[2L]]$params$replica()))
 })
 
-test_that("dataset result collect accepts child facets and applies time strategies", {
+test_that("dataset result collect accepts child facets and clears datetime constraints", {
     params <- query_result_test_params("Dataset")
     params$datetime_range(
         start = "2050-01-01T00:00:00Z",
@@ -506,19 +506,10 @@ test_that("dataset result collect accepts child facets and applies time strategi
         "EsgResultFile"
     )
     expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
-    rendered <- calls[[1L]]$params$render(c("datetime_start", "datetime_stop"))
-    expect_true(any(grepl("datetime_start:.*2080-12-31T23:59:59Z", rendered)))
-    expect_true(any(grepl("datetime_stop:.*2050-01-01T00:00:00Z", rendered)))
-
-    expect_s3_class(datasets$collect(limit = 1L, time = "cover"), "EsgResultFile")
-    rendered <- calls[[2L]]$params$render(c("datetime_start", "datetime_stop"))
-    expect_true(any(grepl("datetime_start:.*2050-01-01T00:00:00Z", rendered)))
-    expect_true(any(grepl("datetime_stop:.*2080-12-31T23:59:59Z", rendered)))
-
-    expect_s3_class(datasets$collect(limit = 1L, time = "all"), "EsgResultFile")
-    expect_identical(calls[[3L]]$params$render(c("datetime_start", "datetime_stop")), character())
+    expect_identical(calls[[1L]]$params$render(c("datetime_start", "datetime_stop")), character())
 
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
+    expect_error(datasets$collect(time = "all"), "controlled")
 })
 
 test_that("dataset access helpers tolerate missing access fields", {

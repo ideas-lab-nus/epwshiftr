@@ -1226,7 +1226,6 @@ However, the following fields are always included in the results:
   params = TRUE,
   type = "Dataset",
   fields = NULL,
-  time = NULL,
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -1259,15 +1258,10 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 \code{"Aggregation"}. Dataset fields should be configured with
 \verb{$fields()} before collecting.}
 
-\item{\code{time}}{Time strategy used only when \code{type} is \code{"File"} or
-\code{"Aggregation"}. \code{"overlap"} converts a Dataset time window
-into File/Aggregation records overlapping that window,
-\code{"cover"} keeps the inherited Dataset time constraints, and
-\code{"all"} removes inherited time constraints. Default:
-\code{"overlap"} for child results.}
-
 \item{\code{...}}{Additional File/Aggregation facet filters used only when
-\code{type} is \code{"File"} or \code{"Aggregation"}.}
+\code{type} is \code{"File"} or \code{"Aggregation"}. File/Aggregation
+collection does not use ESGF datetime search parameters; use
+\verb{$filter_time()} on the returned result for time filtering.}
 }
 \if{html}{\out{</div>}}
 }

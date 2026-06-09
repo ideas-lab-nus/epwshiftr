@@ -1041,61 +1041,6 @@ query_result_normalize_type <- function(type, choices = c("Dataset", "File", "Ag
     type
 }
 
-query_result_datetime_range_boundary <- function(param, name) {
-    if (is.null(param)) {
-        return(NULL)
-    }
-    if (!S7::S7_inherits(param, QueryParamDate) || !S7::S7_inherits(param@value, SolrDateRange)) {
-        stop(sprintf(
-            "Cannot apply time = 'overlap' because the parent datetime '%s' constraint is not a standard range.",
-            name
-        ), call. = FALSE)
-    }
-
-    value <- param@value
-    if (identical(name, "datetime_start")) {
-        if (!S7::S7_inherits(value@start, SolrDateUnbounded) || S7::S7_inherits(value@end, SolrDateUnbounded)) {
-            stop("Cannot apply time = 'overlap' because the parent datetime_start constraint is not a single upper boundary.", call. = FALSE)
-        }
-        return(format(value@end, as = "iso"))
-    }
-
-    if (identical(name, "datetime_stop")) {
-        if (S7::S7_inherits(value@start, SolrDateUnbounded) || !S7::S7_inherits(value@end, SolrDateUnbounded)) {
-            stop("Cannot apply time = 'overlap' because the parent datetime_stop constraint is not a single lower boundary.", call. = FALSE)
-        }
-        return(format(value@start, as = "iso"))
-    }
-
-    stop(sprintf("Unknown datetime boundary '%s'.", name), call. = FALSE)
-}
-
-query_result_apply_time <- function(store, time = NULL) {
-    time <- if (is.null(time)) "overlap" else match.arg(time, c("overlap", "cover", "all"))
-
-    if (identical(time, "cover")) {
-        return(store)
-    }
-
-    current <- store$datetime_range()
-    target_start <- query_result_datetime_range_boundary(current$start, "datetime_start")
-    target_stop <- query_result_datetime_range_boundary(current$stop, "datetime_stop")
-
-    store$datetime_range(start = NULL, stop = NULL)
-    if (identical(time, "all")) {
-        return(store)
-    }
-
-    if (!is.null(target_stop)) {
-        store$datetime_range(start = target_stop)
-    }
-    if (!is.null(target_start)) {
-        store$datetime_range(stop = target_start)
-    }
-
-    store
-}
-
 query_result_merge_params <- function(store, params) {
     if (!length(params)) {
         return(store)
@@ -1210,28 +1155,23 @@ EsgResultDataset <- R6::R6Class(
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
         #'
-        #' @param time Time strategy for inherited Dataset temporal
-        #'        constraints. `"overlap"` returns File/Aggregation records
-        #'        overlapping the Dataset query time window, `"cover"` keeps
-        #'        the inherited Dataset time constraints, and `"all"` removes
-        #'        inherited time constraints. Default: `"overlap"`.
-        #'
         #' @param ... Additional child-result facet filters, plus the control
         #'        parameters `replica`, `distrib`, `latest`, and `shards`.
         #'        Query-level parameters such as `datetime_start` and
-        #'        `datetime_stop` are controlled by `time` and cannot be passed
-        #'        through `...`. If control parameters are omitted, they are
+        #'        `datetime_stop` cannot be passed through `...`.
+        #'        File/Aggregation collection does not use ESGF datetime search
+        #'        parameters; call `$filter_time()` on the returned result for
+        #'        time filtering. If control parameters are omitted, they are
         #'        inherited from the dataset query when available, with
-        #'        `distrib = TRUE` and `latest = TRUE` as fallbacks.
-        #'        For details on possible parameters, please see [esg_query()].
+        #'        `distrib = TRUE` and `latest = TRUE` as fallbacks. For details
+        #'        on possible parameters, please see [esg_query()].
         #'
         #' @return
         #'
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
-        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File",
-                           time = NULL, ...) {
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
             type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
             if (!is.null(which)) {
                 if (!self$count()) {
@@ -1256,7 +1196,6 @@ EsgResultDataset <- R6::R6Class(
                 fields = fields,
                 limit = limit,
                 type = type,
-                time = time,
                 index = which,
                 ...
             )
@@ -1336,7 +1275,7 @@ EsgResultDataset <- R6::R6Class(
         ))),
 
         # build_params {{{
-        build_params = function(fields = NULL, limit = 100L, type = "File", time = NULL, index = NULL, ...) {
+        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
             type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
@@ -1349,7 +1288,7 @@ EsgResultDataset <- R6::R6Class(
             if (length(overrides)) {
                 names_reserved <- c(
                     "dataset_id", "fields", "facets", "type", "format",
-                    "limit", "offset", "query", "_timestamp",
+                    "limit", "offset", "query", "_timestamp", "time",
                     query_param_names("query")
                 )
                 overrides <- eval_with_bang(...)
@@ -1458,7 +1397,7 @@ EsgResultDataset <- R6::R6Class(
             store$type(type)
             store$format(FORMAT_JSON)
             store$facets(NULL)
-            query_result_apply_time(store, time)
+            store$datetime_range(start = NULL, stop = NULL)
 
             list(params = store, limit = limit)
         }

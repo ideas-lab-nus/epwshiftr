@@ -1028,15 +1028,10 @@ EsgQuery <- R6::R6Class(
         #'        `"Aggregation"`. Dataset fields should be configured with
         #'        `$fields()` before collecting.
         #'
-        #' @param time Time strategy used only when `type` is `"File"` or
-        #'        `"Aggregation"`. `"overlap"` converts a Dataset time window
-        #'        into File/Aggregation records overlapping that window,
-        #'        `"cover"` keeps the inherited Dataset time constraints, and
-        #'        `"all"` removes inherited time constraints. Default:
-        #'        `"overlap"` for child results.
-        #'
         #' @param ... Additional File/Aggregation facet filters used only when
-        #'        `type` is `"File"` or `"Aggregation"`.
+        #'        `type` is `"File"` or `"Aggregation"`. File/Aggregation
+        #'        collection does not use ESGF datetime search parameters; use
+        #'        `$filter_time()` on the returned result for time filtering.
         #'
         #' @return An [EsgResultDataset], [EsgResultFile], or
         #' [EsgResultAggregation] object.
@@ -1065,8 +1060,7 @@ EsgQuery <- R6::R6Class(
         #' res4 <- query$collect(all = TRUE, limit = 30)
         #' identical(res2$count(), res4$count())
         #' }
-        collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL,
-                           time = NULL, ...) {
+        collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL, ...) {
             type <- query_result_normalize_type(type)
             dots <- eval(substitute(alist(...)))
 
@@ -1095,9 +1089,6 @@ EsgQuery <- R6::R6Class(
                 if (!is.null(fields)) {
                     stop("`fields` in `$collect()` is only supported when `type` is 'File' or 'Aggregation'. Use `$fields()` before collecting Dataset results.", call. = FALSE)
                 }
-                if (!is.null(time)) {
-                    stop("`time` in `$collect()` is only supported when `type` is 'File' or 'Aggregation'.", call. = FALSE)
-                }
                 return(collect_dataset(all = all, limit = limit))
             }
 
@@ -1108,7 +1099,6 @@ EsgQuery <- R6::R6Class(
                 all = all,
                 limit = child_limit,
                 type = type,
-                time = time,
                 ...
             )
         },
