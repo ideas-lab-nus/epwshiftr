@@ -71,6 +71,7 @@ Collate:
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
+    'extract-store.R'
     'gh.R'
     'import-standalone-schema.R'
     'morph.R'
@@ -79,7 +80,6 @@ Collate:
     'query-param.R'
     'query-result.R'
     'query.R'
-    'extract-store.R'
     'schema.R'
     'zzz.R'
 VignetteBuilder: knitr
