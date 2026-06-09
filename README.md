@@ -64,6 +64,11 @@ A BibTeX entry for LaTeX users is:
 You can install the latest stable release of epwshiftr from
 [CRAN](https://CRAN.R-project.org).
 
+The current development line and the next CRAN release intentionally use the
+new dependency-minimized implementation without compatibility for the legacy
+`fst`, `future.apply`, `progressr`, and `pingr` workflows. If you need the old
+implementation, use the `legacy` branch on GitHub or install epwshiftr `v0.1.4`.
+
 ``` r
 install.packages("epwshiftr")
 ```
