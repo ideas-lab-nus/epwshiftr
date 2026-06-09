@@ -137,6 +137,9 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
         tables,
         c("store_meta", "artifact", "query_run", "file_catalog", "extraction_plan", "extraction_result")
     )
+    expect_null(store$get_meta("active_cmip6_index_artifact_id"))
+    expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
+    expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
 
     store$close()
     expect_false(store$is_open)

@@ -428,9 +428,7 @@ summary_database <- function (
     this$index_db <- copy(idx)
 
     if (update) {
-        # save database into the persistent store
-        index_path <- store_cmip6_index_path(init = TRUE)
-        fwrite(idx, index_path)
+        index_path <- store_cmip6_index_save(idx)
         vmsg(sprintf(
             "Data file index updated and saved to '%s'",
             normalizePath(index_path, winslash = "/", mustWork = FALSE)

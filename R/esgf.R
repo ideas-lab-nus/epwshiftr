@@ -677,7 +677,8 @@ extract_query_file <- function(q) {
 #' @param years An integer vector indicating the target years to be include in
 #'        the data file. All other years will be excluded. If `NULL`, no
 #'        subsetting on years will be performed. Default: `NULL`.
-#' @param save If `TRUE`, the results will be saved into user data directory.
+#' @param save If `TRUE`, the results will be saved as an active CMIP6 index
+#'        artifact in the persistent store.
 #'        Default: `FALSE`.
 #'
 #' @return A [data.table::data.table] with 22 columns:
@@ -920,9 +921,7 @@ init_cmip6_index <- function(
     dt <- unique(dt, by = "file_id")
 
     if (save) {
-        # save database into the persistent store
-        index_path <- store_cmip6_index_path(init = TRUE)
-        data.table::fwrite(dt, index_path)
+        index_path <- store_cmip6_index_save(dt)
         vmsg(sprintf(
             "Data file index saved to '%s'",
             normalizePath(index_path, winslash = "/", mustWork = FALSE)
@@ -958,12 +957,13 @@ load_cmip6_index <- function(force = FALSE) {
     if (!force) {
         idx <- data.table::copy(this$index_db)
     } else {
-        f <- normalizePath(store_cmip6_index_path(init = FALSE), winslash = "/", mustWork = FALSE)
-        if (!file.exists(f)) {
+        f <- store_cmip6_index_active_path()
+        if (is.null(f) || !file.exists(f)) {
             stop(
-                "CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."
+                "CMIP6 experiment output file index does not exist. You may want to create one using 'init_cmip6_index()'."
             )
         }
+        f <- normalizePath(f, winslash = "/", mustWork = TRUE)
 
         # nocov start
         # load file info
@@ -1041,8 +1041,8 @@ load_cmip6_index <- function(force = FALSE) {
 #' @param index A [data.table::data.table()] containing the same column names
 #'        and types as the output of [init_cmip6_index()].
 #'
-#' @param save If `TRUE`, besides loaded index, the index file saved to data
-#'        directory will be also updated. Default: `FALSE`.
+#' @param save If `TRUE`, besides the in-memory index, the active CMIP6 index
+#'        artifact in the persistent store will also be updated. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table()].
 #' @export
@@ -1084,8 +1084,7 @@ set_cmip6_index <- function(index, save = FALSE) {
 
     # save database into the persistent store
     if (save) {
-        index_path <- store_cmip6_index_path(init = TRUE)
-        data.table::fwrite(index, index_path)
+        index_path <- store_cmip6_index_save(index)
         vmsg(sprintf(
             "Data file index saved to '%s'",
             normalizePath(index_path, winslash = "/", mustWork = FALSE)

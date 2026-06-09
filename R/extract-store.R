@@ -94,6 +94,50 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # get_meta {{{
+        #' @description
+        #' Return a store metadata value.
+        #'
+        #' @param key Metadata key.
+        #' @param default Value returned when `key` is not set.
+        #'
+        #' @return A single string, or `default`.
+        get_meta = function(key, default = NULL) {
+            private$check_open()
+            checkmate::assert_string(key, min.chars = 1L)
+
+            meta <- DBI::dbReadTable(private$conn, "store_meta")
+            row <- meta[meta$key == key, , drop = FALSE]
+            if (!nrow(row)) {
+                return(default)
+            }
+            row$value[[1L]]
+        },
+        # }}}
+
+        # set_meta {{{
+        #' @description
+        #' Set a store metadata value.
+        #'
+        #' @param key Metadata key.
+        #' @param value Metadata value. `NULL` is stored as `NA`.
+        #'
+        #' @return The store object, invisibly.
+        set_meta = function(key, value) {
+            private$check_open()
+            checkmate::assert_string(key, min.chars = 1L)
+            checkmate::assert_string(value, null.ok = TRUE)
+
+            private$replace_rows("store_meta", data.frame(
+                key = key,
+                value = extract_store_na_character(value),
+                updated_at = extract_store_now(),
+                stringsAsFactors = FALSE
+            ), "key")
+            invisible(self)
+        },
+        # }}}
+
         # register_artifact {{{
         #' @description
         #' Register a file artifact in the store manifest.

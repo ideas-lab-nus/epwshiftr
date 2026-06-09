@@ -479,14 +479,86 @@ store_write_json_atomic <- function(x, path, ...) {
 }
 # }}}
 
-# store_cmip6_index_path {{{
-store_cmip6_index_path <- function(init = TRUE) {
+# store_cmip6_index_active_key {{{
+store_cmip6_index_active_key <- function() {
+    "active_cmip6_index_artifact_id"
+}
+# }}}
+
+# store_cmip6_index_dir {{{
+store_cmip6_index_dir <- function(init = TRUE) {
     checkmate::assert_flag(init)
-    path <- store_path("queries", "cmip6-index", "cmip6_index.csv")
+    path <- store_path("queries", "cmip6-index", root = store_dir(init = init))
     if (isTRUE(init)) {
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+        dir.create(path, recursive = TRUE, showWarnings = FALSE)
     }
     path
+}
+# }}}
+
+# store_cmip6_index_path {{{
+store_cmip6_index_path <- function(index_id, init = TRUE) {
+    checkmate::assert_string(index_id, min.chars = 1L)
+    file.path(store_cmip6_index_dir(init), sprintf("%s.csv", index_id))
+}
+# }}}
+
+# store_cmip6_index_save {{{
+store_cmip6_index_save <- function(index) {
+    checkmate::assert_data_table(index)
+
+    dir <- store_cmip6_index_dir(init = TRUE)
+    tmp <- tempfile(pattern = "cmip6-index-", tmpdir = dir, fileext = ".csv")
+    on.exit(unlink(tmp, force = TRUE), add = TRUE)
+    data.table::fwrite(index, tmp)
+
+    index_id <- store_hash_file(tmp)
+    path <- store_cmip6_index_path(index_id, init = TRUE)
+    if (!file.exists(path)) {
+        if (!file.rename(tmp, path)) {
+            ok <- file.copy(tmp, path, overwrite = TRUE)
+            if (!isTRUE(ok)) {
+                stop(sprintf("Failed to save CMIP6 index artifact to '%s'.", path), call. = FALSE)
+            }
+        }
+    }
+
+    store <- EsgStore$new(store_dir(init = TRUE))
+    on.exit(store$close(), add = TRUE)
+    artifact_id <- store$register_artifact(
+        kind = "cmip6_index",
+        path = path,
+        role = "input",
+        project = "CMIP6",
+        metadata = list(
+            rows = nrow(index),
+            columns = names(index)
+        )
+    )
+    store$set_meta(store_cmip6_index_active_key(), artifact_id)
+
+    path
+}
+# }}}
+
+# store_cmip6_index_active_path {{{
+store_cmip6_index_active_path <- function() {
+    root <- store_dir(init = FALSE)
+    if (!dir.exists(root)) {
+        return(NULL)
+    }
+
+    store <- EsgStore$new(root, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+    artifact_id <- store$get_meta(store_cmip6_index_active_key())
+    if (is.null(artifact_id) || is.na(artifact_id) || !nzchar(artifact_id)) {
+        return(NULL)
+    }
+
+    tryCatch(
+        store$artifact_path(artifact_id),
+        error = function(e) NULL
+    )
 }
 # }}}
 

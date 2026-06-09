@@ -229,9 +229,9 @@ test_that("store path helpers keep paths inside the store", {
     root <- tempfile("epwshiftr-store-")
     withr::local_options(list(epwshiftr.dir_store = root))
 
-    path <- store_path("queries", "cmip6-index", "cmip6_index.csv")
-    expect_identical(store_rel_path(path), "queries/cmip6-index/cmip6_index.csv")
-    expect_identical(store_abs_path("queries/cmip6-index/cmip6_index.csv"), path)
+    path <- store_cmip6_index_path(strrep("a", 64L))
+    expect_identical(store_rel_path(path), sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L)))
+    expect_identical(store_abs_path(sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))), path)
     expect_error(store_rel_path(tempfile()), "outside")
 })
 
