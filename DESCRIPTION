@@ -27,7 +27,6 @@ Imports:
     data.table (>= 1.12.4),
     duckdb,
     eplusr (>= 0.15.2),
-    fst,
     jsonlite,
     mirai,
     psychrolib,

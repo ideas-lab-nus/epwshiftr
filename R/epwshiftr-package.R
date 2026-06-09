@@ -37,7 +37,6 @@
 #' @importFrom data.table :=
 #' @importFrom data.table data.table
 #' @importFrom eplusr read_epw
-#' @importFrom fst write_fst
 #' @importFrom jsonlite fromJSON
 #' @importFrom mirai daemons mirai
 #' @importFrom psychrolib GetTDewPointFromRelHum

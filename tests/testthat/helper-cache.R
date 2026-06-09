@@ -107,9 +107,19 @@ get_cache_nc <- function(reset = FALSE) {
     normalizePath(dir)
 }
 
-get_cache_fst <- function(reset = FALSE) {
+read_test_parquet <- function(path) {
+    conn <- ddb_connect(":memory:")
+    on.exit(ddb_disconnect(conn), add = TRUE)
+
+    data.table::as.data.table(ddb_query(conn, sprintf(
+        "SELECT * FROM read_parquet(%s)",
+        ddb_literal(conn, path)
+    )))
+}
+
+get_cache_parquet <- function(reset = FALSE) {
     dir <- get_cache_nc(reset = reset)
-    path <- file.path(dir, "EC-Earth3.ssp585.tas.fst")
+    path <- file.path(dir, "EC-Earth3.ssp585.tas.parquet")
 
     if (reset && file.exists(path)) unlink(path)
     write_local_morph_tas_fixture(path)

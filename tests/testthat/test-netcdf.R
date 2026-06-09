@@ -722,8 +722,10 @@ test_that("extract_data()", {
 
         expect_s3_class(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
         expect_identical(d1$data, data.table())
-        expect_true(file.exists(file.path(cache, "data.fst")))
-        unlink(file.path(cache, "data.fst"))
+        parquet <- file.path(cache, "data.parquet")
+        expect_true(file.exists(parquet))
+        expect_equal(nrow(read_test_parquet(parquet)), nrow(d$data))
+        unlink(parquet)
 
         expect_s3_class(
             d2 <- extract_data(coord, out_dir = cache,
@@ -733,8 +735,10 @@ test_that("extract_data()", {
             "epw_cmip6_data"
         )
         expect_equal(d2$data, data.table())
-        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
-        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
+        parquet <- file.path(cache, "EC-Earth3.ssp585.tas.parquet")
+        expect_true(file.exists(parquet))
+        expect_equal(nrow(read_test_parquet(parquet)), 2196L)
+        unlink(parquet)
 
         expect_s3_class(
             d3 <- extract_data(coord, out_dir = cache,
@@ -744,6 +748,6 @@ test_that("extract_data()", {
             "epw_cmip6_data"
         )
         expect_equal(d3$data, d$data)
-        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
+        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.parquet")))
     }
 })

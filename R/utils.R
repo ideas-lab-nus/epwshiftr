@@ -531,6 +531,45 @@ ddb_literal <- function(conn, x) {
 }
 # }}}
 
+# write_parquet_file {{{
+write_parquet_file <- function(dt, path) {
+    checkmate::assert_data_frame(dt)
+    checkmate::assert_string(path, min.chars = 1L)
+
+    path <- normalizePath(path, mustWork = FALSE, winslash = "/")
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+
+    conn <- ddb_connect(":memory:")
+    on.exit(ddb_disconnect(conn), add = TRUE)
+
+    tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
+    tmp_table <- sprintf("tmp_parquet_%s", fast_hash(list(path, Sys.time(), stats::runif(1L))))
+    on.exit({
+        try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
+        if (file.exists(tmp_file)) {
+            unlink(tmp_file)
+        }
+    }, add = TRUE)
+
+    ddb_write_table(conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+    ddb_exec(conn, sprintf(
+        "COPY %s TO %s (FORMAT PARQUET)",
+        ddb_ident(conn, tmp_table),
+        ddb_literal(conn, tmp_file)
+    ))
+
+    if (file.exists(path)) {
+        unlink(path)
+    }
+    ok <- file.rename(tmp_file, path)
+    if (!ok) {
+        stop(sprintf("Failed to write Parquet file '%s'.", path), call. = FALSE)
+    }
+
+    invisible(path)
+}
+# }}}
+
 # mirai helpers {{{
 mirai_default_workers <- function(n) {
     if (!n) {
