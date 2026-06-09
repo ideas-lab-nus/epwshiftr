@@ -75,11 +75,8 @@ summary_database_scan_file <- function (file) {
 #'
 #' - `file_path`: the full path of matched NetCDF file for every case.
 #'
-#' `summary_database()` uses [future.apply][future.apply::future_lapply()]
-#' underneath to speed up the data processing if applicable. You can use your
-#' preferable future backend to speed up data extraction in parallel. By default,
-#' `summary_database()` uses `future::sequential` backend, which runs things in
-#' sequential.
+#' `summary_database()` uses [mirai][mirai::mirai()] internally for parallel
+#' NetCDF metadata scanning when there is more than one file to inspect.
 #'
 #' @param dir A single string indicating the directory where CMIP6 model output
 #'        NetCDF files are stored.
@@ -203,25 +200,12 @@ summary_database <- function (
         left <- data.table::data.table()
         miss <- data.table::data.table()
     } else {
-        if (length(ncfiles) == 1L) {
-            ncmeta <- summary_database_scan_file(ncfiles)
-        } else {
-            progressr::with_progress({
-                p <- progressr::progressor(along = ncfiles)
-
-                ncmeta <- rbindlist(future.apply::future_lapply(seq_along(ncfiles),
-                    function (i) {
-                        p(message = sprintf("[%i/%i]", i, length(ncfiles)))
-                        meta <- get_nc_meta(ncfiles[i])
-                        time <- as.list(get_nc_time(ncfiles[i], range = TRUE))
-                        names(time) <- c("datetime_start", "datetime_end")
-                        c(meta, time)
-                    }
-                ))
-            })
-
-            ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
-        }
+        ncmeta <- rbindlist(mirai_lapply(
+            ncfiles,
+            summary_database_scan_file,
+            symbols = netcdf_mirai_symbols(),
+            label = "NetCDF metadata scan"
+        ))
 
         # store original column names
         cols_idx <- names(idx)
@@ -584,10 +568,8 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' `extract_data()` parses CF-compliant time coordinates into UTC `POSIXct`
 #' values using epwshiftr's internal NetCDF time parser.
 #'
-#' `extract_data()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable future backend to
-#' speed up data extraction in parallel. By default, `extract_data()` uses
-#' `future::sequential` backend, which runs things in sequential.
+#' `extract_data()` uses [mirai][mirai::mirai()] internally for parallel NetCDF
+#' extraction when there is more than one file-coordinate pair to inspect.
 #'
 #' @param coord An `epw_cmip6_coord` object created using [match_coord()]
 #'
@@ -692,19 +674,19 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         if (!is.null(out_dir) && length(by_cols)) {
             vmsg(sprintf("Extracting data for case '%s'...", names(m_coord)[[i]]))
         }
-        progressr::with_progress({
-            p <- progressr::progressor(nrow(co))
-
-            d <- rbindlist(
-                future.apply::future_Map(
-                    function(ip, path, coord) {
-                        p(message = sprintf("[%i/%i]", ip, nrow(co)))
-                        d <- get_nc_data(path, coord, years = years, unit = unit)
-                        set(d, NULL, "index", NULL)
-                    },
-                    seq.int(nrow(co)), co$file_path, co$coord
-            ))
-        })
+        d <- rbindlist(mirai_map(
+            function(path, coord, years, unit) {
+                d <- get_nc_data(path, coord, years = years, unit = unit)
+                set(d, NULL, "index", NULL)
+                d
+            },
+            co$file_path,
+            co$coord,
+            years = rep(list(years), nrow(co)),
+            unit = rep(list(unit), nrow(co)),
+            symbols = netcdf_mirai_symbols(),
+            label = "NetCDF extraction"
+        ))
 
         if (!is.null(out_dir)) {
             f <- out_files[i]

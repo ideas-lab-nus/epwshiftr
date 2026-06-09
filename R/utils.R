@@ -531,6 +531,174 @@ ddb_literal <- function(conn, x) {
 }
 # }}}
 
+# mirai helpers {{{
+mirai_default_workers <- function(n) {
+    if (!n) {
+        return(0L)
+    }
+
+    workers <- getOption("epwshiftr.mirai_workers", NULL)
+    if (is.null(workers)) {
+        workers <- parallel::detectCores(logical = FALSE)
+        if (is.na(workers) || workers < 1L) {
+            workers <- 1L
+        }
+    }
+
+    max(1L, min(as.integer(workers), n))
+}
+
+mirai_error_message <- function(result) {
+    if (inherits(result, "miraiError")) {
+        message <- attr(result, "message", exact = TRUE)
+        if (is.null(message) || !nzchar(message)) {
+            message <- as.character(result)
+        }
+        return(message)
+    }
+
+    if (inherits(result, "errorValue")) {
+        code <- unclass(result)[[1L]]
+        return(sprintf("mirai worker returned error code %s", code))
+    }
+
+    ""
+}
+
+mirai_worker_bindings <- function(symbols = character()) {
+    ns <- asNamespace("epwshiftr")
+    symbols <- unique(c(
+        "J",
+        "copy",
+        "rbindlist",
+        "set",
+        "setcolorder",
+        "setnames",
+        symbols
+    ))
+    symbols <- symbols[symbols %in% ls(ns, all.names = TRUE)]
+
+    bindings <- mget(symbols, envir = ns, inherits = FALSE)
+    local <- vapply(
+        bindings,
+        function(x) is.function(x) && identical(environment(x), ns),
+        logical(1L)
+    )
+    attr(bindings, "local_symbols") <- names(bindings)[local]
+    bindings
+}
+
+mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), label = "mirai task") {
+    checkmate::assert_function(FUN)
+
+    n <- length(X)
+    if (!n) {
+        return(vector("list", 0L))
+    }
+
+    workers <- if (is.null(workers)) mirai_default_workers(n) else max(1L, min(as.integer(workers), n))
+    dot_args <- list(...)
+
+    if (workers <= 1L) {
+        return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
+    }
+
+    compute_profile <- sprintf("epwshiftr-%s-%s", gsub("[^A-Za-z0-9]+", "-", label), fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L))))
+    mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+    on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
+
+    worker_symbols <- mirai_worker_bindings(symbols)
+    tasks <- lapply(X, function(x) {
+        mirai::mirai(
+            {
+                old_env <- environment(FUN)
+                worker_env <- new.env(parent = old_env)
+                if (length(worker_symbols)) {
+                    local_symbols <- attr(worker_symbols, "local_symbols", exact = TRUE)
+                    list2env(worker_symbols, envir = worker_env)
+                    for (nm in local_symbols) {
+                        if (is.function(worker_env[[nm]])) {
+                            environment(worker_env[[nm]]) <- worker_env
+                        }
+                    }
+                }
+                environment(FUN) <- worker_env
+
+                do.call(FUN, c(list(x), dot_args))
+            },
+            FUN = FUN,
+            x = x,
+            dot_args = dot_args,
+            worker_symbols = worker_symbols,
+            .compute = compute_profile
+        )
+    })
+
+    results <- lapply(tasks, mirai::collect_mirai)
+    errors <- vapply(results, mirai_error_message, character(1L))
+    failed <- nzchar(errors)
+    if (any(failed)) {
+        stop(sprintf(
+            "Failed to complete %s for %d task(s). First error: %s",
+            label,
+            sum(failed),
+            errors[failed][[1L]]
+        ), call. = FALSE)
+    }
+
+    results
+}
+
+mirai_map <- function(FUN, ..., workers = NULL, symbols = character(), label = "mirai map") {
+    args <- list(...)
+    if (!length(args)) {
+        stop("At least one mapped input is required.", call. = FALSE)
+    }
+
+    lens <- vapply(args, length, integer(1L))
+    if (!lens[[1L]]) {
+        return(vector("list", 0L))
+    }
+    if (length(unique(lens)) != 1L) {
+        stop("Mapped inputs must have the same length.", call. = FALSE)
+    }
+
+    items <- lapply(seq_len(lens[[1L]]), function(i) lapply(args, `[[`, i))
+    mirai_lapply(
+        items,
+        function(item) do.call(FUN, item),
+        workers = workers,
+        symbols = symbols,
+        label = label
+    )
+}
+
+netcdf_mirai_symbols <- function(extra = character()) {
+    ns <- asNamespace("epwshiftr")
+    unique(c(
+        "CF_TIME_CALENDARS",
+        "CF_TIME_UNIT_SECONDS",
+        grep("^cf_time_", ls(ns, all.names = TRUE), value = TRUE),
+        "get_nc_atts",
+        "get_nc_axes",
+        "get_nc_data",
+        "get_nc_dims",
+        "get_nc_meta",
+        "get_nc_time",
+        "get_nc_time_att",
+        "match_location_coord",
+        "match_nc_coord",
+        "match_nc_time",
+        "normalize_cf_calendar",
+        "parse_cf_time",
+        "summary_database_scan_file",
+        "to_radian",
+        "tunnel_dist",
+        extra
+    ))
+}
+# }}}
+
 # store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")

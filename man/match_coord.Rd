@@ -58,10 +58,8 @@ the distance between the EPW location and the global grid points in NetCDF
 files.
 }
 \details{
-\code{match_coord()} uses \link[future.apply:future_lapply]{future.apply}
-underneath. You can use your preferable future backend to
-speed up data extraction in parallel. By default, \code{match_coord()} uses
-\code{future::sequential} backend, which runs things in sequential.
+\code{match_coord()} uses \link[mirai:mirai]{mirai} internally for parallel
+coordinate matching when there is more than one NetCDF file to inspect.
 }
 \section{Geographical distance calculation}{
 

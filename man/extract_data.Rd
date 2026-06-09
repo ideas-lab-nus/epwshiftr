@@ -86,10 +86,8 @@ interest specified.
 \code{extract_data()} parses CF-compliant time coordinates into UTC \code{POSIXct}
 values using epwshiftr's internal NetCDF time parser.
 
-\code{extract_data()} uses \link[future.apply:future_lapply]{future.apply}
-underneath. You can use your preferable future backend to
-speed up data extraction in parallel. By default, \code{extract_data()} uses
-\code{future::sequential} backend, which runs things in sequential.
+\code{extract_data()} uses \link[mirai:mirai]{mirai} internally for parallel NetCDF
+extraction when there is more than one file-coordinate pair to inspect.
 }
 \examples{
 \dontrun{

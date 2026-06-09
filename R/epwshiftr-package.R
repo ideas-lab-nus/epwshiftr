@@ -38,10 +38,8 @@
 #' @importFrom data.table data.table
 #' @importFrom eplusr read_epw
 #' @importFrom fst write_fst
-#' @importFrom future.apply future_lapply
 #' @importFrom jsonlite fromJSON
 #' @importFrom mirai daemons mirai
-#' @importFrom progressr with_progress
 #' @importFrom psychrolib GetTDewPointFromRelHum
 #' @importFrom psychrolib SetUnitSystem
 #' @importFrom R6 R6Class
