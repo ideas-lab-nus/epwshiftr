@@ -30,7 +30,7 @@ will be used.
 caching (default), \code{FALSE} disables caching entirely, and \code{"offline"}
 enables offline mode where only cached data is used and no network
 requests are made. Default: \code{TRUE}
-\item \code{epwshiftr.cache_dir}: The directory for disposable cache entries. Deleting
+\item \code{epwshiftr.dir_cache}: The directory for disposable cache entries. Deleting
 this directory can require re-fetching or re-parsing data, but should not
 invalidate a persistent store.
 }

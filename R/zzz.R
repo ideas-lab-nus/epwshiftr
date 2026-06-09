@@ -4,16 +4,17 @@
     S7::methods_register()
 
     # set package options
-    .opts <- c(
-        "epwshiftr.verbose" = "FALSE",
-        "epwshiftr.threshold_alpha" = "3",
+    .opts <- list(
+        "epwshiftr.verbose" = FALSE,
+        "epwshiftr.threshold_alpha" = 3,
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
-        "epwshiftr.cache" = "TRUE",
-        "epwshiftr.dir_store" = sprintf('"%s"', normalizePath(tools::R_user_dir("epwshiftr", "data"), winslash = "/")),
-        "epwshiftr.cache_dir" = sprintf('"%s"', normalizePath(tools::R_user_dir("epwshiftr", "cache"), winslash = "/"))
+        "epwshiftr.cache" = TRUE,
+        "epwshiftr.dir_store" = store_normalize_path(tools::R_user_dir("epwshiftr", "data")),
+        "epwshiftr.dir_cache" = store_normalize_path(tools::R_user_dir("epwshiftr", "cache"))
     )
-    for (name in setdiff(names(.opts), names(options()))) {
-        eval(parse(text = sprintf("options(%s = %s)", name, .opts[name])))
+    missing <- setdiff(names(.opts), names(options()))
+    if (length(missing)) {
+        do.call(options, .opts[missing])
     }
 
     # install IEC style Byte units
