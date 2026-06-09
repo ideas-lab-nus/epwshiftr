@@ -382,7 +382,7 @@ test_that("EsgDataset read_region() reads nearest grid cells and time windows", 
         variable = "tas",
         lon = 103.98,
         lat = 1.37,
-        time = c("2060-01-02", "2060-01-03"),
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
         nearest = 2L
     )
     expect_s3_class(dt, "data.table")
@@ -408,7 +408,7 @@ test_that("EsgDataset read_region() reads nearest grid cells and time windows", 
         variable = "tas",
         lon = 103.98,
         lat = 1.37,
-        time = c("2060-01-02", "2060-01-03"),
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
         nearest = 1L,
         rbind = FALSE
     )
@@ -420,7 +420,7 @@ test_that("EsgDataset read_region() reads nearest grid cells and time windows", 
         variable = "tas",
         lon = -106,
         lat = 41,
-        time = c("2060-01-01", "2060-01-01"),
+        time = c("2060-01-01T00:00:00Z", "2060-01-01T23:59:59Z"),
         nearest = 1L
     )
     expect_identical(unique(dt_neg_lon$lon), 254)
@@ -430,6 +430,49 @@ test_that("EsgDataset read_region() reads nearest grid cells and time windows", 
         ds$read_region("hurs", lon = 103.98, lat = 1.37),
         "None of the requested variable"
     )
+})
+
+test_that("EsgDataset read_region() reuses recorded result time filters by default", {
+    path1 <- tempfile(fileext = ".nc")
+    path2 <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path1, 2060L)
+    write_local_cmip6_netcdf_fixture(path2, 2061L)
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    esg_dataset_set_context(ds, list(time_filter = list(
+        start = "2060-01-02T00:00:00Z",
+        stop = "2060-01-03T23:59:59Z",
+        method = "drs"
+    )))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_identical(ds$time_filter$method, "drs")
+
+    dt_default <- ds$read_region("tas", lon = 103.98, lat = 1.37)
+    dt_auto <- ds$read_region("tas", lon = 103.98, lat = 1.37, time = "auto")
+    expect_equal(dt_default, dt_auto)
+    expect_identical(unique(dt_auto$file_index), 1L)
+    expect_equal(
+        sort(unique(as.Date(dt_auto$time))),
+        as.Date(c("2060-01-02", "2060-01-03"))
+    )
+
+    dt_all <- ds$read_region("tas", lon = 103.98, lat = 1.37, time = NULL)
+    expect_true(nrow(dt_all) > nrow(dt_auto))
+    expect_identical(sort(unique(dt_all$file_index)), c(1L, 2L))
+
+    expect_warning(
+        dt_outside <- ds$read_region(
+            "tas",
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2061-01-01T00:00:00Z", "2061-01-02T23:59:59Z")
+        ),
+        "extends outside"
+    )
+    expect_identical(unique(dt_outside$file_index), 2L)
 })
 
 test_that("EsgDataset public async open keeps the dataset opened after return", {

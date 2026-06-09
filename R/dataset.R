@@ -209,6 +209,7 @@ EsgDataset <- R6::R6Class(
             private$metadata_cache <- list()
             private$opened <- FALSE
             private$nc_handles <- vector("list", length(urls))
+            private$context <- list()
 
             self
         },
@@ -678,8 +679,13 @@ EsgDataset <- R6::R6Class(
         #' @param variable Character vector of variable names.
         #' @param lon Target longitude.
         #' @param lat Target latitude.
-        #' @param time Optional length-2 time range. Character, `Date`, and
-        #'        `POSIXt` inputs are accepted and parsed in UTC.
+        #' @param time Time range to read. Use `"auto"` to reuse the time
+        #'        range recorded by `EsgResultFile$filter_time()` or
+        #'        `EsgResultAggregation$filter_time()` when available; if no
+        #'        recorded range exists, all times are read. Use `NULL` to
+        #'        always read the full time axis. A length-2 character,
+        #'        `Date`, or `POSIXt` range is parsed in UTC and used
+        #'        explicitly. Default: `"auto"`.
         #' @param nearest Number of nearest grid cells to keep. Default: `1L`.
         #' @param rbind If `TRUE`, return one data.table. If `FALSE`, return a
         #'        list of per-file, per-variable data.tables. Default: `TRUE`.
@@ -700,7 +706,7 @@ EsgDataset <- R6::R6Class(
         #'     time = c("2050-01-01", "2050-12-31")
         #' )
         #' }
-        read_region = function(variable, lon, lat, time = NULL, nearest = 1L,
+        read_region = function(variable, lon, lat, time = "auto", nearest = 1L,
                                rbind = TRUE, async = FALSE, timeout = NULL) {
             checkmate::assert_character(variable, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_number(lon, lower = -180, upper = 360, finite = TRUE)
@@ -710,18 +716,7 @@ EsgDataset <- R6::R6Class(
             private$validate_async_request(async, timeout)
             private$check_open()
 
-            if (!is.null(time)) {
-                if (length(time) != 2L) {
-                    stop("`time` must be `NULL` or a length-2 range.", call. = FALSE)
-                }
-                time <- parse_datetime(time, tz = "UTC")
-                if (any(is.na(time))) {
-                    stop("`time` contains values that cannot be parsed as datetimes.", call. = FALSE)
-                }
-                if (time[[2L]] < time[[1L]]) {
-                    stop("`time` end must be greater than or equal to `time` start.", call. = FALSE)
-                }
-            }
+            time <- private$normalize_region_time(time)
 
             pieces <- list()
             found <- stats::setNames(rep(FALSE, length(variable)), variable)
@@ -826,6 +821,20 @@ EsgDataset <- R6::R6Class(
         #' @field file_count Number of files in the dataset
         file_count = function() {
             length(private$urls)
+        },
+        # }}}
+
+        # time_filter {{{
+        #' @field time_filter A result-level time filter recorded by
+        #'        `EsgResultFile$filter_time()` or
+        #'        `EsgResultAggregation$filter_time()`, or `NULL`.
+        time_filter = function() {
+            ctx <- private$context$time_filter
+            if (is.null(ctx) || !length(ctx)) {
+                return(NULL)
+            }
+
+            ctx
         }
         # }}}
     ),
@@ -835,9 +844,53 @@ EsgDataset <- R6::R6Class(
         nc_handles = NULL,
         opened = FALSE,
         metadata_cache = NULL,
+        context = list(),
         async_task = NULL,
         async_state = "idle",
         async_sequence = 0L,
+
+        # normalize_region_time {{
+        normalize_region_time = function(time) {
+            context <- private$context$time_filter
+            context_range <- NULL
+            if (!is.null(context) && length(context$start) && length(context$stop)) {
+                context_range <- parse_datetime(c(context$start, context$stop), tz = "UTC")
+                if (any(is.na(context_range)) || context_range[[2L]] < context_range[[1L]]) {
+                    context_range <- NULL
+                }
+            }
+
+            if (identical(time, "auto")) {
+                return(context_range)
+            }
+            if (is.null(time)) {
+                return(NULL)
+            }
+            if (is.character(time) && length(time) == 1L && identical(tolower(time), "auto")) {
+                return(context_range)
+            }
+
+            if (length(time) != 2L) {
+                stop("`time` must be 'auto', `NULL`, or a length-2 range.", call. = FALSE)
+            }
+            time <- parse_datetime(time, tz = "UTC")
+            if (any(is.na(time))) {
+                stop("`time` contains values that cannot be parsed as datetimes.", call. = FALSE)
+            }
+            if (time[[2L]] < time[[1L]]) {
+                stop("`time` end must be greater than or equal to `time` start.", call. = FALSE)
+            }
+
+            if (!is.null(context_range) && (time[[1L]] < context_range[[1L]] || time[[2L]] > context_range[[2L]])) {
+                warning(
+                    "The explicit `time` range extends outside the result-level time filter recorded on this dataset; the explicit range is still used.",
+                    call. = FALSE
+                )
+            }
+
+            time
+        },
+        # }}}
 
         # get_var_dim_meta {{
         # NOTE: `start`/`count` are in NetCDF dimension order.
@@ -1433,6 +1486,35 @@ esg_dataset_adopt_handles <- function(dataset, handles) {
     private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
 
     invisible(dataset)
+}
+# }}}
+
+# esg_dataset_set_context {{{
+esg_dataset_set_context <- function(dataset, context = NULL) {
+    private <- esg_dataset_private(dataset)
+    if (!"context" %in% names(private)) {
+        return(invisible(dataset))
+    }
+    if (is.null(context) || !length(context)) {
+        private$context <- list()
+    } else if (is.list(context)) {
+        private$context <- context
+    } else {
+        stop("`context` must be a list or `NULL`.", call. = FALSE)
+    }
+
+    invisible(dataset)
+}
+# }}}
+
+# esg_dataset_get_context {{{
+esg_dataset_get_context <- function(dataset) {
+    private <- esg_dataset_private(dataset)
+    if (!"context" %in% names(private)) {
+        return(list())
+    }
+
+    private$context
 }
 # }}}
 

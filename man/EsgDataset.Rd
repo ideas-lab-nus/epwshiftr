@@ -175,6 +175,10 @@ Hongyuan Jia
 \item{\code{is_aggregated}}{Whether the dataset contains multiple files}
 
 \item{\code{file_count}}{Number of files in the dataset}
+
+\item{\code{time_filter}}{A result-level time filter recorded by
+\code{EsgResultFile$filter_time()} or
+\code{EsgResultAggregation$filter_time()}, or \code{NULL}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -724,7 +728,7 @@ Read variable values near a target coordinate and optional time range
   variable,
   lon,
   lat,
-  time = NULL,
+  time = "auto",
   nearest = 1L,
   rbind = TRUE,
   async = FALSE,
@@ -741,8 +745,13 @@ Read variable values near a target coordinate and optional time range
 
 \item{\code{lat}}{Target latitude.}
 
-\item{\code{time}}{Optional length-2 time range. Character, \code{Date}, and
-\code{POSIXt} inputs are accepted and parsed in UTC.}
+\item{\code{time}}{Time range to read. Use \code{"auto"} to reuse the time
+range recorded by \code{EsgResultFile$filter_time()} or
+\code{EsgResultAggregation$filter_time()} when available; if no
+recorded range exists, all times are read. Use \code{NULL} to
+always read the full time axis. A length-2 character,
+\code{Date}, or \code{POSIXt} range is parsed in UTC and used
+explicitly. Default: \code{"auto"}.}
 
 \item{\code{nearest}}{Number of nearest grid cells to keep. Default: \code{1L}.}
 
