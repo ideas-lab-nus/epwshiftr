@@ -393,6 +393,68 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # query_files {{{
+        #' @description
+        #' List files linked to a stored ESGF query.
+        #'
+        #' @param query_id Query ID returned by `$add_query()`.
+        #' @param status Optional query-file status filter.
+        #'
+        #' @return A data.table of linked file records.
+        query_files = function(query_id, status = NULL) {
+            private$check_open()
+            checkmate::assert_string(query_id, min.chars = 1L)
+            checkmate::assert_character(status, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+            private$get_query_row(query_id)
+
+            qid <- query_id
+            links <- private$read_table("esg_query_file")
+            links <- links[links[["query_id"]] == qid]
+            if (!is.null(status) && nrow(links)) {
+                wanted_status <- status
+                links <- links[links[["status"]] %in% wanted_status]
+            }
+            if (!nrow(links)) {
+                return(data.table::data.table())
+            }
+
+            files <- private$read_table("esg_file")
+            out <- merge(links, files, by = "file_key", all.x = TRUE, sort = FALSE)
+            data.table::setcolorder(out, c("query_id", "file_key", "status", setdiff(names(out), c("query_id", "file_key", "status"))))
+            out[]
+        },
+        # }}}
+
+        # update_queries {{{
+        #' @description
+        #' Refresh stored ESGF queries and link their current File records.
+        #'
+        #' @param query_id Optional query ID. If `NULL`, tracked queries are
+        #'        updated by default.
+        #' @param tracked Tracked-state filter used when `query_id` is `NULL`.
+        #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
+        #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
+        #'
+        #' @return A data.table of query-file links touched by the update.
+        update_queries = function(query_id = NULL, tracked = TRUE, all = TRUE, limit = FALSE, fields = "*", ...) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_flag(tracked, null.ok = TRUE)
+            rows <- private$select_query_rows(query_id = query_id, tracked = if (is.null(query_id)) tracked else NULL)
+            if (!nrow(rows)) {
+                return(data.table::data.table())
+            }
+
+            updated <- vector("list", nrow(rows))
+            for (i in seq_len(nrow(rows))) {
+                query <- private$load_query(rows[i])
+                files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
+                updated[[i]] <- private$update_query_files(rows$query_id[[i]], files)
+            }
+            data.table::rbindlist(updated, fill = TRUE)
+        },
+        # }}}
+
         # add_files {{{
         #' @description
         #' Add File or Aggregation query results to the local file catalog.
@@ -1160,6 +1222,7 @@ EsgStore <- R6::R6Class(
                     latest BOOLEAN,
                     replica BOOLEAN,
                     retracted BOOLEAN,
+                    deprecated BOOLEAN,
                     data_node VARCHAR,
                     source_id VARCHAR,
                     experiment_id VARCHAR,
@@ -1188,6 +1251,7 @@ EsgStore <- R6::R6Class(
                     last_seen_at TIMESTAMP
                 )
             ")
+            private$exec("ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS deprecated BOOLEAN")
             private$exec("
                 CREATE TABLE IF NOT EXISTS file_catalog (
                     file_key VARCHAR PRIMARY KEY,
@@ -1319,6 +1383,211 @@ EsgStore <- R6::R6Class(
             row$tracked <- isTRUE(tracked)
             row$updated_at <- extract_store_now()
             private$replace_rows("esg_query", as.data.frame(row), "query_id")
+            invisible(NULL)
+        },
+        # }}}
+
+        # select_query_rows {{{
+        select_query_rows = function(query_id = NULL, tracked = NULL) {
+            queries <- private$read_table("esg_query")
+            if (!nrow(queries)) {
+                return(queries[])
+            }
+            if (!is.null(query_id)) {
+                qids <- query_id
+                queries <- queries[queries[["query_id"]] %in% qids]
+            }
+            if (!is.null(tracked) && nrow(queries)) {
+                want_tracked <- isTRUE(tracked)
+                queries <- queries[as.logical(queries[["tracked"]]) == want_tracked]
+            }
+            queries[]
+        },
+        # }}}
+
+        # get_query_row {{{
+        get_query_row = function(query_id) {
+            rows <- private$select_query_rows(query_id = query_id)
+            if (!nrow(rows)) {
+                cli::cli_abort("Stored ESGF query {.val {query_id}} was not found.")
+            }
+            rows[1L]
+        },
+        # }}}
+
+        # load_query {{{
+        load_query = function(row) {
+            file <- store_abs_path(row$query_file[[1L]], root = private$store_path)
+            esg_query()$load(file)
+        },
+        # }}}
+
+        # update_query_files {{{
+        update_query_files = function(query_id, files) {
+            extract_store_result_type(files)
+            dt <- extract_store_file_table(files)
+            now <- extract_store_now()
+            file_rows <- private$file_rows(dt, now)
+
+            if (nrow(file_rows)) {
+                private$replace_rows("esg_file", as.data.frame(file_rows), "file_key")
+                private$sync_file_catalog(query_id, file_rows)
+            }
+
+            private$sync_query_file_links(query_id, file_rows, now)
+            query <- private$get_query_row(query_id)
+            query$last_checked_at <- now
+            query$updated_at <- now
+            private$replace_rows("esg_query", as.data.frame(query), "query_id")
+            self$query_files(query_id)
+        },
+        # }}}
+
+        # file_rows {{{
+        file_rows = function(dt, now) {
+            if (!nrow(dt)) {
+                return(data.table::data.table())
+            }
+            dt <- data.table::as.data.table(dt)
+            dt[, file_key := extract_store_file_keys(.SD)]
+            dt[, `:=`(
+                row_order = seq_len(.N),
+                replica_order = data.table::fifelse(extract_store_as_logical(replica) %in% TRUE, 1L, 0L),
+                retracted_order = data.table::fifelse(extract_store_as_logical(retracted) %in% TRUE, 1L, 0L),
+                deprecated_order = data.table::fifelse(extract_store_as_logical(deprecated) %in% TRUE, 1L, 0L)
+            )]
+            data.table::setorderv(dt, c("file_key", "retracted_order", "deprecated_order", "replica_order", "row_order"))
+            dt <- dt[!duplicated(file_key)]
+
+            existing <- private$read_table("esg_file")
+            existing <- existing[existing[["file_key"]] %in% dt$file_key]
+            existing_created <- stats::setNames(existing$created_at, existing$file_key)
+            existing_local_path <- stats::setNames(existing$local_path, existing$file_key)
+            existing_artifact <- stats::setNames(existing$local_artifact_id, existing$file_key)
+
+            data.table::data.table(
+                file_key = dt$file_key,
+                esgf_id = dt$id,
+                dataset_id = dt$dataset_id,
+                master_id = dt$master_id,
+                instance_id = dt$instance_id,
+                tracking_id = dt$tracking_id,
+                version = dt$version,
+                title = dt$title,
+                filename = dt$filename,
+                checksum = dt$checksum,
+                checksum_type = dt$checksum_type,
+                size = suppressWarnings(as.numeric(dt$size)),
+                latest = extract_store_as_logical(dt$latest),
+                replica = extract_store_as_logical(dt$replica),
+                retracted = extract_store_as_logical(dt$retracted),
+                deprecated = extract_store_as_logical(dt$deprecated),
+                data_node = dt$data_node,
+                source_id = dt$source_id,
+                experiment_id = dt$experiment_id,
+                variant_label = dt$variant_label,
+                frequency = dt$frequency,
+                table_id = dt$table_id,
+                variable_id = dt$variable_id,
+                grid_label = dt$grid_label,
+                datetime_start = extract_store_parse_datetime(dt$datetime_start),
+                datetime_end = extract_store_parse_datetime(dt$datetime_end),
+                url_opendap = dt$url_opendap,
+                url_download = dt$url_download,
+                local_path = extract_store_match_named(existing_local_path, dt$file_key),
+                local_artifact_id = extract_store_match_named(existing_artifact, dt$file_key),
+                created_at = extract_store_match_time(existing_created, dt$file_key, now),
+                updated_at = now
+            )
+        },
+        # }}}
+
+        # sync_query_file_links {{{
+        sync_query_file_links = function(query_id, file_rows, now) {
+            qid <- query_id
+            current_keys <- if (nrow(file_rows)) unique(file_rows$file_key) else character()
+            links <- private$read_table("esg_query_file")
+            existing <- links[links[["query_id"]] == qid]
+
+            if (nrow(existing)) {
+                missing <- existing[!existing[["file_key"]] %in% current_keys]
+                if (nrow(missing)) {
+                    missing$status <- "missing"
+                    missing$last_seen_at <- now
+                    private$replace_rows("esg_query_file", as.data.frame(missing), "link_id")
+                }
+            }
+
+            if (!length(current_keys)) {
+                return(invisible(NULL))
+            }
+
+            existing_first_seen <- stats::setNames(existing$first_seen_at, existing$file_key)
+            rows <- data.table::data.table(
+                link_id = vapply(current_keys, function(file_key) extract_store_hash(qid, file_key), character(1L)),
+                query_id = qid,
+                file_key = current_keys,
+                status = private$file_link_status(file_rows[match(current_keys, file_rows$file_key)]),
+                first_seen_at = extract_store_match_time(existing_first_seen, current_keys, now),
+                last_seen_at = now
+            )
+            private$replace_rows("esg_query_file", as.data.frame(rows), "link_id")
+            invisible(NULL)
+        },
+        # }}}
+
+        # file_link_status {{{
+        file_link_status = function(file_rows) {
+            status <- rep("current", nrow(file_rows))
+            deprecated <- extract_store_as_logical(file_rows$deprecated)
+            retracted <- extract_store_as_logical(file_rows$retracted)
+            status[deprecated %in% TRUE] <- "deprecated"
+            status[retracted %in% TRUE] <- "retracted"
+            status
+        },
+        # }}}
+
+        # sync_file_catalog {{{
+        sync_file_catalog = function(query_id, file_rows) {
+            if (!nrow(file_rows)) {
+                return(invisible(NULL))
+            }
+            active <- file_rows[private$file_link_status(file_rows) == "current"]
+            if (!nrow(active)) {
+                return(invisible(NULL))
+            }
+            now <- extract_store_now()
+            catalog <- data.frame(
+                file_key = active$file_key,
+                query_id = query_id,
+                esgf_id = active$esgf_id,
+                dataset_id = active$dataset_id,
+                title = active$title,
+                filename = active$filename,
+                tracking_id = active$tracking_id,
+                checksum = active$checksum,
+                checksum_type = active$checksum_type,
+                size = suppressWarnings(as.numeric(active$size)),
+                data_node = active$data_node,
+                source_id = active$source_id,
+                experiment_id = active$experiment_id,
+                variant_label = active$variant_label,
+                frequency = active$frequency,
+                table_id = active$table_id,
+                variable_id = active$variable_id,
+                grid_label = active$grid_label,
+                datetime_start = active$datetime_start,
+                datetime_end = active$datetime_end,
+                actual_time_start = extract_store_parse_datetime(rep(NA_character_, nrow(active))),
+                actual_time_end = extract_store_parse_datetime(rep(NA_character_, nrow(active))),
+                url_opendap = active$url_opendap,
+                url_download = active$url_download,
+                local_path = active$local_path,
+                local_artifact_id = active$local_artifact_id,
+                created_at = rep(now, nrow(active)),
+                stringsAsFactors = FALSE
+            )
+            private$replace_rows("file_catalog", catalog, "file_key")
             invisible(NULL)
         },
         # }}}
@@ -1824,16 +2093,57 @@ extract_store_scalar_column <- function(dt, name, n = nrow(dt)) {
     value
 }
 
+extract_store_column_value <- function(dt, name, i) {
+    if (!name %in% names(dt)) {
+        return(NA_character_)
+    }
+
+    extract_store_na_character(dt[[name]][[i]])
+}
+
+extract_store_as_logical <- function(x) {
+    if (is.null(x)) {
+        return(logical())
+    }
+    if (is.logical(x)) {
+        return(x)
+    }
+    value <- tolower(as.character(x))
+    out <- rep(NA, length(value))
+    out[value %in% c("true", "t", "1", "yes", "y")] <- TRUE
+    out[value %in% c("false", "f", "0", "no", "n")] <- FALSE
+    out
+}
+
+extract_store_match_named <- function(values, keys) {
+    if (!length(values)) {
+        return(rep(NA_character_, length(keys)))
+    }
+    out <- unname(values[as.character(keys)])
+    out[is.na(out)] <- NA_character_
+    as.character(out)
+}
+
+extract_store_match_time <- function(values, keys, default) {
+    if (!length(values)) {
+        return(rep(default, length(keys)))
+    }
+    out <- unname(values[as.character(keys)])
+    out[is.na(out)] <- default
+    out
+}
+
 extract_store_file_table <- function(files) {
     extract_store_result_type(files)
     dt <- data.table::copy(files$to_data_table())
     n <- nrow(dt)
     columns <- c(
-        "id", "dataset_id", "title", "filename", "tracking_id",
-        "checksum", "checksum_type", "size", "data_node", "source_id",
-        "experiment_id", "variant_label", "frequency", "table_id",
-        "variable_id", "grid_label", "datetime_start", "datetime_end",
-        "url_opendap", "url_download"
+        "id", "dataset_id", "master_id", "instance_id", "title",
+        "filename", "tracking_id", "version", "checksum", "checksum_type",
+        "size", "latest", "replica", "retracted", "deprecated",
+        "data_node", "source_id", "experiment_id", "variant_label",
+        "frequency", "table_id", "variable_id", "grid_label",
+        "datetime_start", "datetime_end", "url_opendap", "url_download"
     )
 
     out <- data.table::as.data.table(
@@ -1855,13 +2165,33 @@ extract_store_file_keys <- function(dt) {
     }
 
     vapply(seq_len(nrow(dt)), function(i) {
-        pieces <- unlist(dt[i, c(
-            "id", "tracking_id", "url_opendap", "url_download", "title"
-        ), with = FALSE], use.names = FALSE)
-        if (all(is.na(pieces) | !nzchar(pieces))) {
-            cli::cli_abort("Cannot create a stable file key because file record {i} has no ID, tracking ID, URL, or title.")
+        master_id <- extract_store_column_value(dt, "master_id", i)
+        if (!is.na(master_id) && nzchar(master_id)) {
+            return(paste0("master:", master_id))
         }
-        extract_store_hash(pieces)
+
+        tracking_id <- extract_store_column_value(dt, "tracking_id", i)
+        if (!is.na(tracking_id) && nzchar(tracking_id)) {
+            return(paste0("tracking:", tracking_id))
+        }
+
+        checksum <- extract_store_column_value(dt, "checksum", i)
+        size <- extract_store_column_value(dt, "size", i)
+        filename <- extract_store_column_value(dt, "filename", i)
+        if (!is.na(checksum) && nzchar(checksum) && !is.na(filename) && nzchar(filename)) {
+            return(paste("checksum", checksum, size, filename, sep = ":"))
+        }
+
+        id <- extract_store_column_value(dt, "id", i)
+        if (!is.na(id) && nzchar(id)) {
+            return(paste0("id:", id))
+        }
+
+        pieces <- unlist(dt[i, c("url_opendap", "url_download", "title"), with = FALSE], use.names = FALSE)
+        if (all(is.na(pieces) | !nzchar(pieces))) {
+            cli::cli_abort("Cannot create a stable file key because file record {i} has no master ID, tracking ID, checksum, ID, URL, or title.")
+        }
+        paste0("fallback:", extract_store_hash(pieces))
     }, character(1L))
 }
 
