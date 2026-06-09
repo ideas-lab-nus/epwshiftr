@@ -452,9 +452,9 @@ store_hash_file <- function(path, algo = "sha256") {
     con <- file(path, "rb")
     on.exit(close(con), add = TRUE)
     if (identical(algo, "sha256")) {
-        as.character(openssl::sha256(con))
+        paste0(openssl::sha256(con))
     } else {
-        as.character(openssl::md5(con))
+        paste0(openssl::md5(con))
     }
 }
 # }}}

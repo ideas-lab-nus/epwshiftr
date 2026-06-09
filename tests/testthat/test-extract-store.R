@@ -91,7 +91,7 @@ extract_store_test_completed_store <- function() {
     write_local_cmip6_netcdf_fixture(nc, 2060L)
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     docs <- extract_store_test_file_docs(
         path = basename(nc),
         opendap_url = nc,
@@ -111,52 +111,57 @@ extract_store_test_completed_store <- function() {
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
 
-test_that("EsgExtractStore creates a DuckDB manifest and store layout", {
+test_that("EsgStore creates a DuckDB manifest and store layout", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     expect_true(dir.exists(dir))
     expect_true(dir.exists(file.path(dir, "queries")))
+    expect_true(dir.exists(file.path(dir, "dicts")))
+    expect_true(dir.exists(file.path(dir, "sources")))
     expect_true(dir.exists(file.path(dir, "downloads")))
-    expect_true(dir.exists(file.path(dir, "data")))
+    expect_true(dir.exists(file.path(dir, "extracts")))
+    expect_true(dir.exists(file.path(dir, "outputs")))
+    expect_true(dir.exists(file.path(dir, "tmp")))
+    expect_true(dir.exists(file.path(dir, "logs")))
     expect_equal(store$path, normalizePath(dir, mustWork = TRUE))
     expect_true(file.exists(store$manifest))
     expect_true(store$is_open)
 
-    tables <- DBI::dbListTables(epwshiftr:::priv(store)$conn)
+    tables <- DBI::dbListTables(priv(store)$conn)
     expect_setequal(
         tables,
-        c("query_run", "file_catalog", "extraction_plan", "extraction_result")
+        c("store_meta", "artifact", "query_run", "file_catalog", "extraction_plan", "extraction_result")
     )
 
     store$close()
     expect_false(store$is_open)
 })
 
-test_that("EsgExtractStore can reopen an existing store", {
+test_that("EsgStore can reopen an existing store", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    EsgExtractStore$new(dir)$close()
+    EsgStore$new(dir)$close()
 
-    store <- EsgExtractStore$new(dir, create = FALSE)
+    store <- EsgStore$new(dir, create = FALSE)
     on.exit(store$close(), add = TRUE)
 
     expect_true(store$is_open)
     expect_true(file.exists(file.path(dir, "manifest.duckdb")))
 })
 
-test_that("EsgExtractStore catalogs File result records", {
+test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     files <- extract_store_test_result(
@@ -169,9 +174,10 @@ test_that("EsgExtractStore catalogs File result records", {
     )
 
     query_id <- store$add_files(files, label = "cmip6 test")
-    conn <- epwshiftr:::priv(store)$conn
+    conn <- priv(store)$conn
     runs <- DBI::dbReadTable(conn, "query_run")
     catalog <- DBI::dbReadTable(conn, "file_catalog")
+    artifacts <- DBI::dbReadTable(conn, "artifact")
 
     expect_match(query_id, "^[0-9a-f]{64}$")
     expect_equal(nrow(runs), 1L)
@@ -186,14 +192,17 @@ test_that("EsgExtractStore catalogs File result records", {
     expect_equal(catalog$experiment_id, "ssp585")
     expect_equal(catalog$url_opendap, "https://example.org/dods/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
     expect_equal(catalog$url_download, "https://example.org/fileServer/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
+    expect_equal(nrow(artifacts), 1L)
+    expect_equal(artifacts$kind, "query")
+    expect_true(file.exists(store$artifact_path(artifacts$artifact_id)))
 })
 
-test_that("EsgExtractStore catalogs Aggregation records and replaces duplicates", {
+test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     aggs <- extract_store_test_result(
@@ -203,20 +212,21 @@ test_that("EsgExtractStore catalogs Aggregation records and replaces duplicates"
 
     query_id_1 <- store$add_files(aggs)
     query_id_2 <- store$add_files(aggs)
-    conn <- epwshiftr:::priv(store)$conn
+    conn <- priv(store)$conn
 
     expect_identical(query_id_2, query_id_1)
     expect_equal(nrow(DBI::dbReadTable(conn, "query_run")), 1L)
     expect_equal(nrow(DBI::dbReadTable(conn, "file_catalog")), 1L)
+    expect_equal(nrow(DBI::dbReadTable(conn, "artifact")), 1L)
     expect_equal(DBI::dbReadTable(conn, "query_run")$result_type, "Aggregation")
 })
 
-test_that("EsgExtractStore plans regional extraction jobs from catalog filters", {
+test_that("EsgStore plans regional extraction jobs from catalog filters", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     docs <- data.table::rbindlist(list(
@@ -261,7 +271,7 @@ test_that("EsgExtractStore plans regional extraction jobs from catalog filters",
     expect_equal(unique(plan$nearest), 2L)
     expect_match(plan$plan_id, "^[0-9a-f]{64}$")
 
-    conn <- epwshiftr:::priv(store)$conn
+    conn <- priv(store)$conn
     DBI::dbExecute(conn, "UPDATE extraction_plan SET status = 'done'")
     plan_again <- store$plan_region(
         query_id = query_id,
@@ -277,12 +287,12 @@ test_that("EsgExtractStore plans regional extraction jobs from catalog filters",
     expect_equal(unique(plan_again$status), "done")
 })
 
-test_that("EsgExtractStore rejects invalid extraction plans", {
+test_that("EsgStore rejects invalid extraction plans", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     query_id <- store$add_files(extract_store_test_result(docs = extract_store_test_file_docs()))
@@ -318,7 +328,7 @@ test_that("EsgExtractStore rejects invalid extraction plans", {
     )
 })
 
-test_that("EsgExtractStore extracts regional data to Parquet", {
+test_that("EsgStore extracts regional data to Parquet", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
@@ -327,7 +337,7 @@ test_that("EsgExtractStore extracts regional data to Parquet", {
     on.exit(unlink(nc), add = TRUE)
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     docs <- extract_store_test_file_docs(
@@ -346,9 +356,10 @@ test_that("EsgExtractStore extracts regional data to Parquet", {
     )
 
     processed <- store$extract(plan_id = plan$plan_id)
-    conn <- epwshiftr:::priv(store)$conn
+    conn <- priv(store)$conn
     plans <- DBI::dbReadTable(conn, "extraction_plan")
     results <- DBI::dbReadTable(conn, "extraction_result")
+    artifacts <- DBI::dbReadTable(conn, "artifact")
 
     expect_equal(processed$status, "done")
     expect_equal(plans$status, "done")
@@ -357,6 +368,9 @@ test_that("EsgExtractStore extracts regional data to Parquet", {
     expect_equal(results$year, 2060L)
     expect_equal(results$row_count, 2L)
     expect_equal(results$unique_time_count, 2L)
+    expect_match(results$artifact_id, "^[0-9a-f]{64}$")
+    expect_true(results$artifact_id %in% artifacts$artifact_id)
+    expect_true(any(artifacts$kind == "extract"))
 
     parquet <- file.path(dir, results$output_path)
     expect_true(file.exists(parquet))
@@ -369,9 +383,14 @@ test_that("EsgExtractStore extracts regional data to Parquet", {
     expect_equal(rows$experiment_id, "ssp585")
     expect_equal(rows$variable_id, "tas")
     expect_equal(rows$n, 2)
+
+    validation <- store$validate()
+    expect_true(all(validation$exists))
+    expect_true(all(validation$checksum_ok, na.rm = TRUE))
+    expect_true(all(validation$size_ok, na.rm = TRUE))
 })
 
-test_that("EsgExtractStore records failed extraction plans", {
+test_that("EsgStore records failed extraction plans", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
@@ -380,7 +399,7 @@ test_that("EsgExtractStore records failed extraction plans", {
     on.exit(unlink(nc), add = TRUE)
 
     dir <- tempfile("esg-store-")
-    store <- EsgExtractStore$new(dir)
+    store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
     docs <- extract_store_test_file_docs(
@@ -398,7 +417,7 @@ test_that("EsgExtractStore records failed extraction plans", {
     )
 
     processed <- store$extract(plan_id = plan$plan_id)
-    plans <- DBI::dbReadTable(epwshiftr:::priv(store)$conn, "extraction_plan")
+    plans <- DBI::dbReadTable(priv(store)$conn, "extraction_plan")
 
     expect_equal(processed$status, "failed")
     expect_equal(plans$status, "failed")
@@ -406,7 +425,7 @@ test_that("EsgExtractStore records failed extraction plans", {
     expect_match(plans$last_error, "None of the requested variable")
 })
 
-test_that("EsgExtractStore summarises and checks complete coverage", {
+test_that("EsgStore summarises and checks complete coverage", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
@@ -436,7 +455,7 @@ test_that("EsgExtractStore summarises and checks complete coverage", {
     expect_equal(sql$n, 1)
 })
 
-test_that("EsgExtractStore detects incomplete coverage", {
+test_that("EsgStore detects incomplete coverage", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
 
@@ -445,10 +464,12 @@ test_that("EsgExtractStore detects incomplete coverage", {
     on.exit(store$close(), add = TRUE)
     on.exit(unlink(fixture$nc), add = TRUE)
 
-    results <- DBI::dbReadTable(epwshiftr:::priv(store)$conn, "extraction_result")
+    results <- DBI::dbReadTable(priv(store)$conn, "extraction_result")
     unlink(file.path(fixture$dir, results$output_path))
     cov <- store$coverage()
     expect_false(cov$complete)
     expect_false(cov$output_files_exist)
+    validation <- store$validate()
+    expect_true(any(!validation$exists))
     expect_error(store$assert_complete(), "incomplete")
 })

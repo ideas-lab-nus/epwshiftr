@@ -1,32 +1,35 @@
-# EsgExtractStore {{{
-#' Local ESGF Regional Extraction Store
+# EsgStore {{{
+#' Local ESGF Store
 #'
 #' @description
 #'
-#' `EsgExtractStore` manages a local DuckDB manifest and a fixed directory
-#' layout for query result snapshots, downloaded NetCDF files, and Parquet
-#' regional extracts.
+#' `EsgStore` manages a local DuckDB manifest and a fixed directory layout for
+#' query result snapshots, dictionaries, source files, downloaded NetCDF files,
+#' Parquet regional extracts, and generated outputs.
 #'
 #' @author Hongyuan Jia
-#' @name EsgExtractStore
+#' @name EsgStore
 #' @export
-EsgExtractStore <- R6::R6Class(
-    "EsgExtractStore",
+EsgStore <- R6::R6Class(
+    "EsgStore",
     lock_class = TRUE,
     lock_objects = FALSE,
     public = list(
         # initialize {{{
         #' @description
-        #' Create or open a local extraction store.
+        #' Create or open a local store.
         #'
-        #' @param path Store directory.
+        #' @param path Store directory. Default: [store_dir()].
         #' @param create If `TRUE`, create the store directory when it does not
         #'        exist. Default: `TRUE`.
         #' @param overwrite If `TRUE`, remove an existing store directory before
         #'        creating a new store. Default: `FALSE`.
         #'
-        #' @return An `EsgExtractStore` object.
-        initialize = function(path, create = TRUE, overwrite = FALSE) {
+        #' @return An `EsgStore` object.
+        initialize = function(path = NULL, create = TRUE, overwrite = FALSE) {
+            if (is.null(path)) {
+                path <- store_dir(init = create)
+            }
             checkmate::assert_string(path)
             checkmate::assert_flag(create)
             checkmate::assert_flag(overwrite)
@@ -45,11 +48,27 @@ EsgExtractStore <- R6::R6Class(
                 cli::cli_abort("Failed to create store directory: {.path {path}}.")
             }
 
-            private$store_path <- normalizePath(path, mustWork = TRUE)
+            private$store_path <- normalizePath(path, mustWork = TRUE, winslash = "/")
             private$query_dir <- file.path(private$store_path, "queries")
+            private$dict_dir <- file.path(private$store_path, "dicts")
+            private$source_dir <- file.path(private$store_path, "sources")
             private$download_dir <- file.path(private$store_path, "downloads")
-            private$data_dir <- file.path(private$store_path, "data")
-            dirs <- c(private$query_dir, private$download_dir, private$data_dir)
+            private$extract_dir <- file.path(private$store_path, "extracts")
+            private$output_dir <- file.path(private$store_path, "outputs")
+            private$tmp_dir <- file.path(private$store_path, "tmp")
+            private$tmp_download_dir <- file.path(private$tmp_dir, "downloads")
+            private$log_dir <- file.path(private$store_path, "logs")
+            dirs <- c(
+                private$query_dir,
+                private$dict_dir,
+                private$source_dir,
+                private$download_dir,
+                private$extract_dir,
+                private$output_dir,
+                private$tmp_dir,
+                private$tmp_download_dir,
+                private$log_dir
+            )
             for (dir in dirs) {
                 if (!dir.exists(dir)) {
                     dir.create(dir, recursive = TRUE, showWarnings = FALSE)
@@ -72,6 +91,157 @@ EsgExtractStore <- R6::R6Class(
         close = function() {
             private$disconnect()
             invisible(self)
+        },
+        # }}}
+
+        # register_artifact {{{
+        #' @description
+        #' Register a file artifact in the store manifest.
+        #'
+        #' @param kind Artifact kind.
+        #' @param path Artifact path. Absolute paths must be inside the store root.
+        #' @param role Artifact role. If `NULL`, a role is inferred from `kind`.
+        #' @param project Optional ESGF project.
+        #' @param status Artifact status. Default: `"available"`.
+        #' @param checksum Expected checksum. If `NULL` and `path` exists, it is
+        #'        calculated with `checksum_type`.
+        #' @param checksum_type Checksum algorithm. Default: `"sha256"`.
+        #' @param size Artifact size in bytes. If `NULL` and `path` exists, it is
+        #'        read from the file.
+        #' @param query_id,file_key,dict_id Optional manifest links.
+        #' @param source_url,source_repo,source_tag,source_commit Optional source
+        #'        provenance.
+        #' @param metadata Optional metadata list encoded as JSON.
+        #'
+        #' @return The artifact ID.
+        register_artifact = function(kind, path, role = NULL, project = NULL,
+                                     status = "available", checksum = NULL,
+                                     checksum_type = "sha256", size = NULL,
+                                     query_id = NULL, file_key = NULL,
+                                     dict_id = NULL, source_url = NULL,
+                                     source_repo = NULL, source_tag = NULL,
+                                     source_commit = NULL, metadata = list()) {
+            private$check_open()
+            checkmate::assert_choice(kind, c("query", "dict", "source", "cmip6_index", "netcdf", "extract", "output"))
+            checkmate::assert_string(path, min.chars = 1L)
+            checkmate::assert_choice(status, c("planned", "available", "failed", "missing"))
+            checkmate::assert_choice(checksum_type, c("md5", "sha256"))
+            checkmate::assert_list(metadata, null.ok = TRUE)
+
+            path <- store_abs_path(path, root = private$store_path)
+            rel_path <- store_rel_path(path, root = private$store_path)
+            exists <- file.exists(path)
+            if (is.null(role)) {
+                role <- switch(
+                    kind,
+                    query = "input",
+                    dict = "input",
+                    source = "source",
+                    cmip6_index = "input",
+                    netcdf = "download",
+                    extract = "derived",
+                    output = "output"
+                )
+            }
+            checkmate::assert_choice(role, c("input", "source", "download", "derived", "output"))
+
+            if (is.null(size) && exists) {
+                size <- as.numeric(file.info(path, extra_cols = FALSE)$size)
+            }
+            if (is.null(checksum) && exists && identical(status, "available")) {
+                checksum <- store_hash_file(path, checksum_type)
+            }
+            if (is.null(size)) size <- NA_real_
+            if (is.null(checksum)) checksum <- NA_character_
+            if (is.null(metadata)) metadata <- list()
+
+            artifact_id <- extract_store_hash(kind, rel_path, checksum, file_key, dict_id, source_commit)
+            now <- extract_store_now()
+            row <- data.frame(
+                artifact_id = artifact_id,
+                kind = kind,
+                role = role,
+                project = extract_store_na_character(project),
+                relative_path = rel_path,
+                checksum = extract_store_na_character(checksum),
+                checksum_type = checksum_type,
+                size = as.numeric(size),
+                status = status,
+                query_id = extract_store_na_character(query_id),
+                file_key = extract_store_na_character(file_key),
+                dict_id = extract_store_na_character(dict_id),
+                source_url = extract_store_na_character(source_url),
+                source_repo = extract_store_na_character(source_repo),
+                source_tag = extract_store_na_character(source_tag),
+                source_commit = extract_store_na_character(source_commit),
+                metadata_json = jsonlite::toJSON(metadata, auto_unbox = TRUE, null = "null"),
+                created_at = now,
+                updated_at = now,
+                stringsAsFactors = FALSE
+            )
+            private$replace_rows("artifact", row, "artifact_id")
+            artifact_id
+        },
+        # }}}
+
+        # artifact_path {{{
+        #' @description
+        #' Return an artifact path from the manifest.
+        #'
+        #' @param artifact_id Artifact ID.
+        #'
+        #' @return Absolute artifact path.
+        artifact_path = function(artifact_id) {
+            private$check_open()
+            checkmate::assert_string(artifact_id, min.chars = 1L)
+
+            artifacts <- DBI::dbReadTable(private$conn, "artifact")
+            row <- artifacts[artifacts$artifact_id == artifact_id, , drop = FALSE]
+            if (!nrow(row)) {
+                cli::cli_abort("Artifact ID {.val {artifact_id}} was not found in the store manifest.")
+            }
+            store_abs_path(row$relative_path[[1L]], root = private$store_path)
+        },
+        # }}}
+
+        # validate {{{
+        #' @description
+        #' Validate registered artifact files against the manifest.
+        #'
+        #' @return A data.table with validation results.
+        validate = function() {
+            private$check_open()
+            artifacts <- data.table::as.data.table(DBI::dbReadTable(private$conn, "artifact"))
+            if (!nrow(artifacts)) {
+                return(data.table::data.table(
+                    artifact_id = character(),
+                    kind = character(),
+                    expected_path = character(),
+                    exists = logical(),
+                    checksum_ok = logical(),
+                    size_ok = logical(),
+                    status = character()
+                ))
+            }
+
+            artifacts[, expected_path := vapply(relative_path, store_abs_path, character(1L), root = private$store_path)]
+            artifacts[, exists := file.exists(expected_path)]
+            artifacts[, checksum_ok := mapply(function(path, ok, checksum, checksum_type) {
+                if (!isTRUE(ok) || is.na(checksum) || !nzchar(checksum)) {
+                    return(NA)
+                }
+                identical(tolower(store_hash_file(path, checksum_type)), tolower(checksum))
+            }, expected_path, exists, checksum, checksum_type)]
+            artifacts[, size_ok := mapply(function(path, ok, size) {
+                if (!isTRUE(ok) || is.na(size)) {
+                    return(NA)
+                }
+                identical(as.numeric(file.info(path, extra_cols = FALSE)$size), as.numeric(size))
+            }, expected_path, exists, size)]
+            artifacts[, .SD, .SDcols = c(
+                "artifact_id", "kind", "expected_path", "exists",
+                "checksum_ok", "size_ok", "status"
+            )]
         },
         # }}}
 
@@ -98,6 +268,14 @@ EsgExtractStore <- R6::R6Class(
 
             query_file <- file.path(private$query_dir, sprintf("files-%s.json", query_id))
             files$save(query_file)
+            self$register_artifact(
+                kind = "query",
+                path = query_file,
+                role = "input",
+                project = "CMIP6",
+                query_id = query_id,
+                metadata = list(result_type = result_type)
+            )
 
             time_filter <- files$time_filter
             query_run <- data.frame(
@@ -143,6 +321,7 @@ EsgExtractStore <- R6::R6Class(
                     url_opendap = dt$url_opendap,
                     url_download = dt$url_download,
                     local_path = rep(NA_character_, nrow(dt)),
+                    local_artifact_id = rep(NA_character_, nrow(dt)),
                     created_at = rep(now, nrow(dt)),
                     stringsAsFactors = FALSE
                 )
@@ -510,8 +689,14 @@ EsgExtractStore <- R6::R6Class(
         store_path = NULL,
         manifest_path = NULL,
         query_dir = NULL,
+        dict_dir = NULL,
+        source_dir = NULL,
         download_dir = NULL,
-        data_dir = NULL,
+        extract_dir = NULL,
+        output_dir = NULL,
+        tmp_dir = NULL,
+        tmp_download_dir = NULL,
+        log_dir = NULL,
         conn = NULL,
 
         # connect {{{
@@ -539,6 +724,36 @@ EsgExtractStore <- R6::R6Class(
 
         # init_schema {{{
         init_schema = function() {
+            private$exec("
+                CREATE TABLE IF NOT EXISTS store_meta (
+                    key VARCHAR PRIMARY KEY,
+                    value VARCHAR,
+                    updated_at TIMESTAMP
+                )
+            ")
+            private$exec("
+                CREATE TABLE IF NOT EXISTS artifact (
+                    artifact_id VARCHAR PRIMARY KEY,
+                    kind VARCHAR,
+                    role VARCHAR,
+                    project VARCHAR,
+                    relative_path VARCHAR,
+                    checksum VARCHAR,
+                    checksum_type VARCHAR,
+                    size DOUBLE,
+                    status VARCHAR,
+                    query_id VARCHAR,
+                    file_key VARCHAR,
+                    dict_id VARCHAR,
+                    source_url VARCHAR,
+                    source_repo VARCHAR,
+                    source_tag VARCHAR,
+                    source_commit VARCHAR,
+                    metadata_json VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            ")
             private$exec("
                 CREATE TABLE IF NOT EXISTS query_run (
                     query_id VARCHAR PRIMARY KEY,
@@ -580,6 +795,7 @@ EsgExtractStore <- R6::R6Class(
                     url_opendap VARCHAR,
                     url_download VARCHAR,
                     local_path VARCHAR,
+                    local_artifact_id VARCHAR,
                     created_at TIMESTAMP
                 )
             ")
@@ -609,6 +825,7 @@ EsgExtractStore <- R6::R6Class(
                     plan_id VARCHAR,
                     file_key VARCHAR,
                     query_id VARCHAR,
+                    artifact_id VARCHAR,
                     output_path VARCHAR,
                     year INTEGER,
                     row_count INTEGER,
@@ -621,6 +838,13 @@ EsgExtractStore <- R6::R6Class(
                     completed_at TIMESTAMP
                 )
             ")
+
+            private$replace_rows("store_meta", data.frame(
+                key = "schema_version",
+                value = "1",
+                updated_at = extract_store_now(),
+                stringsAsFactors = FALSE
+            ), "key")
 
             invisible(NULL)
         },
@@ -635,7 +859,7 @@ EsgExtractStore <- R6::R6Class(
         # check_open {{{
         check_open = function() {
             if (!isTRUE(self$is_open)) {
-                cli::cli_abort("The extraction store is closed.")
+                cli::cli_abort("The store is closed.")
             }
 
             invisible(NULL)
@@ -803,7 +1027,11 @@ EsgExtractStore <- R6::R6Class(
                 checksum <- NULL
             }
 
-            downloader <- FileDownloader$new(dest = private$download_dir, n_workers = 0L)
+            downloader <- FileDownloader$new(
+                dest = private$download_dir,
+                temp = private$tmp_download_dir,
+                n_workers = 0L
+            )
             local_path <- downloader$download(
                 url = download,
                 progress = FALSE,
@@ -811,7 +1039,20 @@ EsgExtractStore <- R6::R6Class(
                 checksum = checksum,
                 checksum_type = checksum_type
             )
-            file$local_path <- local_path
+            artifact_id <- self$register_artifact(
+                kind = "netcdf",
+                path = local_path,
+                role = "download",
+                project = "CMIP6",
+                checksum = checksum,
+                checksum_type = checksum_type,
+                query_id = file$query_id[[1L]],
+                file_key = file$file_key[[1L]],
+                source_url = download,
+                metadata = list(filename = extract_store_na_character(file$filename[[1L]]))
+            )
+            file$local_path <- extract_store_rel_path(local_path, private$store_path)
+            file$local_artifact_id <- artifact_id
             private$replace_rows("file_catalog", as.data.frame(file), "file_key")
             local_path
         },
@@ -860,7 +1101,19 @@ EsgExtractStore <- R6::R6Class(
                 chunk <- dt[dt$year == year]
                 output_path <- private$output_path(plan, file, year)
                 private$write_parquet(chunk, output_path, overwrite = overwrite)
-                results[[i]] <- private$extract_result_row(plan, chunk, output_path, year)
+                artifact_id <- self$register_artifact(
+                    kind = "extract",
+                    path = output_path,
+                    role = "derived",
+                    project = "CMIP6",
+                    query_id = plan$query_id[[1L]],
+                    file_key = plan$file_key[[1L]],
+                    metadata = list(
+                        plan_id = plan$plan_id[[1L]],
+                        year = as.integer(year)
+                    )
+                )
+                results[[i]] <- private$extract_result_row(plan, chunk, output_path, year, artifact_id)
             }
 
             data.table::rbindlist(results, use.names = TRUE, fill = TRUE)
@@ -879,7 +1132,7 @@ EsgExtractStore <- R6::R6Class(
                 year = year
             )
             dirs <- paste0(names(parts), "=", vapply(parts, extract_store_partition_value, character(1L)))
-            file.path(private$data_dir, do.call(file.path, as.list(dirs)), sprintf("part-%s.parquet", plan$plan_id[[1L]]))
+            file.path(private$extract_dir, do.call(file.path, as.list(dirs)), sprintf("part-%s.parquet", plan$plan_id[[1L]]))
         },
         # }}}
 
@@ -917,12 +1170,13 @@ EsgExtractStore <- R6::R6Class(
         # }}}
 
         # extract_result_row {{{
-        extract_result_row = function(plan, dt, output_path, year) {
+        extract_result_row = function(plan, dt, output_path, year, artifact_id) {
             data.frame(
                 result_id = extract_store_hash(plan$plan_id[[1L]], year, output_path),
                 plan_id = plan$plan_id[[1L]],
                 file_key = plan$file_key[[1L]],
                 query_id = plan$query_id[[1L]],
+                artifact_id = artifact_id,
                 output_path = extract_store_rel_path(output_path, private$store_path),
                 year = as.integer(year),
                 row_count = nrow(dt),
