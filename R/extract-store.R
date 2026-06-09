@@ -432,6 +432,15 @@ EsgStore <- R6::R6Class(
         #' @param query_id Optional query ID. If `NULL`, tracked queries are
         #'        updated by default.
         #' @param tracked Tracked-state filter used when `query_id` is `NULL`.
+        #' @param enqueue Whether to enqueue current files after updating.
+        #'        Default: `FALSE`.
+        #' @param downloader Optional [FileDownloader] used when `enqueue = TRUE`.
+        #' @param replica Replica policy passed to `$download_plan()` when
+        #'        enqueuing.
+        #' @param session_label Optional download session label.
+        #' @param service ESGF URL service used for the download plan.
+        #' @param probe Whether to probe candidate URLs before ranking.
+        #' @param strategy Candidate ranking strategy.
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
