@@ -146,7 +146,11 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     tables <- DBI::dbListTables(priv(store)$conn)
     expect_setequal(
         tables,
-        c("store_meta", "artifact", "query_run", "file_catalog", "extraction_plan", "extraction_result")
+        c(
+            "store_meta", "artifact", "query_run", "esg_query",
+            "esg_file", "esg_query_file", "file_catalog",
+            "extraction_plan", "extraction_result"
+        )
     )
     expect_null(store$get_meta("active_cmip6_index_artifact_id"))
     expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
@@ -168,6 +172,45 @@ test_that("EsgStore can reopen an existing store", {
 
     expect_true(store$is_open)
     expect_true(file.exists(file.path(dir, "manifest.duckdb")))
+})
+
+test_that("EsgStore tracks long-lived ESGF queries", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
+    expect_type(query_id, "character")
+    expect_identical(store$add_query(query), query_id)
+
+    queries <- store$queries()
+    expect_equal(nrow(queries), 1L)
+    expect_identical(queries$query_id[[1L]], query_id)
+    expect_identical(queries$label[[1L]], "ssp585 tas")
+    expect_true(queries$tracked[[1L]])
+    expect_true(file.exists(file.path(dir, queries$query_file[[1L]])))
+    expect_true(grepl("ssp585", queries$parameter_json[[1L]], fixed = TRUE))
+
+    artifacts <- DBI::dbReadTable(priv(store)$conn, "artifact")
+    expect_equal(nrow(artifacts[artifacts$query_id == query_id & artifacts$kind == "query", ]), 1L)
+    expect_equal(nrow(store$queries(tracked = TRUE)), 1L)
+    expect_equal(nrow(store$queries(tracked = FALSE)), 0L)
+
+    expect_invisible(store$untrack_query(query_id))
+    expect_false(store$queries()$tracked[[1L]])
+    expect_equal(nrow(store$queries(tracked = FALSE)), 1L)
+
+    expect_invisible(store$track_query(query_id))
+    expect_true(store$queries()$tracked[[1L]])
+    expect_error(store$track_query("missing-query"), "was not found")
 })
 
 test_that("EsgStore catalogs File result records", {

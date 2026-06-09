@@ -289,6 +289,110 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # add_query {{{
+        #' @description
+        #' Add an ESGF query to the long-lived store query registry.
+        #'
+        #' @param query An [EsgQuery] object.
+        #' @param label Optional label.
+        #' @param track Whether to mark the query as tracked. Default: `FALSE`.
+        #'
+        #' @return The stable query ID.
+        add_query = function(query, label = NULL, track = FALSE) {
+            private$check_open()
+            if (!inherits(query, "EsgQuery")) {
+                cli::cli_abort("`query` must be an {.cls EsgQuery} object.")
+            }
+            checkmate::assert_string(label, null.ok = TRUE)
+            checkmate::assert_flag(track)
+
+            payload <- private$query_payload(query)
+            query_id <- payload$query_id
+            qid <- query_id
+            query_file <- file.path(private$query_dir, sprintf("query-%s.json", query_id))
+            query$save(query_file)
+
+            now <- extract_store_now()
+            queries <- private$read_table("esg_query")
+            existing <- queries[queries[["query_id"]] == qid]
+            created_at <- if (nrow(existing)) existing$created_at[[1L]] else now
+            tracked <- if (nrow(existing)) extract_store_is_true(existing$tracked[[1L]]) || isTRUE(track) else isTRUE(track)
+            if (is.null(label) && nrow(existing)) {
+                label <- extract_store_na_character(existing$label[[1L]])
+                if (is.na(label)) label <- NULL
+            }
+
+            row <- data.frame(
+                query_id = query_id,
+                label = extract_store_na_character(label),
+                index_node = payload$index_node,
+                query_file = extract_store_rel_path(query_file, private$store_path),
+                parameter_json = payload$parameter_json,
+                tracked = tracked,
+                created_at = created_at,
+                updated_at = now,
+                last_checked_at = as.POSIXct(NA),
+                package_version = as.character(utils::packageVersion("epwshiftr")),
+                stringsAsFactors = FALSE
+            )
+            private$replace_rows("esg_query", row, "query_id")
+            self$register_artifact(
+                kind = "query",
+                path = query_file,
+                role = "input",
+                project = "CMIP6",
+                query_id = query_id,
+                metadata = list(result_type = "EsgQuery")
+            )
+            query_id
+        },
+        # }}}
+
+        # track_query {{{
+        #' @description
+        #' Mark a stored ESGF query as tracked.
+        #'
+        #' @param query_id Query ID returned by `$add_query()`.
+        #'
+        #' @return The store object, invisibly.
+        track_query = function(query_id) {
+            private$set_query_tracked(query_id, TRUE)
+            invisible(self)
+        },
+        # }}}
+
+        # untrack_query {{{
+        #' @description
+        #' Mark a stored ESGF query as untracked.
+        #'
+        #' @param query_id Query ID returned by `$add_query()`.
+        #'
+        #' @return The store object, invisibly.
+        untrack_query = function(query_id) {
+            private$set_query_tracked(query_id, FALSE)
+            invisible(self)
+        },
+        # }}}
+
+        # queries {{{
+        #' @description
+        #' List stored ESGF queries.
+        #'
+        #' @param tracked Optional tracked-state filter.
+        #'
+        #' @return A data.table of stored query records.
+        queries = function(tracked = NULL) {
+            private$check_open()
+            checkmate::assert_flag(tracked, null.ok = TRUE)
+            queries <- private$read_table("esg_query")
+            if (!is.null(tracked) && nrow(queries)) {
+                want_tracked <- isTRUE(tracked)
+                queries <- queries[as.logical(queries[["tracked"]]) == want_tracked]
+            }
+            queries[]
+        },
+        # }}}
+
         # add_files {{{
         #' @description
         #' Add File or Aggregation query results to the local file catalog.
@@ -1026,6 +1130,65 @@ EsgStore <- R6::R6Class(
                 )
             ")
             private$exec("
+                CREATE TABLE IF NOT EXISTS esg_query (
+                    query_id VARCHAR PRIMARY KEY,
+                    label VARCHAR,
+                    index_node VARCHAR,
+                    query_file VARCHAR,
+                    parameter_json VARCHAR,
+                    tracked BOOLEAN,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    last_checked_at TIMESTAMP,
+                    package_version VARCHAR
+                )
+            ")
+            private$exec("
+                CREATE TABLE IF NOT EXISTS esg_file (
+                    file_key VARCHAR PRIMARY KEY,
+                    esgf_id VARCHAR,
+                    dataset_id VARCHAR,
+                    master_id VARCHAR,
+                    instance_id VARCHAR,
+                    tracking_id VARCHAR,
+                    version VARCHAR,
+                    title VARCHAR,
+                    filename VARCHAR,
+                    checksum VARCHAR,
+                    checksum_type VARCHAR,
+                    size DOUBLE,
+                    latest BOOLEAN,
+                    replica BOOLEAN,
+                    retracted BOOLEAN,
+                    data_node VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    frequency VARCHAR,
+                    table_id VARCHAR,
+                    variable_id VARCHAR,
+                    grid_label VARCHAR,
+                    datetime_start TIMESTAMP,
+                    datetime_end TIMESTAMP,
+                    url_opendap VARCHAR,
+                    url_download VARCHAR,
+                    local_path VARCHAR,
+                    local_artifact_id VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            ")
+            private$exec("
+                CREATE TABLE IF NOT EXISTS esg_query_file (
+                    link_id VARCHAR PRIMARY KEY,
+                    query_id VARCHAR,
+                    file_key VARCHAR,
+                    status VARCHAR,
+                    first_seen_at TIMESTAMP,
+                    last_seen_at TIMESTAMP
+                )
+            ")
+            private$exec("
                 CREATE TABLE IF NOT EXISTS file_catalog (
                     file_key VARCHAR PRIMARY KEY,
                     query_id VARCHAR,
@@ -1098,7 +1261,7 @@ EsgStore <- R6::R6Class(
 
             private$replace_rows("store_meta", data.frame(
                 key = "schema_version",
-                value = "1",
+                value = "2",
                 updated_at = extract_store_now(),
                 stringsAsFactors = FALSE
             ), "key")
@@ -1113,12 +1276,49 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # read_table {{{
+        read_table = function(table) {
+            data.table::as.data.table(DBI::dbReadTable(private$conn, table))
+        },
+        # }}}
+
         # check_open {{{
         check_open = function() {
             if (!isTRUE(self$is_open)) {
                 cli::cli_abort("The store is closed.")
             }
 
+            invisible(NULL)
+        },
+        # }}}
+
+        # query_payload {{{
+        query_payload = function(query) {
+            state <- query$state(null = TRUE)
+            parameter <- priv(query)$parameter$serialize(null = TRUE)
+            parameter_json <- jsonlite::toJSON(parameter, auto_unbox = TRUE, null = "null", digits = 6)
+            list(
+                query_id = extract_store_hash("EsgQuery", state$index_node, parameter_json),
+                index_node = state$index_node,
+                parameter_json = as.character(parameter_json)
+            )
+        },
+        # }}}
+
+        # set_query_tracked {{{
+        set_query_tracked = function(query_id, tracked) {
+            private$check_open()
+            checkmate::assert_string(query_id, min.chars = 1L)
+            checkmate::assert_flag(tracked)
+            qid <- query_id
+            queries <- private$read_table("esg_query")
+            row <- queries[queries[["query_id"]] == qid]
+            if (!nrow(row)) {
+                cli::cli_abort("Stored ESGF query {.val {query_id}} was not found.")
+            }
+            row$tracked <- isTRUE(tracked)
+            row$updated_at <- extract_store_now()
+            private$replace_rows("esg_query", as.data.frame(row), "query_id")
             invisible(NULL)
         },
         # }}}
@@ -1548,6 +1748,14 @@ extract_store_na_character <- function(x) {
     }
 
     as.character(x[[1L]])
+}
+
+extract_store_is_true <- function(x) {
+    if (is.null(x) || !length(x) || is.na(x[[1L]])) {
+        return(FALSE)
+    }
+
+    isTRUE(as.logical(x[[1L]]))
 }
 
 extract_store_list_value <- function(x, name) {
