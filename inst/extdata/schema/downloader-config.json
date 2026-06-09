@@ -1,0 +1,63 @@
+{
+  "check": {
+    "kind": "list"
+  },
+  "keys": {
+    "type": "named",
+    "must.include": ["schema_version", "dest", "temp", "retries", "timeout", "cleanup", "n_workers"]
+  },
+  "fields": {
+    "schema_version": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "dest": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "temp": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "manifest": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "retries": {
+      "check": {
+        "kind": "count",
+        "positive": true
+      }
+    },
+    "timeout": {
+      "check": {
+        "kind": "count",
+        "positive": true
+      }
+    },
+    "cleanup": {
+      "check": {
+        "kind": "flag"
+      }
+    },
+    "n_workers": {
+      "check": {
+        "kind": "count",
+        "positive": false
+      }
+    }
+  }
+}

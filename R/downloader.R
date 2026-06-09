@@ -116,6 +116,79 @@ DownloadTask <- R6::R6Class("DownloadTask",
 )
 # }}}
 
+# downloader utilities {{{
+DOWNLOADER_SCHEMA_VERSION <- "1.0.0"
+DOWNLOADER_TASK_STATUS <- c("queued", "downloading", "done", "error", "cancelled", "skipped")
+
+download_now <- function() {
+    as.POSIXct(Sys.time(), tz = "UTC")
+}
+
+download_hash <- function(...) {
+    values <- vapply(list(...), function(x) {
+        if (is.null(x) || length(x) == 0L || all(is.na(x))) {
+            return("")
+        }
+        paste(as.character(x), collapse = "\r")
+    }, character(1L))
+    as.character(openssl::sha256(charToRaw(paste(values, collapse = "\n"))))
+}
+
+download_one_chr <- function(x) {
+    if (is.null(x) || length(x) == 0L) {
+        return(NA_character_)
+    }
+    out <- as.character(x[[1L]])
+    if (is.na(out) || !nzchar(out)) NA_character_ else out
+}
+
+download_absolute_path <- function(path) {
+    grepl("^(/|[A-Za-z]:[/\\\\])", path)
+}
+
+download_resolve_path <- function(path, base = getwd()) {
+    if (is.null(path) || is.na(path) || !nzchar(path)) {
+        return(NULL)
+    }
+    path <- path.expand(path)
+    if (!download_absolute_path(path)) {
+        path <- file.path(base, path)
+    }
+    normalizePath(path, mustWork = FALSE, winslash = "/")
+}
+
+download_checksum_type <- function(type) {
+    type <- tolower(download_one_chr(type))
+    if (is.na(type) || !type %in% c("md5", "sha256")) "sha256" else type
+}
+
+download_config_validate <- function(config, name = "downloader config") {
+    schema_validate(SCHEMA_DOWNLOADER_CONFIG, config, mode = "assert", name = name)
+    invisible(config)
+}
+
+download_config_read <- function(file) {
+    checkmate::assert_file(file, access = "r", extension = "json")
+    config <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    download_config_validate(config, file)
+
+    base <- dirname(normalizePath(file, mustWork = TRUE, winslash = "/"))
+    config$dest <- download_resolve_path(config$dest, base)
+    config$temp <- download_resolve_path(config$temp, base)
+    if (!is.null(config$manifest)) {
+        config$manifest <- download_resolve_path(config$manifest, base)
+    }
+    config
+}
+
+download_config_write <- function(config, file, pretty = TRUE) {
+    download_config_validate(config, file)
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    jsonlite::write_json(config, file, null = "null", digits = 6, pretty = pretty, auto_unbox = TRUE)
+    normalizePath(file, mustWork = TRUE, winslash = "/")
+}
+# }}}
+
 # FileDownloader {{{
 #' General Purpose File Downloader
 #'
@@ -160,6 +233,15 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #'        for async downloads. If `0`, async downloads will fallback to synchronous mode.
         #'        Default: `4L`.
         #'
+        #' @param manifest Optional DuckDB manifest path for persistent
+        #'        sessions, tasks, candidate URLs, and events. If `NULL`, only
+        #'        the single-file shortcut API is available. Default: `NULL`.
+        #'
+        #' @param config Optional downloader config, either a JSON file path
+        #'        created by `$save_config()` or a validated config list.
+        #'        Explicit constructor arguments override config values.
+        #'        Default: `NULL`.
+        #'
         #' @return An `FileDownloader` object.
         #'
         #' @examples
@@ -172,9 +254,25 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #'     n_workers = 8
         #' )
         #' }
-        initialize = function(dest = NULL, temp = NULL, retries = 3L, timeout = 3600L, cleanup = TRUE, n_workers = 4L) {
+        initialize = function(dest = NULL, temp = NULL, retries = 3L, timeout = 3600L,
+                              cleanup = TRUE, n_workers = 4L, manifest = NULL, config = NULL) {
+            if (!is.null(config)) {
+                cfg <- if (is.character(config)) download_config_read(config) else config
+                download_config_validate(cfg)
+                if (missing(dest)) dest <- cfg$dest
+                if (missing(temp)) temp <- cfg$temp
+                if (missing(retries)) retries <- cfg$retries
+                if (missing(timeout)) timeout <- cfg$timeout
+                if (missing(cleanup)) cleanup <- cfg$cleanup
+                if (missing(n_workers)) n_workers <- cfg$n_workers
+                if (missing(manifest)) manifest <- cfg$manifest
+            }
             if (is.null(dest)) {
                 dest <- tempdir()
+            }
+            dest <- path.expand(dest)
+            if (!dir.exists(dest)) {
+                dir.create(dest, recursive = TRUE, showWarnings = FALSE)
             }
 
             checkmate::assert_directory_exists(dest, access = "rw")
@@ -183,6 +281,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             checkmate::assert_count(timeout, positive = TRUE)
             checkmate::assert_flag(cleanup)
             checkmate::assert_count(n_workers, positive = FALSE)
+            checkmate::assert_string(manifest, null.ok = TRUE)
 
             # Check if in development mode via environment variable or option
             in_dev <- isTRUE(as.logical(Sys.getenv("EPWSHIFTR_DEV_MODE", "FALSE"))) ||
@@ -194,7 +293,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             if (is.null(temp)) {
                 private$temp <- file.path(private$dest, ".tmp")
             } else {
-                private$temp <- temp
+                private$temp <- normalizePath(path.expand(temp), mustWork = FALSE, winslash = "/")
             }
 
             # Create temp if it doesn't exist
@@ -208,6 +307,17 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$worker_count <- n_workers
             private$in_dev <- in_dev
             private$async_tasks <- list()
+
+            if (!is.null(manifest)) {
+                private$manifest_path <- normalizePath(path.expand(manifest), mustWork = FALSE, winslash = "/")
+                private$config_path <- file.path(dirname(private$manifest_path), "config.json")
+                dir.create(dirname(private$manifest_path), recursive = TRUE, showWarnings = FALSE)
+                private$connect_manifest()
+                private$init_manifest_schema()
+                if (!file.exists(private$config_path)) {
+                    self$save_config(private$config_path)
+                }
+            }
 
             # Start daemon pool if needed
             if (n_workers > 0) {
@@ -272,6 +382,9 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #' @param block A logical value specifying whether to block until download completes.
         #'        If `FALSE`, downloads asynchronously in background. Default: `TRUE`.
         #'
+        #' @param .tmp_id Internal temporary file ID used by persistent
+        #'        download tasks. Default: `NULL`.
+        #'
         #' @return If `block = TRUE`, returns the path to the downloaded file.
         #'        If `block = FALSE`, returns a task ID for tracking the download.
         #'
@@ -297,7 +410,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
         download = function(url, filename = NULL, subdir = NULL,
                                 progress = TRUE, overwrite = FALSE,
                                 checksum = NULL, checksum_type = "sha256",
-                                resume = TRUE, block = TRUE) {
+                                resume = TRUE, block = TRUE, .tmp_id = NULL) {
             checkmate::assert_string(url)
             checkmate::assert_string(filename, null.ok = TRUE)
             checkmate::assert_string(subdir, null.ok = TRUE)
@@ -307,6 +420,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             checkmate::assert_choice(checksum_type, c("md5", "sha256"))
             checkmate::assert_flag(resume)
             checkmate::assert_flag(block)
+            checkmate::assert_string(.tmp_id, null.ok = TRUE)
 
             # handle async download
             if (!block) {
@@ -339,7 +453,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             }
 
             # get temporary file path
-            tmp_id <- if (!is.null(checksum)) checksum else as.character(openssl::md5(url))
+            tmp_id <- if (!is.null(.tmp_id)) .tmp_id else if (!is.null(checksum)) checksum else as.character(openssl::md5(url))
             tmp_part <- file.path(private$temp, paste0(tmp_id, ".part"))
             tmp_done <- file.path(private$temp, paste0(tmp_id, ".done"))
 
@@ -484,6 +598,203 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 "Failed to download file after %d attempts. Last error: %s",
                 private$retries, conditionMessage(last_error)
             ))
+        },
+        # }}}
+
+        # save_config {{{
+        #' @description
+        #' Save downloader construction config as schema-validated JSON.
+        #'
+        #' @param file Output JSON path. If `NULL`, uses the config path next to
+        #'        the persistent manifest.
+        #' @param pretty Whether to add indentation whitespace. Default: `TRUE`.
+        #'
+        #' @return The normalized output path.
+        save_config = function(file = NULL, pretty = TRUE) {
+            checkmate::assert_string(file, null.ok = TRUE)
+            checkmate::assert_flag(pretty)
+            if (is.null(file)) {
+                if (is.null(private$config_path)) {
+                    cli::cli_abort("`file` is required when the downloader has no persistent manifest.")
+                }
+                file <- private$config_path
+            }
+            download_config_write(private$config_payload(), file, pretty = pretty)
+        },
+        # }}}
+
+        # enqueue {{{
+        #' @description
+        #' Add a download plan to the persistent manifest.
+        #'
+        #' @param plan A data frame with at least `logical_file_id`, `filename`,
+        #'        and `url` columns.
+        #' @param session_label Optional label for this download session.
+        #'
+        #' @return The created session ID.
+        enqueue = function(plan, session_label = NULL) {
+            private$require_manifest()
+            checkmate::assert_string(session_label, null.ok = TRUE)
+            plan <- private$normalize_plan(plan)
+            if (!nrow(plan)) {
+                cli::cli_abort("Download plan does not contain any candidate URL.")
+            }
+
+            session_id <- private$new_session_id()
+            now <- download_now()
+            private$append_rows("download_session", data.frame(
+                session_id = session_id,
+                label = download_one_chr(session_label),
+                status = "queued",
+                created_at = now,
+                updated_at = now,
+                completed_at = as.POSIXct(NA),
+                stringsAsFactors = FALSE
+            ))
+
+            tasks <- private$plan_tasks(plan, session_id, now)
+            candidates <- private$plan_candidates(plan, tasks, now)
+            private$append_rows("download_task", tasks)
+            private$append_rows("download_candidate", candidates)
+            private$log_event(session_id, NA_character_, "enqueue", sprintf("Queued %d download task(s).", nrow(tasks)))
+            session_id
+        },
+        # }}}
+
+        # run {{{
+        #' @description
+        #' Run queued persistent download tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #' @param block Whether to block until completion. Persistent runs are
+        #'        currently synchronous.
+        #' @param progress Whether to show per-file progress.
+        #' @param overwrite Whether to overwrite existing final files.
+        #' @param resume Whether to resume `.part` files.
+        #'
+        #' @return A data.table of selected task records after the run.
+        run = function(session_id = NULL, task_id = NULL, block = TRUE,
+                       progress = TRUE, overwrite = FALSE, resume = TRUE) {
+            private$require_manifest()
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
+            checkmate::assert_flag(block)
+            checkmate::assert_flag(progress)
+            checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
+            if (!isTRUE(block)) {
+                cli::cli_alert_warning("Persistent downloader runs execute synchronously in this version.")
+            }
+
+            tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = c("queued", "downloading"))
+            if (!nrow(tasks)) {
+                return(private$select_tasks(session_id = session_id, task_id = task_id))
+            }
+            for (i in seq_len(nrow(tasks))) {
+                private$run_task(tasks[i, , drop = FALSE], progress = progress, overwrite = overwrite, resume = resume)
+            }
+            private$select_tasks(session_id = session_id, task_id = task_id)
+        },
+        # }}}
+
+        # sessions {{{
+        #' @description
+        #' List persistent download sessions.
+        sessions = function() {
+            private$require_manifest()
+            private$read_table("download_session")
+        },
+        # }}}
+
+        # tasks {{{
+        #' @description
+        #' List persistent download tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param status Optional task status filter.
+        tasks = function(session_id = NULL, status = NULL) {
+            private$require_manifest()
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_subset(status, DOWNLOADER_TASK_STATUS, empty.ok = TRUE)
+            private$select_tasks(session_id = session_id, status = status)
+        },
+        # }}}
+
+        # status {{{
+        #' @description
+        #' Return persistent download task status.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #'
+        #' @return A data.table of matching task records.
+        status = function(session_id = NULL, task_id = NULL) {
+            private$require_manifest()
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
+            private$select_tasks(session_id = session_id, task_id = task_id)
+        },
+        # }}}
+
+        # retry {{{
+        #' @description
+        #' Requeue failed or cancelled persistent tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #' @param status Task statuses to requeue. Default:
+        #'        `c("error", "cancelled")`.
+        #'
+        #' @return A data.table of requeued task records.
+        retry = function(session_id = NULL, task_id = NULL, status = c("error", "cancelled")) {
+            private$require_manifest()
+            checkmate::assert_subset(status, c("error", "cancelled"), empty.ok = FALSE)
+            private$queue_tasks(session_id = session_id, task_id = task_id, status = status)
+        },
+        # }}}
+
+        # resume {{{
+        #' @description
+        #' Resume queued or interrupted persistent tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #' @param ... Additional arguments passed to `$run()`.
+        #'
+        #' @return A data.table of selected task records after the run.
+        resume = function(session_id = NULL, task_id = NULL, ...) {
+            private$require_manifest()
+            private$queue_tasks(session_id = session_id, task_id = task_id, status = c("downloading", "error", "cancelled"))
+            self$run(session_id = session_id, task_id = task_id, ...)
+        },
+        # }}}
+
+        # verify {{{
+        #' @description
+        #' Verify checksums for completed persistent tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #'
+        #' @return A data.table of completed task records with a
+        #'        `checksum_ok` column.
+        verify = function(session_id = NULL, task_id = NULL) {
+            private$require_manifest()
+            tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = c("done", "skipped"))
+            tasks$checksum_ok <- if (nrow(tasks)) {
+                vapply(seq_len(nrow(tasks)), function(i) {
+                    path <- tasks$target_path[[i]]
+                    checksum <- download_one_chr(tasks$checksum[[i]])
+                    checksum_type <- download_checksum_type(tasks$checksum_type[[i]])
+                    if (!file.exists(path)) return(FALSE)
+                    if (is.na(checksum)) return(TRUE)
+                    private$verify_checksum_internal(path, checksum, checksum_type)
+                }, logical(1L))
+            } else {
+                logical()
+            }
+            tasks[]
         },
         # }}}
 
@@ -865,6 +1176,20 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #' @field n_workers Number of parallel workers
         n_workers = function() {
             private$worker_count
+        },
+        # }}}
+
+        # manifest {{{
+        #' @field manifest Persistent download manifest path, or `NULL`.
+        manifest = function() {
+            private$manifest_path
+        },
+        # }}}
+
+        # config_file {{{
+        #' @field config_file Downloader config path, or `NULL`.
+        config_file = function() {
+            private$config_path
         }
         # }}}
     ),
@@ -872,6 +1197,9 @@ FileDownloader <- R6::R6Class("FileDownloader",
     private = list(
         dest = NULL,
         temp = NULL,
+        manifest_path = NULL,
+        manifest_conn = NULL,
+        config_path = NULL,
         dl_timeout = NULL,
         retries = NULL,
         cleanup = NULL,
@@ -881,9 +1209,469 @@ FileDownloader <- R6::R6Class("FileDownloader",
 
         # finalize {{{
         finalize = function() {
+            private$disconnect_manifest()
             if (!is.null(private$worker_count) && private$worker_count > 0) {
                 mirai::daemons(0)
             }
+        },
+        # }}}
+
+        # config_payload {{{
+        config_payload = function() {
+            list(
+                schema_version = DOWNLOADER_SCHEMA_VERSION,
+                dest = private$dest,
+                temp = private$temp,
+                manifest = private$manifest_path,
+                retries = as.integer(private$retries),
+                timeout = as.integer(private$dl_timeout),
+                cleanup = isTRUE(private$cleanup),
+                n_workers = as.integer(private$worker_count)
+            )
+        },
+        # }}}
+
+        # manifest {{{
+        connect_manifest = function() {
+            if (is.null(private$manifest_path) || !is.null(private$manifest_conn)) {
+                return(invisible(NULL))
+            }
+            private$manifest_conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = private$manifest_path, read_only = FALSE)
+            invisible(private$manifest_conn)
+        },
+
+        disconnect_manifest = function() {
+            if (!is.null(private$manifest_conn)) {
+                valid <- tryCatch(DBI::dbIsValid(private$manifest_conn), error = function(e) FALSE)
+                if (isTRUE(valid)) {
+                    tryCatch(
+                        DBI::dbDisconnect(private$manifest_conn, shutdown = TRUE),
+                        error = function(e) DBI::dbDisconnect(private$manifest_conn)
+                    )
+                }
+                private$manifest_conn <- NULL
+            }
+            invisible(NULL)
+        },
+
+        require_manifest = function() {
+            if (is.null(private$manifest_path)) {
+                cli::cli_abort("This downloader has no persistent manifest. Create it with {.code FileDownloader$new(manifest = ...)}.")
+            }
+            if (!is.null(private$manifest_conn)) {
+                valid <- tryCatch(DBI::dbIsValid(private$manifest_conn), error = function(e) FALSE)
+                if (!isTRUE(valid)) {
+                    private$manifest_conn <- NULL
+                }
+            }
+            if (is.null(private$manifest_conn)) {
+                private$connect_manifest()
+                private$init_manifest_schema()
+            }
+            invisible(private$manifest_conn)
+        },
+
+        exec_manifest = function(sql) {
+            DBI::dbExecute(private$manifest_conn, sql)
+        },
+
+        init_manifest_schema = function() {
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_session (
+                    session_id VARCHAR PRIMARY KEY,
+                    label VARCHAR,
+                    status VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    completed_at TIMESTAMP
+                )
+            ")
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_task (
+                    task_id VARCHAR PRIMARY KEY,
+                    session_id VARCHAR,
+                    logical_file_id VARCHAR,
+                    file_key VARCHAR,
+                    esgf_id VARCHAR,
+                    dataset_id VARCHAR,
+                    filename VARCHAR,
+                    subdir VARCHAR,
+                    target_path VARCHAR,
+                    checksum VARCHAR,
+                    checksum_type VARCHAR,
+                    size DOUBLE,
+                    status VARCHAR,
+                    attempts INTEGER,
+                    bytes_done DOUBLE,
+                    selected_url VARCHAR,
+                    data_node VARCHAR,
+                    last_error VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    completed_at TIMESTAMP
+                )
+            ")
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_candidate (
+                    candidate_id VARCHAR PRIMARY KEY,
+                    task_id VARCHAR,
+                    url VARCHAR,
+                    service VARCHAR,
+                    data_node VARCHAR,
+                    priority INTEGER,
+                    probe_latency DOUBLE,
+                    probe_throughput DOUBLE,
+                    failed_count INTEGER,
+                    last_error VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            ")
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_event (
+                    event_id VARCHAR PRIMARY KEY,
+                    session_id VARCHAR,
+                    task_id VARCHAR,
+                    event VARCHAR,
+                    message VARCHAR,
+                    created_at TIMESTAMP
+                )
+            ")
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_meta (
+                    key VARCHAR PRIMARY KEY,
+                    value VARCHAR,
+                    updated_at TIMESTAMP
+                )
+            ")
+            private$replace_rows("download_meta", data.frame(
+                key = "schema_version",
+                value = DOWNLOADER_SCHEMA_VERSION,
+                updated_at = download_now(),
+                stringsAsFactors = FALSE
+            ), "key")
+            invisible(NULL)
+        },
+
+        append_rows = function(table, rows) {
+            if (!nrow(rows)) return(invisible(rows))
+            DBI::dbAppendTable(private$manifest_conn, table, as.data.frame(rows))
+            invisible(rows)
+        },
+
+        replace_rows = function(table, rows, key) {
+            if (!nrow(rows)) return(invisible(rows))
+            for (value in rows[[key]]) {
+                DBI::dbExecute(
+                    private$manifest_conn,
+                    sprintf("DELETE FROM %s WHERE %s = ?", table, key),
+                    params = list(value)
+                )
+            }
+            DBI::dbAppendTable(private$manifest_conn, table, as.data.frame(rows))
+            invisible(rows)
+        },
+
+        read_table = function(table) {
+            data.table::as.data.table(DBI::dbReadTable(private$manifest_conn, table))
+        },
+
+        log_event = function(session_id, task_id, event, message = NA_character_) {
+            private$append_rows("download_event", data.frame(
+                event_id = download_hash(session_id, task_id, event, message, as.numeric(Sys.time()), stats::runif(1L)),
+                session_id = download_one_chr(session_id),
+                task_id = download_one_chr(task_id),
+                event = event,
+                message = download_one_chr(message),
+                created_at = download_now(),
+                stringsAsFactors = FALSE
+            ))
+        },
+        # }}}
+
+        # plan and task helpers {{{
+        new_session_id = function() {
+            stamp <- format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC")
+            paste0(stamp, "-", substr(download_hash(stamp, stats::runif(1L)), 1L, 8L))
+        },
+
+        normalize_plan = function(plan) {
+            if (inherits(plan, "data.table")) {
+                plan <- data.table::copy(plan)
+            } else if (is.data.frame(plan)) {
+                plan <- data.table::as.data.table(plan)
+            } else {
+                cli::cli_abort("`plan` must be a data frame returned by {.code download_plan()}.")
+            }
+
+            missing <- setdiff(c("logical_file_id", "filename", "url"), names(plan))
+            if (length(missing)) {
+                cli::cli_abort("Download plan is missing required column(s): {.field {missing}}.")
+            }
+            defaults <- list(
+                file_key = NA_character_,
+                esgf_id = NA_character_,
+                dataset_id = NA_character_,
+                subdir = NA_character_,
+                checksum = NA_character_,
+                checksum_type = "sha256",
+                size = NA_real_,
+                service = "HTTPServer",
+                data_node = NA_character_,
+                priority = NA_integer_,
+                probe_latency = NA_real_,
+                probe_throughput = NA_real_
+            )
+            for (name in setdiff(names(defaults), names(plan))) {
+                plan[[name]] <- defaults[[name]]
+            }
+            plan <- plan[!is.na(url) & nzchar(url)]
+            if (!nrow(plan)) return(plan)
+
+            plan[, checksum_type := vapply(checksum_type, download_checksum_type, character(1L))]
+            plan[, priority := data.table::fifelse(is.na(priority), seq_len(.N), as.integer(priority))]
+            plan[, size := suppressWarnings(as.numeric(size))]
+            plan[, filename := data.table::fifelse(is.na(filename) | !nzchar(filename), basename(sub("\\?.*$", "", url)), filename)]
+            plan[]
+        },
+
+        target_path = function(filename, subdir = NA_character_) {
+            if (is.na(subdir) || !nzchar(subdir)) {
+                file.path(private$dest, filename)
+            } else {
+                file.path(private$dest, subdir, filename)
+            }
+        },
+
+        plan_tasks = function(plan, session_id, now) {
+            task <- unique(plan[, .(
+                logical_file_id,
+                file_key,
+                esgf_id,
+                dataset_id,
+                filename,
+                subdir,
+                checksum,
+                checksum_type,
+                size
+            )])
+            task[, target_path := mapply(private$target_path, filename, subdir, USE.NAMES = FALSE)]
+            task[, task_id := vapply(seq_len(.N), function(i) {
+                download_hash(session_id, logical_file_id[[i]], target_path[[i]])
+            }, character(1L))]
+            task[, `:=`(
+                session_id = session_id,
+                status = "queued",
+                attempts = 0L,
+                bytes_done = 0,
+                selected_url = NA_character_,
+                data_node = NA_character_,
+                last_error = NA_character_,
+                created_at = now,
+                updated_at = now,
+                completed_at = as.POSIXct(NA)
+            )]
+            data.table::setcolorder(task, c(
+                "task_id", "session_id", "logical_file_id", "file_key",
+                "esgf_id", "dataset_id", "filename", "subdir", "target_path",
+                "checksum", "checksum_type", "size", "status", "attempts",
+                "bytes_done", "selected_url", "data_node", "last_error",
+                "created_at", "updated_at", "completed_at"
+            ))
+            task[]
+        },
+
+        plan_candidates = function(plan, tasks, now) {
+            key <- c("logical_file_id", "filename", "subdir", "checksum", "checksum_type")
+            candidate <- merge(
+                plan,
+                tasks[, c(key, "task_id"), with = FALSE],
+                by = key,
+                all.x = TRUE,
+                sort = FALSE
+            )
+            candidate[, candidate_id := vapply(seq_len(.N), function(i) {
+                download_hash(task_id[[i]], url[[i]])
+            }, character(1L))]
+            unique(candidate[, .(
+                candidate_id,
+                task_id,
+                url,
+                service,
+                data_node,
+                priority = as.integer(priority),
+                probe_latency = as.numeric(probe_latency),
+                probe_throughput = as.numeric(probe_throughput),
+                failed_count = 0L,
+                last_error = NA_character_,
+                created_at = now,
+                updated_at = now
+            )], by = "candidate_id")
+        },
+
+        select_tasks = function(session_id = NULL, task_id = NULL, status = NULL) {
+            tasks <- private$read_table("download_task")
+            if (!nrow(tasks)) return(tasks[])
+            sid <- session_id
+            tid <- task_id
+            task_status <- status
+            if (!is.null(sid)) tasks <- tasks[tasks[["session_id"]] == sid]
+            if (!is.null(tid)) tasks <- tasks[tasks[["task_id"]] %in% tid]
+            if (!is.null(task_status)) tasks <- tasks[tasks[["status"]] %in% task_status]
+            tasks[]
+        },
+
+        get_candidates = function(task_id) {
+            tid <- task_id
+            candidates <- private$read_table("download_candidate")
+            candidates <- candidates[candidates[["task_id"]] == tid]
+            data.table::setorderv(candidates, c("priority", "failed_count"), c(1L, 1L))
+            candidates[]
+        },
+
+        update_task = function(task) {
+            task$updated_at <- download_now()
+            private$replace_rows("download_task", as.data.frame(task), "task_id")
+            private$update_session_status(task$session_id[[1L]])
+            invisible(task)
+        },
+
+        update_candidate = function(candidate) {
+            candidate$updated_at <- download_now()
+            private$replace_rows("download_candidate", as.data.frame(candidate), "candidate_id")
+            invisible(candidate)
+        },
+
+        update_session_status = function(session_id) {
+            sessions <- private$read_table("download_session")
+            idx <- match(session_id, sessions$session_id)
+            if (is.na(idx)) return(invisible(NULL))
+            tasks <- private$select_tasks(session_id = session_id)
+            status <- if (!nrow(tasks)) {
+                "queued"
+            } else if (all(tasks$status %in% c("done", "skipped"))) {
+                "done"
+            } else if (any(tasks$status == "error")) {
+                "error"
+            } else if (any(tasks$status == "cancelled")) {
+                "cancelled"
+            } else if (any(tasks$status == "downloading")) {
+                "downloading"
+            } else {
+                "queued"
+            }
+            sessions$status[idx] <- status
+            sessions$updated_at[idx] <- download_now()
+            if (status %in% c("done", "error", "cancelled")) {
+                sessions$completed_at[idx] <- download_now()
+            }
+            private$replace_rows("download_session", as.data.frame(sessions[idx]), "session_id")
+            invisible(status)
+        },
+
+        queue_tasks = function(session_id = NULL, task_id = NULL, status = c("error", "cancelled")) {
+            tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = status)
+            if (!nrow(tasks)) return(tasks)
+            tasks$status <- "queued"
+            tasks$last_error <- NA_character_
+            tasks$updated_at <- download_now()
+            tasks$completed_at <- as.POSIXct(NA)
+            private$replace_rows("download_task", as.data.frame(tasks), "task_id")
+            for (sid in unique(tasks$session_id)) {
+                private$update_session_status(sid)
+                private$log_event(sid, NA_character_, "retry", sprintf("Requeued %d task(s).", sum(tasks$session_id == sid)))
+            }
+            private$select_tasks(session_id = session_id, task_id = task_id)
+        },
+
+        run_task = function(task, progress = TRUE, overwrite = FALSE, resume = TRUE) {
+            task <- data.table::as.data.table(task)
+            task_id <- task$task_id[[1L]]
+            session_id <- task$session_id[[1L]]
+            checksum <- download_one_chr(task$checksum[[1L]])
+            checksum_type <- download_checksum_type(task$checksum_type[[1L]])
+            target_path <- task$target_path[[1L]]
+
+            if (file.exists(target_path) && !isTRUE(overwrite)) {
+                ok <- if (is.na(checksum)) TRUE else private$verify_checksum_internal(target_path, checksum, checksum_type)
+                if (ok) {
+                    task$status <- "skipped"
+                    task$bytes_done <- file.info(target_path)$size
+                    task$last_error <- NA_character_
+                    task$completed_at <- download_now()
+                    private$update_task(task)
+                    private$log_event(session_id, task_id, "skipped", "Final file already exists and passed validation.")
+                    return(target_path)
+                }
+            }
+
+            candidates <- private$get_candidates(task_id)
+            if (!nrow(candidates)) {
+                task$status <- "error"
+                task$last_error <- "No candidate URLs are available."
+                task$completed_at <- download_now()
+                private$update_task(task)
+                private$log_event(session_id, task_id, "error", task$last_error)
+                return(NA_character_)
+            }
+
+            last_error <- NULL
+            for (i in seq_len(nrow(candidates))) {
+                candidate <- candidates[i, , drop = FALSE]
+                attempts <- suppressWarnings(as.integer(task$attempts[[1L]]))
+                if (is.na(attempts)) attempts <- 0L
+                task$status <- "downloading"
+                task$attempts <- attempts + 1L
+                task$selected_url <- candidate$url[[1L]]
+                task$data_node <- candidate$data_node[[1L]]
+                task$last_error <- NA_character_
+                private$update_task(task)
+                private$log_event(session_id, task_id, "start", candidate$url[[1L]])
+
+                task_subdir <- download_one_chr(task$subdir[[1L]])
+                if (is.na(task_subdir)) task_subdir <- NULL
+                path <- tryCatch(
+                    self$download(
+                        url = candidate$url[[1L]],
+                        filename = task$filename[[1L]],
+                        subdir = task_subdir,
+                        progress = progress,
+                        overwrite = overwrite,
+                        checksum = if (is.na(checksum)) NULL else checksum,
+                        checksum_type = checksum_type,
+                        resume = resume,
+                        block = TRUE,
+                        .tmp_id = task_id
+                    ),
+                    error = function(e) {
+                        last_error <<- conditionMessage(e)
+                        NULL
+                    }
+                )
+
+                if (!is.null(path) && file.exists(path)) {
+                    task$status <- "done"
+                    task$target_path <- normalizePath(path, mustWork = TRUE, winslash = "/")
+                    task$bytes_done <- file.info(path)$size
+                    task$last_error <- NA_character_
+                    task$completed_at <- download_now()
+                    private$update_task(task)
+                    private$log_event(session_id, task_id, "done", path)
+                    return(path)
+                }
+
+                candidate$failed_count <- as.integer(candidate$failed_count) + 1L
+                candidate$last_error <- last_error
+                private$update_candidate(candidate)
+                private$log_event(session_id, task_id, "candidate_error", last_error)
+            }
+
+            task$status <- "error"
+            task$last_error <- if (is.null(last_error) || is.na(last_error)) "All candidate URLs failed." else last_error
+            task$completed_at <- download_now()
+            private$update_task(task)
+            private$log_event(session_id, task_id, "error", task$last_error)
+            NA_character_
         },
         # }}}
 
@@ -1160,3 +1948,6 @@ FileDownloader <- R6::R6Class("FileDownloader",
     )
 )
 # }}}
+FileDownloader$load_config <- function(file) {
+    FileDownloader$new(config = file)
+}

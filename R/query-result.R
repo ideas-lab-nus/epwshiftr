@@ -943,6 +943,187 @@ query_result_drs_labels <- function(docs) {
     data.frame(value = labels, source = source, check.names = FALSE)
 }
 
+query_result_column <- function(dt, name, default = NA_character_) {
+    if (name %in% names(dt)) {
+        return(dt[[name]])
+    }
+    rep(default, nrow(dt))
+}
+
+query_result_logical_file_id <- function(dt) {
+    master_id <- query_result_column(dt, "master_id")
+    tracking_id <- query_result_column(dt, "tracking_id")
+    checksum <- query_result_column(dt, "checksum")
+    size <- as.character(query_result_column(dt, "size"))
+    filename <- query_result_column(dt, "filename")
+    id <- query_result_column(dt, "id")
+
+    out <- rep(NA_character_, nrow(dt))
+    use <- !is.na(master_id) & nzchar(master_id)
+    out[use] <- paste0("master:", master_id[use])
+    use <- is.na(out) & !is.na(tracking_id) & nzchar(tracking_id)
+    out[use] <- paste0("tracking:", tracking_id[use])
+    use <- is.na(out) & !is.na(checksum) & nzchar(checksum) & !is.na(filename) & nzchar(filename)
+    out[use] <- vapply(which(use), function(i) {
+        paste("checksum", checksum[[i]], size[[i]], filename[[i]], sep = ":")
+    }, character(1L))
+    use <- is.na(out) & !is.na(id) & nzchar(id)
+    out[use] <- paste0("id:", id[use])
+    out[is.na(out)] <- paste0("row:", which(is.na(out)))
+    out
+}
+
+query_result_probe_url <- function(url, timeout = 5) {
+    if (is.na(url) || !nzchar(url) || startsWith(url, "file://")) {
+        return(list(latency = NA_real_, throughput = NA_real_))
+    }
+    start <- Sys.time()
+    ok <- tryCatch(
+        {
+            handle <- curl::new_handle()
+            curl::handle_setopt(handle, nobody = TRUE, timeout = timeout, connecttimeout = min(timeout, 3), followlocation = TRUE)
+            curl::curl_fetch_memory(url, handle = handle)
+            TRUE
+        },
+        error = function(e) FALSE
+    )
+    if (!ok) {
+        start <- Sys.time()
+        ok <- tryCatch(
+            {
+                handle <- curl::new_handle()
+                curl::handle_setopt(handle, timeout = timeout, connecttimeout = min(timeout, 3), followlocation = TRUE)
+                curl::handle_setheaders(handle, Range = "bytes=0-0")
+                curl::curl_fetch_memory(url, handle = handle)
+                TRUE
+            },
+            error = function(e) FALSE
+        )
+    }
+    if (!ok) {
+        return(list(latency = NA_real_, throughput = NA_real_))
+    }
+    list(latency = as.numeric(difftime(Sys.time(), start, units = "secs")), throughput = NA_real_)
+}
+
+query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE, strategy = c("fastest", "first", "stable")) {
+    strategy <- match.arg(strategy)
+    checkmate::assert_string(service)
+    checkmate::assert_flag(probe)
+
+    dt <- result$to_data_table()
+    n <- nrow(dt)
+    if (!n) {
+        return(data.table::data.table())
+    }
+    urls <- priv(result)$get_url(service, service)
+    filename <- if ("filename" %in% result$fields) result$filename else query_result_column(dt, "title")
+    plan <- data.table::data.table(
+        logical_file_id = query_result_logical_file_id(dt),
+        record_index = seq_len(n),
+        file_key = query_result_column(dt, "file_key"),
+        esgf_id = query_result_column(dt, "id"),
+        dataset_id = query_result_column(dt, "dataset_id"),
+        filename = filename,
+        subdir = NA_character_,
+        checksum = query_result_column(dt, "checksum"),
+        checksum_type = tolower(query_result_column(dt, "checksum_type", "sha256")),
+        size = suppressWarnings(as.numeric(query_result_column(dt, "size", NA_real_))),
+        url = urls,
+        service = service,
+        data_node = query_result_column(dt, "data_node"),
+        priority = seq_len(n),
+        probe_latency = NA_real_,
+        probe_throughput = NA_real_
+    )
+    plan <- plan[!is.na(url) & nzchar(url)]
+    if (!nrow(plan)) {
+        return(plan)
+    }
+    if (probe) {
+        probes <- lapply(plan$url, query_result_probe_url)
+        plan[, probe_latency := vapply(probes, `[[`, numeric(1L), "latency")]
+        plan[, probe_throughput := vapply(probes, `[[`, numeric(1L), "throughput")]
+    }
+    if (identical(strategy, "fastest")) {
+        plan[, probe_missing := is.na(probe_latency)]
+        data.table::setorderv(plan, c("logical_file_id", "probe_missing", "probe_latency", "priority"))
+        plan[, probe_missing := NULL]
+    } else if (identical(strategy, "stable")) {
+        data.table::setorderv(plan, c("logical_file_id", "data_node", "url", "priority"))
+    } else {
+        data.table::setorderv(plan, c("logical_file_id", "priority"))
+    }
+    plan[, priority := seq_len(.N), by = "logical_file_id"]
+    plan[]
+}
+
+query_result_expand_replicas <- function(result, service = "HTTPServer", all = TRUE) {
+    dt <- result$to_data_table()
+    master_id <- query_result_column(dt, "master_id")
+    master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
+    if (!length(master_id)) {
+        return(result)
+    }
+
+    store <- QueryParamStore$new()
+    store$params(master_id = master_id)
+    store$replica(NULL)
+    store$latest(TRUE)
+    store$distrib(TRUE)
+    store$type("File")
+    store$format(FORMAT_JSON)
+    store$fields("*")
+    store$limit(this$data_max_limit)
+    store$offset(0L)
+
+    collected <- query_collect(
+        priv(result)$index_node,
+        store,
+        required_fields = EsgResultFile$private_fields$required_fields,
+        all = all,
+        limit = this$data_max_limit,
+        constraints = FALSE
+    )
+    new_query_result(EsgResultFile, priv(result)$index_node, collected$parameter, collected$response)
+}
+
+query_result_run_http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
+    checkmate::assert_integerish(indices, lower = 1L, any.missing = FALSE, min.len = 1L)
+    if (is.null(downloader)) {
+        cli::cli_abort("HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable.")
+    }
+
+    plan <- result$download_plan(replica = "current", service = "HTTPServer", probe = FALSE)
+    plan <- plan[record_index %in% indices]
+    if (!nrow(plan)) {
+        cli::cli_abort("HTTPServer download URLs are missing for one or more file records.")
+    }
+
+    missing <- setdiff(as.integer(indices), unique(plan$record_index))
+    if (length(missing)) {
+        cli::cli_abort("HTTPServer download URLs are missing for one or more file records.")
+    }
+
+    session_id <- downloader$enqueue(plan, session_label = session_label)
+    tasks <- downloader$run(session_id = session_id, progress = progress)
+    failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
+    if (nrow(failed)) {
+        cli::cli_abort("HTTP fallback download failed for {nrow(failed)} task(s). Inspect downloader$status(session_id = {.val {session_id}}) for details.")
+    }
+
+    by_logical_file <- stats::setNames(tasks$target_path, tasks$logical_file_id)
+    paths <- vapply(as.integer(indices), function(index) {
+        row <- plan[record_index == index][1L]
+        path <- by_logical_file[[row$logical_file_id[[1L]]]]
+        if (is.null(path) || is.na(path) || !nzchar(path) || !file.exists(path)) {
+            cli::cli_abort("HTTP fallback completed but the downloaded file cannot be found for record {index}.")
+        }
+        path
+    }, character(1L))
+    unname(paths)
+}
+
 query_result_parse_drs_bound <- function(value, end = FALSE) {
     if (is.na(value) || !nzchar(value)) {
         return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
@@ -1486,6 +1667,106 @@ EsgResultFile <- R6::R6Class(
         },
         # }}}
 
+        # download_plan {{{
+        #' @description
+        #' Build a persistent downloader plan for file records.
+        #'
+        #' @param replica Whether to use current records or expand known replicas.
+        #' @param service ESGF URL service to download from. Default: `"HTTPServer"`.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param strategy Candidate ranking strategy.
+        #' @param all Whether replica expansion should retrieve all matching records.
+        #'
+        #' @return A data.table download plan.
+        download_plan = function(replica = c("auto", "current"), service = "HTTPServer",
+                                 probe = TRUE, strategy = c("fastest", "first", "stable"), all = TRUE) {
+            replica <- match.arg(replica)
+            strategy <- match.arg(strategy)
+            target <- if (identical(replica, "auto")) {
+                self$expand_replicas(service = service, all = all)
+            } else {
+                self
+            }
+            query_result_download_plan(target, service = service, probe = probe, strategy = strategy)
+        },
+        # }}}
+
+        # expand_replicas {{{
+        #' @description
+        #' Query ESGF for master and replica records for known `master_id`s.
+        #'
+        #' @param service ESGF URL service to keep in the method contract.
+        #'        Default: `"HTTPServer"`.
+        #' @param all Whether to retrieve all matching records. Default:
+        #'        `TRUE`.
+        #'
+        #' @return A new `EsgResultFile` object with expanded replica records
+        #'        when `master_id` is available; otherwise `self`.
+        expand_replicas = function(service = "HTTPServer", all = TRUE) {
+            query_result_expand_replicas(self, service = service, all = all)
+        },
+        # }}}
+
+        # select_replica {{{
+        #' @description
+        #' Select the preferred candidate URL per logical file.
+        #'
+        #' @param strategy Candidate ranking strategy.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param service ESGF URL service to download from. Default:
+        #'        `"HTTPServer"`.
+        #'
+        #' @return A data.table with one selected candidate per logical file.
+        select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE, service = "HTTPServer") {
+            strategy <- match.arg(strategy)
+            plan <- self$download_plan(replica = "auto", service = service, probe = probe, strategy = strategy)
+            if (!nrow(plan)) {
+                return(plan)
+            }
+            plan[, .SD[which.min(priority)], by = "logical_file_id"]
+        },
+        # }}}
+
+        # download {{{
+        #' @description
+        #' Enqueue and run file downloads using a FileDownloader.
+        #'
+        #' @param downloader Optional persistent [FileDownloader]. If `NULL`,
+        #'        `store$downloader()` is used when `store` is supplied.
+        #' @param store Optional [EsgStore] providing a bound downloader.
+        #' @param replica Whether to use current records or expand known
+        #'        replicas before downloading.
+        #' @param service ESGF URL service to download from. Default:
+        #'        `"HTTPServer"`.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param strategy Candidate ranking strategy.
+        #' @param session_label Optional download session label.
+        #' @param run Whether to run the queued session immediately. Default:
+        #'        `TRUE`.
+        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #'
+        #' @return The created downloader session ID.
+        download = function(downloader = NULL, store = NULL, replica = c("auto", "current"),
+                            service = "HTTPServer", probe = TRUE, strategy = c("fastest", "first", "stable"),
+                            session_label = NULL, run = TRUE, ...) {
+            replica <- match.arg(replica)
+            strategy <- match.arg(strategy)
+            if (is.null(downloader)) {
+                if (!is.null(store)) {
+                    downloader <- store$downloader()
+                } else {
+                    cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
+                }
+            }
+            plan <- self$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            session_id <- downloader$enqueue(plan, session_label = session_label)
+            if (isTRUE(run)) {
+                downloader$run(session_id = session_id, ...)
+            }
+            session_id
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print a summary of the current dataset
@@ -1521,8 +1802,13 @@ EsgResultFile <- R6::R6Class(
         #'   - `"auto"`: Automatically download the file via HTTPServer.
         #'   - `"error"`: Raise an error.
         #'
+        #' @param store Optional [EsgStore] used for recoverable HTTP fallback.
+        #' @param downloader Optional persistent [FileDownloader] used for
+        #'        recoverable HTTP fallback.
+        #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(which = NULL, aggregate = TRUE, fallback = c("ask", "auto", "error")) {
+        open_dataset = function(which = NULL, aggregate = TRUE, fallback = c("ask", "auto", "error"),
+                                store = NULL, downloader = NULL) {
             checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
@@ -1658,27 +1944,15 @@ EsgResultFile <- R6::R6Class(
                     ))
                 }
 
+                if (is.null(downloader)) {
+                    if (!is.null(store)) {
+                        downloader <- store$downloader()
+                    } else {
+                        cli::cli_abort("HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable.")
+                    }
+                }
                 cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                dl <- FileDownloader$new()
-                dt <- self$to_data_table()
-
-                targets[fallback_pos] <- vapply(
-                    seq_along(fallback_pos),
-                    function(k) {
-                        j <- fallback_pos[[k]]
-                        i <- indices[[j]]
-                        file_url <- download_urls[[k]]
-                        checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
-                        checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
-
-                        dl$download(
-                            url = file_url,
-                            checksum = checksum,
-                            checksum_type = checksum_type
-                        )
-                    },
-                    character(1L)
-                )
+                targets[fallback_pos] <- query_result_run_http_fallback(self, indices[fallback_pos], downloader)
             }
 
             ds <- EsgDataset$new(targets)
@@ -1748,8 +2022,12 @@ EsgResultFile <- R6::R6Class(
             "dataset_id",
             "checksum",
             "checksum_type",
+            "instance_id",
+            "master_id",
+            "replica",
             "tracking_id",
             "title",
+            "version",
             "data_node"
         )))
     )
@@ -1813,6 +2091,67 @@ EsgResultAggregation <- R6::R6Class(
         },
         # }}}
 
+        # download_plan {{{
+        #' @description
+        #' Build a persistent downloader plan for aggregation records.
+        #'
+        #' @param replica Replica policy. Aggregation records currently use the
+        #'        current records.
+        #' @param service ESGF URL service to download from. Default:
+        #'        `"HTTPServer"`.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param strategy Candidate ranking strategy.
+        #' @param all Reserved for API symmetry with `EsgResultFile`.
+        #'
+        #' @return A data.table download plan.
+        download_plan = function(replica = c("current", "auto"), service = "HTTPServer",
+                                 probe = TRUE, strategy = c("fastest", "first", "stable"), all = TRUE) {
+            replica <- match.arg(replica)
+            strategy <- match.arg(strategy)
+            query_result_download_plan(self, service = service, probe = probe, strategy = strategy)
+        },
+        # }}}
+
+        # download {{{
+        #' @description
+        #' Enqueue and run aggregation downloads using a FileDownloader.
+        #'
+        #' @param downloader Optional persistent [FileDownloader]. If `NULL`,
+        #'        `store$downloader()` is used when `store` is supplied.
+        #' @param store Optional [EsgStore] providing a bound downloader.
+        #' @param replica Replica policy. Aggregation records currently use the
+        #'        current records.
+        #' @param service ESGF URL service to download from. Default:
+        #'        `"HTTPServer"`.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param strategy Candidate ranking strategy.
+        #' @param session_label Optional download session label.
+        #' @param run Whether to run the queued session immediately. Default:
+        #'        `TRUE`.
+        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #'
+        #' @return The created downloader session ID.
+        download = function(downloader = NULL, store = NULL, replica = c("current", "auto"),
+                            service = "HTTPServer", probe = TRUE, strategy = c("fastest", "first", "stable"),
+                            session_label = NULL, run = TRUE, ...) {
+            replica <- match.arg(replica)
+            strategy <- match.arg(strategy)
+            if (is.null(downloader)) {
+                if (!is.null(store)) {
+                    downloader <- store$downloader()
+                } else {
+                    cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
+                }
+            }
+            plan <- self$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            session_id <- downloader$enqueue(plan, session_label = session_label)
+            if (isTRUE(run)) {
+                downloader$run(session_id = session_id, ...)
+            }
+            session_id
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print a summary of the current dataset
@@ -1843,8 +2182,13 @@ EsgResultAggregation <- R6::R6Class(
         #'   - `"auto"`: Automatically download files via HTTPServer.
         #'   - `"error"`: Raise an error.
         #'
+        #' @param store Optional [EsgStore] used for recoverable HTTP fallback.
+        #' @param downloader Optional persistent [FileDownloader] used for
+        #'        recoverable HTTP fallback.
+        #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error")) {
+        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error"),
+                                store = NULL, downloader = NULL) {
             checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
@@ -1966,27 +2310,15 @@ EsgResultAggregation <- R6::R6Class(
                     ))
                 }
 
+                if (is.null(downloader)) {
+                    if (!is.null(store)) {
+                        downloader <- store$downloader()
+                    } else {
+                        cli::cli_abort("HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable.")
+                    }
+                }
                 cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                dl <- FileDownloader$new()
-                dt <- self$to_data_table()
-
-                targets[fallback_pos] <- vapply(
-                    seq_along(fallback_pos),
-                    function(k) {
-                        j <- fallback_pos[[k]]
-                        i <- indices[[j]]
-                        file_url <- download_urls[[k]]
-                        checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
-                        checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
-
-                        dl$download(
-                            url = file_url,
-                            checksum = checksum,
-                            checksum_type = checksum_type
-                        )
-                    },
-                    character(1L)
-                )
+                targets[fallback_pos] <- query_result_run_http_fallback(self, indices[fallback_pos], downloader)
             }
 
             ds <- EsgDataset$new(targets)
@@ -2044,7 +2376,11 @@ EsgResultAggregation <- R6::R6Class(
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
             "dataset_id",
+            "instance_id",
+            "master_id",
+            "replica",
             "title",
+            "version",
             "data_node"
         )))
     )

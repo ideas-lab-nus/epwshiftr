@@ -5,6 +5,7 @@ test_that("schema constants are standalone SchemaDoc objects", {
     expect_true(S7::S7_inherits(SCHEMA_RESULT_FILE, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESULT_AGGREGATION, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_ESG_DICT, SchemaDoc))
+    expect_true(S7::S7_inherits(SCHEMA_DOWNLOADER_CONFIG, SchemaDoc))
 })
 
 test_that("schema constants expose expected logical paths", {
@@ -30,6 +31,30 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$profile" %in% dict_paths)
     expect_true("$payload$any[2]$vocab" %in% dict_paths)
     expect_true("$payload$any[2]$request" %in% dict_paths)
+
+    downloader_paths <- schema_paths(SCHEMA_DOWNLOADER_CONFIG)
+    expect_true("$schema_version" %in% downloader_paths)
+    expect_true("$manifest" %in% downloader_paths)
+    expect_true("$n_workers" %in% downloader_paths)
+})
+
+test_that("downloader config schema validates persistent downloader config", {
+    config <- list(
+        schema_version = "1.0.0",
+        dest = tempdir(),
+        temp = file.path(tempdir(), "downloads"),
+        manifest = file.path(tempdir(), "manifest.duckdb"),
+        retries = 3L,
+        timeout = 3600L,
+        cleanup = TRUE,
+        n_workers = 0L
+    )
+
+    expect_true(schema_validate(SCHEMA_DOWNLOADER_CONFIG, config, mode = "test", name = "downloader-config"))
+
+    bad <- config
+    bad$retries <- -1L
+    expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
 })
 
 test_that("result schema JSON files use local reusable definitions", {
@@ -135,8 +160,12 @@ schema_test_file_docs <- function() {
         size = 1,
         checksum = "abc",
         checksum_type = "SHA256",
+        instance_id = "file-instance-1",
+        master_id = "master-file-1",
+        replica = FALSE,
         tracking_id = "hdl:21.14100/mock-file",
         title = "file.nc",
+        version = 20260101L,
         data_node = "example.org",
         check.names = FALSE
     )

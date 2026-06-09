@@ -130,6 +130,10 @@ Hongyuan Jia
 \item{\code{timeout}}{Download timeout in seconds}
 
 \item{\code{n_workers}}{Number of parallel workers}
+
+\item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
+
+\item{\code{config_file}}{Downloader config path, or \code{NULL}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -138,6 +142,15 @@ Hongyuan Jia
 \itemize{
 \item \href{#method-FileDownloader-new}{\code{FileDownloader$new()}}
 \item \href{#method-FileDownloader-download}{\code{FileDownloader$download()}}
+\item \href{#method-FileDownloader-save_config}{\code{FileDownloader$save_config()}}
+\item \href{#method-FileDownloader-enqueue}{\code{FileDownloader$enqueue()}}
+\item \href{#method-FileDownloader-run}{\code{FileDownloader$run()}}
+\item \href{#method-FileDownloader-sessions}{\code{FileDownloader$sessions()}}
+\item \href{#method-FileDownloader-tasks}{\code{FileDownloader$tasks()}}
+\item \href{#method-FileDownloader-status}{\code{FileDownloader$status()}}
+\item \href{#method-FileDownloader-retry}{\code{FileDownloader$retry()}}
+\item \href{#method-FileDownloader-resume}{\code{FileDownloader$resume()}}
+\item \href{#method-FileDownloader-verify}{\code{FileDownloader$verify()}}
 \item \href{#method-FileDownloader-cleanup_tmp}{\code{FileDownloader$cleanup_tmp()}}
 \item \href{#method-FileDownloader-get_tasks}{\code{FileDownloader$get_tasks()}}
 \item \href{#method-FileDownloader-get_task_status}{\code{FileDownloader$get_task_status()}}
@@ -161,7 +174,9 @@ Create a new FileDownloader object
   retries = 3L,
   timeout = 3600L,
   cleanup = TRUE,
-  n_workers = 4L
+  n_workers = 4L,
+  manifest = NULL,
+  config = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -188,6 +203,15 @@ files. Default: \code{TRUE}.}
 \item{\code{n_workers}}{A non-negative integer specifying the number of parallel workers
 for async downloads. If \code{0}, async downloads will fallback to synchronous mode.
 Default: \code{4L}.}
+
+\item{\code{manifest}}{Optional DuckDB manifest path for persistent
+sessions, tasks, candidate URLs, and events. If \code{NULL}, only
+the single-file shortcut API is available. Default: \code{NULL}.}
+
+\item{\code{config}}{Optional downloader config, either a JSON file path
+created by \verb{$save_config()} or a validated config list.
+Explicit constructor arguments override config values.
+Default: \code{NULL}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -226,7 +250,8 @@ Download a single file with state management and resume support
   checksum = NULL,
   checksum_type = "sha256",
   resume = TRUE,
-  block = TRUE
+  block = TRUE,
+  .tmp_id = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -255,6 +280,9 @@ Default: \code{TRUE}.}
 
 \item{\code{block}}{A logical value specifying whether to block until download completes.
 If \code{FALSE}, downloads asynchronously in background. Default: \code{TRUE}.}
+
+\item{\code{.tmp_id}}{Internal temporary file ID used by persistent
+download tasks. Default: \code{NULL}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -287,6 +315,217 @@ results <- dl$wait_for_tasks(task_ids)
 
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-save_config"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-save_config}{}}}
+\subsection{Method \code{save_config()}}{
+Save downloader construction config as schema-validated JSON.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$save_config(file = NULL, pretty = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{Output JSON path. If \code{NULL}, uses the config path next to
+the persistent manifest.}
+
+\item{\code{pretty}}{Whether to add indentation whitespace. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The normalized output path.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-enqueue"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-enqueue}{}}}
+\subsection{Method \code{enqueue()}}{
+Add a download plan to the persistent manifest.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$enqueue(plan, session_label = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{plan}}{A data frame with at least \code{logical_file_id}, \code{filename},
+and \code{url} columns.}
+
+\item{\code{session_label}}{Optional label for this download session.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created session ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-run"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-run}{}}}
+\subsection{Method \code{run()}}{
+Run queued persistent download tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$run(
+  session_id = NULL,
+  task_id = NULL,
+  block = TRUE,
+  progress = TRUE,
+  overwrite = FALSE,
+  resume = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+
+\item{\code{block}}{Whether to block until completion. Persistent runs are
+currently synchronous.}
+
+\item{\code{progress}}{Whether to show per-file progress.}
+
+\item{\code{overwrite}}{Whether to overwrite existing final files.}
+
+\item{\code{resume}}{Whether to resume \code{.part} files.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of selected task records after the run.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-sessions"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-sessions}{}}}
+\subsection{Method \code{sessions()}}{
+List persistent download sessions.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$sessions()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-tasks"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-tasks}{}}}
+\subsection{Method \code{tasks()}}{
+List persistent download tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$tasks(session_id = NULL, status = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{status}}{Optional task status filter.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-status"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-status}{}}}
+\subsection{Method \code{status()}}{
+Return persistent download task status.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$status(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of matching task records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-retry"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-retry}{}}}
+\subsection{Method \code{retry()}}{
+Requeue failed or cancelled persistent tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$retry(
+  session_id = NULL,
+  task_id = NULL,
+  status = c("error", "cancelled")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+
+\item{\code{status}}{Task statuses to requeue. Default:
+\code{c("error", "cancelled")}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of requeued task records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-resume"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-resume}{}}}
+\subsection{Method \code{resume()}}{
+Resume queued or interrupted persistent tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$resume(session_id = NULL, task_id = NULL, ...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+
+\item{\code{...}}{Additional arguments passed to \verb{$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of selected task records after the run.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-verify"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-verify}{}}}
+\subsection{Method \code{verify()}}{
+Verify checksums for completed persistent tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$verify(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of completed task records with a
+\code{checksum_ok} column.
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileDownloader-cleanup_tmp"></a>}}

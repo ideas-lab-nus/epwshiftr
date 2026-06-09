@@ -376,6 +376,132 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # downloader {{{
+        #' @description
+        #' Return a FileDownloader bound to this store.
+        #'
+        #' @param ... Additional arguments passed to `FileDownloader$new()`.
+        #'
+        #' @return A [FileDownloader] object.
+        downloader = function(...) {
+            private$check_open()
+            FileDownloader$new(
+                dest = private$download_dir,
+                temp = private$tmp_download_dir,
+                manifest = file.path(private$download_dir, "_downloader", "manifest.duckdb"),
+                ...
+            )
+        },
+        # }}}
+
+        # download_files {{{
+        #' @description
+        #' Enqueue and optionally download ESGF file records through the store downloader.
+        #'
+        #' @param files Optional [EsgResultFile] or [EsgResultAggregation] object.
+        #'        If supplied, it is cataloged before the download plan is created.
+        #' @param replica Replica policy passed to `$download_plan()`.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param run Whether to run the queued session immediately. Default: `TRUE`.
+        #' @param session_label Optional download session label.
+        #' @param service ESGF URL service to download from. Default:
+        #'        `"HTTPServer"`.
+        #' @param probe Whether to lightly probe URLs before ranking them.
+        #' @param strategy Candidate ranking strategy.
+        #' @param progress Whether to show per-file download progress.
+        #' @param overwrite Whether to overwrite existing final files.
+        #' @param resume Whether to resume interrupted `.part` files.
+        #' @param ... Additional arguments passed to `$download_plan()` and
+        #'        `FileDownloader$run()`.
+        #'
+        #' @return The created downloader session ID.
+        download_files = function(files = NULL, replica = "auto", downloader = NULL,
+                                  run = TRUE, session_label = NULL, service = "HTTPServer",
+                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
+                                  progress = TRUE, overwrite = FALSE, resume = TRUE, ...) {
+            private$check_open()
+            strategy <- match.arg(strategy)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+
+            plan <- if (!is.null(files)) {
+                query_id <- self$add_files(files, label = session_label)
+                plan_args <- list(replica = replica, service = service, probe = probe, strategy = strategy, ...)
+                plan <- do.call(files$download_plan, plan_args)
+                private$decorate_download_plan(plan, query_id = query_id)
+            } else {
+                private$catalog_download_plan()
+            }
+            session_id <- downloader$enqueue(plan, session_label = session_label)
+            if (isTRUE(run)) {
+                downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
+                self$sync_downloads(downloader)
+            }
+            session_id
+        },
+        # }}}
+
+        # sync_downloads {{{
+        #' @description
+        #' Register completed downloader tasks as local store artifacts.
+        #'
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #'
+        #' @return A data.table of completed tasks.
+        sync_downloads = function(downloader = NULL) {
+            private$check_open()
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+            tasks <- downloader$tasks(status = c("done", "skipped"))
+            if (!nrow(tasks)) {
+                return(tasks)
+            }
+            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            if (!nrow(catalog)) {
+                return(tasks)
+            }
+            for (i in seq_len(nrow(tasks))) {
+                task <- tasks[i]
+                file_key <- private$match_download_task(task, catalog)
+                if (is.na(file_key)) {
+                    next
+                }
+                local_path <- task$target_path[[1L]]
+                if (!file.exists(local_path)) {
+                    next
+                }
+                fk <- file_key
+                row <- catalog[catalog[["file_key"]] == fk]
+                checksum <- extract_store_na_character(task$checksum[[1L]])
+                checksum_type <- tolower(extract_store_na_character(task$checksum_type[[1L]]))
+                if (is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")) {
+                    checksum_type <- "sha256"
+                }
+                if (is.na(checksum)) {
+                    checksum <- NULL
+                }
+                artifact_id <- self$register_artifact(
+                    kind = "netcdf",
+                    path = local_path,
+                    role = "download",
+                    project = "CMIP6",
+                    checksum = checksum,
+                    checksum_type = checksum_type,
+                    query_id = row$query_id[[1L]],
+                    file_key = file_key,
+                    source_url = extract_store_na_character(task$selected_url[[1L]]),
+                    metadata = list(filename = extract_store_na_character(task$filename[[1L]]))
+                )
+                row$local_path <- extract_store_rel_path(local_path, private$store_path)
+                row$local_artifact_id <- artifact_id
+                private$replace_rows("file_catalog", as.data.frame(row), "file_key")
+            }
+            tasks
+        },
+        # }}}
+
         # plan_region {{{
         #' @description
         #' Plan regional extraction jobs from cataloged files.
@@ -743,6 +869,93 @@ EsgStore <- R6::R6Class(
         log_dir = NULL,
         conn = NULL,
 
+        # download plan helpers {{{
+        catalog_download_plan = function() {
+            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            if (!nrow(catalog)) {
+                return(data.table::data.table())
+            }
+            catalog <- catalog[is.na(local_path) | !nzchar(local_path)]
+            if (!nrow(catalog)) {
+                return(data.table::data.table())
+            }
+            plan <- data.table::data.table(
+                logical_file_id = vapply(seq_len(nrow(catalog)), function(i) {
+                    pieces <- c(
+                        extract_store_na_character(catalog$tracking_id[[i]]),
+                        extract_store_na_character(catalog$checksum[[i]]),
+                        extract_store_na_character(catalog$filename[[i]]),
+                        extract_store_na_character(catalog$esgf_id[[i]])
+                    )
+                    paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
+                }, character(1L)),
+                file_key = catalog$file_key,
+                esgf_id = catalog$esgf_id,
+                dataset_id = catalog$dataset_id,
+                filename = catalog$filename,
+                subdir = NA_character_,
+                checksum = catalog$checksum,
+                checksum_type = catalog$checksum_type,
+                size = suppressWarnings(as.numeric(catalog$size)),
+                url = catalog$url_download,
+                service = "HTTPServer",
+                data_node = catalog$data_node,
+                priority = seq_len(nrow(catalog)),
+                probe_latency = NA_real_,
+                probe_throughput = NA_real_
+            )
+            plan[!is.na(url) & nzchar(url)]
+        },
+
+        decorate_download_plan = function(plan, query_id) {
+            plan <- data.table::as.data.table(plan)
+            if (!nrow(plan)) {
+                return(plan)
+            }
+            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- catalog[catalog[["query_id"]] == query_id]
+            if (!nrow(catalog)) {
+                return(plan)
+            }
+            if (!"file_key" %in% names(plan)) {
+                plan$file_key <- NA_character_
+            }
+            for (i in seq_len(nrow(plan))) {
+                if (!is.na(plan$file_key[[i]]) && nzchar(plan$file_key[[i]])) {
+                    next
+                }
+                hit <- catalog[catalog[["esgf_id"]] == plan$esgf_id[[i]]]
+                if (!nrow(hit) && "checksum" %in% names(plan)) {
+                    hit <- catalog[
+                        catalog[["filename"]] == plan$filename[[i]] &
+                            catalog[["checksum"]] == plan$checksum[[i]]
+                    ]
+                }
+                if (nrow(hit)) {
+                    plan$file_key[[i]] <- hit$file_key[[1L]]
+                }
+            }
+            plan[]
+        },
+
+        match_download_task = function(task, catalog) {
+            file_key <- extract_store_na_character(task$file_key[[1L]])
+            if (!is.na(file_key) && file_key %in% catalog$file_key) {
+                return(file_key)
+            }
+            esgf_id <- extract_store_na_character(task$esgf_id[[1L]])
+            if (!is.na(esgf_id)) {
+                hit <- catalog[catalog[["esgf_id"]] == esgf_id]
+                if (nrow(hit)) return(hit$file_key[[1L]])
+            }
+            hit <- catalog[
+                catalog[["filename"]] == task$filename[[1L]] &
+                    catalog[["checksum"]] == task$checksum[[1L]]
+            ]
+            if (nrow(hit)) hit$file_key[[1L]] else NA_character_
+        },
+        # }}}
+
         # connect {{{
         connect = function() {
             private$conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = private$manifest_path, read_only = FALSE)
@@ -1071,34 +1284,47 @@ EsgStore <- R6::R6Class(
                 checksum <- NULL
             }
 
-            downloader <- FileDownloader$new(
-                dest = private$download_dir,
-                temp = private$tmp_download_dir,
-                n_workers = 0L
+            downloader <- self$downloader(n_workers = 0L)
+            filename <- extract_store_na_character(file$filename[[1L]])
+            if (is.na(filename)) {
+                filename <- basename(sub("\\?.*$", "", download))
+            }
+            logical_parts <- c(
+                extract_store_na_character(file$tracking_id[[1L]]),
+                if (is.null(checksum)) NA_character_ else checksum,
+                filename,
+                extract_store_na_character(file$file_key[[1L]])
             )
-            local_path <- downloader$download(
-                url = download,
-                progress = FALSE,
-                overwrite = overwrite,
-                checksum = checksum,
-                checksum_type = checksum_type
-            )
-            artifact_id <- self$register_artifact(
-                kind = "netcdf",
-                path = local_path,
-                role = "download",
-                project = "CMIP6",
-                checksum = checksum,
-                checksum_type = checksum_type,
-                query_id = file$query_id[[1L]],
+            logical_parts <- logical_parts[!is.na(logical_parts) & nzchar(logical_parts)]
+            logical_file_id <- paste(logical_parts, collapse = ":")
+            if (!nzchar(logical_file_id)) {
+                logical_file_id <- file$file_key[[1L]]
+            }
+            plan <- data.table::data.table(
+                logical_file_id = logical_file_id,
                 file_key = file$file_key[[1L]],
-                source_url = download,
-                metadata = list(filename = extract_store_na_character(file$filename[[1L]]))
+                esgf_id = file$esgf_id[[1L]],
+                dataset_id = file$dataset_id[[1L]],
+                filename = filename,
+                subdir = NA_character_,
+                checksum = if (is.null(checksum)) NA_character_ else checksum,
+                checksum_type = checksum_type,
+                size = suppressWarnings(as.numeric(file$size[[1L]])),
+                url = download,
+                service = "HTTPServer",
+                data_node = file$data_node[[1L]],
+                priority = 1L,
+                probe_latency = NA_real_,
+                probe_throughput = NA_real_
             )
-            file$local_path <- extract_store_rel_path(local_path, private$store_path)
-            file$local_artifact_id <- artifact_id
-            private$replace_rows("file_catalog", as.data.frame(file), "file_key")
-            local_path
+            session_id <- downloader$enqueue(plan, session_label = sprintf("extract:%s", file$file_key[[1L]]))
+            tasks <- downloader$run(session_id = session_id, progress = FALSE, overwrite = overwrite)
+            failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
+            if (nrow(failed)) {
+                stop("HTTPServer download failed for this file record.", call. = FALSE)
+            }
+            self$sync_downloads(downloader)
+            tasks$target_path[[1L]]
         },
         # }}}
 

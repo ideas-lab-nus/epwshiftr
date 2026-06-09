@@ -86,8 +86,12 @@ query_result_test_file_docs <- function(url = "https://example.org/file.nc|appli
         size = 1,
         checksum = "abc",
         checksum_type = "SHA256",
+        instance_id = "file-instance-1",
+        master_id = "master-file-1",
+        replica = FALSE,
         tracking_id = "hdl:21.14100/mock-file",
         title = "file.nc",
+        version = 20260101L,
         data_node = "example.org",
         check.names = FALSE
     )
@@ -106,6 +110,10 @@ query_result_test_file_time_docs <- function(type = "File") {
         size = c(1, 2, 3),
         checksum = c("abc", "def", "ghi"),
         checksum_type = "SHA256",
+        instance_id = c("file-instance-2050", "file-instance-2080", "file-instance-unknown"),
+        master_id = c("master-file-2050", "master-file-2080", "master-file-unknown"),
+        replica = FALSE,
+        version = c(20260101L, 20260101L, 20260101L),
         tracking_id = c(
             "hdl:21.14100/mock-file-2050",
             "hdl:21.14100/mock-file-2080",
@@ -127,6 +135,7 @@ query_result_test_file_time_docs <- function(type = "File") {
     if (identical(type, "Aggregation")) {
         docs$checksum <- NULL
         docs$checksum_type <- NULL
+        docs$master_id <- NULL
         docs$tracking_id <- NULL
     }
 
@@ -218,6 +227,29 @@ test_that("ESGF query results save/load through real JSON files", {
 
         unlink(file)
     }
+})
+
+test_that("ESGF query results preserve ESGF doc timestamp fields on save", {
+    docs <- query_result_test_file_docs()
+    docs$timestamp <- "2026-06-09T00:00:00Z"
+    docs$`_timestamp` <- "2026-06-10T01:14:40.946Z"
+    docs$version <- "v20240509"
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+    file <- tempfile(fileext = ".json")
+
+    expect_type(result$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_true("timestamp" %in% names(json$response$response$docs))
+    expect_true("_timestamp" %in% names(json$response$response$docs))
+    expect_identical(json$response$response$docs$timestamp, "2026-06-09T00:00:00Z")
+    expect_identical(json$response$response$docs$`_timestamp`, "2026-06-10T01:14:40.946Z")
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_true("timestamp" %in% loaded$fields)
+    expect_true("_timestamp" %in% loaded$fields)
+    expect_identical(loaded$timestamp, "2026-06-09T00:00:00Z")
+    expect_identical(loaded$`_timestamp`, "2026-06-10T01:14:40.946Z")
+    expect_identical(loaded$version, "v20240509")
 })
 
 test_that("File and Aggregation results filter time using DRS filename ranges", {
@@ -615,6 +647,42 @@ test_that("URL warning context is robust for nested or missing field values", {
     expect_identical(opendap, "https://example.org/dods/file-1")
 })
 
+test_that("download_plan builds current HTTPServer plans with logical file identity", {
+    files <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(c(
+            "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
+            "https://example.org/file.nc|application/netcdf|HTTPServer"
+        )),
+        query_result_test_params("File")
+    )
+
+    plan <- files$download_plan(replica = "current", probe = FALSE, strategy = "first")
+    expect_s3_class(plan, "data.table")
+    expect_named(
+        plan,
+        c(
+            "logical_file_id", "record_index", "file_key", "esgf_id",
+            "dataset_id", "filename", "subdir", "checksum",
+            "checksum_type", "size", "url", "service", "data_node",
+            "priority", "probe_latency", "probe_throughput"
+        )
+    )
+    expect_identical(plan$logical_file_id, "master:master-file-1")
+    expect_identical(plan$url, "https://example.org/file.nc")
+    expect_identical(plan$checksum_type, "sha256")
+    expect_identical(plan$priority, 1L)
+
+    checksum_docs <- query_result_test_file_docs("https://example.org/file.nc|application/netcdf|HTTPServer")
+    checksum_docs$master_id <- NA_character_
+    checksum_docs$tracking_id <- NA_character_
+    checksum_result <- query_result_test_object("File", checksum_docs, query_result_test_params("File"))
+    checksum_plan <- checksum_result$download_plan(replica = "current", probe = FALSE)
+    expect_identical(checksum_plan$logical_file_id, "checksum:abc:1:file.nc")
+
+    expect_error(files$download(run = FALSE), "explicit `store` or persistent `downloader`")
+})
+
 test_that("open_dataset fallback behavior is explicit before side effects", {
     http_only <- query_result_test_object(
         "File",
@@ -623,6 +691,7 @@ test_that("open_dataset fallback behavior is explicit before side effects", {
     )
     expect_error(http_only$open_dataset(fallback = "error"), "OPeNDAP is not available")
     expect_error(http_only$open_dataset(fallback = "ask"), "non-interactive")
+    expect_error(http_only$open_dataset(fallback = "auto"), "explicit `store` or `downloader`")
 
     no_urls <- query_result_test_object(
         "File",
@@ -688,11 +757,26 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     FakeFileDownloader <- R6::R6Class(
         "FakeFileDownloader",
         public = list(
-            download = function(url, ...) {
-                calls$downloads <- c(calls$downloads, url)
-                local_path <- tempfile(fileext = ".nc")
-                writeLines("netcdf", local_path)
-                local_path
+            plan = NULL,
+            enqueue = function(plan, session_label = NULL) {
+                self$plan <- data.table::as.data.table(plan)
+                "session-1"
+            },
+            run = function(session_id = NULL, ...) {
+                paths <- vapply(self$plan$url, function(url) {
+                    calls$downloads <- c(calls$downloads, url)
+                    local_path <- tempfile(fileext = ".nc")
+                    writeLines("netcdf", local_path)
+                    local_path
+                }, character(1L))
+                data.table::data.table(
+                    task_id = paste0("task-", seq_along(paths)),
+                    session_id = session_id,
+                    logical_file_id = self$plan$logical_file_id,
+                    status = "done",
+                    target_path = paths,
+                    selected_url = self$plan$url
+                )
             }
         )
     )
@@ -718,7 +802,10 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_match(conditionMessage(err$parent), "remote boom")
     expect_error(file_result$open_dataset(fallback = "ask"), "non-interactive")
 
-    ds <- expect_s3_class(file_result$open_dataset(fallback = "auto"), "FakeEsgDataset")
+    ds <- expect_s3_class(
+        file_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+        "FakeEsgDataset"
+    )
     expect_true(file.exists(ds$target))
     expect_identical(tail(calls$downloads, 1L), "https://example.org/file.nc")
     expect_error(file_result$open_dataset(index = 1L), "unused argument")
@@ -777,7 +864,10 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     opened_before <- length(calls$opened)
     downloads_before <- calls$downloads
     expect_message(
-        agg_ds <- expect_s3_class(agg_result$open_dataset(fallback = "auto"), "FakeEsgDataset"),
+        agg_ds <- expect_s3_class(
+            agg_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+            "FakeEsgDataset"
+        ),
         "record 2 \\(id: file-2\\)"
     )
     expect_length(agg_ds$target, 2L)
@@ -812,7 +902,10 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
 
     downloads_before <- calls$downloads
     expect_message(
-        agg_fail_ds <- expect_s3_class(agg_fail_result$open_dataset(fallback = "auto"), "FakeEsgDataset"),
+        agg_fail_ds <- expect_s3_class(
+            agg_fail_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+            "FakeEsgDataset"
+        ),
         "record 2 \\(id: file-2\\)"
     )
     expect_identical(agg_fail_ds$target[[1L]], "https://example.org/dods/file-1.nc")

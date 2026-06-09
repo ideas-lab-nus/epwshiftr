@@ -33,6 +33,9 @@ Hongyuan Jia
 \item \href{#method-EsgStore-artifact_path}{\code{EsgStore$artifact_path()}}
 \item \href{#method-EsgStore-validate}{\code{EsgStore$validate()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
+\item \href{#method-EsgStore-downloader}{\code{EsgStore$downloader()}}
+\item \href{#method-EsgStore-download_files}{\code{EsgStore$download_files()}}
+\item \href{#method-EsgStore-sync_downloads}{\code{EsgStore$sync_downloads()}}
 \item \href{#method-EsgStore-plan_region}{\code{EsgStore$plan_region()}}
 \item \href{#method-EsgStore-extract}{\code{EsgStore$extract()}}
 \item \href{#method-EsgStore-query}{\code{EsgStore$query()}}
@@ -238,6 +241,104 @@ Add File or Aggregation query results to the local file catalog.
 }
 \subsection{Returns}{
 The created or updated query ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-downloader"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-downloader}{}}}
+\subsection{Method \code{downloader()}}{
+Return a FileDownloader bound to this store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$downloader(...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{Additional arguments passed to \code{FileDownloader$new()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link{FileDownloader} object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_files}{}}}
+\subsection{Method \code{download_files()}}{
+Enqueue and optionally download ESGF file records through the store downloader.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_files(
+  files = NULL,
+  replica = "auto",
+  downloader = NULL,
+  run = TRUE,
+  session_label = NULL,
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  progress = TRUE,
+  overwrite = FALSE,
+  resume = TRUE,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{files}}{Optional \link{EsgResultFile} or \link{EsgResultAggregation} object.
+If supplied, it is cataloged before the download plan is created.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+
+\item{\code{run}}{Whether to run the queued session immediately. Default: \code{TRUE}.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{progress}}{Whether to show per-file download progress.}
+
+\item{\code{overwrite}}{Whether to overwrite existing final files.}
+
+\item{\code{resume}}{Whether to resume interrupted \code{.part} files.}
+
+\item{\code{...}}{Additional arguments passed to \verb{$download_plan()} and
+\code{FileDownloader$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created downloader session ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-sync_downloads"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-sync_downloads}{}}}
+\subsection{Method \code{sync_downloads()}}{
+Register completed downloader tasks as local store artifacts.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$sync_downloads(downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of completed tasks.
 }
 }
 \if{html}{\out{<hr>}}

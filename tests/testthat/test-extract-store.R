@@ -67,8 +67,12 @@ extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1
         size = 123,
         checksum = "abc",
         checksum_type = "SHA256",
+        instance_id = sprintf("%s.instance", path),
+        master_id = sprintf("%s.master", path),
+        replica = FALSE,
         tracking_id = "hdl:21.14100/local-test-2060",
         title = path,
+        version = 20260101L,
         data_node = "example.org",
         source_id = source_id,
         experiment_id = experiment_id,
@@ -131,6 +135,13 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_equal(store$path, normalizePath(dir, mustWork = TRUE))
     expect_true(file.exists(store$manifest))
     expect_true(store$is_open)
+
+    dl <- store$downloader(n_workers = 0L)
+    expect_s3_class(dl, "FileDownloader")
+    expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
+    expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
+    expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
+    expect_true(file.exists(file.path(dir, "downloads", "_downloader", "config.json")))
 
     tables <- DBI::dbListTables(priv(store)$conn)
     expect_setequal(
@@ -198,6 +209,48 @@ test_that("EsgStore catalogs File result records", {
     expect_equal(nrow(artifacts), 1L)
     expect_equal(artifacts$kind, "query")
     expect_true(file.exists(store$artifact_path(artifacts$artifact_id)))
+})
+
+test_that("EsgStore downloads files through downloader and syncs completed assets", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    src <- tempfile(fileext = ".nc")
+    writeLines("local netcdf placeholder", src)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- extract_store_test_file_docs(
+        path = "local-download.nc",
+        download_url = paste0("file://", normalizePath(src, winslash = "/"))
+    )
+    docs$checksum <- as.character(tools::md5sum(src))
+    docs$checksum_type <- "MD5"
+    files <- extract_store_test_result(docs = docs)
+
+    dl <- store$downloader(n_workers = 0L, retries = 1L)
+    session_id <- store$download_files(
+        files = files,
+        replica = "current",
+        downloader = dl,
+        run = TRUE,
+        session_label = "local-download",
+        probe = FALSE,
+        progress = FALSE
+    )
+
+    tasks <- dl$tasks(session_id = session_id)
+    expect_equal(tasks$status, "done")
+    expect_true(file.exists(file.path(dir, "downloads", "local-download.nc")))
+
+    catalog <- store$query("SELECT local_path, local_artifact_id FROM file_catalog")
+    expect_equal(nrow(catalog), 1L)
+    expect_false(is.na(catalog$local_path))
+    expect_true(file.exists(file.path(store$path, catalog$local_path)))
+    expect_false(is.na(catalog$local_artifact_id))
+    expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
 })
 
 test_that("EsgStore catalogs Aggregation records and replaces duplicates", {

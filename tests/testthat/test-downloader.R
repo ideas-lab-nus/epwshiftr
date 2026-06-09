@@ -26,6 +26,206 @@ test_that("FileDownloader can be created", {
 })
 # }}}
 
+# Persistent Manifest Tests {{{
+test_that("FileDownloader persists config and manifest state", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("persistent content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        timeout = 30L,
+        n_workers = 0L
+    )
+
+    expect_true(file.exists(dl$config_file))
+    expect_true(file.exists(dl$manifest))
+    expect_true(schema_validate(
+        SCHEMA_DOWNLOADER_CONFIG,
+        jsonlite::fromJSON(dl$config_file, simplifyVector = TRUE, simplifyMatrix = FALSE),
+        mode = "test",
+        name = "downloader-config"
+    ))
+
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:local-test",
+        filename = "local.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "unit-test")
+    expect_match(session_id, "^\\d{8}-\\d{6}-[0-9a-f]{8}$")
+    expect_equal(nrow(dl$sessions()), 1L)
+    expect_equal(nrow(dl$tasks(session_id = session_id)), 1L)
+
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    expect_equal(tasks$status, "done")
+    expect_true(file.exists(file.path(dest, "local.txt")))
+    expect_true(dl$verify(session_id = session_id)$checksum_ok)
+
+    restored <- FileDownloader$load_config(dl$config_file)
+    expect_equal(restored$data_dir, normalizePath(dest, winslash = "/"))
+    expect_equal(restored$tmp_dir, normalizePath(temp, mustWork = FALSE, winslash = "/"))
+    expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
+    expect_equal(restored$tasks(session_id = session_id)$status, "done")
+
+    rm(dl, restored)
+    gc()
+    conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = manifest, read_only = TRUE)
+    on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
+    expect_setequal(
+        DBI::dbListTables(conn),
+        c("download_candidate", "download_event", "download_meta", "download_session", "download_task")
+    )
+})
+
+test_that("FileDownloader reconnects manifest after shallow clone finalization", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("clone content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    cloned <- dl$clone(deep = FALSE)
+    expect_s3_class(cloned, "FileDownloader")
+    rm(cloned)
+    gc()
+
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:clone-reconnect",
+        filename = "clone.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "clone-reconnect")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    expect_equal(tasks$status, "done")
+    expect_true(file.exists(file.path(dest, "clone.txt")))
+})
+
+test_that("FileDownloader falls back across candidate URLs", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("candidate content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:fallback-test",
+        filename = "fallback.txt",
+        url = c(
+            paste0("file://", normalizePath(file.path(root, "missing.txt"), mustWork = FALSE, winslash = "/")),
+            paste0("file://", normalizePath(src, winslash = "/"))
+        ),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = c(1L, 2L)
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "fallback")
+    expect_warning(
+        tasks <- dl$run(session_id = session_id, progress = FALSE),
+        "Failed to open"
+    )
+    expect_equal(tasks$status, "done")
+    expect_identical(tasks$selected_url, plan$url[[2L]])
+
+    rm(dl)
+    gc()
+    conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = manifest, read_only = TRUE)
+    on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
+    candidates <- data.table::as.data.table(DBI::dbReadTable(
+        conn,
+        "download_candidate"
+    ))
+    expect_equal(candidates[order(priority)]$failed_count, c(1L, 0L))
+})
+
+test_that("FileDownloader keeps candidate URLs scoped to each task", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src_1 <- tempfile()
+    src_2 <- tempfile()
+    writeLines("first task content", src_1)
+    writeLines("second task content", src_2)
+
+    urls <- paste0("file://", normalizePath(c(src_1, src_2), winslash = "/"))
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = c("tracking:first", "tracking:second"),
+        filename = c("first.txt", "second.txt"),
+        url = urls,
+        checksum = as.character(tools::md5sum(c(src_1, src_2))),
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "candidate-scope")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    tasks <- tasks[order(filename)]
+
+    expect_equal(tasks$status, c("done", "done"))
+    expect_identical(tasks$selected_url, urls)
+    expect_equal(readLines(file.path(dest, "first.txt")), "first task content")
+    expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
+})
+# }}}
+
 # Download Tests {{{
 test_that("FileDownloader can download a single file", {
     skip_on_cran()
