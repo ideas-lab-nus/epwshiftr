@@ -146,7 +146,7 @@ test_that("parse_cf_time() returns POSIXct for common CF calendars", {
     }
 })
 
-test_that("get_nc_time() and EsgDataset$get_time_axis() share CFtime parsing", {
+test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", {
     path <- local_nc_time_file(
         time_vals = c(0, 1.5),
         units = "days since 2000-01-01 00:00:00",
@@ -340,7 +340,7 @@ test_that("get_nc_time()", {
             .package = "epwshiftr"
         )
 
-        # can parse months resolution with CFtime
+        # can parse months resolution with the internal CF time parser
         testthat::with_mocked_bindings(
             expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
             get_nc_atts = function(...) {

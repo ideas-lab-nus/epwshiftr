@@ -23,7 +23,6 @@ Description:
 Imports:
     checkmate (>= 2.0.0),
     cli (>= 3.4.0),
-    CFtime,
     curl,
     data.table (>= 1.12.4),
     duckdb,
