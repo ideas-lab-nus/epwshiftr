@@ -27,6 +27,8 @@ Imports:
     CFtime,
     curl,
     data.table (>= 1.12.4),
+    DBI,
+    duckdb,
     eplusr (>= 0.15.2),
     fst,
     future.apply,
@@ -77,6 +79,7 @@ Collate:
     'query-param.R'
     'query-result.R'
     'query.R'
+    'extract-store.R'
     'schema.R'
     'zzz.R'
 VignetteBuilder: knitr
