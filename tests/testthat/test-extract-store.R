@@ -51,7 +51,16 @@ extract_store_test_result <- function(type = "File", docs, context = NULL) {
 extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
                                          source_id = "EC-Earth3",
                                          experiment_id = "ssp585",
-                                         variable_id = "tas") {
+                                         variable_id = "tas",
+                                         opendap_url = NULL,
+                                         download_url = NULL) {
+    if (is.null(opendap_url)) {
+        opendap_url <- sprintf("https://example.org/dods/%s.html", path)
+    }
+    if (is.null(download_url)) {
+        download_url <- sprintf("https://example.org/fileServer/%s", path)
+    }
+
     docs <- data.frame(
         id = sprintf("%s|dataset-1", path),
         dataset_id = "dataset-1",
@@ -71,8 +80,8 @@ extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1
         check.names = FALSE
     )
     docs$url <- I(list(c(
-        sprintf("https://example.org/dods/%s.html|application/netcdf|OPENDAP", path),
-        sprintf("https://example.org/fileServer/%s|application/netcdf|HTTPServer", path)
+        sprintf("%s|application/netcdf|OPENDAP", opendap_url),
+        sprintf("%s|application/netcdf|HTTPServer", download_url)
     )))
     docs
 }
@@ -282,4 +291,92 @@ test_that("EsgExtractStore rejects invalid extraction plans", {
         ),
         "No cataloged file records match"
     )
+})
+
+test_that("EsgExtractStore extracts regional data to Parquet", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L)
+    on.exit(unlink(nc), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgExtractStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- extract_store_test_file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(extract_store_test_result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "SIN",
+        nearest = 1L
+    )
+
+    processed <- store$extract(plan_id = plan$plan_id)
+    conn <- epwshiftr:::priv(store)$conn
+    plans <- DBI::dbReadTable(conn, "extraction_plan")
+    results <- DBI::dbReadTable(conn, "extraction_result")
+
+    expect_equal(processed$status, "done")
+    expect_equal(plans$status, "done")
+    expect_equal(plans$available_time_count, 2L)
+    expect_equal(nrow(results), 1L)
+    expect_equal(results$year, 2060L)
+    expect_equal(results$row_count, 2L)
+    expect_equal(results$unique_time_count, 2L)
+
+    parquet <- file.path(dir, results$output_path)
+    expect_true(file.exists(parquet))
+    rows <- DBI::dbGetQuery(conn, sprintf(
+        "SELECT site_id, source_id, experiment_id, variable_id, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
+        DBI::dbQuoteString(conn, parquet)
+    ))
+    expect_equal(rows$site_id, "SIN")
+    expect_equal(rows$source_id, "EC-Earth3")
+    expect_equal(rows$experiment_id, "ssp585")
+    expect_equal(rows$variable_id, "tas")
+    expect_equal(rows$n, 2)
+})
+
+test_that("EsgExtractStore records failed extraction plans", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L)
+    on.exit(unlink(nc), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgExtractStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- extract_store_test_file_docs(
+        path = basename(nc),
+        variable_id = "hurs",
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(extract_store_test_result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+    )
+
+    processed <- store$extract(plan_id = plan$plan_id)
+    plans <- DBI::dbReadTable(epwshiftr:::priv(store)$conn, "extraction_plan")
+
+    expect_equal(processed$status, "failed")
+    expect_equal(plans$status, "failed")
+    expect_equal(plans$attempt_count, 1L)
+    expect_match(plans$last_error, "None of the requested variable")
 })
