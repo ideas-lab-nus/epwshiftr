@@ -28,10 +28,11 @@ DiskCache <- R6::R6Class(
                 stop("'max_n' must be a non-negative number")
             }
 
-            prune_rate <- private$parse_age(prune_rate)
-            if (!is.numeric(prune_rate) || length(prune_rate) != 1L || is.na(prune_rate) || prune_rate <= 0) {
-                stop("'prune_rate' must be a positive number or a string like '1 hour', '10 mins', '1000 secs'")
+            if (!is.numeric(prune_rate) || length(prune_rate) != 1L || is.na(prune_rate) ||
+                !is.finite(prune_rate) || prune_rate < 1 || prune_rate != floor(prune_rate)) {
+                stop("'prune_rate' must be a positive integer")
             }
+            prune_rate <- as.integer(prune_rate)
             prune_limit <- private$parse_age(prune_limit)
             if (!is.numeric(prune_limit) || length(prune_limit) != 1L || is.na(prune_limit) || prune_limit < 0) {
                 stop("'prune_limit' must be a non-negative number or a string like '1 hour', '10 mins', '1000 secs'")
@@ -511,8 +512,7 @@ is.key_missing <- function(x) {
 #'
 #' @return A single string: `"normal"`, `"off"`, or `"offline"`.
 #' @noRd
-cache_mode <- function() {
-    val <- getOption("epwshiftr.cache", TRUE)
+normalize_cache_mode <- function(val, name = "epwshiftr.cache") {
     if (isTRUE(val)) {
         "normal"
     } else if (isFALSE(val)) {
@@ -521,11 +521,16 @@ cache_mode <- function() {
         "offline"
     } else {
         warning(sprintf(
-            "Unknown value for option 'epwshiftr.cache': %s. Treating as TRUE.",
+            "Unknown value for %s: %s. Treating as TRUE.",
+            name,
             deparse(val)
         ))
         "normal"
     }
+}
+
+cache_mode <- function() {
+    normalize_cache_mode(getOption("epwshiftr.cache", TRUE))
 }
 
 #' Check if caching is enabled
@@ -553,14 +558,21 @@ is_cache_offline <- function() {
 #' @return The result of evaluating `expr`.
 #' @noRd
 with_cache_mode <- function(mode, expr) {
-    # Convert string mode to option value
-    opt_val <- switch(
-        mode,
-        "normal" = TRUE,
-        "off" = FALSE,
-        "offline" = "offline",
-        stop(sprintf("Unknown cache mode: '%s'. Use 'normal', 'off', or 'offline'.", mode))
-    )
+    if (isTRUE(mode)) {
+        opt_val <- TRUE
+    } else if (isFALSE(mode)) {
+        opt_val <- FALSE
+    } else if (is.character(mode) && length(mode) == 1L) {
+        opt_val <- switch(
+            mode,
+            "normal" = TRUE,
+            "off" = FALSE,
+            "offline" = "offline",
+            stop(sprintf("Unknown cache mode: '%s'. Use 'normal', 'off', or 'offline'.", mode))
+        )
+    } else {
+        stop("Unknown cache mode. Use TRUE, FALSE, 'normal', 'off', or 'offline'.", call. = FALSE)
+    }
     old <- options(epwshiftr.cache = opt_val)
     on.exit(options(old), add = TRUE)
     force(expr)
@@ -588,13 +600,7 @@ get_response_cache_key <- function(url) {
 
 # read_json_response {{{
 read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
-    # Determine effective cache mode
-    # cache parameter can be TRUE, FALSE, or "offline" (from option)
-    if (isFALSE(cache)) {
-        mode <- "off"
-    } else {
-        mode <- cache_mode()
-    }
+    mode <- normalize_cache_mode(cache, name = "`cache`")
 
     if (mode != "off") {
         disk_cache <- get_cache()
@@ -613,17 +619,17 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
     res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
     timestamp <- Sys.time()
 
-    # nocov start
     if (inherits(res, "warning") || inherits(res, "error")) {
-        cond_fun <- if (strict) stop else warning
-        cond_fun(
+        msg <- paste0(
             "Failed to read the JSON response. Details: \n",
             conditionMessage(res)
         )
-
-        res <- NULL
-        # nocov end
-    } else if (res$response$numFound == 0L) {
+        if (isTRUE(strict)) {
+            stop(msg, call. = FALSE)
+        }
+        warning(msg, call. = FALSE)
+        return(NULL)
+    } else if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
         verbose(warning(
             "No matched data. ",
             "Please examine your query and the actual response."
