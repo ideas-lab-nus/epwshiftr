@@ -1,16 +1,16 @@
-esgdict__raw_cache_dir <- function(dir = getOption("epwshiftr.dir", "."), project = "CMIP6") {
-    file.path(dir, "esg-dict", tolower(esgdict__normalize_project(project)), "raw")
+esgdict__source_dir <- function(root = store_dir(init = TRUE), project = "CMIP6") {
+    file.path(root, "sources", "esg-dict", tolower(esgdict__normalize_project(project)))
 }
 
-cmip6dict__raw_cache_dir <- function(dir = getOption("epwshiftr.dir", ".")) {
-    esgdict__raw_cache_dir(dir, "CMIP6")
+cmip6dict__source_dir <- function(root = store_dir(init = TRUE)) {
+    esgdict__source_dir(root, "CMIP6")
 }
 
-esgdict__volatile_raw_cache_dir <- function(project = "CMIP6") {
+esgdict__volatile_source_dir <- function(project = "CMIP6") {
     file.path(
         tempdir(),
         paste0(
-            "esg-dict-raw-",
+            "esg-dict-source-",
             tolower(esgdict__normalize_project(project)),
             "-",
             fast_hash(list(Sys.getpid(), Sys.time(), sample.int(.Machine$integer.max, 1L)))
@@ -18,8 +18,8 @@ esgdict__volatile_raw_cache_dir <- function(project = "CMIP6") {
     )
 }
 
-cmip6dict__volatile_raw_cache_dir <- function() {
-    esgdict__volatile_raw_cache_dir("CMIP6")
+cmip6dict__volatile_source_dir <- function() {
+    esgdict__volatile_source_dir("CMIP6")
 }
 
 esgdict__parsed_cache_key <- function(project, cv_tag_info, request_tag_info, spec) {
@@ -76,7 +76,7 @@ esgdict__fetch_cached <- function(
     cv_tag = NULL,
     request_tag = NULL,
     policy,
-    cache_dir = esgdict__raw_cache_dir(project = project),
+    source_dir = esgdict__source_dir(project = project),
     force = FALSE
 ) {
     project <- esgdict__normalize_project(project)
@@ -89,7 +89,7 @@ esgdict__fetch_cached <- function(
     request_tag_info <- esgdict__resolve_source_ref_cached(spec$request, request_tag, token, policy)
     cache_key <- esgdict__parsed_cache_key(project, cv_tag_info, request_tag_info, spec)
 
-    # Parsed vocab/request payloads are cached separately from raw JSON files. A forced
+    # Parsed vocab/request payloads are cached separately from source JSON files. A forced
     # build skips this read path, but still writes a fresh parsed value later.
     if (isTRUE(policy$read) && !isTRUE(force)) {
         cached <- get_cache()$get(cache_key)
@@ -98,10 +98,10 @@ esgdict__fetch_cached <- function(
         }
     }
 
-    raw_cache_dir <- if (isTRUE(policy$raw_read) || isTRUE(policy$raw_write)) {
-        cache_dir
+    source_dir <- if (isTRUE(policy$source_read) || isTRUE(policy$source_write)) {
+        source_dir
     } else {
-        esgdict__volatile_raw_cache_dir(project)
+        esgdict__volatile_source_dir(project)
     }
 
     fetched <- esgdict__fetch_resolved(
@@ -111,7 +111,7 @@ esgdict__fetch_cached <- function(
         request_tag_info = request_tag_info,
         token = token,
         policy = policy,
-        cache_dir = raw_cache_dir
+        source_dir = source_dir
     )
 
     if (isTRUE(policy$write)) {
@@ -126,7 +126,7 @@ cmip6dict__fetch_cached <- function(
     cv_tag = NULL,
     dreq_tag = NULL,
     policy,
-    cache_dir = cmip6dict__raw_cache_dir(),
+    source_dir = cmip6dict__source_dir(),
     force = FALSE
 ) {
     esgdict__fetch_cached(
@@ -135,7 +135,7 @@ cmip6dict__fetch_cached <- function(
         cv_tag = cv_tag,
         request_tag = dreq_tag,
         policy = policy,
-        cache_dir = cache_dir,
+        source_dir = source_dir,
         force = force
     )
 }
@@ -144,15 +144,15 @@ cmip6dict__fetch <- function(
     token = NULL,
     cv_tag = NULL,
     dreq_tag = NULL,
-    use_cache = TRUE,
-    cache_dir = cmip6dict__raw_cache_dir()
+    use_source = TRUE,
+    source_dir = cmip6dict__source_dir()
 ) {
-    checkmate::assert_flag(use_cache)
+    checkmate::assert_flag(use_source)
 
     spec <- esgdict__project_spec("CMIP6")
     cv_tag_info <- cmip6dict__resolve_tag(spec$vocab$repo, cv_tag, token)
     dreq_tag_info <- cmip6dict__resolve_tag(spec$request$repo, dreq_tag, token)
-    raw_cache_dir <- if (isTRUE(use_cache)) cache_dir else cmip6dict__volatile_raw_cache_dir()
+    source_dir <- if (isTRUE(use_source)) source_dir else cmip6dict__volatile_source_dir()
 
     esgdict__fetch_resolved(
         project = "CMIP6",
@@ -161,11 +161,11 @@ cmip6dict__fetch <- function(
         request_tag_info = dreq_tag_info,
         token = token,
         policy = list(
-            raw_read = isTRUE(use_cache),
-            raw_write = isTRUE(use_cache),
+            source_read = isTRUE(use_source),
+            source_write = isTRUE(use_source),
             offline = FALSE
         ),
-        cache_dir = raw_cache_dir
+        source_dir = source_dir
     )
 }
 
@@ -176,7 +176,7 @@ esgdict__fetch_resolved <- function(
     request_tag_info,
     token = NULL,
     policy,
-    cache_dir = esgdict__raw_cache_dir(project = project)
+    source_dir = esgdict__source_dir(project = project)
 ) {
     project <- esgdict__normalize_project(project)
     cli::cli_progress_step(
@@ -192,10 +192,10 @@ esgdict__fetch_resolved <- function(
         source = spec$vocab,
         tag = cv_tag_info$tag,
         token = token,
-        use_cache = isTRUE(policy$raw_read),
-        write_cache = isTRUE(policy$raw_write),
+        use_source = isTRUE(policy$source_read),
+        write_source = isTRUE(policy$source_write),
         offline = isTRUE(policy$offline),
-        cache_dir = file.path(cache_dir, "vocab", cv_tag_info$tag)
+        source_dir = file.path(source_dir, "vocab", cv_tag_info$tag)
     )
     request <- NULL
     if (!is.null(spec$request)) {
@@ -205,10 +205,10 @@ esgdict__fetch_resolved <- function(
             source = spec$request,
             tag = request_tag_info$tag,
             token = token,
-            use_cache = isTRUE(policy$raw_read),
-            write_cache = isTRUE(policy$raw_write),
+            use_source = isTRUE(policy$source_read),
+            write_source = isTRUE(policy$source_write),
             offline = isTRUE(policy$offline),
-            cache_dir = file.path(cache_dir, "request", request_tag_info$tag)
+            source_dir = file.path(source_dir, "request", request_tag_info$tag)
         )
     }
 
@@ -219,13 +219,13 @@ esgdict__fetch_resolved <- function(
         request = request,
         built_time = Sys.time(),
         sources = list(
-            vocab = cmip6dict__source_info(spec$vocab$repo, cv_tag_info, file.path(cache_dir, "vocab", cv_tag_info$tag)),
-            request = if (!is.null(spec$request)) cmip6dict__source_info(spec$request$repo, request_tag_info, file.path(cache_dir, "request", request_tag_info$tag)) else NULL
+            vocab = cmip6dict__source_info(spec$vocab$repo, cv_tag_info, file.path(source_dir, "vocab", cv_tag_info$tag)),
+            request = if (!is.null(spec$request)) cmip6dict__source_info(spec$request$repo, request_tag_info, file.path(source_dir, "request", request_tag_info$tag)) else NULL
         )
     )
 }
 
-cmip6dict__fetch_resolved <- function(cv_tag_info, dreq_tag_info, token = NULL, policy, cache_dir = cmip6dict__raw_cache_dir()) {
+cmip6dict__fetch_resolved <- function(cv_tag_info, dreq_tag_info, token = NULL, policy, source_dir = cmip6dict__source_dir()) {
     esgdict__fetch_resolved(
         project = "CMIP6",
         spec = esgdict__project_spec("CMIP6"),
@@ -233,7 +233,7 @@ cmip6dict__fetch_resolved <- function(cv_tag_info, dreq_tag_info, token = NULL, 
         request_tag_info = dreq_tag_info,
         token = token,
         policy = policy,
-        cache_dir = cache_dir
+        source_dir = source_dir
     )
 }
 
@@ -264,7 +264,7 @@ cmip6dict__resolve_tag_cached <- function(repo, tag = NULL, token = NULL, policy
                 stop(
                     sprintf(
                         paste(
-                            "Cannot resolve the latest CMIP6 tag for `%s` in offline cache mode.",
+                            "Cannot resolve the latest CMIP6 tag for `%s` in offline mode.",
                             "Supply explicit `cv_tag`/`request_tag`, or build once with `epwshiftr.cache = TRUE`."
                         ),
                         repo
@@ -309,14 +309,14 @@ esgdict__read_vocab <- function(
     source,
     tag,
     token = NULL,
-    use_cache = TRUE,
-    cache_dir = tempdir(),
-    write_cache = use_cache,
+    use_source = TRUE,
+    source_dir = tempdir(),
+    write_source = use_source,
     offline = FALSE
 ) {
     switch(reader,
-        cmip6_cvs = cmip6dict__fetch_cv(tag, token, use_cache, cache_dir, write_cache, offline, repo = source$repo),
-        esgvoc = esgvocdict__fetch_vocab(project, source, tag, token, use_cache, cache_dir, write_cache, offline),
+        cmip6_cvs = cmip6dict__fetch_cv(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
+        esgvoc = esgvocdict__fetch_vocab(project, source, tag, token, use_source, source_dir, write_source, offline),
         stop(sprintf("Unknown ESG dictionary vocab reader `%s`.", reader), call. = FALSE)
     )
 }
@@ -327,13 +327,13 @@ esgdict__read_request <- function(
     source,
     tag,
     token = NULL,
-    use_cache = TRUE,
-    cache_dir = tempdir(),
-    write_cache = use_cache,
+    use_source = TRUE,
+    source_dir = tempdir(),
+    write_source = use_source,
     offline = FALSE
 ) {
     switch(reader,
-        cmip6_cmor = cmip6dict__fetch_dreq(tag, token, use_cache, cache_dir, write_cache, offline, repo = source$repo),
+        cmip6_cmor = cmip6dict__fetch_dreq(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
         stop(sprintf("Unknown ESG dictionary request reader `%s`.", reader), call. = FALSE)
     )
 }
@@ -360,25 +360,25 @@ cmip6dict__tag_commit <- function(tag_row) {
     NA_character_
 }
 
-cmip6dict__source_info <- function(repo, tag_info, cache_dir) {
+cmip6dict__source_info <- function(repo, tag_info, source_dir) {
     list(
         repo = repo,
         tag = tag_info$tag,
         commit = tag_info$commit,
-        cache_dir = normalizePath(cache_dir, winslash = "/", mustWork = FALSE)
+        source_dir = normalizePath(source_dir, winslash = "/", mustWork = FALSE)
     )
 }
 
-cmip6dict__cache_ready <- function(files) {
+cmip6dict__source_ready <- function(files) {
     length(files) && all(file.exists(files))
 }
 
-cmip6dict__raw_cache_miss_error <- function(kind, dir) {
+cmip6dict__source_miss_error <- function(kind, dir) {
     stop(
         sprintf(
             paste(
-                "%s raw cache miss in offline cache mode at `%s`.",
-                "Build the dictionary once online, or pass a `cache_dir` containing the required raw files."
+                "%s source miss in offline mode at `%s`.",
+                "Build the dictionary once online, or pass a `source_dir` containing the required source files."
             ),
             kind,
             normalizePath(dir, winslash = "/", mustWork = FALSE)
@@ -390,9 +390,9 @@ cmip6dict__raw_cache_miss_error <- function(kind, dir) {
 cmip6dict__fetch_cv <- function(
     tag,
     token = NULL,
-    use_cache = TRUE,
-    cache_dir = tempdir(),
-    write_cache = use_cache,
+    use_source = TRUE,
+    source_dir = tempdir(),
+    write_source = use_source,
     offline = FALSE,
     repo = esgdict__project_spec("CMIP6")$vocab$repo
 ) {
@@ -402,10 +402,10 @@ cmip6dict__fetch_cv <- function(
     files <- cmip6dict__download_cv_file(
         tag,
         repo = repo,
-        dir = cache_dir,
+        dir = source_dir,
         token = token,
-        use_cache = use_cache,
-        write_cache = write_cache,
+        use_source = use_source,
+        write_source = write_source,
         offline = offline
     )
 
@@ -423,24 +423,24 @@ cmip6dict__download_cv_file <- function(
     repo = esgdict__project_spec("CMIP6")$vocab$repo,
     dir = tempdir(),
     token = NULL,
-    use_cache = TRUE,
-    write_cache = use_cache,
+    use_source = TRUE,
+    write_source = use_source,
     offline = FALSE
 ) {
     checkmate::assert_string(repo, min.chars = 1L)
     dests <- file.path(dir, sprintf("CMIP6_%s.json", CV_TYPES))
     names(dests) <- CV_TYPES
-    if (use_cache && cmip6dict__cache_ready(dests)) {
+    if (use_source && cmip6dict__source_ready(dests)) {
         return(dests)
     }
     if (isTRUE(offline)) {
-        cmip6dict__raw_cache_miss_error("CMIP6 CV", dir)
+        cmip6dict__source_miss_error("CMIP6 CV", dir)
     }
 
-    # Raw CV files stay as normal JSON files so users can inspect exactly what
-    # came from the upstream CV repository when persistent caching is enabled.
-    if (!isTRUE(write_cache)) {
-        dir <- file.path(cmip6dict__volatile_raw_cache_dir(), "cvs", tag)
+    # Source CV files stay as normal JSON files so users can inspect exactly what
+    # came from the upstream CV repository when source persistence is enabled.
+    if (!isTRUE(write_source)) {
+        dir <- file.path(cmip6dict__volatile_source_dir(), "cvs", tag)
         dests <- file.path(dir, sprintf("CMIP6_%s.json", CV_TYPES))
         names(dests) <- CV_TYPES
     }
@@ -468,9 +468,9 @@ esgvocdict__fetch_vocab <- function(
     source,
     tag,
     token = NULL,
-    use_cache = TRUE,
-    cache_dir = tempdir(),
-    write_cache = use_cache,
+    use_source = TRUE,
+    source_dir = tempdir(),
+    write_source = use_source,
     offline = FALSE
 ) {
     checkmate::assert_string(tag, min.chars = 1L)
@@ -478,10 +478,10 @@ esgvocdict__fetch_vocab <- function(
     files <- esgvocdict__download_vocab_files(
         source = source,
         tag = tag,
-        dir = cache_dir,
+        dir = source_dir,
         token = token,
-        use_cache = use_cache,
-        write_cache = write_cache,
+        use_source = use_source,
+        write_source = write_source,
         offline = offline
     )
     esgvocdict__parse_vocab_files(files, project = project)
@@ -492,21 +492,21 @@ esgvocdict__download_vocab_files <- function(
     tag,
     dir = tempdir(),
     token = NULL,
-    use_cache = TRUE,
-    write_cache = use_cache,
+    use_source = TRUE,
+    write_source = use_source,
     offline = FALSE
 ) {
     files <- list.files(dir, pattern = "[.]json$", full.names = TRUE, recursive = TRUE)
-    if (use_cache && length(files)) {
+    if (use_source && length(files)) {
         names(files) <- esgvocdict__relative_paths(files, dir)
         return(files)
     }
     if (isTRUE(offline)) {
-        cmip6dict__raw_cache_miss_error("ESG vocabulary", dir)
+        cmip6dict__source_miss_error("ESG vocabulary", dir)
     }
 
-    if (!isTRUE(write_cache)) {
-        dir <- file.path(esgdict__volatile_raw_cache_dir(), "vocab", tag)
+    if (!isTRUE(write_source)) {
+        dir <- file.path(esgdict__volatile_source_dir(), "vocab", tag)
     }
     if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
 
@@ -675,9 +675,9 @@ esgvocdict__first_scalar <- function(x, names) {
 cmip6dict__fetch_dreq <- function(
     tag,
     token = NULL,
-    use_cache = TRUE,
-    cache_dir = tempdir(),
-    write_cache = use_cache,
+    use_source = TRUE,
+    source_dir = tempdir(),
+    write_source = use_source,
     offline = FALSE,
     repo = esgdict__project_spec("CMIP6")$request$repo
 ) {
@@ -687,10 +687,10 @@ cmip6dict__fetch_dreq <- function(
     files <- cmip6dict__download_dreq_file(
         tag,
         repo = repo,
-        dir = cache_dir,
+        dir = source_dir,
         token = token,
-        use_cache = use_cache,
-        write_cache = write_cache,
+        use_source = use_source,
+        write_source = write_source,
         offline = offline
     )
 
@@ -714,24 +714,24 @@ cmip6dict__download_dreq_file <- function(
     repo = esgdict__project_spec("CMIP6")$request$repo,
     dir = tempdir(),
     token = NULL,
-    use_cache = TRUE,
-    write_cache = use_cache,
+    use_source = TRUE,
+    write_source = use_source,
     offline = FALSE
 ) {
     checkmate::assert_string(repo, min.chars = 1L)
     files <- list.files(dir, pattern = "^CMIP6_.*[.]json$", full.names = TRUE)
-    if (use_cache && length(files)) {
+    if (use_source && length(files)) {
         names(files) <- basename(files)
         return(files)
     }
     if (isTRUE(offline)) {
-        cmip6dict__raw_cache_miss_error("CMIP6 DReq", dir)
+        cmip6dict__source_miss_error("CMIP6 DReq", dir)
     }
 
-    # DReq is downloaded as an archive, but we cache only the extracted table
-    # JSON files. That keeps the raw cache stable and easy to diff.
-    if (!isTRUE(write_cache)) {
-        dir <- file.path(cmip6dict__volatile_raw_cache_dir(), "dreq", tag)
+    # DReq is downloaded as an archive, but the store keeps only the extracted
+    # table JSON files. That keeps the source stable and easy to diff.
+    if (!isTRUE(write_source)) {
+        dir <- file.path(cmip6dict__volatile_source_dir(), "dreq", tag)
     }
 
     if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)

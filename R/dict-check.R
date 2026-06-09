@@ -28,7 +28,7 @@ ESGDICT_FIELD_ALIASES <- c(
 #'   from `dict` when supplied, otherwise `"CMIP6"` is used.
 #' @param dict Optional [EsgDict] object. If `NULL`, the package-level default
 #'   dictionary for `project` is used when available; otherwise the project
-#'   default JSON file is loaded from `getOption("epwshiftr.dir", ".")`.
+#'   default dictionary is loaded from the persistent store manifest.
 #' @param warn_ignored If `TRUE`, warn when supplied constraints cannot be used
 #'   by any available relation index.
 #'
