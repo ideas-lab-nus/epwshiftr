@@ -907,7 +907,7 @@ utils::globalVariables(c(
     "name",
     "natts",
     "opaque_sky_cover",
-    "ping",
+    "probe_ms",
     "relative_humidity",
     "source_id",
     "source_type",
