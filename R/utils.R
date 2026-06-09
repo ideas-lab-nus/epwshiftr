@@ -362,48 +362,133 @@ set_size_units <- function(x) {
     units::set_units(x, iec[power + 1L], mode = "standard")
 }
 
-#' Get the package data storage directory
+# store_is_abs_path {{{
+store_is_abs_path <- function(path) {
+    grepl("^(/|~|[A-Za-z]:[\\\\/]|\\\\\\\\)", path)
+}
+# }}}
+
+# store_normalize_path {{{
+store_normalize_path <- function(path) {
+    normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+}
+# }}}
+
+#' Get the epwshiftr store directory
 #'
-#' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
-#' directory using [rappdirs::user_data_dir()].
+#' `store_dir()` returns the root directory used for persistent epwshiftr store
+#' artifacts, including query snapshots, dictionaries, sources, downloads,
+#' extracted data, generated outputs, and the DuckDB manifest.
 #'
-#' @param init If TRUE, the directory will be created if not exists.
-#' @param force If TRUE, issue an error if the directory does not exist.
+#' @param init If `TRUE`, create the directory when it does not exist.
 #'
 #' @return A single string indicating the directory location.
 #'
-#' @noRd
-.data_dir <- function(init = FALSE, force = TRUE) {
+#' @export
+store_dir <- function(init = TRUE) {
     checkmate::assert_flag(init)
-    checkmate::assert_flag(force)
 
-    d <- getOption("epwshiftr.dir", NULL)
-    if (is.null(d)) {
-        # nocov start
-        if (.Platform$OS.type == "windows") {
-            d <- normalizePath(rappdirs::user_data_dir(appauthor = "epwshiftr"), mustWork = FALSE)
-        } else {
-            d <- normalizePath(rappdirs::user_data_dir(appname = "epwshiftr"), mustWork = FALSE)
-        }
-        # nocov end
+    path <- getOption(
+        "epwshiftr.dir_store",
+        tools::R_user_dir("epwshiftr", "data")
+    )
+    checkmate::assert_string(path, min.chars = 1L)
 
-        if (init && !dir.exists(d)) {
-            verbose(sprintf("Creating %s package data storage directory '%s'", "epwshiftr", d))
-            dir.create(d, recursive = TRUE)
-        }
-    } else {
-        # make sure user specified directory exists
-        d <- normalizePath(d, mustWork = FALSE)
-        init <- FALSE
-        force <- TRUE
+    path <- store_normalize_path(path)
+    if (isTRUE(init) && !dir.exists(path)) {
+        verbose(sprintf("Creating epwshiftr store directory '%s'", path))
+        dir.create(path, recursive = TRUE, showWarnings = FALSE)
     }
 
-    if ((init || force) && !checkmate::test_directory_exists(d, "rw")) {
-        stop(sprintf("%s package data storage directory '%s' does not exists or is not writable.", "epwshiftr", d))
+    if (isTRUE(init) && !checkmate::test_directory_exists(path, "rw")) {
+        stop(sprintf("epwshiftr store directory '%s' does not exist or is not writable.", path), call. = FALSE)
     }
 
-    d
+    path
 }
+
+# store_path {{{
+store_path <- function(..., root = store_dir(init = TRUE)) {
+    parts <- c(list(root), list(...))
+    do.call(file.path, parts)
+}
+# }}}
+
+# store_abs_path {{{
+store_abs_path <- function(path, root = store_dir(init = TRUE)) {
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(root, min.chars = 1L)
+
+    if (store_is_abs_path(path)) {
+        return(store_normalize_path(path))
+    }
+    store_normalize_path(file.path(root, path))
+}
+# }}}
+
+# store_rel_path {{{
+store_rel_path <- function(path, root = store_dir(init = TRUE)) {
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(root, min.chars = 1L)
+
+    path <- store_abs_path(path, root)
+    root <- store_normalize_path(root)
+    root_prefix <- paste0(sub("/+$", "", root), "/")
+    if (identical(path, root)) {
+        return(".")
+    }
+    if (!startsWith(path, root_prefix)) {
+        stop(sprintf("Path '%s' is outside the epwshiftr store root '%s'.", path, root), call. = FALSE)
+    }
+    substring(path, nchar(root_prefix) + 1L)
+}
+# }}}
+
+# store_hash_file {{{
+store_hash_file <- function(path, algo = "sha256") {
+    checkmate::assert_file_exists(path, access = "r")
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    con <- file(path, "rb")
+    on.exit(close(con), add = TRUE)
+    if (identical(algo, "sha256")) {
+        as.character(openssl::sha256(con))
+    } else {
+        as.character(openssl::md5(con))
+    }
+}
+# }}}
+
+# store_write_json_atomic {{{
+store_write_json_atomic <- function(x, path, ...) {
+    checkmate::assert_string(path, min.chars = 1L)
+    path <- store_normalize_path(path)
+
+    dir <- dirname(path)
+    if (!dir.exists(dir)) {
+        dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    tmp <- tempfile(pattern = paste0(basename(path), "-"), tmpdir = dir)
+    on.exit(unlink(tmp, force = TRUE), add = TRUE)
+    jsonlite::write_json(x, tmp, ...)
+    if (!file.rename(tmp, path)) {
+        file.copy(tmp, path, overwrite = TRUE)
+        unlink(tmp, force = TRUE)
+    }
+    path
+}
+# }}}
+
+# store_cmip6_index_path {{{
+store_cmip6_index_path <- function(init = TRUE) {
+    checkmate::assert_flag(init)
+    path <- store_path("queries", "cmip6-index", "cmip6_index.csv")
+    if (isTRUE(init)) {
+        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    }
+    path
+}
+# }}}
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(

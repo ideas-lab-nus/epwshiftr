@@ -9,6 +9,7 @@
         "epwshiftr.threshold_alpha" = "3",
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = "TRUE",
+        "epwshiftr.dir_store" = sprintf('"%s"', normalizePath(tools::R_user_dir("epwshiftr", "data"), winslash = "/")),
         "epwshiftr.cache_dir" = sprintf('"%s"', normalizePath(tools::R_user_dir("epwshiftr", "cache"), winslash = "/"))
     )
     for (name in setdiff(names(.opts), names(options()))) {

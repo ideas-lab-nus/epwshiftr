@@ -40,7 +40,6 @@ Imports:
     psychrolib,
     qs2,
     R6,
-    rappdirs,
     RNetCDF,
     units,
     S7
