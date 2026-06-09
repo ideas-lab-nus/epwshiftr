@@ -87,6 +87,38 @@ promote_response_defs <- function(response, defs) {
     defs
 }
 
+promote_context_defs <- function(defs) {
+    defs$context <- list(
+        check = list(kind = "list"),
+        keys = list(
+            type = "named",
+            subset.of = "time_filter"
+        ),
+        fields = list(
+            time_filter = ref("context_time_filter")
+        )
+    )
+    defs$context_time_filter <- list(
+        check = list(kind = "list"),
+        keys = list(
+            type = "named",
+            subset.of = c("start", "stop", "method", "unknown", "total", "selected", "unknown_count"),
+            must.include = c("start", "stop", "method")
+        ),
+        fields = list(
+            start = list(check = list(kind = "string")),
+            stop = list(check = list(kind = "string")),
+            method = list(check = list(kind = "choice", choices = c("drs", "opendap"))),
+            unknown = list(check = list(kind = "string")),
+            total = list(check = list(kind = "integer", lower = 0)),
+            selected = list(check = list(kind = "integer", lower = 0)),
+            unknown_count = list(check = list(kind = "integer", lower = 0))
+        )
+    )
+
+    defs
+}
+
 order_defs <- function(defs) {
     preferred <- c(
         "index_node",
@@ -100,7 +132,9 @@ order_defs <- function(defs) {
         "response_body",
         "response_docs",
         "facet_counts",
-        "timestamp"
+        "timestamp",
+        "context",
+        "context_time_filter"
     )
     defs[c(intersect(preferred, names(defs)), setdiff(names(defs), preferred))]
 }
@@ -114,12 +148,14 @@ build_result_schema <- function(schema) {
     defs$index_node <- resolve_ref(schema$fields$index_node, defs)
     defs <- promote_parameter_defs(resolve_ref(schema$fields$parameter, defs), defs)
     defs <- promote_response_defs(resolve_ref(schema$fields$response, defs), defs)
+    defs <- promote_context_defs(defs)
     defs <- order_defs(defs)
 
     schema$fields <- list(
         index_node = ref("index_node"),
         parameter = ref("parameter"),
-        response = ref("response")
+        response = ref("response"),
+        context = ref("context")
     )
     schema[["$defs"]] <- defs
     schema

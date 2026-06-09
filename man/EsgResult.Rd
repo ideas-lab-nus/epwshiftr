@@ -37,6 +37,10 @@ file sizes.}
 
 \item{\code{fields}}{A character vector indicating all fields in the results,
 preserving the order returned by the response.}
+
+\item{\code{time_filter}}{A list describing the time range used by
+\verb{$filter_time()}, or \code{NULL} if no result-level time filter
+has been recorded.}
 }
 \if{html}{\out{</div>}}
 }
@@ -58,7 +62,7 @@ preserving the order returned by the response.}
 \subsection{Method \code{new()}}{
 Create a new EsgResult object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResult$new(index_node, params, response)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$new(index_node, params, response, context = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -71,6 +75,9 @@ collects the query results.}
 \item{\code{params}}{A list of query parameters.}
 
 \item{\code{response}}{The result of an query response.}
+
+\item{\code{context}}{Optional saved-result context. Used internally for
+result-level metadata such as recorded time filters.}
 }
 \if{html}{\out{</div>}}
 }

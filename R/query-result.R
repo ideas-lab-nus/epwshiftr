@@ -30,12 +30,16 @@ EsgResult <- R6::R6Class(
         #'
         #' @param response The result of an query response.
         #'
+        #' @param context Optional saved-result context. Used internally for
+        #'        result-level metadata such as recorded time filters.
+        #'
         #' @return An `EsgResult` object.
         #'
-        initialize = function(index_node, params, response) {
+        initialize = function(index_node, params, response, context = NULL) {
             private$index_node <- index_node
             private$parameter <- query_param_clone(params)
             private$response <- response
+            private$context <- query_result_normalize_context(context)
             private$register_dynamic_fields()
             self
         },
@@ -119,7 +123,7 @@ EsgResult <- R6::R6Class(
         #' @return The full path of the output JSON file.
         #'
         save = function(file, pretty = TRUE) {
-            query_save(
+            args <- list(
                 index_node = private$index_node,
                 parameter = private$parameter,
                 response = private$response,
@@ -127,6 +131,11 @@ EsgResult <- R6::R6Class(
                 pretty = pretty,
                 schema = private$result_schema()
             )
+            if (length(private$context)) {
+                args$context <- private$context
+            }
+
+            do.call(query_save, args)
         },
         # }}}
 
@@ -152,6 +161,7 @@ EsgResult <- R6::R6Class(
             private$index_node <- q$index_node
             private$parameter <- q$parameter
             private$response <- q$response
+            private$context <- query_result_normalize_context(q$context)
             private$register_dynamic_fields()
 
             self
@@ -221,6 +231,15 @@ EsgResult <- R6::R6Class(
         #'        preserving the order returned by the response.
         fields = function() {
             names(private$get_docs())
+        },
+        # }}}
+
+        # time_filter {{{
+        #' @field time_filter A list describing the time range used by
+        #'        `$filter_time()`, or `NULL` if no result-level time filter
+        #'        has been recorded.
+        time_filter = function() {
+            private$get_time_filter_context()
         }
         # }}}
     ),
@@ -229,6 +248,7 @@ EsgResult <- R6::R6Class(
         index_node = NULL,
         parameter = NULL,
         response = NULL,
+        context = list(),
         dynamic_fields = character(),
         result_type = NULL,
 
@@ -277,6 +297,195 @@ EsgResult <- R6::R6Class(
             }
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
+
+        # get_time_filter_context {{{
+        get_time_filter_context = function() {
+            ctx <- private$context$time_filter
+            if (is.null(ctx) || !length(ctx)) {
+                return(NULL)
+            }
+
+            ctx
+        },
+        # }}}
+
+        # update_time_filter_context {{{
+        update_time_filter_context = function(start, stop, method, total, selected, unknown) {
+            context <- private$context
+            context$time_filter <- list(
+                start = query_result_format_iso_datetime(start),
+                stop = query_result_format_iso_datetime(stop),
+                method = method,
+                unknown = "kept",
+                total = as.integer(total),
+                selected = as.integer(selected),
+                unknown_count = as.integer(unknown)
+            )
+
+            context
+        },
+        # }}}
+
+        # result_with_docs {{{
+        result_with_docs = function(docs, context = private$context) {
+            response <- private$response
+            response$response$docs <- docs
+            response$response$numFound <- nrow(docs)
+            response$response$start <- 0L
+            generator <- switch(
+                private$result_type,
+                Dataset = EsgResultDataset,
+                File = EsgResultFile,
+                Aggregation = EsgResultAggregation,
+                NULL
+            )
+            if (is.null(generator)) {
+                cli::cli_abort("Cannot create a filtered result for an untyped ESGF result.")
+            }
+
+            new_query_result(
+                generator,
+                private$index_node,
+                private$parameter,
+                response,
+                context = context
+            )
+        },
+        # }}}
+
+        # filter_time_result {{{
+        filter_time_result = function(start, stop, method = c("drs", "opendap"), result_label = "file") {
+            method <- match.arg(method)
+            window <- query_result_parse_time_window(start, stop)
+            docs <- private$get_docs()
+            if (!nrow(docs)) {
+                context <- private$update_time_filter_context(
+                    window$start,
+                    window$stop,
+                    method = method,
+                    total = 0L,
+                    selected = 0L,
+                    unknown = 0L
+                )
+                return(private$result_with_docs(docs, context = context))
+            }
+
+            ranges <- switch(
+                method,
+                drs = private$filter_time_ranges_drs(docs, result_label),
+                opendap = private$filter_time_ranges_opendap(result_label)
+            )
+            known <- !is.na(ranges$datetime_start) & !is.na(ranges$datetime_end)
+            keep <- !known | (ranges$datetime_start <= window$stop & ranges$datetime_end >= window$start)
+            keep[is.na(keep)] <- TRUE
+
+            docs <- private$add_time_range_fields(docs, ranges)
+            out <- docs[keep, , drop = FALSE]
+            context <- private$update_time_filter_context(
+                window$start,
+                window$stop,
+                method = method,
+                total = nrow(docs),
+                selected = nrow(out),
+                unknown = sum(!known)
+            )
+
+            private$result_with_docs(out, context = context)
+        },
+        # }}}
+
+        # filter_time_ranges_drs {{{
+        filter_time_ranges_drs = function(docs, result_label = "file") {
+            warning(
+                sprintf(
+                    "Time filtering with method = 'drs' uses DRS filename conventions for %s records. Files whose time range cannot be parsed are kept.",
+                    result_label
+                ),
+                call. = FALSE
+            )
+
+            labels <- query_result_drs_labels(docs)
+            ranges <- query_result_parse_drs_ranges(labels$value)
+            unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)
+            if (any(unknown)) {
+                warning(
+                    sprintf(
+                        "Could not parse a DRS time range for %d %s record(s); keeping those records.",
+                        sum(unknown),
+                        result_label
+                    ),
+                    call. = FALSE
+                )
+            }
+
+            ranges
+        },
+        # }}}
+
+        # filter_time_ranges_opendap {{{
+        filter_time_ranges_opendap = function(result_label = "file") {
+            urls <- self$url_opendap
+            if (is.null(urls)) {
+                urls <- rep(NA_character_, self$count())
+            }
+
+            start <- as.POSIXct(rep(NA_real_, length(urls)), origin = "1970-01-01", tz = "UTC")
+            end <- start
+            failed <- logical(length(urls))
+
+            for (i in seq_along(urls)) {
+                url <- urls[[i]]
+                if (is.na(url) || !nzchar(url)) {
+                    failed[[i]] <- TRUE
+                    next
+                }
+
+                ds <- NULL
+                ok <- tryCatch(
+                    {
+                        ds <- EsgDataset$new(url)
+                        ds$open()
+                        time_axis <- ds$get_time_axis()$values
+                        if (!length(time_axis) || all(is.na(time_axis))) {
+                            stop("The NetCDF time axis is empty or unavailable.", call. = FALSE)
+                        }
+                        time_axis <- time_axis[!is.na(time_axis)]
+                        start[[i]] <- min(time_axis)
+                        end[[i]] <- max(time_axis)
+                        TRUE
+                    },
+                    error = function(e) FALSE,
+                    finally = {
+                        if (!is.null(ds) && isTRUE(ds$is_open)) {
+                            ds$close()
+                        }
+                    }
+                )
+                failed[[i]] <- !ok
+            }
+
+            if (any(failed)) {
+                warning(
+                    sprintf(
+                        "Could not inspect OPeNDAP time axes for %d %s record(s); keeping those records.",
+                        sum(failed),
+                        result_label
+                    ),
+                    call. = FALSE
+                )
+            }
+
+            data.frame(datetime_start = start, datetime_end = end, check.names = FALSE)
+        },
+        # }}}
+
+        # add_time_range_fields {{{
+        add_time_range_fields = function(docs, ranges) {
+            docs$datetime_start <- query_result_format_iso_datetime(ranges$datetime_start)
+            docs$datetime_end <- query_result_format_iso_datetime(ranges$datetime_end)
+            docs
+        },
+        # }}}
 
         # validate_loaded_result {{{
         validate_loaded_result = function(q) {
@@ -606,6 +815,216 @@ EsgResult <- R6::R6Class(
 # }}}
 
 # result collection helpers {{{
+query_result_normalize_context <- function(context = NULL) {
+    if (is.null(context) || !length(context)) {
+        return(list())
+    }
+    if (!is.list(context)) {
+        stop("Saved result context must be a list.", call. = FALSE)
+    }
+
+    context
+}
+
+query_result_format_iso_datetime <- function(x) {
+    if (is.null(x)) {
+        return(character())
+    }
+
+    x <- as.POSIXct(x, tz = "UTC", origin = "1970-01-01")
+    out <- rep(NA_character_, length(x))
+    ok <- !is.na(x)
+    out[ok] <- format.POSIXct(x[ok], tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ")
+    out
+}
+
+query_result_parse_time_window <- function(start, stop) {
+    checkmate::assert_scalar(start)
+    checkmate::assert_scalar(stop)
+
+    time <- parse_datetime(c(start, stop), tz = "UTC")
+    if (any(is.na(time))) {
+        stop("`start` and `stop` must be parseable datetimes.", call. = FALSE)
+    }
+    if (time[[2L]] < time[[1L]]) {
+        stop("`stop` must be greater than or equal to `start`.", call. = FALSE)
+    }
+
+    list(start = time[[1L]], stop = time[[2L]])
+}
+
+query_result_drs_label_from_url <- function(url) {
+    if (is.null(url) || !length(url)) {
+        return(NA_character_)
+    }
+
+    url <- unlist(url, recursive = TRUE, use.names = FALSE)
+    url <- as.character(url)
+    url <- url[!is.na(url) & nzchar(url)]
+    if (!length(url)) {
+        return(NA_character_)
+    }
+
+    parsed <- vapply(strsplit(url, "|", fixed = TRUE), function(parts) parts[[1L]], character(1L))
+    parsed <- sub("[?#].*$", "", parsed)
+    parsed <- basename(parsed)
+    parsed <- sub("\\.html$", "", parsed)
+    parsed <- parsed[grepl("\\.nc$", parsed)]
+    if (!length(parsed)) {
+        return(NA_character_)
+    }
+
+    parsed[[1L]]
+}
+
+query_result_drs_label_from_id <- function(id) {
+    if (is.null(id) || !length(id) || is.na(id[[1L]])) {
+        return(NA_character_)
+    }
+
+    id <- as.character(id[[1L]])
+    hit <- regmatches(id, regexpr("[^|/]+\\.nc", id, perl = TRUE))
+    if (!length(hit) || !nzchar(hit)) {
+        return(NA_character_)
+    }
+
+    hit
+}
+
+query_result_drs_labels <- function(docs) {
+    n <- nrow(docs)
+    labels <- rep(NA_character_, n)
+    source <- rep(NA_character_, n)
+
+    scalar_field <- function(field, i) {
+        value <- docs[[field]]
+        if (is.null(value) || length(value) < i) {
+            return(NA_character_)
+        }
+
+        value <- value[[i]]
+        value <- unlist(value, recursive = TRUE, use.names = FALSE)
+        value <- as.character(value)
+        value <- value[!is.na(value) & nzchar(value)]
+        if (!length(value)) {
+            return(NA_character_)
+        }
+
+        value[[1L]]
+    }
+
+    for (i in seq_len(n)) {
+        title <- scalar_field("title", i)
+        if (!is.na(title) && grepl("\\.nc$", title)) {
+            labels[[i]] <- title
+            source[[i]] <- "title"
+            next
+        }
+
+        url <- if (!is.null(docs$url) && length(docs$url) >= i) {
+            query_result_drs_label_from_url(docs$url[[i]])
+        } else {
+            NA_character_
+        }
+        if (!is.na(url)) {
+            labels[[i]] <- url
+            source[[i]] <- "url"
+            next
+        }
+
+        id <- scalar_field("id", i)
+        id_label <- query_result_drs_label_from_id(id)
+        if (!is.na(id_label)) {
+            labels[[i]] <- id_label
+            source[[i]] <- "id"
+        }
+    }
+
+    data.frame(value = labels, source = source, check.names = FALSE)
+}
+
+query_result_parse_drs_bound <- function(value, end = FALSE) {
+    if (is.na(value) || !nzchar(value)) {
+        return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
+    }
+
+    width <- nchar(value)
+    if (!width %in% c(4L, 6L, 8L, 10L, 12L)) {
+        return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
+    }
+
+    start <- switch(
+        as.character(width),
+        `4` = sprintf("%s-01-01 00:00:00", value),
+        `6` = sprintf("%s-%s-01 00:00:00", substr(value, 1L, 4L), substr(value, 5L, 6L)),
+        `8` = sprintf(
+            "%s-%s-%s 00:00:00",
+            substr(value, 1L, 4L),
+            substr(value, 5L, 6L),
+            substr(value, 7L, 8L)
+        ),
+        `10` = sprintf(
+            "%s-%s-%s %s:00:00",
+            substr(value, 1L, 4L),
+            substr(value, 5L, 6L),
+            substr(value, 7L, 8L),
+            substr(value, 9L, 10L)
+        ),
+        `12` = sprintf(
+            "%s-%s-%s %s:%s:00",
+            substr(value, 1L, 4L),
+            substr(value, 5L, 6L),
+            substr(value, 7L, 8L),
+            substr(value, 9L, 10L),
+            substr(value, 11L, 12L)
+        )
+    )
+    parsed <- as.POSIXct(start, tz = "UTC")
+    if (is.na(parsed) || !isTRUE(end)) {
+        return(parsed)
+    }
+
+    increment <- switch(
+        as.character(width),
+        `4` = "year",
+        `6` = "month",
+        `8` = "day",
+        `10` = "hour",
+        `12` = "min"
+    )
+    seq(parsed, by = increment, length.out = 2L)[[2L]] - 1
+}
+
+query_result_parse_drs_ranges <- function(labels) {
+    start <- as.POSIXct(rep(NA_real_, length(labels)), origin = "1970-01-01", tz = "UTC")
+    end <- start
+
+    for (i in seq_along(labels)) {
+        label <- labels[[i]]
+        if (is.na(label) || !nzchar(label)) {
+            next
+        }
+
+        label <- basename(sub("\\.html$", "", sub("[?#].*$", "", label)))
+        matches <- gregexpr("_([0-9]{4}|[0-9]{6}|[0-9]{8}|[0-9]{10}|[0-9]{12})-([0-9]{4}|[0-9]{6}|[0-9]{8}|[0-9]{10}|[0-9]{12})(?=\\.nc$|$)", label, perl = TRUE)
+        hit <- regmatches(label, matches)[[1L]]
+        if (!length(hit) || identical(hit, -1L)) {
+            next
+        }
+
+        range <- sub("^_", "", hit[[length(hit)]])
+        parts <- strsplit(range, "-", fixed = TRUE)[[1L]]
+        if (length(parts) != 2L || nchar(parts[[1L]]) != nchar(parts[[2L]])) {
+            next
+        }
+
+        start[[i]] <- query_result_parse_drs_bound(parts[[1L]], end = FALSE)
+        end[[i]] <- query_result_parse_drs_bound(parts[[2L]], end = TRUE)
+    }
+
+    data.frame(datetime_start = start, datetime_end = end, check.names = FALSE)
+}
+
 query_result_normalize_type <- function(type, choices = c("Dataset", "File", "Aggregation")) {
     checkmate::assert_string(type)
     type <- tolower(type)
@@ -782,9 +1201,11 @@ EsgResultDataset <- R6::R6Class(
         #'
         #' @param all A flag. Whether to collect all results. Default: `FALSE`.
         #'
-        #' @param limit A positive integer indicating the number of records to
-        #'        fetch per query. If `NULL`, the allowed maximum limit number
-        #'        `r this$data_max_limit` is used. Default: `100L`.
+        #' @param limit If `all = FALSE`, the maximum number of child records
+        #'        to collect in this request. If `all = TRUE`, the page size
+        #'        used for each paginated request, not a total cap. If `NULL`,
+        #'        the allowed maximum limit number `r this$data_max_limit` is
+        #'        used. Default: `100L`.
         #'
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
@@ -1086,6 +1507,35 @@ EsgResultFile <- R6::R6Class(
         },
         # }}}
 
+        # filter_time {{{
+        #' @description
+        #' Filter file records by the time range covered by each file
+        #'
+        #' `method = "drs"` parses the time range from CMIP/DRS-style NetCDF
+        #' filenames in `title`, URL basenames, or `id`. This is fast and does
+        #' not open files, but it depends on the ESGF filename convention.
+        #' Records whose time range cannot be parsed are kept and reported with
+        #' a warning.
+        #'
+        #' `method = "opendap"` opens each OPeNDAP URL and reads the NetCDF
+        #' time axis to determine the file range. This is more exact, but much
+        #' slower and requires OPeNDAP access.
+        #'
+        #' The requested time filter is recorded on the returned result and is
+        #' carried into `EsgDataset$read_region()` when a dataset is opened from
+        #' the filtered result.
+        #'
+        #' @param start,stop Time range boundaries. Character, `Date`, and
+        #'        `POSIXt` inputs are accepted and parsed in UTC.
+        #' @param method How to determine file time ranges. One of `"drs"` or
+        #'        `"opendap"`. Default: `"drs"`.
+        #'
+        #' @return A new `EsgResultFile` object.
+        filter_time = function(start, stop, method = c("drs", "opendap")) {
+            private$filter_time_result(start, stop, method = method, result_label = "file")
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print a summary of the current dataset
@@ -1286,6 +1736,7 @@ EsgResultFile <- R6::R6Class(
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
+            esg_dataset_set_context(ds, private$context)
             cleanup_preopened <- FALSE
             ds
         }
@@ -1392,6 +1843,23 @@ EsgResultAggregation <- R6::R6Class(
         to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_data_table(fields, if (formatted) c("url", "size"))
+        },
+        # }}}
+
+        # filter_time {{{
+        #' @description
+        #' Filter aggregation records by the time range covered by each file
+        #'
+        #' See `EsgResultFile$filter_time()` for the method semantics.
+        #'
+        #' @param start,stop Time range boundaries. Character, `Date`, and
+        #'        `POSIXt` inputs are accepted and parsed in UTC.
+        #' @param method How to determine file time ranges. One of `"drs"` or
+        #'        `"opendap"`. Default: `"drs"`.
+        #'
+        #' @return A new `EsgResultAggregation` object.
+        filter_time = function(start, stop, method = c("drs", "opendap")) {
+            private$filter_time_result(start, stop, method = method, result_label = "aggregation")
         },
         # }}}
 
@@ -1576,6 +2044,7 @@ EsgResultAggregation <- R6::R6Class(
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
+            esg_dataset_set_context(ds, private$context)
             cleanup_preopened <- FALSE
             ds
         }

@@ -40,6 +40,7 @@ and \code{url_download} when their source fields are available.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgResultFile-to_data_table}{\code{EsgResultFile$to_data_table()}}
+\item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
 \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
 \item \href{#method-EsgResultFile-open_dataset}{\code{EsgResultFile$open_dataset()}}
 \item \href{#method-EsgResultFile-clone}{\code{EsgResultFile$clone()}}
@@ -79,6 +80,44 @@ including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-filter_time"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-filter_time}{}}}
+\subsection{Method \code{filter_time()}}{
+Filter file records by the time range covered by each file
+
+\code{method = "drs"} parses the time range from CMIP/DRS-style NetCDF
+filenames in \code{title}, URL basenames, or \code{id}. This is fast and does
+not open files, but it depends on the ESGF filename convention.
+Records whose time range cannot be parsed are kept and reported with
+a warning.
+
+\code{method = "opendap"} opens each OPeNDAP URL and reads the NetCDF
+time axis to determine the file range. This is more exact, but much
+slower and requires OPeNDAP access.
+
+The requested time filter is recorded on the returned result and is
+carried into \code{EsgDataset$read_region()} when a dataset is opened from
+the filtered result.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
+\code{POSIXt} inputs are accepted and parsed in UTC.}
+
+\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
+\code{"opendap"}. Default: \code{"drs"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultFile} object.
 }
 }
 \if{html}{\out{<hr>}}

@@ -135,9 +135,11 @@ fields will be included. Default: \code{NULL}.}
 
 \item{\code{all}}{A flag. Whether to collect all results. Default: \code{FALSE}.}
 
-\item{\code{limit}}{A positive integer indicating the number of records to
-fetch per query. If \code{NULL}, the allowed maximum limit number
-10000 is used. Default: \code{100L}.}
+\item{\code{limit}}{If \code{all = FALSE}, the maximum number of child records
+to collect in this request. If \code{all = TRUE}, the page size
+used for each paginated request, not a total cap. If \code{NULL},
+the allowed maximum limit number 10000 is
+used. Default: \code{100L}.}
 
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}

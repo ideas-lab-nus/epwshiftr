@@ -45,17 +45,20 @@ test_that("result schema JSON files use local reusable definitions", {
         "response_body",
         "response_docs",
         "facet_counts",
-        "timestamp"
+        "timestamp",
+        "context",
+        "context_time_filter"
     )
 
     for (filename in c("result-dataset.json", "result-file.json", "result-aggregation.json")) {
         schema_file <- test_path("..", "..", "inst", "extdata", "schema", filename)
         json <- jsonlite::fromJSON(schema_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
-        expect_named(json$fields, c("index_node", "parameter", "response"))
+        expect_named(json$fields, c("index_node", "parameter", "response", "context"))
         expect_identical(json$fields$index_node$`$ref`, "#/$defs/index_node")
         expect_identical(json$fields$parameter$`$ref`, "#/$defs/parameter")
         expect_identical(json$fields$response$`$ref`, "#/$defs/response")
+        expect_identical(json$fields$context$`$ref`, "#/$defs/context")
         expect_true(all(required_defs %in% names(json[["$defs"]])))
     }
 })
@@ -103,12 +106,17 @@ schema_test_response <- function(docs) {
     )
 }
 
-schema_test_result_json <- function(type, docs) {
-    list(
+schema_test_result_json <- function(type, docs, context = NULL) {
+    result <- list(
         index_node = "https://example.org",
         parameter = query_param_as_store(list(type = type, format = FORMAT_JSON))$serialize(null = TRUE),
         response = schema_test_response(docs)
     )
+    if (!is.null(context)) {
+        result$context <- context
+    }
+
+    result
 }
 
 schema_test_dataset_docs <- function() {
@@ -171,6 +179,20 @@ test_that("schema validates saved query result JSON fixtures", {
     empty_file_json <- schema_test_result_json("File", schema_test_file_docs()[0L, ])
     empty_file_json$response$response$docs <- data.frame()
     expect_true(schema_validate(SCHEMA_RESULT_FILE, empty_file_json, mode = "test", name = "empty-file-result"))
+
+    time_context <- list(time_filter = list(
+        start = "2050-01-01T00:00:00Z",
+        stop = "2050-12-31T23:59:59Z",
+        method = "drs",
+        unknown = "kept",
+        total = 2L,
+        selected = 1L,
+        unknown_count = 0L
+    ))
+    file_with_context <- schema_test_result_json("File", schema_test_file_docs(), context = time_context)
+    expect_true(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "file-result-context"))
+    file_with_context$context$time_filter$method <- "metadata"
+    expect_false(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "bad-result-context"))
 
     bad_file <- tempfile(fileext = ".json")
     jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)

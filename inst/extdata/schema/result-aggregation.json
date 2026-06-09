@@ -15,6 +15,9 @@
     },
     "response": {
       "$ref": "#/$defs/response"
+    },
+    "context": {
+      "$ref": "#/$defs/context"
     }
   },
   "$defs": {
@@ -6004,6 +6007,71 @@
     "timestamp": {
       "check": {
         "kind": "string"
+      }
+    },
+    "context": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "subset.of": "time_filter"
+      },
+      "fields": {
+        "time_filter": {
+          "$ref": "#/$defs/context_time_filter"
+        }
+      }
+    },
+    "context_time_filter": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "subset.of": ["start", "stop", "method", "unknown", "total", "selected", "unknown_count"],
+        "must.include": ["start", "stop", "method"]
+      },
+      "fields": {
+        "start": {
+          "check": {
+            "kind": "string"
+          }
+        },
+        "stop": {
+          "check": {
+            "kind": "string"
+          }
+        },
+        "method": {
+          "check": {
+            "kind": "choice",
+            "choices": ["drs", "opendap"]
+          }
+        },
+        "unknown": {
+          "check": {
+            "kind": "string"
+          }
+        },
+        "total": {
+          "check": {
+            "kind": "integer",
+            "lower": 0
+          }
+        },
+        "selected": {
+          "check": {
+            "kind": "integer",
+            "lower": 0
+          }
+        },
+        "unknown_count": {
+          "check": {
+            "kind": "integer",
+            "lower": 0
+          }
+        }
       }
     }
   }

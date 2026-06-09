@@ -37,6 +37,7 @@ available.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgResultAggregation-to_data_table}{\code{EsgResultAggregation$to_data_table()}}
+\item \href{#method-EsgResultAggregation-filter_time}{\code{EsgResultAggregation$filter_time()}}
 \item \href{#method-EsgResultAggregation-print}{\code{EsgResultAggregation$print()}}
 \item \href{#method-EsgResultAggregation-open_dataset}{\code{EsgResultAggregation$open_dataset()}}
 \item \href{#method-EsgResultAggregation-clone}{\code{EsgResultAggregation$clone()}}
@@ -76,6 +77,32 @@ including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultAggregation-filter_time"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultAggregation-filter_time}{}}}
+\subsection{Method \code{filter_time()}}{
+Filter aggregation records by the time range covered by each file
+
+See \code{EsgResultFile$filter_time()} for the method semantics.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
+\code{POSIXt} inputs are accepted and parsed in UTC.}
+
+\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
+\code{"opendap"}. Default: \code{"drs"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultAggregation} object.
 }
 }
 \if{html}{\out{<hr>}}

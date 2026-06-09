@@ -40,7 +40,7 @@ query_result_test_params <- function(type = "Dataset", ...) {
     query_param_as_store(params)
 }
 
-query_result_test_object <- function(type = "Dataset", docs, params = query_result_test_params(type)) {
+query_result_test_object <- function(type = "Dataset", docs, params = query_result_test_params(type), context = NULL) {
     generator <- switch(
         type,
         Dataset = EsgResultDataset,
@@ -51,15 +51,17 @@ query_result_test_object <- function(type = "Dataset", docs, params = query_resu
         generator,
         index_node = "https://example.org",
         params = params,
-        result = query_result_test_response(docs)
+        result = query_result_test_response(docs),
+        context = context
     )
 }
 
-query_result_test_state <- function(type = "Dataset", docs, params = query_result_test_params(type)) {
+query_result_test_state <- function(type = "Dataset", docs, params = query_result_test_params(type), context = NULL) {
     list(
         index_node = "https://example.org",
         parameter = params,
-        response = query_result_test_response(docs)
+        response = query_result_test_response(docs),
+        context = context
     )
 }
 
@@ -90,6 +92,44 @@ query_result_test_file_docs <- function(url = "https://example.org/file.nc|appli
         check.names = FALSE
     )
     docs$url <- I(list(url))
+    docs
+}
+
+query_result_test_file_time_docs <- function(type = "File") {
+    docs <- data.frame(
+        id = c(
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc|dataset-1",
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc|dataset-1",
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_unknown.nc|dataset-1"
+        ),
+        dataset_id = "dataset-1",
+        size = c(1, 2, 3),
+        checksum = c("abc", "def", "ghi"),
+        checksum_type = "SHA256",
+        tracking_id = c(
+            "hdl:21.14100/mock-file-2050",
+            "hdl:21.14100/mock-file-2080",
+            "hdl:21.14100/mock-file-unknown"
+        ),
+        title = c(
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_unknown.nc"
+        ),
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        "https://example.org/dods/2050.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/dods/2080.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/dods/unknown.nc.html|application/netcdf|OPENDAP"
+    ))
+    if (identical(type, "Aggregation")) {
+        docs$checksum <- NULL
+        docs$checksum_type <- NULL
+        docs$tracking_id <- NULL
+    }
+
     docs
 }
 
@@ -178,6 +218,106 @@ test_that("ESGF query results save/load through real JSON files", {
 
         unlink(file)
     }
+})
+
+test_that("File and Aggregation results filter time using DRS filename ranges", {
+    for (type in c("File", "Aggregation")) {
+        result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))
+
+        expect_false("datetime_start" %in% result$fields)
+        warnings <- character()
+        filtered <- withCallingHandlers(
+            result$filter_time("2050-06-01", "2050-06-30", method = "drs"),
+            warning = function(w) {
+                warnings <<- c(warnings, conditionMessage(w))
+                invokeRestart("muffleWarning")
+            }
+        )
+        expect_true(any(grepl("DRS filename", warnings)))
+        expect_true(any(grepl("Could not parse", warnings)))
+        expect_s3_class(filtered, class(result)[[1L]])
+        expect_identical(filtered$id, result$id[c(1L, 3L)])
+        expect_false("datetime_start" %in% result$fields)
+        expect_true(all(c("datetime_start", "datetime_end") %in% filtered$fields))
+        expect_identical(filtered$time_filter$method, "drs")
+        expect_identical(filtered$time_filter$total, 3L)
+        expect_identical(filtered$time_filter$selected, 2L)
+        expect_identical(filtered$time_filter$unknown_count, 1L)
+
+        dt <- filtered$to_data_table(c("id", "datetime_start", "datetime_end"))
+        expect_identical(dt$datetime_start[[1L]], "2050-01-01T00:00:00Z")
+        expect_identical(dt$datetime_end[[1L]], "2050-12-31T23:59:59Z")
+        expect_true(is.na(dt$datetime_start[[2L]]))
+        expect_true(is.na(dt$datetime_end[[2L]]))
+    }
+})
+
+test_that("result time filter context persists through save/load", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs(), query_result_test_params("File"))
+    filtered <- suppressWarnings(result$filter_time("2050-06-01", "2050-06-30", method = "drs"))
+    file <- tempfile(fileext = ".json")
+
+    expect_type(filtered$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_named(json$context, "time_filter")
+    expect_identical(json$context$time_filter$method, "drs")
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_identical(loaded$time_filter, filtered$time_filter)
+    expect_identical(loaded$id, filtered$id)
+})
+
+test_that("File results filter time using OPeNDAP time axes", {
+    FakeEsgDataset <- R6::R6Class(
+        "FakeEsgDataset",
+        public = list(
+            target = NULL,
+            initialize = function(target) {
+                self$target <- target
+            },
+            open = function() {
+                private$opened <- TRUE
+                self
+            },
+            close = function() {
+                private$opened <- FALSE
+                invisible(self)
+            },
+            get_time_axis = function(...) {
+                if (grepl("unknown", self$target)) {
+                    stop("no time axis", call. = FALSE)
+                }
+                if (grepl("2050", self$target)) {
+                    values <- as.POSIXct(c("2050-01-01", "2050-12-31"), tz = "UTC")
+                } else {
+                    values <- as.POSIXct(c("2080-01-01", "2080-12-31"), tz = "UTC")
+                }
+                list(values = values)
+            }
+        ),
+        active = list(
+            is_open = function() private$opened
+        ),
+        private = list(
+            opened = FALSE
+        )
+    )
+    testthat::local_mocked_bindings(EsgDataset = FakeEsgDataset, .package = "epwshiftr")
+
+    result <- query_result_test_object("File", query_result_test_file_time_docs(), query_result_test_params("File"))
+    warnings <- character()
+    filtered <- withCallingHandlers(
+        result$filter_time("2050-06-01", "2050-06-30", method = "opendap"),
+        warning = function(w) {
+            warnings <<- c(warnings, conditionMessage(w))
+            invokeRestart("muffleWarning")
+        }
+    )
+
+    expect_true(any(grepl("OPeNDAP time axes", warnings)))
+    expect_identical(filtered$id, result$id[c(1L, 3L)])
+    expect_identical(filtered$time_filter$method, "opendap")
+    expect_identical(filtered$time_filter$unknown_count, 1L)
 })
 
 test_that("empty query result fields are stable character vectors", {
