@@ -72,6 +72,84 @@ EsgExtractStore <- R6::R6Class(
         close = function() {
             private$disconnect()
             invisible(self)
+        },
+        # }}}
+
+        # add_files {{{
+        #' @description
+        #' Add File or Aggregation query results to the local file catalog.
+        #'
+        #' @param files An `EsgResultFile` or `EsgResultAggregation` object.
+        #' @param label Optional label for this query run.
+        #'
+        #' @return The created or updated query ID.
+        add_files = function(files, label = NULL) {
+            checkmate::assert_string(label, null.ok = TRUE)
+            private$check_open()
+
+            result_type <- extract_store_result_type(files)
+            dt <- extract_store_file_table(files)
+            query_id <- extract_store_hash(
+                result_type,
+                priv(files)$index_node,
+                jsonlite::toJSON(priv(files)$parameter$serialize(null = TRUE), auto_unbox = TRUE),
+                jsonlite::toJSON(dt, dataframe = "rows", POSIXt = "ISO8601", auto_unbox = TRUE, null = "null")
+            )
+
+            query_file <- file.path(private$query_dir, sprintf("files-%s.json", query_id))
+            files$save(query_file)
+
+            time_filter <- files$time_filter
+            query_run <- data.frame(
+                query_id = query_id,
+                label = extract_store_na_character(label),
+                result_type = result_type,
+                query_file = extract_store_rel_path(query_file, private$store_path),
+                index_node = priv(files)$index_node,
+                time_filter_start = extract_store_parse_datetime_scalar(extract_store_list_value(time_filter, "start")),
+                time_filter_stop = extract_store_parse_datetime_scalar(extract_store_list_value(time_filter, "stop")),
+                time_filter_method = extract_store_na_character(extract_store_list_value(time_filter, "method")),
+                created_at = extract_store_now(),
+                package_version = as.character(utils::packageVersion("epwshiftr")),
+                stringsAsFactors = FALSE
+            )
+            private$replace_rows("query_run", query_run, "query_id")
+
+            if (nrow(dt)) {
+                now <- extract_store_now()
+                catalog <- data.frame(
+                    file_key = extract_store_file_keys(dt),
+                    query_id = query_id,
+                    esgf_id = dt$id,
+                    dataset_id = dt$dataset_id,
+                    title = dt$title,
+                    filename = dt$filename,
+                    tracking_id = dt$tracking_id,
+                    checksum = dt$checksum,
+                    checksum_type = dt$checksum_type,
+                    size = suppressWarnings(as.numeric(dt$size)),
+                    data_node = dt$data_node,
+                    source_id = dt$source_id,
+                    experiment_id = dt$experiment_id,
+                    variant_label = dt$variant_label,
+                    frequency = dt$frequency,
+                    table_id = dt$table_id,
+                    variable_id = dt$variable_id,
+                    grid_label = dt$grid_label,
+                    datetime_start = extract_store_parse_datetime(dt$datetime_start),
+                    datetime_end = extract_store_parse_datetime(dt$datetime_end),
+                    actual_time_start = extract_store_parse_datetime(rep(NA_character_, nrow(dt))),
+                    actual_time_end = extract_store_parse_datetime(rep(NA_character_, nrow(dt))),
+                    url_opendap = dt$url_opendap,
+                    url_download = dt$url_download,
+                    local_path = rep(NA_character_, nrow(dt)),
+                    created_at = rep(now, nrow(dt)),
+                    stringsAsFactors = FALSE
+                )
+                private$replace_rows("file_catalog", catalog, "file_key")
+            }
+
+            query_id
         }
         # }}}
     ),
@@ -223,6 +301,53 @@ EsgExtractStore <- R6::R6Class(
         },
         # }}}
 
+        # check_open {{{
+        check_open = function() {
+            if (!isTRUE(self$is_open)) {
+                cli::cli_abort("The extraction store is closed.")
+            }
+
+            invisible(NULL)
+        },
+        # }}}
+
+        # replace_rows {{{
+        replace_rows = function(table, rows, key) {
+            checkmate::assert_string(table)
+            checkmate::assert_string(key)
+            if (!nrow(rows)) {
+                return(invisible(NULL))
+            }
+
+            keys <- unique(rows[[key]])
+            if (!length(keys)) {
+                return(invisible(NULL))
+            }
+
+            private$delete_by_key(table, key, keys)
+            DBI::dbAppendTable(private$conn, table, rows)
+            invisible(NULL)
+        },
+        # }}}
+
+        # delete_by_key {{{
+        delete_by_key = function(table, key, values) {
+            checkmate::assert_string(table)
+            checkmate::assert_string(key)
+            values <- unique(as.character(values))
+            values <- values[!is.na(values)]
+            if (!length(values)) {
+                return(invisible(NULL))
+            }
+
+            q_table <- DBI::dbQuoteIdentifier(private$conn, table)
+            q_key <- DBI::dbQuoteIdentifier(private$conn, key)
+            q_values <- paste(DBI::dbQuoteString(private$conn, values), collapse = ", ")
+            DBI::dbExecute(private$conn, sprintf("DELETE FROM %s WHERE %s IN (%s)", q_table, q_key, q_values))
+            invisible(NULL)
+        },
+        # }}}
+
         # finalize {{{
         finalize = function() {
             private$disconnect()
@@ -230,4 +355,139 @@ EsgExtractStore <- R6::R6Class(
         # }}}
     )
 )
+# }}}
+
+# extract-store helpers {{{
+extract_store_result_type <- function(files) {
+    if (inherits(files, "EsgResultFile")) {
+        return("File")
+    }
+    if (inherits(files, "EsgResultAggregation")) {
+        return("Aggregation")
+    }
+
+    cli::cli_abort("`files` must be an EsgResultFile or EsgResultAggregation object.")
+}
+
+extract_store_now <- function() {
+    as.POSIXct(Sys.time(), tz = "UTC")
+}
+
+extract_store_hash <- function(...) {
+    text <- paste(vapply(list(...), extract_store_hash_piece, character(1L)), collapse = "\n")
+    paste0(openssl::sha256(charToRaw(text)))
+}
+
+extract_store_hash_piece <- function(x) {
+    if (is.null(x)) {
+        return("<NULL>")
+    }
+
+    x <- unlist(x, recursive = TRUE, use.names = FALSE)
+    x <- as.character(x)
+    x[is.na(x)] <- "<NA>"
+    paste(x, collapse = "\r")
+}
+
+extract_store_na_character <- function(x) {
+    if (is.null(x) || !length(x) || is.na(x[[1L]])) {
+        return(NA_character_)
+    }
+
+    as.character(x[[1L]])
+}
+
+extract_store_list_value <- function(x, name) {
+    if (is.null(x) || !is.list(x) || !name %in% names(x)) {
+        return(NA_character_)
+    }
+
+    x[[name]]
+}
+
+extract_store_parse_datetime_scalar <- function(x) {
+    extract_store_parse_datetime(extract_store_na_character(x))[[1L]]
+}
+
+extract_store_parse_datetime <- function(x) {
+    if (inherits(x, "POSIXt")) {
+        return(as.POSIXct(x, tz = "UTC"))
+    }
+    x <- as.character(x)
+    out <- as.POSIXct(rep(NA_real_, length(x)), origin = "1970-01-01", tz = "UTC")
+    ok <- !is.na(x) & nzchar(x)
+    if (any(ok)) {
+        out[ok] <- parse_datetime(x[ok], tz = "UTC")
+    }
+
+    out
+}
+
+extract_store_rel_path <- function(path, root) {
+    path <- normalizePath(path, mustWork = FALSE)
+    root <- normalizePath(root, mustWork = TRUE)
+    prefix <- paste0(root, .Platform$file.sep)
+    if (startsWith(path, prefix)) {
+        return(substring(path, nchar(prefix) + 1L))
+    }
+
+    path
+}
+
+extract_store_scalar_column <- function(dt, name, n = nrow(dt)) {
+    if (!name %in% names(dt)) {
+        return(rep(NA_character_, n))
+    }
+
+    value <- dt[[name]]
+    if (is.list(value)) {
+        value <- vapply(value, extract_store_na_character, character(1L))
+    } else {
+        value <- as.character(value)
+        value[is.na(value)] <- NA_character_
+    }
+
+    value
+}
+
+extract_store_file_table <- function(files) {
+    extract_store_result_type(files)
+    dt <- data.table::copy(files$to_data_table())
+    n <- nrow(dt)
+    columns <- c(
+        "id", "dataset_id", "title", "filename", "tracking_id",
+        "checksum", "checksum_type", "size", "data_node", "source_id",
+        "experiment_id", "variant_label", "frequency", "table_id",
+        "variable_id", "grid_label", "datetime_start", "datetime_end",
+        "url_opendap", "url_download"
+    )
+
+    out <- data.table::as.data.table(
+        stats::setNames(rep(list(rep(NA_character_, n)), length(columns)), columns)
+    )
+    for (name in columns) {
+        out[[name]] <- extract_store_scalar_column(dt, name, n)
+    }
+    if (n && all(is.na(out$filename)) && any(!is.na(out$title))) {
+        out$filename <- basename(out$title)
+    }
+
+    out[]
+}
+
+extract_store_file_keys <- function(dt) {
+    if (!nrow(dt)) {
+        return(character())
+    }
+
+    vapply(seq_len(nrow(dt)), function(i) {
+        pieces <- unlist(dt[i, c(
+            "id", "tracking_id", "url_opendap", "url_download", "title"
+        ), with = FALSE], use.names = FALSE)
+        if (all(is.na(pieces) | !nzchar(pieces))) {
+            cli::cli_abort("Cannot create a stable file key because file record {i} has no ID, tracking ID, URL, or title.")
+        }
+        extract_store_hash(pieces)
+    }, character(1L))
+}
 # }}}
