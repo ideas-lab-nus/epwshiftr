@@ -86,6 +86,31 @@ extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1
     docs
 }
 
+extract_store_test_completed_store <- function() {
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgExtractStore$new(dir)
+    docs <- extract_store_test_file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(extract_store_test_result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "SIN",
+        nearest = 1L
+    )
+    store$extract(plan_id = plan$plan_id)
+
+    list(store = store, dir = dir, nc = nc, plan = plan)
+}
+
 test_that("EsgExtractStore creates a DuckDB manifest and store layout", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
@@ -379,4 +404,51 @@ test_that("EsgExtractStore records failed extraction plans", {
     expect_equal(plans$status, "failed")
     expect_equal(plans$attempt_count, 1L)
     expect_match(plans$last_error, "None of the requested variable")
+})
+
+test_that("EsgExtractStore summarises and checks complete coverage", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    fixture <- extract_store_test_completed_store()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+
+    summary <- store$summarise()
+    expect_s3_class(summary, "data.table")
+    expect_equal(nrow(summary), 1L)
+    expect_equal(summary$source_id, "EC-Earth3")
+    expect_equal(summary$site_id, "SIN")
+    expect_equal(summary$variable_id, "tas")
+    expect_equal(summary$year, 2060L)
+    expect_equal(summary$row_count, 2)
+    expect_equal(summary$unique_time_count, 2)
+
+    cov <- store$coverage()
+    expect_s3_class(cov, "data.table")
+    expect_true(cov$complete)
+    expect_equal(cov$output_time_count, 2)
+    expect_equal(cov$output_rows, 2)
+    expect_silent(store$assert_complete())
+
+    sql <- store$query("SELECT COUNT(*) AS n FROM extraction_result")
+    expect_equal(sql$n, 1)
+})
+
+test_that("EsgExtractStore detects incomplete coverage", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    fixture <- extract_store_test_completed_store()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+
+    results <- DBI::dbReadTable(epwshiftr:::priv(store)$conn, "extraction_result")
+    unlink(file.path(fixture$dir, results$output_path))
+    cov <- store$coverage()
+    expect_false(cov$complete)
+    expect_false(cov$output_files_exist)
+    expect_error(store$assert_complete(), "incomplete")
 })

@@ -317,6 +317,170 @@ EsgExtractStore <- R6::R6Class(
             }
 
             data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
+        },
+        # }}}
+
+        # query {{{
+        #' @description
+        #' Run a DuckDB SQL query against the extraction manifest.
+        #'
+        #' @param sql SQL query.
+        #'
+        #' @return A data.table.
+        query = function(sql) {
+            checkmate::assert_string(sql)
+            private$check_open()
+
+            data.table::as.data.table(DBI::dbGetQuery(private$conn, sql))
+        },
+        # }}}
+
+        # summarise {{{
+        #' @description
+        #' Summarise extracted Parquet outputs by manifest columns.
+        #'
+        #' @param by Character vector of grouping columns. Default groups by
+        #'        source, experiment, variant, frequency, variable, site and
+        #'        year.
+        #'
+        #' @return A data.table.
+        summarise = function(by = c("source_id", "experiment_id", "variant_label",
+                                    "frequency", "variable_id", "site_id", "year")) {
+            checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            private$check_open()
+
+            map <- extract_store_summary_columns()
+            unknown <- setdiff(by, names(map))
+            if (length(unknown)) {
+                cli::cli_abort("Unknown extraction summary column(s): {.val {unknown}}.")
+            }
+
+            groups <- unname(map[by])
+            select_groups <- paste(sprintf("%s AS %s", groups, DBI::dbQuoteIdentifier(private$conn, by)), collapse = ", ")
+            group_by <- paste(groups, collapse = ", ")
+            sql <- sprintf(
+                paste(
+                    "SELECT %s,",
+                    "COUNT(DISTINCT p.plan_id) AS plan_count,",
+                    "COUNT(DISTINCT r.output_path) AS file_count,",
+                    "COALESCE(SUM(r.row_count), 0) AS row_count,",
+                    "COALESCE(SUM(r.unique_time_count), 0) AS unique_time_count,",
+                    "MIN(r.time_min) AS time_min,",
+                    "MAX(r.time_max) AS time_max",
+                    "FROM extraction_plan p",
+                    "LEFT JOIN file_catalog f ON p.file_key = f.file_key",
+                    "LEFT JOIN extraction_result r ON p.plan_id = r.plan_id",
+                    "GROUP BY %s",
+                    "ORDER BY %s"
+                ),
+                select_groups,
+                group_by,
+                group_by
+            )
+
+            data.table::as.data.table(DBI::dbGetQuery(private$conn, sql))
+        },
+        # }}}
+
+        # coverage {{{
+        #' @description
+        #' Check extraction coverage for planned jobs.
+        #'
+        #' @param plan_id Optional plan IDs to check.
+        #'
+        #' @return A data.table with one row per plan.
+        coverage = function(plan_id = NULL) {
+            checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            private$check_open()
+
+            plans <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_plan"))
+            if (!is.null(plan_id)) {
+                plans <- plans[plans$plan_id %in% plan_id]
+            }
+            if (!nrow(plans)) {
+                return(plans)
+            }
+
+            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            results <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_result"))
+            agg <- if (nrow(results)) {
+                results[, .(
+                    output_files = list(output_path),
+                    output_file_count = .N,
+                    output_rows = sum(row_count, na.rm = TRUE),
+                    output_time_count = sum(unique_time_count, na.rm = TRUE),
+                    output_time_min = min(time_min, na.rm = TRUE),
+                    output_time_max = max(time_max, na.rm = TRUE)
+                ), by = plan_id]
+            } else {
+                data.table::data.table(
+                    plan_id = character(),
+                    output_files = list(),
+                    output_file_count = integer(),
+                    output_rows = integer(),
+                    output_time_count = integer(),
+                    output_time_min = as.POSIXct(character(), tz = "UTC"),
+                    output_time_max = as.POSIXct(character(), tz = "UTC")
+                )
+            }
+
+            out <- merge(plans, catalog, by = c("query_id", "file_key"), all.x = TRUE, suffixes = c("", "_file"))
+            out <- merge(out, agg, by = "plan_id", all.x = TRUE)
+            out[is.na(output_file_count), `:=`(
+                output_file_count = 0L,
+                output_rows = 0L,
+                output_time_count = 0L
+            )]
+            if (!"output_files" %in% names(out)) {
+                out[, output_files := list(character())]
+            }
+            out[, output_files_exist := vapply(output_files, function(paths) {
+                paths <- unlist(paths, use.names = FALSE)
+                length(paths) > 0L && all(file.exists(file.path(private$store_path, paths)))
+            }, logical(1L))]
+            out[, complete := status == "done" &
+                output_files_exist &
+                (is.na(available_time_count) | available_time_count <= 0L | output_time_count >= available_time_count)]
+
+            data.table::setcolorder(out, c(
+                "plan_id", "complete", "status", "query_id", "file_key",
+                "site_id", "source_id", "experiment_id", "variant_label",
+                "frequency", "variable_id",
+                intersect(c("available_time_count", "output_time_count", "output_rows", "output_file_count", "output_files_exist", "last_error"), names(out)),
+                setdiff(names(out), c(
+                    "plan_id", "complete", "status", "query_id", "file_key",
+                    "site_id", "source_id", "experiment_id", "variant_label",
+                    "frequency", "variable_id",
+                    "available_time_count", "output_time_count", "output_rows",
+                    "output_file_count", "output_files_exist", "last_error"
+                ))
+            ))
+            out[]
+        },
+        # }}}
+
+        # assert_complete {{{
+        #' @description
+        #' Assert that selected extraction plans are complete.
+        #'
+        #' @param plan_id Optional plan IDs to check.
+        #'
+        #' @return The store object itself, invisibly.
+        assert_complete = function(plan_id = NULL) {
+            cov <- self$coverage(plan_id = plan_id)
+            if (!nrow(cov)) {
+                cli::cli_abort("No extraction plans were found to check.")
+            }
+            bad <- cov[!cov$complete]
+            if (nrow(bad)) {
+                labels <- paste0(bad$plan_id, " [", bad$status, "]")
+                cli::cli_abort(c(
+                    "Some extraction plans are incomplete.",
+                    "x" = "Incomplete plan(s): {paste(labels, collapse = ', ')}"
+                ))
+            }
+
+            invisible(self)
         }
         # }}}
     ),
@@ -984,5 +1148,24 @@ extract_store_partition_value <- function(x) {
     }
 
     x
+}
+
+extract_store_summary_columns <- function() {
+    c(
+        query_id = "p.query_id",
+        plan_id = "p.plan_id",
+        file_key = "p.file_key",
+        site_id = "p.site_id",
+        source_id = "f.source_id",
+        experiment_id = "f.experiment_id",
+        variant_label = "f.variant_label",
+        frequency = "f.frequency",
+        table_id = "f.table_id",
+        variable_id = "p.variable_id",
+        grid_label = "f.grid_label",
+        data_node = "f.data_node",
+        year = "r.year",
+        status = "p.status"
+    )
 }
 # }}}
