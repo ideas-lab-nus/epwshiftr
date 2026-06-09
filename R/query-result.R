@@ -38,7 +38,7 @@ EsgResult <- R6::R6Class(
         initialize = function(index_node, params, response, context = NULL) {
             private$index_node <- index_node
             private$parameter <- query_param_clone(params)
-            private$response <- response
+            private$response <- query_result_normalize_response(response)
             private$context <- query_result_normalize_context(context)
             private$register_dynamic_fields()
             self
@@ -1165,6 +1165,10 @@ EsgResultDataset <- R6::R6Class(
         #'        inherited from the dataset query when available, with
         #'        `distrib = TRUE` and `latest = TRUE` as fallbacks. For details
         #'        on possible parameters, please see [esg_query()].
+        #'        `Aggregation` collection uses `dataset_id` plus explicit child filters
+        #'        in `...`; parent Dataset facet filters are not inherited because
+        #'        Aggregation records on standard ESGF search nodes do not necessarily
+        #'        expose the same facet fields as Dataset records.
         #'
         #' @return
         #'
@@ -1385,7 +1389,14 @@ EsgResultDataset <- R6::R6Class(
             query <- esg_query(private$index_node)
             query$distrib(controls$distrib)
 
-            store <- private$parameter$copy()
+            store <- if (type == "Aggregation") {
+                QueryParamStore$new()
+            } else {
+                private$parameter$copy()
+            }
+            if (type == "Aggregation") {
+                store$project(NULL)
+            }
             query_result_merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
             store$fields(query_param_value(query$fields(fields)$fields()))
             store$shards(query_param_value(query$shards(controls$shards)$shards()))
@@ -2038,6 +2049,21 @@ EsgResultAggregation <- R6::R6Class(
         )))
     )
 )
+# }}}
+
+# query_result_normalize_response {{{
+query_result_normalize_response <- function(response) {
+    if (is.null(response)) {
+        return(response)
+    }
+
+    docs <- response$response$docs
+    if (is.null(docs) || (is.list(docs) && !is.data.frame(docs) && !length(docs))) {
+        response$response$docs <- data.frame(check.names = FALSE)
+    }
+
+    response
+}
 # }}}
 
 # query_result_empty_response {{{

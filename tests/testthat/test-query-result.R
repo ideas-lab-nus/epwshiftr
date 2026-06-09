@@ -410,6 +410,28 @@ test_that("empty child query results save/load through real JSON files", {
 
         unlink(file)
     }
+
+    for (case_name in c("file", "aggregation")) {
+        type <- switch(case_name, file = "File", aggregation = "Aggregation")
+        generator <- switch(case_name, file = EsgResultFile, aggregation = EsgResultAggregation)
+        response <- query_result_test_response(empty_file_docs)
+        response$response$docs <- list()
+        result <- new_query_result(
+            generator,
+            "https://example.org",
+            query_result_test_params(type),
+            response
+        )
+        file <- tempfile(fileext = ".json")
+
+        expect_type(result$save(file), "character")
+        loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
+        expect_equal(loaded$count(), 0L)
+        expect_identical(loaded$fields, character())
+        expect_s3_class(loaded$to_data_table(), "data.table")
+
+        unlink(file)
+    }
 })
 
 test_that("empty dataset results collect empty child results without querying", {
@@ -437,6 +459,7 @@ test_that("empty dataset results collect empty child results without querying", 
 
 test_that("dataset result collect inherits controls and normalizes limit", {
     params <- query_result_test_params("Dataset", latest = FALSE, distrib = FALSE, replica = FALSE)
+    params$source_id("AWI-CM-1-1-MR")
     datasets <- query_result_test_object(
         "Dataset",
         data.frame(id = "dataset-1", size = 1, check.names = FALSE),
@@ -466,6 +489,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_false(query_param_value(calls[[1L]]$params$latest()))
     expect_false(query_param_value(calls[[1L]]$params$distrib()))
     expect_false(query_param_value(calls[[1L]]$params$replica()))
+    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
     expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param_value(priv(files)$parameter$fields())))
 
     expect_s3_class(
@@ -476,6 +500,19 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(query_param_value(calls[[2L]]$params$latest()))
     expect_true(query_param_value(calls[[2L]]$params$distrib()))
     expect_true(query_param_value(calls[[2L]]$params$replica()))
+
+    aggs <- expect_s3_class(
+        datasets$collect(fields = "id", limit = 1L, type = "Aggregation"),
+        "EsgResultAggregation"
+    )
+    expect_equal(calls[[3L]]$limit, 1L)
+    expect_false(query_param_value(calls[[3L]]$params$latest()))
+    expect_false(query_param_value(calls[[3L]]$params$distrib()))
+    expect_false(query_param_value(calls[[3L]]$params$replica()))
+    expect_null(calls[[3L]]$params$project())
+    expect_null(calls[[3L]]$params$source_id())
+    expect_identical(query_param_value(calls[[3L]]$params$flat()$dataset_id), "dataset-1")
+    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param_value(priv(aggs)$parameter$fields())))
 })
 
 test_that("dataset result collect accepts child facets and clears datetime constraints", {

@@ -224,6 +224,46 @@ test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
     expect_equal(DBI::dbReadTable(conn, "query_run")$result_type, "Aggregation")
 })
 
+test_that("EsgStore records empty child query runs", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    empty_docs <- extract_store_test_file_docs()[0L, ]
+
+    for (type in c("File", "Aggregation")) {
+        generator <- switch(type, File = EsgResultFile, Aggregation = EsgResultAggregation)
+        response <- extract_store_test_response(empty_docs)
+        response$response$docs <- list()
+        result <- new_query_result(
+            generator,
+            index_node = "https://example.org",
+            params = extract_store_test_params(type),
+            result = response
+        )
+
+        query_id <- store$add_files(result, label = paste("empty", type))
+        expect_match(query_id, "^[0-9a-f]{64}$")
+    }
+
+    conn <- priv(store)$conn
+    runs <- DBI::dbReadTable(conn, "query_run")
+    catalog <- DBI::dbReadTable(conn, "file_catalog")
+    artifacts <- DBI::dbReadTable(conn, "artifact")
+    validation <- store$validate()
+
+    expect_equal(nrow(runs), 2L)
+    expect_setequal(runs$result_type, c("File", "Aggregation"))
+    expect_equal(nrow(catalog), 0L)
+    expect_equal(nrow(artifacts), 2L)
+    expect_true(all(validation$exists))
+    expect_true(all(validation$checksum_ok))
+    expect_true(all(validation$size_ok))
+})
+
 test_that("EsgStore plans regional extraction jobs from catalog filters", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")

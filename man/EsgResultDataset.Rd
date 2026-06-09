@@ -152,7 +152,11 @@ parameters; call \verb{$filter_time()} on the returned result for
 time filtering. If control parameters are omitted, they are
 inherited from the dataset query when available, with
 \code{distrib = TRUE} and \code{latest = TRUE} as fallbacks. For details
-on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.}
+on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.
+\code{Aggregation} collection uses \code{dataset_id} plus explicit child filters
+in \code{...}; parent Dataset facet filters are not inherited because
+Aggregation records on standard ESGF search nodes do not necessarily
+expose the same facet fields as Dataset records.}
 }
 \if{html}{\out{</div>}}
 }
