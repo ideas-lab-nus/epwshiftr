@@ -119,6 +119,7 @@ DownloadTask <- R6::R6Class("DownloadTask",
 # downloader utilities {{{
 DOWNLOADER_SCHEMA_VERSION <- "1.0.0"
 DOWNLOADER_TASK_STATUS <- c("queued", "downloading", "done", "error", "cancelled", "skipped")
+DOWNLOADER_SESSION_STARTED_AT <- Sys.time()
 
 download_now <- function() {
     as.POSIXct(Sys.time(), tz = "UTC")
@@ -687,14 +688,15 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 cli::cli_alert_warning("Persistent downloader runs execute synchronously in this version.")
             }
 
+            private$cancel_stale_downloading(session_id = session_id, task_id = task_id)
             tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = c("queued", "downloading"))
             if (!nrow(tasks)) {
-                return(private$select_tasks(session_id = session_id, task_id = task_id))
+                return(private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id)))
             }
             for (i in seq_len(nrow(tasks))) {
                 private$run_task(tasks[i, , drop = FALSE], progress = progress, overwrite = overwrite, resume = resume)
             }
-            private$select_tasks(session_id = session_id, task_id = task_id)
+            private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id))
         },
         # }}}
 
@@ -717,7 +719,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$require_manifest()
             checkmate::assert_string(session_id, null.ok = TRUE)
             checkmate::assert_subset(status, DOWNLOADER_TASK_STATUS, empty.ok = TRUE)
-            private$select_tasks(session_id = session_id, status = status)
+            private$decorate_task_status(private$select_tasks(session_id = session_id, status = status))
         },
         # }}}
 
@@ -733,7 +735,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$require_manifest()
             checkmate::assert_string(session_id, null.ok = TRUE)
             checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
-            private$select_tasks(session_id = session_id, task_id = task_id)
+            private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id))
         },
         # }}}
 
@@ -793,6 +795,21 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 }, logical(1L))
             } else {
                 logical()
+            }
+            failed <- tasks[!tasks$checksum_ok]
+            if (nrow(failed)) {
+                failed$status <- "error"
+                failed$last_error <- "Checksum verification failed."
+                failed$completed_at <- download_now()
+                private$replace_rows("download_task", as.data.frame(failed[, setdiff(names(failed), "checksum_ok"), with = FALSE]), "task_id")
+                for (i in seq_len(nrow(failed))) {
+                    private$log_event(failed$session_id[[i]], failed$task_id[[i]], "verify_error", failed$last_error[[i]])
+                }
+                for (sid in unique(failed$session_id)) {
+                    private$update_session_status(sid)
+                }
+                tasks$status[!tasks$checksum_ok] <- "error"
+                tasks$last_error[!tasks$checksum_ok] <- "Checksum verification failed."
             }
             tasks[]
         },
@@ -1519,6 +1536,55 @@ FileDownloader <- R6::R6Class("FileDownloader",
             if (!is.null(tid)) tasks <- tasks[tasks[["task_id"]] %in% tid]
             if (!is.null(task_status)) tasks <- tasks[tasks[["status"]] %in% task_status]
             tasks[]
+        },
+
+        decorate_task_status = function(tasks) {
+            tasks <- data.table::as.data.table(tasks)
+            if (!nrow(tasks)) {
+                tasks$candidate_count <- integer()
+                tasks$failed_candidate_count <- integer()
+                tasks$selected_data_node <- character()
+                return(tasks[])
+            }
+            candidates <- private$read_table("download_candidate")
+            if (!nrow(candidates)) {
+                tasks$candidate_count <- 0L
+                tasks$failed_candidate_count <- 0L
+                tasks$selected_data_node <- tasks$data_node
+                return(tasks[])
+            }
+            summary <- candidates[, .(
+                candidate_count = .N,
+                failed_candidate_count = sum(as.integer(failed_count) > 0L, na.rm = TRUE)
+            ), by = "task_id"]
+            tasks <- merge(tasks, summary, by = "task_id", all.x = TRUE, sort = FALSE)
+            tasks[is.na(candidate_count), candidate_count := 0L]
+            tasks[is.na(failed_candidate_count), failed_candidate_count := 0L]
+            tasks[, selected_data_node := data_node]
+            tasks[]
+        },
+
+        cancel_stale_downloading = function(session_id = NULL, task_id = NULL) {
+            tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = "downloading")
+            if (!nrow(tasks)) {
+                return(invisible(tasks))
+            }
+            stale <- tasks[tasks[["updated_at"]] < DOWNLOADER_SESSION_STARTED_AT]
+            if (!nrow(stale)) {
+                return(invisible(stale))
+            }
+            stale$status <- "cancelled"
+            stale$last_error <- "Download was left in progress by a previous R session."
+            stale$updated_at <- download_now()
+            stale$completed_at <- download_now()
+            private$replace_rows("download_task", as.data.frame(stale), "task_id")
+            for (i in seq_len(nrow(stale))) {
+                private$log_event(stale$session_id[[i]], stale$task_id[[i]], "cancelled", stale$last_error[[i]])
+            }
+            for (sid in unique(stale$session_id)) {
+                private$update_session_status(sid)
+            }
+            invisible(stale)
         },
 
         get_candidates = function(task_id) {

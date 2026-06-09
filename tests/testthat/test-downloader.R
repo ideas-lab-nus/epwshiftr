@@ -74,6 +74,8 @@ test_that("FileDownloader persists config and manifest state", {
 
     tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "done")
+    expect_equal(tasks$candidate_count, 1L)
+    expect_equal(tasks$failed_candidate_count, 0L)
     expect_true(file.exists(file.path(dest, "local.txt")))
     expect_true(dl$verify(session_id = session_id)$checksum_ok)
 
@@ -131,6 +133,56 @@ test_that("FileDownloader reconnects manifest after shallow clone finalization",
     tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "done")
     expect_true(file.exists(file.path(dest, "clone.txt")))
+})
+
+test_that("FileDownloader cancels stale downloading tasks before run", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("stale content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:stale-test",
+        filename = "stale.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "stale")
+    task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
+    DBI::dbExecute(
+        priv(dl)$manifest_conn,
+        "UPDATE download_task SET status = 'downloading', updated_at = ? WHERE task_id = ?",
+        params = list(as.POSIXct("2000-01-01 00:00:00", tz = "UTC"), task_id)
+    )
+
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    expect_equal(tasks$status, "cancelled")
+    expect_match(tasks$last_error, "previous R session")
+    expect_false(file.exists(file.path(dest, "stale.txt")))
+
+    events <- DBI::dbReadTable(priv(dl)$manifest_conn, "download_event")
+    expect_true("cancelled" %in% events$event)
+
+    resumed <- dl$resume(session_id = session_id, progress = FALSE)
+    expect_equal(resumed$status, "done")
+    expect_true(file.exists(file.path(dest, "stale.txt")))
 })
 
 test_that("FileDownloader falls back across candidate URLs", {
@@ -365,6 +417,47 @@ test_that("FileDownloader can verify checksums", {
     expect_false(dl$verify_checksum(test_file, "wrongchecksum", "md5"))
 
     unlink(test_file)
+})
+
+test_that("FileDownloader verify marks checksum failures as error", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("verified content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:verify-error",
+        filename = "verify-error.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "verify-error")
+    expect_equal(dl$run(session_id = session_id, progress = FALSE)$status, "done")
+
+    writeLines("corrupted content", file.path(dest, "verify-error.txt"))
+    verified <- dl$verify(session_id = session_id)
+    expect_false(verified$checksum_ok)
+    expect_equal(dl$status(session_id = session_id)$status, "error")
+    expect_match(dl$status(session_id = session_id)$last_error, "Checksum verification failed")
+
+    events <- DBI::dbReadTable(priv(dl)$manifest_conn, "download_event")
+    expect_true("verify_error" %in% events$event)
 })
 
 test_that("FileDownloader can download with checksum verification", {
