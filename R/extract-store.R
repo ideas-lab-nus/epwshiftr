@@ -436,10 +436,18 @@ EsgStore <- R6::R6Class(
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
         #' @return A data.table of query-file links touched by the update.
-        update_queries = function(query_id = NULL, tracked = TRUE, all = TRUE, limit = FALSE, fields = "*", ...) {
+        update_queries = function(query_id = NULL, tracked = TRUE, enqueue = FALSE, downloader = NULL,
+                                  replica = "auto", session_label = NULL, service = "HTTPServer",
+                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
+                                  all = TRUE, limit = FALSE, fields = "*", ...) {
             private$check_open()
             checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_flag(tracked, null.ok = TRUE)
+            checkmate::assert_flag(enqueue)
+            strategy <- match.arg(strategy)
+            if (isTRUE(enqueue) && is.null(downloader)) {
+                downloader <- self$downloader()
+            }
             rows <- private$select_query_rows(query_id = query_id, tracked = if (is.null(query_id)) tracked else NULL)
             if (!nrow(rows)) {
                 return(data.table::data.table())
@@ -450,8 +458,155 @@ EsgStore <- R6::R6Class(
                 query <- private$load_query(rows[i])
                 files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
                 updated[[i]] <- private$update_query_files(rows$query_id[[i]], files)
+                if (isTRUE(enqueue)) {
+                    sid <- private$enqueue_query_download(
+                        query_id = rows$query_id[[i]],
+                        files = files,
+                        downloader = downloader,
+                        replica = replica,
+                        session_label = session_label,
+                        service = service,
+                        probe = probe,
+                        strategy = strategy,
+                        error_if_empty = FALSE
+                    )
+                    updated[[i]]$download_session_id <- sid
+                }
             }
             data.table::rbindlist(updated, fill = TRUE)
+        },
+        # }}}
+
+        # download_query {{{
+        #' @description
+        #' Refresh, enqueue, and optionally run downloads for a stored ESGF query.
+        #'
+        #' @param query_id Query ID returned by `$add_query()`.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param replica Replica policy passed to `$download_plan()`.
+        #' @param run Whether to run the queued session immediately. Default:
+        #'        `TRUE`.
+        #' @param session_label Optional download session label.
+        #' @param service,probe,strategy Download plan arguments.
+        #' @param progress,overwrite,resume Run arguments.
+        #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
+        #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
+        #'
+        #' @return The created downloader session ID.
+        download_query = function(query_id, downloader = NULL, replica = "auto",
+                                  run = TRUE, session_label = NULL, service = "HTTPServer",
+                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
+                                  progress = TRUE, overwrite = FALSE, resume = TRUE,
+                                  all = TRUE, limit = FALSE, fields = "*", ...) {
+            private$check_open()
+            checkmate::assert_string(query_id, min.chars = 1L)
+            checkmate::assert_flag(run)
+            checkmate::assert_flag(progress)
+            checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
+            strategy <- match.arg(strategy)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+
+            row <- private$get_query_row(query_id)
+            query <- private$load_query(row)
+            files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
+            private$update_query_files(query_id, files)
+            session_id <- private$enqueue_query_download(
+                query_id = query_id,
+                files = files,
+                downloader = downloader,
+                replica = replica,
+                session_label = session_label,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                error_if_empty = TRUE
+            )
+            if (isTRUE(run)) {
+                downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
+                self$sync_downloads(downloader)
+            }
+            session_id
+        },
+        # }}}
+
+        # download_status {{{
+        #' @description
+        #' Return downloader tasks linked to stored query files.
+        #'
+        #' @param query_id Optional stored query ID.
+        #' @param session_id Optional downloader session ID.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #'
+        #' @return A data.table of downloader task rows.
+        download_status = function(query_id = NULL, session_id = NULL, downloader = NULL) {
+            private$check_open()
+            checkmate::assert_string(query_id, null.ok = TRUE)
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+            tasks <- downloader$tasks(session_id = session_id)
+            if (is.null(query_id)) {
+                return(tasks[])
+            }
+            links <- self$query_files(query_id)
+            if (!nrow(tasks) || !nrow(links)) {
+                return(data.table::data.table())
+            }
+            tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
+            if (!nrow(tasks)) {
+                return(tasks[])
+            }
+            link_cols <- links[, .(file_key, query_id, query_file_status = status)]
+            merge(tasks, link_cols, by = "file_key", all.x = TRUE, sort = FALSE)
+        },
+        # }}}
+
+        # retry_downloads {{{
+        #' @description
+        #' Requeue retryable downloader tasks linked to stored query files.
+        #'
+        #' @param query_id Optional stored query ID.
+        #' @param session_id Optional downloader session ID.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param status Retryable statuses. Default: `c("error", "cancelled")`.
+        #' @param run Whether to run requeued tasks immediately. Default: `TRUE`.
+        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #'
+        #' @return A data.table of matching task rows after retry handling.
+        retry_downloads = function(query_id = NULL, session_id = NULL, downloader = NULL,
+                                   status = c("error", "cancelled"), run = TRUE, ...) {
+            private$check_open()
+            checkmate::assert_string(query_id, null.ok = TRUE)
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_subset(status, c("error", "cancelled"), empty.ok = FALSE)
+            checkmate::assert_flag(run)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+
+            tasks <- downloader$tasks(session_id = session_id, status = status)
+            if (!is.null(query_id) && nrow(tasks)) {
+                links <- self$query_files(query_id)
+                tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
+            }
+            if (!nrow(tasks)) {
+                return(tasks[])
+            }
+            task_id <- tasks$task_id
+            downloader$retry(session_id = session_id, task_id = task_id, status = status)
+            out <- if (isTRUE(run)) {
+                downloader$run(session_id = session_id, task_id = task_id, ...)
+            } else {
+                downloader$status(session_id = session_id, task_id = task_id)
+            }
+            if (isTRUE(run)) {
+                self$sync_downloads(downloader)
+            }
+            out[]
         },
         # }}}
 
@@ -663,6 +818,7 @@ EsgStore <- R6::R6Class(
                 row$local_path <- extract_store_rel_path(local_path, private$store_path)
                 row$local_artifact_id <- artifact_id
                 private$replace_rows("file_catalog", as.data.frame(row), "file_key")
+                private$sync_tracked_file_download(file_key, local_path, artifact_id)
             }
             tasks
         },
@@ -1443,6 +1599,33 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # enqueue_query_download {{{
+        enqueue_query_download = function(query_id, files, downloader, replica, session_label,
+                                          service, probe, strategy, error_if_empty = TRUE) {
+            current <- self$query_files(query_id, status = "current")
+            if (!nrow(current)) {
+                if (isTRUE(error_if_empty)) {
+                    cli::cli_abort("Stored ESGF query {.val {query_id}} has no current files to download.")
+                }
+                return(NA_character_)
+            }
+
+            plan <- files$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            plan <- private$decorate_download_plan(plan, query_id = query_id)
+            plan <- plan[plan[["file_key"]] %in% current$file_key]
+            if (!nrow(plan)) {
+                if (isTRUE(error_if_empty)) {
+                    cli::cli_abort("Stored ESGF query {.val {query_id}} has no downloadable HTTPServer URLs.")
+                }
+                return(NA_character_)
+            }
+            if (is.null(session_label)) {
+                session_label <- query_id
+            }
+            downloader$enqueue(plan, session_label = session_label)
+        },
+        # }}}
+
         # file_rows {{{
         file_rows = function(dt, now) {
             if (!nrow(dt)) {
@@ -1588,6 +1771,21 @@ EsgStore <- R6::R6Class(
                 stringsAsFactors = FALSE
             )
             private$replace_rows("file_catalog", catalog, "file_key")
+            invisible(NULL)
+        },
+        # }}}
+
+        # sync_tracked_file_download {{{
+        sync_tracked_file_download = function(file_key, local_path, artifact_id) {
+            files <- private$read_table("esg_file")
+            hit <- files[files[["file_key"]] == file_key]
+            if (!nrow(hit)) {
+                return(invisible(NULL))
+            }
+            hit$local_path <- extract_store_rel_path(local_path, private$store_path)
+            hit$local_artifact_id <- artifact_id
+            hit$updated_at <- extract_store_now()
+            private$replace_rows("esg_file", as.data.frame(hit), "file_key")
             invisible(NULL)
         },
         # }}}

@@ -286,6 +286,75 @@ test_that("EsgStore updates tracked queries and links file records", {
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
 
+test_that("EsgStore downloads tracked query files through downloader", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    src <- tempfile(fileext = ".nc")
+    writeLines("tracked query netcdf placeholder", src)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 1,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    file_docs <- extract_store_test_file_docs(
+        path = "tracked-download.nc",
+        download_url = paste0("file://", normalizePath(src, winslash = "/"))
+    )
+    file_docs$checksum <- as.character(tools::md5sum(src))
+    file_docs$checksum_type <- "MD5"
+    file_docs$master_id <- "CMIP6.mock.tracked-download"
+    file_docs$tracking_id <- "hdl:21.14100/tracked-download"
+    file_docs$latest <- TRUE
+    file_docs$retracted <- FALSE
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- extract_store_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    dl <- store$downloader(n_workers = 0L, retries = 1L)
+    session_id <- store$download_query(
+        query_id,
+        downloader = dl,
+        replica = "current",
+        probe = FALSE,
+        progress = FALSE
+    )
+
+    tasks <- dl$tasks(session_id = session_id)
+    expect_equal(tasks$status, "done")
+    status <- store$download_status(query_id, downloader = dl)
+    expect_equal(status$status, "done")
+    expect_equal(status$query_file_status, "current")
+
+    qfiles <- store$query_files(query_id, status = "current")
+    expect_equal(nrow(qfiles), 1L)
+    expect_false(is.na(qfiles$local_path[[1L]]))
+    expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
+    expect_false(is.na(qfiles$local_artifact_id[[1L]]))
+    expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
+})
+
 test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("DBI")
