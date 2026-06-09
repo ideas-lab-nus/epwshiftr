@@ -1237,12 +1237,13 @@ However, the following fields are always included in the results:
 \item{\code{all}}{Whether to collect all results despite of the value of
 \code{offset}. Default: \code{FALSE}.}
 
-\item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
-respect the current value of \code{limit} when collecting all
-matched records. If \code{FALSE}, the allowed maximum limit number
+\item{\code{limit}}{If \code{all = FALSE}, the maximum number of records to
+collect in this request. If \code{all = TRUE}, the page size used
+for each paginated request, not a total cap. When \code{all = TRUE}
+and \code{limit = TRUE}, the current query \code{limit} value is used;
+if \code{limit = FALSE}, the allowed maximum limit number
 10000 is used. It can also be a positive
-integer which will be used as a temporary limit per query.
-Default: \code{TRUE}.}
+integer used as a temporary page size. Default: \code{TRUE}.}
 
 \item{\code{params}}{Whether to include facet fields that have parameter
 constraints explicitly set using \code{EsgQuery$project()},

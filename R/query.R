@@ -1006,12 +1006,13 @@ EsgQuery <- R6::R6Class(
         #' @param all Whether to collect all results despite of the value of
         #'        `offset`. Default: `FALSE`.
         #'
-        #' @param limit Only applicable when `all` is set to `TRUE`. Whether to
-        #'        respect the current value of `limit` when collecting all
-        #'        matched records. If `FALSE`, the allowed maximum limit number
+        #' @param limit If `all = FALSE`, the maximum number of records to
+        #'        collect in this request. If `all = TRUE`, the page size used
+        #'        for each paginated request, not a total cap. When `all = TRUE`
+        #'        and `limit = TRUE`, the current query `limit` value is used;
+        #'        if `limit = FALSE`, the allowed maximum limit number
         #'        `r this$data_max_limit` is used. It can also be a positive
-        #'        integer which will be used as a temporary limit per query.
-        #'        Default: `TRUE`.
+        #'        integer used as a temporary page size. Default: `TRUE`.
         #'
         #' @param params Whether to include facet fields that have parameter
         #'        constraints explicitly set using `EsgQuery$project()`,
