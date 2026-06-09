@@ -201,25 +201,50 @@ esgdict__cache_policy <- function(use_cache = TRUE) {
 
 #' ESG Project Dictionary
 #'
-#' `EsgDict` stores project-specific ESG controlled vocabulary data, query
-#' indices, and validation metadata for local option discovery and legality
-#' checks.
+#' @description
+#' `EsgDict` is an [R6][R6::R6Class] class for project-specific ESG
+#' controlled vocabulary data. It stores vocabulary tables, optional request
+#' tables, normalized query indices, and source metadata used by local option
+#' discovery and legality checks.
+#'
+#' `esgdict()` is a small constructor around `EsgDict$new()`.
+#'
+#' # Supported projects
+#'
+#' The dictionary currently supports `"CMIP6"`, `"CMIP6PLUS"`, `"INPUT4MIP"`,
+#' `"OBS4REF"`, `"CORDEX-CMIP6"`, `"CMIP7"`, and `"EMD"`. CMIP6 dictionaries
+#' include both controlled vocabularies and CMOR request-table data. Other
+#' projects use vocabulary data only until a project-specific request source is
+#' registered.
+#'
+#' # Source downloads in examples
+#'
+#' Building a dictionary may download upstream vocabulary/request sources when
+#' the parsed dictionary cache and raw source cache are missing. Most examples
+#' load a small installed CMIP6 example dictionary and run without network
+#' access. The example that calls `$build()` is guarded so CRAN checks do not
+#' perform network downloads.
 #'
 #' @param project ESG project identifier, such as `"CMIP6"` or `"CMIP6PLUS"`.
+#'
+#' @return `esgdict()` returns a new [EsgDict] object.
+#'   `esgdict_set_default()` returns `dict`, invisibly.
+#'   `esgdict_get_default()` returns the current package-level default
+#'   dictionary for `project`, or `NULL`.
 #'
 #' @seealso [esgdict_option()] and [esgdict_check()] for user-facing discovery
 #' and validation helpers.
 #'
 #' @examples
-#' \dontrun{
+#' example_path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
 #' dict <- esgdict(project = "CMIP6")
-#' dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
-#' dict$save()
+#' suppressMessages(dict$load(example_path))
+#' dict$project()
 #'
 #' esgdict_set_default(dict)
+#' identical(esgdict_get_default("CMIP6"), dict)
 #' esgdict_option("experiment_id", activity_id = "CMIP")
 #' esgdict_check(activity = "CMIP", experiment = "historical")
-#' }
 #' @author Hongyuan Jia
 #'
 #' @name EsgDict
@@ -231,9 +256,6 @@ esgdict <- function(project = "CMIP6") {
 #' @rdname EsgDict
 #' @param dict An [EsgDict] object used as the package-level default dictionary
 #'   for its project.
-#' @return `esgdict_set_default()` returns `dict`, invisibly.
-#'   `esgdict_get_default()` returns the current package-level default
-#'   dictionary for `project`, or `NULL`.
 #' @export
 esgdict_set_default <- function(dict) {
     if (!inherits(dict, "EsgDict")) {
@@ -261,35 +283,133 @@ esgdict_get_default <- function(project = "CMIP6") {
 EsgDict <- R6::R6Class("EsgDict",
     cloneable = FALSE, lock_class = TRUE,
     public = list(
+        #' @description
+        #' Create a new ESG project dictionary.
+        #'
+        #' The new dictionary is empty. Use
+        #' \href{#method-EsgDict-build}{\code{$build()}} to fetch and parse
+        #' upstream sources, or \href{#method-EsgDict-load}{\code{$load()}} to
+        #' restore a saved dictionary JSON file.
+        #'
+        #' @param project ESG project identifier, such as `"CMIP6"` or
+        #'   `"CMIP6PLUS"`.
+        #'
+        #' @return An `EsgDict` object.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$status()
         initialize = function(project = "CMIP6") {
             private$m_project <- esgdict__normalize_project(project)
             private$m_profile <- esgdict__profile(private$m_project)
         },
 
+        #' @description
+        #' Return the normalized ESG project identifier.
+        #'
+        #' @return A single string.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6PLUS")
+        #' dict$project()
         project = function() {
             private$m_project
         },
 
+        #' @description
+        #' Return the internal dictionary profile.
+        #'
+        #' The profile determines how project-specific vocabulary sources are
+        #' parsed and normalized.
+        #'
+        #' @return A single string.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$profile()
         profile = function() {
             private$m_profile
         },
 
+        #' @description
+        #' Return vocabulary and request-source versions.
+        #'
+        #' Empty or partially loaded dictionaries return `NULL`.
+        #'
+        #' @return A named list with `vocab` and `request` elements, or `NULL`.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$version()
         version = function() {
             private$m_version
         },
 
+        #' @description
+        #' Return upstream source metadata.
+        #'
+        #' Source metadata records repository, tag/ref, commit, and local source
+        #' directory information for the data used to build the dictionary.
+        #'
+        #' @return A named list, or `NULL` for an empty dictionary.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$sources()
         sources = function() {
             private$m_sources
         },
 
+        #' @description
+        #' Return source vocabulary timestamps.
+        #'
+        #' Timestamps are extracted from source vocabulary metadata when
+        #' available.
+        #'
+        #' @return A named list of timestamps, or `NULL`.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$timestamp()
         timestamp = function() {
             private$m_timestamps
         },
 
+        #' @description
+        #' Return the time when this dictionary was built.
+        #'
+        #' @return A `POSIXct` value, or `NULL`.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$built_time()
         built_time = function() {
             private$m_built_time
         },
 
+        #' @description
+        #' Return the dictionary lifecycle status.
+        #'
+        #' Status values are:
+        #'
+        #' - `"empty"`: no vocabulary/request payload is loaded.
+        #' - `"partial"`: some required payload is missing.
+        #' - `"built"`: the dictionary was built in this R session.
+        #' - `"loaded"`: the dictionary was restored from disk.
+        #'
+        #' @return A single string.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$status()
         status = function() {
             has_vocab <- !is.null(private$m_data$vocab) && length(private$m_data$vocab) > 0L
             has_request <- !is.null(private$m_data$request) && NROW(private$m_data$request) > 0L
@@ -306,14 +426,65 @@ EsgDict <- R6::R6Class("EsgDict",
             }
         },
 
+        #' @description
+        #' Check whether the dictionary contains usable data.
+        #'
+        #' A dictionary has usable data after a complete
+        #' \href{#method-EsgDict-build}{\code{$build()}} or
+        #' \href{#method-EsgDict-load}{\code{$load()}}.
+        #'
+        #' @return `TRUE` or `FALSE`.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$has_data()
         has_data = function() {
             identical(self$status(), "built") || identical(self$status(), "loaded")
         },
 
+        #' @description
+        #' Check whether the dictionary is empty.
+        #'
+        #' @return `TRUE` or `FALSE`.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$is_empty()
         is_empty = function() {
             identical(self$status(), "empty")
         },
 
+        #' @description
+        #' Build the dictionary from upstream source data.
+        #'
+        #' `$build()` resolves the configured project vocabulary source, downloads
+        #' or reuses raw source files as needed, parses them into normalized
+        #' tables, and builds query indices for option discovery and validation.
+        #' If the dictionary already has data and `force = FALSE`, the object is
+        #' returned unchanged.
+        #'
+        #' @param token Optional GitHub token used for source resolution and
+        #'   downloads.
+        #' @param force If `TRUE`, rebuild even when the dictionary already has
+        #'   data and bypass the parsed dictionary cache.
+        #' @param cv_tag Optional vocabulary source tag or ref. When `NULL`, the
+        #'   project default ref or latest tagged source is used.
+        #' @param request_tag Optional request-table source tag. Used by projects
+        #'   that define a request source, currently CMIP6.
+        #' @param dreq_tag Deprecated alias for `request_tag`.
+        #' @param use_cache If `TRUE`, use the parsed dictionary cache when
+        #'   available. Raw source files may still be reused from `source_dir`.
+        #' @param source_dir Directory used to read and write raw source files.
+        #'   The default is the package store source directory for this project.
+        #'
+        #' @return The modified `EsgDict` object itself.
+        #'
+        #' @examples
+        #' if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+        #'     dict <- EsgDict$new(project = "CMIP6")
+        #'     dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+        #'     dict$has_data()
+        #' }
         build = function(
             token = NULL,
             force = FALSE,
@@ -351,6 +522,25 @@ EsgDict <- R6::R6Class("EsgDict",
             self
         },
 
+        #' @description
+        #' Return raw dictionary payload data.
+        #'
+        #' `$get("vocab")` returns the full vocabulary payload list.
+        #' `$get("request")` and `$get("dreq")` return the request table when
+        #' available. Any other value is interpreted as a vocabulary field name,
+        #' such as `"experiment_id"` or `"source_id"`.
+        #'
+        #' @param type Data type to retrieve. Use `"vocab"`, `"request"`,
+        #'   `"dreq"`, or a project vocabulary field name.
+        #'
+        #' @return A copy of the requested data.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$get("experiment_id")
+        #' dict$get("request")
         get = function(type) {
             private$assert_has_data("get dictionary data")
             checkmate::assert_string(type, min.chars = 1L)
@@ -373,14 +563,50 @@ EsgDict <- R6::R6Class("EsgDict",
             data.table::copy(private$m_data$vocab[[type]])
         },
 
+        #' @description
+        #' Return available dictionary capabilities.
+        #'
+        #' Capabilities describe whether vocabulary data, request data, and
+        #' relation indices are currently available.
+        #'
+        #' @return A named list with `vocab`, `request`, and `relations`.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$capabilities()
         capabilities = function() {
             private$make_capabilities()
         },
 
+        #' @description
+        #' Return supported relation-index fields.
+        #'
+        #' Relation fields describe which field combinations can be used for
+        #' constrained option discovery and cross-field legality checks.
+        #'
+        #' @return A named list of character vectors.
+        #'
+        #' @examples
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' dict$relation_fields()
         relation_fields = function() {
             esgdict__relation_fields(private$m_project)
         },
 
+        #' @description
+        #' Return normalized dictionary field names.
+        #'
+        #' Empty dictionaries return `character()`.
+        #'
+        #' @return A character vector.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$fields()
         fields = function() {
             values <- private$m_indices$values
             if (is.null(values) || !nrow(values)) {
@@ -390,6 +616,24 @@ EsgDict <- R6::R6Class("EsgDict",
             }
         },
 
+        #' @description
+        #' Return normalized dictionary indices.
+        #'
+        #' `$indices()` returns all available indices. `$indices(type)` returns a
+        #' single index table, such as `"values"`, `"variable"`,
+        #' `"activity_experiment"`, or `"activity_source"`.
+        #'
+        #' @param type Optional index name.
+        #'
+        #' @return A named list of indices, or a [data.table::data.table()] when
+        #'   `type` is supplied.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' names(dict$indices())
+        #' dict$indices("values")
         indices = function(type = NULL) {
             private$assert_has_data("get dictionary indices")
             if (is.null(type)) {
@@ -401,11 +645,56 @@ EsgDict <- R6::R6Class("EsgDict",
             data.table::copy(private$m_indices[[type]])
         },
 
+        #' @description
+        #' Discover valid values for a dictionary field.
+        #'
+        #' Constraints supplied through `...` are used when a matching relation
+        #' index exists. For example, CMIP6 `experiment_id` options can be
+        #' constrained by `activity_id`.
+        #'
+        #' @param field ESG dictionary field name or supported alias.
+        #' @param ... Optional field constraints.
+        #'
+        #' @return A [data.table::data.table()] with available values and
+        #'   metadata. The `ignored_constraints` attribute records constraints
+        #'   that could not be applied.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$options("experiment_id", activity_id = "CMIP")
         options = function(field, ...) {
             private$assert_has_data("discover ESG dictionary options")
             esgdict__options(self, field, list(...))
         },
 
+        #' @description
+        #' Check dictionary values and relationships.
+        #'
+        #' `$check()` validates supplied values against dictionary value indices
+        #' and, when possible, validates cross-field combinations using relation
+        #' indices.
+        #'
+        #' @param ... ESG dictionary field values.
+        #' @param error If `TRUE`, throw an error when invalid values or
+        #'   relationships are found.
+        #' @param suggest If `TRUE`, include near-match suggestions for invalid
+        #'   values.
+        #' @param n_suggestions Maximum number of suggestions for each invalid
+        #'   value.
+        #' @param relationship Relationship validation mode. `"any"` validates
+        #'   ESGF-query style OR semantics. `"all_pairs"` requires every supplied
+        #'   combination inside each relation index to exist.
+        #'
+        #' @return An `esgdict_check_result` [data.table::data.table()].
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$check(activity_id = "CMIP", experiment_id = "historical")
+        #' dict$check(variable_id = "tas", table_id = "Amon")
         check = function(
             ...,
             error = FALSE,
@@ -424,6 +713,26 @@ EsgDict <- R6::R6Class("EsgDict",
             )
         },
 
+        #' @description
+        #' Save the dictionary to JSON.
+        #'
+        #' If `path = NULL`, the dictionary is saved in the package store and
+        #' registered in the store manifest. If `path` is supplied, only that JSON
+        #' file is written.
+        #'
+        #' @param path Optional JSON file path. If `NULL`, use the package store.
+        #' @param allow_empty If `TRUE`, allow saving an empty dictionary.
+        #'
+        #' @return The normalized output path.
+        #'
+        #' @examples
+        #' dict_path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(dict_path))
+        #'
+        #' path <- tempfile(fileext = ".json")
+        #' dict$save(path)
+        #' file.exists(path)
         save = function(path = NULL, allow_empty = FALSE) {
             checkmate::assert_flag(allow_empty)
             register <- is.null(path)
@@ -467,6 +776,22 @@ EsgDict <- R6::R6Class("EsgDict",
             path
         },
 
+        #' @description
+        #' Load a dictionary from JSON.
+        #'
+        #' If `path = NULL`, the latest stored dictionary for this project is
+        #' located through the package store manifest.
+        #'
+        #' @param path Optional JSON file path. If `NULL`, load the latest stored
+        #'   dictionary for this project.
+        #'
+        #' @return The modified `EsgDict` object itself.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' restored <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(restored$load(path))
+        #' restored$has_data()
         load = function(path = NULL) {
             if (is.null(path)) {
                 path <- esgdict__latest_store_path(private$m_project)
@@ -495,6 +820,16 @@ EsgDict <- R6::R6Class("EsgDict",
             self
         },
 
+        #' @description
+        #' Print a dictionary summary.
+        #'
+        #' @return The `EsgDict` object itself, invisibly.
+        #'
+        #' @examples
+        #' path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+        #' dict <- EsgDict$new(project = "CMIP6")
+        #' suppressMessages(dict$load(path))
+        #' dict$print()
         print = function() {
             d <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
             cli::cli_rule("ESG Dictionary")
