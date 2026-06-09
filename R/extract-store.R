@@ -150,6 +150,121 @@ EsgExtractStore <- R6::R6Class(
             }
 
             query_id
+        },
+        # }}}
+
+        # plan_region {{{
+        #' @description
+        #' Plan regional extraction jobs from cataloged files.
+        #'
+        #' @param query_id Query ID returned by `$add_files()`.
+        #' @param lon,lat Target longitude and latitude.
+        #' @param time Length-2 time range.
+        #' @param site_id Site identifier. Default: `"site-1"`.
+        #' @param variable_id Optional variable IDs. If `NULL`, all cataloged
+        #'        variables in the query are used.
+        #' @param filters Named list of exact-match file catalog filters.
+        #' @param nearest Number of nearest grid cells to keep. Default: `1L`.
+        #'
+        #' @return A data.table of extraction plan rows.
+        plan_region = function(query_id, lon, lat, time, site_id = "site-1",
+                               variable_id = NULL, filters = list(), nearest = 1L) {
+            checkmate::assert_string(query_id)
+            checkmate::assert_number(lon, lower = -180, upper = 360, finite = TRUE)
+            checkmate::assert_number(lat, lower = -90, upper = 90, finite = TRUE)
+            checkmate::assert_string(site_id)
+            checkmate::assert_character(variable_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_list(filters, names = "unique")
+            checkmate::assert_int(nearest, lower = 1L)
+            private$check_open()
+
+            time_range <- extract_store_parse_time_range(time)
+            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- catalog[catalog$query_id == query_id]
+            if (!nrow(catalog)) {
+                cli::cli_abort("No cataloged file records were found for query ID {.val {query_id}}.")
+            }
+
+            filter_names <- names(filters)
+            if (length(filters)) {
+                if (is.null(filter_names) || any(!nzchar(filter_names))) {
+                    cli::cli_abort("All file catalog filters must be named.")
+                }
+                unknown <- setdiff(filter_names, names(catalog))
+                if (length(unknown)) {
+                    cli::cli_abort("Unknown file catalog filter column(s): {.val {unknown}}.")
+                }
+
+                for (name in filter_names) {
+                    value <- filters[[name]]
+                    checkmate::assert_atomic_vector(value, any.missing = FALSE, min.len = 1L, .var.name = sprintf("filters$%s", name))
+                    catalog <- catalog[as.character(get(name)) %in% as.character(value)]
+                }
+            }
+
+            if (!nrow(catalog)) {
+                cli::cli_abort("No cataloged file records match the requested extraction plan filters.")
+            }
+
+            if (!is.null(variable_id)) {
+                if (any(!is.na(catalog$variable_id))) {
+                    catalog <- catalog[catalog$variable_id %in% variable_id]
+                }
+            } else {
+                variable_id <- unique(catalog$variable_id)
+                variable_id <- variable_id[!is.na(variable_id) & nzchar(variable_id)]
+                if (!length(variable_id)) {
+                    cli::cli_abort("Cannot plan extraction without `variable_id` because the file catalog does not contain variable IDs.")
+                }
+            }
+
+            plan <- data.table::as.data.table(catalog)
+            if (!any(!is.na(plan$variable_id)) && !is.null(variable_id)) {
+                plan <- plan[rep(seq_len(nrow(plan)), each = length(variable_id))]
+                plan$variable_id <- rep(variable_id, times = nrow(catalog))
+            } else {
+                plan <- plan[plan$variable_id %in% variable_id]
+            }
+            if (!nrow(plan)) {
+                cli::cli_abort("No cataloged file records match the requested variable IDs.")
+            }
+
+            now <- extract_store_now()
+            out <- data.frame(
+                plan_id = vapply(seq_len(nrow(plan)), function(i) {
+                    extract_store_hash(
+                        plan$file_key[[i]],
+                        site_id,
+                        plan$variable_id[[i]],
+                        lon,
+                        lat,
+                        nearest,
+                        time_range$start,
+                        time_range$stop
+                    )
+                }, character(1L)),
+                query_id = query_id,
+                file_key = plan$file_key,
+                site_id = site_id,
+                variable_id = plan$variable_id,
+                lon = lon,
+                lat = lat,
+                nearest = nearest,
+                time_start = time_range$start,
+                time_stop = time_range$stop,
+                status = "pending",
+                available_time_count = NA_integer_,
+                attempt_count = 0L,
+                last_error = NA_character_,
+                created_at = now,
+                updated_at = now,
+                stringsAsFactors = FALSE
+            )
+            out <- unique(out)
+            private$append_new_rows("extraction_plan", out, "plan_id")
+
+            existing <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_plan"))
+            existing[plan_id %in% out$plan_id]
         }
         # }}}
     ),
@@ -330,6 +445,26 @@ EsgExtractStore <- R6::R6Class(
         },
         # }}}
 
+        # append_new_rows {{{
+        append_new_rows = function(table, rows, key) {
+            checkmate::assert_string(table)
+            checkmate::assert_string(key)
+            if (!nrow(rows)) {
+                return(invisible(NULL))
+            }
+
+            q_table <- DBI::dbQuoteIdentifier(private$conn, table)
+            q_key <- DBI::dbQuoteIdentifier(private$conn, key)
+            current <- DBI::dbGetQuery(private$conn, sprintf("SELECT %s FROM %s", q_key, q_table))[[key]]
+            rows <- rows[!rows[[key]] %in% current, , drop = FALSE]
+            if (nrow(rows)) {
+                DBI::dbAppendTable(private$conn, table, rows)
+            }
+
+            invisible(NULL)
+        },
+        # }}}
+
         # delete_by_key {{{
         delete_by_key = function(table, key, values) {
             checkmate::assert_string(table)
@@ -421,6 +556,19 @@ extract_store_parse_datetime <- function(x) {
     }
 
     out
+}
+
+extract_store_parse_time_range <- function(time) {
+    checkmate::assert_atomic_vector(time, len = 2L, any.missing = FALSE)
+    parsed <- extract_store_parse_datetime(time)
+    if (any(is.na(parsed))) {
+        cli::cli_abort("`time` must be a length-2 parseable datetime range.")
+    }
+    if (parsed[[2L]] < parsed[[1L]]) {
+        cli::cli_abort("The second `time` value must be greater than or equal to the first.")
+    }
+
+    list(start = parsed[[1L]], stop = parsed[[2L]])
 }
 
 extract_store_rel_path <- function(path, root) {

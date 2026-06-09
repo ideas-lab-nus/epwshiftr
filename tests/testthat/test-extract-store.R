@@ -48,7 +48,10 @@ extract_store_test_result <- function(type = "File", docs, context = NULL) {
     )
 }
 
-extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc") {
+extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+                                         source_id = "EC-Earth3",
+                                         experiment_id = "ssp585",
+                                         variable_id = "tas") {
     docs <- data.frame(
         id = sprintf("%s|dataset-1", path),
         dataset_id = "dataset-1",
@@ -58,12 +61,12 @@ extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1
         tracking_id = "hdl:21.14100/local-test-2060",
         title = path,
         data_node = "example.org",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
+        source_id = source_id,
+        experiment_id = experiment_id,
         variant_label = "r1i1p1f1",
         frequency = "day",
         table_id = "day",
-        variable_id = "tas",
+        variable_id = variable_id,
         grid_label = "gr",
         check.names = FALSE
     )
@@ -172,4 +175,111 @@ test_that("EsgExtractStore catalogs Aggregation records and replaces duplicates"
     expect_equal(nrow(DBI::dbReadTable(conn, "query_run")), 1L)
     expect_equal(nrow(DBI::dbReadTable(conn, "file_catalog")), 1L)
     expect_equal(DBI::dbReadTable(conn, "query_run")$result_type, "Aggregation")
+})
+
+test_that("EsgExtractStore plans regional extraction jobs from catalog filters", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgExtractStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- data.table::rbindlist(list(
+        extract_store_test_file_docs(
+            "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+            source_id = "EC-Earth3",
+            experiment_id = "ssp585",
+            variable_id = "tas"
+        ),
+        extract_store_test_file_docs(
+            "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+            source_id = "EC-Earth3",
+            experiment_id = "ssp585",
+            variable_id = "hurs"
+        ),
+        extract_store_test_file_docs(
+            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+            source_id = "AWI-CM-1-1-MR",
+            experiment_id = "ssp585",
+            variable_id = "tas"
+        )
+    ), fill = TRUE)
+    files <- extract_store_test_result(docs = as.data.frame(docs))
+    query_id <- store$add_files(files)
+
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31"),
+        site_id = "SIN",
+        filters = list(source_id = "EC-Earth3"),
+        variable_id = c("tas", "hurs"),
+        nearest = 2L
+    )
+
+    expect_s3_class(plan, "data.table")
+    expect_equal(nrow(plan), 2L)
+    expect_setequal(plan$variable_id, c("tas", "hurs"))
+    expect_equal(unique(plan$site_id), "SIN")
+    expect_equal(unique(plan$status), "pending")
+    expect_equal(unique(plan$nearest), 2L)
+    expect_match(plan$plan_id, "^[0-9a-f]{64}$")
+
+    conn <- epwshiftr:::priv(store)$conn
+    DBI::dbExecute(conn, "UPDATE extraction_plan SET status = 'done'")
+    plan_again <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31"),
+        site_id = "SIN",
+        filters = list(source_id = "EC-Earth3"),
+        variable_id = c("tas", "hurs"),
+        nearest = 2L
+    )
+    expect_equal(nrow(DBI::dbReadTable(conn, "extraction_plan")), 2L)
+    expect_equal(unique(plan_again$status), "done")
+})
+
+test_that("EsgExtractStore rejects invalid extraction plans", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("DBI")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgExtractStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query_id <- store$add_files(extract_store_test_result(docs = extract_store_test_file_docs()))
+
+    expect_error(
+        store$plan_region(
+            query_id,
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2060-12-31", "2060-01-01")
+        ),
+        "greater than or equal"
+    )
+    expect_error(
+        store$plan_region(
+            query_id,
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2060-01-01", "2060-12-31"),
+            filters = list(unknown = "x")
+        ),
+        "Unknown file catalog filter"
+    )
+    expect_error(
+        store$plan_region(
+            query_id,
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2060-01-01", "2060-12-31"),
+            filters = list(source_id = "no-match")
+        ),
+        "No cataloged file records match"
+    )
 })
