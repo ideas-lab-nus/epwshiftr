@@ -167,6 +167,9 @@ apply:
 \itemize{
 \item The \code{fields} parameter is not supported. All available fields are always
 returned.
+\item Only \code{Dataset} and \code{File} queries are supported. \code{Aggregation} queries
+should use a standard ESGF search index node, such as
+\verb{https://esgf-data.dkrz.de} or \verb{https://esgf.ceda.ac.uk}.
 \item The \code{retracted} parameter is not supported and will be ignored.
 \item Wget script generation is not supported. Calling \verb{$url(wget = TRUE)} will
 result in an error.

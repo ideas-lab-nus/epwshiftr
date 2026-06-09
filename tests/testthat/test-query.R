@@ -115,6 +115,16 @@ test_that("QueryParam helpers use typed objects", {
         list(activity_id = as_query_param("activity_id", list(value = "ScenarioMIP", negate = TRUE)))
     )
     expect_true(grepl("query=NOT%20%28activity_id%3A%22ScenarioMIP%22%29", bridge_url, fixed = TRUE))
+
+    expect_error(
+        query_build("https://esgf-node.ornl.gov/esgf-1-5-bridge", list(type = "Aggregation")),
+        "Bridge index nodes do not support.*Aggregation"
+    )
+    expect_true(grepl(
+        "type=Aggregation",
+        query_build("https://esgf-data.dkrz.de", list(type = "Aggregation")),
+        fixed = TRUE
+    ))
 })
 # }}}
 

@@ -188,6 +188,9 @@ FIELDS_FACETS_COMMON <- c(
 #'
 #' - The `fields` parameter is not supported. All available fields are always
 #'   returned.
+#' - Only `Dataset` and `File` queries are supported. `Aggregation` queries
+#'   should use a standard ESGF search index node, such as
+#'   `https://esgf-data.dkrz.de` or `https://esgf.ceda.ac.uk`.
 #' - The `retracted` parameter is not supported and will be ignored.
 #' - Wget script generation is not supported. Calling `$url(wget = TRUE)` will
 #'   result in an error.
@@ -1352,6 +1355,23 @@ EsgQuery <- R6::R6Class(
 is_bridge_index_node <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
+
+assert_bridge_index_node_type <- function(index_node, params) {
+    if (!is_bridge_index_node(index_node)) {
+        return(invisible(TRUE))
+    }
+
+    type <- query_param_value(query_param_as_store(params)$type())
+    if (identical(type, "Aggregation")) {
+        cli::cli_abort(c(
+            "Bridge index nodes do not support {.val Aggregation} queries.",
+            "i" = "The ORNL/LLNL bridge accepts only {.val Dataset} and {.val File} query types.",
+            "i" = "Use a standard ESGF search index node, such as {.url https://esgf-data.dkrz.de} or {.url https://esgf.ceda.ac.uk}, for Aggregation results."
+        ))
+    }
+
+    invisible(TRUE)
+}
 # }}}
 
 # normalize_index_node {{{
@@ -1410,6 +1430,8 @@ query_build <- function(index_node, params, type = "search") {
         store$type(NULL)
         store$format(NULL)
     }
+
+    assert_bridge_index_node_type(index_node, store)
 
     # NOTE: handle special endpoint for bridge
     if (is_bridge_index_node(index_node)) {
