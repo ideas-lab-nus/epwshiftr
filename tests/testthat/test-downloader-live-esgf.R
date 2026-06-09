@@ -8,7 +8,6 @@ skip_live_esgf_downloader <- function() {
     skip_if_offline()
     skip_if_not_installed("curl")
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 }
 
 live_esgf_files <- function() {
@@ -170,12 +169,12 @@ test_that("FileDownloader live ESGF workflow covers persistent methods and resum
 
     rm(dl)
     gc()
-    conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = manifest, read_only = TRUE)
-    candidates <- data.table::as.data.table(DBI::dbReadTable(conn, "download_candidate"))
+    conn <- ddb_connect(manifest, read_only = TRUE)
+    candidates <- data.table::as.data.table(ddb_read_table(conn, "download_candidate"))
     fallback_tid <- fallback_tasks$task_id[[1L]]
     failed_candidate <- candidates[candidates[["task_id"]] == fallback_tid][order(priority)][1L]
     expect_equal(failed_candidate$failed_count, 1L)
-    DBI::dbDisconnect(conn, shutdown = TRUE)
+    ddb_disconnect(conn, shutdown = TRUE)
 
     restored <- FileDownloader$load_config(config_file)
     expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))

@@ -1244,17 +1244,17 @@ FileDownloader <- R6::R6Class("FileDownloader",
             if (is.null(private$manifest_path) || !is.null(private$manifest_conn)) {
                 return(invisible(NULL))
             }
-            private$manifest_conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = private$manifest_path, read_only = FALSE)
+            private$manifest_conn <- ddb_connect(private$manifest_path, read_only = FALSE)
             invisible(private$manifest_conn)
         },
 
         disconnect_manifest = function() {
             if (!is.null(private$manifest_conn)) {
-                valid <- tryCatch(DBI::dbIsValid(private$manifest_conn), error = function(e) FALSE)
+                valid <- tryCatch(ddb_is_valid(private$manifest_conn), error = function(e) FALSE)
                 if (isTRUE(valid)) {
                     tryCatch(
-                        DBI::dbDisconnect(private$manifest_conn, shutdown = TRUE),
-                        error = function(e) DBI::dbDisconnect(private$manifest_conn)
+                        ddb_disconnect(private$manifest_conn, shutdown = TRUE),
+                        error = function(e) ddb_disconnect(private$manifest_conn)
                     )
                 }
                 private$manifest_conn <- NULL
@@ -1267,7 +1267,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 cli::cli_abort("This downloader has no persistent manifest. Create it with {.code FileDownloader$new(manifest = ...)}.")
             }
             if (!is.null(private$manifest_conn)) {
-                valid <- tryCatch(DBI::dbIsValid(private$manifest_conn), error = function(e) FALSE)
+                valid <- tryCatch(ddb_is_valid(private$manifest_conn), error = function(e) FALSE)
                 if (!isTRUE(valid)) {
                     private$manifest_conn <- NULL
                 }
@@ -1280,7 +1280,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
         },
 
         exec_manifest = function(sql) {
-            DBI::dbExecute(private$manifest_conn, sql)
+            ddb_exec(private$manifest_conn, sql)
         },
 
         init_manifest_schema = function() {
@@ -1363,25 +1363,26 @@ FileDownloader <- R6::R6Class("FileDownloader",
 
         append_rows = function(table, rows) {
             if (!nrow(rows)) return(invisible(rows))
-            DBI::dbAppendTable(private$manifest_conn, table, as.data.frame(rows))
+            ddb_append_table(private$manifest_conn, table, as.data.frame(rows))
             invisible(rows)
         },
 
         replace_rows = function(table, rows, key) {
             if (!nrow(rows)) return(invisible(rows))
             for (value in rows[[key]]) {
-                DBI::dbExecute(
-                    private$manifest_conn,
-                    sprintf("DELETE FROM %s WHERE %s = ?", table, key),
-                    params = list(value)
-                )
+                ddb_exec(private$manifest_conn, sprintf(
+                    "DELETE FROM %s WHERE %s = %s",
+                    ddb_ident(private$manifest_conn, table),
+                    ddb_ident(private$manifest_conn, key),
+                    ddb_literal(private$manifest_conn, value)
+                ))
             }
-            DBI::dbAppendTable(private$manifest_conn, table, as.data.frame(rows))
+            ddb_append_table(private$manifest_conn, table, as.data.frame(rows))
             invisible(rows)
         },
 
         read_table = function(table) {
-            data.table::as.data.table(DBI::dbReadTable(private$manifest_conn, table))
+            data.table::as.data.table(ddb_read_table(private$manifest_conn, table))
         },
 
         log_event = function(session_id, task_id, event, message = NA_character_) {

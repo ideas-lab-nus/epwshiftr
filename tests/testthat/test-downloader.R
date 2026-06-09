@@ -29,7 +29,6 @@ test_that("FileDownloader can be created", {
 # Persistent Manifest Tests {{{
 test_that("FileDownloader persists config and manifest state", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -87,10 +86,10 @@ test_that("FileDownloader persists config and manifest state", {
 
     rm(dl, restored)
     gc()
-    conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = manifest, read_only = TRUE)
-    on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
+    conn <- ddb_connect(manifest, read_only = TRUE)
+    on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
     expect_setequal(
-        DBI::dbListTables(conn),
+        ddb_list_tables(conn),
         c("download_candidate", "download_event", "download_meta", "download_session", "download_task")
     )
 })
@@ -137,7 +136,6 @@ test_that("FileDownloader reconnects manifest after shallow clone finalization",
 
 test_that("FileDownloader cancels stale downloading tasks before run", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -166,18 +164,19 @@ test_that("FileDownloader cancels stale downloading tasks before run", {
     )
     session_id <- dl$enqueue(plan, session_label = "stale")
     task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
-    DBI::dbExecute(
-        priv(dl)$manifest_conn,
-        "UPDATE download_task SET status = 'downloading', updated_at = ? WHERE task_id = ?",
-        params = list(as.POSIXct("2000-01-01 00:00:00", tz = "UTC"), task_id)
-    )
+    conn <- priv(dl)$manifest_conn
+    ddb_exec(conn, sprintf(
+        "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
+        ddb_literal(conn, as.POSIXct("2000-01-01 00:00:00", tz = "UTC")),
+        ddb_literal(conn, task_id)
+    ))
 
     tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "cancelled")
     expect_match(tasks$last_error, "previous R session")
     expect_false(file.exists(file.path(dest, "stale.txt")))
 
-    events <- DBI::dbReadTable(priv(dl)$manifest_conn, "download_event")
+    events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
     expect_true("cancelled" %in% events$event)
 
     resumed <- dl$resume(session_id = session_id, progress = FALSE)
@@ -227,9 +226,9 @@ test_that("FileDownloader falls back across candidate URLs", {
 
     rm(dl)
     gc()
-    conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = manifest, read_only = TRUE)
-    on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
-    candidates <- data.table::as.data.table(DBI::dbReadTable(
+    conn <- ddb_connect(manifest, read_only = TRUE)
+    on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
+    candidates <- data.table::as.data.table(ddb_read_table(
         conn,
         "download_candidate"
     ))
@@ -456,7 +455,7 @@ test_that("FileDownloader verify marks checksum failures as error", {
     expect_equal(dl$status(session_id = session_id)$status, "error")
     expect_match(dl$status(session_id = session_id)$last_error, "Checksum verification failed")
 
-    events <- DBI::dbReadTable(priv(dl)$manifest_conn, "download_event")
+    events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
     expect_true("verify_error" %in% events$event)
 })
 

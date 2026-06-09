@@ -117,7 +117,6 @@ extract_store_test_completed_store <- function() {
 
 test_that("EsgStore creates a DuckDB manifest and store layout", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -143,7 +142,7 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
     expect_true(file.exists(file.path(dir, "downloads", "_downloader", "config.json")))
 
-    tables <- DBI::dbListTables(priv(store)$conn)
+    tables <- ddb_list_tables(priv(store)$conn)
     expect_setequal(
         tables,
         c(
@@ -162,7 +161,6 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
 
 test_that("EsgStore can reopen an existing store", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     EsgStore$new(dir)$close()
@@ -176,7 +174,6 @@ test_that("EsgStore can reopen an existing store", {
 
 test_that("EsgStore tracks long-lived ESGF queries", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -199,7 +196,7 @@ test_that("EsgStore tracks long-lived ESGF queries", {
     expect_true(file.exists(file.path(dir, queries$query_file[[1L]])))
     expect_true(grepl("ssp585", queries$parameter_json[[1L]], fixed = TRUE))
 
-    artifacts <- DBI::dbReadTable(priv(store)$conn, "artifact")
+    artifacts <- ddb_read_table(priv(store)$conn, "artifact")
     expect_equal(nrow(artifacts[artifacts$query_id == query_id & artifacts$kind == "query", ]), 1L)
     expect_equal(nrow(store$queries(tracked = TRUE)), 1L)
     expect_equal(nrow(store$queries(tracked = FALSE)), 0L)
@@ -215,7 +212,6 @@ test_that("EsgStore tracks long-lived ESGF queries", {
 
 test_that("EsgStore updates tracked queries and links file records", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -270,12 +266,12 @@ test_that("EsgStore updates tracked queries and links file records", {
     expect_equal(nrow(store$query_files(query_id, status = "current")), 1L)
     expect_equal(nrow(store$query_files(query_id, status = "retracted")), 1L)
 
-    files <- DBI::dbReadTable(priv(store)$conn, "esg_file")
+    files <- ddb_read_table(priv(store)$conn, "esg_file")
     expect_equal(nrow(files), 2L)
     expect_setequal(files$file_key, c("master:CMIP6.mock.master.file-1", "master:CMIP6.mock.master.file-2"))
-    links_db <- DBI::dbReadTable(priv(store)$conn, "esg_query_file")
+    links_db <- ddb_read_table(priv(store)$conn, "esg_query_file")
     expect_equal(nrow(links_db), 2L)
-    catalog <- DBI::dbReadTable(priv(store)$conn, "file_catalog")
+    catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
     expect_equal(nrow(catalog), 1L)
     expect_identical(catalog$file_key[[1L]], "master:CMIP6.mock.master.file-1")
 
@@ -288,7 +284,6 @@ test_that("EsgStore updates tracked queries and links file records", {
 
 test_that("EsgStore downloads tracked query files through downloader", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     src <- tempfile(fileext = ".nc")
     writeLines("tracked query netcdf placeholder", src)
@@ -357,7 +352,6 @@ test_that("EsgStore downloads tracked query files through downloader", {
 
 test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -374,9 +368,9 @@ test_that("EsgStore catalogs File result records", {
 
     query_id <- store$add_files(files, label = "cmip6 test")
     conn <- priv(store)$conn
-    runs <- DBI::dbReadTable(conn, "query_run")
-    catalog <- DBI::dbReadTable(conn, "file_catalog")
-    artifacts <- DBI::dbReadTable(conn, "artifact")
+    runs <- ddb_read_table(conn, "query_run")
+    catalog <- ddb_read_table(conn, "file_catalog")
+    artifacts <- ddb_read_table(conn, "artifact")
 
     expect_match(query_id, "^[0-9a-f]{64}$")
     expect_equal(nrow(runs), 1L)
@@ -398,7 +392,6 @@ test_that("EsgStore catalogs File result records", {
 
 test_that("EsgStore downloads files through downloader and syncs completed assets", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     src <- tempfile(fileext = ".nc")
     writeLines("local netcdf placeholder", src)
@@ -440,7 +433,6 @@ test_that("EsgStore downloads files through downloader and syncs completed asset
 
 test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -456,15 +448,14 @@ test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
     conn <- priv(store)$conn
 
     expect_identical(query_id_2, query_id_1)
-    expect_equal(nrow(DBI::dbReadTable(conn, "query_run")), 1L)
-    expect_equal(nrow(DBI::dbReadTable(conn, "file_catalog")), 1L)
-    expect_equal(nrow(DBI::dbReadTable(conn, "artifact")), 1L)
-    expect_equal(DBI::dbReadTable(conn, "query_run")$result_type, "Aggregation")
+    expect_equal(nrow(ddb_read_table(conn, "query_run")), 1L)
+    expect_equal(nrow(ddb_read_table(conn, "file_catalog")), 1L)
+    expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
+    expect_equal(ddb_read_table(conn, "query_run")$result_type, "Aggregation")
 })
 
 test_that("EsgStore records empty child query runs", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -488,9 +479,9 @@ test_that("EsgStore records empty child query runs", {
     }
 
     conn <- priv(store)$conn
-    runs <- DBI::dbReadTable(conn, "query_run")
-    catalog <- DBI::dbReadTable(conn, "file_catalog")
-    artifacts <- DBI::dbReadTable(conn, "artifact")
+    runs <- ddb_read_table(conn, "query_run")
+    catalog <- ddb_read_table(conn, "file_catalog")
+    artifacts <- ddb_read_table(conn, "artifact")
     validation <- store$validate()
 
     expect_equal(nrow(runs), 2L)
@@ -504,7 +495,6 @@ test_that("EsgStore records empty child query runs", {
 
 test_that("EsgStore plans regional extraction jobs from catalog filters", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -553,7 +543,7 @@ test_that("EsgStore plans regional extraction jobs from catalog filters", {
     expect_match(plan$plan_id, "^[0-9a-f]{64}$")
 
     conn <- priv(store)$conn
-    DBI::dbExecute(conn, "UPDATE extraction_plan SET status = 'done'")
+    ddb_exec(conn, "UPDATE extraction_plan SET status = 'done'")
     plan_again <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -564,13 +554,12 @@ test_that("EsgStore plans regional extraction jobs from catalog filters", {
         variable_id = c("tas", "hurs"),
         nearest = 2L
     )
-    expect_equal(nrow(DBI::dbReadTable(conn, "extraction_plan")), 2L)
+    expect_equal(nrow(ddb_read_table(conn, "extraction_plan")), 2L)
     expect_equal(unique(plan_again$status), "done")
 })
 
 test_that("EsgStore rejects invalid extraction plans", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -611,7 +600,6 @@ test_that("EsgStore rejects invalid extraction plans", {
 
 test_that("EsgStore extracts regional data to Parquet", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
@@ -638,9 +626,9 @@ test_that("EsgStore extracts regional data to Parquet", {
 
     processed <- store$extract(plan_id = plan$plan_id)
     conn <- priv(store)$conn
-    plans <- DBI::dbReadTable(conn, "extraction_plan")
-    results <- DBI::dbReadTable(conn, "extraction_result")
-    artifacts <- DBI::dbReadTable(conn, "artifact")
+    plans <- ddb_read_table(conn, "extraction_plan")
+    results <- ddb_read_table(conn, "extraction_result")
+    artifacts <- ddb_read_table(conn, "artifact")
 
     expect_equal(processed$status, "done")
     expect_equal(plans$status, "done")
@@ -655,9 +643,9 @@ test_that("EsgStore extracts regional data to Parquet", {
 
     parquet <- file.path(dir, results$output_path)
     expect_true(file.exists(parquet))
-    rows <- DBI::dbGetQuery(conn, sprintf(
+    rows <- ddb_query(conn, sprintf(
         "SELECT site_id, source_id, experiment_id, variable_id, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
-        DBI::dbQuoteString(conn, parquet)
+        ddb_literal(conn, parquet)
     ))
     expect_equal(rows$site_id, "SIN")
     expect_equal(rows$source_id, "EC-Earth3")
@@ -673,7 +661,6 @@ test_that("EsgStore extracts regional data to Parquet", {
 
 test_that("EsgStore records failed extraction plans", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
@@ -698,7 +685,7 @@ test_that("EsgStore records failed extraction plans", {
     )
 
     processed <- store$extract(plan_id = plan$plan_id)
-    plans <- DBI::dbReadTable(priv(store)$conn, "extraction_plan")
+    plans <- ddb_read_table(priv(store)$conn, "extraction_plan")
 
     expect_equal(processed$status, "failed")
     expect_equal(plans$status, "failed")
@@ -708,7 +695,6 @@ test_that("EsgStore records failed extraction plans", {
 
 test_that("EsgStore summarises and checks complete coverage", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     fixture <- extract_store_test_completed_store()
     store <- fixture$store
@@ -738,14 +724,13 @@ test_that("EsgStore summarises and checks complete coverage", {
 
 test_that("EsgStore detects incomplete coverage", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("DBI")
 
     fixture <- extract_store_test_completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
     on.exit(unlink(fixture$nc), add = TRUE)
 
-    results <- DBI::dbReadTable(priv(store)$conn, "extraction_result")
+    results <- ddb_read_table(priv(store)$conn, "extraction_result")
     unlink(file.path(fixture$dir, results$output_path))
     cov <- store$coverage()
     expect_false(cov$complete)

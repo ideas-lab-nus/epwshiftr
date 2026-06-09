@@ -485,6 +485,52 @@ checksum_bytes <- function(bytes, algo = "sha256") {
 }
 # }}}
 
+# duckdb helpers {{{
+ddb_connect <- function(dbdir, read_only = FALSE, ...) {
+    duckdb::dbConnect(duckdb::duckdb(), dbdir = dbdir, read_only = read_only, ...)
+}
+
+ddb_disconnect <- function(conn, shutdown = TRUE) {
+    duckdb::dbDisconnect(conn, shutdown = shutdown)
+}
+
+ddb_is_valid <- function(conn) {
+    duckdb::dbIsValid(conn)
+}
+
+ddb_exec <- function(conn, sql) {
+    duckdb::sql_exec(sql, conn = conn)
+}
+
+ddb_query <- function(conn, sql) {
+    duckdb::sql_query(sql, conn = conn)
+}
+
+ddb_list_tables <- function(conn) {
+    duckdb::dbListTables(conn)
+}
+
+ddb_read_table <- function(conn, table) {
+    ddb_query(conn, sprintf("SELECT * FROM %s", ddb_ident(conn, table)))
+}
+
+ddb_write_table <- function(conn, table, rows, ...) {
+    duckdb::dbWriteTable(conn, table, rows, ...)
+}
+
+ddb_append_table <- function(conn, table, rows, ...) {
+    duckdb::dbAppendTable(conn, table, rows, ...)
+}
+
+ddb_ident <- function(conn, x) {
+    as.character(duckdb::dbQuoteIdentifier(conn, x))
+}
+
+ddb_literal <- function(conn, x) {
+    as.character(duckdb::dbQuoteLiteral(conn, x))
+}
+# }}}
+
 # store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")

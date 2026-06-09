@@ -26,7 +26,6 @@ Imports:
     CFtime,
     curl,
     data.table (>= 1.12.4),
-    DBI,
     duckdb,
     eplusr (>= 0.15.2),
     fst,

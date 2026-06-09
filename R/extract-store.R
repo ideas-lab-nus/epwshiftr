@@ -106,7 +106,7 @@ EsgStore <- R6::R6Class(
             private$check_open()
             checkmate::assert_string(key, min.chars = 1L)
 
-            meta <- DBI::dbReadTable(private$conn, "store_meta")
+            meta <- ddb_read_table(private$conn, "store_meta")
             row <- meta[meta$key == key, , drop = FALSE]
             if (!nrow(row)) {
                 return(default)
@@ -239,7 +239,7 @@ EsgStore <- R6::R6Class(
             private$check_open()
             checkmate::assert_string(artifact_id, min.chars = 1L)
 
-            artifacts <- DBI::dbReadTable(private$conn, "artifact")
+            artifacts <- ddb_read_table(private$conn, "artifact")
             row <- artifacts[artifacts$artifact_id == artifact_id, , drop = FALSE]
             if (!nrow(row)) {
                 cli::cli_abort("Artifact ID {.val {artifact_id}} was not found in the store manifest.")
@@ -255,7 +255,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table with validation results.
         validate = function() {
             private$check_open()
-            artifacts <- data.table::as.data.table(DBI::dbReadTable(private$conn, "artifact"))
+            artifacts <- data.table::as.data.table(ddb_read_table(private$conn, "artifact"))
             if (!nrow(artifacts)) {
                 return(data.table::data.table(
                     artifact_id = character(),
@@ -788,7 +788,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(tasks)) {
                 return(tasks)
             }
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             if (!nrow(catalog)) {
                 return(tasks)
             }
@@ -859,7 +859,7 @@ EsgStore <- R6::R6Class(
             private$check_open()
 
             time_range <- extract_store_parse_time_range(time)
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             catalog <- catalog[catalog$query_id == query_id]
             if (!nrow(catalog)) {
                 cli::cli_abort("No cataloged file records were found for query ID {.val {query_id}}.")
@@ -943,7 +943,7 @@ EsgStore <- R6::R6Class(
             out <- unique(out)
             private$append_new_rows("extraction_plan", out, "plan_id")
 
-            existing <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_plan"))
+            existing <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
             existing[plan_id %in% out$plan_id]
         },
         # }}}
@@ -970,7 +970,7 @@ EsgStore <- R6::R6Class(
             fallback <- match.arg(fallback)
             private$check_open()
 
-            plans <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_plan"))
+            plans <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
             if (is.null(plan_id)) {
                 plans <- plans[plans$status %in% status]
             } else {
@@ -980,7 +980,7 @@ EsgStore <- R6::R6Class(
                 return(plans)
             }
 
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             processed <- vector("list", nrow(plans))
             for (i in seq_len(nrow(plans))) {
                 plan <- plans[i]
@@ -1011,7 +1011,7 @@ EsgStore <- R6::R6Class(
             checkmate::assert_string(sql)
             private$check_open()
 
-            data.table::as.data.table(DBI::dbGetQuery(private$conn, sql))
+            data.table::as.data.table(ddb_query(private$conn, sql))
         },
         # }}}
 
@@ -1036,7 +1036,7 @@ EsgStore <- R6::R6Class(
             }
 
             groups <- unname(map[by])
-            select_groups <- paste(sprintf("%s AS %s", groups, DBI::dbQuoteIdentifier(private$conn, by)), collapse = ", ")
+            select_groups <- paste(sprintf("%s AS %s", groups, ddb_ident(private$conn, by)), collapse = ", ")
             group_by <- paste(groups, collapse = ", ")
             sql <- sprintf(
                 paste(
@@ -1058,7 +1058,7 @@ EsgStore <- R6::R6Class(
                 group_by
             )
 
-            data.table::as.data.table(DBI::dbGetQuery(private$conn, sql))
+            data.table::as.data.table(ddb_query(private$conn, sql))
         },
         # }}}
 
@@ -1073,7 +1073,7 @@ EsgStore <- R6::R6Class(
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             private$check_open()
 
-            plans <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_plan"))
+            plans <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
             if (!is.null(plan_id)) {
                 plans <- plans[plans$plan_id %in% plan_id]
             }
@@ -1081,8 +1081,8 @@ EsgStore <- R6::R6Class(
                 return(plans)
             }
 
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
-            results <- data.table::as.data.table(DBI::dbReadTable(private$conn, "extraction_result"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
+            results <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_result"))
             agg <- if (nrow(results)) {
                 results[, .(
                     output_files = list(output_path),
@@ -1182,7 +1182,7 @@ EsgStore <- R6::R6Class(
         # is_open {{{
         #' @field is_open Whether the manifest connection is open.
         is_open = function() {
-            !is.null(private$conn) && DBI::dbIsValid(private$conn)
+            !is.null(private$conn) && ddb_is_valid(private$conn)
         }
         # }}}
     ),
@@ -1202,7 +1202,7 @@ EsgStore <- R6::R6Class(
 
         # download plan helpers {{{
         catalog_download_plan = function() {
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             if (!nrow(catalog)) {
                 return(data.table::data.table())
             }
@@ -1243,7 +1243,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(plan)) {
                 return(plan)
             }
-            catalog <- data.table::as.data.table(DBI::dbReadTable(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             catalog <- catalog[catalog[["query_id"]] == query_id]
             if (!nrow(catalog)) {
                 return(plan)
@@ -1289,7 +1289,7 @@ EsgStore <- R6::R6Class(
 
         # connect {{{
         connect = function() {
-            private$conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = private$manifest_path, read_only = FALSE)
+            private$conn <- ddb_connect(private$manifest_path, read_only = FALSE)
             invisible(private$conn)
         },
         # }}}
@@ -1299,10 +1299,10 @@ EsgStore <- R6::R6Class(
             if (is.null(private$conn)) {
                 return(invisible(NULL))
             }
-            if (DBI::dbIsValid(private$conn)) {
+            if (ddb_is_valid(private$conn)) {
                 tryCatch(
-                    DBI::dbDisconnect(private$conn, shutdown = TRUE),
-                    error = function(e) DBI::dbDisconnect(private$conn)
+                    ddb_disconnect(private$conn, shutdown = TRUE),
+                    error = function(e) ddb_disconnect(private$conn)
                 )
             }
             private$conn <- NULL
@@ -1501,13 +1501,13 @@ EsgStore <- R6::R6Class(
 
         # exec {{{
         exec = function(sql) {
-            DBI::dbExecute(private$conn, sql)
+            ddb_exec(private$conn, sql)
         },
         # }}}
 
         # read_table {{{
         read_table = function(table) {
-            data.table::as.data.table(DBI::dbReadTable(private$conn, table))
+            data.table::as.data.table(ddb_read_table(private$conn, table))
         },
         # }}}
 
@@ -1813,7 +1813,7 @@ EsgStore <- R6::R6Class(
             }
 
             private$delete_by_key(table, key, keys)
-            DBI::dbAppendTable(private$conn, table, rows)
+            ddb_append_table(private$conn, table, rows)
             invisible(NULL)
         },
         # }}}
@@ -1826,12 +1826,12 @@ EsgStore <- R6::R6Class(
                 return(invisible(NULL))
             }
 
-            q_table <- DBI::dbQuoteIdentifier(private$conn, table)
-            q_key <- DBI::dbQuoteIdentifier(private$conn, key)
-            current <- DBI::dbGetQuery(private$conn, sprintf("SELECT %s FROM %s", q_key, q_table))[[key]]
+            q_table <- ddb_ident(private$conn, table)
+            q_key <- ddb_ident(private$conn, key)
+            current <- ddb_query(private$conn, sprintf("SELECT %s FROM %s", q_key, q_table))[[key]]
             rows <- rows[!rows[[key]] %in% current, , drop = FALSE]
             if (nrow(rows)) {
-                DBI::dbAppendTable(private$conn, table, rows)
+                ddb_append_table(private$conn, table, rows)
             }
 
             invisible(NULL)
@@ -1848,10 +1848,10 @@ EsgStore <- R6::R6Class(
                 return(invisible(NULL))
             }
 
-            q_table <- DBI::dbQuoteIdentifier(private$conn, table)
-            q_key <- DBI::dbQuoteIdentifier(private$conn, key)
-            q_values <- paste(DBI::dbQuoteString(private$conn, values), collapse = ", ")
-            DBI::dbExecute(private$conn, sprintf("DELETE FROM %s WHERE %s IN (%s)", q_table, q_key, q_values))
+            q_table <- ddb_ident(private$conn, table)
+            q_key <- ddb_ident(private$conn, key)
+            q_values <- paste(ddb_literal(private$conn, values), collapse = ", ")
+            ddb_exec(private$conn, sprintf("DELETE FROM %s WHERE %s IN (%s)", q_table, q_key, q_values))
             invisible(NULL)
         },
         # }}}
@@ -1893,7 +1893,7 @@ EsgStore <- R6::R6Class(
             results <- private$write_extract_partitions(dt, plan, file, overwrite = overwrite)
             private$delete_by_key("extraction_result", "plan_id", plan$plan_id)
             if (nrow(results)) {
-                DBI::dbAppendTable(private$conn, "extraction_result", results)
+                ddb_append_table(private$conn, "extraction_result", results)
             }
 
             private$mark_plan_status(
@@ -2091,17 +2091,17 @@ EsgStore <- R6::R6Class(
             tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
             tmp_table <- sprintf("tmp_extract_%s", substr(extract_store_hash(path, Sys.time(), runif(1L)), 1L, 16L))
             on.exit({
-                try(DBI::dbExecute(private$conn, sprintf("DROP TABLE IF EXISTS %s", DBI::dbQuoteIdentifier(private$conn, tmp_table))), silent = TRUE)
+                try(ddb_exec(private$conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(private$conn, tmp_table))), silent = TRUE)
                 if (file.exists(tmp_file)) {
                     unlink(tmp_file)
                 }
             }, add = TRUE)
 
-            DBI::dbWriteTable(private$conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
-            DBI::dbExecute(private$conn, sprintf(
+            ddb_write_table(private$conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+            ddb_exec(private$conn, sprintf(
                 "COPY %s TO %s (FORMAT PARQUET)",
-                DBI::dbQuoteIdentifier(private$conn, tmp_table),
-                DBI::dbQuoteString(private$conn, tmp_file)
+                ddb_ident(private$conn, tmp_table),
+                ddb_literal(private$conn, tmp_file)
             ))
             if (file.exists(path) && isTRUE(overwrite)) {
                 unlink(path)

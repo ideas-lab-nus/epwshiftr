@@ -163,7 +163,7 @@ esgdict__latest_store_path <- function(project = "CMIP6") {
 
     store <- EsgStore$new(root, create = FALSE)
     on.exit(store$close(), add = TRUE)
-    artifacts <- data.table::as.data.table(DBI::dbReadTable(priv(store)$conn, "artifact"))
+    artifacts <- data.table::as.data.table(ddb_read_table(priv(store)$conn, "artifact"))
     artifacts <- artifacts[kind == "dict" & project == target_project & status == "available"]
     if (!nrow(artifacts)) {
         return(NULL)
