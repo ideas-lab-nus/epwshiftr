@@ -2204,7 +2204,7 @@ extract_store_now <- function() {
 
 extract_store_hash <- function(...) {
     text <- paste(vapply(list(...), extract_store_hash_piece, character(1L)), collapse = "\n")
-    paste0(openssl::sha256(charToRaw(text)))
+    checksum_bytes(charToRaw(text), "sha256")
 }
 
 extract_store_hash_piece <- function(x) {

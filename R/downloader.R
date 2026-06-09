@@ -4,16 +4,7 @@ verify_checksum <- function(file, checksum, algo = "sha256") {
     checkmate::assert_string(checksum)
     checkmate::assert_choice(algo, c("md5", "sha256"))
 
-    con <- file(file, "rb")
-    on.exit(close(con), add = TRUE)
-
-    # convert to plain character strings for comparison
-    # openssl returns objects with class "hash" which fail identical() comparison
-    actual <- if (algo == "sha256") {
-        as.character(openssl::sha256(con))
-    } else {
-        as.character(openssl::md5(con))
-    }
+    actual <- checksum_file(file, algo)
 
     tolower(actual) == tolower(checksum)
 }
@@ -132,7 +123,7 @@ download_hash <- function(...) {
         }
         paste(as.character(x), collapse = "\r")
     }, character(1L))
-    as.character(openssl::sha256(charToRaw(paste(values, collapse = "\n"))))
+    checksum_bytes(charToRaw(paste(values, collapse = "\n")), "sha256")
 }
 
 download_one_chr <- function(x) {
@@ -454,7 +445,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             }
 
             # get temporary file path
-            tmp_id <- if (!is.null(.tmp_id)) .tmp_id else if (!is.null(checksum)) checksum else as.character(openssl::md5(url))
+            tmp_id <- if (!is.null(.tmp_id)) .tmp_id else if (!is.null(checksum)) checksum else checksum_bytes(charToRaw(url), "md5")
             tmp_part <- file.path(private$temp, paste0(tmp_id, ".part"))
             tmp_done <- file.path(private$temp, paste0(tmp_id, ".done"))
 
@@ -1811,7 +1802,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             }
 
             # Generate task ID
-            task_id <- as.character(openssl::md5(paste(url, Sys.time())))
+            task_id <- checksum_bytes(charToRaw(paste(url, Sys.time())), "md5")
 
             # Determine filename
             if (is.null(filename)) {
@@ -1990,25 +1981,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             checkmate::assert_file_exists(file)
             checkmate::assert_choice(type, c("md5", "sha256"))
 
-            # Try openssl first (most efficient)
-            if (requireNamespace("openssl", quietly = TRUE)) {
-                con <- file(file, "rb")
-                on.exit(close(con), add = TRUE)
-
-                actual <- if (type == "sha256") {
-                    as.character(openssl::sha256(con))
-                } else {
-                    as.character(openssl::md5(con))
-                }
-
-                close(con)
-                on.exit(NULL)
-            } else {
-                # Fallback to digest package
-                actual <- digest::digest(file, algo = type, file = TRUE)
-            }
-
-            tolower(as.character(actual))
+            tolower(checksum_file(file, type))
         }
         # }}}
     )

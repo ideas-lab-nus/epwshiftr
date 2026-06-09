@@ -457,18 +457,40 @@ store_rel_path <- function(path, root = store_dir(init = TRUE)) {
 }
 # }}}
 
+# checksum helpers {{{
+checksum_file <- function(path, algo = "sha256") {
+    checkmate::assert_file_exists(path, access = "r")
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    out <- if (identical(algo, "sha256")) {
+        tools::sha256sum(path)
+    } else {
+        tools::md5sum(path)
+    }
+    unname(as.character(out))
+}
+
+checksum_bytes <- function(bytes, algo = "sha256") {
+    if (!is.raw(bytes)) {
+        stop("`bytes` must be a raw vector.", call. = FALSE)
+    }
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    out <- if (identical(algo, "sha256")) {
+        tools::sha256sum(bytes = bytes)
+    } else {
+        tools::md5sum(bytes = bytes)
+    }
+    unname(as.character(out))
+}
+# }}}
+
 # store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")
     checkmate::assert_choice(algo, c("md5", "sha256"))
 
-    con <- file(path, "rb")
-    on.exit(close(con), add = TRUE)
-    if (identical(algo, "sha256")) {
-        paste0(openssl::sha256(con))
-    } else {
-        paste0(openssl::md5(con))
-    }
+    checksum_file(path, algo)
 }
 # }}}
 

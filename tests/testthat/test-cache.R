@@ -677,7 +677,7 @@ test_that("DiskCache: metadata persistence", {
     cache$set("a", 1)
 
     # Check metadata file exists
-    metadata_file <- file.path(cache_dir, ".metadata.qs")
+    metadata_file <- file.path(cache_dir, ".metadata.rds")
     expect_true(file.exists(metadata_file))
 
     # Destroy and recreate
