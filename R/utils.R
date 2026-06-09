@@ -370,7 +370,17 @@ store_is_abs_path <- function(path) {
 
 # store_normalize_path {{{
 store_normalize_path <- function(path) {
-    normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+    path <- path.expand(path)
+    if (file.exists(path)) {
+        return(normalizePath(path, winslash = "/", mustWork = TRUE))
+    }
+
+    parent <- dirname(path)
+    if (dir.exists(parent)) {
+        return(file.path(normalizePath(parent, winslash = "/", mustWork = TRUE), basename(path)))
+    }
+
+    normalizePath(path, winslash = "/", mustWork = FALSE)
 }
 # }}}
 
@@ -398,6 +408,9 @@ store_dir <- function(init = TRUE) {
     if (isTRUE(init) && !dir.exists(path)) {
         verbose(sprintf("Creating epwshiftr store directory '%s'", path))
         dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (isTRUE(init)) {
+        path <- store_normalize_path(path)
     }
 
     if (isTRUE(init) && !checkmate::test_directory_exists(path, "rw")) {

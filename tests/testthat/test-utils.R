@@ -220,9 +220,9 @@ test_that("store_dir() resolves and creates the persistent store root", {
     withr::local_options(list(epwshiftr.dir_store = root, epwshiftr.verbose = FALSE))
 
     expect_false(dir.exists(root))
-    expect_identical(store_dir(init = FALSE), normalizePath(root, winslash = "/", mustWork = FALSE))
+    expect_identical(store_dir(init = FALSE), store_normalize_path(root))
     expect_true(dir.exists(store_dir()))
-    expect_identical(store_dir(), normalizePath(root, winslash = "/", mustWork = FALSE))
+    expect_identical(store_dir(), store_normalize_path(root))
 })
 
 test_that("store path helpers keep paths inside the store", {
