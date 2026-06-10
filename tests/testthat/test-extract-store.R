@@ -156,6 +156,7 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_null(store$get_meta("active_cmip6_index_artifact_id"))
     expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
     expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
 
     store$close()
     expect_false(store$is_open)
@@ -172,6 +173,30 @@ test_that("EsgStore can reopen an existing store", {
 
     expect_true(store$is_open)
     expect_true(file.exists(file.path(dir, "manifest.duckdb")))
+})
+
+test_that("EsgStore migrates older manifests to the current schema version", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    store$close()
+
+    manifest <- file.path(dir, "manifest.duckdb")
+    conn <- ddb_connect(manifest, read_only = FALSE)
+    on.exit(if (!is.null(conn) && ddb_is_valid(conn)) ddb_disconnect(conn, shutdown = TRUE), add = TRUE)
+    ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
+    ddb_exec(conn, "ALTER TABLE esg_query_update DROP COLUMN IF EXISTS download_session_id")
+    ddb_exec(conn, "ALTER TABLE esg_query_update DROP COLUMN IF EXISTS last_error")
+    ddb_disconnect(conn, shutdown = TRUE)
+    conn <- NULL
+
+    store <- EsgStore$new(dir, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+    cols <- names(ddb_read_table(priv(store)$conn, "esg_query_update"))
+    expect_true(all(c("download_session_id", "last_error") %in% cols))
 })
 
 test_that("EsgStore tracks long-lived ESGF queries", {

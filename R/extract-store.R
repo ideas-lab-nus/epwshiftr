@@ -1,3 +1,5 @@
+STORE_SCHEMA_VERSION <- "2.0.0"
+
 # EsgStore {{{
 #' Local ESGF Store
 #'
@@ -2500,16 +2502,6 @@ EsgStore <- R6::R6Class(
             )
 
             private$migrate_schema()
-            private$replace_rows(
-                "store_meta",
-                data.frame(
-                    key = "schema_version",
-                    value = "2",
-                    updated_at = extract_store_now(),
-                    stringsAsFactors = FALSE
-                ),
-                "key"
-            )
 
             invisible(NULL)
         },
@@ -2517,6 +2509,48 @@ EsgStore <- R6::R6Class(
 
         # migrate_schema {{{
         migrate_schema = function() {
+            current <- private$store_schema_version()
+            private$migrate_schema_to_2(current)
+            private$set_store_schema_version(STORE_SCHEMA_VERSION)
+            invisible(NULL)
+        },
+
+        store_schema_version = function() {
+            meta <- tryCatch(private$read_table("store_meta"), error = function(e) data.table::data.table())
+            if (!nrow(meta)) {
+                return(NA_character_)
+            }
+            row <- meta[meta[["key"]] == "schema_version"]
+            if (!nrow(row)) {
+                return(NA_character_)
+            }
+            version <- as.character(row$value[[1L]])
+            if (is.na(version) || !nzchar(version)) NA_character_ else version
+        },
+
+        set_store_schema_version = function(version) {
+            private$replace_rows(
+                "store_meta",
+                data.frame(
+                    key = "schema_version",
+                    value = version,
+                    updated_at = extract_store_now(),
+                    stringsAsFactors = FALSE
+                ),
+                "key"
+            )
+            invisible(NULL)
+        },
+
+        migrate_schema_to_2 = function(current) {
+            if (!is.na(current)) {
+                cmp <- tryCatch(utils::compareVersion(current, STORE_SCHEMA_VERSION), error = function(e) -1L)
+                if (cmp > 0L) {
+                    cli::cli_abort(
+                        "Store manifest schema version {.val {current}} is newer than this package supports ({.val {STORE_SCHEMA_VERSION}})."
+                    )
+                }
+            }
             private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS download_session_id VARCHAR")
             private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS last_error VARCHAR")
             invisible(NULL)
