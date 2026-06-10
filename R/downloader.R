@@ -180,6 +180,14 @@ download_config_write <- function(config, file, pretty = TRUE) {
     normalizePath(file, mustWork = TRUE, winslash = "/")
 }
 
+download_url_host <- function(url) {
+    url <- download_one_chr(url)
+    if (is.na(url) || !grepl("^https?://", url)) {
+        return(NA_character_)
+    }
+    sub("^https?://([^/:?#]+).*$", "\\1", url)
+}
+
 download_worker_download <- function(url, filename, subdir, dest, temp, retries, timeout,
                                      overwrite, checksum, checksum_type, resume, tmp_id) {
     checksum_file <- function(path, algo = "sha256") {
@@ -866,6 +874,24 @@ FileDownloader <- R6::R6Class("FileDownloader",
         },
         # }}}
 
+        # data_nodes {{{
+        #' @description
+        #' Return historical data node download performance.
+        #'
+        #' @param service Optional ESGF service filter.
+        #'
+        #' @return A data.table of data node performance records.
+        data_nodes = function(service = NULL) {
+            private$require_manifest()
+            checkmate::assert_string(service, null.ok = TRUE)
+            nodes <- private$read_table("download_node")
+            if (!is.null(service) && nrow(nodes)) {
+                nodes <- nodes[nodes[["service"]] == service]
+            }
+            nodes[]
+        },
+        # }}}
+
         # retry {{{
         #' @description
         #' Requeue failed or cancelled persistent tasks.
@@ -1526,6 +1552,20 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 )
             ")
             private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_node (
+                    node_id VARCHAR PRIMARY KEY,
+                    data_node VARCHAR,
+                    service VARCHAR,
+                    success_count INTEGER,
+                    failure_count INTEGER,
+                    bytes_done DOUBLE,
+                    avg_latency DOUBLE,
+                    last_success_at TIMESTAMP,
+                    last_failure_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            ")
+            private$exec_manifest("
                 CREATE TABLE IF NOT EXISTS download_meta (
                     key VARCHAR PRIMARY KEY,
                     value VARCHAR,
@@ -1780,6 +1820,67 @@ FileDownloader <- R6::R6Class("FileDownloader",
             invisible(candidate)
         },
 
+        update_node_stats = function(candidate, ok, bytes_done = 0) {
+            candidate <- data.table::as.data.table(candidate)
+            data_node <- download_one_chr(candidate$data_node[[1L]])
+            if (is.na(data_node)) {
+                data_node <- download_url_host(candidate$url[[1L]])
+            }
+            if (is.na(data_node)) {
+                return(invisible(NULL))
+            }
+            service <- download_one_chr(candidate$service[[1L]])
+            if (is.na(service)) {
+                service <- "HTTPServer"
+            }
+            node_id <- download_hash(service, data_node)
+            wanted_node_id <- node_id
+            now <- download_now()
+            nodes <- private$read_table("download_node")
+            row <- nodes[nodes[["node_id"]] == wanted_node_id]
+            if (!nrow(row)) {
+                row <- data.table::data.table(
+                    node_id = node_id,
+                    data_node = data_node,
+                    service = service,
+                    success_count = 0L,
+                    failure_count = 0L,
+                    bytes_done = 0,
+                    avg_latency = NA_real_,
+                    last_success_at = as.POSIXct(NA),
+                    last_failure_at = as.POSIXct(NA),
+                    updated_at = now
+                )
+            }
+
+            latency <- suppressWarnings(as.numeric(candidate$probe_latency[[1L]]))
+            if (isTRUE(ok)) {
+                successes <- suppressWarnings(as.integer(row$success_count[[1L]]))
+                if (is.na(successes)) successes <- 0L
+                previous_latency <- suppressWarnings(as.numeric(row$avg_latency[[1L]]))
+                previous_bytes <- suppressWarnings(as.numeric(row$bytes_done[[1L]]))
+                if (is.na(previous_bytes)) previous_bytes <- 0
+                row$success_count <- successes + 1L
+                row$bytes_done <- previous_bytes + bytes_done
+                if (!is.na(latency)) {
+                    row$avg_latency <- if (is.na(previous_latency)) {
+                        latency
+                    } else {
+                        ((previous_latency * successes) + latency) / (successes + 1L)
+                    }
+                }
+                row$last_success_at <- now
+            } else {
+                failures <- suppressWarnings(as.integer(row$failure_count[[1L]]))
+                if (is.na(failures)) failures <- 0L
+                row$failure_count <- failures + 1L
+                row$last_failure_at <- now
+            }
+            row$updated_at <- now
+            private$replace_rows("download_node", as.data.frame(row), "node_id")
+            invisible(row)
+        },
+
         update_session_status = function(session_id) {
             sessions <- private$read_table("download_session")
             idx <- match(session_id, sessions$session_id)
@@ -1905,6 +2006,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                         task$bytes_done <- file.info(result$path, extra_cols = FALSE)$size
                         task$last_error <- NA_character_
                         task$completed_at <- download_now()
+                        private$update_node_stats(item$candidate, ok = TRUE, bytes_done = task$bytes_done[[1L]])
                         private$update_task(task)
                         private$log_event(task$session_id[[1L]], task$task_id[[1L]], "done", result$path)
                         tick()
@@ -1921,6 +2023,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                     candidate$failed_count <- failed + 1L
                     candidate$last_error <- last_error
                     private$update_candidate(candidate)
+                    private$update_node_stats(candidate, ok = FALSE)
                     private$log_event(task$session_id[[1L]], task$task_id[[1L]], "candidate_error", last_error)
 
                     tried <- unique(c(item$tried_candidate_id, candidate$candidate_id[[1L]]))
@@ -2105,6 +2208,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                     task$bytes_done <- file.info(path)$size
                     task$last_error <- NA_character_
                     task$completed_at <- download_now()
+                    private$update_node_stats(candidate, ok = TRUE, bytes_done = task$bytes_done[[1L]])
                     private$update_task(task)
                     private$log_event(session_id, task_id, "done", path)
                     return(path)
@@ -2113,6 +2217,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 candidate$failed_count <- as.integer(candidate$failed_count) + 1L
                 candidate$last_error <- last_error
                 private$update_candidate(candidate)
+                private$update_node_stats(candidate, ok = FALSE)
                 private$log_event(session_id, task_id, "candidate_error", last_error)
             }
 

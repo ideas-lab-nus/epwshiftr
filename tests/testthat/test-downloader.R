@@ -90,7 +90,7 @@ test_that("FileDownloader persists config and manifest state", {
     on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
     expect_setequal(
         ddb_list_tables(conn),
-        c("download_candidate", "download_event", "download_meta", "download_session", "download_task")
+        c("download_candidate", "download_event", "download_meta", "download_node", "download_session", "download_task")
     )
 })
 
@@ -302,6 +302,7 @@ test_that("FileDownloader falls back across candidate URLs", {
         ),
         checksum = checksum,
         checksum_type = "md5",
+        data_node = c("bad-node.example.org", "good-node.example.org"),
         priority = c(1L, 2L)
     )
 
@@ -312,6 +313,9 @@ test_that("FileDownloader falls back across candidate URLs", {
     )
     expect_equal(tasks$status, "done")
     expect_identical(tasks$selected_url, plan$url[[2L]])
+    nodes <- dl$data_nodes()
+    expect_equal(nodes[data_node == "bad-node.example.org"]$failure_count, 1L)
+    expect_equal(nodes[data_node == "good-node.example.org"]$success_count, 1L)
 
     rm(dl)
     gc()
