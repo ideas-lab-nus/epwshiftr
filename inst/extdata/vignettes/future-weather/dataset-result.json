@@ -1,0 +1,130 @@
+{
+  "index_node": "https://esgf-data.dkrz.de",
+  "parameter": {
+    "facet": {
+      "project": {
+        "value": "CMIP6",
+        "negate": false
+      },
+      "activity_id": {
+        "value": "ScenarioMIP",
+        "negate": false
+      },
+      "experiment_id": {
+        "value": "ssp585",
+        "negate": false
+      },
+      "source_id": {
+        "value": "EC-Earth3",
+        "negate": false
+      },
+      "variant_label": {
+        "value": "r1i1p1f1",
+        "negate": false
+      },
+      "frequency": {
+        "value": "mon",
+        "negate": false
+      },
+      "variable_id": {
+        "value": ["tas", "psl"],
+        "negate": false
+      },
+      "data_node": {
+        "value": "esgf.ceda.ac.uk",
+        "negate": false
+      },
+      "fields": {
+        "value": "*",
+        "negate": false
+      }
+    },
+    "query": [],
+    "control": {
+      "latest": {
+        "value": true,
+        "negate": false
+      },
+      "type": {
+        "value": "Dataset",
+        "negate": false
+      },
+      "offset": {
+        "value": 0,
+        "negate": false
+      },
+      "distrib": {
+        "value": true,
+        "negate": false
+      },
+      "limit": {
+        "value": 20,
+        "negate": false
+      },
+      "format": {
+        "value": "application/solr+json",
+        "negate": false
+      }
+    },
+    "others": {
+      "table_id": {
+        "value": "Amon",
+        "negate": false
+      }
+    }
+  },
+  "response": {
+    "responseHeader": {
+      "status": 0,
+      "QTime": 1,
+      "params": {
+        "type": "Dataset"
+      }
+    },
+    "response": {
+      "numFound": 2,
+      "start": 0,
+      "docs": [
+        {
+          "id": "CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.Amon.tas.gr.v20200310|esgf.ceda.ac.uk",
+          "access": ["HTTPServer", "OPENDAP"],
+          "activity_id": "ScenarioMIP",
+          "experiment_id": "ssp585",
+          "frequency": "mon",
+          "index_node": "esgf.ceda.ac.uk",
+          "number_of_files": 1,
+          "number_of_aggregations": 1,
+          "project": "CMIP6",
+          "size": 2476,
+          "source_id": "EC-Earth3",
+          "variable_id": "tas",
+          "variant_label": "r1i1p1f1"
+        },
+        {
+          "id": "CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.Amon.psl.gr.v20200310|esgf.ceda.ac.uk",
+          "access": ["HTTPServer", "OPENDAP"],
+          "activity_id": "ScenarioMIP",
+          "experiment_id": "ssp585",
+          "frequency": "mon",
+          "index_node": "esgf.ceda.ac.uk",
+          "number_of_files": 1,
+          "number_of_aggregations": 1,
+          "project": "CMIP6",
+          "size": 2484,
+          "source_id": "EC-Earth3",
+          "variable_id": "psl",
+          "variant_label": "r1i1p1f1"
+        }
+      ],
+      "maxScore": 1
+    },
+    "facet_counts": {
+      "facet_queries": {},
+      "facet_fields": {},
+      "facet_ranges": {},
+      "facet_intervals": {},
+      "facet_heatmaps": {}
+    },
+    "timestamp": "2026-01-01T00:00:00:000000Z"
+  }
+}

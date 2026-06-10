@@ -20,7 +20,13 @@ navbar:
     articles:
       text: Articles
       menu:
-      - text: "Manage CMIP6 CVs and Data Request"
+      - text: "Extract Future Weather Data"
+        href: articles/future-weather-workflow.html
+      - text: "Select ESGF Data for Future Weather"
+        href: articles/select-esgf-data.html
+      - text: "Store, Download, and Extract ESGF Files"
+        href: articles/store-download-extract.html
+      - text: "Manage ESG Dictionaries"
         href: articles/cmip6_dict.html
     reference:
       text: Manual
@@ -33,7 +39,7 @@ navbar:
       href: https://github.com/ideas-lab-nus/epwshiftr
 
 reference:
-  - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
+  - title: ESG controlled vocabularies and data requests
     contents:
       - EsgDict
       - esgdict_option
@@ -69,28 +75,23 @@ reference:
       - morphing_epw
       - future_epw
 
+  - title: Local ESGF store and downloads
+    contents:
+      - EsgStore
+      - FileDownloader
+
   - title: epwshiftr Options
     contents:
       - epwshiftr-package
-      - get_data_dir
+      - store_dir
 
   - title: Additional reference
     contents:
       - EsgDataset
-      - FileDownloader
       - esg_result
-      - as.POSIXct.SolrDateTime
-      - as.character.SolrDateTime
-      - as.data.frame.Schema
-      - format.SolrDateTime
-      - is.solrdt
-      - is_solrdt_end_unbounded
-      - is_solrdt_range
-      - is_solrdt_start_unbounded
-      - length.SolrDateTime
-      - print.Schema
-      - print.SolrDateTime
-      - solrdt_end
-      - solrdt_start
-      - str.Schema
-      - summary.Schema
+      - EsgResult
+      - EsgResultDataset
+      - EsgResultFile
+      - EsgResultAggregation
+      - solr_date
+      - is.solr_date

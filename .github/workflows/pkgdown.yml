@@ -23,6 +23,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: true
+      EPWSHIFTR_VIGNETTE_CACHE: ${{ runner.temp }}/epwshiftr-vignette-cache
 
     steps:
       - uses: actions/checkout@v2
@@ -40,6 +41,13 @@ jobs:
           path: ${{ env.R_LIBS_USER }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
+      - name: Cache vignette ESGF data
+        uses: actions/cache@v1
+        with:
+          path: ${{ env.EPWSHIFTR_VIGNETTE_CACHE }}
+          key: ${{ runner.os }}-vignette-esgf-${{ hashFiles('vignettes/articles/*.Rmd') }}
+          restore-keys: ${{ runner.os }}-vignette-esgf-
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:

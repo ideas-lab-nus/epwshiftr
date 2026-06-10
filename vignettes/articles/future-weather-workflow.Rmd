@@ -1,0 +1,262 @@
+---
+title: "Extract Future Weather Data"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Extract Future Weather Data}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    A complete future-weather extraction workflow using ESGF search, File
+    records, a local store, downloads, and regional NetCDF extraction.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+vignette_truthy <- function(x) {
+    tolower(x) %in% c("1", "true", "yes", "y", "on")
+}
+
+use_live_query <- !vignette_truthy(Sys.getenv("EPWSHIFTR_VIGNETTE_OFFLINE", "false"))
+
+cache_dir <- Sys.getenv("EPWSHIFTR_VIGNETTE_CACHE", "")
+if (!nzchar(cache_dir)) {
+    cache_dir <- file.path(tempdir(), "epwshiftr-vignette-cache")
+}
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+options(
+    epwshiftr.dir_cache = file.path(cache_dir, "cache"),
+    epwshiftr.dir_store = file.path(cache_dir, "store")
+)
+options(epwshiftr.verbose = FALSE)
+
+future_weather_cache_dir <- file.path(cache_dir, "future-weather")
+dir.create(future_weather_cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+vignette_cache_json <- function(filename) {
+    file.path(future_weather_cache_dir, filename)
+}
+
+vignette_fixture_json <- function(filename) {
+    fixture_dir <- system.file(
+        "extdata", "vignettes", "future-weather",
+        package = "epwshiftr",
+        mustWork = FALSE
+    )
+    if (!nzchar(fixture_dir) || !dir.exists(fixture_dir)) {
+        candidates <- c(
+            file.path("..", "..", "inst", "extdata", "vignettes", "future-weather"),
+            file.path("..", "inst", "extdata", "vignettes", "future-weather"),
+            file.path("inst", "extdata", "vignettes", "future-weather")
+        )
+        fixture_dir <- candidates[dir.exists(candidates)][1L]
+    }
+    fixture_dir <- normalizePath(fixture_dir, winslash = "/", mustWork = TRUE)
+    text <- readLines(file.path(fixture_dir, filename), warn = FALSE)
+    text <- gsub("__FUTURE_WEATHER_FIXTURE_DIR__", fixture_dir, text, fixed = TRUE)
+    path <- tempfile(fileext = ".json")
+    writeLines(text, path, useBytes = TRUE)
+    path
+}
+```
+
+```{r setup, message = FALSE}
+library(epwshiftr)
+```
+
+This article connects the main objects in one future-weather extraction
+workflow. The task is:
+
+1. Start from an EPW site in Singapore.
+2. Select a small CMIP6 ScenarioMIP dataset for future-climate extraction.
+3. Move from Dataset records to concrete File records.
+4. Download and catalog the NetCDF files in a local store.
+5. Extract the nearest grid-cell data for a short 2060 time window.
+
+The vignette runs the ESGF query by default. The example uses monthly `Amon`
+`tas` and `psl` files from CEDA so the live download stays under 100 MB. Set
+`EPWSHIFTR_VIGNETTE_OFFLINE=true` before rendering only when you need to use the
+bundled fixture responses instead.
+
+# Define the Weather Task
+
+The EPW file gives the baseline site and weather file that will eventually be
+used for morphing. Here it is a deterministic Singapore fixture.
+
+```{r site}
+epw <- system.file(
+    "extdata", "vignettes", "future-weather", "SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr"
+)
+
+basename(epw)
+```
+
+The target CMIP6 variables keep the example intentionally small: near-surface
+air temperature and sea-level pressure. A production EPW morphing workflow would
+usually request a broader daily variable set.
+
+```{r variables}
+variables <- c("tas", "psl")
+variables
+```
+
+# Build the ESGF Query
+
+`esg_query()` creates an `EsgQuery`. The chain below selects one CMIP6 scenario,
+model source, ensemble member, monthly frequency, CEDA data node, and variable
+set. `$params()` adds `table_id = "Amon"` because `table_id` is a valid ESGF
+facet but not one of the main convenience setters.
+
+```{r query}
+query <- esg_query("https://esgf-data.dkrz.de")$
+    activity_id("ScenarioMIP")$
+    experiment_id("ssp585")$
+    source_id("EC-Earth3")$
+    variant_label("r1i1p1f1")$
+    frequency("mon")$
+    variable_id(variables)$
+    data_node("esgf.ceda.ac.uk")$
+    params(table_id = "Amon")$
+    fields(c(
+        "source_id", "experiment_id", "variant_label", "frequency",
+        "variable_id", "number_of_files", "number_of_aggregations", "access"
+    ))$
+    limit(20L)
+
+query$state(null = FALSE)
+```
+
+`$collect()` sends the Dataset query to ESGF. The returned result object can be
+saved and loaded later, but the default path below is live.
+
+```{r datasets}
+if (use_live_query) {
+    datasets <- query$collect(all = FALSE, limit = TRUE)
+    datasets$save(vignette_cache_json("dataset-result.json"))
+} else {
+    datasets <- esg_result("dataset")$load(vignette_fixture_json("dataset-result.json"))
+}
+
+dataset_fields <- intersect(c(
+    "id", "variable_id", "number_of_files", "number_of_aggregations", "access"
+), datasets$fields)
+
+datasets$to_data_table(fields = dataset_fields)
+```
+
+# Move from Datasets to Files
+
+Dataset records say that a climate dataset exists. File records identify the
+actual NetCDF files that can be downloaded or opened.
+
+Collect File records from the Dataset result, then use
+`EsgResultFile$filter_time()` to keep files covering 2060.
+
+```{r files}
+if (use_live_query) {
+    files <- datasets$collect(type = "File", fields = "*", all = TRUE, limit = 100L)
+    files$save(vignette_cache_json("file-result.json"))
+} else {
+    files <- esg_result("file")$load(vignette_fixture_json("file-result.json"))
+}
+files_2060 <- files$filter_time("2060-01-01", "2060-12-31", method = "drs")
+
+files_2060$to_data_table(fields = c(
+    "title", "variable_id", "checksum_type", "url_download"
+), formatted = TRUE)
+```
+
+# Create a Store and Download Files
+
+`EsgStore` is the durable workspace for this workflow. It records query result
+snapshots, file catalogs, downloads, extraction plans, and output artifacts in
+one manifest.
+
+```{r store}
+store_path <- file.path(future_weather_cache_dir, "workflow-store")
+store <- EsgStore$new(store_path)
+
+query_id <- store$add_files(files_2060, label = "singapore-ssp585-amon-2060")
+store$query("SELECT filename, variable_id, local_path FROM file_catalog")
+```
+
+`EsgStore$download_files()` uses a store-bound `FileDownloader`. The downloader
+handles sessions, retries, checksums, and final target paths.
+
+```{r download}
+downloader <- store$downloader(n_workers = 0L, retries = 1L)
+
+session_id <- store$download_files(
+    downloader = downloader,
+    replica = "current",
+    run = TRUE,
+    session_label = "singapore-ssp585-amon-2060",
+    probe = FALSE,
+    progress = FALSE
+)
+
+store$download_status(session_id = session_id, downloader = downloader)[
+    , c("filename", "status", "target_path")
+]
+```
+
+# Plan and Run Regional Extraction
+
+`EsgStore$plan_region()` records what should be extracted: site coordinate,
+time range, variables, and nearest-grid rule. Planning first makes it possible
+to inspect and rerun extraction jobs later.
+
+```{r plan-region}
+region <- store$plan_region(
+    query_id = query_id,
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2060-01-01T00:00:00Z", "2060-02-28T23:59:59Z"),
+    site_id = "SIN",
+    variable_id = variables,
+    nearest = 1L
+)
+
+region[, c("site_id", "variable_id", "status", "time_start", "time_stop")]
+```
+
+`EsgStore$extract()` reads the planned NetCDF data and writes Parquet outputs.
+`fallback = "auto"` lets the store use local downloaded files if remote OPeNDAP
+access is unavailable.
+
+```{r extract}
+processed <- store$extract(plan_id = region$plan_id, fallback = "auto")
+processed[, c("variable_id", "status", "available_time_count")]
+```
+
+# Check Outputs
+
+`coverage()` answers whether each planned extraction is complete. `summarise()`
+groups outputs by model, experiment, variable, site, and other manifest fields.
+
+```{r coverage}
+store$coverage(plan_id = region$plan_id)[, c(
+    "site_id", "variable_id", "complete", "status",
+    "output_rows", "output_file_count"
+)]
+```
+
+```{r summary}
+store$summarise(by = c("source_id", "experiment_id", "variable_id", "site_id"))
+store$close()
+```
+
+At this point the ESGF side of the workflow is complete: the selected files are
+cataloged, downloads are recoverable, and site-scale future climate variables
+have been extracted. The classic EPW morphing functions
+`morphing_epw()` and `future_epw()` operate on `epw_cmip6_data` objects; a
+future article can focus on converting or preparing extracted climate data for
+that final EPW-generation step.

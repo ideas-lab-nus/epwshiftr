@@ -1,0 +1,154 @@
+{
+  "index_node": "https://esgf-data.dkrz.de",
+  "parameter": {
+    "facet": {
+      "project": {
+        "value": "CMIP6",
+        "negate": false
+      },
+      "activity_id": {
+        "value": "ScenarioMIP",
+        "negate": false
+      },
+      "experiment_id": {
+        "value": "ssp585",
+        "negate": false
+      },
+      "source_id": {
+        "value": "EC-Earth3",
+        "negate": false
+      },
+      "variant_label": {
+        "value": "r1i1p1f1",
+        "negate": false
+      },
+      "frequency": {
+        "value": "mon",
+        "negate": false
+      },
+      "variable_id": {
+        "value": ["tas", "psl"],
+        "negate": false
+      },
+      "data_node": {
+        "value": "esgf.ceda.ac.uk",
+        "negate": false
+      },
+      "fields": {
+        "value": "*",
+        "negate": false
+      }
+    },
+    "query": [],
+    "control": {
+      "latest": {
+        "value": true,
+        "negate": false
+      },
+      "type": {
+        "value": "File",
+        "negate": false
+      },
+      "offset": {
+        "value": 0,
+        "negate": false
+      },
+      "distrib": {
+        "value": true,
+        "negate": false
+      },
+      "limit": {
+        "value": 20,
+        "negate": false
+      },
+      "format": {
+        "value": "application/solr+json",
+        "negate": false
+      }
+    },
+    "others": {
+      "table_id": {
+        "value": "Amon",
+        "negate": false
+      }
+    }
+  },
+  "response": {
+    "responseHeader": {
+      "status": 0,
+      "QTime": 1,
+      "params": {
+        "type": "File"
+      }
+    },
+    "response": {
+      "numFound": 2,
+      "start": 0,
+      "docs": [
+        {
+          "id": "tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|file",
+          "dataset_id": "CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.Amon.tas.gr.v20200310|esgf.ceda.ac.uk",
+          "size": 2476,
+          "checksum": "c9117e5759215efff2ce28ccfb78250e",
+          "checksum_type": "MD5",
+          "instance_id": "tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc.instance",
+          "master_id": "CMIP6.vignette.tas.master",
+          "replica": false,
+          "tracking_id": "hdl:21.14100/vignette-tas-2060",
+          "title": "tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc",
+          "version": 20200310,
+          "data_node": "esgf.ceda.ac.uk",
+          "source_id": "EC-Earth3",
+          "experiment_id": "ssp585",
+          "variant_label": "r1i1p1f1",
+          "frequency": "mon",
+          "table_id": "Amon",
+          "variable_id": "tas",
+          "grid_label": "gr",
+          "datetime_start": "2060-01-01T00:00:00Z",
+          "datetime_end": "2060-12-31T23:59:59Z",
+          "latest": true,
+          "retracted": false,
+          "deprecated": false,
+          "url": ["__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP", "file://__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"]
+        },
+        {
+          "id": "psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|file",
+          "dataset_id": "CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.Amon.psl.gr.v20200310|esgf.ceda.ac.uk",
+          "size": 2484,
+          "checksum": "6f561bb685864557f2b85d8ec992be77",
+          "checksum_type": "MD5",
+          "instance_id": "psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc.instance",
+          "master_id": "CMIP6.vignette.psl.master",
+          "replica": false,
+          "tracking_id": "hdl:21.14100/vignette-psl-2060",
+          "title": "psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc",
+          "version": 20200310,
+          "data_node": "esgf.ceda.ac.uk",
+          "source_id": "EC-Earth3",
+          "experiment_id": "ssp585",
+          "variant_label": "r1i1p1f1",
+          "frequency": "mon",
+          "table_id": "Amon",
+          "variable_id": "psl",
+          "grid_label": "gr",
+          "datetime_start": "2060-01-01T00:00:00Z",
+          "datetime_end": "2060-12-31T23:59:59Z",
+          "latest": true,
+          "retracted": false,
+          "deprecated": false,
+          "url": ["__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP", "file://__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"]
+        }
+      ],
+      "maxScore": 1
+    },
+    "facet_counts": {
+      "facet_queries": {},
+      "facet_fields": {},
+      "facet_ranges": {},
+      "facet_intervals": {},
+      "facet_heatmaps": {}
+    },
+    "timestamp": "2026-01-01T00:00:00:000000Z"
+  }
+}

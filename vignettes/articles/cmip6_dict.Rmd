@@ -1,17 +1,17 @@
 ---
-title: "Manage CMIP6 CVs and Data Request"
+title: "Manage ESG Dictionaries"
 author: "Hongyuan Jia"
 output:
     rmarkdown::html_vignette:
         df_print: "paged"
         toc: true
 vignette: >
-    %\VignetteIndexEntry{Manage CMIP6 CVs and Data Request}
+    %\VignetteIndexEntry{Manage ESG Dictionaries}
     %\VignetteEngine{knitr::rmarkdown}
     %\VignetteEncoding{UTF-8}
 description: >
-    This vignette introduces you how to use epwshiftr to fetch, parse and store
-    CMIP6 Controlled Vocabularies (CVs) and Data Request.
+    Use EsgDict to load, build, inspect, save, and validate project-specific
+    ESG vocabularies and request-table relationships.
 ---
 
 ```{r, include = FALSE}
@@ -21,192 +21,107 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup, echo = FALSE, message = FALSE}
+```{r setup, message = FALSE}
 library(epwshiftr)
-
-# show verbose messages
-options(epwshiftr.verbose = TRUE)
 ```
 
-# Controlled Vocabularies (CVs) and Data Request
+ESG projects describe model output through controlled vocabularies. Some
+projects also provide request-table data that describes legal relationships
+between fields such as variables, tables, and frequencies.
 
-All CMIP6 outputs are written in NetCDF files in conformance with the CMIP
-standards. The Controlled Vocabularies (CVs) and Data Request play a key role in
-ensuring uniformity in the description of data sets across all models.
+`EsgDict` is the epwshiftr dictionary object for that metadata. It is
+project-aware: CMIP6 has vocabulary and request-table support, while newer
+CV-only projects can still use vocabulary data once the upstream project source
+is available.
 
-The CMIP6 CVs gives a well-defined set of global attributes that are recorded in
-each CMIP6 model output, providing information necessary for interpreting the
-data. The data of CVs for use in CMIP6 is stored as JSON files in a
-[GitHub Repo](https://github.com/WCRP-CMIP/CMIP6_CVs).
+# Load a Dictionary
 
-The CMIP6 Data Request defines all the quantities from CMIP6 simulations that
-should be archived. This includes both quantities of general interest needed
-from most of the CMIP6-endorsed model intercomparison projects (MIPs) and
-quantities that are more specialized and only of interest to a single endorsed
-MIP. The Data Request data is stored a Microsoft Excel file
-(`CMIP6_MIP_tables.xlsx`) in a
-[Subversion repo](http://proj.badc.rl.ac.uk/svn/exarch/CMIP6dreq/trunk).
+The package includes a small CMIP6 dictionary fixture for examples. A full
+dictionary can be built from upstream sources with `$build()`.
 
-For more information, please see:
-
-- [CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CVs](https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit)
-- [CMIP6 Data Request](https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html)
-
-# Introduce the `EsgDict` class
-
-{epwshiftr} provides an `EsgDict` class to help you fetch, parse and store
-ESG project dictionaries. The current backend supports CMIP6 CVs and Data
-Request.
-
-## Create an `EsgDict` object
-
-You can create a new `EsgDict` object using the `esgdict()` function. It
-returns an empty dictionary object for the requested project. Currently,
-`"CMIP6"` is the implemented project.
-
-> It is an [R6](https://r6.r-lib.org/) object with reference semantics. All
-> methods in an `R6` object can be invoked using the `$method_name()` style.
-
-```{r}
+```{r load}
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
 dict <- esgdict(project = "CMIP6")
+suppressMessages(dict$load(path))
+
 dict
 ```
 
-You can use `$is_empty()` to check if there are any contents in current
-`EsgDict`.
-
-```{r}
-dict$is_empty()
-```
-
-## Fetch data of CVs and Data Request
-
-After created, you can use `$build()` to fetch all data of CMIP6 CVs and Data
-Request.
-
-The GitHub RESTful APIs are used to to fetch the latest tag of CVs and Data
-Request. You can specify your GitHub token by specifying the `token` argument in
-`$build()`. By default, it will uses `GITHUB_PAT` or `GITHUB_TOKEN` environment
-variable if exists.
-
-Currently, all supported CVs are:
-
-1. `drs`: Data Reference Syntax (DRS).
-1. `activity_id`: Activity identifiers, e.g. `HighResMIP`, `ScenarioMIP`.
-1. `experiment_id`: Root experiment identifiers, e.g. `historical`, `ssp126`.
-1. `frequency`: Sampling frequencies, e.g. `mon`, `day`.
-1. `grid_label`: Grid identifiers, e.g. `gn`, `gr`.
-1. `institution_id`: Institution identifiers, e.g. `AWI`, `CAS`.
-1. `nominal_resolution`: Approximate horizontal resolutions, e.g. `50 km`, `100
-   km`.
-1. `realm`: Realms where variables are defined, e.g. `atmos`, `ocean`.
-1. `required_global_attributes`: Names of required global attributes.
-1. `source_id`: Model identifiers, e.g. `GFDL-CM2-1`, `ACCESS-CM2`.
-1. `source_type`: Model configurations, e.g. `AGCM`, `OGCM`.
-1. `sub_experiment_id`: Description of sub-experiment, e.g. `none`, `s1960`.
-1. `table_id`: Table identifiers, e.g. `Amon`, `Oday`.
-
-```{r}
-dict$build()
-dict$is_empty()
-```
-
-You can get the version of the CV collection and Data Request using `$version()`
-method. It returns a list of two `numeric_version`s giving you the current
-version of fetched CV collection (`cvs`) and Data Request (`dreq`):
-
-```{r}
+```{r capabilities}
+dict$capabilities()
 dict$version()
+dict$built_time()
 ```
 
-The last built time can be retrieved using the `$built_time()` method:
-```{r}
-last_built <- dict$built_time()
-last_built
+# Discover Fields and Options
+
+`$fields()` lists normalized dictionary fields. `$options()` returns valid
+values for a field and can apply constraints when a relation index is available.
+
+```{r fields}
+dict$fields()
 ```
 
-The last modified time of the CV collection and each CV can be retrieved using
-the `$timestamp()` method:
-
-```{r}
-dict$timestamp()
+```{r options}
+head(dict$options("experiment_id", activity_id = "ScenarioMIP"))
+head(dict$options("variable_id", table_id = "day"))
 ```
 
-## Extract CV and Data Request data
+The available relation indices are project-specific.
 
-The CV and Data Request data can be extracted using the `$get(type)` method,
-where `type` is the data type of interest. For Data Request, you can use
-`"dreq"` as the type name.
-
-The returned data type are:
-
-1. For type `"drs"`, "activity_id"`, `"frequency"`, `"grid_label"`,
-   `"institution_id"`, `"source_type"` and `"sub_experiment_id"`, a [list].
-
-1. For type `"experiment_id"`, `"source_id"` and `"dreq"`, a [data.table].
-
-1. For `"nominal_resolution"`, `"required_global_attributes"` and `"table_id"`,
-   a [character] vector.
-
-```{r}
-# Data Request
-dict$get("dreq")
-
-# DRS
-dict$get("drs")
-
-# activity_id
-dict$get("activity_id")
-
-# experiment_id
-dict$get("experiment_id")
-
-# frequency
-dict$get("frequency")
-
-# grid_label
-dict$get("grid_label")
-
-# institution_id
-dict$get("institution_id")
-
-# nominal_resolution
-dict$get("nominal_resolution")
-
-# realm
-dict$get("realm")
-
-# required_global_attributes
-dict$get("required_global_attributes")
-
-# source_id
-dict$get("source_id")
-
-# source_type
-dict$get("source_type")
-
-# sub_experiment_id
-dict$get("sub_experiment_id")
-
-# table_id
-dict$get("table_id")
+```{r relation-fields}
+dict$relation_fields()
 ```
 
-## Store and reuse the `EsgDict` object
+# Check Values
 
-`$save()` method stores all the core data of current `EsgDict` object into a
-schema-validated JSON file named `CMIP6DICT.json` by default. It returns the
-full path of the saved JSON file.
+`$check()` validates values and field relationships before a query is sent to
+ESGF. The top-level helpers `esgdict_option()` and `esgdict_check()` use the
+package default dictionary unless a dictionary is supplied explicitly.
 
-```{r}
-dict$save(tempdir())
+```{r check}
+dict$check(
+    experiment_id = "ssp585",
+    source_id = "EC-Earth3",
+    variable_id = "tas",
+    table_id = "day"
+)
+
+esgdict_option("experiment_id", activity_id = "ScenarioMIP", dict = dict)
 ```
 
-This file can be reloaded via `$load()` method to restore the last state of
-current `EsgDict` object. It reads the JSON file named `CMIP6DICT.json` by
-default and loads the CVs and Data Request data.
+# Save and Reload
 
-```{r}
-new_dict <- esgdict(project = "CMIP6")
-new_dict$load(tempdir())
+Saved dictionaries are schema-validated JSON files. They can be loaded directly
+from a file path, or registered in an `EsgStore` for later lookup.
+
+```{r save-load}
+out <- tempfile(fileext = ".json")
+dict$save(out)
+
+restored <- esgdict(project = "CMIP6")
+suppressMessages(restored$load(out))
+restored$has_data()
+```
+
+# Build from Upstream Sources
+
+Use `$build()` when you need a fresh dictionary rather than a saved fixture.
+That step contacts upstream repositories, so it is deliberately not run in this
+vignette.
+
+```{r build, eval = FALSE}
+dict <- esgdict(project = "CMIP6")
+dict$build()
+dict$save()
+```
+
+For CV-only projects, use the target project name when constructing the
+dictionary. Request-table relation checks are only available when the project
+has request data.
+
+```{r cv-projects, eval = FALSE}
+cmip6plus <- esgdict(project = "CMIP6PLUS")
+cmip6plus$build()
+cmip6plus$capabilities()
 ```

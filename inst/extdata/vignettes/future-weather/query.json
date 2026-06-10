@@ -1,0 +1,76 @@
+{
+  "index_node": "https://esgf-data.dkrz.de",
+  "parameter": {
+    "facet": {
+      "project": {
+        "value": "CMIP6",
+        "negate": false
+      },
+      "activity_id": {
+        "value": "ScenarioMIP",
+        "negate": false
+      },
+      "experiment_id": {
+        "value": "ssp585",
+        "negate": false
+      },
+      "source_id": {
+        "value": "EC-Earth3",
+        "negate": false
+      },
+      "variant_label": {
+        "value": "r1i1p1f1",
+        "negate": false
+      },
+      "frequency": {
+        "value": "mon",
+        "negate": false
+      },
+      "variable_id": {
+        "value": ["tas", "psl"],
+        "negate": false
+      },
+      "data_node": {
+        "value": "esgf.ceda.ac.uk",
+        "negate": false
+      },
+      "fields": {
+        "value": "*",
+        "negate": false
+      }
+    },
+    "query": [],
+    "control": {
+      "latest": {
+        "value": true,
+        "negate": false
+      },
+      "type": {
+        "value": "Dataset",
+        "negate": false
+      },
+      "offset": {
+        "value": 0,
+        "negate": false
+      },
+      "distrib": {
+        "value": true,
+        "negate": false
+      },
+      "limit": {
+        "value": 20,
+        "negate": false
+      },
+      "format": {
+        "value": "application/solr+json",
+        "negate": false
+      }
+    },
+    "others": {
+      "table_id": {
+        "value": "Amon",
+        "negate": false
+      }
+    }
+  }
+}
