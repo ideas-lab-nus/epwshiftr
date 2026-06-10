@@ -133,6 +133,16 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_equal(removed$status, 0L)
     expect_false(remove_id %in% store$queries()$query_id)
 
+    dry_search <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "search",
+        "--index-node", "https://example.org", "--dry-run",
+        "project=CMIP6", "variable_id=tas,pr", "latest=true"
+    ))
+    expect_equal(dry_search$status, 0L)
+    expect_equal(dry_search$result$type, "Dataset")
+    expect_match(dry_search$result$url, "project=CMIP6")
+    expect_match(dry_search$result$url, "latest=true")
+
     json_text <- capture.output(
         json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))
     )
@@ -140,8 +150,18 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_equal(json$status, 0L)
     expect_equal(parsed$query_id, query_id)
 
+    query_file <- tempfile(fileext = ".json")
+    esg_query("https://example.org")$
+        experiment_id("ssp126")$
+        variable_id("tas")$
+        save(query_file)
+    imported <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add", "--query-file", query_file, "--label", "imported", "--track"))
+    expect_equal(imported$status, 0L)
+    expect_equal(imported$result$label, "imported")
+    expect_true(imported$result$tracked)
+
     bad_text <- capture.output(
-        bad <- epwshiftr_cli(c("--store", dir, "--json", "query", "add"))
+        bad <- epwshiftr_cli(c("--store", dir, "--json", "query", "does-not-exist"))
     )
     bad_json <- jsonlite::fromJSON(paste(bad_text, collapse = "\n"))
     expect_equal(bad$status, 2L)
@@ -177,6 +197,16 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
         },
         .package = "epwshiftr"
     )
+
+    searched <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "search",
+        "--index-node", "https://example.org", "--type", "File",
+        "--fields", "id,title", "--limit", "1",
+        "experiment_id=ssp585", "variable_id=tas"
+    ))
+    expect_equal(searched$status, 0L)
+    expect_equal(nrow(searched$result), 1L)
+    expect_true(all(c("id", "title") %in% names(searched$result)))
 
     preview <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "preview", query_id, "--detail"))
     expect_equal(preview$status, 0L)
