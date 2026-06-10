@@ -10,7 +10,7 @@ vignette: >
     %\VignetteEngine{knitr::rmarkdown}
     %\VignetteEncoding{UTF-8}
 description: >
-    Use EsgResultFile, FileDownloader, and EsgStore to localise ESGF NetCDF
+    Use EsgResultFile, Downloader, and EsgStore to localise ESGF NetCDF
     files and extract site-scale future-weather data.
 ---
 
@@ -136,9 +136,9 @@ utils::head(download_plan[, c(
 )])
 ```
 
-# Use FileDownloader Directly
+# Use Downloader Directly
 
-`FileDownloader$new()` creates a persistent downloader. The important
+`Downloader$new()` creates a persistent downloader. The important
 directories are:
 
 - `dest`: final downloaded files;
@@ -151,7 +151,7 @@ worker count for parallel downloads.
 ```{r file-downloader}
 download_root <- file.path(future_weather_cache_dir, "direct-downloads")
 
-downloader <- FileDownloader$new(
+downloader <- Downloader$new(
     dest = file.path(download_root, "data"),
     temp = file.path(download_root, "tmp"),
     manifest = file.path(download_root, "manifest.duckdb"),

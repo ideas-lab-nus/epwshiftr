@@ -807,7 +807,7 @@ EsgStore <- R6::R6Class(
         #'        queries.
         #' @param enqueue Whether to enqueue current files after updating.
         #'        Default: `FALSE`.
-        #' @param downloader Optional [FileDownloader] used when `enqueue = TRUE`.
+        #' @param downloader Optional [Downloader] used when `enqueue = TRUE`.
         #' @param replica Replica policy passed to `$download_plan()` when
         #'        enqueuing.
         #' @param session_label Optional download session label.
@@ -900,7 +900,7 @@ EsgStore <- R6::R6Class(
         #' Preview a tracked query download without changing the store.
         #'
         #' @param query_id Query ID returned by `$add_query()`.
-        #' @param downloader Optional [FileDownloader] used only for node
+        #' @param downloader Optional [Downloader] used only for node
         #'        history, network policy, and cooldown policy.
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param service,probe,strategy Download plan arguments.
@@ -984,7 +984,7 @@ EsgStore <- R6::R6Class(
         #' Refresh, enqueue, and optionally run downloads for a stored ESGF query.
         #'
         #' @param query_id Query ID returned by `$add_query()`.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param dry_run Whether to return a download preflight without
         #'        changing the store, enqueueing, or downloading. Default:
@@ -1084,7 +1084,7 @@ EsgStore <- R6::R6Class(
         #'
         #' @param query_id Optional stored query ID.
         #' @param session_id Optional downloader session ID.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #'
         #' @return A data.table of downloader task rows.
         download_status = function(query_id = NULL, session_id = NULL, downloader = NULL) {
@@ -1117,7 +1117,7 @@ EsgStore <- R6::R6Class(
         #'
         #' @param query_id Optional stored query ID vector. If `NULL`, all
         #'        stored ESGF queries are summarised.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #'
         #' @return A data.table with one row per stored query.
         query_status = function(query_id = NULL, downloader = NULL) {
@@ -1206,7 +1206,7 @@ EsgStore <- R6::R6Class(
         #' Summarise query, download, local, and extraction status together.
         #'
         #' @param query_id Optional stored query ID filter.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #'
         #' @return A data.table with one row per stored query.
         workflow_status = function(query_id = NULL, downloader = NULL) {
@@ -1283,7 +1283,7 @@ EsgStore <- R6::R6Class(
         #' Return a compact ESGF query workflow health report.
         #'
         #' @param query_id Optional stored query ID filter.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #'
         #' @return A list with `summary`, `updates`, `changes`, `downloads`,
         #'         and `nodes`.
@@ -1550,10 +1550,10 @@ EsgStore <- R6::R6Class(
         #'
         #' @param query_id Optional stored query ID.
         #' @param session_id Optional downloader session ID.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param status Retryable statuses. Default: `c("error", "cancelled")`.
         #' @param run Whether to run requeued tasks immediately. Default: `TRUE`.
-        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #' @param ... Additional arguments passed to `Downloader$run()`.
         #'
         #' @return A data.table of matching task rows after retry handling.
         retry_downloads = function(
@@ -1659,14 +1659,14 @@ EsgStore <- R6::R6Class(
 
         # downloader {{{
         #' @description
-        #' Return a FileDownloader bound to this store.
+        #' Return a Downloader bound to this store.
         #'
-        #' @param ... Additional arguments passed to `FileDownloader$new()`.
+        #' @param ... Additional arguments passed to `Downloader$new()`.
         #'
-        #' @return A [FileDownloader] object.
+        #' @return A [Downloader] object.
         downloader = function(...) {
             private$check_open()
-            FileDownloader$new(
+            Downloader$new(
                 dest = private$download_dir,
                 temp = private$tmp_download_dir,
                 manifest = file.path(private$download_dir, "_downloader", "manifest.duckdb"),
@@ -1682,7 +1682,7 @@ EsgStore <- R6::R6Class(
         #' @param files Optional [EsgResultFile] or [EsgResultAggregation] object.
         #'        If supplied, it is cataloged before the download plan is created.
         #' @param replica Replica policy passed to `$download_plan()`.
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param run Whether to run the queued session immediately. Default: `TRUE`.
         #' @param session_label Optional download session label.
         #' @param service ESGF URL service to download from. Default:
@@ -1697,7 +1697,7 @@ EsgStore <- R6::R6Class(
         #' @param overwrite Whether to overwrite existing final files.
         #' @param resume Whether to resume interrupted `.part` files.
         #' @param ... Additional arguments passed to `$download_plan()` and
-        #'        `FileDownloader$run()`.
+        #'        `Downloader$run()`.
         #'
         #' @return The created downloader session ID.
         download_files = function(
@@ -1762,7 +1762,7 @@ EsgStore <- R6::R6Class(
         #' @description
         #' Register completed downloader tasks as local store artifacts.
         #'
-        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #'
         #' @return A data.table of completed tasks.
         sync_downloads = function(downloader = NULL) {
@@ -2281,7 +2281,7 @@ EsgStore <- R6::R6Class(
                 }
             }
             checkmate::assert_choice(policy$layout, STORE_DOWNLOAD_LAYOUT_CHOICES)
-            policy$template <- download_null_if_empty(policy$template)
+            policy$template <- downloader__null_if_empty(policy$template)
             if (identical(policy$layout, "template") && is.null(policy$template)) {
                 cli::cli_abort("{.arg template} is required when {.code layout = \"template\"}.")
             }

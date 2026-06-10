@@ -78,7 +78,7 @@ reference:
   - title: Local ESGF store and downloads
     contents:
       - EsgStore
-      - FileDownloader
+      - Downloader
 
   - title: epwshiftr Options
     contents:

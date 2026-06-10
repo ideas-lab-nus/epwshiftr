@@ -1,7 +1,7 @@
 # Basic Tests {{{
-test_that("FileDownloader can be created", {
-    dl <- FileDownloader$new()
-    expect_s3_class(dl, "FileDownloader")
+test_that("Downloader can be created", {
+    dl <- Downloader$new()
+    expect_s3_class(dl, "Downloader")
     expect_true(dir.exists(dl$data_dir))
     expect_true(dir.exists(dl$tmp_dir))
     expect_equal(dl$max_retries, 3L)
@@ -19,7 +19,7 @@ test_that("FileDownloader can be created", {
 
     temp_dir <- tempdir()
     temp <- file.path(temp_dir, ".tmp_test")
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = temp_dir,
         temp = temp,
         retries = 5L,
@@ -63,7 +63,7 @@ test_that("FileDownloader can be created", {
 # }}}
 
 # Persistent Manifest Tests {{{
-test_that("FileDownloader persists config and manifest state", {
+test_that("Downloader persists config and manifest state", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -76,7 +76,7 @@ test_that("FileDownloader persists config and manifest state", {
     writeLines("persistent content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -134,7 +134,7 @@ test_that("FileDownloader persists config and manifest state", {
     expect_true(file.exists(file.path(dest, "local.txt")))
     expect_true(dl$verify(session_id = session_id)$checksum_ok)
 
-    restored <- FileDownloader$load_config(dl$config_file)
+    restored <- Downloader$load_config(dl$config_file)
     expect_equal(restored$data_dir, normalizePath(dest, winslash = "/"))
     expect_equal(restored$tmp_dir, normalizePath(temp, mustWork = FALSE, winslash = "/"))
     expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
@@ -162,7 +162,7 @@ test_that("FileDownloader persists config and manifest state", {
     )
 })
 
-test_that("FileDownloader preflights disk requirements", {
+test_that("Downloader preflights disk requirements", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -184,7 +184,7 @@ test_that("FileDownloader preflights disk requirements", {
         priority = 1L
     )
 
-    dl <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
     plan_check <- dl$preflight(plan = plan)
     expect_equal(plan_check$task_count, 1L)
     expect_equal(plan_check$needs_download, 1L)
@@ -199,7 +199,7 @@ test_that("FileDownloader preflights disk requirements", {
     free <- suppressWarnings(min(c(plan_check$dest_free_bytes, plan_check$tmp_free_bytes), na.rm = TRUE))
     skip_if(!is.finite(free), "Disk free-space check is not available on this platform")
 
-    blocker <- FileDownloader$new(
+    blocker <- Downloader$new(
         dest = file.path(root, "blocked-downloads"),
         temp = file.path(root, "blocked-tmp"),
         manifest = file.path(root, "blocked", "manifest.duckdb"),
@@ -213,7 +213,7 @@ test_that("FileDownloader preflights disk requirements", {
     )
 })
 
-test_that("FileDownloader migrates older manifests to the current schema version", {
+test_that("Downloader migrates older manifests to the current schema version", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -222,7 +222,7 @@ test_that("FileDownloader migrates older manifests to the current schema version
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    dl <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
     rm(dl)
     gc()
 
@@ -236,7 +236,7 @@ test_that("FileDownloader migrates older manifests to the current schema version
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
-    restored <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    restored <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
     rm(restored)
     gc()
 
@@ -250,7 +250,7 @@ test_that("FileDownloader migrates older manifests to the current schema version
     expect_true(all(c("probe_success_count", "probe_failure_count", "last_probe_at", "cooldown_until") %in% names(nodes)))
 })
 
-test_that("FileDownloader exports and imports persistent manifests", {
+test_that("Downloader exports and imports persistent manifests", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -263,7 +263,7 @@ test_that("FileDownloader exports and imports persistent manifests", {
     writeLines("export content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -287,7 +287,7 @@ test_that("FileDownloader exports and imports persistent manifests", {
     expect_equal(payload$kind, "epwshiftr_file_downloader_manifest")
     expect_true("download_task" %in% names(payload$tables))
 
-    clone <- FileDownloader$new(
+    clone <- Downloader$new(
         dest = file.path(root, "clone-downloads"),
         temp = file.path(root, "clone-tmp"),
         manifest = file.path(root, "clone", "manifest.duckdb"),
@@ -305,7 +305,7 @@ test_that("FileDownloader exports and imports persistent manifests", {
     expect_equal(nrow(clone$tasks()), 1L)
 })
 
-test_that("FileDownloader reconnects manifest after shallow clone finalization", {
+test_that("Downloader reconnects manifest after shallow clone finalization", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -318,7 +318,7 @@ test_that("FileDownloader reconnects manifest after shallow clone finalization",
     writeLines("clone content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -326,7 +326,7 @@ test_that("FileDownloader reconnects manifest after shallow clone finalization",
         n_workers = 0L
     )
     cloned <- dl$clone(deep = FALSE)
-    expect_s3_class(cloned, "FileDownloader")
+    expect_s3_class(cloned, "Downloader")
     rm(cloned)
     gc()
 
@@ -345,7 +345,7 @@ test_that("FileDownloader reconnects manifest after shallow clone finalization",
     expect_true(file.exists(file.path(dest, "clone.txt")))
 })
 
-test_that("FileDownloader cancels stale downloading tasks before run", {
+test_that("Downloader cancels stale downloading tasks before run", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -358,7 +358,7 @@ test_that("FileDownloader cancels stale downloading tasks before run", {
     writeLines("stale content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -395,7 +395,7 @@ test_that("FileDownloader cancels stale downloading tasks before run", {
     expect_true(file.exists(file.path(dest, "stale.txt")))
 })
 
-test_that("FileDownloader cancels persistent queued tasks", {
+test_that("Downloader cancels persistent queued tasks", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -408,7 +408,7 @@ test_that("FileDownloader cancels persistent queued tasks", {
     writeLines("cancel content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -441,7 +441,7 @@ test_that("FileDownloader cancels persistent queued tasks", {
     expect_true("cancelled" %in% events$event)
 })
 
-test_that("FileDownloader cancels persistent downloading tasks", {
+test_that("Downloader cancels persistent downloading tasks", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -454,7 +454,7 @@ test_that("FileDownloader cancels persistent downloading tasks", {
     writeLines("cancel downloading content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -474,7 +474,7 @@ test_that("FileDownloader cancels persistent downloading tasks", {
     conn <- priv(dl)$manifest_conn
     ddb_exec(conn, sprintf(
         "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
-        ddb_literal(conn, download_now()),
+        ddb_literal(conn, downloader__now()),
         ddb_literal(conn, task_id)
     ))
 
@@ -484,7 +484,7 @@ test_that("FileDownloader cancels persistent downloading tasks", {
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
 
-test_that("FileDownloader falls back across candidate URLs", {
+test_that("Downloader falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -497,7 +497,7 @@ test_that("FileDownloader falls back across candidate URLs", {
     writeLines("candidate content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -539,7 +539,7 @@ test_that("FileDownloader falls back across candidate URLs", {
     expect_equal(candidates[order(priority)]$failed_count, c(1L, 0L))
 })
 
-test_that("FileDownloader keeps candidate URLs scoped to each task", {
+test_that("Downloader keeps candidate URLs scoped to each task", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -554,7 +554,7 @@ test_that("FileDownloader keeps candidate URLs scoped to each task", {
     writeLines("second task content", src_2)
 
     urls <- paste0("file://", normalizePath(c(src_1, src_2), winslash = "/"))
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -580,14 +580,14 @@ test_that("FileDownloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
 
-test_that("FileDownloader records probe outcomes and resets data node health", {
+test_that("Downloader records probe outcomes and resets data node health", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = file.path(root, "downloads"),
         temp = file.path(root, "tmp"),
         manifest = manifest,
@@ -625,7 +625,7 @@ test_that("FileDownloader records probe outcomes and resets data node health", {
     expect_true("ok.example.org" %in% remaining$data_node)
 })
 
-test_that("FileDownloader exposes persistent events and callbacks", {
+test_that("Downloader exposes persistent events and callbacks", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -638,7 +638,7 @@ test_that("FileDownloader exposes persistent events and callbacks", {
     writeLines("event content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -662,7 +662,7 @@ test_that("FileDownloader exposes persistent events and callbacks", {
         expect_true(file.exists(event$target_path))
         expect_gt(event$bytes_done, 0)
         expect_true(is.na(event$error))
-        expect_s3_class(downloader, "FileDownloader")
+        expect_s3_class(downloader, "Downloader")
     })
     session_token <- dl$on("session_done", function(event, downloader) {
         seen <<- c(seen, event$event)
@@ -702,7 +702,7 @@ test_that("FileDownloader exposes persistent events and callbacks", {
     expect_true(dl$off(session_token))
 })
 
-test_that("FileDownloader runs persistent tasks with worker concurrency", {
+test_that("Downloader runs persistent tasks with worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
 
@@ -717,7 +717,7 @@ test_that("FileDownloader runs persistent tasks with worker concurrency", {
     writeLines("parallel first", src_1)
     writeLines("parallel second", src_2)
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -745,7 +745,7 @@ test_that("FileDownloader runs persistent tasks with worker concurrency", {
     expect_equal(sessions[sessions$session_id == session_id]$status, "done")
 })
 
-test_that("FileDownloader serializes persistent tasks for the same target path", {
+test_that("Downloader serializes persistent tasks for the same target path", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
 
@@ -759,7 +759,7 @@ test_that("FileDownloader serializes persistent tasks for the same target path",
     writeLines("shared target content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -785,7 +785,7 @@ test_that("FileDownloader serializes persistent tasks for the same target path",
 # }}}
 
 # Download Tests {{{
-test_that("FileDownloader can download a single file", {
+test_that("Downloader can download a single file", {
     skip_on_cran()
     skip_if_offline()
 
@@ -794,7 +794,7 @@ test_that("FileDownloader can download a single file", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(dest = temp_dir)
+    dl <- Downloader$new(dest = temp_dir)
 
     path <- tryCatch(
         dl$download(url, filename = "test_file.bin", progress = FALSE),
@@ -810,7 +810,7 @@ test_that("FileDownloader can download a single file", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("FileDownloader can download with subdir", {
+test_that("Downloader can download with subdir", {
     skip_on_cran()
     skip_if_offline()
 
@@ -819,7 +819,7 @@ test_that("FileDownloader can download with subdir", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(dest = temp_dir)
+    dl <- Downloader$new(dest = temp_dir)
 
     path <- tryCatch(
         dl$download(
@@ -840,14 +840,14 @@ test_that("FileDownloader can download with subdir", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("FileDownloader respects overwrite parameter with local files", {
+test_that("Downloader respects overwrite parameter with local files", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
     test_file <- file.path(temp_dir, "source.txt")
     writeLines("test content", test_file)
 
-    dl <- FileDownloader$new(dest = temp_dir)
+    dl <- Downloader$new(dest = temp_dir)
 
     dest_file <- file.path(temp_dir, "dest.txt")
     file.copy(test_file, dest_file)
@@ -863,7 +863,7 @@ test_that("FileDownloader respects overwrite parameter with local files", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("FileDownloader restarts partial downloads when Range resume is unsupported", {
+test_that("Downloader restarts partial downloads when Range resume is unsupported", {
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -875,9 +875,9 @@ test_that("FileDownloader restarts partial downloads when Range resume is unsupp
     tmp_id <- "range-restart"
     writeLines("stale partial", file.path(temp, paste0(tmp_id, ".part")))
 
-    dl <- FileDownloader$new(dest = dest, temp = temp, retries = 1L, n_workers = 0L)
+    dl <- Downloader$new(dest = dest, temp = temp, retries = 1L, n_workers = 0L)
     testthat::local_mocked_bindings(
-        download_resume_supported = function(...) FALSE,
+        downloader__resume_supported = function(...) FALSE,
         .package = "epwshiftr"
     )
     path <- dl$download(
@@ -893,14 +893,14 @@ test_that("FileDownloader restarts partial downloads when Range resume is unsupp
 # }}}
 
 # File Status Tests {{{
-test_that("FileDownloader tracks file status correctly", {
+test_that("Downloader tracks file status correctly", {
     skip_on_cran()
     skip_if_offline()
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(dest = temp_dir)
+    dl <- Downloader$new(dest = temp_dir)
 
     url <- "https://httpbin.org/bytes/2048"
 
@@ -923,7 +923,7 @@ test_that("cleanup_tmp works", {
     temp <- file.path(temp_dir, ".tmp")
     dir.create(temp)
 
-    dl <- FileDownloader$new(dest = temp_dir, temp = temp)
+    dl <- Downloader$new(dest = temp_dir, temp = temp)
 
     file.create(file.path(temp, "test1.part"))
     file.create(file.path(temp, "test2.done"))
@@ -937,8 +937,8 @@ test_that("cleanup_tmp works", {
 # }}}
 
 # Checksum Tests {{{
-test_that("FileDownloader can verify checksums", {
-    dl <- FileDownloader$new()
+test_that("Downloader can verify checksums", {
+    dl <- Downloader$new()
 
     test_file <- tempfile()
     writeLines("test content", test_file)
@@ -953,7 +953,7 @@ test_that("FileDownloader can verify checksums", {
     unlink(test_file)
 })
 
-test_that("FileDownloader verify marks checksum failures as error", {
+test_that("Downloader verify marks checksum failures as error", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -966,7 +966,7 @@ test_that("FileDownloader verify marks checksum failures as error", {
     writeLines("verified content", src)
     checksum <- as.character(tools::md5sum(src))
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -994,7 +994,7 @@ test_that("FileDownloader verify marks checksum failures as error", {
     expect_true("verify_error" %in% events$event)
 })
 
-test_that("FileDownloader can download with checksum verification", {
+test_that("Downloader can download with checksum verification", {
     skip_on_cran()
     skip_if_offline()
 
@@ -1044,7 +1044,7 @@ test_that("FileDownloader can download with checksum verification", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = temp_dir,
         retries = 3,
         timeout = 300
@@ -1066,7 +1066,7 @@ test_that("FileDownloader can download with checksum verification", {
 
     expect_true(file.exists(path))
 
-    is_valid <- epwshiftr:::verify_checksum(path, file_checksum, "sha256")
+    is_valid <- epwshiftr:::downloader__verify_checksum(path, file_checksum, "sha256")
     expect_true(is_valid)
 
     unlink(temp_dir, recursive = TRUE)
@@ -1074,13 +1074,13 @@ test_that("FileDownloader can download with checksum verification", {
 # }}}
 
 # Error Handling Tests {{{
-test_that("FileDownloader handles download errors", {
+test_that("Downloader handles download errors", {
     skip_on_cran()
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = temp_dir,
         retries = 1L,
         timeout = 1L
@@ -1096,14 +1096,14 @@ test_that("FileDownloader handles download errors", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("FileDownloader handles checksum mismatch", {
+test_that("Downloader handles checksum mismatch", {
     skip_on_cran()
     skip_if_offline()
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = temp_dir,
         retries = 1L
     )
@@ -1126,8 +1126,8 @@ test_that("FileDownloader handles checksum mismatch", {
 # }}}
 
 # Print Tests {{{
-test_that("FileDownloader print works", {
-    dl <- FileDownloader$new()
+test_that("Downloader print works", {
+    dl <- Downloader$new()
 
     # Just test that print doesn't error
     # cli output produces messages, which is expected
@@ -1136,9 +1136,9 @@ test_that("FileDownloader print works", {
 # }}}
 
 # Offline Mode Tests {{{
-test_that("FileDownloader: offline mode blocks new downloads", {
+test_that("Downloader: offline mode blocks new downloads", {
     local_cache_mode("offline")
-    dl <- FileDownloader$new(dest = tempdir(), n_workers = 0L)
+    dl <- Downloader$new(dest = tempdir(), n_workers = 0L)
 
     expect_error(
         dl$download(url = "https://example.com/nonexistent.nc"),
@@ -1146,7 +1146,7 @@ test_that("FileDownloader: offline mode blocks new downloads", {
     )
 })
 
-test_that("FileDownloader: offline mode allows verified files", {
+test_that("Downloader: offline mode allows verified files", {
     local_cache_mode("offline")
 
     dest <- tempdir()
@@ -1155,7 +1155,7 @@ test_that("FileDownloader: offline mode allows verified files", {
     writeLines("test content", test_file)
     on.exit(unlink(test_file), add = TRUE)
 
-    dl <- FileDownloader$new(dest = dest, n_workers = 0L)
+    dl <- Downloader$new(dest = dest, n_workers = 0L)
 
     # This should succeed because the file already exists (Verified status)
     result <- dl$download(

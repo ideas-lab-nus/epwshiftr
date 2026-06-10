@@ -138,7 +138,7 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_true(store$is_open)
 
     dl <- store$downloader(n_workers = 0L)
-    expect_s3_class(dl, "FileDownloader")
+    expect_s3_class(dl, "Downloader")
     expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
     expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
     expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))

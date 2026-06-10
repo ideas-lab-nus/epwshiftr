@@ -188,7 +188,7 @@ query_id <- store$add_files(files_2060, label = "singapore-ssp585-amon-2060")
 store$query("SELECT filename, variable_id, local_path FROM file_catalog")
 ```
 
-`EsgStore$download_files()` uses a store-bound `FileDownloader`. The downloader
+`EsgStore$download_files()` uses a store-bound `Downloader`. The downloader
 handles sessions, retries, checksums, and final target paths.
 
 ```{r download}
