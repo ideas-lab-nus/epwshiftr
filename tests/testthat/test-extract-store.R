@@ -373,6 +373,81 @@ test_that("EsgStore updates tracked queries and links file records", {
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
 
+test_that("EsgStore summarizes download preflight without enqueueing tasks", {
+    skip_if_not_installed("duckdb")
+
+    src <- tempfile(fileext = ".nc")
+    writeLines("preflight netcdf placeholder", src)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, label = "preflight tas", track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 1,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    file_docs <- extract_store_test_file_docs(
+        path = "preflight-download.nc",
+        download_url = paste0("file://", normalizePath(src, winslash = "/"))
+    )
+    file_docs$checksum <- as.character(tools::md5sum(src))
+    file_docs$checksum_type <- "MD5"
+    file_docs$master_id <- "CMIP6.mock.preflight-download"
+    file_docs$tracking_id <- "hdl:21.14100/preflight-download"
+    file_docs$latest <- TRUE
+    file_docs$retracted <- FALSE
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- extract_store_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    dl <- store$downloader(n_workers = 0L)
+    preflight <- store$download_preflight(query_id, downloader = dl, replica = "current", probe = FALSE)
+    expect_named(preflight, c("summary", "changes", "files", "candidates"))
+    expect_equal(preflight$summary$query_id, query_id)
+    expect_equal(preflight$summary$file_total, 1L)
+    expect_equal(preflight$summary$current_count, 1L)
+    expect_equal(preflight$summary$candidate_count, 1L)
+    expect_equal(preflight$summary$bytes_total, 123)
+    expect_equal(preflight$summary$local_available, 0L)
+    expect_equal(preflight$summary$needs_download, 1L)
+    expect_equal(preflight$summary$no_httpserver, 0L)
+    expect_equal(preflight$changes$change_type, "new")
+    expect_equal(preflight$files$status, "current")
+    expect_equal(preflight$candidates$file_key, preflight$files$file_key)
+    expect_equal(nrow(dl$sessions()), 0L)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_file")), 0L)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
+
+    dry_run <- store$download_query(
+        query_id,
+        downloader = dl,
+        replica = "current",
+        dry_run = TRUE,
+        probe = FALSE
+    )
+    expect_equal(dry_run$summary$needs_download, 1L)
+    expect_equal(nrow(dl$sessions()), 0L)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
+})
+
 test_that("EsgStore downloads tracked query files through downloader", {
     skip_if_not_installed("duckdb")
 

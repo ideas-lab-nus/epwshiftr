@@ -45,6 +45,7 @@ Hongyuan Jia
 \item \href{#method-EsgStore-query_files}{\code{EsgStore$query_files()}}
 \item \href{#method-EsgStore-preview_update_queries}{\code{EsgStore$preview_update_queries()}}
 \item \href{#method-EsgStore-update_queries}{\code{EsgStore$update_queries()}}
+\item \href{#method-EsgStore-download_preflight}{\code{EsgStore$download_preflight()}}
 \item \href{#method-EsgStore-download_query}{\code{EsgStore$download_query()}}
 \item \href{#method-EsgStore-download_status}{\code{EsgStore$download_status()}}
 \item \href{#method-EsgStore-query_status}{\code{EsgStore$query_status()}}
@@ -600,6 +601,48 @@ A data.table of query-file links touched by the update.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_preflight"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_preflight}{}}}
+\subsection{Method \code{download_preflight()}}{
+Preview a tracked query download without changing the store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_preflight(
+  query_id,
+  downloader = NULL,
+  replica = "auto",
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader} used only for node
+history, network policy, and cooldown policy.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{service, probe, strategy}}{Download plan arguments.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{changes}, \code{files}, and \code{candidates}.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-download_query"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-download_query}{}}}
 \subsection{Method \code{download_query()}}{
@@ -609,6 +652,7 @@ Refresh, enqueue, and optionally run downloads for a stored ESGF query.
   query_id,
   downloader = NULL,
   replica = "auto",
+  dry_run = FALSE,
   run = TRUE,
   session_label = NULL,
   service = "HTTPServer",
@@ -632,6 +676,10 @@ Refresh, enqueue, and optionally run downloads for a stored ESGF query.
 \item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{dry_run}}{Whether to return a download preflight without
+changing the store, enqueueing, or downloading. Default:
+\code{FALSE}.}
 
 \item{\code{run}}{Whether to run the queued session immediately. Default:
 \code{TRUE}.}

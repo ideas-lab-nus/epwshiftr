@@ -813,6 +813,81 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # download_preflight {{{
+        #' @description
+        #' Preview a tracked query download without changing the store.
+        #'
+        #' @param query_id Query ID returned by `$add_query()`.
+        #' @param downloader Optional [FileDownloader] used only for node
+        #'        history, network policy, and cooldown policy.
+        #' @param replica Replica policy passed to `$download_plan()`.
+        #' @param service,probe,strategy Download plan arguments.
+        #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
+        #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
+        #'
+        #' @return A list with `summary`, `changes`, `files`, and `candidates`.
+        download_preflight = function(
+            query_id,
+            downloader = NULL,
+            replica = "auto",
+            service = "HTTPServer",
+            probe = TRUE,
+            strategy = c("fastest", "first", "stable"),
+            all = TRUE,
+            limit = FALSE,
+            fields = "*",
+            ...
+        ) {
+            private$check_open()
+            checkmate::assert_string(query_id, min.chars = 1L)
+            strategy <- match.arg(strategy)
+
+            row <- private$get_query_row(query_id)
+            query <- private$load_query(row)
+            files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
+            preview <- private$preview_query_update(
+                row = row,
+                files = files,
+                fields = fields,
+                all = all,
+                limit = limit
+            )
+
+            node_stats <- if (!is.null(downloader)) {
+                tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            } else {
+                NULL
+            }
+            network_policy <- if (!is.null(downloader)) {
+                tryCatch(downloader$network_policy, error = function(e) NULL)
+            } else {
+                NULL
+            }
+            node_policy <- if (!is.null(downloader)) {
+                tryCatch(downloader$node_policy, error = function(e) NULL)
+            } else {
+                NULL
+            }
+            candidates <- files$download_plan(
+                replica = replica,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats,
+                network_policy = network_policy,
+                node_policy = node_policy
+            )
+            candidates <- private$decorate_download_plan_with_files(candidates, preview$file_rows)
+            summary <- private$download_preflight_summary(row, preview$file_rows, candidates)
+            list(
+                summary = summary[],
+                changes = preview$changes[],
+                files = private$preflight_files(preview$file_rows),
+                candidates = candidates[]
+            )
+        },
+        # }}}
+
         # download_query {{{
         #' @description
         #' Refresh, enqueue, and optionally run downloads for a stored ESGF query.
@@ -820,6 +895,9 @@ EsgStore <- R6::R6Class(
         #' @param query_id Query ID returned by `$add_query()`.
         #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
         #' @param replica Replica policy passed to `$download_plan()`.
+        #' @param dry_run Whether to return a download preflight without
+        #'        changing the store, enqueueing, or downloading. Default:
+        #'        `FALSE`.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
         #' @param session_label Optional download session label.
@@ -833,6 +911,7 @@ EsgStore <- R6::R6Class(
             query_id,
             downloader = NULL,
             replica = "auto",
+            dry_run = FALSE,
             run = TRUE,
             session_label = NULL,
             service = "HTTPServer",
@@ -848,11 +927,26 @@ EsgStore <- R6::R6Class(
         ) {
             private$check_open()
             checkmate::assert_string(query_id, min.chars = 1L)
+            checkmate::assert_flag(dry_run)
             checkmate::assert_flag(run)
             checkmate::assert_flag(progress)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
             strategy <- match.arg(strategy)
+            if (isTRUE(dry_run)) {
+                return(self$download_preflight(
+                    query_id = query_id,
+                    downloader = downloader,
+                    replica = replica,
+                    service = service,
+                    probe = probe,
+                    strategy = strategy,
+                    all = all,
+                    limit = limit,
+                    fields = fields,
+                    ...
+                ))
+            }
             if (is.null(downloader)) {
                 downloader <- self$downloader()
             }
@@ -1936,6 +2030,90 @@ EsgStore <- R6::R6Class(
                 }
             }
             plan[]
+        },
+
+        decorate_download_plan_with_files = function(plan, file_rows) {
+            plan <- data.table::as.data.table(plan)
+            file_rows <- data.table::as.data.table(file_rows)
+            if (!nrow(plan) || !nrow(file_rows)) {
+                return(plan)
+            }
+            if (!"file_key" %in% names(plan)) {
+                plan$file_key <- NA_character_
+            }
+            for (i in seq_len(nrow(plan))) {
+                if (!is.na(plan$file_key[[i]]) && nzchar(plan$file_key[[i]])) {
+                    next
+                }
+                hit <- file_rows[file_rows[["esgf_id"]] == plan$esgf_id[[i]]]
+                if (!nrow(hit) && "checksum" %in% names(plan)) {
+                    hit <- file_rows[
+                        file_rows[["filename"]] == plan$filename[[i]] &
+                            file_rows[["checksum"]] == plan$checksum[[i]]
+                    ]
+                }
+                if (nrow(hit)) {
+                    plan$file_key[[i]] <- hit$file_key[[1L]]
+                }
+            }
+            plan[]
+        },
+
+        preflight_files = function(file_rows) {
+            file_rows <- data.table::as.data.table(file_rows)
+            if (!nrow(file_rows)) {
+                return(file_rows)
+            }
+            file_rows[, status := private$file_link_status(file_rows)]
+            file_rows[]
+        },
+
+        download_preflight_summary = function(row, file_rows, candidates) {
+            files <- private$preflight_files(file_rows)
+            current <- if (nrow(files)) files[files[["status"]] == "current"] else files
+            local_available <- 0L
+            if (nrow(current) && "local_path" %in% names(current)) {
+                local_path <- current$local_path
+                has_path <- !is.na(local_path) & nzchar(local_path)
+                if (any(has_path)) {
+                    local_available <- sum(file.exists(vapply(
+                        local_path[has_path],
+                        store_abs_path,
+                        character(1L),
+                        root = private$store_path
+                    )))
+                }
+            }
+            candidate_keys <- if (nrow(candidates) && "file_key" %in% names(candidates)) {
+                unique(candidates$file_key[!is.na(candidates$file_key) & nzchar(candidates$file_key)])
+            } else {
+                character()
+            }
+            current_keys <- if (nrow(current)) unique(current$file_key) else character()
+            cooling_nodes <- 0L
+            if (nrow(candidates) && "node_cooldown_rank" %in% names(candidates)) {
+                cooling <- candidates[candidates[["node_cooldown_rank"]] > 0L]
+                if (nrow(cooling) && "data_node" %in% names(cooling)) {
+                    cooling_nodes <- length(unique(cooling$data_node[!is.na(cooling$data_node) & nzchar(cooling$data_node)]))
+                }
+            }
+            bytes_total <- if (nrow(current) && "size" %in% names(current)) {
+                sum(suppressWarnings(as.numeric(current$size)), na.rm = TRUE)
+            } else {
+                0
+            }
+            data.table::data.table(
+                query_id = row$query_id[[1L]],
+                label = extract_store_na_character(row$label[[1L]]),
+                file_total = as.integer(nrow(files)),
+                current_count = as.integer(nrow(current)),
+                candidate_count = as.integer(nrow(candidates)),
+                bytes_total = as.numeric(bytes_total),
+                local_available = as.integer(local_available),
+                needs_download = as.integer(max(0L, length(current_keys) - local_available)),
+                no_httpserver = as.integer(length(setdiff(current_keys, candidate_keys))),
+                cooldown_nodes = as.integer(cooling_nodes)
+            )
         },
 
         match_download_task = function(task, catalog) {
