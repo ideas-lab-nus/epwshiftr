@@ -275,6 +275,87 @@ test_that("FileDownloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "first.txt")), "first task content")
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
+
+test_that("FileDownloader runs persistent tasks with worker concurrency", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("mirai")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src_1 <- tempfile()
+    src_2 <- tempfile()
+    writeLines("parallel first", src_1)
+    writeLines("parallel second", src_2)
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 2L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = c("tracking:parallel-first", "tracking:parallel-second"),
+        filename = c("parallel-first.txt", "parallel-second.txt"),
+        url = paste0("file://", normalizePath(c(src_1, src_2), winslash = "/")),
+        checksum = as.character(tools::md5sum(c(src_1, src_2))),
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "parallel")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    tasks <- tasks[order(filename)]
+
+    expect_equal(tasks$status, c("done", "done"))
+    expect_equal(tasks$attempts, c(1L, 1L))
+    expect_equal(readLines(file.path(dest, "parallel-first.txt")), "parallel first")
+    expect_equal(readLines(file.path(dest, "parallel-second.txt")), "parallel second")
+    sessions <- dl$sessions()
+    expect_equal(sessions[sessions$session_id == session_id]$status, "done")
+})
+
+test_that("FileDownloader serializes persistent tasks for the same target path", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("mirai")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("shared target content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 2L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = c("tracking:shared-first", "tracking:shared-second"),
+        filename = c("shared.txt", "shared.txt"),
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "shared-target")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_setequal(tasks$status, c("done", "skipped"))
+    expect_true(file.exists(file.path(dest, "shared.txt")))
+    expect_equal(readLines(file.path(dest, "shared.txt")), "shared target content")
+})
 # }}}
 
 # Download Tests {{{

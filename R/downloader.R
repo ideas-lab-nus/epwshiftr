@@ -179,6 +179,137 @@ download_config_write <- function(config, file, pretty = TRUE) {
     jsonlite::write_json(config, file, null = "null", digits = 6, pretty = pretty, auto_unbox = TRUE)
     normalizePath(file, mustWork = TRUE, winslash = "/")
 }
+
+download_worker_download <- function(url, filename, subdir, dest, temp, retries, timeout,
+                                     overwrite, checksum, checksum_type, resume, tmp_id) {
+    checksum_file <- function(path, algo = "sha256") {
+        out <- if (identical(algo, "sha256")) {
+            tools::sha256sum(path)
+        } else {
+            tools::md5sum(path)
+        }
+        unname(as.character(out))
+    }
+    verify_checksum <- function(path, expected, algo = "sha256") {
+        if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
+            return(TRUE)
+        }
+        if (!file.exists(path)) {
+            return(FALSE)
+        }
+        identical(tolower(checksum_file(path, algo)), tolower(expected))
+    }
+    finalize <- function(tmp_done, dest) {
+        dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
+        renamed <- tryCatch(file.rename(tmp_done, dest), error = function(e) FALSE)
+        if (!isTRUE(renamed)) {
+            file.copy(tmp_done, dest, overwrite = TRUE)
+            unlink(tmp_done)
+        }
+        normalizePath(dest, mustWork = TRUE, winslash = "/")
+    }
+    stream <- function(url, tmp_part, tmp_done, timeout, start_byte) {
+        handle <- curl::new_handle()
+        curl::handle_setopt(
+            handle,
+            timeout = timeout,
+            followlocation = TRUE,
+            ssl_verifypeer = TRUE
+        )
+        if (start_byte > 0) {
+            curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
+        }
+
+        con <- file(tmp_part, if (start_byte > 0) "ab" else "wb")
+        on.exit(close(con), add = TRUE)
+        curl::curl_fetch_stream(url, function(chunk) {
+            writeBin(chunk, con)
+            TRUE
+        }, handle = handle)
+        close(con)
+        on.exit(NULL)
+        file.rename(tmp_part, tmp_done)
+        invisible(tmp_done)
+    }
+
+    if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
+        target_path <- file.path(dest, filename)
+    } else {
+        target_path <- file.path(dest, subdir, filename)
+    }
+    tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
+    tmp_done <- file.path(temp, paste0(tmp_id, ".done"))
+    checksum <- if (is.null(checksum) || is.na(checksum) || !nzchar(checksum)) NULL else checksum
+
+    if (file.exists(target_path) && !isTRUE(overwrite) &&
+        verify_checksum(target_path, checksum, checksum_type)) {
+        return(list(ok = TRUE, path = normalizePath(target_path, mustWork = TRUE, winslash = "/")))
+    }
+    if (file.exists(tmp_done) && verify_checksum(tmp_done, checksum, checksum_type)) {
+        path <- finalize(tmp_done, target_path)
+        return(list(ok = TRUE, path = path))
+    }
+
+    dir.create(dirname(tmp_part), recursive = TRUE, showWarnings = FALSE)
+    start_byte <- if (isTRUE(resume) && file.exists(tmp_part)) {
+        file.info(tmp_part, extra_cols = FALSE)$size
+    } else {
+        0
+    }
+    if (!isTRUE(resume) && file.exists(tmp_part)) {
+        unlink(tmp_part)
+    }
+
+    attempt <- 1L
+    last_error <- NULL
+    checksum_history <- character()
+    while (attempt <= retries) {
+        ok <- tryCatch(
+            {
+                stream(url, tmp_part, tmp_done, timeout, start_byte)
+                TRUE
+            },
+            error = function(e) {
+                last_error <<- conditionMessage(e)
+                FALSE
+            }
+        )
+        if (ok) {
+            if (verify_checksum(tmp_done, checksum, checksum_type)) {
+                path <- finalize(tmp_done, target_path)
+                return(list(ok = TRUE, path = path))
+            }
+
+            actual <- checksum_file(tmp_done, checksum_type)
+            checksum_history <- c(checksum_history, actual)
+            unlink(c(tmp_part, tmp_done))
+            if (length(checksum_history) >= 2L && all(checksum_history == checksum_history[[1L]])) {
+                return(list(
+                    ok = FALSE,
+                    error = sprintf(
+                        "File consistently returns the same incorrect checksum. Expected: %s; got: %s",
+                        checksum,
+                        actual
+                    )
+                ))
+            }
+            last_error <- sprintf("Checksum verification failed. Expected: %s; got: %s", checksum, actual)
+            start_byte <- 0
+        }
+        if (attempt < retries) {
+            Sys.sleep(2^(attempt - 1L))
+        }
+        attempt <- attempt + 1L
+    }
+
+    if (is.null(last_error) || is.na(last_error)) {
+        last_error <- "unknown"
+    }
+    list(
+        ok = FALSE,
+        error = sprintf("Failed to download file after %d attempts. Last error: %s", retries, last_error)
+    )
+}
 # }}}
 
 # FileDownloader {{{
@@ -684,8 +815,12 @@ FileDownloader <- R6::R6Class("FileDownloader",
             if (!nrow(tasks)) {
                 return(private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id)))
             }
-            for (i in seq_len(nrow(tasks))) {
-                private$run_task(tasks[i, , drop = FALSE], progress = progress, overwrite = overwrite, resume = resume)
+            if (private$worker_count > 1L && nrow(tasks) > 1L) {
+                private$run_tasks_concurrent(tasks, progress = progress, overwrite = overwrite, resume = resume)
+            } else {
+                for (i in seq_len(nrow(tasks))) {
+                    private$run_task(tasks[i, , drop = FALSE], progress = progress, overwrite = overwrite, resume = resume)
+                }
             }
             private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id))
         },
@@ -1640,6 +1775,216 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 private$log_event(sid, NA_character_, "retry", sprintf("Requeued %d task(s).", sum(tasks$session_id == sid)))
             }
             private$select_tasks(session_id = session_id, task_id = task_id)
+        },
+
+        run_tasks_concurrent = function(tasks, progress = TRUE, overwrite = FALSE, resume = TRUE) {
+            tasks <- data.table::as.data.table(tasks)
+            pending <- data.table::copy(tasks)
+            running <- list()
+            active_targets <- character()
+            completed <- 0L
+            total <- nrow(tasks)
+
+            progress_id <- NULL
+            if (isTRUE(progress)) {
+                progress_id <- cli::cli_progress_bar(
+                    "Downloading files",
+                    total = total,
+                    .auto_close = FALSE
+                )
+                on.exit(cli::cli_progress_done(id = progress_id), add = TRUE)
+            }
+
+            tick <- function() {
+                completed <<- completed + 1L
+                if (!is.null(progress_id)) {
+                    cli::cli_progress_update(id = progress_id)
+                }
+            }
+
+            add_running <- function(item) {
+                running[[item$task_id]] <<- item
+                active_targets <<- unique(c(active_targets, item$target_path))
+            }
+
+            while (nrow(pending) || length(running)) {
+                while (length(running) < private$worker_count && nrow(pending)) {
+                    available <- !pending$target_path %in% active_targets
+                    if (!any(available)) {
+                        break
+                    }
+                    idx <- which(available)[[1L]]
+                    task <- pending[idx]
+                    pending <- pending[-idx]
+                    item <- private$launch_concurrent_task(
+                        task,
+                        tried_candidate_id = character(),
+                        overwrite = overwrite,
+                        resume = resume
+                    )
+                    if (identical(item$status, "running")) {
+                        add_running(item)
+                    } else {
+                        tick()
+                    }
+                }
+
+                if (!length(running)) {
+                    next
+                }
+
+                done <- names(running)[!vapply(running, function(item) {
+                    mirai::unresolved(item$mirai)
+                }, logical(1L))]
+                if (!length(done)) {
+                    Sys.sleep(0.05)
+                    next
+                }
+
+                for (id in done) {
+                    item <- running[[id]]
+                    running[[id]] <- NULL
+                    active_targets <- setdiff(active_targets, item$target_path)
+
+                    result <- tryCatch(item$mirai[], error = function(e) e)
+                    if (inherits(result, "error")) {
+                        result <- list(ok = FALSE, error = conditionMessage(result))
+                    }
+
+                    task <- private$select_tasks(task_id = item$task_id)
+                    if (isTRUE(result$ok) && !is.null(result$path) && file.exists(result$path)) {
+                        task$status <- "done"
+                        task$target_path <- normalizePath(result$path, mustWork = TRUE, winslash = "/")
+                        task$bytes_done <- file.info(result$path, extra_cols = FALSE)$size
+                        task$last_error <- NA_character_
+                        task$completed_at <- download_now()
+                        private$update_task(task)
+                        private$log_event(task$session_id[[1L]], task$task_id[[1L]], "done", result$path)
+                        tick()
+                        next
+                    }
+
+                    last_error <- download_one_chr(result$error)
+                    if (is.na(last_error)) {
+                        last_error <- "Download failed."
+                    }
+                    candidate <- item$candidate
+                    failed <- suppressWarnings(as.integer(candidate$failed_count[[1L]]))
+                    if (is.na(failed)) failed <- 0L
+                    candidate$failed_count <- failed + 1L
+                    candidate$last_error <- last_error
+                    private$update_candidate(candidate)
+                    private$log_event(task$session_id[[1L]], task$task_id[[1L]], "candidate_error", last_error)
+
+                    tried <- unique(c(item$tried_candidate_id, candidate$candidate_id[[1L]]))
+                    next_item <- private$launch_concurrent_task(
+                        task,
+                        tried_candidate_id = tried,
+                        overwrite = overwrite,
+                        resume = resume
+                    )
+                    if (identical(next_item$status, "running")) {
+                        add_running(next_item)
+                    } else {
+                        tick()
+                    }
+                }
+            }
+
+            invisible(tasks)
+        },
+
+        launch_concurrent_task = function(task, tried_candidate_id = character(),
+                                          overwrite = FALSE, resume = TRUE) {
+            task <- data.table::as.data.table(task)
+            task_id <- task$task_id[[1L]]
+            session_id <- task$session_id[[1L]]
+            checksum <- download_one_chr(task$checksum[[1L]])
+            checksum_type <- download_checksum_type(task$checksum_type[[1L]])
+            target_path <- task$target_path[[1L]]
+
+            if (file.exists(target_path) && !isTRUE(overwrite)) {
+                ok <- if (is.na(checksum)) TRUE else private$verify_checksum_internal(target_path, checksum, checksum_type)
+                if (ok) {
+                    task$status <- "skipped"
+                    task$bytes_done <- file.info(target_path, extra_cols = FALSE)$size
+                    task$last_error <- NA_character_
+                    task$completed_at <- download_now()
+                    private$update_task(task)
+                    private$log_event(session_id, task_id, "skipped", "Final file already exists and passed validation.")
+                    return(list(status = "terminal", task_id = task_id))
+                }
+            }
+
+            candidates <- private$get_candidates(task_id)
+            if (length(tried_candidate_id)) {
+                candidates <- candidates[!candidates[["candidate_id"]] %in% tried_candidate_id]
+            }
+            if (!nrow(candidates)) {
+                task$status <- "error"
+                task$last_error <- "All candidate URLs failed."
+                task$completed_at <- download_now()
+                private$update_task(task)
+                private$log_event(session_id, task_id, "error", task$last_error)
+                return(list(status = "terminal", task_id = task_id))
+            }
+
+            candidate <- candidates[1L, , drop = FALSE]
+            attempts <- suppressWarnings(as.integer(task$attempts[[1L]]))
+            if (is.na(attempts)) attempts <- 0L
+            task$status <- "downloading"
+            task$attempts <- attempts + 1L
+            task$selected_url <- candidate$url[[1L]]
+            task$data_node <- candidate$data_node[[1L]]
+            task$last_error <- NA_character_
+            private$update_task(task)
+            private$log_event(session_id, task_id, "start", candidate$url[[1L]])
+
+            task_subdir <- download_one_chr(task$subdir[[1L]])
+            if (is.na(task_subdir)) task_subdir <- NULL
+            mirai_obj <- mirai::mirai(
+                {
+                    tryCatch(
+                        worker_fun(
+                            url = url,
+                            filename = filename,
+                            subdir = subdir,
+                            dest = dest,
+                            temp = temp,
+                            retries = retries,
+                            timeout = timeout,
+                            overwrite = overwrite,
+                            checksum = checksum,
+                            checksum_type = checksum_type,
+                            resume = resume,
+                            tmp_id = tmp_id
+                        ),
+                        error = function(e) list(ok = FALSE, error = conditionMessage(e))
+                    )
+                },
+                worker_fun = download_worker_download,
+                url = candidate$url[[1L]],
+                filename = task$filename[[1L]],
+                subdir = task_subdir,
+                dest = private$dest,
+                temp = private$temp,
+                retries = private$retries,
+                timeout = private$dl_timeout,
+                overwrite = overwrite,
+                checksum = if (is.na(checksum)) NULL else checksum,
+                checksum_type = checksum_type,
+                resume = resume,
+                tmp_id = task_id
+            )
+
+            list(
+                status = "running",
+                task_id = task_id,
+                target_path = target_path,
+                candidate = candidate,
+                tried_candidate_id = tried_candidate_id,
+                mirai = mirai_obj
+            )
         },
 
         run_task = function(task, progress = TRUE, overwrite = FALSE, resume = TRUE) {
