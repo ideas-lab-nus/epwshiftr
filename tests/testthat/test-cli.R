@@ -221,9 +221,41 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     expect_equal(download_status$result$session_id, session_id)
     expect_equal(download_status$result$status, "queued")
 
+    sessions <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "sessions"))
+    expect_equal(sessions$status, 0L)
+    expect_true(session_id %in% sessions$result$session_id)
+
+    tasks <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "tasks", "--session", session_id, "--status", "queued"))
+    expect_equal(tasks$status, 0L)
+    expect_equal(tasks$result$task_id, download_status$result$task_id)
+
+    events <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "events", "--session", session_id))
+    expect_equal(events$status, 0L)
+    expect_true("enqueue" %in% events$result$event)
+
+    nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "nodes", "--service", "HTTPServer"))
+    expect_equal(nodes$status, 0L)
+    expect_s3_class(nodes$result, "data.table")
+
+    reset_nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "reset-nodes", "--service", "HTTPServer"))
+    expect_equal(reset_nodes$status, 0L)
+    expect_s3_class(reset_nodes$result, "data.table")
+
     retry <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "retry", "--query", query_id, "--session", session_id))
     expect_equal(retry$status, 0L)
     expect_equal(nrow(retry$result), 0L)
+
+    cancelled <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "cancel", "--session", session_id))
+    expect_equal(cancelled$status, 0L)
+    expect_equal(cancelled$result$status, "cancelled")
+
+    resumed <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "resume", "--session", session_id, "--no-progress"))
+    expect_equal(resumed$status, 0L)
+    expect_true(all(resumed$result$status %in% c("done", "skipped")))
+
+    verified <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "verify", "--session", session_id))
+    expect_equal(verified$status, 0L)
+    expect_true(all(verified$result$checksum_ok))
 })
 
 test_that("install_cli and uninstall_cli manage generated launchers", {
