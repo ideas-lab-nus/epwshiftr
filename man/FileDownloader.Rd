@@ -129,6 +129,8 @@ Hongyuan Jia
 
 \item{\code{timeout}}{Download timeout in seconds}
 
+\item{\code{network_policy}}{Network options passed to libcurl.}
+
 \item{\code{n_workers}}{Number of parallel workers}
 
 \item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
@@ -143,12 +145,19 @@ Hongyuan Jia
 \item \href{#method-FileDownloader-new}{\code{FileDownloader$new()}}
 \item \href{#method-FileDownloader-download}{\code{FileDownloader$download()}}
 \item \href{#method-FileDownloader-save_config}{\code{FileDownloader$save_config()}}
+\item \href{#method-FileDownloader-export_manifest}{\code{FileDownloader$export_manifest()}}
+\item \href{#method-FileDownloader-import_manifest}{\code{FileDownloader$import_manifest()}}
 \item \href{#method-FileDownloader-enqueue}{\code{FileDownloader$enqueue()}}
 \item \href{#method-FileDownloader-run}{\code{FileDownloader$run()}}
 \item \href{#method-FileDownloader-sessions}{\code{FileDownloader$sessions()}}
 \item \href{#method-FileDownloader-tasks}{\code{FileDownloader$tasks()}}
 \item \href{#method-FileDownloader-status}{\code{FileDownloader$status()}}
+\item \href{#method-FileDownloader-events}{\code{FileDownloader$events()}}
+\item \href{#method-FileDownloader-on}{\code{FileDownloader$on()}}
+\item \href{#method-FileDownloader-off}{\code{FileDownloader$off()}}
+\item \href{#method-FileDownloader-data_nodes}{\code{FileDownloader$data_nodes()}}
 \item \href{#method-FileDownloader-retry}{\code{FileDownloader$retry()}}
+\item \href{#method-FileDownloader-cancel}{\code{FileDownloader$cancel()}}
 \item \href{#method-FileDownloader-resume}{\code{FileDownloader$resume()}}
 \item \href{#method-FileDownloader-verify}{\code{FileDownloader$verify()}}
 \item \href{#method-FileDownloader-cleanup_tmp}{\code{FileDownloader$cleanup_tmp()}}
@@ -173,6 +182,10 @@ Create a new FileDownloader object
   temp = NULL,
   retries = 3L,
   timeout = 3600L,
+  ssl_verifypeer = TRUE,
+  proxy = NULL,
+  connect_timeout = NULL,
+  useragent = NULL,
   cleanup = TRUE,
   n_workers = 4L,
   manifest = NULL,
@@ -196,6 +209,17 @@ retry attempts for failed downloads. Default: \code{3L}.}
 
 \item{\code{timeout}}{A positive integer specifying the timeout in seconds for
 each download. Default: \code{3600L} (1 hour).}
+
+\item{\code{ssl_verifypeer}}{Whether to verify HTTPS certificates. Default:
+\code{TRUE}.}
+
+\item{\code{proxy}}{Optional proxy URL passed to libcurl. Default: \code{NULL}.}
+
+\item{\code{connect_timeout}}{Optional connection timeout in seconds passed
+to libcurl. Default: \code{NULL}.}
+
+\item{\code{useragent}}{Optional HTTP user agent passed to libcurl.
+Default: \code{NULL}.}
 
 \item{\code{cleanup}}{A logical value specifying whether to automatically clean up failed temporary
 files. Default: \code{TRUE}.}
@@ -340,6 +364,51 @@ The normalized output path.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-export_manifest"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-export_manifest}{}}}
+\subsection{Method \code{export_manifest()}}{
+Export persistent manifest state to a portable JSON file.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$export_manifest(file, pretty = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{Output JSON path.}
+
+\item{\code{pretty}}{Whether to add indentation whitespace. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The normalized output path.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-import_manifest"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-import_manifest}{}}}
+\subsection{Method \code{import_manifest()}}{
+Import persistent manifest state from \verb{$export_manifest()}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$import_manifest(file, mode = c("append", "replace"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{JSON manifest export path.}
+
+\item{\code{mode}}{Import mode. \code{"append"} upserts imported rows by manifest
+primary key. \code{"replace"} clears known manifest tables first.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table with imported row counts.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileDownloader-enqueue"></a>}}
 \if{latex}{\out{\hypertarget{method-FileDownloader-enqueue}{}}}
 \subsection{Method \code{enqueue()}}{
@@ -452,6 +521,90 @@ A data.table of matching task records.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-events"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-events}{}}}
+\subsection{Method \code{events()}}{
+Return persistent downloader event logs.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$events(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of event records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-on"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-on}{}}}
+\subsection{Method \code{on()}}{
+Register an in-session downloader event callback.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$on(event, fun)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{event}}{Event name.}
+
+\item{\code{fun}}{Callback function called with \verb{(event, downloader)}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A callback token for \verb{$off()}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-off"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-off}{}}}
+\subsection{Method \code{off()}}{
+Remove a downloader event callback.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$off(token)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{token}}{Callback token returned by \verb{$on()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+\code{TRUE} when a callback was removed.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-data_nodes"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-data_nodes}{}}}
+\subsection{Method \code{data_nodes()}}{
+Return historical data node download performance.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$data_nodes(service = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{Optional ESGF service filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of data node performance records.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-FileDownloader-retry"></a>}}
 \if{latex}{\out{\hypertarget{method-FileDownloader-retry}{}}}
 \subsection{Method \code{retry()}}{
@@ -478,6 +631,35 @@ Requeue failed or cancelled persistent tasks.
 }
 \subsection{Returns}{
 A data.table of requeued task records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-cancel"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-cancel}{}}}
+\subsection{Method \code{cancel()}}{
+Cancel queued or in-progress persistent download tasks.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$cancel(
+  session_id = NULL,
+  task_id = NULL,
+  status = c("queued", "downloading")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+
+\item{\code{status}}{Task statuses to cancel. Default:
+\code{c("queued", "downloading")}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of cancelled task records.
 }
 }
 \if{html}{\out{<hr>}}

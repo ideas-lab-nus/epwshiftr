@@ -40,6 +40,10 @@ Hongyuan Jia
 \item \href{#method-EsgStore-update_queries}{\code{EsgStore$update_queries()}}
 \item \href{#method-EsgStore-download_query}{\code{EsgStore$download_query()}}
 \item \href{#method-EsgStore-download_status}{\code{EsgStore$download_status()}}
+\item \href{#method-EsgStore-query_status}{\code{EsgStore$query_status()}}
+\item \href{#method-EsgStore-remove_query}{\code{EsgStore$remove_query()}}
+\item \href{#method-EsgStore-remove_files}{\code{EsgStore$remove_files()}}
+\item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
 \item \href{#method-EsgStore-retry_downloads}{\code{EsgStore$retry_downloads()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
 \item \href{#method-EsgStore-downloader}{\code{EsgStore$downloader()}}
@@ -468,6 +472,99 @@ Return downloader tasks linked to stored query files.
 }
 \subsection{Returns}{
 A data.table of downloader task rows.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_status"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_status}{}}}
+\subsection{Method \code{query_status()}}{
+Summarise tracked ESGF query file and download status.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_status(query_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID vector. If \code{NULL}, all
+stored ESGF queries are summarised.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table with one row per stored query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-remove_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-remove_query}{}}}
+\subsection{Method \code{remove_query()}}{
+Remove stored ESGF queries and optionally delete orphaned local files.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$remove_query(query_id, delete = c("none", "orphaned"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Stored query ID vector.}
+
+\item{\code{delete}}{Whether to leave local files untouched (\code{"none"}) or
+delete files orphaned by the removal (\code{"orphaned"}).}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing removed queries.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-remove_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-remove_files}{}}}
+\subsection{Method \code{remove_files()}}{
+Remove ESGF file records and optionally delete local artifacts.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$remove_files(file_key, delete_local = FALSE, force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file_key}}{File key vector.}
+
+\item{\code{delete_local}}{Whether to delete local NetCDF files. Default:
+\code{FALSE}.}
+
+\item{\code{force}}{Whether to remove files still linked to queries.
+Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing removed file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-prune_orphans"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-prune_orphans}{}}}
+\subsection{Method \code{prune_orphans()}}{
+Report or remove file records no longer linked to any query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$prune_orphans(delete_local = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{delete_local}}{Whether to delete local NetCDF files and remove
+orphaned registry records. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of orphaned file records.
 }
 }
 \if{html}{\out{<hr>}}

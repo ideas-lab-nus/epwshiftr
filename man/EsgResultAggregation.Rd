@@ -118,7 +118,9 @@ Build a persistent downloader plan for aggregation records.
   service = "HTTPServer",
   probe = TRUE,
   strategy = c("fastest", "first", "stable"),
-  all = TRUE
+  all = TRUE,
+  node_stats = NULL,
+  network_policy = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -136,6 +138,12 @@ current records.}
 \item{\code{strategy}}{Candidate ranking strategy.}
 
 \item{\code{all}}{Reserved for API symmetry with \code{EsgResultFile}.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
 }
 \if{html}{\out{</div>}}
 }

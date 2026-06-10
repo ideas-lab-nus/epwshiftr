@@ -135,7 +135,9 @@ Build a persistent downloader plan for file records.
   service = "HTTPServer",
   probe = TRUE,
   strategy = c("fastest", "first", "stable"),
-  all = TRUE
+  all = TRUE,
+  node_stats = NULL,
+  network_policy = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -151,6 +153,12 @@ Build a persistent downloader plan for file records.
 \item{\code{strategy}}{Candidate ranking strategy.}
 
 \item{\code{all}}{Whether replica expansion should retrieve all matching records.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -192,7 +200,9 @@ Select the preferred candidate URL per logical file.
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$select_replica(
   strategy = c("fastest", "first", "stable"),
   probe = TRUE,
-  service = "HTTPServer"
+  service = "HTTPServer",
+  node_stats = NULL,
+  network_policy = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -205,6 +215,12 @@ Select the preferred candidate URL per logical file.
 
 \item{\code{service}}{ESGF URL service to download from. Default:
 \code{"HTTPServer"}.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
 }
 \if{html}{\out{</div>}}
 }
