@@ -196,13 +196,30 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     expect_equal(storage$status, 0L)
     expect_named(storage$result, c("summary", "downloads", "registered", "untracked_files", "missing_records", "tmp", "orphan_records"))
 
-    validated <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "validate", "--checksum"))
+    layout <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "layout", "show"))
+    expect_equal(layout$status, 0L)
+    expect_equal(layout$result$layout, "flat")
+
+    layout_set <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "storage", "layout", "set",
+        "--layout", "drs", "--include-version", "false", "--collision", "suffix"
+    ))
+    expect_equal(layout_set$status, 0L)
+    expect_equal(layout_set$result$layout, "drs")
+    expect_false(layout_set$result$include_version)
+    expect_equal(layout_set$result$collision, "suffix")
+
+    validated <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "validate", "--query", query_id, "--checksum"))
     expect_equal(validated$status, 0L)
     expect_named(validated$result, c("summary", "files", "artifacts", "untracked", "actions"))
 
     repaired <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "repair"))
     expect_equal(repaired$status, 0L)
     expect_true(all(repaired$result$dry_run))
+
+    cleanup <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "cleanup", "--scope", "tmp,missing_records", "--older-than", "0"))
+    expect_equal(cleanup$status, 0L)
+    expect_s3_class(cleanup$result, "data.table")
 
     dl <- store$downloader(n_workers = 0L)
     catalog <- store$query("SELECT file_key FROM file_catalog")
