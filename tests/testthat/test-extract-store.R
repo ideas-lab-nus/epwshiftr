@@ -758,6 +758,106 @@ test_that("EsgStore removes file records and local artifacts explicitly", {
     expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
 })
 
+test_that("EsgStore reports and cleans download storage candidates", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    untracked_file <- file.path(store$path, "downloads", "untracked.nc")
+    tmp_file <- file.path(store$path, "tmp", "downloads", "task.part")
+    dir.create(dirname(untracked_file), recursive = TRUE, showWarnings = FALSE)
+    dir.create(dirname(tmp_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("untracked netcdf placeholder", untracked_file)
+    writeLines("partial download placeholder", tmp_file)
+
+    report <- store$storage_report(detail = TRUE)
+    expect_named(report, c("summary", "downloads", "registered", "untracked_files", "missing_records", "tmp", "orphan_records"))
+    expect_equal(report$summary$untracked_file_count, 1L)
+    expect_equal(report$summary$tmp_file_count, 1L)
+    expect_equal(report$summary$registered_file_count, 0L)
+    expect_true(extract_store_rel_path(untracked_file, store$path) %in% report$untracked_files$relative_path)
+    expect_true(extract_store_rel_path(tmp_file, store$path) %in% report$tmp$relative_path)
+
+    dry <- store$cleanup_downloads(scope = c("tmp", "untracked_files"), dry_run = TRUE)
+    expect_equal(sort(dry$scope), c("tmp", "untracked_files"))
+    expect_true(all(dry$dry_run))
+    expect_true(file.exists(untracked_file))
+    expect_true(file.exists(tmp_file))
+
+    cleaned <- store$cleanup_downloads(scope = c("tmp", "untracked_files"), dry_run = FALSE)
+    expect_equal(sort(cleaned$scope), c("tmp", "untracked_files"))
+    expect_true(all(cleaned$deleted))
+    expect_false(file.exists(untracked_file))
+    expect_false(file.exists(tmp_file))
+
+    summary <- store$storage_report()
+    expect_equal(summary$untracked_file_count, 0L)
+    expect_equal(summary$tmp_file_count, 0L)
+})
+
+test_that("EsgStore clears missing local download records", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    files <- extract_store_test_result(docs = extract_store_test_file_docs(path = "missing-record.nc"))
+    query_id <- store$add_files(files, label = "missing local file test")
+    conn <- priv(store)$conn
+    file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
+
+    local_file <- file.path(store$path, "downloads", "missing-record.nc")
+    dir.create(dirname(local_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("local netcdf placeholder", local_file)
+    artifact_id <- store$register_artifact(
+        kind = "netcdf",
+        path = local_file,
+        role = "download",
+        project = "CMIP6",
+        query_id = query_id,
+        file_key = file_key
+    )
+
+    rel <- extract_store_rel_path(local_file, store$path)
+    ddb_exec(conn, sprintf(
+        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    ddb_exec(conn, sprintf(
+        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    unlink(local_file)
+
+    report <- store$storage_report(detail = TRUE)
+    expect_gt(report$summary$missing_record_count, 0L)
+    expect_true(artifact_id %in% report$missing_records$artifact_id)
+    expect_true(file_key %in% report$missing_records$file_key)
+
+    dry <- store$cleanup_downloads(scope = "missing_records", dry_run = TRUE)
+    expect_true(all(dry$dry_run))
+    expect_false(is.na(ddb_read_table(conn, "file_catalog")$local_path[[1L]]))
+    expect_true(artifact_id %in% ddb_read_table(conn, "artifact")$artifact_id)
+
+    cleaned <- store$cleanup_downloads(scope = "missing_records", dry_run = FALSE)
+    expect_true(all(cleaned$record_removed))
+    catalog <- ddb_read_table(conn, "file_catalog")
+    esg_file <- ddb_read_table(conn, "esg_file")
+    artifacts <- ddb_read_table(conn, "artifact")
+    expect_true(is.na(catalog$local_path[[1L]]))
+    expect_true(is.na(catalog$local_artifact_id[[1L]]))
+    expect_true(is.na(esg_file$local_path[[1L]]))
+    expect_true(is.na(esg_file$local_artifact_id[[1L]]))
+    expect_false(artifact_id %in% artifacts$artifact_id)
+})
+
 test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
 

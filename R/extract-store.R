@@ -1420,6 +1420,79 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # storage_report {{{
+        #' @description
+        #' Summarise store download storage, registered local assets, temporary
+        #' files, and cleanup candidates.
+        #'
+        #' @param detail Whether to return detailed file tables. Default:
+        #'        `FALSE`.
+        #'
+        #' @return A summary data.table, or a list when `detail = TRUE`.
+        storage_report = function(detail = FALSE) {
+            private$check_open()
+            checkmate::assert_flag(detail)
+            report <- private$download_storage_report()
+            if (isTRUE(detail)) {
+                return(report)
+            }
+            report$summary
+        },
+        # }}}
+
+        # cleanup_downloads {{{
+        #' @description
+        #' Report or remove download cleanup candidates.
+        #'
+        #' @param scope Cleanup scopes. Supported values are `"tmp"`,
+        #'        `"orphan_records"`, `"untracked_files"`, and
+        #'        `"missing_records"`.
+        #' @param dry_run Whether to only report cleanup candidates. Default:
+        #'        `TRUE`.
+        #' @param older_than Optional age filter for file scopes. A numeric value
+        #'        is interpreted as seconds before now; a `POSIXct` value is used
+        #'        as an absolute mtime cutoff.
+        #'
+        #' @return A data.table describing cleanup candidates or removals.
+        cleanup_downloads = function(
+            scope = c("tmp", "orphan_records", "untracked_files", "missing_records"),
+            dry_run = TRUE,
+            older_than = NULL
+        ) {
+            private$check_open()
+            checkmate::assert_subset(scope, c("tmp", "orphan_records", "untracked_files", "missing_records"), empty.ok = FALSE)
+            checkmate::assert_flag(dry_run)
+            cutoff <- private$cleanup_cutoff(older_than)
+            report <- private$download_storage_report()
+            collect_actions <- function() {
+                actions <- list()
+                if ("tmp" %in% scope) {
+                    actions$tmp <- private$cleanup_file_scope("tmp", report$tmp, dry_run = dry_run, cutoff = cutoff)
+                }
+                if ("untracked_files" %in% scope) {
+                    actions$untracked_files <- private$cleanup_file_scope(
+                        "untracked_files",
+                        report$untracked_files,
+                        dry_run = dry_run,
+                        cutoff = cutoff
+                    )
+                }
+                if ("orphan_records" %in% scope) {
+                    actions$orphan_records <- private$cleanup_orphan_records(report$orphan_records, dry_run = dry_run)
+                }
+                if ("missing_records" %in% scope) {
+                    actions$missing_records <- private$cleanup_missing_records(report$missing_records, dry_run = dry_run)
+                }
+                data.table::rbindlist(actions, fill = TRUE)
+            }
+            if (isTRUE(dry_run)) {
+                collect_actions()
+            } else {
+                private$with_store_lock(collect_actions())
+            }
+        },
+        # }}}
+
         # retry_downloads {{{
         #' @description
         #' Requeue retryable downloader tasks linked to stored query files.
@@ -3763,6 +3836,259 @@ EsgStore <- R6::R6Class(
             hit$updated_at <- extract_store_now()
             private$replace_rows("esg_file", as.data.frame(hit), "file_key")
             invisible(NULL)
+        },
+        # }}}
+
+        # download_storage_report {{{
+        download_storage_report = function() {
+            download_files <- private$list_store_files(private$download_dir)
+            if (nrow(download_files)) {
+                downloader_prefix <- paste0(file.path(private$download_dir, "_downloader"), "/")
+                download_files <- download_files[!startsWith(path, downloader_prefix)]
+            }
+            tmp_files <- private$list_store_files(private$tmp_download_dir)
+            registered <- private$registered_download_paths()
+            registered_paths <- unique(registered$path[!is.na(registered$path) & nzchar(registered$path)])
+            registered_unique <- registered[!is.na(path) & nzchar(path)]
+            if (nrow(registered_unique)) {
+                registered_unique <- registered_unique[!duplicated(path)]
+            }
+            untracked <- if (nrow(download_files)) {
+                download_files[!path %in% registered_paths]
+            } else {
+                download_files
+            }
+            missing <- if (nrow(registered)) {
+                registered[is.na(path) | !nzchar(path) | !file.exists(path)]
+            } else {
+                registered
+            }
+            orphans <- private$orphaned_files()
+
+            summary <- data.table::data.table(
+                download_file_count = as.integer(nrow(download_files)),
+                download_bytes = as.numeric(sum(download_files$size, na.rm = TRUE)),
+                registered_file_count = as.integer(nrow(registered_unique)),
+                registered_bytes = as.numeric(sum(registered_unique$size, na.rm = TRUE)),
+                tmp_file_count = as.integer(nrow(tmp_files)),
+                tmp_bytes = as.numeric(sum(tmp_files$size, na.rm = TRUE)),
+                untracked_file_count = as.integer(nrow(untracked)),
+                untracked_bytes = as.numeric(sum(untracked$size, na.rm = TRUE)),
+                missing_record_count = as.integer(nrow(missing)),
+                orphan_record_count = as.integer(nrow(orphans))
+            )
+            list(
+                summary = summary[],
+                downloads = download_files[],
+                registered = registered[],
+                untracked_files = untracked[],
+                missing_records = missing[],
+                tmp = tmp_files[],
+                orphan_records = orphans[]
+            )
+        },
+
+        list_store_files = function(root) {
+            empty <- data.table::data.table(
+                path = character(),
+                relative_path = character(),
+                size = numeric(),
+                mtime = as.POSIXct(character())
+            )
+            if (!dir.exists(root)) {
+                return(empty)
+            }
+            files <- list.files(root, recursive = TRUE, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+            if (!length(files)) {
+                return(empty)
+            }
+            files <- files[file.exists(files) & !dir.exists(files)]
+            if (!length(files)) {
+                return(empty)
+            }
+            info <- file.info(files, extra_cols = FALSE)
+            rel <- vapply(files, store_rel_path, character(1L), root = private$store_path)
+            data.table::data.table(
+                path = normalizePath(files, mustWork = FALSE, winslash = "/"),
+                relative_path = rel,
+                size = as.numeric(info$size),
+                mtime = as.POSIXct(info$mtime, tz = "UTC")
+            )
+        },
+
+        registered_download_paths = function() {
+            rows <- list()
+            artifacts <- private$read_table("artifact")
+            if (nrow(artifacts)) {
+                artifacts <- artifacts[artifacts[["kind"]] == "netcdf"]
+                if (nrow(artifacts)) {
+                    rows$artifact <- data.table::data.table(
+                        source = "artifact",
+                        artifact_id = artifacts$artifact_id,
+                        file_key = artifacts$file_key,
+                        relative_path = artifacts$relative_path,
+                        size = suppressWarnings(as.numeric(artifacts$size))
+                    )
+                }
+            }
+            catalog <- private$read_table("file_catalog")
+            if (nrow(catalog)) {
+                catalog <- catalog[!is.na(local_path) & nzchar(local_path)]
+                if (nrow(catalog)) {
+                    rows$catalog <- data.table::data.table(
+                        source = "catalog",
+                        artifact_id = catalog$local_artifact_id,
+                        file_key = catalog$file_key,
+                        relative_path = catalog$local_path,
+                        size = suppressWarnings(as.numeric(catalog$size))
+                    )
+                }
+            }
+            if (!length(rows)) {
+                return(data.table::data.table(
+                    source = character(),
+                    artifact_id = character(),
+                    file_key = character(),
+                    relative_path = character(),
+                    path = character(),
+                    exists = logical(),
+                    size = numeric()
+                ))
+            }
+            out <- data.table::rbindlist(rows, fill = TRUE)
+            out[, path := vapply(relative_path, function(path) {
+                if (is.na(path) || !nzchar(path)) {
+                    return(NA_character_)
+                }
+                store_abs_path(path, root = private$store_path)
+            }, character(1L))]
+            out[, exists := !is.na(path) & file.exists(path)]
+            out[]
+        },
+
+        cleanup_cutoff = function(older_than = NULL) {
+            if (is.null(older_than)) {
+                return(NULL)
+            }
+            if (inherits(older_than, "POSIXt")) {
+                return(as.POSIXct(older_than[[1L]], tz = "UTC"))
+            }
+            checkmate::assert_number(older_than, lower = 0)
+            as.POSIXct(Sys.time() - older_than, tz = "UTC")
+        },
+
+        cleanup_file_scope = function(scope, files, dry_run = TRUE, cutoff = NULL) {
+            files <- data.table::as.data.table(files)
+            if (!nrow(files)) {
+                return(private$cleanup_empty(scope))
+            }
+            if (!is.null(cutoff) && "mtime" %in% names(files)) {
+                files <- files[mtime <= cutoff]
+            }
+            if (!nrow(files)) {
+                return(private$cleanup_empty(scope))
+            }
+            deleted <- rep(FALSE, nrow(files))
+            if (!isTRUE(dry_run)) {
+                deleted <- file.exists(files$path) & unlink(files$path, recursive = FALSE, force = TRUE) == 0L
+            }
+            data.table::data.table(
+                scope = scope,
+                action = if (isTRUE(dry_run)) "delete_file" else "deleted_file",
+                path = files$path,
+                relative_path = files$relative_path,
+                file_key = NA_character_,
+                artifact_id = NA_character_,
+                size = files$size,
+                deleted = deleted,
+                dry_run = isTRUE(dry_run)
+            )
+        },
+
+        cleanup_orphan_records = function(orphans, dry_run = TRUE) {
+            orphans <- data.table::as.data.table(orphans)
+            if (!nrow(orphans)) {
+                return(private$cleanup_empty("orphan_records"))
+            }
+            removed <- rep(FALSE, nrow(orphans))
+            deleted <- rep(FALSE, nrow(orphans))
+            if (!isTRUE(dry_run)) {
+                result <- private$remove_file_records(orphans$file_key, delete_local = TRUE, force = TRUE)
+                removed <- orphans$file_key %in% result$file_key
+                deleted <- result$deleted_local[match(orphans$file_key, result$file_key)] %in% TRUE
+            }
+            data.table::data.table(
+                scope = "orphan_records",
+                action = if (isTRUE(dry_run)) "remove_record" else "removed_record",
+                path = orphans$local_file,
+                relative_path = orphans$local_path,
+                file_key = orphans$file_key,
+                artifact_id = orphans$local_artifact_id,
+                size = suppressWarnings(as.numeric(file.info(orphans$local_file, extra_cols = FALSE)$size)),
+                deleted = deleted,
+                record_removed = removed,
+                dry_run = isTRUE(dry_run)
+            )
+        },
+
+        cleanup_missing_records = function(records, dry_run = TRUE) {
+            records <- data.table::as.data.table(records)
+            if (!nrow(records)) {
+                return(private$cleanup_empty("missing_records"))
+            }
+            removed <- rep(FALSE, nrow(records))
+            if (!isTRUE(dry_run)) {
+                private$clear_missing_download_records(records)
+                removed <- rep(TRUE, nrow(records))
+            }
+            data.table::data.table(
+                scope = "missing_records",
+                action = if (isTRUE(dry_run)) "clear_record" else "cleared_record",
+                path = records$path,
+                relative_path = records$relative_path,
+                file_key = records$file_key,
+                artifact_id = records$artifact_id,
+                size = records$size,
+                deleted = FALSE,
+                record_removed = removed,
+                dry_run = isTRUE(dry_run)
+            )
+        },
+
+        clear_missing_download_records = function(records) {
+            records <- data.table::as.data.table(records)
+            artifact_ids <- unique(records$artifact_id[records$source == "artifact" & !is.na(records$artifact_id) & nzchar(records$artifact_id)])
+            if (length(artifact_ids)) {
+                private$delete_by_key("artifact", "artifact_id", artifact_ids)
+            }
+            file_keys <- unique(records$file_key[records$source == "catalog" & !is.na(records$file_key) & nzchar(records$file_key)])
+            if (length(file_keys)) {
+                for (table in c("file_catalog", "esg_file")) {
+                    rows <- private$read_table(table)
+                    rows <- rows[rows[["file_key"]] %in% file_keys]
+                    if (nrow(rows)) {
+                        rows$local_path <- NA_character_
+                        rows$local_artifact_id <- NA_character_
+                        private$replace_rows(table, as.data.frame(rows), "file_key")
+                    }
+                }
+            }
+            invisible(NULL)
+        },
+
+        cleanup_empty = function(scope_name) {
+            data.table::data.table(
+                scope = character(),
+                action = character(),
+                path = character(),
+                relative_path = character(),
+                file_key = character(),
+                artifact_id = character(),
+                size = numeric(),
+                deleted = logical(),
+                record_removed = logical(),
+                dry_run = logical()
+            )[0]
         },
         # }}}
 

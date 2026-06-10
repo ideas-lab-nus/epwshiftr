@@ -58,6 +58,8 @@ Hongyuan Jia
 \item \href{#method-EsgStore-remove_query}{\code{EsgStore$remove_query()}}
 \item \href{#method-EsgStore-remove_files}{\code{EsgStore$remove_files()}}
 \item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
+\item \href{#method-EsgStore-storage_report}{\code{EsgStore$storage_report()}}
+\item \href{#method-EsgStore-cleanup_downloads}{\code{EsgStore$cleanup_downloads()}}
 \item \href{#method-EsgStore-retry_downloads}{\code{EsgStore$retry_downloads()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
 \item \href{#method-EsgStore-downloader}{\code{EsgStore$downloader()}}
@@ -988,6 +990,61 @@ orphaned registry records. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A data.table of orphaned file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-storage_report"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-storage_report}{}}}
+\subsection{Method \code{storage_report()}}{
+Summarise store download storage, registered local assets, temporary
+files, and cleanup candidates.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$storage_report(detail = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{detail}}{Whether to return detailed file tables. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A summary data.table, or a list when \code{detail = TRUE}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-cleanup_downloads"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-cleanup_downloads}{}}}
+\subsection{Method \code{cleanup_downloads()}}{
+Report or remove download cleanup candidates.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$cleanup_downloads(
+  scope = c("tmp", "orphan_records", "untracked_files", "missing_records"),
+  dry_run = TRUE,
+  older_than = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{scope}}{Cleanup scopes. Supported values are \code{"tmp"},
+\code{"orphan_records"}, \code{"untracked_files"}, and
+\code{"missing_records"}.}
+
+\item{\code{dry_run}}{Whether to only report cleanup candidates. Default:
+\code{TRUE}.}
+
+\item{\code{older_than}}{Optional age filter for file scopes. A numeric value
+is interpreted as seconds before now; a \code{POSIXct} value is used
+as an absolute mtime cutoff.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing cleanup candidates or removals.
 }
 }
 \if{html}{\out{<hr>}}
