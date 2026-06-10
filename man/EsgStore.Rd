@@ -60,6 +60,7 @@ Hongyuan Jia
 \item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
 \item \href{#method-EsgStore-storage_report}{\code{EsgStore$storage_report()}}
 \item \href{#method-EsgStore-validate_files}{\code{EsgStore$validate_files()}}
+\item \href{#method-EsgStore-repair_files}{\code{EsgStore$repair_files()}}
 \item \href{#method-EsgStore-cleanup_downloads}{\code{EsgStore$cleanup_downloads()}}
 \item \href{#method-EsgStore-retry_downloads}{\code{EsgStore$retry_downloads()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
@@ -1040,6 +1041,31 @@ download layout policy. Default: \code{TRUE}.}
 \subsection{Returns}{
 A list with \code{summary}, \code{files}, \code{artifacts}, \code{untracked}, and
 \code{actions} data.tables. The method is read-only.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-repair_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-repair_files}{}}}
+\subsection{Method \code{repair_files()}}{
+Repair safe store download inconsistencies reported by
+\verb{$validate_files()}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$repair_files(actions = NULL, dry_run = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{actions}}{Optional action table from \verb{$validate_files()$actions}.
+When \code{NULL}, actions are generated from \verb{$validate_files()}.}
+
+\item{\code{dry_run}}{Whether to only report planned repairs. Default:
+\code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing attempted repairs.
 }
 }
 \if{html}{\out{<hr>}}

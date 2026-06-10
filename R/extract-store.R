@@ -1462,6 +1462,35 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # repair_files {{{
+        #' @description
+        #' Repair safe store download inconsistencies reported by
+        #' `$validate_files()`.
+        #'
+        #' @param actions Optional action table from `$validate_files()$actions`.
+        #'        When `NULL`, actions are generated from `$validate_files()`.
+        #' @param dry_run Whether to only report planned repairs. Default:
+        #'        `TRUE`.
+        #'
+        #' @return A data.table describing attempted repairs.
+        repair_files = function(actions = NULL, dry_run = TRUE) {
+            private$check_open()
+            checkmate::assert_data_frame(actions, null.ok = TRUE)
+            checkmate::assert_flag(dry_run)
+
+            if (is.null(actions)) {
+                actions <- self$validate_files()$actions
+            }
+            actions <- data.table::as.data.table(actions)
+            if (isTRUE(dry_run)) {
+                return(private$repair_download_files(actions, dry_run = TRUE))
+            }
+            private$with_store_lock({
+            private$repair_download_files(actions, dry_run = FALSE)
+            })
+        },
+        # }}}
+
         # cleanup_downloads {{{
         #' @description
         #' Report or remove download cleanup candidates.
@@ -4359,6 +4388,217 @@ EsgStore <- R6::R6Class(
                 relative_path = character(),
                 reason = character(),
                 safe = logical()
+            )
+        },
+        # }}}
+
+        # repair_download_files {{{
+        repair_download_files = function(actions, dry_run = TRUE) {
+            actions <- data.table::as.data.table(actions)
+            if (!nrow(actions)) {
+                return(private$repair_download_empty_results())
+            }
+            required <- c(
+                "action_id", "action", "file_key", "artifact_id", "from_path",
+                "to_path", "relative_path", "reason", "safe"
+            )
+            missing <- setdiff(required, names(actions))
+            if (length(missing)) {
+                cli::cli_abort("Repair action table is missing required column(s): {.field {missing}}.")
+            }
+            data.table::rbindlist(lapply(seq_len(nrow(actions)), function(i) {
+                private$repair_download_action(actions[i], dry_run = dry_run)
+            }), fill = TRUE)
+        },
+
+        repair_download_action = function(action, dry_run = TRUE) {
+            base <- data.table::data.table(
+                action_id = action$action_id[[1L]],
+                action = action$action[[1L]],
+                file_key = extract_store_na_character(action$file_key[[1L]]),
+                artifact_id = extract_store_na_character(action$artifact_id[[1L]]),
+                from_path = extract_store_na_character(action$from_path[[1L]]),
+                to_path = extract_store_na_character(action$to_path[[1L]]),
+                relative_path = extract_store_na_character(action$relative_path[[1L]]),
+                done = FALSE,
+                dry_run = isTRUE(dry_run),
+                message = NA_character_
+            )
+            if (!isTRUE(action$safe[[1L]])) {
+                base$message <- "skipped unsafe action"
+                return(base[])
+            }
+            if (isTRUE(dry_run)) {
+                base$message <- "dry run"
+                return(base[])
+            }
+
+            result <- tryCatch(
+                switch(
+                    action$action[[1L]],
+                    clear_missing_local_ref = private$repair_clear_missing_local_ref(action),
+                    remove_missing_artifact = private$repair_remove_artifact_record(action),
+                    remove_orphan_artifact = private$repair_remove_artifact_record(action),
+                    move_to_layout = private$repair_move_to_layout(action),
+                    list(done = FALSE, message = sprintf("unsupported action: %s", action$action[[1L]]))
+                ),
+                error = function(e) list(done = FALSE, message = conditionMessage(e))
+            )
+            base$done <- isTRUE(result$done)
+            base$message <- extract_store_na_character(result$message)
+            base[]
+        },
+
+        repair_clear_missing_local_ref = function(action) {
+            file_key <- extract_store_na_character(action$file_key[[1L]])
+            if (is.na(file_key) || !nzchar(file_key)) {
+                return(list(done = FALSE, message = "missing file_key"))
+            }
+            private$clear_file_local_reference(file_key, artifact_id = extract_store_na_character(action$artifact_id[[1L]]))
+            list(done = TRUE, message = "cleared missing local reference")
+        },
+
+        repair_remove_artifact_record = function(action) {
+            artifact_id <- extract_store_na_character(action$artifact_id[[1L]])
+            if (is.na(artifact_id) || !nzchar(artifact_id)) {
+                return(list(done = FALSE, message = "missing artifact_id"))
+            }
+            private$delete_by_key("artifact", "artifact_id", artifact_id)
+            private$clear_file_artifact_reference(artifact_id)
+            list(done = TRUE, message = "removed artifact record")
+        },
+
+        repair_move_to_layout = function(action) {
+            file_key <- extract_store_na_character(action$file_key[[1L]])
+            artifact_id <- extract_store_na_character(action$artifact_id[[1L]])
+            from_path <- extract_store_na_character(action$from_path[[1L]])
+            to_path <- extract_store_na_character(action$to_path[[1L]])
+            relative_path <- extract_store_na_character(action$relative_path[[1L]])
+            if (is.na(file_key) || !nzchar(file_key)) {
+                return(list(done = FALSE, message = "missing file_key"))
+            }
+            if (is.na(from_path) || !nzchar(from_path) || !file.exists(from_path)) {
+                return(list(done = FALSE, message = "source file is missing"))
+            }
+            if (is.na(to_path) || !nzchar(to_path)) {
+                return(list(done = FALSE, message = "missing target path"))
+            }
+            if (file.exists(to_path)) {
+                return(list(done = FALSE, message = "target path already exists"))
+            }
+            from_path <- store_abs_path(from_path, root = private$store_path)
+            to_path <- store_abs_path(to_path, root = private$store_path)
+            download_root <- paste0(sub("/+$", "", store_normalize_path(private$download_dir)), "/")
+            if (!startsWith(store_normalize_path(from_path), download_root) || !startsWith(store_normalize_path(to_path), download_root)) {
+                return(list(done = FALSE, message = "paths are outside the store downloads directory"))
+            }
+            dir.create(dirname(to_path), recursive = TRUE, showWarnings = FALSE)
+            moved <- file.rename(from_path, to_path)
+            if (!isTRUE(moved)) {
+                moved <- file.copy(from_path, to_path, overwrite = FALSE) && unlink(from_path, recursive = FALSE, force = TRUE) == 0L
+            }
+            if (!isTRUE(moved)) {
+                return(list(done = FALSE, message = "failed to move file"))
+            }
+            if (is.na(relative_path) || !nzchar(relative_path)) {
+                relative_path <- store_rel_path(to_path, root = private$store_path)
+            }
+            private$set_file_local_reference(file_key, relative_path, artifact_id = artifact_id)
+            if (!is.na(artifact_id) && nzchar(artifact_id)) {
+                artifacts <- private$read_table("artifact")
+                row <- artifacts[artifacts[["artifact_id"]] == artifact_id]
+                if (nrow(row)) {
+                    row$relative_path <- relative_path
+                    row$updated_at <- extract_store_now()
+                    private$replace_rows("artifact", as.data.frame(row), "artifact_id")
+                }
+            }
+            private$remove_empty_download_dirs(dirname(from_path))
+            list(done = TRUE, message = "moved file to current layout")
+        },
+
+        clear_file_local_reference = function(file_key, artifact_id = NA_character_) {
+            for (table in c("file_catalog", "esg_file")) {
+                rows <- private$read_table(table)
+                rows <- rows[rows[["file_key"]] == file_key]
+                if (!nrow(rows)) {
+                    next
+                }
+                rows$local_path <- NA_character_
+                rows$local_artifact_id <- NA_character_
+                if ("updated_at" %in% names(rows)) {
+                    rows$updated_at <- extract_store_now()
+                }
+                private$replace_rows(table, as.data.frame(rows), "file_key")
+            }
+            invisible(NULL)
+        },
+
+        clear_file_artifact_reference = function(artifact_id) {
+            if (is.na(artifact_id) || !nzchar(artifact_id)) {
+                return(invisible(NULL))
+            }
+            for (table in c("file_catalog", "esg_file")) {
+                rows <- private$read_table(table)
+                rows <- rows[rows[["local_artifact_id"]] == artifact_id]
+                if (!nrow(rows)) {
+                    next
+                }
+                rows$local_artifact_id <- NA_character_
+                if ("updated_at" %in% names(rows)) {
+                    rows$updated_at <- extract_store_now()
+                }
+                private$replace_rows(table, as.data.frame(rows), "file_key")
+            }
+            invisible(NULL)
+        },
+
+        set_file_local_reference = function(file_key, relative_path, artifact_id = NA_character_) {
+            for (table in c("file_catalog", "esg_file")) {
+                rows <- private$read_table(table)
+                rows <- rows[rows[["file_key"]] == file_key]
+                if (!nrow(rows)) {
+                    next
+                }
+                rows$local_path <- relative_path
+                rows$local_artifact_id <- artifact_id
+                if ("updated_at" %in% names(rows)) {
+                    rows$updated_at <- extract_store_now()
+                }
+                private$replace_rows(table, as.data.frame(rows), "file_key")
+            }
+            invisible(NULL)
+        },
+
+        remove_empty_download_dirs = function(path) {
+            if (is.na(path) || !nzchar(path)) {
+                return(invisible(NULL))
+            }
+            path <- store_normalize_path(path)
+            root <- store_normalize_path(private$download_dir)
+            root_prefix <- paste0(sub("/+$", "", root), "/")
+            while (dir.exists(path) && startsWith(path, root_prefix) && !identical(path, root)) {
+                if (length(list.files(path, all.files = TRUE, no.. = TRUE))) {
+                    break
+                }
+                unlink(path, recursive = TRUE, force = FALSE)
+                path <- dirname(path)
+            }
+            invisible(NULL)
+        },
+
+        repair_download_empty_results = function() {
+            data.table::data.table(
+                action_id = character(),
+                action = character(),
+                file_key = character(),
+                artifact_id = character(),
+                from_path = character(),
+                to_path = character(),
+                relative_path = character(),
+                done = logical(),
+                dry_run = logical(),
+                message = character()
             )
         },
         # }}}
