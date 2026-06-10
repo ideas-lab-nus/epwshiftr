@@ -1006,7 +1006,59 @@ query_result_probe_url <- function(url, timeout = 5) {
     list(latency = as.numeric(difftime(Sys.time(), start, units = "secs")), throughput = NA_real_)
 }
 
-query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE, strategy = c("fastest", "first", "stable")) {
+query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer") {
+    if (is.null(node_stats)) {
+        return(NULL)
+    }
+    stats <- data.table::as.data.table(node_stats)
+    required <- c("data_node", "service", "success_count", "failure_count", "avg_latency")
+    if (!all(required %in% names(stats))) {
+        return(NULL)
+    }
+    stats <- stats[stats[["service"]] == service]
+    if (!nrow(stats)) {
+        return(NULL)
+    }
+    stats[, node_success_count := suppressWarnings(as.integer(success_count))]
+    stats[, node_failure_count := suppressWarnings(as.integer(failure_count))]
+    stats[is.na(node_success_count), node_success_count := 0L]
+    stats[is.na(node_failure_count), node_failure_count := 0L]
+    stats[, node_attempt_count := node_success_count + node_failure_count]
+    stats[, node_success_rate := data.table::fifelse(
+        node_attempt_count > 0L,
+        node_success_count / node_attempt_count,
+        NA_real_
+    )]
+    stats[, node_avg_latency := suppressWarnings(as.numeric(avg_latency))]
+    stats[, .(
+        data_node,
+        service,
+        node_success_count,
+        node_failure_count,
+        node_attempt_count,
+        node_success_rate,
+        node_avg_latency
+    )]
+}
+
+query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServer") {
+    stats <- query_result_normalize_node_stats(node_stats, service = service)
+    if (is.null(stats) || !nrow(plan)) {
+        plan[, `:=`(
+            node_success_count = NA_integer_,
+            node_failure_count = NA_integer_,
+            node_attempt_count = NA_integer_,
+            node_success_rate = NA_real_,
+            node_avg_latency = NA_real_
+        )]
+        return(plan[])
+    }
+    out <- merge(plan, stats, by = c("data_node", "service"), all.x = TRUE, sort = FALSE)
+    out[]
+}
+
+query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE,
+                                       strategy = c("fastest", "first", "stable"), node_stats = NULL) {
     strategy <- match.arg(strategy)
     checkmate::assert_string(service)
     checkmate::assert_flag(probe)
@@ -1045,12 +1097,24 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         plan[, probe_latency := vapply(probes, `[[`, numeric(1L), "latency")]
         plan[, probe_throughput := vapply(probes, `[[`, numeric(1L), "throughput")]
     }
+    plan <- query_result_apply_node_stats(plan, node_stats = node_stats, service = service)
     if (identical(strategy, "fastest")) {
         plan[, probe_missing := is.na(probe_latency)]
-        data.table::setorderv(plan, c("logical_file_id", "probe_missing", "probe_latency", "priority"))
-        plan[, probe_missing := NULL]
+        plan[, node_missing := is.na(node_success_rate)]
+        data.table::setorderv(
+            plan,
+            c("logical_file_id", "probe_missing", "probe_latency", "node_missing", "node_success_rate", "node_avg_latency", "priority"),
+            c(1L, 1L, 1L, 1L, -1L, 1L, 1L)
+        )
+        plan[, c("probe_missing", "node_missing") := NULL]
     } else if (identical(strategy, "stable")) {
-        data.table::setorderv(plan, c("logical_file_id", "data_node", "url", "priority"))
+        plan[, node_missing := is.na(node_success_rate)]
+        data.table::setorderv(
+            plan,
+            c("logical_file_id", "node_missing", "node_success_rate", "data_node", "url", "priority"),
+            c(1L, 1L, -1L, 1L, 1L, 1L)
+        )
+        plan[, node_missing := NULL]
     } else {
         data.table::setorderv(plan, c("logical_file_id", "priority"))
     }
@@ -1676,10 +1740,13 @@ EsgResultFile <- R6::R6Class(
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param strategy Candidate ranking strategy.
         #' @param all Whether replica expansion should retrieve all matching records.
+        #' @param node_stats Optional data node history from
+        #'        `FileDownloader$data_nodes()`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("auto", "current"), service = "HTTPServer",
-                                 probe = TRUE, strategy = c("fastest", "first", "stable"), all = TRUE) {
+                                 probe = TRUE, strategy = c("fastest", "first", "stable"),
+                                 all = TRUE, node_stats = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             target <- if (identical(replica, "auto")) {
@@ -1687,7 +1754,7 @@ EsgResultFile <- R6::R6Class(
             } else {
                 self
             }
-            query_result_download_plan(target, service = service, probe = probe, strategy = strategy)
+            query_result_download_plan(target, service = service, probe = probe, strategy = strategy, node_stats = node_stats)
         },
         # }}}
 
@@ -1715,11 +1782,20 @@ EsgResultFile <- R6::R6Class(
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param service ESGF URL service to download from. Default:
         #'        `"HTTPServer"`.
+        #' @param node_stats Optional data node history from
+        #'        `FileDownloader$data_nodes()`.
         #'
         #' @return A data.table with one selected candidate per logical file.
-        select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE, service = "HTTPServer") {
+        select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE,
+                                  service = "HTTPServer", node_stats = NULL) {
             strategy <- match.arg(strategy)
-            plan <- self$download_plan(replica = "auto", service = service, probe = probe, strategy = strategy)
+            plan <- self$download_plan(
+                replica = "auto",
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats
+            )
             if (!nrow(plan)) {
                 return(plan)
             }
@@ -1758,7 +1834,14 @@ EsgResultFile <- R6::R6Class(
                     cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
                 }
             }
-            plan <- self$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            plan <- self$download_plan(
+                replica = replica,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats
+            )
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
                 downloader$run(session_id = session_id, ...)
@@ -2102,13 +2185,16 @@ EsgResultAggregation <- R6::R6Class(
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param strategy Candidate ranking strategy.
         #' @param all Reserved for API symmetry with `EsgResultFile`.
+        #' @param node_stats Optional data node history from
+        #'        `FileDownloader$data_nodes()`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("current", "auto"), service = "HTTPServer",
-                                 probe = TRUE, strategy = c("fastest", "first", "stable"), all = TRUE) {
+                                 probe = TRUE, strategy = c("fastest", "first", "stable"),
+                                 all = TRUE, node_stats = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
-            query_result_download_plan(self, service = service, probe = probe, strategy = strategy)
+            query_result_download_plan(self, service = service, probe = probe, strategy = strategy, node_stats = node_stats)
         },
         # }}}
 
@@ -2143,7 +2229,14 @@ EsgResultAggregation <- R6::R6Class(
                     cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
                 }
             }
-            plan <- self$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            plan <- self$download_plan(
+                replica = replica,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats
+            )
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
                 downloader$run(session_id = session_id, ...)

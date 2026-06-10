@@ -878,7 +878,15 @@ EsgStore <- R6::R6Class(
 
             plan <- if (!is.null(files)) {
                 query_id <- self$add_files(files, label = session_label)
-                plan_args <- list(replica = replica, service = service, probe = probe, strategy = strategy, ...)
+                node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+                plan_args <- list(
+                    replica = replica,
+                    service = service,
+                    probe = probe,
+                    strategy = strategy,
+                    node_stats = node_stats,
+                    ...
+                )
                 plan <- do.call(files$download_plan, plan_args)
                 private$decorate_download_plan(plan, query_id = query_id)
             } else {
@@ -1828,7 +1836,14 @@ EsgStore <- R6::R6Class(
                 return(NA_character_)
             }
 
-            plan <- files$download_plan(replica = replica, service = service, probe = probe, strategy = strategy)
+            node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            plan <- files$download_plan(
+                replica = replica,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats
+            )
             plan <- private$decorate_download_plan(plan, query_id = query_id)
             plan <- plan[plan[["file_key"]] %in% current$file_key]
             if (!nrow(plan)) {

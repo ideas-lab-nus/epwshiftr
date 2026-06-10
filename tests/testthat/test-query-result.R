@@ -665,7 +665,9 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
             "logical_file_id", "record_index", "file_key", "esgf_id",
             "dataset_id", "filename", "subdir", "checksum",
             "checksum_type", "size", "url", "service", "data_node",
-            "priority", "probe_latency", "probe_throughput"
+            "priority", "probe_latency", "probe_throughput",
+            "node_success_count", "node_failure_count",
+            "node_attempt_count", "node_success_rate", "node_avg_latency"
         )
     )
     expect_identical(plan$logical_file_id, "master:master-file-1")
@@ -681,6 +683,36 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
     expect_identical(checksum_plan$logical_file_id, "checksum:abc:1:file.nc")
 
     expect_error(files$download(run = FALSE), "explicit `store` or persistent `downloader`")
+})
+
+test_that("download_plan uses data node history to rank replica candidates", {
+    docs <- data.table::rbindlist(list(
+        query_result_test_file_docs("https://slow.example.org/file.nc|application/netcdf|HTTPServer"),
+        query_result_test_file_docs("https://fast.example.org/file.nc|application/netcdf|HTTPServer")
+    ), fill = TRUE)
+    docs$id <- c("file-slow", "file-fast")
+    docs$data_node <- c("slow.example.org", "fast.example.org")
+    docs$master_id <- "master-file-shared"
+    docs$tracking_id <- "hdl:21.14100/mock-file-shared"
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    node_stats <- data.table::data.table(
+        data_node = c("slow.example.org", "fast.example.org"),
+        service = "HTTPServer",
+        success_count = c(1L, 10L),
+        failure_count = c(9L, 0L),
+        avg_latency = c(10, 1)
+    )
+
+    plan <- files$download_plan(
+        replica = "current",
+        probe = FALSE,
+        strategy = "fastest",
+        node_stats = node_stats
+    )
+    expect_identical(plan$data_node, c("fast.example.org", "slow.example.org"))
+    expect_equal(plan$priority, c(1L, 2L))
+    expect_equal(plan$node_success_rate, c(1, 0.1))
 })
 
 test_that("open_dataset fallback behavior is explicit before side effects", {
