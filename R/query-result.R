@@ -2402,7 +2402,9 @@ EsgResultFile <- R6::R6Class(
             "tracking_id",
             "title",
             "version",
-            "data_node"
+            "data_node",
+            "activity_id",
+            "institution_id"
         )))
     )
 )
@@ -2799,7 +2801,9 @@ EsgResultAggregation <- R6::R6Class(
             "replica",
             "title",
             "version",
-            "data_node"
+            "data_node",
+            "activity_id",
+            "institution_id"
         )))
     )
 )

@@ -74,6 +74,8 @@ extract_store_test_file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1
         title = path,
         version = 20260101L,
         data_node = "example.org",
+        activity_id = "ScenarioMIP",
+        institution_id = "EC-Earth-Consortium",
         source_id = source_id,
         experiment_id = experiment_id,
         variant_label = "r1i1p1f1",
@@ -471,6 +473,119 @@ test_that("EsgStore summarizes download preflight without enqueueing tasks", {
     expect_equal(dry_run$summary$needs_download, 1L)
     expect_equal(nrow(dl$sessions()), 0L)
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
+})
+
+test_that("EsgStore applies configured download layouts to downloader plans", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    expect_equal(store$download_layout()$layout, "flat")
+    store$set_download_layout(layout = "drs")
+    expect_equal(store$download_layout()$layout, "drs")
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 1,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    file_docs <- extract_store_test_file_docs(path = "layout.nc")
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- extract_store_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    dl <- store$downloader(n_workers = 0L)
+    session_id <- store$download_query(
+        query_id,
+        downloader = dl,
+        replica = "current",
+        run = FALSE,
+        probe = FALSE
+    )
+    tasks <- dl$tasks(session_id = session_id)
+
+    expect_equal(tasks$subdir, file.path(
+        "CMIP6",
+        "ScenarioMIP",
+        "EC-Earth-Consortium",
+        "EC-Earth3",
+        "ssp585",
+        "r1i1p1f1",
+        "day",
+        "tas",
+        "gr",
+        "v20260101"
+    ))
+    expect_match(tasks$target_path, "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$")
+})
+
+test_that("EsgStore download preflight reports layout collisions and missing fields", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 2,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    first <- extract_store_test_file_docs(path = "collision.nc")
+    second <- extract_store_test_file_docs(path = "collision.nc")
+    second$id <- "collision-second.nc|dataset-1"
+    second$master_id <- "collision-second.master"
+    second$tracking_id <- "hdl:21.14100/collision-second"
+    second$checksum <- "def"
+    file_docs <- rbind(first, second)
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- extract_store_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    store$set_download_layout(layout = "flat", collision = "suffix")
+    preflight <- store$download_preflight(query_id, replica = "current", probe = FALSE)
+    expect_equal(preflight$summary$target_path_collision_count, 1L)
+    expect_true(all(preflight$candidates$target_path_collision))
+    expect_true(all(grepl("file=", preflight$candidates$subdir, fixed = TRUE)))
+
+    store$set_download_layout(layout = "drs", missing = "fallback", collision = "suffix")
+    file_docs$activity_id <- NA_character_
+    preflight <- store$download_preflight(query_id, replica = "current", probe = FALSE)
+    expect_equal(preflight$summary$missing_layout_field_count, 2L)
+    expect_true(all(startsWith(preflight$candidates$subdir, "datasets/")))
 })
 
 test_that("EsgStore downloads tracked query files through downloader", {

@@ -105,8 +105,8 @@ datasets and returns an
 
 The following fields are always included in the results:
 \itemize{
-\item For \code{File} query: \verb{checksum}, \verb{checksum_type}, \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{instance_id}, \verb{master_id}, \verb{replica}, \verb{size}, \verb{title}, \verb{tracking_id}, \verb{url}, \verb{version}.
-\item For \code{Aggregation} query: \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{instance_id}, \verb{master_id}, \verb{replica}, \verb{size}, \verb{title}, \verb{url}, \verb{version}.
+\item For \code{File} query: \verb{activity_id}, \verb{checksum}, \verb{checksum_type}, \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{instance_id}, \verb{institution_id}, \verb{master_id}, \verb{replica}, \verb{size}, \verb{title}, \verb{tracking_id}, \verb{url}, \verb{version}.
+\item For \code{Aggregation} query: \verb{activity_id}, \verb{data_node}, \verb{dataset_id}, \verb{id}, \verb{instance_id}, \verb{institution_id}, \verb{master_id}, \verb{replica}, \verb{size}, \verb{title}, \verb{url}, \verb{version}.
 }
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultDataset$collect(

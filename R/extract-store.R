@@ -1,4 +1,14 @@
-STORE_SCHEMA_VERSION <- "2.0.0"
+STORE_SCHEMA_VERSION <- "2.1.0"
+STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
+    layout = "flat",
+    template = NULL,
+    include_version = TRUE,
+    collision = "error",
+    missing = "fallback"
+)
+STORE_DOWNLOAD_LAYOUT_CHOICES <- c("flat", "dataset", "drs", "template")
+STORE_DOWNLOAD_COLLISION_CHOICES <- c("error", "checksum", "suffix")
+STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 
 # EsgStore {{{
 #' Local ESGF Store
@@ -136,6 +146,67 @@ EsgStore <- R6::R6Class(
                 data.frame(
                     key = key,
                     value = extract_store_na_character(value),
+                    updated_at = extract_store_now(),
+                    stringsAsFactors = FALSE
+                ),
+                "key"
+            )
+            })
+            invisible(self)
+        },
+        # }}}
+
+        # download_layout {{{
+        #' @description
+        #' Return the store download layout policy.
+        #'
+        #' @return A named list describing how store downloads are placed under
+        #'         `downloads/`.
+        download_layout = function() {
+            private$check_open()
+            private$download_layout_policy()
+        },
+        # }}}
+
+        # set_download_layout {{{
+        #' @description
+        #' Configure how store-managed ESGF downloads are placed under
+        #' `downloads/`.
+        #'
+        #' @param layout Download layout. `"flat"` stores files directly under
+        #'        `downloads/`; `"dataset"` groups by dataset; `"drs"` uses a
+        #'        CMIP6-style DRS path; `"template"` uses `template`.
+        #' @param template Optional subdirectory template for `layout =
+        #'        "template"`, using placeholders such as `{source_id}`.
+        #' @param include_version Whether DRS paths include the ESGF version.
+        #'        Default: `TRUE`.
+        #' @param collision How to handle different logical files that map to
+        #'        the same local path. Default: `"error"`.
+        #' @param missing How to handle missing layout fields. Default:
+        #'        `"fallback"`.
+        #'
+        #' @return The store object, invisibly.
+        set_download_layout = function(
+            layout = c("flat", "dataset", "drs", "template"),
+            template = NULL,
+            include_version = TRUE,
+            collision = c("error", "checksum", "suffix"),
+            missing = c("fallback", "error")
+        ) {
+            private$check_open()
+            policy <- private$normalize_download_layout_policy(list(
+                layout = match.arg(layout),
+                template = template,
+                include_version = include_version,
+                collision = match.arg(collision),
+                missing = match.arg(missing)
+            ))
+            private$with_store_lock({
+            private$replace_rows(
+                "store_meta",
+                data.frame(
+                    key = "download_layout",
+                    value = jsonlite::toJSON(policy, auto_unbox = TRUE, null = "null"),
                     updated_at = extract_store_now(),
                     stringsAsFactors = FALSE
                 ),
@@ -1547,7 +1618,8 @@ EsgStore <- R6::R6Class(
                     ...
                 )
                 plan <- do.call(files$download_plan, plan_args)
-                private$decorate_download_plan(plan, query_id = query_id)
+                plan <- private$decorate_download_plan(plan, query_id = query_id)
+                plan
             } else {
                 private$catalog_download_plan()
             }
@@ -2072,6 +2144,292 @@ EsgStore <- R6::R6Class(
         conn = NULL,
         lock_depth = 0L,
 
+        # download layout helpers {{{
+        normalize_download_layout_policy = function(policy = NULL) {
+            if (is.null(policy)) {
+                policy <- list()
+            }
+            checkmate::assert_list(policy, names = "unique")
+            defaults <- STORE_DOWNLOAD_LAYOUT_DEFAULT
+            for (name in names(defaults)) {
+                if (!name %in% names(policy) || is.null(policy[[name]])) {
+                    policy[[name]] <- defaults[[name]]
+                }
+            }
+            checkmate::assert_choice(policy$layout, STORE_DOWNLOAD_LAYOUT_CHOICES)
+            policy$template <- download_null_if_empty(policy$template)
+            if (identical(policy$layout, "template") && is.null(policy$template)) {
+                cli::cli_abort("{.arg template} is required when {.code layout = \"template\"}.")
+            }
+            checkmate::assert_flag(policy$include_version)
+            checkmate::assert_choice(policy$collision, STORE_DOWNLOAD_COLLISION_CHOICES)
+            checkmate::assert_choice(policy$missing, STORE_DOWNLOAD_MISSING_CHOICES)
+            list(
+                layout = policy$layout,
+                template = policy$template,
+                include_version = isTRUE(policy$include_version),
+                collision = policy$collision,
+                missing = policy$missing
+            )
+        },
+
+        download_layout_policy = function() {
+            meta <- private$read_table("store_meta")
+            row <- meta[meta[["key"]] == "download_layout"]
+            if (!nrow(row)) {
+                return(private$normalize_download_layout_policy())
+            }
+            policy <- tryCatch(
+                jsonlite::fromJSON(row$value[[1L]], simplifyVector = TRUE, simplifyMatrix = FALSE),
+                error = function(e) list()
+            )
+            private$normalize_download_layout_policy(policy)
+        },
+
+        apply_download_layout = function(plan, file_rows = NULL) {
+            plan <- data.table::copy(data.table::as.data.table(plan))
+            plan <- data.table::setalloccol(plan)
+            if (!nrow(plan)) {
+                return(plan)
+            }
+            policy <- private$download_layout_policy()
+            plan <- private$enrich_download_plan_layout_fields(plan, file_rows)
+            plan[["layout_missing_fields"]] <- rep("", nrow(plan))
+            if (identical(policy$layout, "flat")) {
+                plan[["subdir"]] <- rep(NA_character_, nrow(plan))
+            } else {
+                subdirs <- vapply(seq_len(nrow(plan)), function(i) {
+                    private$download_layout_subdir(plan[i], policy)
+                }, character(1L))
+                missing <- vapply(seq_len(nrow(plan)), function(i) {
+                    private$download_layout_missing_fields(plan[i], policy)
+                }, character(1L))
+                plan[["subdir"]] <- subdirs
+                plan[["layout_missing_fields"]] <- missing
+            }
+            plan <- private$decorate_download_plan_targets(plan)
+            private$resolve_download_plan_collisions(plan, policy)
+        },
+
+        enrich_download_plan_layout_fields = function(plan, file_rows = NULL) {
+            fields <- c(
+                "activity_id", "institution_id", "source_id", "experiment_id",
+                "variant_label", "frequency", "table_id", "variable_id",
+                "grid_label", "version", "dataset_id", "checksum", "filename"
+            )
+            for (field in fields) {
+                if (!field %in% names(plan)) {
+                    plan[[field]] <- NA_character_
+                }
+            }
+            if (is.null(file_rows) || !nrow(file_rows)) {
+                return(plan)
+            }
+            file_rows <- data.table::as.data.table(file_rows)
+            if (!"file_key" %in% names(plan) || !"file_key" %in% names(file_rows)) {
+                return(plan)
+            }
+            idx <- match(plan$file_key, file_rows$file_key)
+            for (field in intersect(fields, names(file_rows))) {
+                missing <- is.na(plan[[field]]) | !nzchar(as.character(plan[[field]]))
+                fill <- !is.na(idx) & missing
+                if (any(fill)) {
+                    plan[[field]][fill] <- as.character(file_rows[[field]][idx[fill]])
+                }
+            }
+            plan[]
+        },
+
+        download_layout_subdir = function(row, policy) {
+            if (identical(policy$layout, "dataset")) {
+                return(private$download_layout_dataset_subdir(row))
+            }
+            if (identical(policy$layout, "drs")) {
+                missing <- private$download_layout_missing_fields(row, policy)
+                if (nzchar(missing)) {
+                    if (identical(policy$missing, "error")) {
+                        cli::cli_abort("Cannot build DRS download path; missing field(s): {.field {strsplit(missing, ',')[[1L]]}}.")
+                    }
+                    return(private$download_layout_dataset_subdir(row))
+                }
+                parts <- c(
+                    "CMIP6",
+                    private$download_layout_component(row$activity_id),
+                    private$download_layout_component(row$institution_id),
+                    private$download_layout_component(row$source_id),
+                    private$download_layout_component(row$experiment_id),
+                    private$download_layout_component(row$variant_label),
+                    private$download_layout_component(row$table_id),
+                    private$download_layout_component(row$variable_id),
+                    private$download_layout_component(row$grid_label)
+                )
+                if (isTRUE(policy$include_version)) {
+                    parts <- c(parts, private$download_layout_version_component(row$version))
+                }
+                return(private$download_layout_path(parts))
+            }
+            if (identical(policy$layout, "template")) {
+                return(private$download_layout_template_subdir(row, policy))
+            }
+            NA_character_
+        },
+
+        download_layout_dataset_subdir = function(row) {
+            dataset_id <- private$download_layout_component(row$dataset_id)
+            if (!is.na(dataset_id)) {
+                return(file.path("datasets", dataset_id))
+            }
+            pieces <- c(
+                private$download_layout_component(row$source_id),
+                private$download_layout_component(row$experiment_id),
+                private$download_layout_component(row$variant_label),
+                private$download_layout_component(row$table_id),
+                private$download_layout_component(row$variable_id),
+                private$download_layout_component(row$grid_label)
+            )
+            pieces <- pieces[!is.na(pieces) & nzchar(pieces)]
+            if (!length(pieces)) {
+                pieces <- paste0("file-", substr(extract_store_hash(row$logical_file_id, row$file_key, row$filename), 1L, 12L))
+            }
+            private$download_layout_path(c("datasets", pieces))
+        },
+
+        download_layout_template_subdir = function(row, policy) {
+            out <- policy$template
+            fields <- unique(unlist(regmatches(out, gregexpr("\\{[^{}]+\\}", out))))
+            if (length(fields)) {
+                for (token in fields) {
+                    field <- sub("^\\{", "", sub("\\}$", "", token))
+                    value <- if (field %in% names(row)) private$download_layout_component(row[[field]]) else NA_character_
+                    if (is.na(value)) {
+                        if (identical(policy$missing, "error")) {
+                            cli::cli_abort("Cannot build template download path; missing field {.field {field}}.")
+                        }
+                        value <- "unknown"
+                    }
+                    out <- gsub(token, value, out, fixed = TRUE)
+                }
+            }
+            private$download_layout_clean_subdir(out)
+        },
+
+        download_layout_missing_fields = function(row, policy) {
+            if (!identical(policy$layout, "drs")) {
+                return("")
+            }
+            required <- c(
+                "activity_id", "institution_id", "source_id", "experiment_id",
+                "variant_label", "table_id", "variable_id", "grid_label"
+            )
+            if (isTRUE(policy$include_version)) {
+                required <- c(required, "version")
+            }
+            missing <- required[vapply(required, function(field) {
+                value <- if (field %in% names(row)) row[[field]] else NA_character_
+                is.na(private$download_layout_component(value))
+            }, logical(1L))]
+            paste(missing, collapse = ",")
+        },
+
+        decorate_download_plan_targets = function(plan) {
+            previous_collision <- if ("target_path_collision" %in% names(plan)) {
+                plan$target_path_collision %in% TRUE
+            } else {
+                rep(FALSE, nrow(plan))
+            }
+            previous_collision_group <- if ("target_path_collision_group" %in% names(plan)) {
+                plan$target_path_collision_group
+            } else {
+                rep(NA_character_, nrow(plan))
+            }
+            target_rel <- mapply(function(subdir, filename) {
+                filename <- private$download_layout_component(filename)
+                if (is.na(filename)) {
+                    filename <- "download.nc"
+                }
+                if (is.na(subdir) || !nzchar(subdir)) {
+                    filename
+                } else {
+                    file.path(subdir, filename)
+                }
+            }, plan$subdir, plan$filename, USE.NAMES = FALSE)
+            plan[["target_rel_path"]] <- target_rel
+            plan[["target_path"]] <- file.path(private$download_dir, target_rel)
+            plan[["target_path_collision"]] <- previous_collision
+            plan[["target_path_collision_group"]] <- previous_collision_group
+            plan[]
+        },
+
+        resolve_download_plan_collisions = function(plan, policy) {
+            collision <- plan[, .(logical_count = data.table::uniqueN(logical_file_id)), by = "target_rel_path"]
+            collision <- collision[logical_count > 1L]
+            if (!nrow(collision)) {
+                return(plan[])
+            }
+            plan[target_rel_path %in% collision$target_rel_path, target_path_collision := TRUE]
+            plan[target_path_collision %in% TRUE, target_path_collision_group := target_rel_path]
+            if (identical(policy$collision, "error")) {
+                cli::cli_abort(
+                    "Download layout maps multiple logical files to the same target path: {.path {collision$target_rel_path}}."
+                )
+            }
+            colliding <- plan[target_path_collision %in% TRUE]
+            disambiguators <- colliding[, .SD[1L], by = "logical_file_id"]
+            disambiguators[, disambiguator := vapply(seq_len(.N), function(i) {
+                if (identical(policy$collision, "checksum")) {
+                    checksum <- private$download_layout_component(checksum[[i]])
+                    if (!is.na(checksum)) {
+                        return(paste0("checksum=", substr(checksum, 1L, 12L)))
+                    }
+                }
+                paste0("file=", substr(extract_store_hash(logical_file_id[[i]], file_key[[i]], filename[[i]]), 1L, 12L))
+            }, character(1L))]
+            map <- stats::setNames(disambiguators$disambiguator, disambiguators$logical_file_id)
+            hit <- plan$logical_file_id %in% names(map)
+            plan[hit, subdir := mapply(function(subdir, logical_file_id) {
+                extra <- map[[logical_file_id]]
+                if (is.na(subdir) || !nzchar(subdir)) extra else file.path(subdir, extra)
+            }, subdir, logical_file_id, USE.NAMES = FALSE)]
+            private$decorate_download_plan_targets(plan)
+        },
+
+        download_layout_component = function(x) {
+            x <- extract_store_na_character(x)
+            if (is.na(x) || !nzchar(x)) {
+                return(NA_character_)
+            }
+            x <- sub("\\|.*$", "", x)
+            x <- gsub("[/\\\\]+", "_", x)
+            x <- gsub("[[:cntrl:]]+", "_", x)
+            x <- gsub("^\\.+$", "_", x)
+            if (!nzchar(x)) NA_character_ else x
+        },
+
+        download_layout_version_component = function(x) {
+            x <- private$download_layout_component(x)
+            if (is.na(x)) {
+                return(NA_character_)
+            }
+            if (startsWith(x, "v")) x else paste0("v", x)
+        },
+
+        download_layout_clean_subdir = function(x) {
+            x <- gsub("[/\\\\]+", "/", x)
+            parts <- strsplit(x, "/", fixed = TRUE)[[1L]]
+            parts <- vapply(parts, private$download_layout_component, character(1L))
+            parts <- parts[!is.na(parts) & nzchar(parts)]
+            private$download_layout_path(parts)
+        },
+
+        download_layout_path = function(parts) {
+            parts <- parts[!is.na(parts) & nzchar(parts)]
+            if (!length(parts)) {
+                return(NA_character_)
+            }
+            do.call(file.path, as.list(parts))
+        },
+        # }}}
+
         # download plan helpers {{{
         catalog_download_plan = function() {
             catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
@@ -2111,11 +2469,13 @@ EsgStore <- R6::R6Class(
                 probe_latency = NA_real_,
                 probe_throughput = NA_real_
             )
-            plan[!is.na(url) & nzchar(url)]
+            plan <- plan[!is.na(url) & nzchar(url)]
+            private$apply_download_layout(plan, catalog)
         },
 
         decorate_download_plan = function(plan, query_id) {
-            plan <- data.table::as.data.table(plan)
+            plan <- data.table::copy(data.table::as.data.table(plan))
+            plan <- data.table::setalloccol(plan)
             if (!nrow(plan)) {
                 return(plan)
             }
@@ -2143,12 +2503,13 @@ EsgStore <- R6::R6Class(
                     plan$file_key[[i]] <- hit$file_key[[1L]]
                 }
             }
-            plan[]
+            private$apply_download_layout(plan, catalog)
         },
 
         decorate_download_plan_with_files = function(plan, file_rows) {
-            plan <- data.table::as.data.table(plan)
-            file_rows <- data.table::as.data.table(file_rows)
+            plan <- data.table::copy(data.table::as.data.table(plan))
+            file_rows <- data.table::copy(data.table::as.data.table(file_rows))
+            plan <- data.table::setalloccol(plan)
             if (!nrow(plan) || !nrow(file_rows)) {
                 return(plan)
             }
@@ -2170,7 +2531,7 @@ EsgStore <- R6::R6Class(
                     plan$file_key[[i]] <- hit$file_key[[1L]]
                 }
             }
-            plan[]
+            private$apply_download_layout(plan, file_rows)
         },
 
         preflight_files = function(file_rows) {
@@ -2232,6 +2593,23 @@ EsgStore <- R6::R6Class(
             } else {
                 0
             }
+            target_collisions <- 0L
+            if (nrow(candidates) && "target_path_collision" %in% names(candidates)) {
+                collision_path <- if ("target_path_collision_group" %in% names(candidates)) {
+                    candidates$target_path_collision_group
+                } else {
+                    candidates$target_rel_path
+                }
+                target_collisions <- length(unique(collision_path[
+                    candidates$target_path_collision %in% TRUE & !is.na(collision_path) & nzchar(collision_path)
+                ]))
+            }
+            missing_layout <- 0L
+            if (nrow(candidates) && "layout_missing_fields" %in% names(candidates)) {
+                missing_layout <- data.table::uniqueN(candidates$logical_file_id[
+                    !is.na(candidates$layout_missing_fields) & nzchar(candidates$layout_missing_fields)
+                ])
+            }
             data.table::data.table(
                 query_id = row$query_id[[1L]],
                 label = extract_store_na_character(row$label[[1L]]),
@@ -2242,7 +2620,9 @@ EsgStore <- R6::R6Class(
                 local_available = as.integer(local_available),
                 needs_download = as.integer(max(0L, length(current_keys) - local_available)),
                 no_httpserver = as.integer(length(setdiff(current_keys, candidate_keys))),
-                cooldown_nodes = as.integer(cooling_nodes)
+                cooldown_nodes = as.integer(cooling_nodes),
+                target_path_collision_count = as.integer(target_collisions),
+                missing_layout_field_count = as.integer(missing_layout)
             )
         },
 
@@ -2375,6 +2755,8 @@ EsgStore <- R6::R6Class(
                     retracted BOOLEAN,
                     deprecated BOOLEAN,
                     data_node VARCHAR,
+                    activity_id VARCHAR,
+                    institution_id VARCHAR,
                     source_id VARCHAR,
                     experiment_id VARCHAR,
                     variant_label VARCHAR,
@@ -2484,6 +2866,9 @@ EsgStore <- R6::R6Class(
                     query_id VARCHAR,
                     esgf_id VARCHAR,
                     dataset_id VARCHAR,
+                    master_id VARCHAR,
+                    instance_id VARCHAR,
+                    version VARCHAR,
                     title VARCHAR,
                     filename VARCHAR,
                     tracking_id VARCHAR,
@@ -2491,6 +2876,8 @@ EsgStore <- R6::R6Class(
                     checksum_type VARCHAR,
                     size DOUBLE,
                     data_node VARCHAR,
+                    activity_id VARCHAR,
+                    institution_id VARCHAR,
                     source_id VARCHAR,
                     experiment_id VARCHAR,
                     variant_label VARCHAR,
@@ -2564,6 +2951,7 @@ EsgStore <- R6::R6Class(
         migrate_schema = function() {
             current <- private$store_schema_version()
             private$migrate_schema_to_2(current)
+            private$migrate_schema_to_2_1(current)
             private$set_store_schema_version(STORE_SCHEMA_VERSION)
             invisible(NULL)
         },
@@ -2606,6 +2994,17 @@ EsgStore <- R6::R6Class(
             }
             private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS download_session_id VARCHAR")
             private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS last_error VARCHAR")
+            invisible(NULL)
+        },
+
+        migrate_schema_to_2_1 = function(current) {
+            private$exec("ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
+            private$exec("ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS master_id VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS instance_id VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS version VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
             invisible(NULL)
         },
         # }}}
@@ -3235,6 +3634,8 @@ EsgStore <- R6::R6Class(
                 retracted = extract_store_as_logical(dt$retracted),
                 deprecated = extract_store_as_logical(dt$deprecated),
                 data_node = dt$data_node,
+                activity_id = dt$activity_id,
+                institution_id = dt$institution_id,
                 source_id = dt$source_id,
                 experiment_id = dt$experiment_id,
                 variant_label = dt$variant_label,
@@ -3314,6 +3715,9 @@ EsgStore <- R6::R6Class(
                 query_id = query_id,
                 esgf_id = active$esgf_id,
                 dataset_id = active$dataset_id,
+                master_id = active$master_id,
+                instance_id = active$instance_id,
+                version = active$version,
                 title = active$title,
                 filename = active$filename,
                 tracking_id = active$tracking_id,
@@ -3321,6 +3725,8 @@ EsgStore <- R6::R6Class(
                 checksum_type = active$checksum_type,
                 size = suppressWarnings(as.numeric(active$size)),
                 data_node = active$data_node,
+                activity_id = active$activity_id,
+                institution_id = active$institution_id,
                 source_id = active$source_id,
                 experiment_id = active$experiment_id,
                 variant_label = active$variant_label,
@@ -3691,6 +4097,7 @@ EsgStore <- R6::R6Class(
                 probe_latency = NA_real_,
                 probe_throughput = NA_real_
             )
+            plan <- private$apply_download_layout(plan, file)
             session_id <- downloader$enqueue(plan, session_label = sprintf("extract:%s", file$file_key[[1L]]))
             tasks <- downloader$run(session_id = session_id, progress = FALSE, overwrite = overwrite)
             failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
@@ -4109,6 +4516,8 @@ extract_store_file_table <- function(files) {
         "retracted",
         "deprecated",
         "data_node",
+        "activity_id",
+        "institution_id",
         "source_id",
         "experiment_id",
         "variant_label",

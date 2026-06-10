@@ -29,6 +29,8 @@ Hongyuan Jia
 \item \href{#method-EsgStore-close}{\code{EsgStore$close()}}
 \item \href{#method-EsgStore-get_meta}{\code{EsgStore$get_meta()}}
 \item \href{#method-EsgStore-set_meta}{\code{EsgStore$set_meta()}}
+\item \href{#method-EsgStore-download_layout}{\code{EsgStore$download_layout()}}
+\item \href{#method-EsgStore-set_download_layout}{\code{EsgStore$set_download_layout()}}
 \item \href{#method-EsgStore-register_artifact}{\code{EsgStore$register_artifact()}}
 \item \href{#method-EsgStore-artifact_path}{\code{EsgStore$artifact_path()}}
 \item \href{#method-EsgStore-validate}{\code{EsgStore$validate()}}
@@ -146,6 +148,60 @@ Set a store metadata value.
 \item{\code{key}}{Metadata key.}
 
 \item{\code{value}}{Metadata value. \code{NULL} is stored as \code{NA}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The store object, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_layout"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_layout}{}}}
+\subsection{Method \code{download_layout()}}{
+Return the store download layout policy.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_layout()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list describing how store downloads are placed under
+\verb{downloads/}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-set_download_layout"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-set_download_layout}{}}}
+\subsection{Method \code{set_download_layout()}}{
+Configure how store-managed ESGF downloads are placed under
+\verb{downloads/}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$set_download_layout(
+  layout = c("flat", "dataset", "drs", "template"),
+  template = NULL,
+  include_version = TRUE,
+  collision = c("error", "checksum", "suffix"),
+  missing = c("fallback", "error")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{layout}}{Download layout. \code{"flat"} stores files directly under
+\verb{downloads/}; \code{"dataset"} groups by dataset; \code{"drs"} uses a
+CMIP6-style DRS path; \code{"template"} uses \code{template}.}
+
+\item{\code{template}}{Optional subdirectory template for \code{layout = "template"}, using placeholders such as \code{{source_id}}.}
+
+\item{\code{include_version}}{Whether DRS paths include the ESGF version.
+Default: \code{TRUE}.}
+
+\item{\code{collision}}{How to handle different logical files that map to
+the same local path. Default: \code{"error"}.}
+
+\item{\code{missing}}{How to handle missing layout fields. Default:
+\code{"fallback"}.}
 }
 \if{html}{\out{</div>}}
 }
