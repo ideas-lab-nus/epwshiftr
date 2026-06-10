@@ -110,6 +110,15 @@ DownloadTask <- R6::R6Class("DownloadTask",
 # downloader utilities {{{
 DOWNLOADER_SCHEMA_VERSION <- "1.0.0"
 DOWNLOADER_TASK_STATUS <- c("queued", "downloading", "done", "error", "cancelled", "skipped")
+DOWNLOADER_CALLBACK_EVENTS <- c(
+    "session_start",
+    "task_start",
+    "candidate_error",
+    "task_done",
+    "task_error",
+    "task_cancelled",
+    "session_done"
+)
 DOWNLOADER_SESSION_STARTED_AT <- Sys.time()
 
 download_now <- function() {
@@ -439,6 +448,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$in_dev <- in_dev
             private$async_tasks <- list()
             private$persistent_tasks <- list()
+            private$callbacks <- list()
 
             if (!is.null(manifest)) {
                 private$manifest_path <- normalizePath(path.expand(manifest), mustWork = FALSE, winslash = "/")
@@ -871,6 +881,63 @@ FileDownloader <- R6::R6Class("FileDownloader",
             checkmate::assert_string(session_id, null.ok = TRUE)
             checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
             private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = task_id))
+        },
+        # }}}
+
+        # events {{{
+        #' @description
+        #' Return persistent downloader event logs.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #'
+        #' @return A data.table of event records.
+        events = function(session_id = NULL, task_id = NULL) {
+            private$require_manifest()
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
+            events <- private$read_table("download_event")
+            if (!is.null(session_id) && nrow(events)) {
+                events <- events[events[["session_id"]] == session_id]
+            }
+            if (!is.null(task_id) && nrow(events)) {
+                events <- events[events[["task_id"]] %in% task_id]
+            }
+            events[]
+        },
+        # }}}
+
+        # on {{{
+        #' @description
+        #' Register an in-session downloader event callback.
+        #'
+        #' @param event Event name.
+        #' @param fun Callback function called with `(event, downloader)`.
+        #'
+        #' @return A callback token for `$off()`.
+        on = function(event, fun) {
+            checkmate::assert_choice(event, DOWNLOADER_CALLBACK_EVENTS)
+            checkmate::assert_function(fun)
+            token <- download_hash(event, length(private$callbacks) + 1L, as.numeric(Sys.time()), stats::runif(1L))
+            private$callbacks[[token]] <- list(event = event, fun = fun)
+            token
+        },
+        # }}}
+
+        # off {{{
+        #' @description
+        #' Remove a downloader event callback.
+        #'
+        #' @param token Callback token returned by `$on()`.
+        #'
+        #' @return `TRUE` when a callback was removed.
+        off = function(token) {
+            checkmate::assert_string(token)
+            exists <- token %in% names(private$callbacks)
+            if (exists) {
+                private$callbacks[[token]] <- NULL
+            }
+            exists
         },
         # }}}
 
@@ -1420,6 +1487,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
         in_dev = NULL,
         async_tasks = NULL,  # List of DownloadTask objects for async downloads
         persistent_tasks = NULL,
+        callbacks = NULL,
 
         # finalize {{{
         finalize = function() {
@@ -1605,7 +1673,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             data.table::as.data.table(ddb_read_table(private$manifest_conn, table))
         },
 
-        log_event = function(session_id, task_id, event, message = NA_character_) {
+        log_event = function(session_id, task_id, event, message = NA_character_, emit = TRUE) {
             private$append_rows("download_event", data.frame(
                 event_id = download_hash(session_id, task_id, event, message, as.numeric(Sys.time()), stats::runif(1L)),
                 session_id = download_one_chr(session_id),
@@ -1615,6 +1683,57 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 created_at = download_now(),
                 stringsAsFactors = FALSE
             ))
+            if (isTRUE(emit)) {
+                private$emit_callback_event(event, session_id = session_id, task_id = task_id, message = message)
+            }
+        },
+        # }}}
+
+        # callbacks {{{
+        callback_event_name = function(event) {
+            switch(event,
+                enqueue = "session_start",
+                start = "task_start",
+                candidate_error = "candidate_error",
+                done = "task_done",
+                error = "task_error",
+                cancelled = "task_cancelled",
+                session_done = "session_done",
+                NA_character_
+            )
+        },
+
+        emit_callback_event = function(event, session_id = NA_character_, task_id = NA_character_, message = NA_character_) {
+            callback_event <- private$callback_event_name(event)
+            if (is.na(callback_event) || !length(private$callbacks)) {
+                return(invisible(NULL))
+            }
+            payload <- list(
+                event = callback_event,
+                session_id = download_one_chr(session_id),
+                task_id = download_one_chr(task_id),
+                message = download_one_chr(message),
+                created_at = download_now()
+            )
+            for (token in names(private$callbacks)) {
+                callback <- private$callbacks[[token]]
+                if (is.null(callback) || !identical(callback$event, callback_event)) {
+                    next
+                }
+                tryCatch(
+                    callback$fun(payload, self),
+                    error = function(e) {
+                        private$log_event(
+                            payload$session_id,
+                            payload$task_id,
+                            "callback_error",
+                            conditionMessage(e),
+                            emit = FALSE
+                        )
+                    }
+                )
+            }
+            invisible(NULL)
         },
         # }}}
 
@@ -1886,6 +2005,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             idx <- match(session_id, sessions$session_id)
             if (is.na(idx)) return(invisible(NULL))
             tasks <- private$select_tasks(session_id = session_id)
+            was_complete <- !is.na(sessions$completed_at[idx])
             status <- if (!nrow(tasks)) {
                 "queued"
             } else if (all(tasks$status %in% c("done", "skipped"))) {
@@ -1905,6 +2025,9 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 sessions$completed_at[idx] <- download_now()
             }
             private$replace_rows("download_session", as.data.frame(sessions[idx]), "session_id")
+            if (status %in% c("done", "error", "cancelled") && !isTRUE(was_complete)) {
+                private$log_event(session_id, NA_character_, "session_done", status)
+            }
             invisible(status)
         },
 

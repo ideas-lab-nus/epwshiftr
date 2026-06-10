@@ -369,6 +369,60 @@ test_that("FileDownloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
 
+test_that("FileDownloader exposes persistent events and callbacks", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("event content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    seen <- character()
+    done_token <- dl$on("task_done", function(event, downloader) {
+        seen <<- c(seen, event$event)
+        expect_s3_class(downloader, "FileDownloader")
+    })
+    session_token <- dl$on("session_done", function(event, downloader) {
+        seen <<- c(seen, event$event)
+    })
+    dl$on("task_done", function(event, downloader) {
+        stop("callback boom", call. = FALSE)
+    })
+
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:event-test",
+        filename = "event.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "events")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_equal(tasks$status, "done")
+    expect_true(all(c("session_done", "task_done") %in% seen))
+    events <- dl$events(session_id = session_id)
+    expect_true(all(c("enqueue", "start", "done", "session_done", "callback_error") %in% events$event))
+    task_events <- dl$events(task_id = tasks$task_id[[1L]])
+    expect_true(all(c("start", "done", "callback_error") %in% task_events$event))
+    expect_true(dl$off(done_token))
+    expect_false(dl$off(done_token))
+    expect_true(dl$off(session_token))
+})
+
 test_that("FileDownloader runs persistent tasks with worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
