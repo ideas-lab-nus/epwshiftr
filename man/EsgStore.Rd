@@ -43,6 +43,7 @@ Hongyuan Jia
 \item \href{#method-EsgStore-query_graph}{\code{EsgStore$query_graph()}}
 \item \href{#method-EsgStore-queries}{\code{EsgStore$queries()}}
 \item \href{#method-EsgStore-query_files}{\code{EsgStore$query_files()}}
+\item \href{#method-EsgStore-preview_update_queries}{\code{EsgStore$preview_update_queries()}}
 \item \href{#method-EsgStore-update_queries}{\code{EsgStore$update_queries()}}
 \item \href{#method-EsgStore-download_query}{\code{EsgStore$download_query()}}
 \item \href{#method-EsgStore-download_status}{\code{EsgStore$download_status()}}
@@ -486,6 +487,52 @@ List files linked to a stored ESGF query.
 }
 \subsection{Returns}{
 A data.table of linked file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-preview_update_queries"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-preview_update_queries}{}}}
+\subsection{Method \code{preview_update_queries()}}{
+Preview tracked ESGF query updates without changing the store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$preview_update_queries(
+  query_id = NULL,
+  tracked = TRUE,
+  tag = NULL,
+  children = FALSE,
+  detail = FALSE,
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional query ID. If \code{NULL}, tracked queries are
+previewed by default.}
+
+\item{\code{tracked}}{Tracked-state filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{tag}}{Optional query tag filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{children}}{Whether to include dependency children of selected
+queries.}
+
+\item{\code{detail}}{Whether to return per-file changes together with the
+summary. Default: \code{FALSE}.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table summary, or a list with \code{summary} and \code{changes}
+when \code{detail = TRUE}.
 }
 }
 \if{html}{\out{<hr>}}

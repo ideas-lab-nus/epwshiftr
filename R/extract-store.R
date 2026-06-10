@@ -653,6 +653,75 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # preview_update_queries {{{
+        #' @description
+        #' Preview tracked ESGF query updates without changing the store.
+        #'
+        #' @param query_id Optional query ID. If `NULL`, tracked queries are
+        #'        previewed by default.
+        #' @param tracked Tracked-state filter used when `query_id` is `NULL`.
+        #' @param tag Optional query tag filter used when `query_id` is `NULL`.
+        #' @param children Whether to include dependency children of selected
+        #'        queries.
+        #' @param detail Whether to return per-file changes together with the
+        #'        summary. Default: `FALSE`.
+        #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
+        #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
+        #'
+        #' @return A data.table summary, or a list with `summary` and `changes`
+        #'         when `detail = TRUE`.
+        preview_update_queries = function(
+            query_id = NULL,
+            tracked = TRUE,
+            tag = NULL,
+            children = FALSE,
+            detail = FALSE,
+            all = TRUE,
+            limit = FALSE,
+            fields = "*",
+            ...
+        ) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_flag(tracked, null.ok = TRUE)
+            checkmate::assert_character(tag, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_flag(children)
+            checkmate::assert_flag(detail)
+
+            rows <- private$select_query_rows(
+                query_id = private$resolve_query_selection(query_id = query_id, tag = tag, children = children),
+                tracked = if (is.null(query_id)) tracked else NULL
+            )
+            if (!nrow(rows)) {
+                empty <- data.table::data.table()
+                if (isTRUE(detail)) {
+                    return(list(summary = empty, changes = empty))
+                }
+                return(empty)
+            }
+
+            previews <- vector("list", nrow(rows))
+            for (i in seq_len(nrow(rows))) {
+                query <- private$load_query(rows[i])
+                files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
+                previews[[i]] <- private$preview_query_update(
+                    row = rows[i],
+                    files = files,
+                    fields = fields,
+                    all = all,
+                    limit = limit
+                )
+            }
+
+            summary <- data.table::rbindlist(lapply(previews, `[[`, "summary"), fill = TRUE)
+            if (!isTRUE(detail)) {
+                return(summary[])
+            }
+            changes <- data.table::rbindlist(lapply(previews, `[[`, "changes"), fill = TRUE)
+            list(summary = summary[], changes = changes[])
+        },
+        # }}}
+
         # update_queries {{{
         #' @description
         #' Refresh stored ESGF queries and link their current File records.
@@ -2501,6 +2570,73 @@ EsgStore <- R6::R6Class(
                 links$update_id <- update_id
             }
             links[]
+        },
+        # }}}
+
+        # preview_query_update {{{
+        preview_query_update = function(row, files, fields = "*", all = TRUE, limit = FALSE) {
+            extract_store_result_type(files)
+            dt <- extract_store_file_table(files)
+            now <- extract_store_now()
+            query_id <- row$query_id[[1L]]
+            existing_links <- private$read_table("esg_query_file")
+            wanted_query_id <- query_id
+            existing_links <- existing_links[existing_links[["query_id"]] == wanted_query_id]
+            existing_files <- private$read_table("esg_file")
+            if (nrow(existing_links) && nrow(existing_files)) {
+                existing_files <- existing_files[existing_files[["file_key"]] %in% existing_links$file_key]
+            } else {
+                existing_files <- existing_files[0]
+            }
+            file_rows <- private$file_rows(dt, now)
+            update_id <- extract_store_hash("preview", query_id, now, nrow(file_rows), stats::runif(1L))
+            changes <- private$query_update_changes(update_id, query_id, existing_links, existing_files, file_rows, now)
+            summary <- private$query_update_preview_summary(row, changes)
+            list(summary = summary, changes = changes, files = files, file_rows = file_rows)
+        },
+        # }}}
+
+        # query_update_preview_summary {{{
+        query_update_preview_summary = function(row, changes) {
+            count_type <- function(type) {
+                if (!nrow(changes)) {
+                    return(0L)
+                }
+                as.integer(sum(changes$change_type == type, na.rm = TRUE))
+            }
+            count_flag <- function(column) {
+                if (!nrow(changes) || !column %in% names(changes)) {
+                    return(0L)
+                }
+                as.integer(sum(changes[[column]] %in% TRUE, na.rm = TRUE))
+            }
+            sum_size <- function(rows) {
+                if (!nrow(rows) || !"current_size" %in% names(rows)) {
+                    return(0)
+                }
+                sum(suppressWarnings(as.numeric(rows$current_size)), na.rm = TRUE)
+            }
+
+            active <- if (nrow(changes)) {
+                changes[changes[["current_status"]] == "current"]
+            } else {
+                changes
+            }
+            data.table::data.table(
+                query_id = row$query_id[[1L]],
+                label = extract_store_na_character(row$label[[1L]]),
+                file_total = as.integer(nrow(changes)),
+                current_count = count_type("current"),
+                new_count = count_type("new"),
+                stale_count = count_type("stale"),
+                changed_count = count_type("changed"),
+                deprecated_count = count_flag("deprecated"),
+                retracted_count = count_flag("retracted"),
+                version_changed_count = count_flag("version_changed"),
+                bytes_total = as.numeric(sum_size(active)),
+                bytes_new = as.numeric(sum_size(active[active[["change_type"]] == "new"])),
+                bytes_changed = as.numeric(sum_size(active[active[["change_type"]] == "changed"]))
+            )
         },
         # }}}
 

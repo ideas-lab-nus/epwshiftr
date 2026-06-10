@@ -227,6 +227,70 @@ test_that("EsgStore tracks long-lived ESGF queries", {
     expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
 
+test_that("EsgStore previews tracked query updates without mutating the store", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, label = "preview tas", track = TRUE)
+    qid <- query_id
+    before_query <- store$queries()[query_id == qid]
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 1,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    file_docs <- extract_store_test_file_docs(path = "preview-update.nc")
+    file_docs$master_id <- "CMIP6.mock.preview-update"
+    file_docs$tracking_id <- "hdl:21.14100/preview-update"
+    file_docs$latest <- TRUE
+    file_docs$retracted <- FALSE
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- extract_store_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    preview <- store$preview_update_queries(query_id = query_id)
+    expect_equal(preview$query_id, query_id)
+    expect_equal(preview$file_total, 1L)
+    expect_equal(preview$new_count, 1L)
+    expect_equal(preview$bytes_total, 123)
+    expect_equal(preview$bytes_new, 123)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_file")), 0L)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update_file")), 0L)
+    after_preview_query <- store$queries()[query_id == qid]
+    expect_identical(after_preview_query$last_checked_at[[1L]], before_query$last_checked_at[[1L]])
+
+    detailed <- store$preview_update_queries(query_id = query_id, detail = TRUE)
+    expect_named(detailed, c("summary", "changes"))
+    expect_equal(detailed$summary$new_count, 1L)
+    expect_equal(detailed$changes$change_type, "new")
+
+    updated <- store$update_queries(query_id = query_id)
+    update <- store$query_updates(query_id, latest = TRUE)
+    expect_equal(preview$new_count, update$new_count)
+    expect_equal(preview$stale_count, update$stale_count)
+    expect_equal(preview$changed_count, update$changed_count)
+    expect_equal(nrow(updated), 1L)
+})
+
 test_that("EsgStore updates tracked queries and links file records", {
     skip_if_not_installed("duckdb")
 
