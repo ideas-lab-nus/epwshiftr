@@ -45,6 +45,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Collate:
     'cache.R'
+    'cli.R'
     'coord.R'
     'dataset.R'
     'dict-check.R'
