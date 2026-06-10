@@ -219,6 +219,118 @@ epwshiftr_cli_query <- function(store, command, args) {
         epwshiftr_cli_assert_no_positionals(parsed)
         return(store$queries())
     }
+    if (identical(command, "show")) {
+        parsed <- epwshiftr_cli_parse_command(args, flags = c("--files", "--updates", "--changes"))
+        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        query <- store$queries()
+        query <- query[query[["query_id"]] == query_id]
+        if (!nrow(query)) {
+            cli::cli_abort("Unknown query ID: {.val {query_id}}.")
+        }
+        out <- list(
+            query = query[],
+            tags = store$query_tags(query_id),
+            graph = store$query_graph(query_id = query_id, direction = "both"),
+            status = store$query_status(query_id)
+        )
+        if (isTRUE(parsed$flags[["--files"]])) {
+            out$files <- store$query_files(query_id)
+        }
+        if (isTRUE(parsed$flags[["--updates"]])) {
+            out$updates <- store$query_updates(query_id)
+        }
+        if (isTRUE(parsed$flags[["--changes"]])) {
+            updates <- store$query_updates(query_id, latest = TRUE)
+            out$changes <- if (nrow(updates)) {
+                store$query_changes(update_id = updates$update_id)
+            } else {
+                data.table::data.table()
+            }
+        }
+        return(out)
+    }
+    if (identical(command, "status")) {
+        parsed <- epwshiftr_cli_parse_command(args)
+        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        return(store$query_status(query_id))
+    }
+    if (identical(command, "files")) {
+        parsed <- epwshiftr_cli_parse_command(args, options = "--status")
+        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        return(store$query_files(query_id, status = epwshiftr_cli_csv(parsed$options[["--status"]])))
+    }
+    if (identical(command, "updates")) {
+        parsed <- epwshiftr_cli_parse_command(args, flags = "--latest")
+        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        return(store$query_updates(query_id = query_id, latest = parsed$flags[["--latest"]]))
+    }
+    if (identical(command, "changes")) {
+        parsed <- epwshiftr_cli_parse_command(args, flags = "--latest", options = c("--update", "--type"))
+        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        update_id <- parsed$options[["--update"]]
+        if (is.null(update_id) && isTRUE(parsed$flags[["--latest"]])) {
+            updates <- store$query_updates(query_id = query_id, latest = TRUE)
+            if (!nrow(updates)) {
+                return(data.table::data.table())
+            }
+            update_id <- if (nrow(updates)) updates$update_id else character()
+        }
+        return(store$query_changes(
+            update_id = epwshiftr_cli_empty_to_null(update_id),
+            query_id = query_id,
+            change_type = epwshiftr_cli_csv(parsed$options[["--type"]])
+        ))
+    }
+    if (identical(command, "tags")) {
+        parsed <- epwshiftr_cli_parse_command(args)
+        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        return(store$query_tags(query_id))
+    }
+    if (identical(command, "track")) {
+        parsed <- epwshiftr_cli_parse_command(args)
+        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        store$track_query(query_id)
+        return(epwshiftr_cli_query_row(store, query_id))
+    }
+    if (identical(command, "untrack")) {
+        parsed <- epwshiftr_cli_parse_command(args)
+        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        store$untrack_query(query_id)
+        return(epwshiftr_cli_query_row(store, query_id))
+    }
+    if (identical(command, "tag")) {
+        parsed <- epwshiftr_cli_parse_command(args, flags = "--replace")
+        if (length(parsed$positionals) < 2L) {
+            epwshiftr_cli_usage_abort("Missing required arguments: query_id and tag.")
+        }
+        query_id <- parsed$positionals[[1L]]
+        tags <- parsed$positionals[-1L]
+        return(store$tag_query(query_id, tags, replace = parsed$flags[["--replace"]]))
+    }
+    if (identical(command, "untag")) {
+        parsed <- epwshiftr_cli_parse_command(args)
+        if (!length(parsed$positionals)) {
+            epwshiftr_cli_usage_abort("Missing required argument: query_id.")
+        }
+        query_id <- parsed$positionals[[1L]]
+        tags <- if (length(parsed$positionals) > 1L) parsed$positionals[-1L] else NULL
+        return(store$untag_query(query_id, tags))
+    }
+    if (identical(command, "remove")) {
+        parsed <- epwshiftr_cli_parse_command(args, flags = "--execute", options = "--delete")
+        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        delete <- parsed$options[["--delete"]]
+        if (is.null(delete)) {
+            delete <- "none"
+        }
+        if (!delete %in% c("none", "orphaned")) {
+            epwshiftr_cli_usage_abort("--delete must be one of: none, orphaned.")
+        }
+        if (isTRUE(parsed$flags[["--execute"]])) {
+            return(store$remove_query(query_id, delete = delete))
+        }
+        return(epwshiftr_cli_query_remove_preview(store, query_id, delete))
+    }
     if (identical(command, "preview")) {
         parsed <- epwshiftr_cli_parse_command(args, flags = "--detail")
         query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
@@ -357,6 +469,49 @@ epwshiftr_cli_assert_no_positionals <- function(parsed) {
     invisible(NULL)
 }
 
+epwshiftr_cli_csv <- function(value) {
+    if (is.null(value) || !length(value)) {
+        return(NULL)
+    }
+    value <- unlist(strsplit(value, ",", fixed = TRUE), use.names = FALSE)
+    value <- trimws(value)
+    value <- value[nzchar(value)]
+    if (!length(value)) {
+        return(NULL)
+    }
+    unique(value)
+}
+
+epwshiftr_cli_empty_to_null <- function(value) {
+    if (is.null(value) || !length(value)) {
+        return(NULL)
+    }
+    value
+}
+
+epwshiftr_cli_query_remove_preview <- function(store, query_id, delete = "none") {
+    query <- epwshiftr_cli_query_row(store, query_id)
+    files <- store$query_files(query_id)
+    data.table::data.table(
+        dry_run = TRUE,
+        query_id = query_id,
+        delete = delete,
+        file_count = as.integer(nrow(files)),
+        tag_count = as.integer(nrow(store$query_tags(query_id))),
+        dependency_count = as.integer(nrow(store$query_graph(query_id = query_id, direction = "both"))),
+        execute_hint = "rerun with --execute to remove the query"
+    )
+}
+
+epwshiftr_cli_query_row <- function(store, query_id) {
+    query <- store$queries()
+    query <- query[query[["query_id"]] == query_id]
+    if (!nrow(query)) {
+        cli::cli_abort("Unknown query ID: {.val {query_id}}.")
+    }
+    query[]
+}
+
 epwshiftr_cli_emit_result <- function(result, json = FALSE, quiet = FALSE) {
     if (isTRUE(quiet)) {
         return(invisible(NULL))
@@ -393,6 +548,17 @@ epwshiftr_cli_usage <- function() {
         "",
         "Commands:",
         "  epwshiftr query list",
+        "  epwshiftr query show <query_id> [--files] [--updates] [--changes]",
+        "  epwshiftr query status [query_id]",
+        "  epwshiftr query files <query_id> [--status STATUS]",
+        "  epwshiftr query updates [query_id] [--latest]",
+        "  epwshiftr query changes [query_id] [--latest] [--update UPDATE_ID] [--type TYPE]",
+        "  epwshiftr query tags [query_id]",
+        "  epwshiftr query track <query_id>",
+        "  epwshiftr query untrack <query_id>",
+        "  epwshiftr query tag <query_id> <tag>... [--replace]",
+        "  epwshiftr query untag <query_id> [tag...]",
+        "  epwshiftr query remove <query_id> [--delete none|orphaned] [--execute]",
         "  epwshiftr query preview [query_id] [--detail]",
         "  epwshiftr query update [query_id]",
         "  epwshiftr download preflight <query_id>",

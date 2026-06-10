@@ -76,6 +76,63 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_equal(listed$status, 0L)
     expect_equal(listed$result$query_id, query_id)
 
+    shown <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "show", query_id))
+    expect_equal(shown$status, 0L)
+    expect_named(shown$result, c("query", "tags", "graph", "status"))
+    expect_equal(shown$result$query$query_id, query_id)
+
+    query_status <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "status", query_id))
+    expect_equal(query_status$status, 0L)
+    expect_equal(query_status$result$query_id, query_id)
+
+    query_files <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "files", query_id, "--status", "current,stale"))
+    expect_equal(query_files$status, 0L)
+    expect_equal(nrow(query_files$result), 0L)
+
+    query_updates <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "updates", query_id, "--latest"))
+    expect_equal(query_updates$status, 0L)
+    expect_equal(nrow(query_updates$result), 0L)
+
+    query_changes <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "changes", query_id, "--latest"))
+    expect_equal(query_changes$status, 0L)
+    expect_equal(nrow(query_changes$result), 0L)
+
+    tagged <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "tag", query_id, "daily", "cmip"))
+    expect_equal(tagged$status, 0L)
+    expect_setequal(tagged$result$tag, c("daily", "cmip"))
+
+    tags <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "tags", query_id))
+    expect_equal(tags$status, 0L)
+    expect_setequal(tags$result$tag, c("daily", "cmip"))
+
+    untagged <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "untag", query_id, "cmip"))
+    expect_equal(untagged$status, 0L)
+    expect_equal(untagged$result$tag, "daily")
+
+    untracked <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "untrack", query_id))
+    expect_equal(untracked$status, 0L)
+    expect_false(untracked$result$tracked)
+
+    tracked <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "track", query_id))
+    expect_equal(tracked$status, 0L)
+    expect_true(tracked$result$tracked)
+
+    remove_id <- store$add_query(
+        esg_query("https://example.org")$
+            experiment_id("historical")$
+            variable_id("pr")$
+            limit(1L),
+        label = "remove me",
+        track = FALSE
+    )
+    remove_preview <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "remove", remove_id))
+    expect_equal(remove_preview$status, 0L)
+    expect_true(remove_preview$result$dry_run)
+    expect_true(remove_id %in% store$queries()$query_id)
+    removed <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "remove", remove_id, "--execute"))
+    expect_equal(removed$status, 0L)
+    expect_false(remove_id %in% store$queries()$query_id)
+
     json_text <- capture.output(
         json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))
     )
