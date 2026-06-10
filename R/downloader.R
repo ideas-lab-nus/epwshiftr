@@ -430,6 +430,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$worker_count <- n_workers
             private$in_dev <- in_dev
             private$async_tasks <- list()
+            private$persistent_tasks <- list()
 
             if (!is.null(manifest)) {
                 private$manifest_path <- normalizePath(path.expand(manifest), mustWork = FALSE, winslash = "/")
@@ -879,6 +880,49 @@ FileDownloader <- R6::R6Class("FileDownloader",
             private$require_manifest()
             checkmate::assert_subset(status, c("error", "cancelled"), empty.ok = FALSE)
             private$queue_tasks(session_id = session_id, task_id = task_id, status = status)
+        },
+        # }}}
+
+        # cancel {{{
+        #' @description
+        #' Cancel queued or in-progress persistent download tasks.
+        #'
+        #' @param session_id Optional session ID.
+        #' @param task_id Optional task ID vector.
+        #' @param status Task statuses to cancel. Default:
+        #'        `c("queued", "downloading")`.
+        #'
+        #' @return A data.table of cancelled task records.
+        cancel = function(session_id = NULL, task_id = NULL, status = c("queued", "downloading")) {
+            private$require_manifest()
+            checkmate::assert_string(session_id, null.ok = TRUE)
+            checkmate::assert_character(task_id, any.missing = FALSE, null.ok = TRUE)
+            checkmate::assert_subset(status, c("queued", "downloading"), empty.ok = FALSE)
+
+            tasks <- private$select_tasks(session_id = session_id, task_id = task_id, status = status)
+            if (!nrow(tasks)) {
+                return(private$decorate_task_status(tasks))
+            }
+            for (id in tasks$task_id) {
+                active <- private$persistent_tasks[[id]]
+                if (!is.null(active) && !is.null(active$mirai)) {
+                    try(mirai::stop_mirai(active$mirai), silent = TRUE)
+                    private$persistent_tasks[[id]] <- NULL
+                }
+            }
+
+            tasks$status <- "cancelled"
+            tasks$last_error <- "Cancelled by user."
+            tasks$updated_at <- download_now()
+            tasks$completed_at <- download_now()
+            private$replace_rows("download_task", as.data.frame(tasks), "task_id")
+            for (i in seq_len(nrow(tasks))) {
+                private$log_event(tasks$session_id[[i]], tasks$task_id[[i]], "cancelled", tasks$last_error[[i]])
+            }
+            for (sid in unique(tasks$session_id)) {
+                private$update_session_status(sid)
+            }
+            private$decorate_task_status(private$select_tasks(session_id = session_id, task_id = tasks$task_id))
         },
         # }}}
 
@@ -1349,6 +1393,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
         worker_count = NULL,
         in_dev = NULL,
         async_tasks = NULL,  # List of DownloadTask objects for async downloads
+        persistent_tasks = NULL,
 
         # finalize {{{
         finalize = function() {
@@ -1804,6 +1849,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
 
             add_running <- function(item) {
                 running[[item$task_id]] <<- item
+                private$persistent_tasks[[item$task_id]] <- item
                 active_targets <<- unique(c(active_targets, item$target_path))
             }
 
@@ -1844,6 +1890,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 for (id in done) {
                     item <- running[[id]]
                     running[[id]] <- NULL
+                    private$persistent_tasks[[id]] <- NULL
                     active_targets <- setdiff(active_targets, item$target_path)
 
                     result <- tryCatch(item$mirai[], error = function(e) e)

@@ -184,6 +184,95 @@ test_that("FileDownloader cancels stale downloading tasks before run", {
     expect_true(file.exists(file.path(dest, "stale.txt")))
 })
 
+test_that("FileDownloader cancels persistent queued tasks", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("cancel content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:cancel-test",
+        filename = "cancel.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "cancel")
+    cancelled <- dl$cancel(session_id = session_id)
+    expect_equal(cancelled$status, "cancelled")
+    expect_match(cancelled$last_error, "Cancelled by user")
+    sessions <- dl$sessions()
+    expect_equal(sessions[sessions$session_id == session_id]$status, "cancelled")
+
+    retried <- dl$retry(session_id = session_id)
+    expect_equal(retried$status, "queued")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+    expect_equal(tasks$status, "done")
+    expect_true(file.exists(file.path(dest, "cancel.txt")))
+
+    events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
+    expect_true("cancelled" %in% events$event)
+})
+
+test_that("FileDownloader cancels persistent downloading tasks", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("cancel downloading content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:cancel-downloading-test",
+        filename = "cancel-downloading.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "cancel-downloading")
+    task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
+    conn <- priv(dl)$manifest_conn
+    ddb_exec(conn, sprintf(
+        "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
+        ddb_literal(conn, download_now()),
+        ddb_literal(conn, task_id)
+    ))
+
+    cancelled <- dl$cancel(task_id = task_id)
+    expect_equal(cancelled$status, "cancelled")
+    expect_equal(dl$status(task_id = task_id)$status, "cancelled")
+    expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
+})
+
 test_that("FileDownloader falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
 
