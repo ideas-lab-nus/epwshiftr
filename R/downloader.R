@@ -243,6 +243,43 @@ download_curl_handle <- function(timeout, connect_timeout = NULL, ssl_verifypeer
     handle
 }
 
+download_manifest_table_keys <- function() {
+    c(
+        download_session = "session_id",
+        download_task = "task_id",
+        download_candidate = "candidate_id",
+        download_event = "event_id",
+        download_node = "node_id",
+        download_meta = "key"
+    )
+}
+
+download_manifest_time_columns <- function(table) {
+    switch(table,
+        download_session = c("created_at", "updated_at", "completed_at"),
+        download_task = c("created_at", "updated_at", "completed_at"),
+        download_candidate = c("created_at", "updated_at"),
+        download_event = "created_at",
+        download_node = c("last_success_at", "last_failure_at", "updated_at"),
+        download_meta = "updated_at",
+        character()
+    )
+}
+
+download_manifest_prepare_rows <- function(rows, table) {
+    if (is.null(rows) || (is.list(rows) && !length(rows))) {
+        return(data.frame())
+    }
+    rows <- as.data.frame(rows, stringsAsFactors = FALSE)
+    if (!nrow(rows)) {
+        return(rows)
+    }
+    for (col in intersect(download_manifest_time_columns(table), names(rows))) {
+        rows[[col]] <- as.POSIXct(rows[[col]], tz = "UTC")
+    }
+    rows
+}
+
 download_worker_download <- function(url, filename, subdir, dest, temp, retries, timeout,
                                      overwrite, checksum, checksum_type, resume, tmp_id,
                                      ssl_verifypeer = TRUE, proxy = NULL,
@@ -861,6 +898,94 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 file <- private$config_path
             }
             download_config_write(private$config_payload(), file, pretty = pretty)
+        },
+        # }}}
+
+        # export_manifest {{{
+        #' @description
+        #' Export persistent manifest state to a portable JSON file.
+        #'
+        #' @param file Output JSON path.
+        #' @param pretty Whether to add indentation whitespace. Default: `TRUE`.
+        #'
+        #' @return The normalized output path.
+        export_manifest = function(file, pretty = TRUE) {
+            private$require_manifest()
+            checkmate::assert_string(file, min.chars = 1L)
+            checkmate::assert_flag(pretty)
+
+            tables <- private$manifest_table_names()
+            payload <- list(
+                kind = "epwshiftr_file_downloader_manifest",
+                schema_version = DOWNLOADER_SCHEMA_VERSION,
+                exported_at = format(download_now(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+                tables = stats::setNames(lapply(tables, function(table) {
+                    as.data.frame(private$read_table(table), stringsAsFactors = FALSE)
+                }), tables)
+            )
+            dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+            jsonlite::write_json(
+                payload,
+                file,
+                dataframe = "rows",
+                POSIXt = "ISO8601",
+                null = "null",
+                digits = 10,
+                pretty = pretty,
+                auto_unbox = TRUE
+            )
+            normalizePath(file, mustWork = TRUE, winslash = "/")
+        },
+        # }}}
+
+        # import_manifest {{{
+        #' @description
+        #' Import persistent manifest state from `$export_manifest()`.
+        #'
+        #' @param file JSON manifest export path.
+        #' @param mode Import mode. `"append"` upserts imported rows by manifest
+        #'        primary key. `"replace"` clears known manifest tables first.
+        #'
+        #' @return A data.table with imported row counts.
+        import_manifest = function(file, mode = c("append", "replace")) {
+            private$require_manifest()
+            checkmate::assert_file(file, access = "r", extension = "json")
+            mode <- match.arg(mode)
+
+            payload <- jsonlite::fromJSON(file, simplifyDataFrame = TRUE, simplifyVector = TRUE)
+            if (!is.list(payload) || !identical(payload$kind, "epwshiftr_file_downloader_manifest")) {
+                cli::cli_abort("{.path {file}} is not a FileDownloader manifest export.")
+            }
+            if (is.null(payload$tables) || !is.list(payload$tables)) {
+                cli::cli_abort("{.path {file}} does not contain manifest tables.")
+            }
+
+            tables <- private$manifest_table_names()
+            if (identical(mode, "replace")) {
+                for (table in rev(tables)) {
+                    ddb_exec(private$manifest_conn, sprintf(
+                        "DELETE FROM %s",
+                        ddb_ident(private$manifest_conn, table)
+                    ))
+                }
+            }
+
+            keys <- download_manifest_table_keys()
+            counts <- lapply(tables, function(table) {
+                rows <- download_manifest_prepare_rows(payload$tables[[table]], table)
+                if (!nrow(rows)) {
+                    return(data.frame(table = table, rows = 0L, stringsAsFactors = FALSE))
+                }
+                private$replace_rows(table, rows, keys[[table]])
+                data.frame(table = table, rows = nrow(rows), stringsAsFactors = FALSE)
+            })
+            private$replace_rows("download_meta", data.frame(
+                key = "schema_version",
+                value = DOWNLOADER_SCHEMA_VERSION,
+                updated_at = download_now(),
+                stringsAsFactors = FALSE
+            ), "key")
+            data.table::rbindlist(counts)
         },
         # }}}
 
@@ -1631,6 +1756,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
             )
         },
         # }}}
+
+        manifest_table_names = function() {
+            names(download_manifest_table_keys())
+        },
 
         # manifest {{{
         connect_manifest = function() {

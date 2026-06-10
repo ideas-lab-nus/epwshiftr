@@ -112,6 +112,61 @@ test_that("FileDownloader persists config and manifest state", {
     )
 })
 
+test_that("FileDownloader exports and imports persistent manifests", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("export content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- FileDownloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:export-test",
+        filename = "export.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "export")
+    dl$run(session_id = session_id, progress = FALSE)
+
+    export_file <- file.path(root, "manifest-export.json")
+    expect_equal(dl$export_manifest(export_file), normalizePath(export_file, winslash = "/"))
+    payload <- jsonlite::fromJSON(export_file, simplifyDataFrame = TRUE)
+    expect_equal(payload$kind, "epwshiftr_file_downloader_manifest")
+    expect_true("download_task" %in% names(payload$tables))
+
+    clone <- FileDownloader$new(
+        dest = file.path(root, "clone-downloads"),
+        temp = file.path(root, "clone-tmp"),
+        manifest = file.path(root, "clone", "manifest.duckdb"),
+        retries = 1L,
+        n_workers = 0L
+    )
+    counts <- clone$import_manifest(export_file, mode = "replace")
+    expect_true(all(c("download_session", "download_task", "download_candidate", "download_event") %in% counts$table))
+    expect_equal(clone$sessions()$session_id, session_id)
+    expect_equal(clone$tasks(session_id = session_id)$status, "done")
+    expect_true("done" %in% clone$events(session_id = session_id)$event)
+
+    clone$import_manifest(export_file, mode = "append")
+    expect_equal(nrow(clone$sessions()), 1L)
+    expect_equal(nrow(clone$tasks()), 1L)
+})
+
 test_that("FileDownloader reconnects manifest after shallow clone finalization", {
     skip_if_not_installed("duckdb")
 
