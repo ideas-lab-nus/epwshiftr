@@ -523,6 +523,11 @@ test_that("FileDownloader records probe outcomes and resets data node health", {
     expect_equal(nodes[data_node == "fail.example.org"]$probe_failure_count, 1L)
     expect_false(is.na(nodes[data_node == "fail.example.org"]$cooldown_until))
 
+    cached <- data.table::copy(plan[1L])
+    cached$probe_cached <- TRUE
+    nodes <- dl$record_probes(cached, probed = TRUE)
+    expect_equal(nodes[data_node == "ok.example.org"]$probe_success_count, 1L)
+
     remaining <- dl$reset_data_nodes(data_node = "fail.example.org")
     expect_false("fail.example.org" %in% remaining$data_node)
     expect_true("ok.example.org" %in% remaining$data_node)

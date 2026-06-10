@@ -742,6 +742,11 @@ EsgStore <- R6::R6Class(
         #' @param session_label Optional download session label.
         #' @param service ESGF URL service used for the download plan.
         #' @param probe Whether to probe candidate URLs before ranking.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from the downloader worker count
+        #'        when `enqueue = TRUE`.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param strategy Candidate ranking strategy.
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
@@ -758,6 +763,8 @@ EsgStore <- R6::R6Class(
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
+            probe_concurrency = NULL,
+            probe_cache_seconds = 3600L,
             strategy = c("fastest", "first", "stable"),
             all = TRUE,
             limit = FALSE,
@@ -803,6 +810,8 @@ EsgStore <- R6::R6Class(
                         session_label = session_label,
                         service = service,
                         probe = probe,
+                        probe_concurrency = probe_concurrency,
+                        probe_cache_seconds = probe_cache_seconds,
                         strategy = strategy,
                         error_if_empty = FALSE
                     )
@@ -824,6 +833,10 @@ EsgStore <- R6::R6Class(
         #'        history, network policy, and cooldown policy.
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param service,probe,strategy Download plan arguments.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from `downloader` when supplied.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
@@ -834,6 +847,8 @@ EsgStore <- R6::R6Class(
             replica = "auto",
             service = "HTTPServer",
             probe = TRUE,
+            probe_concurrency = NULL,
+            probe_cache_seconds = 3600L,
             strategy = c("fastest", "first", "stable"),
             all = TRUE,
             limit = FALSE,
@@ -870,6 +885,7 @@ EsgStore <- R6::R6Class(
             } else {
                 NULL
             }
+            probe_concurrency <- private$downloader_probe_concurrency(downloader, probe_concurrency)
             candidates <- files$download_plan(
                 replica = replica,
                 service = service,
@@ -877,7 +893,9 @@ EsgStore <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
             candidates <- private$decorate_download_plan_with_files(candidates, preview$file_rows)
             summary <- private$download_preflight_summary(row, preview$file_rows, candidates)
@@ -904,6 +922,10 @@ EsgStore <- R6::R6Class(
         #'        `TRUE`.
         #' @param session_label Optional download session label.
         #' @param service,probe,strategy Download plan arguments.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from the downloader worker count.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param progress,overwrite,resume Run arguments.
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
@@ -918,6 +940,8 @@ EsgStore <- R6::R6Class(
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
+            probe_concurrency = NULL,
+            probe_cache_seconds = 3600L,
             strategy = c("fastest", "first", "stable"),
             progress = TRUE,
             overwrite = FALSE,
@@ -942,6 +966,8 @@ EsgStore <- R6::R6Class(
                     replica = replica,
                     service = service,
                     probe = probe,
+                    probe_concurrency = probe_concurrency,
+                    probe_cache_seconds = probe_cache_seconds,
                     strategy = strategy,
                     all = all,
                     limit = limit,
@@ -966,6 +992,8 @@ EsgStore <- R6::R6Class(
                 session_label = session_label,
                 service = service,
                 probe = probe,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds,
                 strategy = strategy,
                 error_if_empty = TRUE
             )
@@ -1466,6 +1494,10 @@ EsgStore <- R6::R6Class(
         #'        `"HTTPServer"`.
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param strategy Candidate ranking strategy.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from the downloader worker count.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param progress Whether to show per-file download progress.
         #' @param overwrite Whether to overwrite existing final files.
         #' @param resume Whether to resume interrupted `.part` files.
@@ -1481,6 +1513,8 @@ EsgStore <- R6::R6Class(
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
+            probe_concurrency = NULL,
+            probe_cache_seconds = 3600L,
             strategy = c("fastest", "first", "stable"),
             progress = TRUE,
             overwrite = FALSE,
@@ -1499,6 +1533,7 @@ EsgStore <- R6::R6Class(
                 node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
                 network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
                 node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+                resolved_probe_concurrency <- private$downloader_probe_concurrency(downloader, probe_concurrency)
                 plan_args <- list(
                     replica = replica,
                     service = service,
@@ -1507,6 +1542,8 @@ EsgStore <- R6::R6Class(
                     node_stats = node_stats,
                     network_policy = network_policy,
                     node_policy = node_policy,
+                    probe_concurrency = resolved_probe_concurrency,
+                    probe_cache_seconds = probe_cache_seconds,
                     ...
                 )
                 plan <- do.call(files$download_plan, plan_args)
@@ -2143,6 +2180,22 @@ EsgStore <- R6::R6Class(
             }
             file_rows[, status := private$file_link_status(file_rows)]
             file_rows[]
+        },
+
+        downloader_probe_concurrency = function(downloader = NULL, probe_concurrency = NULL) {
+            if (!is.null(probe_concurrency)) {
+                checkmate::assert_count(probe_concurrency, positive = TRUE)
+                return(as.integer(probe_concurrency))
+            }
+            if (is.null(downloader)) {
+                return(1L)
+            }
+            workers <- tryCatch(downloader$n_workers, error = function(e) 1L)
+            workers <- suppressWarnings(as.integer(workers))
+            if (is.na(workers) || workers < 1L) {
+                workers <- 1L
+            }
+            as.integer(min(workers, 8L))
         },
 
         download_preflight_summary = function(row, file_rows, candidates) {
@@ -3095,6 +3148,8 @@ EsgStore <- R6::R6Class(
             session_label,
             service,
             probe,
+            probe_concurrency,
+            probe_cache_seconds,
             strategy,
             error_if_empty = TRUE
         ) {
@@ -3109,6 +3164,7 @@ EsgStore <- R6::R6Class(
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+            probe_concurrency <- private$downloader_probe_concurrency(downloader, probe_concurrency)
             plan <- files$download_plan(
                 replica = replica,
                 service = service,
@@ -3116,7 +3172,9 @@ EsgStore <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
             plan <- private$decorate_download_plan(plan, query_id = query_id)
             plan <- plan[plan[["file_key"]] %in% current$file_key]

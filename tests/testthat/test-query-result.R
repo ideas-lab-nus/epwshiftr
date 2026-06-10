@@ -665,11 +665,12 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
             "logical_file_id", "record_index", "file_key", "esgf_id",
             "dataset_id", "filename", "subdir", "checksum",
             "checksum_type", "size", "url", "service", "data_node",
-            "priority", "probe_latency", "probe_throughput",
+            "priority", "probe_latency", "probe_throughput", "probe_cached",
             "node_success_count", "node_failure_count",
             "node_attempt_count", "node_success_rate", "node_avg_latency",
             "node_probe_success_count", "node_probe_failure_count",
-            "node_cooldown_until", "node_is_cooling_down", "node_cooldown_rank"
+            "node_cooldown_until", "node_is_cooling_down",
+            "node_updated_at", "node_last_probe_at", "node_cooldown_rank"
         )
     )
     expect_identical(plan$logical_file_id, "master:master-file-1")
@@ -685,6 +686,69 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
     expect_identical(checksum_plan$logical_file_id, "checksum:abc:1:file.nc")
 
     expect_error(files$download(run = FALSE), "explicit `store` or persistent `downloader`")
+})
+
+test_that("download_plan deduplicates URL probes", {
+    docs <- data.table::rbindlist(list(
+        query_result_test_file_docs("https://same.example.org/file.nc|application/netcdf|HTTPServer"),
+        query_result_test_file_docs("https://same.example.org/file.nc|application/netcdf|HTTPServer")
+    ), fill = TRUE)
+    docs$id <- c("file-1", "file-2")
+    docs$data_node <- "same.example.org"
+    docs$master_id <- c("master-file-1", "master-file-2")
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    calls <- 0L
+    testthat::local_mocked_bindings(
+        query_result_probe_url = function(url, timeout = 5, network_policy = NULL) {
+            calls <<- calls + 1L
+            list(latency = 0.5, throughput = NA_real_)
+        },
+        .package = "epwshiftr"
+    )
+
+    plan <- files$download_plan(
+        replica = "current",
+        probe = TRUE,
+        strategy = "first",
+        probe_concurrency = 1L,
+        probe_cache_seconds = 0L
+    )
+    expect_equal(calls, 1L)
+    expect_equal(plan$probe_latency, c(0.5, 0.5))
+    expect_false(any(plan$probe_cached))
+})
+
+test_that("download_plan reuses fresh data node probe cache", {
+    docs <- query_result_test_file_docs("https://cache.example.org/file.nc|application/netcdf|HTTPServer")
+    docs$data_node <- "cache.example.org"
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    node_stats <- data.table::data.table(
+        data_node = "cache.example.org",
+        service = "HTTPServer",
+        success_count = 1L,
+        failure_count = 0L,
+        avg_latency = 0.25,
+        probe_success_count = 1L,
+        probe_failure_count = 0L,
+        last_probe_at = Sys.time(),
+        updated_at = Sys.time()
+    )
+    testthat::local_mocked_bindings(
+        query_result_probe_url = function(...) {
+            stop("cached probe should not hit the network")
+        },
+        .package = "epwshiftr"
+    )
+
+    plan <- files$download_plan(
+        replica = "current",
+        probe = TRUE,
+        node_stats = node_stats,
+        probe_cache_seconds = 3600L
+    )
+    expect_equal(plan$probe_latency, 0.25)
+    expect_true(plan$probe_cached)
 })
 
 test_that("download_plan uses data node history to rank replica candidates", {

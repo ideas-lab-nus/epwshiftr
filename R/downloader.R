@@ -2596,6 +2596,9 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 return(invisible(NULL))
             }
             for (i in seq_len(nrow(plan))) {
+                if ("probe_cached" %in% names(plan) && isTRUE(plan$probe_cached[[i]])) {
+                    next
+                }
                 ok <- !is.na(suppressWarnings(as.numeric(plan$probe_latency[[i]])))
                 private$update_node_probe(plan[i, , drop = FALSE], ok = ok)
             }

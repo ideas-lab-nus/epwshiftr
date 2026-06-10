@@ -1028,6 +1028,145 @@ query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
     list(latency = as.numeric(difftime(Sys.time(), start, units = "secs")), throughput = NA_real_)
 }
 
+query_result_probe_urls_network <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[!startsWith(urls, "file://")]
+    if (!length(urls)) {
+        return(stats::setNames(list(), character()))
+    }
+    if (probe_concurrency <= 1L || length(urls) <= 1L) {
+        return(stats::setNames(lapply(urls, query_result_probe_url, timeout = timeout, network_policy = network_policy), urls))
+    }
+
+    out <- vector("list", length(urls))
+    names(out) <- urls
+    failed <- rep(FALSE, length(urls))
+    ok <- tryCatch({
+        if (is.null(network_policy)) {
+            network_policy <- list()
+        }
+        connect_timeout <- network_policy$connect_timeout
+        if (is.null(connect_timeout)) {
+            connect_timeout <- min(timeout, 3)
+        }
+        ssl_verifypeer <- network_policy$ssl_verifypeer
+        if (is.null(ssl_verifypeer)) {
+            ssl_verifypeer <- TRUE
+        }
+        pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+        for (i in seq_along(urls)) {
+            local({
+                j <- i
+                start <- Sys.time()
+                handle <- download_curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent,
+                    nobody = TRUE
+                )
+                curl::handle_setopt(handle, url = urls[[j]])
+                curl::multi_add(
+                    handle,
+                    done = function(response) {
+                        out[[j]] <<- list(
+                            latency = as.numeric(difftime(Sys.time(), start, units = "secs")),
+                            throughput = NA_real_
+                        )
+                    },
+                    fail = function(error) {
+                        failed[[j]] <<- TRUE
+                    },
+                    pool = pool
+                )
+            })
+        }
+        curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+        TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(ok)) {
+        return(stats::setNames(lapply(urls, query_result_probe_url, timeout = timeout, network_policy = network_policy), urls))
+    }
+    missing <- vapply(out, is.null, logical(1L)) | failed
+    if (any(missing)) {
+        fallback <- lapply(urls[missing], query_result_probe_url, timeout = timeout, network_policy = network_policy)
+        out[missing] <- fallback
+    }
+    out
+}
+
+query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServer", timeout = 5,
+                                    network_policy = NULL, node_stats = NULL, node_policy = NULL,
+                                    probe_concurrency = 1L, probe_cache_seconds = 3600L) {
+    checkmate::assert_character(urls, any.missing = TRUE)
+    checkmate::assert_count(probe_concurrency, positive = TRUE)
+    if (!is.null(probe_cache_seconds)) {
+        checkmate::assert_count(probe_cache_seconds, positive = FALSE)
+    }
+    n <- length(urls)
+    out <- data.table::data.table(
+        url = urls,
+        probe_latency = rep(NA_real_, n),
+        probe_throughput = rep(NA_real_, n),
+        probe_cached = rep(FALSE, n)
+    )
+    if (!n) {
+        return(out)
+    }
+
+    if (!is.null(data_node) && !is.null(node_stats) && !is.null(probe_cache_seconds) && probe_cache_seconds > 0L) {
+        stats <- query_result_normalize_node_stats(node_stats, service = service, node_policy = node_policy)
+        if (!is.null(stats) && nrow(stats)) {
+            data_node <- as.character(data_node)
+            stats <- stats[!duplicated(data_node)]
+            idx <- match(data_node, stats$data_node)
+            has <- !is.na(idx)
+            cache_time <- as.POSIXct(rep(NA, n), origin = "1970-01-01", tz = "UTC")
+            if (any(has)) {
+                last_probe <- stats$node_last_probe_at[idx[has]]
+                updated <- stats$node_updated_at[idx[has]]
+                cache_time[has] <- last_probe
+                missing_time <- is.na(cache_time[has])
+                cache_time[which(has)[missing_time]] <- updated[missing_time]
+            }
+            fresh <- !is.na(cache_time) & cache_time >= Sys.time() - probe_cache_seconds
+            success <- has &
+                (
+                    suppressWarnings(as.integer(stats$node_probe_success_count[idx])) > 0L |
+                        suppressWarnings(as.integer(stats$node_success_count[idx])) > 0L
+                )
+            latency <- suppressWarnings(as.numeric(stats$node_avg_latency[idx]))
+            use_cache <- fresh & success & !is.na(latency)
+            out[use_cache, `:=`(
+                probe_latency = latency[use_cache],
+                probe_throughput = NA_real_,
+                probe_cached = TRUE
+            )]
+        }
+    }
+
+    probe_urls <- unique(out[!probe_cached & !is.na(url) & nzchar(url), url])
+    probes <- query_result_probe_urls_network(
+        probe_urls,
+        timeout = timeout,
+        network_policy = network_policy,
+        probe_concurrency = as.integer(probe_concurrency)
+    )
+    if (length(probes)) {
+        for (url in names(probes)) {
+            probe <- probes[[url]]
+            target_url <- url
+            out[out[["url"]] == target_url & !out[["probe_cached"]], `:=`(
+                probe_latency = as.numeric(probe$latency),
+                probe_throughput = as.numeric(probe$throughput)
+            )]
+        }
+    }
+    out[]
+}
+
 query_result_normalize_node_policy <- function(node_policy = NULL) {
     if (exists("download_node_policy_defaults", mode = "function")) {
         return(download_node_policy_defaults(node_policy))
@@ -1091,6 +1230,16 @@ query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer"
         stats[, node_cooldown_until := as.POSIXct(NA)]
         stats[, node_is_cooling_down := FALSE]
     }
+    if ("updated_at" %in% names(stats)) {
+        stats[, node_updated_at := as.POSIXct(updated_at, tz = "UTC")]
+    } else {
+        stats[, node_updated_at := as.POSIXct(NA)]
+    }
+    if ("last_probe_at" %in% names(stats)) {
+        stats[, node_last_probe_at := as.POSIXct(last_probe_at, tz = "UTC")]
+    } else {
+        stats[, node_last_probe_at := as.POSIXct(NA)]
+    }
     stats[, .(
         data_node,
         service,
@@ -1102,7 +1251,9 @@ query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer"
         node_probe_success_count,
         node_probe_failure_count,
         node_cooldown_until,
-        node_is_cooling_down
+        node_is_cooling_down,
+        node_updated_at,
+        node_last_probe_at
     )]
 }
 
@@ -1119,6 +1270,8 @@ query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServe
             node_probe_failure_count = NA_integer_,
             node_cooldown_until = as.POSIXct(NA),
             node_is_cooling_down = FALSE,
+            node_updated_at = as.POSIXct(NA),
+            node_last_probe_at = as.POSIXct(NA),
             node_cooldown_rank = 0L
         )]
         return(plan[])
@@ -1135,10 +1288,13 @@ query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServe
 query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE,
                                        strategy = c("fastest", "first", "stable"),
                                        node_stats = NULL, network_policy = NULL,
-                                       node_policy = NULL) {
+                                       node_policy = NULL, probe_concurrency = 1L,
+                                       probe_cache_seconds = 3600L) {
     strategy <- match.arg(strategy)
     checkmate::assert_string(service)
     checkmate::assert_flag(probe)
+    checkmate::assert_count(probe_concurrency, positive = TRUE)
+    checkmate::assert_count(probe_cache_seconds, positive = FALSE)
 
     dt <- result$to_data_table()
     n <- nrow(dt)
@@ -1163,16 +1319,27 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         data_node = query_result_column(dt, "data_node"),
         priority = seq_len(n),
         probe_latency = NA_real_,
-        probe_throughput = NA_real_
+        probe_throughput = NA_real_,
+        probe_cached = FALSE
     )
     plan <- plan[!is.na(url) & nzchar(url)]
     if (!nrow(plan)) {
         return(plan)
     }
     if (probe) {
-        probes <- lapply(plan$url, query_result_probe_url, network_policy = network_policy)
-        plan[, probe_latency := vapply(probes, `[[`, numeric(1L), "latency")]
-        plan[, probe_throughput := vapply(probes, `[[`, numeric(1L), "throughput")]
+        probes <- query_result_probe_urls(
+            plan$url,
+            data_node = plan$data_node,
+            service = service,
+            network_policy = network_policy,
+            node_stats = node_stats,
+            node_policy = node_policy,
+            probe_concurrency = probe_concurrency,
+            probe_cache_seconds = probe_cache_seconds
+        )
+        plan[, probe_latency := probes$probe_latency]
+        plan[, probe_throughput := probes$probe_throughput]
+        plan[, probe_cached := probes$probe_cached]
     }
     plan <- query_result_apply_node_stats(plan, node_stats = node_stats, service = service, node_policy = node_policy)
     if (identical(strategy, "fastest")) {
@@ -1823,12 +1990,16 @@ EsgResultFile <- R6::R6Class(
         #'        `FileDownloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
         #'        `FileDownloader$node_policy`.
+        #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("auto", "current"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
                                  all = TRUE, node_stats = NULL, network_policy = NULL,
-                                 node_policy = NULL) {
+                                 node_policy = NULL, probe_concurrency = 1L,
+                                 probe_cache_seconds = 3600L) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             target <- if (identical(replica, "auto")) {
@@ -1843,7 +2014,9 @@ EsgResultFile <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
         },
         # }}}
@@ -1878,11 +2051,15 @@ EsgResultFile <- R6::R6Class(
         #'        `FileDownloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
         #'        `FileDownloader$node_policy`.
+        #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table with one selected candidate per logical file.
         select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE,
                                   service = "HTTPServer", node_stats = NULL,
-                                  network_policy = NULL, node_policy = NULL) {
+                                  network_policy = NULL, node_policy = NULL,
+                                  probe_concurrency = 1L, probe_cache_seconds = 3600L) {
             strategy <- match.arg(strategy)
             plan <- self$download_plan(
                 replica = "auto",
@@ -1891,7 +2068,9 @@ EsgResultFile <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
             if (!nrow(plan)) {
                 return(plan)
@@ -1913,6 +2092,10 @@ EsgResultFile <- R6::R6Class(
         #'        `"HTTPServer"`.
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param strategy Candidate ranking strategy.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from the downloader worker count.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param session_label Optional download session label.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
@@ -1921,6 +2104,7 @@ EsgResultFile <- R6::R6Class(
         #' @return The created downloader session ID.
         download = function(downloader = NULL, store = NULL, replica = c("auto", "current"),
                             service = "HTTPServer", probe = TRUE, strategy = c("fastest", "first", "stable"),
+                            probe_concurrency = NULL, probe_cache_seconds = 3600L,
                             session_label = NULL, run = TRUE, ...) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
@@ -1934,6 +2118,9 @@ EsgResultFile <- R6::R6Class(
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+            if (is.null(probe_concurrency)) {
+                probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
+            }
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
@@ -1941,7 +2128,9 @@ EsgResultFile <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
@@ -2293,12 +2482,16 @@ EsgResultAggregation <- R6::R6Class(
         #'        `FileDownloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
         #'        `FileDownloader$node_policy`.
+        #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("current", "auto"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
                                  all = TRUE, node_stats = NULL, network_policy = NULL,
-                                 node_policy = NULL) {
+                                 node_policy = NULL, probe_concurrency = 1L,
+                                 probe_cache_seconds = 3600L) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             query_result_download_plan(
@@ -2308,7 +2501,9 @@ EsgResultAggregation <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
         },
         # }}}
@@ -2326,6 +2521,10 @@ EsgResultAggregation <- R6::R6Class(
         #'        `"HTTPServer"`.
         #' @param probe Whether to lightly probe URLs before ranking them.
         #' @param strategy Candidate ranking strategy.
+        #' @param probe_concurrency Maximum concurrent URL probes when
+        #'        `probe = TRUE`. Default comes from the downloader worker count.
+        #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
+        #'        history before probing a URL again. Default: `3600`.
         #' @param session_label Optional download session label.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
@@ -2334,6 +2533,7 @@ EsgResultAggregation <- R6::R6Class(
         #' @return The created downloader session ID.
         download = function(downloader = NULL, store = NULL, replica = c("current", "auto"),
                             service = "HTTPServer", probe = TRUE, strategy = c("fastest", "first", "stable"),
+                            probe_concurrency = NULL, probe_cache_seconds = 3600L,
                             session_label = NULL, run = TRUE, ...) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
@@ -2347,6 +2547,9 @@ EsgResultAggregation <- R6::R6Class(
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+            if (is.null(probe_concurrency)) {
+                probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
+            }
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
@@ -2354,7 +2557,9 @@ EsgResultAggregation <- R6::R6Class(
                 strategy = strategy,
                 node_stats = node_stats,
                 network_policy = network_policy,
-                node_policy = node_policy
+                node_policy = node_policy,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds
             )
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)

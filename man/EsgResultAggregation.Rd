@@ -121,7 +121,9 @@ Build a persistent downloader plan for aggregation records.
   all = TRUE,
   node_stats = NULL,
   network_policy = NULL,
-  node_policy = NULL
+  node_policy = NULL,
+  probe_concurrency = 1L,
+  probe_cache_seconds = 3600L
 )}\if{html}{\out{</div>}}
 }
 
@@ -148,6 +150,11 @@ current records.}
 
 \item{\code{node_policy}}{Optional data-node cooldown policy from
 \code{FileDownloader$node_policy}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -168,6 +175,8 @@ Enqueue and run aggregation downloads using a FileDownloader.
   service = "HTTPServer",
   probe = TRUE,
   strategy = c("fastest", "first", "stable"),
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
   session_label = NULL,
   run = TRUE,
   ...
@@ -191,6 +200,12 @@ current records.}
 \item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
 
 \item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
 
 \item{\code{session_label}}{Optional download session label.}
 

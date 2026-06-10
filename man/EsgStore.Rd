@@ -554,6 +554,8 @@ Refresh stored ESGF queries and link their current File records.
   session_label = NULL,
   service = "HTTPServer",
   probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
   strategy = c("fastest", "first", "stable"),
   all = TRUE,
   limit = FALSE,
@@ -589,6 +591,13 @@ enqueuing.}
 
 \item{\code{probe}}{Whether to probe candidate URLs before ranking.}
 
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count
+when \code{enqueue = TRUE}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
 \item{\code{strategy}}{Candidate ranking strategy.}
 
 \item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
@@ -613,6 +622,8 @@ Preview a tracked query download without changing the store.
   replica = "auto",
   service = "HTTPServer",
   probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
   strategy = c("fastest", "first", "stable"),
   all = TRUE,
   limit = FALSE,
@@ -632,6 +643,12 @@ history, network policy, and cooldown policy.}
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
 
 \item{\code{service, probe, strategy}}{Download plan arguments.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from \code{downloader} when supplied.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
 
 \item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
 
@@ -658,6 +675,8 @@ Refresh, enqueue, and optionally run downloads for a stored ESGF query.
   session_label = NULL,
   service = "HTTPServer",
   probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
   strategy = c("fastest", "first", "stable"),
   progress = TRUE,
   overwrite = FALSE,
@@ -688,6 +707,12 @@ changing the store, enqueueing, or downloading. Default:
 \item{\code{session_label}}{Optional download session label.}
 
 \item{\code{service, probe, strategy}}{Download plan arguments.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
 
 \item{\code{progress, overwrite, resume}}{Run arguments.}
 
@@ -1002,6 +1027,8 @@ Enqueue and optionally download ESGF file records through the store downloader.
   session_label = NULL,
   service = "HTTPServer",
   probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
   strategy = c("fastest", "first", "stable"),
   progress = TRUE,
   overwrite = FALSE,
@@ -1028,6 +1055,12 @@ If supplied, it is cataloged before the download plan is created.}
 \code{"HTTPServer"}.}
 
 \item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
 
 \item{\code{strategy}}{Candidate ranking strategy.}
 
