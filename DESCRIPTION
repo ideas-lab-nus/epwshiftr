@@ -46,6 +46,7 @@ RoxygenNote: 7.3.3
 Collate:
     'cache.R'
     'cli-download.R'
+    'cli-help.R'
     'cli-launcher.R'
     'cli-parse.R'
     'cli-query.R'

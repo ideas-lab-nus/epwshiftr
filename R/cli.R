@@ -96,9 +96,16 @@ epwshiftr_cli_parse_globals <- function(args) {
 
 epwshiftr_cli_dispatch <- function(parsed) {
     if (isTRUE(parsed$help)) {
-        return(epwshiftr_cli_usage())
+        return(epwshiftr_cli_help(parsed$args))
     }
     args <- parsed$args
+    if (length(args) && identical(args[[1L]], "help")) {
+        return(epwshiftr_cli_help(args[-1L]))
+    }
+    if (length(args) >= 2L && identical(args[[2L]], "help")) {
+        topic <- if (length(args) > 2L) c(args[[1L]], args[-seq_len(2L)]) else args[[1L]]
+        return(epwshiftr_cli_help(topic))
+    }
     if (length(args) < 2L) {
         epwshiftr_cli_usage_abort(epwshiftr_cli_usage())
     }
@@ -159,48 +166,7 @@ epwshiftr_cli_emit_error <- function(message, json = FALSE, quiet = FALSE, statu
 
 
 epwshiftr_cli_usage <- function() {
-    c(
-        "Usage: epwshiftr [--store PATH] [--json] [--quiet] <group> <command> [options]",
-        "",
-        "Commands:",
-        "  epwshiftr query list",
-        "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--dry-run] key=value ...",
-        "  epwshiftr query add --query-file PATH [--label LABEL] [--track]",
-        "  epwshiftr query show <query_id> [--files] [--updates] [--changes]",
-        "  epwshiftr query status [query_id]",
-        "  epwshiftr query files <query_id> [--status STATUS]",
-        "  epwshiftr query updates [query_id] [--latest]",
-        "  epwshiftr query changes [query_id] [--latest] [--update UPDATE_ID] [--type TYPE]",
-        "  epwshiftr query tags [query_id]",
-        "  epwshiftr query track <query_id>",
-        "  epwshiftr query untrack <query_id>",
-        "  epwshiftr query tag <query_id> <tag>... [--replace]",
-        "  epwshiftr query untag <query_id> [tag...]",
-        "  epwshiftr query remove <query_id> [--delete none|orphaned] [--execute]",
-        "  epwshiftr query preview [query_id] [--detail]",
-        "  epwshiftr query update [query_id]",
-        "  epwshiftr download preflight <query_id> [--replica POLICY] [--strategy STRATEGY] [--no-probe]",
-        "  epwshiftr download run <query_id> [--session-label LABEL] [--overwrite] [--no-resume] [--no-progress]",
-        "  epwshiftr download status [--query QUERY_ID] [--session SESSION_ID]",
-        "  epwshiftr download sessions",
-        "  epwshiftr download tasks [--session SESSION_ID] [--status STATUS]",
-        "  epwshiftr download events [--session SESSION_ID] [--task TASK_ID]",
-        "  epwshiftr download resume [--session SESSION_ID] [--task TASK_ID] [--overwrite] [--no-progress]",
-        "  epwshiftr download verify [--session SESSION_ID] [--task TASK_ID]",
-        "  epwshiftr download cancel [--session SESSION_ID] [--task TASK_ID]",
-        "  epwshiftr download nodes [--service HTTPServer]",
-        "  epwshiftr download reset-nodes [--node HOST] [--service HTTPServer] [--execute]",
-        "  epwshiftr download retry [--query QUERY_ID] [--session SESSION_ID] [--status STATUS] [--run]",
-        "  epwshiftr download config show",
-        "  epwshiftr download config set [--workers N] [--timeout SECONDS] [--bandwidth-limit BYTES|none]",
-        "  epwshiftr workflow report [--query QUERY_ID]",
-        "  epwshiftr storage layout show",
-        "  epwshiftr storage layout set --layout flat|dataset|drs|template [--template TEMPLATE]",
-        "  epwshiftr storage report [--detail]",
-        "  epwshiftr storage validate [--query QUERY_ID] [--checksum]",
-        "  epwshiftr storage repair [--execute]",
-        "  epwshiftr storage cleanup [--scope SCOPE] [--older-than SECONDS] [--execute]"
-    )
+    epwshiftr_cli_help()
 }
 
 
