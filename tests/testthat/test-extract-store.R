@@ -347,6 +347,12 @@ test_that("EsgStore downloads tracked query files through downloader", {
     expect_false(is.na(qfiles$local_path[[1L]]))
     expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
     expect_false(is.na(qfiles$local_artifact_id[[1L]]))
+    query_status <- store$query_status(query_id, downloader = dl)
+    expect_equal(query_status$file_total, 1L)
+    expect_equal(query_status$file_current, 1L)
+    expect_equal(query_status$download_done, 1L)
+    expect_equal(query_status$local_available, 1L)
+    expect_true(query_status$complete)
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
 

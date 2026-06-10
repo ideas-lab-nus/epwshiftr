@@ -574,6 +574,40 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # query_status {{{
+        #' @description
+        #' Summarise tracked ESGF query file and download status.
+        #'
+        #' @param query_id Optional stored query ID vector. If `NULL`, all
+        #'        stored ESGF queries are summarised.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #'
+        #' @return A data.table with one row per stored query.
+        query_status = function(query_id = NULL, downloader = NULL) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+
+            queries <- private$select_query_rows(query_id = query_id)
+            if (!is.null(query_id)) {
+                missing <- setdiff(query_id, queries$query_id)
+                if (length(missing)) {
+                    cli::cli_abort("Stored ESGF query ID(s) not found: {.val {missing}}.")
+                }
+            }
+            if (!nrow(queries)) {
+                return(data.table::data.table())
+            }
+
+            links <- private$read_table("esg_query_file")
+            files <- private$read_table("esg_file")
+            tasks <- tryCatch(downloader$tasks(), error = function(e) data.table::data.table())
+            private$summarise_query_status(queries, links, files, tasks)
+        },
+        # }}}
+
         # retry_downloads {{{
         #' @description
         #' Requeue retryable downloader tasks linked to stored query files.
@@ -1577,6 +1611,94 @@ EsgStore <- R6::R6Class(
                 cli::cli_abort("Stored ESGF query {.val {query_id}} was not found.")
             }
             rows[1L]
+        },
+        # }}}
+
+        # summarise_query_status {{{
+        summarise_query_status = function(queries, links, files, tasks) {
+            empty_counts <- stats::setNames(as.list(rep(0L, length(DOWNLOADER_TASK_STATUS))), paste0("download_", DOWNLOADER_TASK_STATUS))
+            rows <- vector("list", nrow(queries))
+            for (i in seq_len(nrow(queries))) {
+                query <- queries[i]
+                qid <- query$query_id[[1L]]
+                q_links <- links[links[["query_id"]] == qid]
+                q_files <- if (nrow(q_links) && nrow(files)) {
+                    merge(q_links, files, by = "file_key", all.x = TRUE, sort = FALSE)
+                } else {
+                    data.table::data.table()
+                }
+                current <- q_files[q_files[["status"]] == "current"]
+
+                local_available <- 0L
+                if (nrow(current) && "local_path" %in% names(current)) {
+                    local_paths <- current$local_path
+                    has_path <- !is.na(local_paths) & nzchar(local_paths)
+                    if (any(has_path)) {
+                        local_available <- sum(file.exists(vapply(
+                            local_paths[has_path],
+                            store_abs_path,
+                            character(1L),
+                            root = private$store_path
+                        )))
+                    }
+                }
+
+                q_tasks <- if (nrow(tasks) && nrow(q_links) && "file_key" %in% names(tasks)) {
+                    tasks[tasks[["file_key"]] %in% q_links$file_key]
+                } else {
+                    data.table::data.table()
+                }
+                if (nrow(q_tasks)) {
+                    data.table::setorderv(q_tasks, intersect(c("file_key", "updated_at", "created_at"), names(q_tasks)))
+                    q_tasks <- q_tasks[, .SD[.N], by = "file_key"]
+                }
+                task_counts <- empty_counts
+                if (nrow(q_tasks)) {
+                    counted <- table(factor(q_tasks$status, levels = DOWNLOADER_TASK_STATUS))
+                    task_counts <- as.list(as.integer(counted))
+                    names(task_counts) <- paste0("download_", DOWNLOADER_TASK_STATUS)
+                }
+
+                bytes_total <- if (nrow(current) && "size" %in% names(current)) {
+                    sum(suppressWarnings(as.numeric(current$size)), na.rm = TRUE)
+                } else {
+                    0
+                }
+                bytes_done <- if (nrow(q_tasks) && "bytes_done" %in% names(q_tasks)) {
+                    sum(suppressWarnings(as.numeric(q_tasks$bytes_done[q_tasks$status %in% c("done", "skipped")])), na.rm = TRUE)
+                } else {
+                    0
+                }
+
+                current_count <- sum(q_links$status == "current", na.rm = TRUE)
+                complete <- current_count > 0L &&
+                    local_available >= current_count &&
+                    sum(unlist(task_counts[c("download_downloading", "download_error", "download_cancelled")])) == 0L
+
+                rows[[i]] <- data.table::as.data.table(c(
+                    list(
+                        query_id = qid,
+                        label = extract_store_na_character(query$label[[1L]]),
+                        tracked = extract_store_is_true(query$tracked[[1L]]),
+                        file_total = nrow(q_links),
+                        file_current = current_count,
+                        file_missing = sum(q_links$status == "missing", na.rm = TRUE),
+                        file_retracted = sum(q_links$status == "retracted", na.rm = TRUE),
+                        file_deprecated = sum(q_links$status == "deprecated", na.rm = TRUE)
+                    ),
+                    task_counts,
+                    list(
+                        local_available = as.integer(local_available),
+                        bytes_total = as.numeric(bytes_total),
+                        bytes_done = as.numeric(bytes_done),
+                        complete = isTRUE(complete),
+                        last_checked_at = query$last_checked_at[[1L]],
+                        updated_at = query$updated_at[[1L]]
+                    )
+                ))
+            }
+
+            data.table::rbindlist(rows, fill = TRUE)
         },
         # }}}
 
