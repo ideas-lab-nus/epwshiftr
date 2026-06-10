@@ -148,6 +148,8 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
         c(
             "store_meta", "artifact", "query_run", "esg_query",
             "esg_file", "esg_query_file", "file_catalog",
+            "esg_query_update", "esg_query_update_file",
+            "esg_query_tag", "esg_query_dependency",
             "extraction_plan", "extraction_result"
         )
     )
@@ -208,6 +210,21 @@ test_that("EsgStore tracks long-lived ESGF queries", {
     expect_invisible(store$track_query(query_id))
     expect_true(store$queries()$tracked[[1L]])
     expect_error(store$track_query("missing-query"), "was not found")
+
+    tags <- store$tag_query(query_id, c("ssp585", "tas"))
+    expect_setequal(tags$tag, c("ssp585", "tas"))
+    expect_identical(store$query_tags(query_id)$query_id[[1L]], query_id)
+    expect_equal(nrow(store$untag_query(query_id, "tas")), 1L)
+
+    child_query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("pr")$
+        limit(1L)
+    child_id <- store$add_query(child_query, label = "child", track = TRUE)
+    edges <- store$require_query(child_id, query_id)
+    expect_equal(edges$query_id[[1L]], child_id)
+    expect_true(child_id %in% store$query_graph(query_id, direction = "children")$query_id)
+    expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
 
 test_that("EsgStore updates tracked queries and links file records", {
@@ -263,6 +280,8 @@ test_that("EsgStore updates tracked queries and links file records", {
 
     links <- store$update_queries()
     expect_equal(nrow(links), 2L)
+    expect_true("update_id" %in% names(links))
+    expect_setequal(links$change_type, "new")
     expect_equal(nrow(store$query_files(query_id, status = "current")), 1L)
     expect_equal(nrow(store$query_files(query_id, status = "retracted")), 1L)
 
@@ -279,6 +298,14 @@ test_that("EsgStore updates tracked queries and links file records", {
     status_by_file <- stats::setNames(links$status, links$file_key)
     expect_identical(status_by_file[["master:CMIP6.mock.master.file-1"]], "current")
     expect_identical(status_by_file[["master:CMIP6.mock.master.file-2"]], "missing")
+    change_by_file <- stats::setNames(links$change_type, links$file_key)
+    expect_identical(change_by_file[["master:CMIP6.mock.master.file-1"]], "current")
+    expect_identical(change_by_file[["master:CMIP6.mock.master.file-2"]], "stale")
+    updates <- store$query_updates(query_id)
+    expect_equal(nrow(updates), 2L)
+    latest <- store$query_updates(query_id, latest = TRUE)
+    expect_equal(latest$stale_count, 1L)
+    expect_equal(nrow(store$query_changes(update_id = latest$update_id, change_type = "stale")), 1L)
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
 
@@ -353,6 +380,12 @@ test_that("EsgStore downloads tracked query files through downloader", {
     expect_equal(query_status$download_done, 1L)
     expect_equal(query_status$local_available, 1L)
     expect_true(query_status$complete)
+    workflow <- store$workflow_status(query_id, downloader = dl)
+    expect_equal(workflow$query_id, query_id)
+    expect_equal(workflow$download_done, 1L)
+    expect_equal(workflow$local_available, 1L)
+    expect_equal(workflow$download_session_id, session_id)
+    expect_equal(workflow$new_count, 1L)
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
 
@@ -471,6 +504,74 @@ test_that("EsgStore catalogs File result records", {
     expect_equal(nrow(artifacts), 1L)
     expect_equal(artifacts$kind, "query")
     expect_true(file.exists(store$artifact_path(artifacts$artifact_id)))
+})
+
+test_that("EsgStore catalogs one active record for duplicate File replicas", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    replica <- extract_store_test_file_docs(
+        opendap_url = "https://replica.example.org/dods/tas.nc",
+        download_url = "https://replica.example.org/fileServer/tas.nc"
+    )
+    replica$id <- "tas-replica|dataset-1"
+    replica$replica <- TRUE
+    replica$data_node <- "replica.example.org"
+
+    master <- extract_store_test_file_docs(
+        opendap_url = "https://master.example.org/dods/tas.nc",
+        download_url = "https://master.example.org/fileServer/tas.nc"
+    )
+    master$id <- "tas-master|dataset-1"
+    master$replica <- FALSE
+    master$data_node <- "master.example.org"
+
+    files <- extract_store_test_result(
+        docs = data.table::rbindlist(list(replica, master), fill = TRUE)
+    )
+    query_id <- store$add_files(files, label = "cmip6 duplicate replica test")
+
+    catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
+    esg_file <- ddb_read_table(priv(store)$conn, "esg_file")
+    links <- ddb_read_table(priv(store)$conn, "esg_query_file")
+
+    expect_equal(nrow(catalog), 1L)
+    expect_equal(nrow(esg_file), 1L)
+    expect_equal(nrow(links), 1L)
+    expect_equal(catalog$query_id, query_id)
+    expect_equal(catalog$data_node, "master.example.org")
+    expect_equal(catalog$url_download, "https://master.example.org/fileServer/tas.nc")
+})
+
+test_that("EsgStore regional plans respect requested variable filters", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    tas <- extract_store_test_file_docs(variable_id = "tas")
+    hurs <- extract_store_test_file_docs(
+        path = "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+        variable_id = "hurs"
+    )
+    files <- extract_store_test_result(docs = data.table::rbindlist(list(tas, hurs), fill = TRUE))
+    query_id <- store$add_files(files, label = "cmip6 multi-variable test")
+
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        variable_id = "tas",
+        nearest = 1L
+    )
+
+    expect_equal(nrow(plan), 1L)
+    expect_equal(plan$variable_id, "tas")
 })
 
 test_that("EsgStore downloads files through downloader and syncs completed assets", {
