@@ -800,6 +800,124 @@ test_that("EsgStore reports and cleans download storage candidates", {
     expect_equal(summary$tmp_file_count, 0L)
 })
 
+test_that("EsgStore validates download file records without modifying the store", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    files <- extract_store_test_result(docs = extract_store_test_file_docs(path = "validate-file.nc"))
+    query_id <- store$add_files(files, label = "validate file test")
+    conn <- priv(store)$conn
+    file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
+
+    local_file <- file.path(store$path, "downloads", "validate-file.nc")
+    artifact_file <- file.path(store$path, "downloads", "artifact-file.nc")
+    untracked_file <- file.path(store$path, "downloads", "untracked-validate.nc")
+    dir.create(dirname(local_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("local placeholder", local_file)
+    writeLines("artifact placeholder", artifact_file)
+    writeLines("untracked placeholder", untracked_file)
+    artifact_id <- store$register_artifact(
+        kind = "netcdf",
+        path = artifact_file,
+        role = "download",
+        project = "CMIP6",
+        query_id = query_id,
+        file_key = file_key
+    )
+
+    rel <- extract_store_rel_path(local_file, store$path)
+    ddb_exec(conn, sprintf(
+        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    ddb_exec(conn, sprintf(
+        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    catalog_before <- ddb_read_table(conn, "file_catalog")
+    artifacts_before <- ddb_read_table(conn, "artifact")
+
+    no_hash <- store$validate_files(query_id = query_id, checksum = FALSE)
+    expect_named(no_hash, c("summary", "files", "artifacts", "untracked", "actions"))
+    expect_equal(no_hash$summary$file_count, 1L)
+    expect_equal(no_hash$summary$bad_size_count, 1L)
+    expect_equal(no_hash$summary$bad_checksum_count, 0L)
+    expect_equal(no_hash$summary$artifact_mismatch_count, 1L)
+    expect_equal(no_hash$summary$untracked_file_count, 1L)
+    expect_true(no_hash$files$exists)
+    expect_false(no_hash$files$size_ok)
+    expect_true(is.na(no_hash$files$checksum_ok))
+    expect_false(no_hash$files$artifact_path_matches)
+    expect_true(extract_store_rel_path(untracked_file, store$path) %in% no_hash$untracked$relative_path)
+
+    with_hash <- store$validate_files(query_id = query_id, checksum = TRUE)
+    expect_equal(with_hash$summary$bad_checksum_count, 1L)
+    expect_false(with_hash$files$checksum_ok)
+    expect_false(is.na(with_hash$files$checksum_actual))
+
+    expect_equal(ddb_read_table(conn, "file_catalog"), catalog_before)
+    expect_equal(ddb_read_table(conn, "artifact"), artifacts_before)
+    expect_true(file.exists(local_file))
+    expect_true(file.exists(artifact_file))
+    expect_true(file.exists(untracked_file))
+})
+
+test_that("EsgStore validates missing local records and layout mismatches", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    files <- extract_store_test_result(docs = extract_store_test_file_docs(path = "layout-target.nc"))
+    query_id <- store$add_files(files, label = "validate layout test")
+    conn <- priv(store)$conn
+    file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
+
+    wrong_file <- file.path(store$path, "downloads", "wrong-layout.nc")
+    dir.create(dirname(wrong_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("layout placeholder", wrong_file)
+    artifact_id <- store$register_artifact(
+        kind = "netcdf",
+        path = wrong_file,
+        role = "download",
+        project = "CMIP6",
+        query_id = query_id,
+        file_key = file_key
+    )
+    rel <- extract_store_rel_path(wrong_file, store$path)
+    ddb_exec(conn, sprintf(
+        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    ddb_exec(conn, sprintf(
+        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+
+    layout <- store$validate_files(query_id = query_id, layout = TRUE)
+    expect_equal(layout$summary$layout_mismatch_count, 1L)
+    expect_true("move_to_layout" %in% layout$actions$action)
+    expect_match(layout$actions[action == "move_to_layout"]$to_path, "downloads/layout-target[.]nc$")
+
+    unlink(wrong_file)
+    missing <- store$validate_files(query_id = query_id, layout = TRUE)
+    expect_equal(missing$summary$missing_file_count, 1L)
+    expect_true(all(c("clear_missing_local_ref", "remove_missing_artifact") %in% missing$actions$action))
+    expect_false(file.exists(wrong_file))
+})
+
 test_that("EsgStore clears missing local download records", {
     skip_if_not_installed("duckdb")
 

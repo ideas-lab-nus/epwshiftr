@@ -59,6 +59,7 @@ Hongyuan Jia
 \item \href{#method-EsgStore-remove_files}{\code{EsgStore$remove_files()}}
 \item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
 \item \href{#method-EsgStore-storage_report}{\code{EsgStore$storage_report()}}
+\item \href{#method-EsgStore-validate_files}{\code{EsgStore$validate_files()}}
 \item \href{#method-EsgStore-cleanup_downloads}{\code{EsgStore$cleanup_downloads()}}
 \item \href{#method-EsgStore-retry_downloads}{\code{EsgStore$retry_downloads()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
@@ -1012,6 +1013,33 @@ files, and cleanup candidates.
 }
 \subsection{Returns}{
 A summary data.table, or a list when \code{detail = TRUE}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-validate_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-validate_files}{}}}
+\subsection{Method \code{validate_files()}}{
+Validate store-managed NetCDF downloads against the manifest.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$validate_files(query_id = NULL, checksum = FALSE, layout = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query IDs to validate. When \code{NULL},
+all known downloaded ESGF files are checked.}
+
+\item{\code{checksum}}{Whether to compute file checksums. Default: \code{FALSE}.}
+
+\item{\code{layout}}{Whether to compare registered files with the current
+download layout policy. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{files}, \code{artifacts}, \code{untracked}, and
+\code{actions} data.tables. The method is read-only.
 }
 }
 \if{html}{\out{<hr>}}

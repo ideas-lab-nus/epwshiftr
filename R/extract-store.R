@@ -1440,6 +1440,28 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # validate_files {{{
+        #' @description
+        #' Validate store-managed NetCDF downloads against the manifest.
+        #'
+        #' @param query_id Optional stored query IDs to validate. When `NULL`,
+        #'        all known downloaded ESGF files are checked.
+        #' @param checksum Whether to compute file checksums. Default: `FALSE`.
+        #' @param layout Whether to compare registered files with the current
+        #'        download layout policy. Default: `TRUE`.
+        #'
+        #' @return A list with `summary`, `files`, `artifacts`, `untracked`, and
+        #'         `actions` data.tables. The method is read-only.
+        validate_files = function(query_id = NULL, checksum = FALSE, layout = TRUE) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_flag(checksum)
+            checkmate::assert_flag(layout)
+
+            private$validate_download_files(query_id = query_id, checksum = checksum, layout = layout)
+        },
+        # }}}
+
         # cleanup_downloads {{{
         #' @description
         #' Report or remove download cleanup candidates.
@@ -3861,6 +3883,486 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # validate_download_files {{{
+        validate_download_files = function(query_id = NULL, checksum = FALSE, layout = TRUE) {
+            catalog <- private$read_table("file_catalog")
+            esg_files <- private$read_table("esg_file")
+            links <- private$read_table("esg_query_file")
+            artifacts <- private$read_table("artifact")
+            artifacts <- artifacts[artifacts[["kind"]] == "netcdf"]
+
+            query_label <- NA_character_
+            if (!is.null(query_id)) {
+                query_label <- paste(query_id, collapse = ",")
+                wanted_query <- query_id
+                link_keys <- if (nrow(links)) {
+                    links[links[["query_id"]] %in% wanted_query]$file_key
+                } else {
+                    character()
+                }
+                catalog <- catalog[catalog[["query_id"]] %in% wanted_query | catalog[["file_key"]] %in% link_keys]
+                esg_files <- esg_files[esg_files[["file_key"]] %in% link_keys]
+                artifact_ids <- unique(c(
+                    catalog$local_artifact_id,
+                    esg_files$local_artifact_id
+                ))
+                artifact_ids <- artifact_ids[!is.na(artifact_ids) & nzchar(artifact_ids)]
+                artifacts <- artifacts[
+                    artifacts[["query_id"]] %in% wanted_query |
+                        artifacts[["file_key"]] %in% link_keys |
+                        artifacts[["artifact_id"]] %in% artifact_ids
+                ]
+            }
+
+            storage <- private$download_storage_report()
+            files <- private$validate_download_file_rows(catalog, esg_files, artifacts, checksum = checksum, layout = layout)
+            artifacts <- private$validate_download_artifact_rows(artifacts, catalog, esg_files)
+            actions <- private$validate_download_actions(files, artifacts)
+            summary <- data.table::data.table(
+                query_id = query_label,
+                file_count = as.integer(nrow(files)),
+                registered_file_count = as.integer(sum(!is.na(files$local_path) & nzchar(files$local_path), na.rm = TRUE)),
+                existing_file_count = as.integer(sum(files$exists %in% TRUE, na.rm = TRUE)),
+                missing_file_count = as.integer(sum(files$missing_local_ref %in% TRUE, na.rm = TRUE)),
+                bad_size_count = as.integer(sum(files$bad_size %in% TRUE, na.rm = TRUE)),
+                bad_checksum_count = as.integer(sum(files$bad_checksum %in% TRUE, na.rm = TRUE)),
+                artifact_mismatch_count = as.integer(sum(files$artifact_mismatch %in% TRUE, na.rm = TRUE)),
+                layout_mismatch_count = as.integer(sum(files$layout_mismatch %in% TRUE, na.rm = TRUE)),
+                untracked_file_count = as.integer(nrow(storage$untracked_files)),
+                action_count = as.integer(nrow(actions))
+            )
+            list(
+                summary = summary[],
+                files = files[],
+                artifacts = artifacts[],
+                untracked = storage$untracked_files[],
+                actions = actions[]
+            )
+        },
+
+        validate_download_file_rows = function(catalog, esg_files, artifacts, checksum = FALSE, layout = TRUE) {
+            catalog <- data.table::as.data.table(catalog)
+            esg_files <- data.table::as.data.table(esg_files)
+            artifacts <- data.table::as.data.table(artifacts)
+            if (!nrow(catalog)) {
+                return(private$validate_download_empty_files())
+            }
+
+            if (nrow(esg_files)) {
+                local_cols <- c("file_key", "local_path", "local_artifact_id")
+                esg_local <- esg_files[, intersect(local_cols, names(esg_files)), with = FALSE]
+                data.table::setnames(
+                    esg_local,
+                    intersect(c("local_path", "local_artifact_id"), names(esg_local)),
+                    paste0("esg_", intersect(c("local_path", "local_artifact_id"), names(esg_local)))
+                )
+                catalog <- merge(catalog, esg_local, by = "file_key", all.x = TRUE, sort = FALSE)
+                if ("esg_local_path" %in% names(catalog)) {
+                    fill <- is.na(catalog$local_path) | !nzchar(catalog$local_path)
+                    catalog$local_path[fill] <- catalog$esg_local_path[fill]
+                }
+                if ("esg_local_artifact_id" %in% names(catalog)) {
+                    fill <- is.na(catalog$local_artifact_id) | !nzchar(catalog$local_artifact_id)
+                    catalog$local_artifact_id[fill] <- catalog$esg_local_artifact_id[fill]
+                }
+            }
+
+            local_path <- extract_store_vector_na_character(catalog$local_path)
+            actual_path <- vapply(local_path, function(path) {
+                if (is.na(path) || !nzchar(path)) {
+                    return(NA_character_)
+                }
+                store_abs_path(path, root = private$store_path)
+            }, character(1L))
+            exists <- !is.na(actual_path) & file.exists(actual_path)
+            size_actual <- rep(NA_real_, nrow(catalog))
+            if (any(exists)) {
+                size_actual[exists] <- as.numeric(file.info(actual_path[exists], extra_cols = FALSE)$size)
+            }
+            size_expected <- suppressWarnings(as.numeric(catalog$size))
+            size_ok <- rep(NA, nrow(catalog))
+            check_size <- exists & !is.na(size_expected)
+            size_ok[check_size] <- size_actual[check_size] == size_expected[check_size]
+
+            checksum_type <- tolower(extract_store_vector_na_character(catalog$checksum_type))
+            checksum_type[!checksum_type %in% c("md5", "sha256")] <- NA_character_
+            checksum_expected <- extract_store_vector_na_character(catalog$checksum)
+            checksum_actual <- rep(NA_character_, nrow(catalog))
+            checksum_ok <- rep(NA, nrow(catalog))
+            if (isTRUE(checksum)) {
+                check_hash <- exists & !is.na(checksum_expected) & nzchar(checksum_expected) & !is.na(checksum_type)
+                if (any(check_hash)) {
+                    checksum_actual[check_hash] <- mapply(
+                        store_hash_file,
+                        actual_path[check_hash],
+                        checksum_type[check_hash],
+                        USE.NAMES = FALSE
+                    )
+                    checksum_ok[check_hash] <- tolower(checksum_actual[check_hash]) == tolower(checksum_expected[check_hash])
+                }
+            }
+
+            expected_path <- rep(NA_character_, nrow(catalog))
+            expected_rel_path <- rep(NA_character_, nrow(catalog))
+            if (isTRUE(layout)) {
+                plan <- private$validation_catalog_download_plan(catalog)
+                if (nrow(plan)) {
+                    idx <- match(catalog$file_key, plan$file_key)
+                    has <- !is.na(idx)
+                    expected_path[has] <- plan$target_path[idx[has]]
+                    expected_rel_path[has] <- vapply(
+                        expected_path[has],
+                        store_rel_path,
+                        character(1L),
+                        root = private$store_path
+                    )
+                }
+            }
+            layout_ok <- rep(NA, nrow(catalog))
+            check_layout <- isTRUE(layout) & exists & !is.na(expected_path) & nzchar(expected_path)
+            if (any(check_layout)) {
+                layout_ok[check_layout] <- store_normalize_path(actual_path[check_layout]) == store_normalize_path(expected_path[check_layout])
+            }
+
+            artifact_id <- extract_store_vector_na_character(catalog$local_artifact_id)
+            artifact_idx <- match(artifact_id, artifacts$artifact_id)
+            artifact_record_exists <- !is.na(artifact_id) & !is.na(artifact_idx)
+            artifact_relative_path <- rep(NA_character_, nrow(catalog))
+            artifact_path <- rep(NA_character_, nrow(catalog))
+            artifact_path_exists <- rep(NA, nrow(catalog))
+            if (any(artifact_record_exists)) {
+                artifact_relative_path[artifact_record_exists] <- artifacts$relative_path[artifact_idx[artifact_record_exists]]
+                artifact_path[artifact_record_exists] <- vapply(
+                    artifact_relative_path[artifact_record_exists],
+                    store_abs_path,
+                    character(1L),
+                    root = private$store_path
+                )
+                artifact_path_exists[artifact_record_exists] <- file.exists(artifact_path[artifact_record_exists])
+            }
+            artifact_path_matches <- rep(NA, nrow(catalog))
+            check_artifact_path <- artifact_record_exists & !is.na(local_path) & nzchar(local_path)
+            artifact_path_matches[check_artifact_path] <- artifact_relative_path[check_artifact_path] == local_path[check_artifact_path]
+
+            missing_local_ref <- !is.na(local_path) & nzchar(local_path) & !exists
+            bad_size <- size_ok %in% FALSE
+            bad_checksum <- checksum_ok %in% FALSE
+            artifact_mismatch <- (!is.na(artifact_id) & nzchar(artifact_id) & !artifact_record_exists) |
+                (artifact_path_matches %in% FALSE)
+            layout_mismatch <- layout_ok %in% FALSE
+            issue <- private$validate_issue_vector(
+                missing_local_ref = missing_local_ref,
+                bad_size = bad_size,
+                bad_checksum = bad_checksum,
+                artifact_mismatch = artifact_mismatch,
+                layout_mismatch = layout_mismatch
+            )
+
+            data.table::data.table(
+                file_key = catalog$file_key,
+                query_id = catalog$query_id,
+                filename = catalog$filename,
+                local_path = local_path,
+                local_artifact_id = artifact_id,
+                actual_path = actual_path,
+                exists = exists,
+                expected_path = expected_path,
+                expected_rel_path = expected_rel_path,
+                size_expected = size_expected,
+                size_actual = size_actual,
+                size_ok = size_ok,
+                checksum_expected = checksum_expected,
+                checksum_type = checksum_type,
+                checksum_actual = checksum_actual,
+                checksum_ok = checksum_ok,
+                artifact_record_exists = artifact_record_exists,
+                artifact_path = artifact_path,
+                artifact_path_exists = artifact_path_exists,
+                artifact_path_matches = artifact_path_matches,
+                layout_ok = layout_ok,
+                missing_local_ref = missing_local_ref,
+                bad_size = bad_size,
+                bad_checksum = bad_checksum,
+                artifact_mismatch = artifact_mismatch,
+                layout_mismatch = layout_mismatch,
+                issue = issue
+            )
+        },
+
+        validate_download_artifact_rows = function(artifacts, catalog, esg_files) {
+            artifacts <- data.table::as.data.table(artifacts)
+            if (!nrow(artifacts)) {
+                return(private$validate_download_empty_artifacts())
+            }
+            catalog <- data.table::as.data.table(catalog)
+            esg_files <- data.table::as.data.table(esg_files)
+            refs <- list()
+            if (nrow(catalog)) {
+                refs$catalog <- data.table::data.table(
+                    source = "catalog",
+                    artifact_id = extract_store_vector_na_character(catalog$local_artifact_id),
+                    file_key = catalog$file_key,
+                    relative_path = extract_store_vector_na_character(catalog$local_path)
+                )
+            }
+            if (nrow(esg_files)) {
+                refs$esg_file <- data.table::data.table(
+                    source = "esg_file",
+                    artifact_id = extract_store_vector_na_character(esg_files$local_artifact_id),
+                    file_key = esg_files$file_key,
+                    relative_path = extract_store_vector_na_character(esg_files$local_path)
+                )
+            }
+            refs <- if (length(refs)) data.table::rbindlist(refs, fill = TRUE) else data.table::data.table()
+            if (nrow(refs)) {
+                refs <- refs[!is.na(artifact_id) & nzchar(artifact_id)]
+            }
+
+            path <- vapply(artifacts$relative_path, store_abs_path, character(1L), root = private$store_path)
+            exists <- file.exists(path)
+            referenced <- if (nrow(refs)) artifacts$artifact_id %in% refs$artifact_id else rep(FALSE, nrow(artifacts))
+            file_key_known <- artifacts$file_key %in% unique(c(catalog$file_key, esg_files$file_key))
+            path_matches <- rep(NA, nrow(artifacts))
+            if (nrow(refs)) {
+                ref_split <- split(refs, refs$artifact_id)
+                for (i in seq_len(nrow(artifacts))) {
+                    ref <- ref_split[[artifacts$artifact_id[[i]]]]
+                    if (is.null(ref) || !nrow(ref)) {
+                        next
+                    }
+                    ref_path <- ref$relative_path[!is.na(ref$relative_path) & nzchar(ref$relative_path)]
+                    if (length(ref_path)) {
+                        path_matches[[i]] <- any(ref_path == artifacts$relative_path[[i]])
+                    }
+                }
+            }
+
+            issue <- private$validate_issue_vector(
+                missing_artifact_file = !exists,
+                unreferenced_artifact = !referenced,
+                unknown_file_key = !file_key_known,
+                artifact_path_mismatch = path_matches %in% FALSE
+            )
+            data.table::data.table(
+                artifact_id = artifacts$artifact_id,
+                file_key = artifacts$file_key,
+                query_id = artifacts$query_id,
+                relative_path = artifacts$relative_path,
+                path = path,
+                exists = exists,
+                size = suppressWarnings(as.numeric(artifacts$size)),
+                checksum = extract_store_vector_na_character(artifacts$checksum),
+                checksum_type = tolower(extract_store_vector_na_character(artifacts$checksum_type)),
+                referenced = referenced,
+                file_key_known = file_key_known,
+                path_matches = path_matches,
+                issue = issue
+            )
+        },
+
+        validate_download_actions = function(files, artifacts) {
+            actions <- list()
+            files <- data.table::as.data.table(files)
+            artifacts <- data.table::as.data.table(artifacts)
+
+            if (nrow(files)) {
+                missing <- files[missing_local_ref %in% TRUE]
+                if (nrow(missing)) {
+                    actions$clear_missing <- data.table::data.table(
+                        action = "clear_missing_local_ref",
+                        file_key = missing$file_key,
+                        artifact_id = missing$local_artifact_id,
+                        from_path = missing$actual_path,
+                        to_path = NA_character_,
+                        relative_path = missing$local_path,
+                        reason = "registered local file is missing",
+                        safe = TRUE
+                    )
+                }
+                move <- files[
+                    layout_mismatch %in% TRUE &
+                        exists %in% TRUE &
+                        !is.na(expected_path) &
+                        nzchar(expected_path)
+                ]
+                if (nrow(move)) {
+                    move[, target_available := !file.exists(expected_path)]
+                    move <- move[target_available %in% TRUE]
+                }
+                if (nrow(move)) {
+                    actions$move_to_layout <- data.table::data.table(
+                        action = "move_to_layout",
+                        file_key = move$file_key,
+                        artifact_id = move$local_artifact_id,
+                        from_path = move$actual_path,
+                        to_path = move$expected_path,
+                        relative_path = move$expected_rel_path,
+                        reason = "registered local file does not match current download layout",
+                        safe = TRUE
+                    )
+                }
+            }
+
+            if (nrow(artifacts)) {
+                missing_artifact <- artifacts[exists %in% FALSE]
+                if (nrow(missing_artifact)) {
+                    actions$missing_artifact <- data.table::data.table(
+                        action = "remove_missing_artifact",
+                        file_key = missing_artifact$file_key,
+                        artifact_id = missing_artifact$artifact_id,
+                        from_path = missing_artifact$path,
+                        to_path = NA_character_,
+                        relative_path = missing_artifact$relative_path,
+                        reason = "artifact file is missing",
+                        safe = TRUE
+                    )
+                }
+                orphan_artifact <- artifacts[referenced %in% FALSE]
+                if (nrow(orphan_artifact)) {
+                    actions$orphan_artifact <- data.table::data.table(
+                        action = "remove_orphan_artifact",
+                        file_key = orphan_artifact$file_key,
+                        artifact_id = orphan_artifact$artifact_id,
+                        from_path = orphan_artifact$path,
+                        to_path = NA_character_,
+                        relative_path = orphan_artifact$relative_path,
+                        reason = "artifact is not referenced by file records",
+                        safe = TRUE
+                    )
+                }
+            }
+
+            if (!length(actions)) {
+                return(private$validate_download_empty_actions())
+            }
+            out <- unique(data.table::rbindlist(actions, fill = TRUE))
+            out[, action_id := vapply(seq_len(.N), function(i) {
+                extract_store_hash(action[[i]], file_key[[i]], artifact_id[[i]], from_path[[i]], to_path[[i]], reason[[i]])
+            }, character(1L))]
+            data.table::setcolorder(out, c(
+                "action_id", "action", "file_key", "artifact_id", "from_path",
+                "to_path", "relative_path", "reason", "safe"
+            ))
+            out[]
+        },
+
+        validation_catalog_download_plan = function(catalog) {
+            catalog <- data.table::as.data.table(catalog)
+            if (!nrow(catalog)) {
+                return(data.table::data.table())
+            }
+            plan <- data.table::data.table(
+                logical_file_id = vapply(
+                    seq_len(nrow(catalog)),
+                    function(i) {
+                        pieces <- c(
+                            extract_store_na_character(catalog$tracking_id[[i]]),
+                            extract_store_na_character(catalog$checksum[[i]]),
+                            extract_store_na_character(catalog$filename[[i]]),
+                            extract_store_na_character(catalog$esgf_id[[i]])
+                        )
+                        paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
+                    },
+                    character(1L)
+                ),
+                file_key = catalog$file_key,
+                esgf_id = catalog$esgf_id,
+                dataset_id = catalog$dataset_id,
+                filename = catalog$filename,
+                subdir = NA_character_,
+                checksum = catalog$checksum,
+                checksum_type = catalog$checksum_type,
+                size = suppressWarnings(as.numeric(catalog$size)),
+                url = catalog$url_download,
+                service = "HTTPServer",
+                data_node = catalog$data_node,
+                priority = seq_len(nrow(catalog)),
+                probe_latency = NA_real_,
+                probe_throughput = NA_real_
+            )
+            private$apply_download_layout(plan, catalog)
+        },
+
+        validate_issue_vector = function(...) {
+            flags <- list(...)
+            n <- if (length(flags)) length(flags[[1L]]) else 0L
+            if (!n) {
+                return(character())
+            }
+            vapply(seq_len(n), function(i) {
+                hit <- names(flags)[vapply(flags, function(x) x[[i]] %in% TRUE, logical(1L))]
+                if (!length(hit)) {
+                    return(NA_character_)
+                }
+                paste(hit, collapse = ",")
+            }, character(1L))
+        },
+
+        validate_download_empty_files = function() {
+            data.table::data.table(
+                file_key = character(),
+                query_id = character(),
+                filename = character(),
+                local_path = character(),
+                local_artifact_id = character(),
+                actual_path = character(),
+                exists = logical(),
+                expected_path = character(),
+                expected_rel_path = character(),
+                size_expected = numeric(),
+                size_actual = numeric(),
+                size_ok = logical(),
+                checksum_expected = character(),
+                checksum_type = character(),
+                checksum_actual = character(),
+                checksum_ok = logical(),
+                artifact_record_exists = logical(),
+                artifact_path = character(),
+                artifact_path_exists = logical(),
+                artifact_path_matches = logical(),
+                layout_ok = logical(),
+                missing_local_ref = logical(),
+                bad_size = logical(),
+                bad_checksum = logical(),
+                artifact_mismatch = logical(),
+                layout_mismatch = logical(),
+                issue = character()
+            )
+        },
+
+        validate_download_empty_artifacts = function() {
+            data.table::data.table(
+                artifact_id = character(),
+                file_key = character(),
+                query_id = character(),
+                relative_path = character(),
+                path = character(),
+                exists = logical(),
+                size = numeric(),
+                checksum = character(),
+                checksum_type = character(),
+                referenced = logical(),
+                file_key_known = logical(),
+                path_matches = logical(),
+                issue = character()
+            )
+        },
+
+        validate_download_empty_actions = function() {
+            data.table::data.table(
+                action_id = character(),
+                action = character(),
+                file_key = character(),
+                artifact_id = character(),
+                from_path = character(),
+                to_path = character(),
+                relative_path = character(),
+                reason = character(),
+                safe = logical()
+            )
+        },
+        # }}}
+
         # download_storage_report {{{
         download_storage_report = function() {
             download_files <- private$list_store_files(private$download_dir)
@@ -4727,6 +5229,15 @@ extract_store_na_character <- function(x) {
     }
 
     as.character(x[[1L]])
+}
+
+extract_store_vector_na_character <- function(x) {
+    if (is.null(x)) {
+        return(character())
+    }
+    x <- as.character(x)
+    x[is.na(x)] <- NA_character_
+    x
 }
 
 extract_store_is_true <- function(x) {
