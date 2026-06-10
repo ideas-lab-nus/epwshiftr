@@ -137,7 +137,8 @@ Build a persistent downloader plan for file records.
   strategy = c("fastest", "first", "stable"),
   all = TRUE,
   node_stats = NULL,
-  network_policy = NULL
+  network_policy = NULL,
+  node_policy = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -159,6 +160,9 @@ Build a persistent downloader plan for file records.
 
 \item{\code{network_policy}}{Optional network options from
 \code{FileDownloader$network_policy}.}
+
+\item{\code{node_policy}}{Optional data-node cooldown policy from
+\code{FileDownloader$node_policy}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -202,7 +206,8 @@ Select the preferred candidate URL per logical file.
   probe = TRUE,
   service = "HTTPServer",
   node_stats = NULL,
-  network_policy = NULL
+  network_policy = NULL,
+  node_policy = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -221,6 +226,9 @@ Select the preferred candidate URL per logical file.
 
 \item{\code{network_policy}}{Optional network options from
 \code{FileDownloader$network_policy}.}
+
+\item{\code{node_policy}}{Optional data-node cooldown policy from
+\code{FileDownloader$node_policy}.}
 }
 \if{html}{\out{</div>}}
 }

@@ -38,6 +38,7 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$n_workers" %in% downloader_paths)
     expect_true("$ssl_verifypeer" %in% downloader_paths)
     expect_true("$connect_timeout" %in% downloader_paths)
+    expect_true("$node_policy$cooldown_after_failures" %in% downloader_paths)
 })
 
 test_that("downloader config schema validates persistent downloader config", {
@@ -53,7 +54,13 @@ test_that("downloader config schema validates persistent downloader config", {
         connect_timeout = 5L,
         useragent = "epwshiftr-test",
         cleanup = TRUE,
-        n_workers = 0L
+        n_workers = 0L,
+        node_policy = list(
+            cooldown_after_failures = 3L,
+            cooldown_seconds = 3600L,
+            history_ttl_seconds = 14L * 24L * 3600L,
+            min_attempts = 2L
+        )
     )
 
     expect_true(schema_validate(SCHEMA_DOWNLOADER_CONFIG, config, mode = "test", name = "downloader-config"))

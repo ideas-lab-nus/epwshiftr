@@ -106,6 +106,41 @@
         "kind": "count",
         "positive": false
       }
+    },
+    "node_policy": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "must.include": ["cooldown_after_failures", "cooldown_seconds", "history_ttl_seconds", "min_attempts"]
+      },
+      "fields": {
+        "cooldown_after_failures": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "cooldown_seconds": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "history_ttl_seconds": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "min_attempts": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        }
+      }
     }
   }
 }

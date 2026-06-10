@@ -131,6 +131,8 @@ Hongyuan Jia
 
 \item{\code{network_policy}}{Network options passed to libcurl.}
 
+\item{\code{node_policy}}{Data-node cooldown and ranking policy.}
+
 \item{\code{n_workers}}{Number of parallel workers}
 
 \item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
@@ -156,6 +158,8 @@ Hongyuan Jia
 \item \href{#method-FileDownloader-on}{\code{FileDownloader$on()}}
 \item \href{#method-FileDownloader-off}{\code{FileDownloader$off()}}
 \item \href{#method-FileDownloader-data_nodes}{\code{FileDownloader$data_nodes()}}
+\item \href{#method-FileDownloader-reset_data_nodes}{\code{FileDownloader$reset_data_nodes()}}
+\item \href{#method-FileDownloader-record_probes}{\code{FileDownloader$record_probes()}}
 \item \href{#method-FileDownloader-retry}{\code{FileDownloader$retry()}}
 \item \href{#method-FileDownloader-cancel}{\code{FileDownloader$cancel()}}
 \item \href{#method-FileDownloader-resume}{\code{FileDownloader$resume()}}
@@ -188,6 +192,7 @@ Create a new FileDownloader object
   useragent = NULL,
   cleanup = TRUE,
   n_workers = 4L,
+  node_policy = NULL,
   manifest = NULL,
   config = NULL
 )}\if{html}{\out{</div>}}
@@ -227,6 +232,9 @@ files. Default: \code{TRUE}.}
 \item{\code{n_workers}}{A non-negative integer specifying the number of parallel workers
 for async downloads. If \code{0}, async downloads will fallback to synchronous mode.
 Default: \code{4L}.}
+
+\item{\code{node_policy}}{A list controlling historical data-node cooldown
+and ranking. Missing fields use conservative defaults.}
 
 \item{\code{manifest}}{Optional DuckDB manifest path for persistent
 sessions, tasks, candidate URLs, and events. If \code{NULL}, only
@@ -602,6 +610,50 @@ Return historical data node download performance.
 }
 \subsection{Returns}{
 A data.table of data node performance records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-reset_data_nodes"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-reset_data_nodes}{}}}
+\subsection{Method \code{reset_data_nodes()}}{
+Reset historical data-node health records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$reset_data_nodes(data_node = NULL, service = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{data_node}}{Optional data-node host to reset.}
+
+\item{\code{service}}{Optional ESGF service filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The remaining data-node records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-record_probes"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-record_probes}{}}}
+\subsection{Method \code{record_probes()}}{
+Record URL probe outcomes from a download plan into node history.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$record_probes(plan, probed = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{plan}}{A download plan returned by \verb{$download_plan()}.}
+
+\item{\code{probed}}{Whether \code{probe = TRUE} was used to create the plan.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The current data-node records.
 }
 }
 \if{html}{\out{<hr>}}

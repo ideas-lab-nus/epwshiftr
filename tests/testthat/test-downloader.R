@@ -10,6 +10,7 @@ test_that("FileDownloader can be created", {
     expect_null(dl$network_policy$proxy)
     expect_null(dl$network_policy$connect_timeout)
     expect_null(dl$network_policy$useragent)
+    expect_equal(dl$node_policy$cooldown_after_failures, 3L)
 
     temp_dir <- tempdir()
     temp <- file.path(temp_dir, ".tmp_test")
@@ -61,6 +62,12 @@ test_that("FileDownloader persists config and manifest state", {
         ssl_verifypeer = FALSE,
         connect_timeout = 2L,
         useragent = "epwshiftr-test",
+        node_policy = list(
+            cooldown_after_failures = 1L,
+            cooldown_seconds = 60L,
+            history_ttl_seconds = 600L,
+            min_attempts = 1L
+        ),
         n_workers = 0L
     )
 
@@ -100,6 +107,8 @@ test_that("FileDownloader persists config and manifest state", {
     expect_identical(restored$network_policy$ssl_verifypeer, FALSE)
     expect_equal(restored$network_policy$connect_timeout, 2L)
     expect_equal(restored$network_policy$useragent, "epwshiftr-test")
+    expect_equal(restored$node_policy$cooldown_after_failures, 1L)
+    expect_equal(restored$node_policy$cooldown_seconds, 60L)
     expect_equal(restored$tasks(session_id = session_id)$status, "done")
 
     rm(dl, restored)
@@ -442,6 +451,46 @@ test_that("FileDownloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
 
+test_that("FileDownloader records probe outcomes and resets data node health", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    dl <- FileDownloader$new(
+        dest = file.path(root, "downloads"),
+        temp = file.path(root, "tmp"),
+        manifest = manifest,
+        n_workers = 0L,
+        node_policy = list(
+            cooldown_after_failures = 1L,
+            cooldown_seconds = 60L,
+            history_ttl_seconds = 3600L,
+            min_attempts = 1L
+        )
+    )
+    plan <- data.table::data.table(
+        logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
+        filename = c("ok.nc", "fail.nc"),
+        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        service = "HTTPServer",
+        data_node = c("ok.example.org", "fail.example.org"),
+        priority = c(1L, 1L),
+        probe_latency = c(0.2, NA_real_),
+        probe_throughput = NA_real_
+    )
+
+    nodes <- dl$record_probes(plan, probed = TRUE)
+    expect_equal(nodes[data_node == "ok.example.org"]$probe_success_count, 1L)
+    expect_equal(nodes[data_node == "fail.example.org"]$probe_failure_count, 1L)
+    expect_false(is.na(nodes[data_node == "fail.example.org"]$cooldown_until))
+
+    remaining <- dl$reset_data_nodes(data_node = "fail.example.org")
+    expect_false("fail.example.org" %in% remaining$data_node)
+    expect_true("ok.example.org" %in% remaining$data_node)
+})
+
 test_that("FileDownloader exposes persistent events and callbacks", {
     skip_if_not_installed("duckdb")
 
@@ -655,6 +704,34 @@ test_that("FileDownloader respects overwrite parameter with local files", {
     expect_equal(mtime1, mtime2)
 
     unlink(temp_dir, recursive = TRUE)
+})
+
+test_that("FileDownloader restarts partial downloads when Range resume is unsupported", {
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    dir.create(temp, recursive = TRUE)
+
+    src <- file.path(root, "source.txt")
+    writeLines("complete content", src)
+    tmp_id <- "range-restart"
+    writeLines("stale partial", file.path(temp, paste0(tmp_id, ".part")))
+
+    dl <- FileDownloader$new(dest = dest, temp = temp, retries = 1L, n_workers = 0L)
+    testthat::local_mocked_bindings(
+        download_resume_supported = function(...) FALSE,
+        .package = "epwshiftr"
+    )
+    path <- dl$download(
+        paste0("file://", normalizePath(src, winslash = "/")),
+        filename = "source.txt",
+        progress = FALSE,
+        .tmp_id = tmp_id
+    )
+
+    expect_equal(readLines(path), "complete content")
+    expect_false(file.exists(file.path(temp, paste0(tmp_id, ".part"))))
 })
 # }}}
 

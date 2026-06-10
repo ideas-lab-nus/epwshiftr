@@ -1028,18 +1028,38 @@ query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
     list(latency = as.numeric(difftime(Sys.time(), start, units = "secs")), throughput = NA_real_)
 }
 
-query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer") {
+query_result_normalize_node_policy <- function(node_policy = NULL) {
+    if (exists("download_node_policy_defaults", mode = "function")) {
+        return(download_node_policy_defaults(node_policy))
+    }
+    if (is.null(node_policy)) {
+        return(list(history_ttl_seconds = 14L * 24L * 3600L))
+    }
+    node_policy
+}
+
+query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer", node_policy = NULL) {
     if (is.null(node_stats)) {
         return(NULL)
     }
+    node_policy <- query_result_normalize_node_policy(node_policy)
     stats <- data.table::as.data.table(node_stats)
     required <- c("data_node", "service", "success_count", "failure_count", "avg_latency")
     if (!all(required %in% names(stats))) {
         return(NULL)
     }
-    stats <- stats[stats[["service"]] == service]
+    wanted_service <- service
+    stats <- stats[stats[["service"]] == wanted_service]
     if (!nrow(stats)) {
         return(NULL)
+    }
+    if ("updated_at" %in% names(stats) && !is.null(node_policy$history_ttl_seconds)) {
+        updated_at <- as.POSIXct(stats$updated_at, tz = "UTC")
+        fresh <- is.na(updated_at) | updated_at >= Sys.time() - node_policy$history_ttl_seconds
+        stats <- stats[fresh]
+        if (!nrow(stats)) {
+            return(NULL)
+        }
     }
     stats[, node_success_count := suppressWarnings(as.integer(success_count))]
     stats[, node_failure_count := suppressWarnings(as.integer(failure_count))]
@@ -1052,6 +1072,25 @@ query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer"
         NA_real_
     )]
     stats[, node_avg_latency := suppressWarnings(as.numeric(avg_latency))]
+    if ("probe_success_count" %in% names(stats)) {
+        stats[, node_probe_success_count := suppressWarnings(as.integer(probe_success_count))]
+        stats[is.na(node_probe_success_count), node_probe_success_count := 0L]
+    } else {
+        stats[, node_probe_success_count := NA_integer_]
+    }
+    if ("probe_failure_count" %in% names(stats)) {
+        stats[, node_probe_failure_count := suppressWarnings(as.integer(probe_failure_count))]
+        stats[is.na(node_probe_failure_count), node_probe_failure_count := 0L]
+    } else {
+        stats[, node_probe_failure_count := NA_integer_]
+    }
+    if ("cooldown_until" %in% names(stats)) {
+        stats[, node_cooldown_until := as.POSIXct(cooldown_until, tz = "UTC")]
+        stats[, node_is_cooling_down := !is.na(node_cooldown_until) & node_cooldown_until > Sys.time()]
+    } else {
+        stats[, node_cooldown_until := as.POSIXct(NA)]
+        stats[, node_is_cooling_down := FALSE]
+    }
     stats[, .(
         data_node,
         service,
@@ -1059,29 +1098,44 @@ query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer"
         node_failure_count,
         node_attempt_count,
         node_success_rate,
-        node_avg_latency
+        node_avg_latency,
+        node_probe_success_count,
+        node_probe_failure_count,
+        node_cooldown_until,
+        node_is_cooling_down
     )]
 }
 
-query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServer") {
-    stats <- query_result_normalize_node_stats(node_stats, service = service)
+query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServer", node_policy = NULL) {
+    stats <- query_result_normalize_node_stats(node_stats, service = service, node_policy = node_policy)
     if (is.null(stats) || !nrow(plan)) {
         plan[, `:=`(
             node_success_count = NA_integer_,
             node_failure_count = NA_integer_,
             node_attempt_count = NA_integer_,
             node_success_rate = NA_real_,
-            node_avg_latency = NA_real_
+            node_avg_latency = NA_real_,
+            node_probe_success_count = NA_integer_,
+            node_probe_failure_count = NA_integer_,
+            node_cooldown_until = as.POSIXct(NA),
+            node_is_cooling_down = FALSE,
+            node_cooldown_rank = 0L
         )]
         return(plan[])
     }
     out <- merge(plan, stats, by = c("data_node", "service"), all.x = TRUE, sort = FALSE)
+    out[is.na(node_is_cooling_down), node_is_cooling_down := FALSE]
+    out[, node_cooldown_rank := data.table::fifelse(node_is_cooling_down, 1L, 0L)]
+    out[, all_candidates_cooling := all(node_cooldown_rank == 1L), by = "logical_file_id"]
+    out[all_candidates_cooling %in% TRUE, node_cooldown_rank := 0L]
+    out[, all_candidates_cooling := NULL]
     out[]
 }
 
 query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE,
                                        strategy = c("fastest", "first", "stable"),
-                                       node_stats = NULL, network_policy = NULL) {
+                                       node_stats = NULL, network_policy = NULL,
+                                       node_policy = NULL) {
     strategy <- match.arg(strategy)
     checkmate::assert_string(service)
     checkmate::assert_flag(probe)
@@ -1120,22 +1174,22 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         plan[, probe_latency := vapply(probes, `[[`, numeric(1L), "latency")]
         plan[, probe_throughput := vapply(probes, `[[`, numeric(1L), "throughput")]
     }
-    plan <- query_result_apply_node_stats(plan, node_stats = node_stats, service = service)
+    plan <- query_result_apply_node_stats(plan, node_stats = node_stats, service = service, node_policy = node_policy)
     if (identical(strategy, "fastest")) {
         plan[, probe_missing := is.na(probe_latency)]
         plan[, node_missing := is.na(node_success_rate)]
         data.table::setorderv(
             plan,
-            c("logical_file_id", "probe_missing", "probe_latency", "node_missing", "node_success_rate", "node_avg_latency", "priority"),
-            c(1L, 1L, 1L, 1L, -1L, 1L, 1L)
+            c("logical_file_id", "node_cooldown_rank", "probe_missing", "probe_latency", "node_missing", "node_success_rate", "node_avg_latency", "priority"),
+            c(1L, 1L, 1L, 1L, 1L, -1L, 1L, 1L)
         )
         plan[, c("probe_missing", "node_missing") := NULL]
     } else if (identical(strategy, "stable")) {
         plan[, node_missing := is.na(node_success_rate)]
         data.table::setorderv(
             plan,
-            c("logical_file_id", "node_missing", "node_success_rate", "data_node", "url", "priority"),
-            c(1L, 1L, -1L, 1L, 1L, 1L)
+            c("logical_file_id", "node_cooldown_rank", "node_missing", "node_success_rate", "data_node", "url", "priority"),
+            c(1L, 1L, 1L, -1L, 1L, 1L, 1L)
         )
         plan[, node_missing := NULL]
     } else {
@@ -1767,11 +1821,14 @@ EsgResultFile <- R6::R6Class(
         #'        `FileDownloader$data_nodes()`.
         #' @param network_policy Optional network options from
         #'        `FileDownloader$network_policy`.
+        #' @param node_policy Optional data-node cooldown policy from
+        #'        `FileDownloader$node_policy`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("auto", "current"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
-                                 all = TRUE, node_stats = NULL, network_policy = NULL) {
+                                 all = TRUE, node_stats = NULL, network_policy = NULL,
+                                 node_policy = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             target <- if (identical(replica, "auto")) {
@@ -1785,7 +1842,8 @@ EsgResultFile <- R6::R6Class(
                 probe = probe,
                 strategy = strategy,
                 node_stats = node_stats,
-                network_policy = network_policy
+                network_policy = network_policy,
+                node_policy = node_policy
             )
         },
         # }}}
@@ -1818,11 +1876,13 @@ EsgResultFile <- R6::R6Class(
         #'        `FileDownloader$data_nodes()`.
         #' @param network_policy Optional network options from
         #'        `FileDownloader$network_policy`.
+        #' @param node_policy Optional data-node cooldown policy from
+        #'        `FileDownloader$node_policy`.
         #'
         #' @return A data.table with one selected candidate per logical file.
         select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE,
                                   service = "HTTPServer", node_stats = NULL,
-                                  network_policy = NULL) {
+                                  network_policy = NULL, node_policy = NULL) {
             strategy <- match.arg(strategy)
             plan <- self$download_plan(
                 replica = "auto",
@@ -1830,7 +1890,8 @@ EsgResultFile <- R6::R6Class(
                 probe = probe,
                 strategy = strategy,
                 node_stats = node_stats,
-                network_policy = network_policy
+                network_policy = network_policy,
+                node_policy = node_policy
             )
             if (!nrow(plan)) {
                 return(plan)
@@ -1872,14 +1933,17 @@ EsgResultFile <- R6::R6Class(
             }
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
+            node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
                 node_stats = node_stats,
-                network_policy = network_policy
+                network_policy = network_policy,
+                node_policy = node_policy
             )
+            tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
                 downloader$run(session_id = session_id, ...)
@@ -2227,11 +2291,14 @@ EsgResultAggregation <- R6::R6Class(
         #'        `FileDownloader$data_nodes()`.
         #' @param network_policy Optional network options from
         #'        `FileDownloader$network_policy`.
+        #' @param node_policy Optional data-node cooldown policy from
+        #'        `FileDownloader$node_policy`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("current", "auto"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
-                                 all = TRUE, node_stats = NULL, network_policy = NULL) {
+                                 all = TRUE, node_stats = NULL, network_policy = NULL,
+                                 node_policy = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             query_result_download_plan(
@@ -2240,7 +2307,8 @@ EsgResultAggregation <- R6::R6Class(
                 probe = probe,
                 strategy = strategy,
                 node_stats = node_stats,
-                network_policy = network_policy
+                network_policy = network_policy,
+                node_policy = node_policy
             )
         },
         # }}}
@@ -2278,14 +2346,17 @@ EsgResultAggregation <- R6::R6Class(
             }
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
+            node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
                 node_stats = node_stats,
-                network_policy = network_policy
+                network_policy = network_policy,
+                node_policy = node_policy
             )
+            tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
                 downloader$run(session_id = session_id, ...)

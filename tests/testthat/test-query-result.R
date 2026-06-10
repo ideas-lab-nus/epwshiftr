@@ -667,7 +667,9 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
             "checksum_type", "size", "url", "service", "data_node",
             "priority", "probe_latency", "probe_throughput",
             "node_success_count", "node_failure_count",
-            "node_attempt_count", "node_success_rate", "node_avg_latency"
+            "node_attempt_count", "node_success_rate", "node_avg_latency",
+            "node_probe_success_count", "node_probe_failure_count",
+            "node_cooldown_until", "node_is_cooling_down", "node_cooldown_rank"
         )
     )
     expect_identical(plan$logical_file_id, "master:master-file-1")
@@ -713,6 +715,49 @@ test_that("download_plan uses data node history to rank replica candidates", {
     expect_identical(plan$data_node, c("fast.example.org", "slow.example.org"))
     expect_equal(plan$priority, c(1L, 2L))
     expect_equal(plan$node_success_rate, c(1, 0.1))
+})
+
+test_that("download_plan ranks cooling data nodes after available candidates", {
+    docs <- data.table::rbindlist(list(
+        query_result_test_file_docs("https://cooling.example.org/file.nc|application/netcdf|HTTPServer"),
+        query_result_test_file_docs("https://ready.example.org/file.nc|application/netcdf|HTTPServer")
+    ), fill = TRUE)
+    docs$id <- c("file-cooling", "file-ready")
+    docs$data_node <- c("cooling.example.org", "ready.example.org")
+    docs$master_id <- "master-file-cooldown"
+    docs$tracking_id <- "hdl:21.14100/mock-file-cooldown"
+
+    files <- query_result_test_object("File", docs, query_result_test_params("File"))
+    node_stats <- data.table::data.table(
+        data_node = c("cooling.example.org", "ready.example.org"),
+        service = "HTTPServer",
+        success_count = c(10L, 1L),
+        failure_count = c(0L, 0L),
+        avg_latency = c(0.1, 5),
+        probe_success_count = c(0L, 0L),
+        probe_failure_count = c(3L, 0L),
+        cooldown_until = c(Sys.time() + 3600, as.POSIXct(NA)),
+        updated_at = Sys.time()
+    )
+
+    plan <- files$download_plan(
+        replica = "current",
+        probe = FALSE,
+        strategy = "fastest",
+        node_stats = node_stats
+    )
+    expect_identical(plan$data_node, c("ready.example.org", "cooling.example.org"))
+    expect_equal(plan$node_cooldown_rank, c(0L, 1L))
+
+    all_cooling <- node_stats
+    all_cooling$cooldown_until <- Sys.time() + 3600
+    plan <- files$download_plan(
+        replica = "current",
+        probe = FALSE,
+        strategy = "fastest",
+        node_stats = all_cooling
+    )
+    expect_true(all(plan$node_cooldown_rank == 0L))
 })
 
 test_that("open_dataset fallback behavior is explicit before side effects", {

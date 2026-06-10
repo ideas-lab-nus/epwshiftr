@@ -531,6 +531,73 @@ ddb_literal <- function(conn, x) {
 }
 # }}}
 
+# manifest_lock {{{
+manifest_lock_path <- function(path) {
+    paste0(normalizePath(path, mustWork = FALSE, winslash = "/"), ".lock")
+}
+
+manifest_lock_metadata <- function(lock_dir) {
+    file.path(lock_dir, "owner.json")
+}
+
+manifest_lock_stale <- function(lock_dir, stale_after) {
+    if (!dir.exists(lock_dir)) {
+        return(FALSE)
+    }
+    info <- file.info(lock_dir, extra_cols = FALSE)
+    if (is.na(info$mtime)) {
+        return(TRUE)
+    }
+    age <- as.numeric(difftime(Sys.time(), info$mtime, units = "secs"))
+    is.finite(age) && age > stale_after
+}
+
+manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
+    lock_dir <- manifest_lock_path(path)
+    checkmate::assert_count(timeout, positive = FALSE)
+    checkmate::assert_count(stale_after, positive = TRUE)
+    started <- Sys.time()
+
+    repeat {
+        ok <- dir.create(lock_dir, showWarnings = FALSE)
+        if (isTRUE(ok)) {
+            meta <- list(
+                pid = Sys.getpid(),
+                hostname = unname(Sys.info()[["nodename"]]),
+                created_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+            )
+            try(
+                jsonlite::write_json(meta, manifest_lock_metadata(lock_dir), auto_unbox = TRUE, pretty = TRUE),
+                silent = TRUE
+            )
+            return(function() {
+                if (dir.exists(lock_dir)) {
+                    unlink(lock_dir, recursive = TRUE, force = TRUE)
+                }
+                invisible(NULL)
+            })
+        }
+
+        if (manifest_lock_stale(lock_dir, stale_after)) {
+            unlink(lock_dir, recursive = TRUE, force = TRUE)
+            next
+        }
+
+        elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+        if (elapsed >= timeout) {
+            cli::cli_abort("Manifest is locked by another process: {.path {lock_dir}}.")
+        }
+        Sys.sleep(min(0.2, max(0.01, timeout - elapsed)))
+    }
+}
+
+manifest_with_lock <- function(path, expr, timeout = 30, stale_after = 24 * 3600) {
+    release <- manifest_acquire_lock(path, timeout = timeout, stale_after = stale_after)
+    on.exit(release(), add = TRUE)
+    force(expr)
+}
+# }}}
+
 # write_parquet_file {{{
 write_parquet_file <- function(dt, path) {
     checkmate::assert_data_frame(dt)
