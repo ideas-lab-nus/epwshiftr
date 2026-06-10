@@ -2082,16 +2082,48 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 )
             ")
             private$migrate_manifest_schema()
+            invisible(NULL)
+        },
+
+        migrate_manifest_schema = function() {
+            current <- private$manifest_schema_version()
+            private$migrate_manifest_schema_to_1(current)
+            private$set_manifest_schema_version(DOWNLOADER_SCHEMA_VERSION)
+            invisible(NULL)
+        },
+
+        manifest_schema_version = function() {
+            meta <- tryCatch(private$read_table("download_meta"), error = function(e) data.table::data.table())
+            if (!nrow(meta)) {
+                return(NA_character_)
+            }
+            row <- meta[meta[["key"]] == "schema_version"]
+            if (!nrow(row)) {
+                return(NA_character_)
+            }
+            version <- as.character(row$value[[1L]])
+            if (is.na(version) || !nzchar(version)) NA_character_ else version
+        },
+
+        set_manifest_schema_version = function(version) {
             private$replace_rows("download_meta", data.frame(
                 key = "schema_version",
-                value = DOWNLOADER_SCHEMA_VERSION,
+                value = version,
                 updated_at = download_now(),
                 stringsAsFactors = FALSE
             ), "key")
             invisible(NULL)
         },
 
-        migrate_manifest_schema = function() {
+        migrate_manifest_schema_to_1 = function(current) {
+            if (!is.na(current)) {
+                cmp <- tryCatch(utils::compareVersion(current, DOWNLOADER_SCHEMA_VERSION), error = function(e) -1L)
+                if (cmp > 0L) {
+                    cli::cli_abort(
+                        "Downloader manifest schema version {.val {current}} is newer than this package supports ({.val {DOWNLOADER_SCHEMA_VERSION}})."
+                    )
+                }
+            }
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_success_count INTEGER")
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_failure_count INTEGER")
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS last_probe_at TIMESTAMP")

@@ -121,6 +121,43 @@ test_that("FileDownloader persists config and manifest state", {
     )
 })
 
+test_that("FileDownloader migrates older manifests to the current schema version", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    dl <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    rm(dl)
+    gc()
+
+    conn <- ddb_connect(manifest, read_only = FALSE)
+    on.exit(if (!is.null(conn) && ddb_is_valid(conn)) ddb_disconnect(conn, shutdown = TRUE), add = TRUE)
+    ddb_exec(conn, "DELETE FROM download_meta WHERE key = 'schema_version'")
+    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_success_count")
+    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_failure_count")
+    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS last_probe_at")
+    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS cooldown_until")
+    ddb_disconnect(conn, shutdown = TRUE)
+    conn <- NULL
+
+    restored <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    rm(restored)
+    gc()
+
+    conn <- ddb_connect(manifest, read_only = TRUE)
+    meta <- ddb_read_table(conn, "download_meta")
+    nodes <- ddb_read_table(conn, "download_node")
+    ddb_disconnect(conn, shutdown = TRUE)
+    conn <- NULL
+
+    expect_equal(meta[meta$key == "schema_version", "value", drop = TRUE], DOWNLOADER_SCHEMA_VERSION)
+    expect_true(all(c("probe_success_count", "probe_failure_count", "last_probe_at", "cooldown_until") %in% names(nodes)))
+})
+
 test_that("FileDownloader exports and imports persistent manifests", {
     skip_if_not_installed("duckdb")
 
