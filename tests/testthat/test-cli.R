@@ -86,9 +86,29 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_match(bad_help$error, "Unknown help topic")
     expect_false(dir.exists(missing_dir))
 
+    doctor_help <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "doctor", "--help"))
+    expect_equal(doctor_help$status, 0L)
+    expect_match(doctor_help$result[[1L]], "Usage: epwshiftr doctor")
+    expect_false(dir.exists(missing_dir))
+
+    missing_doctor <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "doctor"))
+    expect_equal(missing_doctor$status, 0L)
+    expect_named(missing_doctor$result, c("summary", "checks"))
+    expect_true(any(missing_doctor$result$checks$check == "store_path"))
+    expect_false(dir.exists(missing_dir))
+
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
+    store$downloader(n_workers = 0L)
+
+    doctor <- epwshiftr_cli(c("--quiet", "--store", dir, "doctor"))
+    expect_equal(doctor$status, 0L)
+    expect_named(doctor$result, c("summary", "checks"))
+    expect_true(all(c("store_manifest", "store_schema", "downloader_manifest", "downloader_schema", "index_node") %in% doctor$result$checks$check))
+    expect_equal(doctor$result$checks$status[doctor$result$checks$check == "store_manifest"], "ok")
+    expect_equal(doctor$result$checks$status[doctor$result$checks$check == "downloader_manifest"], "ok")
+
     query_id <- store$add_query(
         esg_query("https://example.org")$
             experiment_id("ssp585")$

@@ -17,6 +17,7 @@ epwshiftr_cli_help_root <- function() {
         "Usage: epwshiftr [--store PATH] [--json] [--quiet] <group> <command> [options]",
         "",
         "Command groups:",
+        "  epwshiftr doctor",
         "  epwshiftr query help",
         "  epwshiftr download help",
         "  epwshiftr workflow help",
@@ -29,6 +30,12 @@ epwshiftr_cli_help_root <- function() {
 
 epwshiftr_cli_help_registry <- function() {
     list(
+        doctor = c(
+            "Usage: epwshiftr doctor [--network] [--index-node URL] [--timeout SECONDS]",
+            "",
+            "Check the local CLI, store, downloader, and optional ESGF network environment.",
+            "The default checks are local and read-only; use --network to probe the index node."
+        ),
         query = c(
             "Usage: epwshiftr query <command> [options]",
             "",

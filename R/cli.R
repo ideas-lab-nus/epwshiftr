@@ -102,6 +102,9 @@ epwshiftr_cli_dispatch <- function(parsed) {
     if (length(args) && identical(args[[1L]], "help")) {
         return(epwshiftr_cli_help(args[-1L]))
     }
+    if (length(args) && identical(args[[1L]], "doctor")) {
+        return(epwshiftr_cli_doctor(parsed$store, args[-1L]))
+    }
     if (length(args) >= 2L && identical(args[[2L]], "help")) {
         topic <- if (length(args) > 2L) c(args[[1L]], args[-seq_len(2L)]) else args[[1L]]
         return(epwshiftr_cli_help(topic))
