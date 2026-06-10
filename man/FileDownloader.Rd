@@ -133,6 +133,10 @@ Hongyuan Jia
 
 \item{\code{node_policy}}{Data-node cooldown and ranking policy.}
 
+\item{\code{transfer_policy}}{Curl transfer policy.}
+
+\item{\code{resource_policy}}{Local resource and scheduling policy.}
+
 \item{\code{n_workers}}{Number of parallel workers}
 
 \item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
@@ -150,6 +154,7 @@ Hongyuan Jia
 \item \href{#method-FileDownloader-export_manifest}{\code{FileDownloader$export_manifest()}}
 \item \href{#method-FileDownloader-import_manifest}{\code{FileDownloader$import_manifest()}}
 \item \href{#method-FileDownloader-enqueue}{\code{FileDownloader$enqueue()}}
+\item \href{#method-FileDownloader-preflight}{\code{FileDownloader$preflight()}}
 \item \href{#method-FileDownloader-run}{\code{FileDownloader$run()}}
 \item \href{#method-FileDownloader-sessions}{\code{FileDownloader$sessions()}}
 \item \href{#method-FileDownloader-tasks}{\code{FileDownloader$tasks()}}
@@ -193,6 +198,8 @@ Create a new FileDownloader object
   cleanup = TRUE,
   n_workers = 4L,
   node_policy = NULL,
+  transfer_policy = NULL,
+  resource_policy = NULL,
   manifest = NULL,
   config = NULL
 )}\if{html}{\out{</div>}}
@@ -235,6 +242,15 @@ Default: \code{4L}.}
 
 \item{\code{node_policy}}{A list controlling historical data-node cooldown
 and ranking. Missing fields use conservative defaults.}
+
+\item{\code{transfer_policy}}{A list controlling curl transfer options.
+Supported fields are \code{chunk_size}, \code{bandwidth_limit},
+\code{low_speed_limit}, and \code{low_speed_time}. Use \code{NULL} values
+to keep libcurl defaults.}
+
+\item{\code{resource_policy}}{A list controlling local resource checks and
+scheduling. Supported fields are \code{host_concurrency},
+\code{disk_preflight}, and \code{min_free_space}.}
 
 \item{\code{manifest}}{Optional DuckDB manifest path for persistent
 sessions, tasks, candidate URLs, and events. If \code{NULL}, only
@@ -437,6 +453,39 @@ and \code{url} columns.}
 }
 \subsection{Returns}{
 The created session ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FileDownloader-preflight"></a>}}
+\if{latex}{\out{\hypertarget{method-FileDownloader-preflight}{}}}
+\subsection{Method \code{preflight()}}{
+Check local resource requirements before downloading.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{FileDownloader$preflight(
+  plan = NULL,
+  session_id = NULL,
+  task_id = NULL,
+  overwrite = FALSE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{plan}}{Optional download plan. If supplied, preflight is
+calculated without writing to the persistent manifest.}
+
+\item{\code{session_id}}{Optional persistent session ID.}
+
+\item{\code{task_id}}{Optional persistent task ID vector.}
+
+\item{\code{overwrite}}{Whether existing final files would be overwritten.
+Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A one-row data.table with byte and disk-space summary.
 }
 }
 \if{html}{\out{<hr>}}

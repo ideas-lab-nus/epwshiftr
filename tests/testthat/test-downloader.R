@@ -11,6 +11,11 @@ test_that("FileDownloader can be created", {
     expect_null(dl$network_policy$connect_timeout)
     expect_null(dl$network_policy$useragent)
     expect_equal(dl$node_policy$cooldown_after_failures, 3L)
+    expect_null(dl$transfer_policy$chunk_size)
+    expect_null(dl$transfer_policy$bandwidth_limit)
+    expect_true(dl$resource_policy$disk_preflight)
+    expect_null(dl$resource_policy$host_concurrency)
+    expect_equal(dl$resource_policy$min_free_space, 0)
 
     temp_dir <- tempdir()
     temp <- file.path(temp_dir, ".tmp_test")
@@ -23,6 +28,17 @@ test_that("FileDownloader can be created", {
         proxy = "http://proxy.example:8080",
         connect_timeout = 5L,
         useragent = "epwshiftr-test",
+        transfer_policy = list(
+            chunk_size = 65536L,
+            bandwidth_limit = 1048576L,
+            low_speed_limit = 128L,
+            low_speed_time = 10L
+        ),
+        resource_policy = list(
+            host_concurrency = 2L,
+            disk_preflight = FALSE,
+            min_free_space = 1024
+        ),
         cleanup = FALSE
     )
     expect_equal(dl$data_dir, normalizePath(temp_dir))
@@ -33,6 +49,13 @@ test_that("FileDownloader can be created", {
     expect_equal(dl$network_policy$proxy, "http://proxy.example:8080")
     expect_equal(dl$network_policy$connect_timeout, 5L)
     expect_equal(dl$network_policy$useragent, "epwshiftr-test")
+    expect_equal(dl$transfer_policy$chunk_size, 65536)
+    expect_equal(dl$transfer_policy$bandwidth_limit, 1048576)
+    expect_equal(dl$transfer_policy$low_speed_limit, 128)
+    expect_equal(dl$transfer_policy$low_speed_time, 10)
+    expect_equal(dl$resource_policy$host_concurrency, 2)
+    expect_false(dl$resource_policy$disk_preflight)
+    expect_equal(dl$resource_policy$min_free_space, 1024)
 
     # Clean up
     unlink(temp, recursive = TRUE)
@@ -67,6 +90,17 @@ test_that("FileDownloader persists config and manifest state", {
             cooldown_seconds = 60L,
             history_ttl_seconds = 600L,
             min_attempts = 1L
+        ),
+        transfer_policy = list(
+            chunk_size = 32768L,
+            bandwidth_limit = 2048L,
+            low_speed_limit = 64L,
+            low_speed_time = 5L
+        ),
+        resource_policy = list(
+            host_concurrency = 1L,
+            disk_preflight = TRUE,
+            min_free_space = 4096
         ),
         n_workers = 0L
     )
@@ -109,6 +143,13 @@ test_that("FileDownloader persists config and manifest state", {
     expect_equal(restored$network_policy$useragent, "epwshiftr-test")
     expect_equal(restored$node_policy$cooldown_after_failures, 1L)
     expect_equal(restored$node_policy$cooldown_seconds, 60L)
+    expect_equal(restored$transfer_policy$chunk_size, 32768)
+    expect_equal(restored$transfer_policy$bandwidth_limit, 2048)
+    expect_equal(restored$transfer_policy$low_speed_limit, 64)
+    expect_equal(restored$transfer_policy$low_speed_time, 5)
+    expect_equal(restored$resource_policy$host_concurrency, 1)
+    expect_true(restored$resource_policy$disk_preflight)
+    expect_equal(restored$resource_policy$min_free_space, 4096)
     expect_equal(restored$tasks(session_id = session_id)$status, "done")
 
     rm(dl, restored)
@@ -118,6 +159,57 @@ test_that("FileDownloader persists config and manifest state", {
     expect_setequal(
         ddb_list_tables(conn),
         c("download_candidate", "download_event", "download_meta", "download_node", "download_session", "download_task")
+    )
+})
+
+test_that("FileDownloader preflights disk requirements", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("preflight content", src)
+    size <- as.numeric(file.info(src, extra_cols = FALSE)$size)
+    plan <- data.table::data.table(
+        logical_file_id = "tracking:preflight",
+        filename = "preflight.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = as.character(tools::md5sum(src)),
+        checksum_type = "md5",
+        size = size,
+        priority = 1L
+    )
+
+    dl <- FileDownloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    plan_check <- dl$preflight(plan = plan)
+    expect_equal(plan_check$task_count, 1L)
+    expect_equal(plan_check$needs_download, 1L)
+    expect_equal(plan_check$required_bytes, size)
+    expect_equal(plan_check$size_unknown_count, 0L)
+    expect_false(plan_check$disk_would_block)
+
+    session_id <- dl$enqueue(plan)
+    session_check <- dl$preflight(session_id = session_id)
+    expect_equal(session_check$required_bytes, size)
+
+    free <- suppressWarnings(min(c(plan_check$dest_free_bytes, plan_check$tmp_free_bytes), na.rm = TRUE))
+    skip_if(!is.finite(free), "Disk free-space check is not available on this platform")
+
+    blocker <- FileDownloader$new(
+        dest = file.path(root, "blocked-downloads"),
+        temp = file.path(root, "blocked-tmp"),
+        manifest = file.path(root, "blocked", "manifest.duckdb"),
+        resource_policy = list(min_free_space = free + size + 1024),
+        n_workers = 0L
+    )
+    blocked_session <- blocker$enqueue(plan)
+    expect_error(
+        blocker$run(session_id = blocked_session, progress = FALSE),
+        "Insufficient disk space"
     )
 })
 

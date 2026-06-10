@@ -969,7 +969,7 @@ EsgStore <- R6::R6Class(
                 probe_cache_seconds = probe_cache_seconds
             )
             candidates <- private$decorate_download_plan_with_files(candidates, preview$file_rows)
-            summary <- private$download_preflight_summary(row, preview$file_rows, candidates)
+            summary <- private$download_preflight_summary(row, preview$file_rows, candidates, downloader = downloader)
             list(
                 summary = summary[],
                 changes = preview$changes[],
@@ -2632,7 +2632,7 @@ EsgStore <- R6::R6Class(
             as.integer(min(workers, 8L))
         },
 
-        download_preflight_summary = function(row, file_rows, candidates) {
+        download_preflight_summary = function(row, file_rows, candidates, downloader = NULL) {
             files <- private$preflight_files(file_rows)
             current <- if (nrow(files)) files[files[["status"]] == "current"] else files
             local_available <- 0L
@@ -2683,7 +2683,7 @@ EsgStore <- R6::R6Class(
                     !is.na(candidates$layout_missing_fields) & nzchar(candidates$layout_missing_fields)
                 ])
             }
-            data.table::data.table(
+            summary <- data.table::data.table(
                 query_id = row$query_id[[1L]],
                 label = extract_store_na_character(row$label[[1L]]),
                 file_total = as.integer(nrow(files)),
@@ -2697,6 +2697,28 @@ EsgStore <- R6::R6Class(
                 target_path_collision_count = as.integer(target_collisions),
                 missing_layout_field_count = as.integer(missing_layout)
             )
+            if (!is.null(downloader)) {
+                space <- tryCatch(
+                    downloader$preflight(plan = candidates, overwrite = FALSE),
+                    error = function(e) NULL
+                )
+                if (!is.null(space) && nrow(space)) {
+                    add <- c(
+                        "required_bytes",
+                        "size_unknown_count",
+                        "dest_free_bytes",
+                        "tmp_free_bytes",
+                        "min_free_space",
+                        "disk_ok",
+                        "disk_would_block",
+                        "disk_preflight"
+                    )
+                    for (col in intersect(add, names(space))) {
+                        summary[[col]] <- space[[col]][[1L]]
+                    }
+                }
+            }
+            summary[]
         },
 
         match_download_task = function(task, catalog) {
