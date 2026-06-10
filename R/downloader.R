@@ -2425,13 +2425,7 @@ FileDownloader <- R6::R6Class("FileDownloader",
             if (is.na(callback_event) || !length(private$callbacks)) {
                 return(invisible(NULL))
             }
-            payload <- list(
-                event = callback_event,
-                session_id = download_one_chr(session_id),
-                task_id = download_one_chr(task_id),
-                message = download_one_chr(message),
-                created_at = download_now()
-            )
+            payload <- private$callback_payload(callback_event, session_id = session_id, task_id = task_id, message = message)
             for (token in names(private$callbacks)) {
                 callback <- private$callbacks[[token]]
                 if (is.null(callback) || !identical(callback$event, callback_event)) {
@@ -2451,6 +2445,52 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 )
             }
             invisible(NULL)
+        },
+
+        callback_payload = function(event, session_id = NA_character_, task_id = NA_character_, message = NA_character_) {
+            session_id <- download_one_chr(session_id)
+            task_id <- download_one_chr(task_id)
+            message <- download_one_chr(message)
+            task <- data.table::data.table()
+            if (!is.na(task_id) && nzchar(task_id)) {
+                task <- tryCatch(private$select_tasks(task_id = task_id), error = function(e) data.table::data.table())
+            }
+            task_value <- function(column, default = NA_character_) {
+                if (!nrow(task) || !column %in% names(task)) {
+                    return(default)
+                }
+                value <- task[[column]][[1L]]
+                if (is.null(value) || !length(value) || is.na(value)) {
+                    return(default)
+                }
+                value
+            }
+            status <- download_one_chr(task_value("status", NA_character_))
+            if (is.na(status) && identical(event, "session_done")) {
+                status <- message
+            }
+            error <- download_one_chr(task_value("last_error", NA_character_))
+            if (is.na(error) && event %in% c("candidate_error", "task_error", "task_cancelled")) {
+                error <- message
+            }
+            bytes_done <- suppressWarnings(as.numeric(task_value("bytes_done", NA_real_)))
+            if (!length(bytes_done) || is.na(bytes_done)) {
+                bytes_done <- NA_real_
+            }
+            list(
+                event = event,
+                session_id = session_id,
+                task_id = task_id,
+                file_key = download_one_chr(task_value("file_key", NA_character_)),
+                status = status,
+                target_path = download_one_chr(task_value("target_path", NA_character_)),
+                selected_url = download_one_chr(task_value("selected_url", NA_character_)),
+                data_node = download_one_chr(task_value("data_node", NA_character_)),
+                bytes_done = bytes_done,
+                error = error,
+                created_at = download_now(),
+                message = message
+            )
         },
         # }}}
 

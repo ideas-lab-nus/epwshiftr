@@ -646,12 +646,30 @@ test_that("FileDownloader exposes persistent events and callbacks", {
         n_workers = 0L
     )
     seen <- character()
+    done_payload <- NULL
+    session_payload <- NULL
+    callback_fields <- c(
+        "event", "session_id", "task_id", "file_key", "status", "target_path",
+        "selected_url", "data_node", "bytes_done", "error", "created_at"
+    )
     done_token <- dl$on("task_done", function(event, downloader) {
         seen <<- c(seen, event$event)
+        done_payload <<- event
+        expect_true(all(callback_fields %in% names(event)))
+        expect_equal(event$file_key, "event-file-key")
+        expect_equal(event$status, "done")
+        expect_match(event$selected_url, "^file://")
+        expect_true(file.exists(event$target_path))
+        expect_gt(event$bytes_done, 0)
+        expect_true(is.na(event$error))
         expect_s3_class(downloader, "FileDownloader")
     })
     session_token <- dl$on("session_done", function(event, downloader) {
         seen <<- c(seen, event$event)
+        session_payload <<- event
+        expect_true(all(callback_fields %in% names(event)))
+        expect_equal(event$status, "done")
+        expect_true(is.na(event$task_id))
     })
     dl$on("task_done", function(event, downloader) {
         stop("callback boom", call. = FALSE)
@@ -659,8 +677,10 @@ test_that("FileDownloader exposes persistent events and callbacks", {
 
     plan <- data.table::data.table(
         logical_file_id = "tracking:event-test",
+        file_key = "event-file-key",
         filename = "event.txt",
         url = paste0("file://", normalizePath(src, winslash = "/")),
+        data_node = "local-file",
         checksum = checksum,
         checksum_type = "md5",
         priority = 1L
@@ -670,6 +690,9 @@ test_that("FileDownloader exposes persistent events and callbacks", {
 
     expect_equal(tasks$status, "done")
     expect_true(all(c("session_done", "task_done") %in% seen))
+    expect_equal(done_payload$session_id, session_id)
+    expect_equal(done_payload$task_id, tasks$task_id[[1L]])
+    expect_equal(session_payload$session_id, session_id)
     events <- dl$events(session_id = session_id)
     expect_true(all(c("enqueue", "start", "done", "session_done", "callback_error") %in% events$event))
     task_events <- dl$events(task_id = tasks$task_id[[1L]])
