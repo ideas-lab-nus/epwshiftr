@@ -879,12 +879,14 @@ EsgStore <- R6::R6Class(
             plan <- if (!is.null(files)) {
                 query_id <- self$add_files(files, label = session_label)
                 node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+                network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
                 plan_args <- list(
                     replica = replica,
                     service = service,
                     probe = probe,
                     strategy = strategy,
                     node_stats = node_stats,
+                    network_policy = network_policy,
                     ...
                 )
                 plan <- do.call(files$download_plan, plan_args)
@@ -1837,12 +1839,14 @@ EsgStore <- R6::R6Class(
             }
 
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             plan <- files$download_plan(
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats
+                node_stats = node_stats,
+                network_policy = network_policy
             )
             plan <- private$decorate_download_plan(plan, query_id = query_id)
             plan <- plan[plan[["file_key"]] %in% current$file_key]

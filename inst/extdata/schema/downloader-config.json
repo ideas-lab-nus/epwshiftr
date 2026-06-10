@@ -48,6 +48,54 @@
         "positive": true
       }
     },
+    "ssl_verifypeer": {
+      "check": {
+        "kind": "flag"
+      }
+    },
+    "proxy": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "connect_timeout": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        }
+      ]
+    },
+    "useragent": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "cleanup": {
       "check": {
         "kind": "flag"

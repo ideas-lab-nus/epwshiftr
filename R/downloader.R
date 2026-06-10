@@ -168,10 +168,19 @@ download_config_validate <- function(config, name = "downloader config") {
     invisible(config)
 }
 
+download_config_defaults <- function(config) {
+    if (!"ssl_verifypeer" %in% names(config)) config$ssl_verifypeer <- TRUE
+    if (!"proxy" %in% names(config)) config$proxy <- NULL
+    if (!"connect_timeout" %in% names(config)) config$connect_timeout <- NULL
+    if (!"useragent" %in% names(config)) config$useragent <- NULL
+    config
+}
+
 download_config_read <- function(file) {
     checkmate::assert_file(file, access = "r", extension = "json")
     config <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
     download_config_validate(config, file)
+    config <- download_config_defaults(config)
 
     base <- dirname(normalizePath(file, mustWork = TRUE, winslash = "/"))
     config$dest <- download_resolve_path(config$dest, base)
@@ -197,8 +206,47 @@ download_url_host <- function(url) {
     sub("^https?://([^/:?#]+).*$", "\\1", url)
 }
 
+download_null_if_empty <- function(x) {
+    if (is.null(x)) {
+        return(NULL)
+    }
+    x <- download_one_chr(x)
+    if (is.na(x) || !nzchar(x)) {
+        return(NULL)
+    }
+    x
+}
+
+download_curl_handle <- function(timeout, connect_timeout = NULL, ssl_verifypeer = TRUE,
+                                 proxy = NULL, useragent = NULL, nobody = FALSE) {
+    handle <- curl::new_handle()
+    opts <- list(
+        timeout = timeout,
+        followlocation = TRUE,
+        ssl_verifypeer = isTRUE(ssl_verifypeer)
+    )
+    if (!is.null(connect_timeout)) {
+        opts$connecttimeout <- connect_timeout
+    }
+    proxy <- download_null_if_empty(proxy)
+    if (!is.null(proxy)) {
+        opts$proxy <- proxy
+    }
+    useragent <- download_null_if_empty(useragent)
+    if (!is.null(useragent)) {
+        opts$useragent <- useragent
+    }
+    if (isTRUE(nobody)) {
+        opts$nobody <- TRUE
+    }
+    do.call(curl::handle_setopt, c(list(handle = handle), opts))
+    handle
+}
+
 download_worker_download <- function(url, filename, subdir, dest, temp, retries, timeout,
-                                     overwrite, checksum, checksum_type, resume, tmp_id) {
+                                     overwrite, checksum, checksum_type, resume, tmp_id,
+                                     ssl_verifypeer = TRUE, proxy = NULL,
+                                     connect_timeout = NULL, useragent = NULL) {
     checksum_file <- function(path, algo = "sha256") {
         out <- if (identical(algo, "sha256")) {
             tools::sha256sum(path)
@@ -225,14 +273,25 @@ download_worker_download <- function(url, filename, subdir, dest, temp, retries,
         }
         normalizePath(dest, mustWork = TRUE, winslash = "/")
     }
-    stream <- function(url, tmp_part, tmp_done, timeout, start_byte) {
+    null_if_empty <- function(x) {
+        if (is.null(x)) return(NULL)
+        if (is.na(x) || !nzchar(x)) return(NULL)
+        x
+    }
+    stream <- function(url, tmp_part, tmp_done, timeout, start_byte,
+                       connect_timeout, ssl_verifypeer, proxy, useragent) {
         handle <- curl::new_handle()
-        curl::handle_setopt(
-            handle,
+        opts <- list(
             timeout = timeout,
             followlocation = TRUE,
-            ssl_verifypeer = TRUE
+            ssl_verifypeer = isTRUE(ssl_verifypeer)
         )
+        if (!is.null(connect_timeout)) opts$connecttimeout <- connect_timeout
+        proxy <- null_if_empty(proxy)
+        if (!is.null(proxy)) opts$proxy <- proxy
+        useragent <- null_if_empty(useragent)
+        if (!is.null(useragent)) opts$useragent <- useragent
+        do.call(curl::handle_setopt, c(list(handle = handle), opts))
         if (start_byte > 0) {
             curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
         }
@@ -283,7 +342,17 @@ download_worker_download <- function(url, filename, subdir, dest, temp, retries,
     while (attempt <= retries) {
         ok <- tryCatch(
             {
-                stream(url, tmp_part, tmp_done, timeout, start_byte)
+                stream(
+                    url,
+                    tmp_part,
+                    tmp_done,
+                    timeout,
+                    start_byte,
+                    connect_timeout,
+                    ssl_verifypeer,
+                    proxy,
+                    useragent
+                )
                 TRUE
             },
             error = function(e) {
@@ -366,6 +435,17 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #' @param timeout A positive integer specifying the timeout in seconds for
         #'        each download. Default: `3600L` (1 hour).
         #'
+        #' @param ssl_verifypeer Whether to verify HTTPS certificates. Default:
+        #'        `TRUE`.
+        #'
+        #' @param proxy Optional proxy URL passed to libcurl. Default: `NULL`.
+        #'
+        #' @param connect_timeout Optional connection timeout in seconds passed
+        #'        to libcurl. Default: `NULL`.
+        #'
+        #' @param useragent Optional HTTP user agent passed to libcurl.
+        #'        Default: `NULL`.
+        #'
         #' @param cleanup A logical value specifying whether to automatically clean up failed temporary
         #'        files. Default: `TRUE`.
         #'
@@ -395,14 +475,21 @@ FileDownloader <- R6::R6Class("FileDownloader",
         #' )
         #' }
         initialize = function(dest = NULL, temp = NULL, retries = 3L, timeout = 3600L,
-                              cleanup = TRUE, n_workers = 4L, manifest = NULL, config = NULL) {
+                              ssl_verifypeer = TRUE, proxy = NULL, connect_timeout = NULL,
+                              useragent = NULL, cleanup = TRUE, n_workers = 4L,
+                              manifest = NULL, config = NULL) {
             if (!is.null(config)) {
                 cfg <- if (is.character(config)) download_config_read(config) else config
                 download_config_validate(cfg)
+                cfg <- download_config_defaults(cfg)
                 if (missing(dest)) dest <- cfg$dest
                 if (missing(temp)) temp <- cfg$temp
                 if (missing(retries)) retries <- cfg$retries
                 if (missing(timeout)) timeout <- cfg$timeout
+                if (missing(ssl_verifypeer)) ssl_verifypeer <- cfg$ssl_verifypeer
+                if (missing(proxy)) proxy <- cfg$proxy
+                if (missing(connect_timeout)) connect_timeout <- cfg$connect_timeout
+                if (missing(useragent)) useragent <- cfg$useragent
                 if (missing(cleanup)) cleanup <- cfg$cleanup
                 if (missing(n_workers)) n_workers <- cfg$n_workers
                 if (missing(manifest)) manifest <- cfg$manifest
@@ -419,6 +506,14 @@ FileDownloader <- R6::R6Class("FileDownloader",
             checkmate::assert_string(temp, null.ok = TRUE)
             checkmate::assert_count(retries, positive = TRUE)
             checkmate::assert_count(timeout, positive = TRUE)
+            checkmate::assert_flag(ssl_verifypeer)
+            proxy <- download_null_if_empty(proxy)
+            checkmate::assert_string(proxy, null.ok = TRUE)
+            if (!is.null(connect_timeout)) {
+                checkmate::assert_count(connect_timeout, positive = TRUE)
+            }
+            useragent <- download_null_if_empty(useragent)
+            checkmate::assert_string(useragent, null.ok = TRUE)
             checkmate::assert_flag(cleanup)
             checkmate::assert_count(n_workers, positive = FALSE)
             checkmate::assert_string(manifest, null.ok = TRUE)
@@ -443,6 +538,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
 
             private$retries <- retries
             private$dl_timeout <- timeout
+            private$ssl_verifypeer <- ssl_verifypeer
+            private$proxy <- proxy
+            private$connect_timeout <- connect_timeout
+            private$useragent <- useragent
             private$cleanup <- cleanup
             private$worker_count <- n_workers
             private$in_dev <- in_dev
@@ -1452,6 +1551,18 @@ FileDownloader <- R6::R6Class("FileDownloader",
         },
         # }}}
 
+        # network_policy {{{
+        #' @field network_policy Network options passed to libcurl.
+        network_policy = function() {
+            list(
+                ssl_verifypeer = isTRUE(private$ssl_verifypeer),
+                proxy = private$proxy,
+                connect_timeout = private$connect_timeout,
+                useragent = private$useragent
+            )
+        },
+        # }}}
+
         # n_workers {{{
         #' @field n_workers Number of parallel workers
         n_workers = function() {
@@ -1481,6 +1592,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
         manifest_conn = NULL,
         config_path = NULL,
         dl_timeout = NULL,
+        ssl_verifypeer = NULL,
+        proxy = NULL,
+        connect_timeout = NULL,
+        useragent = NULL,
         retries = NULL,
         cleanup = NULL,
         worker_count = NULL,
@@ -1507,6 +1622,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 manifest = private$manifest_path,
                 retries = as.integer(private$retries),
                 timeout = as.integer(private$dl_timeout),
+                ssl_verifypeer = isTRUE(private$ssl_verifypeer),
+                proxy = private$proxy,
+                connect_timeout = if (is.null(private$connect_timeout)) NULL else as.integer(private$connect_timeout),
+                useragent = private$useragent,
                 cleanup = isTRUE(private$cleanup),
                 n_workers = as.integer(private$worker_count)
             )
@@ -2230,7 +2349,11 @@ FileDownloader <- R6::R6Class("FileDownloader",
                             checksum = checksum,
                             checksum_type = checksum_type,
                             resume = resume,
-                            tmp_id = tmp_id
+                            tmp_id = tmp_id,
+                            ssl_verifypeer = ssl_verifypeer,
+                            proxy = proxy,
+                            connect_timeout = connect_timeout,
+                            useragent = useragent
                         ),
                         error = function(e) list(ok = FALSE, error = conditionMessage(e))
                     )
@@ -2247,7 +2370,11 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 checksum = if (is.na(checksum)) NULL else checksum,
                 checksum_type = checksum_type,
                 resume = resume,
-                tmp_id = task_id
+                tmp_id = task_id,
+                ssl_verifypeer = private$ssl_verifypeer,
+                proxy = private$proxy,
+                connect_timeout = private$connect_timeout,
+                useragent = private$useragent
             )
 
             list(
@@ -2446,6 +2573,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
                 temp = private$temp,
                 retries = private$retries,
                 timeout = private$dl_timeout,
+                ssl_verifypeer = private$ssl_verifypeer,
+                proxy = private$proxy,
+                connect_timeout = private$connect_timeout,
+                useragent = private$useragent,
                 cleanup = private$cleanup
             )
 
@@ -2469,6 +2600,10 @@ FileDownloader <- R6::R6Class("FileDownloader",
                         temp = downloader_params$temp,
                         retries = downloader_params$retries,
                         timeout = downloader_params$timeout,
+                        ssl_verifypeer = downloader_params$ssl_verifypeer,
+                        proxy = downloader_params$proxy,
+                        connect_timeout = downloader_params$connect_timeout,
+                        useragent = downloader_params$useragent,
                         cleanup = downloader_params$cleanup,
                         n_workers = 0L  # Async tasks don't need their own workers
                     )
@@ -2506,11 +2641,12 @@ FileDownloader <- R6::R6Class("FileDownloader",
 
         # download_with_streaming {{{
         download_with_streaming = function(url, tmp_part, tmp_done, progress, start_byte) {
-            handle <- curl::new_handle()
-            curl::handle_setopt(handle,
+            handle <- download_curl_handle(
                 timeout = private$dl_timeout,
-                followlocation = TRUE,
-                ssl_verifypeer = TRUE
+                connect_timeout = private$connect_timeout,
+                ssl_verifypeer = private$ssl_verifypeer,
+                proxy = private$proxy,
+                useragent = private$useragent
             )
 
             # Add Range header for resume

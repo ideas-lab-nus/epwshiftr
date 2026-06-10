@@ -6,6 +6,10 @@ test_that("FileDownloader can be created", {
     expect_true(dir.exists(dl$tmp_dir))
     expect_equal(dl$max_retries, 3L)
     expect_equal(dl$timeout, 3600L)
+    expect_identical(dl$network_policy$ssl_verifypeer, TRUE)
+    expect_null(dl$network_policy$proxy)
+    expect_null(dl$network_policy$connect_timeout)
+    expect_null(dl$network_policy$useragent)
 
     temp_dir <- tempdir()
     temp <- file.path(temp_dir, ".tmp_test")
@@ -14,12 +18,20 @@ test_that("FileDownloader can be created", {
         temp = temp,
         retries = 5L,
         timeout = 7200L,
+        ssl_verifypeer = FALSE,
+        proxy = "http://proxy.example:8080",
+        connect_timeout = 5L,
+        useragent = "epwshiftr-test",
         cleanup = FALSE
     )
     expect_equal(dl$data_dir, normalizePath(temp_dir))
     expect_equal(dl$tmp_dir, temp)
     expect_equal(dl$max_retries, 5L)
     expect_equal(dl$timeout, 7200L)
+    expect_identical(dl$network_policy$ssl_verifypeer, FALSE)
+    expect_equal(dl$network_policy$proxy, "http://proxy.example:8080")
+    expect_equal(dl$network_policy$connect_timeout, 5L)
+    expect_equal(dl$network_policy$useragent, "epwshiftr-test")
 
     # Clean up
     unlink(temp, recursive = TRUE)
@@ -46,6 +58,9 @@ test_that("FileDownloader persists config and manifest state", {
         manifest = manifest,
         retries = 1L,
         timeout = 30L,
+        ssl_verifypeer = FALSE,
+        connect_timeout = 2L,
+        useragent = "epwshiftr-test",
         n_workers = 0L
     )
 
@@ -82,6 +97,9 @@ test_that("FileDownloader persists config and manifest state", {
     expect_equal(restored$data_dir, normalizePath(dest, winslash = "/"))
     expect_equal(restored$tmp_dir, normalizePath(temp, mustWork = FALSE, winslash = "/"))
     expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
+    expect_identical(restored$network_policy$ssl_verifypeer, FALSE)
+    expect_equal(restored$network_policy$connect_timeout, 2L)
+    expect_equal(restored$network_policy$useragent, "epwshiftr-test")
     expect_equal(restored$tasks(session_id = session_id)$status, "done")
 
     rm(dl, restored)

@@ -36,6 +36,8 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$schema_version" %in% downloader_paths)
     expect_true("$manifest" %in% downloader_paths)
     expect_true("$n_workers" %in% downloader_paths)
+    expect_true("$ssl_verifypeer" %in% downloader_paths)
+    expect_true("$connect_timeout" %in% downloader_paths)
 })
 
 test_that("downloader config schema validates persistent downloader config", {
@@ -46,6 +48,10 @@ test_that("downloader config schema validates persistent downloader config", {
         manifest = file.path(tempdir(), "manifest.duckdb"),
         retries = 3L,
         timeout = 3600L,
+        ssl_verifypeer = TRUE,
+        proxy = NULL,
+        connect_timeout = 5L,
+        useragent = "epwshiftr-test",
         cleanup = TRUE,
         n_workers = 0L
     )
@@ -54,6 +60,10 @@ test_that("downloader config schema validates persistent downloader config", {
 
     bad <- config
     bad$retries <- -1L
+    expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
+
+    bad <- config
+    bad$connect_timeout <- 0L
     expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
 })
 

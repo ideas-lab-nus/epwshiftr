@@ -973,15 +973,32 @@ query_result_logical_file_id <- function(dt) {
     out
 }
 
-query_result_probe_url <- function(url, timeout = 5) {
+query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
     if (is.na(url) || !nzchar(url) || startsWith(url, "file://")) {
         return(list(latency = NA_real_, throughput = NA_real_))
+    }
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
     }
     start <- Sys.time()
     ok <- tryCatch(
         {
-            handle <- curl::new_handle()
-            curl::handle_setopt(handle, nobody = TRUE, timeout = timeout, connecttimeout = min(timeout, 3), followlocation = TRUE)
+            handle <- download_curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = TRUE
+            )
             curl::curl_fetch_memory(url, handle = handle)
             TRUE
         },
@@ -991,8 +1008,13 @@ query_result_probe_url <- function(url, timeout = 5) {
         start <- Sys.time()
         ok <- tryCatch(
             {
-                handle <- curl::new_handle()
-                curl::handle_setopt(handle, timeout = timeout, connecttimeout = min(timeout, 3), followlocation = TRUE)
+                handle <- download_curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent
+                )
                 curl::handle_setheaders(handle, Range = "bytes=0-0")
                 curl::curl_fetch_memory(url, handle = handle)
                 TRUE
@@ -1058,7 +1080,8 @@ query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServe
 }
 
 query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE,
-                                       strategy = c("fastest", "first", "stable"), node_stats = NULL) {
+                                       strategy = c("fastest", "first", "stable"),
+                                       node_stats = NULL, network_policy = NULL) {
     strategy <- match.arg(strategy)
     checkmate::assert_string(service)
     checkmate::assert_flag(probe)
@@ -1093,7 +1116,7 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         return(plan)
     }
     if (probe) {
-        probes <- lapply(plan$url, query_result_probe_url)
+        probes <- lapply(plan$url, query_result_probe_url, network_policy = network_policy)
         plan[, probe_latency := vapply(probes, `[[`, numeric(1L), "latency")]
         plan[, probe_throughput := vapply(probes, `[[`, numeric(1L), "throughput")]
     }
@@ -1742,11 +1765,13 @@ EsgResultFile <- R6::R6Class(
         #' @param all Whether replica expansion should retrieve all matching records.
         #' @param node_stats Optional data node history from
         #'        `FileDownloader$data_nodes()`.
+        #' @param network_policy Optional network options from
+        #'        `FileDownloader$network_policy`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("auto", "current"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
-                                 all = TRUE, node_stats = NULL) {
+                                 all = TRUE, node_stats = NULL, network_policy = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
             target <- if (identical(replica, "auto")) {
@@ -1754,7 +1779,14 @@ EsgResultFile <- R6::R6Class(
             } else {
                 self
             }
-            query_result_download_plan(target, service = service, probe = probe, strategy = strategy, node_stats = node_stats)
+            query_result_download_plan(
+                target,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats,
+                network_policy = network_policy
+            )
         },
         # }}}
 
@@ -1784,17 +1816,21 @@ EsgResultFile <- R6::R6Class(
         #'        `"HTTPServer"`.
         #' @param node_stats Optional data node history from
         #'        `FileDownloader$data_nodes()`.
+        #' @param network_policy Optional network options from
+        #'        `FileDownloader$network_policy`.
         #'
         #' @return A data.table with one selected candidate per logical file.
         select_replica = function(strategy = c("fastest", "first", "stable"), probe = TRUE,
-                                  service = "HTTPServer", node_stats = NULL) {
+                                  service = "HTTPServer", node_stats = NULL,
+                                  network_policy = NULL) {
             strategy <- match.arg(strategy)
             plan <- self$download_plan(
                 replica = "auto",
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats
+                node_stats = node_stats,
+                network_policy = network_policy
             )
             if (!nrow(plan)) {
                 return(plan)
@@ -1835,12 +1871,14 @@ EsgResultFile <- R6::R6Class(
                 }
             }
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats
+                node_stats = node_stats,
+                network_policy = network_policy
             )
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
@@ -2187,14 +2225,23 @@ EsgResultAggregation <- R6::R6Class(
         #' @param all Reserved for API symmetry with `EsgResultFile`.
         #' @param node_stats Optional data node history from
         #'        `FileDownloader$data_nodes()`.
+        #' @param network_policy Optional network options from
+        #'        `FileDownloader$network_policy`.
         #'
         #' @return A data.table download plan.
         download_plan = function(replica = c("current", "auto"), service = "HTTPServer",
                                  probe = TRUE, strategy = c("fastest", "first", "stable"),
-                                 all = TRUE, node_stats = NULL) {
+                                 all = TRUE, node_stats = NULL, network_policy = NULL) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
-            query_result_download_plan(self, service = service, probe = probe, strategy = strategy, node_stats = node_stats)
+            query_result_download_plan(
+                self,
+                service = service,
+                probe = probe,
+                strategy = strategy,
+                node_stats = node_stats,
+                network_policy = network_policy
+            )
         },
         # }}}
 
@@ -2230,12 +2277,14 @@ EsgResultAggregation <- R6::R6Class(
                 }
             }
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+            network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             plan <- self$download_plan(
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats
+                node_stats = node_stats,
+                network_policy = network_policy
             )
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
