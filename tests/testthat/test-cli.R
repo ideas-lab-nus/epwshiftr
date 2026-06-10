@@ -221,6 +221,33 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     expect_equal(cleanup$status, 0L)
     expect_s3_class(cleanup$result, "data.table")
 
+    config <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "config", "show"))
+    expect_equal(config$status, 0L)
+    expect_named(config$result, c(
+        "config_file", "manifest", "data_dir", "tmp_dir", "retries", "timeout", "n_workers",
+        "network_policy", "node_policy", "transfer_policy", "resource_policy"
+    ))
+
+    config_set <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "download", "config", "set",
+        "--workers", "0", "--timeout", "120", "--bandwidth-limit", "4096",
+        "--host-concurrency", "2", "--ssl-verifypeer", "false", "--disk-preflight", "false",
+        "--min-free-space", "0", "--cooldown-seconds", "10"
+    ))
+    expect_equal(config_set$status, 0L)
+    expect_equal(config_set$result$n_workers, 0L)
+    expect_equal(config_set$result$timeout, 120L)
+    expect_false(config_set$result$network_policy$ssl_verifypeer)
+    expect_equal(config_set$result$transfer_policy$bandwidth_limit, 4096)
+    expect_equal(config_set$result$resource_policy$host_concurrency, 2)
+    expect_false(config_set$result$resource_policy$disk_preflight)
+    expect_equal(config_set$result$node_policy$cooldown_seconds, 10L)
+
+    config_reload <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "config", "show"))
+    expect_equal(config_reload$status, 0L)
+    expect_equal(config_reload$result$n_workers, 0L)
+    expect_equal(config_reload$result$timeout, 120L)
+
     dl <- store$downloader(n_workers = 0L)
     catalog <- store$query("SELECT file_key FROM file_catalog")
     src <- tempfile()

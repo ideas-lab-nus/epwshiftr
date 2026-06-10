@@ -345,6 +345,9 @@ epwshiftr_cli_query <- function(store, command, args) {
 }
 
 epwshiftr_cli_download <- function(store, command, args) {
+    if (identical(command, "config")) {
+        return(epwshiftr_cli_download_config(store, args))
+    }
     if (identical(command, "preflight")) {
         parsed <- epwshiftr_cli_parse_command(
             args,
@@ -352,7 +355,10 @@ epwshiftr_cli_download <- function(store, command, args) {
             options = c("--replica", "--service", "--strategy", "--probe-concurrency", "--probe-cache-seconds")
         )
         query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        return(do.call(store$download_preflight, c(list(query_id = query_id), epwshiftr_cli_download_plan_args(parsed))))
+        return(do.call(store$download_preflight, c(
+            list(query_id = query_id, downloader = epwshiftr_cli_downloader(store)),
+            epwshiftr_cli_download_plan_args(parsed)
+        )))
     }
     if (identical(command, "run")) {
         parsed <- epwshiftr_cli_parse_command(
@@ -364,6 +370,7 @@ epwshiftr_cli_download <- function(store, command, args) {
         return(do.call(store$download_query, c(
             list(
                 query_id = query_id,
+                downloader = epwshiftr_cli_downloader(store),
                 session_label = parsed$options[["--session-label"]],
                 overwrite = parsed$flags[["--overwrite"]],
                 resume = !parsed$flags[["--no-resume"]],
@@ -377,18 +384,19 @@ epwshiftr_cli_download <- function(store, command, args) {
         epwshiftr_cli_assert_no_positionals(parsed)
         return(store$download_status(
             query_id = parsed$options[["--query"]],
-            session_id = parsed$options[["--session"]]
+            session_id = parsed$options[["--session"]],
+            downloader = epwshiftr_cli_downloader(store)
         ))
     }
     if (identical(command, "sessions")) {
         parsed <- epwshiftr_cli_parse_command(args)
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$downloader()$sessions())
+        return(epwshiftr_cli_downloader(store)$sessions())
     }
     if (identical(command, "tasks")) {
         parsed <- epwshiftr_cli_parse_command(args, options = c("--session", "--status"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$downloader()$tasks(
+        return(epwshiftr_cli_downloader(store)$tasks(
             session_id = parsed$options[["--session"]],
             status = epwshiftr_cli_csv(parsed$options[["--status"]])
         ))
@@ -396,7 +404,7 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "events")) {
         parsed <- epwshiftr_cli_parse_command(args, options = c("--session", "--task"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$downloader()$events(
+        return(epwshiftr_cli_downloader(store)$events(
             session_id = parsed$options[["--session"]],
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
         ))
@@ -404,7 +412,7 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "resume")) {
         parsed <- epwshiftr_cli_parse_command(args, flags = c("--overwrite", "--no-progress"), options = c("--session", "--task"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- store$downloader()
+        downloader <- epwshiftr_cli_downloader(store)
         out <- downloader$resume(
             session_id = parsed$options[["--session"]],
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
@@ -417,7 +425,7 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "verify")) {
         parsed <- epwshiftr_cli_parse_command(args, options = c("--session", "--task"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- store$downloader()
+        downloader <- epwshiftr_cli_downloader(store)
         out <- downloader$verify(
             session_id = parsed$options[["--session"]],
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
@@ -428,7 +436,7 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "cancel")) {
         parsed <- epwshiftr_cli_parse_command(args, options = c("--session", "--task"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$downloader()$cancel(
+        return(epwshiftr_cli_downloader(store)$cancel(
             session_id = parsed$options[["--session"]],
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
         ))
@@ -436,12 +444,12 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "nodes")) {
         parsed <- epwshiftr_cli_parse_command(args, options = "--service")
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$downloader()$data_nodes(service = parsed$options[["--service"]]))
+        return(epwshiftr_cli_downloader(store)$data_nodes(service = parsed$options[["--service"]]))
     }
     if (identical(command, "reset-nodes")) {
         parsed <- epwshiftr_cli_parse_command(args, flags = "--execute", options = c("--node", "--service"))
         epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- store$downloader()
+        downloader <- epwshiftr_cli_downloader(store)
         if (isTRUE(parsed$flags[["--execute"]])) {
             return(downloader$reset_data_nodes(data_node = parsed$options[["--node"]], service = parsed$options[["--service"]]))
         }
@@ -462,6 +470,7 @@ epwshiftr_cli_download <- function(store, command, args) {
         return(store$retry_downloads(
             query_id = parsed$options[["--query"]],
             session_id = parsed$options[["--session"]],
+            downloader = epwshiftr_cli_downloader(store),
             status = status,
             run = parsed$flags[["--run"]]
         ))
@@ -473,7 +482,7 @@ epwshiftr_cli_workflow <- function(store, command, args) {
     if (identical(command, "report")) {
         parsed <- epwshiftr_cli_parse_command(args, options = "--query")
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(store$workflow_report(query_id = parsed$options[["--query"]]))
+        return(store$workflow_report(query_id = parsed$options[["--query"]], downloader = epwshiftr_cli_downloader(store)))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown workflow command: %s", command))
 }
@@ -670,6 +679,167 @@ epwshiftr_cli_download_plan_args <- function(parsed) {
     args
 }
 
+epwshiftr_cli_download_config <- function(store, args) {
+    if (!length(args)) {
+        epwshiftr_cli_usage_abort("Missing download config command: show or set.")
+    }
+    action <- args[[1L]]
+    rest <- args[-1L]
+    if (identical(action, "show")) {
+        parsed <- epwshiftr_cli_parse_command(rest)
+        epwshiftr_cli_assert_no_positionals(parsed)
+        return(epwshiftr_cli_downloader_config(epwshiftr_cli_downloader(store)))
+    }
+    if (identical(action, "set")) {
+        parsed <- epwshiftr_cli_parse_command(
+            rest,
+            options = c(
+                "--workers", "--retries", "--timeout", "--connect-timeout",
+                "--proxy", "--useragent", "--ssl-verifypeer",
+                "--chunk-size", "--bandwidth-limit", "--low-speed-limit", "--low-speed-time",
+                "--host-concurrency", "--disk-preflight", "--min-free-space",
+                "--cooldown-after-failures", "--cooldown-seconds", "--history-ttl-seconds", "--min-attempts"
+            )
+        )
+        epwshiftr_cli_assert_no_positionals(parsed)
+        current <- epwshiftr_cli_downloader(store)
+        network <- current$network_policy
+        node_policy <- current$node_policy
+        transfer_policy <- current$transfer_policy
+        resource_policy <- current$resource_policy
+        params <- list(
+            retries = current$max_retries,
+            timeout = current$timeout,
+            ssl_verifypeer = network$ssl_verifypeer,
+            proxy = network$proxy,
+            connect_timeout = network$connect_timeout,
+            useragent = network$useragent,
+            n_workers = current$n_workers,
+            node_policy = node_policy,
+            transfer_policy = transfer_policy,
+            resource_policy = resource_policy
+        )
+        params <- epwshiftr_cli_apply_download_config_options(params, parsed$options)
+        paths <- epwshiftr_cli_downloader_paths(store)
+        downloader <- do.call(Downloader$new, c(list(
+            dest = paths$dest,
+            temp = paths$temp,
+            manifest = paths$manifest
+        ), params))
+        downloader$save_config(paths$config)
+        return(epwshiftr_cli_downloader_config(downloader))
+    }
+    epwshiftr_cli_usage_abort(sprintf("Unknown download config command: %s", action))
+}
+
+epwshiftr_cli_downloader_paths <- function(store) {
+    private <- tryCatch(store$.__enclos_env__$private, error = function(e) NULL)
+    if (is.null(private) || is.null(private$download_dir) || is.null(private$tmp_download_dir)) {
+        cli::cli_abort("Cannot resolve store downloader paths.")
+    }
+    list(
+        dest = private$download_dir,
+        temp = private$tmp_download_dir,
+        manifest = file.path(private$download_dir, "_downloader", "manifest.duckdb"),
+        config = file.path(private$download_dir, "_downloader", "config.json")
+    )
+}
+
+epwshiftr_cli_downloader <- function(store, ...) {
+    paths <- epwshiftr_cli_downloader_paths(store)
+    config <- if (file.exists(paths$config)) paths$config else NULL
+    Downloader$new(
+        dest = paths$dest,
+        temp = paths$temp,
+        manifest = paths$manifest,
+        config = config,
+        ...
+    )
+}
+
+epwshiftr_cli_downloader_config <- function(downloader) {
+    list(
+        config_file = downloader$config_file,
+        manifest = downloader$manifest,
+        data_dir = downloader$data_dir,
+        tmp_dir = downloader$tmp_dir,
+        retries = downloader$max_retries,
+        timeout = downloader$timeout,
+        n_workers = downloader$n_workers,
+        network_policy = downloader$network_policy,
+        node_policy = downloader$node_policy,
+        transfer_policy = downloader$transfer_policy,
+        resource_policy = downloader$resource_policy
+    )
+}
+
+epwshiftr_cli_apply_download_config_options <- function(params, options) {
+    set_count <- function(option, target, positive = TRUE) {
+        if (!is.null(options[[option]])) {
+            params[[target]] <<- epwshiftr_cli_count(options[[option]], option, positive = positive)
+        }
+    }
+    set_nullable_count <- function(option, policy, field, positive = TRUE) {
+        if (!is.null(options[[option]])) {
+            params[[policy]][[field]] <<- epwshiftr_cli_count_or_null(options[[option]], option, positive = positive)
+        }
+    }
+    set_count("--workers", "n_workers", positive = FALSE)
+    set_count("--retries", "retries")
+    set_count("--timeout", "timeout")
+    if (!is.null(options[["--connect-timeout"]])) {
+        params$connect_timeout <- epwshiftr_cli_count_or_null(options[["--connect-timeout"]], "--connect-timeout")
+    }
+    if (!is.null(options[["--proxy"]])) {
+        params$proxy <- epwshiftr_cli_string_or_null(options[["--proxy"]])
+    }
+    if (!is.null(options[["--useragent"]])) {
+        params$useragent <- epwshiftr_cli_string_or_null(options[["--useragent"]])
+    }
+    if (!is.null(options[["--ssl-verifypeer"]])) {
+        params$ssl_verifypeer <- epwshiftr_cli_bool(options[["--ssl-verifypeer"]], "--ssl-verifypeer")
+    }
+    set_nullable_count("--chunk-size", "transfer_policy", "chunk_size")
+    set_nullable_count("--bandwidth-limit", "transfer_policy", "bandwidth_limit")
+    set_nullable_count("--low-speed-limit", "transfer_policy", "low_speed_limit")
+    set_nullable_count("--low-speed-time", "transfer_policy", "low_speed_time")
+    set_nullable_count("--host-concurrency", "resource_policy", "host_concurrency")
+    if (!is.null(options[["--disk-preflight"]])) {
+        params$resource_policy$disk_preflight <- epwshiftr_cli_bool(options[["--disk-preflight"]], "--disk-preflight")
+    }
+    if (!is.null(options[["--min-free-space"]])) {
+        params$resource_policy$min_free_space <- epwshiftr_cli_count(options[["--min-free-space"]], "--min-free-space", positive = FALSE)
+    }
+    if (!is.null(options[["--cooldown-after-failures"]])) {
+        params$node_policy$cooldown_after_failures <- epwshiftr_cli_count(options[["--cooldown-after-failures"]], "--cooldown-after-failures")
+    }
+    if (!is.null(options[["--cooldown-seconds"]])) {
+        params$node_policy$cooldown_seconds <- epwshiftr_cli_count(options[["--cooldown-seconds"]], "--cooldown-seconds")
+    }
+    if (!is.null(options[["--history-ttl-seconds"]])) {
+        params$node_policy$history_ttl_seconds <- epwshiftr_cli_count(options[["--history-ttl-seconds"]], "--history-ttl-seconds")
+    }
+    if (!is.null(options[["--min-attempts"]])) {
+        params$node_policy$min_attempts <- epwshiftr_cli_count(options[["--min-attempts"]], "--min-attempts")
+    }
+    invisible(params)
+}
+
+epwshiftr_cli_string_or_null <- function(value) {
+    normalized <- tolower(trimws(value))
+    if (!nzchar(normalized) || normalized %in% c("none", "null", "na")) {
+        return(NULL)
+    }
+    value
+}
+
+epwshiftr_cli_count_or_null <- function(value, name, positive = TRUE) {
+    if (is.null(epwshiftr_cli_string_or_null(value))) {
+        return(NULL)
+    }
+    epwshiftr_cli_count(value, name, positive = positive)
+}
+
 epwshiftr_cli_empty_to_null <- function(value) {
     if (is.null(value) || !length(value)) {
         return(NULL)
@@ -761,6 +931,8 @@ epwshiftr_cli_usage <- function() {
         "  epwshiftr download nodes [--service HTTPServer]",
         "  epwshiftr download reset-nodes [--node HOST] [--service HTTPServer] [--execute]",
         "  epwshiftr download retry [--query QUERY_ID] [--session SESSION_ID] [--status STATUS] [--run]",
+        "  epwshiftr download config show",
+        "  epwshiftr download config set [--workers N] [--timeout SECONDS] [--bandwidth-limit BYTES|none]",
         "  epwshiftr workflow report [--query QUERY_ID]",
         "  epwshiftr storage layout show",
         "  epwshiftr storage layout set --layout flat|dataset|drs|template [--template TEMPLATE]",
