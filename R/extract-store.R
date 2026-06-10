@@ -608,6 +608,93 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # remove_query {{{
+        #' @description
+        #' Remove stored ESGF queries and optionally delete orphaned local files.
+        #'
+        #' @param query_id Stored query ID vector.
+        #' @param delete Whether to leave local files untouched (`"none"`) or
+        #'        delete files orphaned by the removal (`"orphaned"`).
+        #'
+        #' @return A data.table describing removed queries.
+        remove_query = function(query_id, delete = c("none", "orphaned")) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            delete <- match.arg(delete)
+
+            rows <- private$select_query_rows(query_id = query_id)
+            missing <- setdiff(query_id, rows$query_id)
+            if (length(missing)) {
+                cli::cli_abort("Stored ESGF query ID(s) not found: {.val {missing}}.")
+            }
+
+            links <- private$read_table("esg_query_file")
+            touched <- links[links[["query_id"]] %in% query_id]
+            artifacts <- private$read_table("artifact")
+            query_artifacts <- artifacts[artifacts[["query_id"]] %in% query_id & artifacts[["kind"]] == "query"]
+
+            private$delete_by_key("esg_query_file", "query_id", query_id)
+            private$delete_by_key("esg_query", "query_id", query_id)
+            if (nrow(query_artifacts)) {
+                paths <- vapply(query_artifacts$relative_path, store_abs_path, character(1L), root = private$store_path)
+                unlink(paths[file.exists(paths)], recursive = FALSE, force = TRUE)
+                private$delete_by_key("artifact", "artifact_id", query_artifacts$artifact_id)
+            }
+
+            remaining_links <- private$read_table("esg_query_file")
+            orphan_keys <- setdiff(unique(touched$file_key), remaining_links$file_key)
+            pruned <- if (identical(delete, "orphaned") && length(orphan_keys)) {
+                private$remove_file_records(orphan_keys, delete_local = TRUE, force = TRUE)
+            } else {
+                private$orphaned_files()[file_key %in% orphan_keys]
+            }
+
+            out <- data.table::as.data.table(rows)
+            out[, removed_file_links := vapply(query_id, function(id) sum(touched$query_id == id), integer(1L))]
+            out[, orphaned_file_count := nrow(pruned)]
+            out[]
+        },
+        # }}}
+
+        # remove_files {{{
+        #' @description
+        #' Remove ESGF file records and optionally delete local artifacts.
+        #'
+        #' @param file_key File key vector.
+        #' @param delete_local Whether to delete local NetCDF files. Default:
+        #'        `FALSE`.
+        #' @param force Whether to remove files still linked to queries.
+        #'        Default: `FALSE`.
+        #'
+        #' @return A data.table describing removed file records.
+        remove_files = function(file_key, delete_local = FALSE, force = FALSE) {
+            private$check_open()
+            checkmate::assert_character(file_key, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_flag(delete_local)
+            checkmate::assert_flag(force)
+            private$remove_file_records(file_key, delete_local = delete_local, force = force)
+        },
+        # }}}
+
+        # prune_orphans {{{
+        #' @description
+        #' Report or remove file records no longer linked to any query.
+        #'
+        #' @param delete_local Whether to delete local NetCDF files and remove
+        #'        orphaned registry records. Default: `FALSE`.
+        #'
+        #' @return A data.table of orphaned file records.
+        prune_orphans = function(delete_local = FALSE) {
+            private$check_open()
+            checkmate::assert_flag(delete_local)
+            orphans <- private$orphaned_files()
+            if (!isTRUE(delete_local) || !nrow(orphans)) {
+                return(orphans[])
+            }
+            private$remove_file_records(orphans$file_key, delete_local = TRUE, force = TRUE)
+        },
+        # }}}
+
         # retry_downloads {{{
         #' @description
         #' Requeue retryable downloader tasks linked to stored query files.
@@ -1918,6 +2005,132 @@ EsgStore <- R6::R6Class(
             hit$updated_at <- extract_store_now()
             private$replace_rows("esg_file", as.data.frame(hit), "file_key")
             invisible(NULL)
+        },
+        # }}}
+
+        # orphaned_files {{{
+        orphaned_files = function() {
+            empty <- data.table::data.table(
+                file_key = character(),
+                local_path = character(),
+                local_artifact_id = character(),
+                local_file = character(),
+                local_exists = logical()
+            )
+            files <- private$read_table("esg_file")
+            if (!nrow(files)) {
+                return(empty)
+            }
+            links <- private$read_table("esg_query_file")
+            linked <- unique(links$file_key)
+            orphans <- files[!files[["file_key"]] %in% linked]
+            if (!nrow(orphans)) {
+                return(empty)
+            }
+
+            catalog <- private$read_table("file_catalog")
+            artifacts <- private$read_table("artifact")
+            catalog <- catalog[catalog[["file_key"]] %in% orphans$file_key]
+            artifacts <- artifacts[artifacts[["file_key"]] %in% orphans$file_key & artifacts[["kind"]] == "netcdf"]
+            artifacts <- artifacts[!duplicated(artifacts$file_key)]
+
+            out <- merge(
+                orphans,
+                catalog[, .(file_key, catalog_local_path = local_path, catalog_artifact_id = local_artifact_id)],
+                by = "file_key",
+                all.x = TRUE,
+                sort = FALSE
+            )
+            out <- merge(
+                out,
+                artifacts[, .(file_key, artifact_id = artifact_id, artifact_path = relative_path)],
+                by = "file_key",
+                all.x = TRUE,
+                sort = FALSE
+            )
+            out[, orphan_local_path := local_path]
+            out[is.na(orphan_local_path) | !nzchar(orphan_local_path), orphan_local_path := catalog_local_path]
+            out[is.na(orphan_local_path) | !nzchar(orphan_local_path), orphan_local_path := artifact_path]
+            out[, orphan_artifact_id := local_artifact_id]
+            out[is.na(orphan_artifact_id) | !nzchar(orphan_artifact_id), orphan_artifact_id := catalog_artifact_id]
+            out[is.na(orphan_artifact_id) | !nzchar(orphan_artifact_id), orphan_artifact_id := artifact_id]
+            out[, local_file := vapply(orphan_local_path, function(path) {
+                if (is.na(path) || !nzchar(path)) {
+                    return(NA_character_)
+                }
+                store_abs_path(path, root = private$store_path)
+            }, character(1L))]
+            out[, local_exists := !is.na(local_file) & file.exists(local_file)]
+            out[, .(
+                file_key,
+                local_path = orphan_local_path,
+                local_artifact_id = orphan_artifact_id,
+                local_file,
+                local_exists
+            )]
+        },
+        # }}}
+
+        # remove_file_records {{{
+        remove_file_records = function(file_key, delete_local = FALSE, force = FALSE) {
+            keys <- unique(file_key)
+            files <- private$read_table("esg_file")
+            rows <- files[files[["file_key"]] %in% keys]
+            missing <- setdiff(keys, rows$file_key)
+            if (length(missing)) {
+                cli::cli_abort("ESGF file key(s) not found: {.val {missing}}.")
+            }
+
+            links <- private$read_table("esg_query_file")
+            linked <- links[links[["file_key"]] %in% keys]
+            if (nrow(linked) && !isTRUE(force)) {
+                cli::cli_abort(
+                    "Cannot remove file(s) still linked to stored queries. Use {.code force = TRUE} to remove links first."
+                )
+            }
+
+            catalog <- private$read_table("file_catalog")
+            catalog <- catalog[catalog[["file_key"]] %in% keys]
+            artifacts <- private$read_table("artifact")
+            artifacts <- artifacts[artifacts[["file_key"]] %in% keys & artifacts[["kind"]] == "netcdf"]
+
+            local_path <- stats::setNames(rows$local_path, rows$file_key)
+            if (nrow(catalog)) {
+                missing_path <- is.na(local_path[catalog$file_key]) | !nzchar(local_path[catalog$file_key])
+                local_path[catalog$file_key[missing_path]] <- catalog$local_path[missing_path]
+            }
+            if (nrow(artifacts)) {
+                missing_path <- is.na(local_path[artifacts$file_key]) | !nzchar(local_path[artifacts$file_key])
+                local_path[artifacts$file_key[missing_path]] <- artifacts$relative_path[missing_path]
+            }
+
+            local_file <- vapply(local_path[keys], function(path) {
+                if (is.na(path) || !nzchar(path)) {
+                    return(NA_character_)
+                }
+                store_abs_path(path, root = private$store_path)
+            }, character(1L))
+            deleted_local <- rep(FALSE, length(keys))
+            if (isTRUE(delete_local)) {
+                exists <- !is.na(local_file) & file.exists(local_file)
+                deleted_local[exists] <- unlink(local_file[exists], recursive = FALSE, force = TRUE) == 0L
+            }
+
+            if (nrow(linked) && isTRUE(force)) {
+                private$delete_by_key("esg_query_file", "file_key", keys)
+            }
+            if (nrow(artifacts)) {
+                private$delete_by_key("artifact", "artifact_id", artifacts$artifact_id)
+            }
+            private$delete_by_key("file_catalog", "file_key", keys)
+            private$delete_by_key("esg_file", "file_key", keys)
+
+            data.table::data.table(
+                file_key = keys,
+                local_file = unname(local_file),
+                deleted_local = deleted_local,
+                removed_links = vapply(keys, function(key) sum(linked$file_key == key), integer(1L))
+            )
         },
         # }}}
 

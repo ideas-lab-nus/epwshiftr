@@ -356,6 +356,83 @@ test_that("EsgStore downloads tracked query files through downloader", {
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
 
+test_that("EsgStore removes tracked queries without deleting local files by default", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    docs <- extract_store_test_file_docs(path = "remove-query.nc")
+    docs$master_id <- "CMIP6.mock.remove-query"
+    files <- extract_store_test_result(docs = docs)
+    priv(store)$update_query_files(query_id, files)
+    file_key <- store$query_files(query_id)$file_key[[1L]]
+
+    removed <- store$remove_query(query_id, delete = "none")
+    expect_equal(removed$query_id, query_id)
+    expect_equal(removed$removed_file_links, 1L)
+    expect_equal(nrow(store$queries()), 0L)
+
+    links <- ddb_read_table(priv(store)$conn, "esg_query_file")
+    expect_equal(nrow(links), 0L)
+    orphans <- store$prune_orphans(delete_local = FALSE)
+    expect_equal(orphans$file_key, file_key)
+})
+
+test_that("EsgStore removes file records and local artifacts explicitly", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    files <- extract_store_test_result(docs = extract_store_test_file_docs(path = "remove-file.nc"))
+    query_id <- store$add_files(files, label = "remove file test")
+    file_key <- store$query("SELECT file_key FROM esg_file")$file_key[[1L]]
+    local_file <- file.path(store$path, "downloads", "remove-file.nc")
+    dir.create(dirname(local_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("local netcdf placeholder", local_file)
+    artifact_id <- store$register_artifact(
+        kind = "netcdf",
+        path = local_file,
+        role = "download",
+        project = "CMIP6",
+        query_id = query_id,
+        file_key = file_key
+    )
+
+    rel <- extract_store_rel_path(local_file, store$path)
+    conn <- priv(store)$conn
+    ddb_exec(conn, sprintf(
+        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+    ddb_exec(conn, sprintf(
+        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+        ddb_literal(conn, rel),
+        ddb_literal(conn, artifact_id),
+        ddb_literal(conn, file_key)
+    ))
+
+    expect_error(store$remove_files(file_key), "still linked")
+    removed <- store$remove_files(file_key, delete_local = TRUE, force = TRUE)
+    expect_equal(removed$file_key, file_key)
+    expect_true(removed$deleted_local)
+    expect_false(file.exists(local_file))
+    expect_equal(nrow(ddb_read_table(conn, "esg_file")), 0L)
+    expect_equal(nrow(ddb_read_table(conn, "file_catalog")), 0L)
+    expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
+})
+
 test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
 
