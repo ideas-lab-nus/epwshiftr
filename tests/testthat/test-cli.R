@@ -76,6 +76,11 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_match(command_help$result[[1L]], "Usage: epwshiftr download run")
     expect_false(dir.exists(missing_dir))
 
+    watch_help <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "help", "download", "watch"))
+    expect_equal(watch_help$status, 0L)
+    expect_match(watch_help$result[[1L]], "Usage: epwshiftr download watch")
+    expect_false(dir.exists(missing_dir))
+
     help_topic <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "help", "storage", "validate"))
     expect_equal(help_topic$status, 0L)
     expect_match(help_topic$result[[1L]], "Usage: epwshiftr storage validate")
@@ -352,6 +357,19 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     events <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "events", "--session", session_id))
     expect_equal(events$status, 0L)
     expect_true("enqueue" %in% events$result$event)
+
+    watch <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "watch", "--query", query_id, "--session", session_id, "--events", "1"))
+    expect_equal(watch$status, 0L)
+    expect_named(watch$result, c("summary", "tasks", "nodes", "events"))
+    expect_equal(watch$result$summary$task_count, 1L)
+    expect_equal(watch$result$summary$queued, 1L)
+    expect_equal(watch$result$summary$last_download_session_id, session_id)
+    expect_lte(nrow(watch$result$events), 1L)
+
+    logs <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "logs", "--session", session_id, "--tail", "1"))
+    expect_equal(logs$status, 0L)
+    expect_lte(nrow(logs$result), 1L)
+    expect_true(all(logs$result$session_id == session_id))
 
     nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "nodes", "--service", "HTTPServer"))
     expect_equal(nodes$status, 0L)

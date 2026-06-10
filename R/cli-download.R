@@ -63,6 +63,26 @@ epwshiftr_cli_download <- function(store, command, args) {
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
         ))
     }
+    if (identical(command, "watch")) {
+        parsed <- epwshiftr_cli_parse_command(args, options = c("--query", "--session", "--events"))
+        epwshiftr_cli_assert_no_positionals(parsed)
+        return(epwshiftr_cli_download_watch(
+            store = store,
+            query_id = parsed$options[["--query"]],
+            session_id = parsed$options[["--session"]],
+            event_count = epwshiftr_cli_count_or_default(parsed$options[["--events"]], "--events", 10L, positive = FALSE)
+        ))
+    }
+    if (identical(command, "logs")) {
+        parsed <- epwshiftr_cli_parse_command(args, options = c("--session", "--task", "--tail"))
+        epwshiftr_cli_assert_no_positionals(parsed)
+        return(epwshiftr_cli_download_logs(
+            downloader = epwshiftr_cli_downloader(store),
+            session_id = parsed$options[["--session"]],
+            task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
+            tail = epwshiftr_cli_count_or_default(parsed$options[["--tail"]], "--tail", 50L, positive = FALSE)
+        ))
+    }
     if (identical(command, "resume")) {
         parsed <- epwshiftr_cli_parse_command(args, flags = c("--overwrite", "--no-progress"), options = c("--session", "--task"))
         epwshiftr_cli_assert_no_positionals(parsed)
@@ -98,7 +118,7 @@ epwshiftr_cli_download <- function(store, command, args) {
     if (identical(command, "nodes")) {
         parsed <- epwshiftr_cli_parse_command(args, options = "--service")
         epwshiftr_cli_assert_no_positionals(parsed)
-        return(epwshiftr_cli_downloader(store)$data_nodes(service = parsed$options[["--service"]]))
+        return(data.table::as.data.table(epwshiftr_cli_downloader(store)$data_nodes(service = parsed$options[["--service"]])))
     }
     if (identical(command, "reset-nodes")) {
         parsed <- epwshiftr_cli_parse_command(args, flags = "--execute", options = c("--node", "--service"))
@@ -107,7 +127,7 @@ epwshiftr_cli_download <- function(store, command, args) {
         if (isTRUE(parsed$flags[["--execute"]])) {
             return(downloader$reset_data_nodes(data_node = parsed$options[["--node"]], service = parsed$options[["--service"]]))
         }
-        nodes <- downloader$data_nodes(service = parsed$options[["--service"]])
+        nodes <- data.table::as.data.table(downloader$data_nodes(service = parsed$options[["--service"]]))
         if (!is.null(parsed$options[["--node"]]) && nrow(nodes)) {
             nodes <- nodes[nodes[["data_node"]] == parsed$options[["--node"]]]
         }
@@ -130,6 +150,116 @@ epwshiftr_cli_download <- function(store, command, args) {
         ))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown download command: %s", command))
+}
+
+
+epwshiftr_cli_download_watch <- function(store, query_id = NULL, session_id = NULL, event_count = 10L) {
+    downloader <- epwshiftr_cli_downloader(store)
+    tasks <- data.table::as.data.table(store$download_status(
+        query_id = query_id,
+        session_id = session_id,
+        downloader = downloader
+    ))
+    task_id <- if (nrow(tasks) && "task_id" %in% names(tasks)) tasks$task_id else NULL
+    events <- if (!is.null(query_id) && !nrow(tasks)) {
+        data.table::data.table()
+    } else {
+        epwshiftr_cli_download_logs(
+            downloader = downloader,
+            session_id = session_id,
+            task_id = task_id,
+            tail = event_count
+        )
+    }
+    nodes <- data.table::as.data.table(downloader$data_nodes())
+    list(
+        summary = epwshiftr_cli_download_watch_summary(tasks, downloader, session_id),
+        tasks = tasks[],
+        nodes = nodes[],
+        events = events
+    )
+}
+
+
+epwshiftr_cli_download_logs <- function(downloader, session_id = NULL, task_id = NULL, tail = 50L) {
+    events <- data.table::as.data.table(downloader$events(session_id = session_id, task_id = task_id))
+    if (nrow(events) && "created_at" %in% names(events)) {
+        data.table::setorderv(events, "created_at", 1L)
+    }
+    epwshiftr_cli_tail_rows(events, tail)
+}
+
+
+epwshiftr_cli_download_watch_summary <- function(tasks, downloader, session_id = NULL) {
+    statuses <- c("queued", "downloading", "done", "error", "cancelled", "skipped")
+    counts <- stats::setNames(integer(length(statuses)), statuses)
+    if (nrow(tasks) && "status" %in% names(tasks)) {
+        observed <- table(factor(tasks$status, levels = statuses))
+        counts[] <- as.integer(observed)
+    }
+    bytes_done <- if (nrow(tasks) && "bytes_done" %in% names(tasks)) {
+        sum(suppressWarnings(as.numeric(tasks$bytes_done)), na.rm = TRUE)
+    } else {
+        0
+    }
+    bytes_total <- if (nrow(tasks) && "size" %in% names(tasks)) {
+        sum(suppressWarnings(as.numeric(tasks$size)), na.rm = TRUE)
+    } else {
+        NA_real_
+    }
+    last_error <- NA_character_
+    if (nrow(tasks) && "last_error" %in% names(tasks)) {
+        errors <- tasks$last_error[!is.na(tasks$last_error) & nzchar(tasks$last_error)]
+        if (length(errors)) {
+            last_error <- tail(errors, 1L)
+        }
+    }
+    data.frame(
+        task_count = as.integer(nrow(tasks)),
+        queued = counts[["queued"]],
+        downloading = counts[["downloading"]],
+        done = counts[["done"]],
+        error = counts[["error"]],
+        cancelled = counts[["cancelled"]],
+        skipped = counts[["skipped"]],
+        bytes_done = as.numeric(bytes_done),
+        bytes_total = as.numeric(bytes_total),
+        download_incomplete = as.integer(sum(counts[c("queued", "downloading", "error", "cancelled")])),
+        download_retryable = as.integer(sum(counts[c("error", "cancelled")])),
+        last_download_session_id = epwshiftr_cli_download_last_session_id(tasks, downloader, session_id),
+        last_error = last_error,
+        stringsAsFactors = FALSE
+    )
+}
+
+
+epwshiftr_cli_download_last_session_id <- function(tasks, downloader, session_id = NULL) {
+    if (!is.null(session_id)) {
+        return(session_id)
+    }
+    if (nrow(tasks) && "session_id" %in% names(tasks)) {
+        sessions <- tasks$session_id[!is.na(tasks$session_id) & nzchar(tasks$session_id)]
+        if (length(sessions)) {
+            return(tail(sessions, 1L))
+        }
+    }
+    sessions <- data.table::as.data.table(tryCatch(downloader$sessions(), error = function(e) data.frame()))
+    if (!nrow(sessions) || !"session_id" %in% names(sessions)) {
+        return(NA_character_)
+    }
+    if ("created_at" %in% names(sessions)) {
+        data.table::setorderv(sessions, "created_at", 1L)
+    }
+    tail(sessions$session_id, 1L)
+}
+
+
+epwshiftr_cli_tail_rows <- function(rows, n) {
+    rows <- data.table::as.data.table(rows)
+    if (!nrow(rows) || n <= 0L) {
+        return(rows[0L])
+    }
+    rows[seq.int(max(1L, nrow(rows) - n + 1L), nrow(rows))]
 }
 
 

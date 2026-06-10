@@ -95,6 +95,14 @@ epwshiftr_cli_count <- function(value, name, positive = TRUE) {
 }
 
 
+epwshiftr_cli_count_or_default <- function(value, name, default, positive = TRUE) {
+    if (is.null(value)) {
+        return(default)
+    }
+    epwshiftr_cli_count(value, name, positive = positive)
+}
+
+
 epwshiftr_cli_bool <- function(value, name, default = NULL) {
     if (is.null(value)) {
         return(default)

@@ -148,6 +148,8 @@ epwshiftr_cli_help_registry <- function() {
             "  epwshiftr download sessions",
             "  epwshiftr download tasks [--session SESSION_ID] [--status STATUS]",
             "  epwshiftr download events [--session SESSION_ID] [--task TASK_ID]",
+            "  epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--events N]",
+            "  epwshiftr download logs [--session SESSION_ID] [--task TASK_ID] [--tail N]",
             "  epwshiftr download resume [--session SESSION_ID] [--task TASK_ID] [--overwrite] [--no-progress]",
             "  epwshiftr download verify [--session SESSION_ID] [--task TASK_ID]",
             "  epwshiftr download cancel [--session SESSION_ID] [--task TASK_ID]",
@@ -186,6 +188,16 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr download events [--session SESSION_ID] [--task TASK_ID]",
             "",
             "List persistent downloader event records."
+        ),
+        "download watch" = c(
+            "Usage: epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--events N]",
+            "",
+            "Return a one-shot download activity snapshot with summary, tasks, nodes, and recent events."
+        ),
+        "download logs" = c(
+            "Usage: epwshiftr download logs [--session SESSION_ID] [--task TASK_ID] [--tail N]",
+            "",
+            "Return the latest persistent downloader event records."
         ),
         "download resume" = c(
             "Usage: epwshiftr download resume [--session SESSION_ID] [--task TASK_ID] [--overwrite] [--no-progress]",
