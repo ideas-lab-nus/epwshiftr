@@ -52,6 +52,7 @@ Hongyuan Jia
 \item \href{#method-EsgStore-query_updates}{\code{EsgStore$query_updates()}}
 \item \href{#method-EsgStore-query_changes}{\code{EsgStore$query_changes()}}
 \item \href{#method-EsgStore-workflow_status}{\code{EsgStore$workflow_status()}}
+\item \href{#method-EsgStore-workflow_report}{\code{EsgStore$workflow_report()}}
 \item \href{#method-EsgStore-remove_query}{\code{EsgStore$remove_query()}}
 \item \href{#method-EsgStore-remove_files}{\code{EsgStore$remove_files()}}
 \item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
@@ -813,6 +814,29 @@ Summarise query, download, local, and extraction status together.
 }
 \subsection{Returns}{
 A data.table with one row per stored query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-workflow_report"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-workflow_report}{}}}
+\subsection{Method \code{workflow_report()}}{
+Return a compact ESGF query workflow health report.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$workflow_report(query_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID filter.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{updates}, \code{changes}, \code{downloads},
+and \code{nodes}.
 }
 }
 \if{html}{\out{<hr>}}

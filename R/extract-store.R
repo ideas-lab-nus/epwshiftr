@@ -1129,6 +1129,36 @@ EsgStore <- R6::R6Class(
                 )
                 status <- merge(status, updates, by = "query_id", all.x = TRUE, sort = FALSE)
             }
+            if ("bytes_total" %in% names(status) && "bytes_done" %in% names(status)) {
+                status[, bytes_missing := pmax(
+                    0,
+                    suppressWarnings(as.numeric(bytes_total)) - suppressWarnings(as.numeric(bytes_done))
+                )]
+            } else {
+                status[, bytes_missing := NA_real_]
+            }
+            retry_cols <- intersect(c("download_error", "download_cancelled"), names(status))
+            if (length(retry_cols)) {
+                retry_values <- as.data.frame(lapply(retry_cols, function(col) suppressWarnings(as.numeric(status[[col]]))))
+                status[, download_retryable := rowSums(retry_values, na.rm = TRUE)]
+            } else {
+                status[, download_retryable := 0L]
+            }
+            incomplete_cols <- intersect(c("download_queued", "download_downloading", "download_error", "download_cancelled"), names(status))
+            if (length(incomplete_cols)) {
+                incomplete_values <- as.data.frame(lapply(incomplete_cols, function(col) suppressWarnings(as.numeric(status[[col]]))))
+                status[, download_incomplete := rowSums(incomplete_values, na.rm = TRUE) > 0L]
+            } else {
+                status[, download_incomplete := FALSE]
+            }
+            if ("file_current" %in% names(status) && "local_available" %in% names(status)) {
+                status[local_available < file_current, download_incomplete := TRUE]
+            }
+            if ("download_session_id" %in% names(status)) {
+                status[, last_download_session_id := download_session_id]
+            } else {
+                status[, last_download_session_id := NA_character_]
+            }
 
             tags <- self$query_tags(query_id = status$query_id)
             if (nrow(tags)) {
@@ -1144,6 +1174,51 @@ EsgStore <- R6::R6Class(
                 status <- merge(status, plan_wide, by = "query_id", all.x = TRUE, sort = FALSE)
             }
             status[]
+        },
+        # }}}
+
+        # workflow_report {{{
+        #' @description
+        #' Return a compact ESGF query workflow health report.
+        #'
+        #' @param query_id Optional stored query ID filter.
+        #' @param downloader Optional [FileDownloader]. Default: `$downloader()`.
+        #'
+        #' @return A list with `summary`, `updates`, `changes`, `downloads`,
+        #'         and `nodes`.
+        workflow_report = function(query_id = NULL, downloader = NULL) {
+            private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            if (is.null(downloader)) {
+                downloader <- self$downloader()
+            }
+            summary <- self$workflow_status(query_id = query_id, downloader = downloader)
+            if (!nrow(summary)) {
+                empty <- data.table::data.table()
+                return(list(summary = summary, updates = empty, changes = empty, downloads = empty, nodes = empty))
+            }
+
+            updates <- self$query_updates(query_id = summary$query_id)
+            latest_updates <- self$query_updates(query_id = summary$query_id, latest = TRUE)
+            changes <- if (nrow(latest_updates)) {
+                out <- self$query_changes(update_id = latest_updates$update_id)
+                if (nrow(out)) {
+                    out <- out[out[["change_type"]] != "current"]
+                }
+                out[]
+            } else {
+                data.table::data.table()
+            }
+            downloads <- private$workflow_downloads(summary$query_id, downloader)
+            nodes <- tryCatch(downloader$data_nodes(), error = function(e) data.table::data.table())
+
+            list(
+                summary = summary[],
+                updates = updates[],
+                changes = changes[],
+                downloads = downloads[],
+                nodes = nodes[]
+            )
         },
         # }}}
 
@@ -2680,6 +2755,31 @@ EsgStore <- R6::R6Class(
             }
 
             data.table::rbindlist(rows, fill = TRUE)
+        },
+        # }}}
+
+        # workflow_downloads {{{
+        workflow_downloads = function(query_id, downloader) {
+            tasks <- tryCatch(downloader$tasks(), error = function(e) data.table::data.table())
+            if (!nrow(tasks)) {
+                return(tasks)
+            }
+            links <- private$read_table("esg_query_file")
+            links <- links[links[["query_id"]] %in% query_id]
+            if (!nrow(links) || !"file_key" %in% names(tasks)) {
+                return(tasks[0])
+            }
+            tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
+            if (!nrow(tasks)) {
+                return(tasks[])
+            }
+            link_cols <- links[, .(query_id, file_key, query_file_status = status)]
+            tasks <- merge(tasks, link_cols, by = "file_key", all.x = TRUE, sort = FALSE)
+            order_cols <- intersect(c("file_key", "updated_at", "created_at"), names(tasks))
+            if (length(order_cols)) {
+                data.table::setorderv(tasks, order_cols)
+            }
+            tasks[, .SD[.N], by = "file_key"][]
         },
         # }}}
 
