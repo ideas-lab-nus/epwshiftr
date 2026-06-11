@@ -517,6 +517,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     )
 
     files <- expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
+    expect_identical(calls[[1L]]$index_node, "https://example.org")
     expect_equal(calls[[1L]]$limit, this$data_max_limit)
     expect_false(query_param_value(calls[[1L]]$params$latest()))
     expect_false(query_param_value(calls[[1L]]$params$distrib()))
@@ -534,9 +535,11 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(query_param_value(calls[[2L]]$params$replica()))
 
     aggs <- expect_s3_class(
-        datasets$collect(fields = "id", limit = 1L, type = "Aggregation"),
+        datasets$collect(fields = "id", limit = 1L, type = "Aggregation", index_node = "esg-dn1.nsc.liu.se"),
         "EsgResultAggregation"
     )
+    expect_identical(calls[[3L]]$index_node, "https://esg-dn1.nsc.liu.se")
+    expect_identical(priv(aggs)$index_node, "https://esg-dn1.nsc.liu.se")
     expect_equal(calls[[3L]]$limit, 1L)
     expect_false(query_param_value(calls[[3L]]$params$latest()))
     expect_false(query_param_value(calls[[3L]]$params$distrib()))

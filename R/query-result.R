@@ -1654,6 +1654,10 @@ EsgResultDataset <- R6::R6Class(
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
         #'
+        #' @param index_node Optional ESGF index node used for the child query.
+        #'        If `NULL`, the index node that created the Dataset result is
+        #'        used. Default: `NULL`.
+        #'
         #' @param ... Additional child-result facet filters, plus the control
         #'        parameters `replica`, `distrib`, `latest`, and `shards`.
         #'        Query-level parameters such as `datetime_start` and
@@ -1674,8 +1678,14 @@ EsgResultDataset <- R6::R6Class(
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
-        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", index_node = NULL, ...) {
             type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+            child_index_node <- if (is.null(index_node)) {
+                private$index_node
+            } else {
+                checkmate::assert_string(index_node)
+                normalize_index_node(index_node)
+            }
             if (!is.null(which)) {
                 if (!self$count()) {
                     stop("Cannot select records from an empty Dataset result.", call. = FALSE)
@@ -1715,7 +1725,7 @@ EsgResultDataset <- R6::R6Class(
                 result <- query_result_empty_response(params)
             } else {
                 result <- query_collect(
-                    private$index_node,
+                    child_index_node,
                     params,
                     required_fields = req_fld,
                     all = all,
@@ -1732,14 +1742,14 @@ EsgResultDataset <- R6::R6Class(
             if (type == "File") {
                 new_query_result(
                     EsgResultFile,
-                    private$index_node,
+                    child_index_node,
                     result_params,
                     result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgResultAggregation,
-                    private$index_node,
+                    child_index_node,
                     result_params,
                     result$response
                 )

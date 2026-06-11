@@ -115,6 +115,7 @@ The following fields are always included in the results:
   all = FALSE,
   limit = 100L,
   type = "File",
+  index_node = NULL,
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -142,6 +143,10 @@ used. Default: \code{100L}.}
 
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}
+
+\item{\code{index_node}}{Optional ESGF index node used for the child query.
+If \code{NULL}, the index node that created the Dataset result is
+used. Default: \code{NULL}.}
 
 \item{\code{...}}{Additional child-result facet filters, plus the control
 parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
