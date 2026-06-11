@@ -1671,6 +1671,9 @@ QueryParamStore <- R6::R6Class(
 
             if (!is.null(name)) {
                 checkmate::assert_character(name, any.missing = FALSE, unique = TRUE)
+                if (!length(name)) {
+                    return(character())
+                }
 
                 idx_time <- match("_timestamp", name, nomatch = 0L)
                 if (idx_time > 0L) {
@@ -1704,13 +1707,21 @@ QueryParamStore <- R6::R6Class(
             rendered <- c()
             if (length(bucket_facet)) {
                 for (bucket in bucket_facet) {
-                    rendered <- c(rendered, private$render_facet(names(params[[bucket]])))
+                    param_names <- names(params[[bucket]])
+                    if (!length(param_names)) {
+                        next
+                    }
+                    rendered <- c(rendered, private$render_facet(param_names))
                 }
             }
             if (length(bucket_query)) {
                 for (bucket in bucket_query) {
+                    param_names <- names(params[[bucket]])
+                    if (!length(param_names)) {
+                        next
+                    }
                     rendered <- c(rendered, private$render_query(
-                        names(params[[bucket]]),
+                        param_names,
                         quote_date = quote_date,
                         datetime_end_alias = datetime_end_alias
                     ))

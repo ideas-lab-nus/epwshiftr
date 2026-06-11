@@ -1157,7 +1157,9 @@ test_that("ESGF Query Result Dataset works", {
 
     ## $collect(): can limit fields and record number
     expect_s3_class(files <- datasets$collect(fields = "id", limit = 1), "EsgResultFile")
-    expect_length(files$fields, 12L)
+    expect_true(
+        all(c(EsgResultFile$private_fields$required_fields, "filename", "url_opendap", "url_download") %in% files$fields)
+    )
 
     ## $collect(): can collect all fields
     expect_s3_class(files <- datasets$collect(fields = "id", all = TRUE), "EsgResultFile")
@@ -1308,7 +1310,7 @@ test_that("ESGF Query Result Aggregation works", {
     expect_length(aggs$url_download, 2L)
 
     expect_true(
-        all(EsgResultAggregation$private_fields$required_fields %in% aggs$fields)
+        all(c("data_node", "dataset_id", "id", "size", "title", "url", "url_opendap", "url_download") %in% aggs$fields)
     )
 
     # $print()

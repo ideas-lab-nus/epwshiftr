@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.1.0"
+STORE_SCHEMA_VERSION <- "2.2.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -3087,6 +3087,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
+            private$init_epw_morph_schema()
 
             private$migrate_schema()
 
@@ -3099,6 +3100,7 @@ EsgStore <- R6::R6Class(
             current <- private$store_schema_version()
             private$migrate_schema_to_2(current)
             private$migrate_schema_to_2_1(current)
+            private$migrate_schema_to_2_2(current)
             private$set_store_schema_version(STORE_SCHEMA_VERSION)
             invisible(NULL)
         },
@@ -3152,6 +3154,140 @@ EsgStore <- R6::R6Class(
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS version VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
+            invisible(NULL)
+        },
+
+        migrate_schema_to_2_2 = function(current) {
+            private$init_epw_morph_schema()
+            invisible(NULL)
+        },
+        # }}}
+
+        # init_epw_morph_schema {{{
+        init_epw_morph_schema = function() {
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_source (
+                    epw_id VARCHAR PRIMARY KEY,
+                    artifact_id VARCHAR,
+                    label VARCHAR,
+                    site_id VARCHAR,
+                    path VARCHAR,
+                    checksum VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_baseline_summary (
+                    baseline_row_id VARCHAR PRIMARY KEY,
+                    baseline_id VARCHAR,
+                    epw_id VARCHAR,
+                    epw_field VARCHAR,
+                    month INTEGER,
+                    stat VARCHAR,
+                    value DOUBLE,
+                    units VARCHAR,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_climate_summary (
+                    summary_row_id VARCHAR PRIMARY KEY,
+                    summary_id VARCHAR,
+                    plan_id VARCHAR,
+                    site_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    frequency VARCHAR,
+                    table_id VARCHAR,
+                    variable_id VARCHAR,
+                    period VARCHAR,
+                    month INTEGER,
+                    stat VARCHAR,
+                    value DOUBLE,
+                    units VARCHAR,
+                    coverage DOUBLE,
+                    n_records INTEGER,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_plan (
+                    morph_id VARCHAR PRIMARY KEY,
+                    epw_id VARCHAR,
+                    summary_id VARCHAR,
+                    baseline_id VARCHAR,
+                    label VARCHAR,
+                    by_json VARCHAR,
+                    recipe_json VARCHAR,
+                    strict BOOLEAN,
+                    status VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    last_error VARCHAR
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_factor (
+                    factor_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    epw_field VARCHAR,
+                    variable_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    period VARCHAR,
+                    month INTEGER,
+                    method VARCHAR,
+                    baseline DOUBLE,
+                    future DOUBLE,
+                    delta DOUBLE,
+                    alpha DOUBLE,
+                    units VARCHAR,
+                    status VARCHAR
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_result (
+                    result_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    artifact_id VARCHAR,
+                    output_path VARCHAR,
+                    row_count INTEGER,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_output (
+                    output_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    artifact_id VARCHAR,
+                    path VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    period VARCHAR,
+                    created_at TIMESTAMP
+                )
+            "
+            )
             invisible(NULL)
         },
         # }}}
@@ -5075,6 +5211,11 @@ EsgStore <- R6::R6Class(
                 time = requested_time,
                 nearest = plan$nearest[[1L]]
             )
+            units <- tryCatch(
+                as.character(ds$att_get(plan$variable_id[[1L]], "units", index = 1L))[[1L]],
+                error = function(e) NA_character_
+            )
+            dt[, units := units]
             if (!nrow(dt)) {
                 return(private$mark_plan_status(
                     plan,

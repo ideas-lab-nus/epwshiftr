@@ -3,6 +3,12 @@ downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+downloader_test_file_url <- function(root, filename, size) {
+    path <- file.path(root, filename)
+    writeBin(as.raw(rep(0:255, length.out = size)), path)
+    paste0("file://", normalizePath(path, winslash = "/"))
+}
+
 test_that("Downloader can be created", {
     dl <- Downloader$new()
     expect_s3_class(dl, "Downloader")
@@ -848,22 +854,13 @@ test_that("Downloader serializes persistent tasks for the same target path", {
 
 # Download Tests {{{
 test_that("Downloader can download a single file", {
-    skip_on_cran()
-    skip_if_offline()
-
-    url <- "https://httpbin.org/bytes/1024"
-
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    url <- downloader_test_file_url(temp_dir, "source-1024.bin", 1024L)
 
     dl <- Downloader$new(dest = temp_dir)
 
-    path <- tryCatch(
-        dl$download(url, filename = "test_file.bin", progress = FALSE),
-        error = function(e) {
-            skip("Network unavailable or httpbin.org is down")
-        }
-    )
+    path <- dl$download(url, filename = "test_file.bin", progress = FALSE)
 
     expect_true(file.exists(path))
     expect_equal(basename(path), "test_file.bin")
@@ -873,26 +870,17 @@ test_that("Downloader can download a single file", {
 })
 
 test_that("Downloader can download with subdir", {
-    skip_on_cran()
-    skip_if_offline()
-
-    url <- "https://httpbin.org/bytes/512"
-
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    url <- downloader_test_file_url(temp_dir, "source-512.bin", 512L)
 
     dl <- Downloader$new(dest = temp_dir)
 
-    path <- tryCatch(
-        dl$download(
-            url,
-            filename = "data.bin",
-            subdir = "docs",
-            progress = FALSE
-        ),
-        error = function(e) {
-            skip("Network unavailable")
-        }
+    path <- dl$download(
+        url,
+        filename = "data.bin",
+        subdir = "docs",
+        progress = FALSE
     )
 
     expect_true(file.exists(path))
@@ -956,22 +944,13 @@ test_that("Downloader restarts partial downloads when Range resume is unsupporte
 
 # File Status Tests {{{
 test_that("Downloader tracks file status correctly", {
-    skip_on_cran()
-    skip_if_offline()
-
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    url <- downloader_test_file_url(temp_dir, "source-2048.bin", 2048L)
 
     dl <- Downloader$new(dest = temp_dir)
 
-    url <- "https://httpbin.org/bytes/2048"
-
-    path <- tryCatch(
-        dl$download(url, filename = "test.bin", progress = FALSE),
-        error = function(e) {
-            skip("Network unavailable")
-        }
-    )
+    path <- dl$download(url, filename = "test.bin", progress = FALSE)
     expect_true(file.exists(path))
 
     expect_equal(nrow(dl$list_incomplete()), 0L)

@@ -158,7 +158,10 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
             "esg_file", "esg_query_file", "file_catalog",
             "esg_query_update", "esg_query_update_file",
             "esg_query_tag", "esg_query_dependency",
-            "extraction_plan", "extraction_result"
+            "extraction_plan", "extraction_result",
+            "epw_source", "epw_baseline_summary", "epw_climate_summary",
+            "epw_morph_plan", "epw_morph_factor", "epw_morph_result",
+            "epw_output"
         )
     )
     expect_null(store$get_meta("active_cmip6_index_artifact_id"))
@@ -1467,13 +1470,14 @@ test_that("EsgStore extracts regional data to Parquet", {
     parquet <- file.path(dir, results$output_path)
     expect_true(file.exists(parquet))
     rows <- ddb_query(conn, sprintf(
-        "SELECT site_id, source_id, experiment_id, variable_id, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
+        "SELECT site_id, source_id, experiment_id, variable_id, units, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
         ddb_literal(conn, parquet)
     ))
     expect_equal(rows$site_id, "SIN")
     expect_equal(rows$source_id, "EC-Earth3")
     expect_equal(rows$experiment_id, "ssp585")
     expect_equal(rows$variable_id, "tas")
+    expect_equal(rows$units, "K")
     expect_equal(rows$n, 2)
 
     validation <- store$validate()
