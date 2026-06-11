@@ -42,7 +42,8 @@ epwshiftr_cli_help_registry <- function() {
             "Commands:",
             "  epwshiftr query list",
             "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--dry-run] key=value ...",
-            "  epwshiftr query add --query-file PATH [--label LABEL] [--track]",
+            "  epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value ...",
+            "  epwshiftr query add --query-file PATH [--label LABEL] [--tag TAG]... [--track] [--dry-run]",
             "  epwshiftr query show <query_id> [--files] [--updates] [--changes]",
             "  epwshiftr query status [query_id]",
             "  epwshiftr query files <query_id> [--status STATUS]",
@@ -69,9 +70,11 @@ epwshiftr_cli_help_registry <- function() {
             "Use comma-separated values for multi-value query parameters."
         ),
         "query add" = c(
-            "Usage: epwshiftr query add --query-file PATH [--label LABEL] [--track]",
+            "Usage: epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value ...",
+            "       epwshiftr query add --query-file PATH [--label LABEL] [--tag TAG]... [--track] [--dry-run]",
             "",
-            "Import an EsgQuery JSON file into the selected store."
+            "Create an EsgQuery from command-line key=value constraints or import an EsgQuery JSON file.",
+            "This command saves query definitions only; it does not update or download ESGF files."
         ),
         "query show" = c(
             "Usage: epwshiftr query show <query_id> [--files] [--updates] [--changes]",

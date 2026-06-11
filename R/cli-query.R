@@ -34,16 +34,43 @@ epwshiftr_cli_query <- function(store, command, args) {
         return(result$to_data_table(fields = fields))
     }
     if (identical(command, "add")) {
-        parsed <- epwshiftr_cli_parse_command(args, flags = "--track", options = c("--query-file", "--label"))
-        epwshiftr_cli_assert_no_positionals(parsed)
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            flags = c("--track", "--dry-run"),
+            options = c("--query-file", "--label", "--index-node"),
+            multi_options = "--tag"
+        )
         file <- parsed$options[["--query-file"]]
-        if (is.null(file)) {
-            epwshiftr_cli_usage_abort("query add requires --query-file.")
+        has_params <- length(parsed$positionals) > 0L
+        if (!is.null(file) && has_params) {
+            epwshiftr_cli_usage_abort("query add cannot combine --query-file with key=value query parameters.")
         }
-        query <- esg_query()$load(file)
+        if (!is.null(file) && !is.null(parsed$options[["--index-node"]])) {
+            epwshiftr_cli_usage_abort("query add cannot combine --query-file with --index-node.")
+        }
+        if (is.null(file) && !has_params) {
+            epwshiftr_cli_usage_abort("query add requires --query-file or at least one key=value query parameter.")
+        }
+        tags <- epwshiftr_cli_query_tags(parsed$options[["--tag"]])
+        if (is.null(file)) {
+            query <- epwshiftr_cli_search_query(parsed)
+        } else {
+            query <- esg_query()$load(file)
+        }
+        if (isTRUE(parsed$flags[["--dry-run"]])) {
+            return(epwshiftr_cli_query_add_preview(
+                query,
+                label = parsed$options[["--label"]],
+                track = parsed$flags[["--track"]],
+                tags = tags
+            ))
+        }
         before <- store$queries()$query_id
         query_id <- store$add_query(query, label = parsed$options[["--label"]], track = parsed$flags[["--track"]])
         query_id <- epwshiftr_cli_added_query_id(store, query_id, before)
+        if (length(tags)) {
+            store$tag_query(query_id, tags)
+        }
         return(epwshiftr_cli_query_row(store, query_id))
     }
     if (identical(command, "show")) {
@@ -231,6 +258,32 @@ epwshiftr_cli_query_param_value <- function(value) {
         return(identical(lowered, "true"))
     }
     values
+}
+
+
+epwshiftr_cli_query_tags <- function(values) {
+    if (is.null(values) || !length(values)) {
+        return(character())
+    }
+    tags <- unlist(strsplit(as.character(values), ",", fixed = TRUE), use.names = FALSE)
+    tags <- unique(trimws(tags))
+    tags <- tags[nzchar(tags)]
+    if (!length(tags)) {
+        epwshiftr_cli_usage_abort("--tag requires a non-empty tag.")
+    }
+    tags
+}
+
+
+epwshiftr_cli_query_add_preview <- function(query, label = NULL, track = FALSE, tags = character()) {
+    list(
+        dry_run = TRUE,
+        url = query$url(),
+        label = label,
+        tracked = isTRUE(track),
+        tags = tags,
+        query = query$state(null = TRUE)
+    )
 }
 
 

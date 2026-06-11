@@ -214,22 +214,59 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_match(dry_search$result$url, "project=CMIP6")
     expect_match(dry_search$result$url, "latest=true")
 
+    before_dry_add <- store$queries()$query_id
+    dry_add <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "add",
+        "--index-node", "https://example.org", "--dry-run",
+        "--label", "dry add", "--tag", "cmip", "--tag", "tas",
+        "project=CMIP6", "variable_id=tas", "latest=true"
+    ))
+    expect_equal(dry_add$status, 0L)
+    expect_true(dry_add$result$dry_run)
+    expect_match(dry_add$result$url, "project=CMIP6")
+    expect_match(dry_add$result$url, "latest=true")
+    expect_equal(dry_add$result$label, "dry add")
+    expect_setequal(dry_add$result$tags, c("cmip", "tas"))
+    expect_setequal(store$queries()$query_id, before_dry_add)
+
+    added <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "add",
+        "--index-node", "https://example.org",
+        "--label", "added from cli", "--track",
+        "--tag", "cmip", "--tag", "daily",
+        "project=CMIP6", "variable_id=tas,pr", "latest=true"
+    ))
+    expect_equal(added$status, 0L)
+    expect_equal(added$result$label, "added from cli")
+    expect_true(added$result$tracked)
+    expect_equal(added$result$index_node, "https://example.org")
+    expect_setequal(store$query_tags(added$result$query_id)$tag, c("cmip", "daily"))
+
     json_text <- capture.output(
         json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))
     )
     parsed <- jsonlite::fromJSON(paste(json_text, collapse = "\n"))
     expect_equal(json$status, 0L)
-    expect_equal(parsed$query_id, query_id)
+    expect_true(query_id %in% parsed$query_id)
 
     query_file <- tempfile(fileext = ".json")
     esg_query("https://example.org")$
         experiment_id("ssp126")$
         variable_id("tas")$
         save(query_file)
-    imported <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add", "--query-file", query_file, "--label", "imported", "--track"))
+    imported <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add", "--query-file", query_file, "--label", "imported", "--tag", "imported", "--track"))
     expect_equal(imported$status, 0L)
     expect_equal(imported$result$label, "imported")
     expect_true(imported$result$tracked)
+    expect_equal(store$query_tags(imported$result$query_id)$tag, "imported")
+
+    empty_add <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add"))
+    expect_equal(empty_add$status, 2L)
+    expect_match(empty_add$error, "requires --query-file")
+
+    mixed_add <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add", "--query-file", query_file, "project=CMIP6"))
+    expect_equal(mixed_add$status, 2L)
+    expect_match(mixed_add$error, "cannot combine --query-file")
 
     bad_text <- capture.output(
         bad <- epwshiftr_cli(c("--store", dir, "--json", "query", "does-not-exist"))

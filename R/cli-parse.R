@@ -1,7 +1,9 @@
-epwshiftr_cli_parse_command <- function(args, flags = character(), options = character()) {
+epwshiftr_cli_parse_command <- function(args, flags = character(), options = character(), multi_options = character()) {
     flag_values <- stats::setNames(rep(FALSE, length(flags)), flags)
     option_values <- stats::setNames(rep(list(NULL), length(options)), options)
+    multi_option_values <- stats::setNames(rep(list(character()), length(multi_options)), multi_options)
     positionals <- character()
+    all_options <- c(options, multi_options)
     i <- 1L
     while (i <= length(args)) {
         arg <- args[[i]]
@@ -10,21 +12,30 @@ epwshiftr_cli_parse_command <- function(args, flags = character(), options = cha
             i <- i + 1L
             next
         }
-        option_match <- options[startsWith(arg, paste0(options, "="))]
+        option_match <- all_options[startsWith(arg, paste0(all_options, "="))]
         if (length(option_match)) {
             option <- option_match[[1L]]
-            option_values[[option]] <- sub(sprintf("^%s=", option), "", arg)
-            if (!nzchar(option_values[[option]])) {
+            value <- sub(sprintf("^%s=", option), "", arg)
+            if (!nzchar(value)) {
                 epwshiftr_cli_usage_abort(sprintf("%s requires a value.", option))
+            }
+            if (option %in% multi_options) {
+                multi_option_values[[option]] <- c(multi_option_values[[option]], value)
+            } else {
+                option_values[[option]] <- value
             }
             i <- i + 1L
             next
         }
-        if (arg %in% options) {
+        if (arg %in% all_options) {
             if (i == length(args)) {
                 epwshiftr_cli_usage_abort(sprintf("%s requires a value.", arg))
             }
-            option_values[[arg]] <- args[[i + 1L]]
+            if (arg %in% multi_options) {
+                multi_option_values[[arg]] <- c(multi_option_values[[arg]], args[[i + 1L]])
+            } else {
+                option_values[[arg]] <- args[[i + 1L]]
+            }
             i <- i + 2L
             next
         }
@@ -34,7 +45,7 @@ epwshiftr_cli_parse_command <- function(args, flags = character(), options = cha
         positionals <- c(positionals, arg)
         i <- i + 1L
     }
-    list(positionals = positionals, flags = flag_values, options = option_values)
+    list(positionals = positionals, flags = flag_values, options = c(option_values, multi_option_values))
 }
 
 
