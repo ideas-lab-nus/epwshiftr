@@ -150,7 +150,7 @@ epwshiftr_cli_emit_result <- function(result, json = FALSE, quiet = FALSE, conte
         cat("\n")
         return(invisible(NULL))
     }
-    epwshiftr_cli_render(result, context = context)
+    epwshiftr_cli_with_theme(epwshiftr_cli_render(result, context = context))
     invisible(NULL)
 }
 
@@ -166,6 +166,36 @@ epwshiftr_cli_emit_error <- function(message, json = FALSE, quiet = FALSE, statu
     }
     cli::cli_alert_danger(message)
     invisible(NULL)
+}
+
+
+epwshiftr_cli_with_theme <- function(expr) {
+    div <- cli::cli_div(theme = epwshiftr_cli_theme(), .auto_close = FALSE)
+    on.exit(cli::cli_end(div), add = TRUE)
+    force(expr)
+}
+
+
+epwshiftr_cli_theme <- function() {
+    list(
+        h1 = list(
+            "font-weight" = "bold",
+            color = "cyan",
+            "margin-top" = 0,
+            "margin-bottom" = 1,
+            fmt = function(x) cli::rule(left = x, line = 2, line_col = "cyan")
+        ),
+        h2 = list(
+            "font-weight" = "bold",
+            "margin-top" = 1,
+            "margin-bottom" = 0,
+            fmt = function(x) cli::rule(left = x, line = 1)
+        ),
+        par = list(
+            "margin-top" = 0,
+            "margin-bottom" = 0
+        )
+    )
 }
 
 
