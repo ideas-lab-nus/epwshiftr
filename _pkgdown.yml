@@ -26,6 +26,8 @@ navbar:
         href: articles/select-esgf-data.html
       - text: "Store, Download, and Extract ESGF Files"
         href: articles/store-download-extract.html
+      - text: "Manage ESGF Stores from the Command Line"
+        href: articles/cli-esgf-store.html
       - text: "Manage ESG Dictionaries"
         href: articles/cmip6_dict.html
     reference:
