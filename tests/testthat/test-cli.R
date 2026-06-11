@@ -207,12 +207,20 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     dry_search <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search",
         "--index-node", "https://example.org", "--dry-run",
-        "project=CMIP6", "variable_id=tas,pr", "latest=true"
+        "project=CMIP6", "source_id!=BCC-CSM2-MR", "variable_id=tas,pr", "latest=true"
     ))
     expect_equal(dry_search$status, 0L)
     expect_equal(dry_search$result$type, "Dataset")
     expect_match(dry_search$result$url, "project=CMIP6")
+    expect_match(dry_search$result$url, "source_id!=BCC-CSM2-MR", fixed = TRUE)
     expect_match(dry_search$result$url, "latest=true")
+
+    mixed_negate <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "search", "--dry-run",
+        "source_id=MPI-ESM1-2-HR", "source_id!=BCC-CSM2-MR"
+    ))
+    expect_equal(mixed_negate$status, 2L)
+    expect_match(mixed_negate$error, "Cannot combine positive and negated values")
 
     before_dry_add <- store$queries()$query_id
     dry_add <- epwshiftr_cli(c(
@@ -234,13 +242,16 @@ test_that("epwshiftr_cli reports usage and JSON output", {
         "--index-node", "https://example.org",
         "--label", "added from cli", "--track",
         "--tag", "cmip", "--tag", "daily",
-        "project=CMIP6", "variable_id=tas,pr", "latest=true"
+        "project=CMIP6", "source_id!=BCC-CSM2-MR,CESM2", "variable_id=tas,pr", "latest=true"
     ))
     expect_equal(added$status, 0L)
     expect_equal(added$result$label, "added from cli")
     expect_true(added$result$tracked)
     expect_equal(added$result$index_node, "https://example.org")
     expect_setequal(store$query_tags(added$result$query_id)$tag, c("cmip", "daily"))
+    added_query <- esg_query()$load(file.path(dir, added$result$query_file))
+    expect_true(query_param_negate(added_query$source_id()))
+    expect_equal(query_param_value(added_query$source_id()), c("BCC-CSM2-MR", "CESM2"))
 
     json_text <- capture.output(
         json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))

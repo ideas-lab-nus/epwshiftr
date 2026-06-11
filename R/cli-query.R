@@ -216,12 +216,37 @@ epwshiftr_cli_apply_search_params <- function(query, params) {
         value <- params[[key]]
         method <- tryCatch(query[[key]], error = function(e) NULL)
         if (is.function(method)) {
-            query <- method(value)
+            query <- epwshiftr_cli_apply_query_param(method, value)
         } else {
-            query <- do.call(query$params, stats::setNames(list(value), key))
+            query <- epwshiftr_cli_apply_query_param(query$params, value, name = key)
         }
     }
     query
+}
+
+
+epwshiftr_cli_apply_query_param <- function(method, value, name = NULL) {
+    if (epwshiftr_cli_is_negated_param(value)) {
+        arg <- as.call(list(as.name("!"), value$value))
+        args <- list(arg)
+        if (!is.null(name)) {
+            args <- stats::setNames(args, name)
+        }
+        return(eval(as.call(c(list(method), args))))
+    }
+    if (is.list(value) && all(c("value", "negate") %in% names(value))) {
+        value <- value$value
+    }
+    args <- list(value)
+    if (!is.null(name)) {
+        args <- stats::setNames(args, name)
+    }
+    do.call(method, args)
+}
+
+
+epwshiftr_cli_is_negated_param <- function(value) {
+    is.list(value) && all(c("value", "negate") %in% names(value)) && isTRUE(value$negate)
 }
 
 
@@ -229,17 +254,24 @@ epwshiftr_cli_key_value_params <- function(values) {
     out <- list()
     for (value in values) {
         if (!grepl("=", value, fixed = TRUE)) {
-            epwshiftr_cli_usage_abort(sprintf("Expected key=value query parameter, got: %s", value))
+            epwshiftr_cli_usage_abort(sprintf("Expected key=value or key!=value query parameter, got: %s", value))
         }
-        parts <- strsplit(value, "=", fixed = TRUE)[[1L]]
+        first_equal <- regexpr("=", value, fixed = TRUE)[[1L]]
+        first_bang_equal <- regexpr("!=", value, fixed = TRUE)[[1L]]
+        negate <- first_bang_equal > 0L && first_equal == first_bang_equal + 1L
+        parts <- strsplit(value, if (negate) "!=" else "=", fixed = TRUE)[[1L]]
         key <- parts[[1L]]
-        raw <- paste(parts[-1L], collapse = "=")
+        raw <- paste(parts[-1L], collapse = if (negate) "!=" else "=")
         if (!nzchar(key)) {
             epwshiftr_cli_usage_abort(sprintf("Query parameter has an empty key: %s", value))
         }
         parsed <- epwshiftr_cli_query_param_value(raw)
+        parsed <- list(value = parsed, negate = negate)
         if (key %in% names(out)) {
-            out[[key]] <- c(out[[key]], parsed)
+            if (!identical(isTRUE(out[[key]]$negate), isTRUE(parsed$negate))) {
+                epwshiftr_cli_usage_abort(sprintf("Cannot combine positive and negated values for query parameter: %s", key))
+            }
+            out[[key]]$value <- c(out[[key]]$value, parsed$value)
         } else {
             out[[key]] <- parsed
         }

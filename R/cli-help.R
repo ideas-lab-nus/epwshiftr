@@ -41,8 +41,8 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr query list",
-            "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--dry-run] key=value ...",
-            "  epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value ...",
+            "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--dry-run] key=value|key!=value ...",
+            "  epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value|key!=value ...",
             "  epwshiftr query add --query-file PATH [--label LABEL] [--tag TAG]... [--track] [--dry-run]",
             "  epwshiftr query show <query_id> [--files] [--updates] [--changes]",
             "  epwshiftr query status [query_id]",
@@ -64,16 +64,18 @@ epwshiftr_cli_help_registry <- function() {
             "List stored ESGF queries in the selected store."
         ),
         "query search" = c(
-            "Usage: epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--limit N] [--all] [--dry-run] key=value ...",
+            "Usage: epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--limit N] [--all] [--dry-run] key=value|key!=value ...",
             "",
             "Run an ESGF search from command-line key=value constraints.",
-            "Use comma-separated values for multi-value query parameters."
+            "Use comma-separated values for multi-value query parameters.",
+            "Use key!=value to negate a facet constraint."
         ),
         "query add" = c(
-            "Usage: epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value ...",
+            "Usage: epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value|key!=value ...",
             "       epwshiftr query add --query-file PATH [--label LABEL] [--tag TAG]... [--track] [--dry-run]",
             "",
             "Create an EsgQuery from command-line key=value constraints or import an EsgQuery JSON file.",
+            "Use key!=value to negate a facet constraint.",
             "This command saves query definitions only; it does not update or download ESGF files."
         ),
         "query show" = c(
