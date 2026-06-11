@@ -2,7 +2,7 @@
 #'
 #' @description
 #' `epwshiftr_cli()` is the package-level entry point used by the optional
-#' `epwshiftr` launcher. It exposes a small ESGF store workflow interface and
+#' `epwshiftr` launcher. It exposes a small ESGF store management interface and
 #' returns status metadata when `exit = FALSE`, which makes it testable from R.
 #'
 #' @param args Command line arguments. Defaults to
@@ -126,8 +126,8 @@ epwshiftr_cli_dispatch <- function(parsed) {
     if (identical(group, "download")) {
         return(epwshiftr_cli_download(store, command, rest))
     }
-    if (identical(group, "workflow")) {
-        return(epwshiftr_cli_workflow(store, command, rest))
+    if (identical(group, "esgf")) {
+        return(epwshiftr_cli_esgf(store, command, rest))
     }
     if (identical(group, "storage")) {
         return(epwshiftr_cli_storage(store, command, rest))

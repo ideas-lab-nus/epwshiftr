@@ -1,10 +1,10 @@
-epwshiftr_cli_workflow <- function(store, command, args) {
+epwshiftr_cli_esgf <- function(store, command, args) {
     if (identical(command, "report")) {
         parsed <- epwshiftr_cli_parse_command(args, options = "--query")
         epwshiftr_cli_assert_no_positionals(parsed)
         return(store$workflow_report(query_id = parsed$options[["--query"]], downloader = epwshiftr_cli_downloader(store)))
     }
-    epwshiftr_cli_usage_abort(sprintf("Unknown workflow command: %s", command))
+    epwshiftr_cli_usage_abort(sprintf("Unknown esgf command: %s", command))
 }
 
 

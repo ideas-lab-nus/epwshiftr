@@ -224,7 +224,7 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_match(quiet_bad$error, "Missing required argument")
 })
 
-test_that("epwshiftr_cli dispatches store workflow commands", {
+test_that("epwshiftr_cli dispatches esgf store commands", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -235,7 +235,7 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
             experiment_id("ssp585")$
             variable_id("tas")$
             limit(1L),
-        label = "cli workflow",
+        label = "cli esgf",
         track = TRUE
     )
 
@@ -268,10 +268,17 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     expect_equal(updated$status, 0L)
     expect_equal(nrow(updated$result), 1L)
 
-    status <- epwshiftr_cli(c("--quiet", "--store", dir, "workflow", "report", "--query", query_id))
+    esgf_help <- epwshiftr_cli(c("--quiet", "--store", dir, "esgf", "help"))
+    expect_equal(esgf_help$status, 0L)
+    expect_match(esgf_help$result[[1L]], "Usage: epwshiftr esgf")
+
+    status <- epwshiftr_cli(c("--quiet", "--store", dir, "esgf", "report", "--query", query_id))
     expect_equal(status$status, 0L)
     expect_named(status$result, c("summary", "updates", "changes", "downloads", "nodes"))
     expect_equal(status$result$summary$query_id, query_id)
+
+    old_workflow <- epwshiftr_cli(c("--quiet", "--store", dir, "workflow", "report", "--query", query_id))
+    expect_equal(old_workflow$status, 2L)
 
     storage <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "report", "--detail"))
     expect_equal(storage$status, 0L)

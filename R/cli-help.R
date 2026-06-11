@@ -20,7 +20,7 @@ epwshiftr_cli_help_root <- function() {
         "  epwshiftr doctor",
         "  epwshiftr query help",
         "  epwshiftr download help",
-        "  epwshiftr workflow help",
+        "  epwshiftr esgf help",
         "  epwshiftr storage help",
         "",
         "Use `epwshiftr help <group> <command>` for command-specific help."
@@ -244,16 +244,16 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Update persistent downloader configuration."
         ),
-        workflow = c(
-            "Usage: epwshiftr workflow <command> [options]",
+        esgf = c(
+            "Usage: epwshiftr esgf <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr workflow report [--query QUERY_ID]"
+            "  epwshiftr esgf report [--query QUERY_ID]"
         ),
-        "workflow report" = c(
-            "Usage: epwshiftr workflow report [--query QUERY_ID]",
+        "esgf report" = c(
+            "Usage: epwshiftr esgf report [--query QUERY_ID]",
             "",
-            "Return a compact ESGF query workflow health report."
+            "Return a compact ESGF query and download health report."
         ),
         storage = c(
             "Usage: epwshiftr storage <command> [options]",
