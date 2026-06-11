@@ -392,18 +392,11 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     }), stringsAsFactors = FALSE)
     names(display) <- names(shown)
 
-    header <- epwshiftr_cli_title(names(display))
-    values <- lapply(display, as.character)
-    widths <- vapply(seq_along(values), function(i) {
-        max(nchar(c(header[[i]], values[[i]]), type = "width"), na.rm = TRUE)
-    }, integer(1L))
-    lines <- c(
-        epwshiftr_cli_table_line(header, widths),
-        epwshiftr_cli_table_line(vapply(widths, function(width) paste(rep("-", width), collapse = ""), character(1L)), widths)
+    lines <- epwshiftr_cli_table_lines(
+        display,
+        header = epwshiftr_cli_title(names(display)),
+        align = epwshiftr_cli_table_alignments(shown)
     )
-    for (row in seq_len(nrow(display))) {
-        lines <- c(lines, epwshiftr_cli_table_line(vapply(values, `[[`, character(1L), row), widths))
-    }
     cli::cli_verbatim(lines)
     extra <- nrow(x) - nrow(shown)
     if (extra > 0L) {
@@ -443,16 +436,6 @@ epwshiftr_cli_pick_columns <- function(x, columns = NULL) {
 }
 
 
-epwshiftr_cli_table_line <- function(values, widths) {
-    padded <- vapply(seq_along(values), function(i) {
-        value <- values[[i]]
-        pad <- widths[[i]] - nchar(value, type = "width")
-        paste0(value, paste(rep(" ", max(0L, pad)), collapse = ""))
-    }, character(1L))
-    paste(padded, collapse = "  ")
-}
-
-
 epwshiftr_cli_column_max_width <- function(name) {
     name <- tolower(name)
     if (grepl("url|path|detail|message|error|hint", name)) {
@@ -465,6 +448,123 @@ epwshiftr_cli_column_max_width <- function(name) {
         return(40L)
     }
     24L
+}
+
+
+epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border = "single") {
+    x <- as.data.frame(x, stringsAsFactors = FALSE)
+    header <- as.character(header)
+    if (!ncol(x)) {
+        return(character())
+    }
+    if (is.null(align)) {
+        align <- rep("left", ncol(x))
+    }
+    align <- rep_len(align, ncol(x))
+    chars <- epwshiftr_cli_table_border(border)
+    body <- as.data.frame(lapply(x, as.character), stringsAsFactors = FALSE)
+    header <- rep_len(header, ncol(body))
+    widths <- vapply(seq_along(body), function(i) {
+        max(cli::ansi_nchar(c(header[[i]], body[[i]]), type = "width"), na.rm = TRUE)
+    }, integer(1L))
+
+    lines <- c(
+        epwshiftr_cli_table_rule(widths, chars, "top"),
+        epwshiftr_cli_table_row(cli::style_bold(header), widths, rep("left", length(widths)), chars),
+        epwshiftr_cli_table_rule(widths, chars, "mid")
+    )
+    for (i in seq_len(nrow(body))) {
+        row <- vapply(body, `[[`, character(1L), i)
+        lines <- c(lines, epwshiftr_cli_table_row(row, widths, align, chars))
+    }
+    c(lines, epwshiftr_cli_table_rule(widths, chars, "bottom"))
+}
+
+
+epwshiftr_cli_table_border <- function(border = "single") {
+    border <- match.arg(border, c("single", "ascii", "none"))
+    if (identical(border, "single") && !isTRUE(cli::is_utf8_output())) {
+        border <- "ascii"
+    }
+    switch(
+        border,
+        single = list(
+            top = c(left = "\u250c", mid = "\u252c", right = "\u2510"),
+            middle = c(left = "\u251c", mid = "\u253c", right = "\u2524"),
+            bottom = c(left = "\u2514", mid = "\u2534", right = "\u2518"),
+            horizontal = "\u2500",
+            vertical = "\u2502",
+            margin = 1L
+        ),
+        ascii = list(
+            top = c(left = "+", mid = "+", right = "+"),
+            middle = c(left = "+", mid = "+", right = "+"),
+            bottom = c(left = "+", mid = "+", right = "+"),
+            horizontal = "-",
+            vertical = "|",
+            margin = 1L
+        ),
+        none = list(
+            top = c(left = "", mid = "", right = ""),
+            middle = c(left = "", mid = "", right = ""),
+            bottom = c(left = "", mid = "", right = ""),
+            horizontal = "",
+            vertical = "  ",
+            margin = 0L
+        )
+    )
+}
+
+
+epwshiftr_cli_table_rule <- function(widths, chars, position = c("top", "mid", "bottom")) {
+    position <- match.arg(position)
+    pieces <- switch(position, top = chars$top, mid = chars$middle, bottom = chars$bottom)
+    cell_widths <- widths + chars$margin * 2L
+    cells <- vapply(cell_widths, function(width) paste(rep(chars$horizontal, width), collapse = ""), character(1L))
+    paste0(pieces[["left"]], paste(cells, collapse = pieces[["mid"]]), pieces[["right"]])
+}
+
+
+epwshiftr_cli_table_row <- function(values, widths, align, chars) {
+    values <- as.character(values)
+    cells <- vapply(seq_along(values), function(i) {
+        padded <- epwshiftr_cli_table_pad(values[[i]], widths[[i]], align[[i]])
+        paste0(
+            paste(rep(" ", chars$margin), collapse = ""),
+            padded,
+            paste(rep(" ", chars$margin), collapse = "")
+        )
+    }, character(1L))
+    paste0(chars$vertical, paste(cells, collapse = chars$vertical), chars$vertical)
+}
+
+
+epwshiftr_cli_table_pad <- function(value, width, align = "left") {
+    value <- as.character(value[[1L]])
+    visible <- cli::ansi_nchar(value, type = "width")
+    pad <- max(0L, as.integer(width) - as.integer(visible))
+    left <- switch(
+        align,
+        right = pad,
+        center = floor(pad / 2L),
+        0L
+    )
+    right <- pad - left
+    paste0(strrep(" ", left), value, strrep(" ", right))
+}
+
+
+epwshiftr_cli_table_alignments <- function(x) {
+    vapply(names(x), function(name) {
+        value <- x[[name]]
+        if (is.numeric(value) || is.integer(value)) {
+            return("right")
+        }
+        if (grepl("bytes|size|count|attempt|priority|latency|rate|total|done|missing|queued|error|cancelled|skipped", name, ignore.case = TRUE)) {
+            return("right")
+        }
+        "left"
+    }, character(1L))
 }
 
 
