@@ -24,7 +24,12 @@ epwshiftr_cli <- function(args = commandArgs(trailingOnly = TRUE), exit = FALSE)
         {
             parsed <- epwshiftr_cli_parse_globals(args)
             result <- epwshiftr_cli_dispatch(parsed)
-            epwshiftr_cli_emit_result(result, json = parsed$json, quiet = parsed$quiet)
+            epwshiftr_cli_emit_result(
+                result,
+                json = parsed$json,
+                quiet = parsed$quiet,
+                context = epwshiftr_cli_context(parsed)
+            )
         },
         epwshiftr_cli_usage_error = function(e) {
             status <<- 2L
@@ -136,7 +141,7 @@ epwshiftr_cli_dispatch <- function(parsed) {
 }
 
 
-epwshiftr_cli_emit_result <- function(result, json = FALSE, quiet = FALSE) {
+epwshiftr_cli_emit_result <- function(result, json = FALSE, quiet = FALSE, context = NULL) {
     if (isTRUE(quiet)) {
         return(invisible(NULL))
     }
@@ -145,11 +150,7 @@ epwshiftr_cli_emit_result <- function(result, json = FALSE, quiet = FALSE) {
         cat("\n")
         return(invisible(NULL))
     }
-    if (is.character(result)) {
-        cli::cli_text(paste(result, collapse = "\n"))
-    } else {
-        print(result)
-    }
+    epwshiftr_cli_render(result, context = context)
     invisible(NULL)
 }
 

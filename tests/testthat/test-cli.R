@@ -102,6 +102,17 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_true(any(missing_doctor$result$checks$check == "store_path"))
     expect_false(dir.exists(missing_dir))
 
+    doctor_text <- capture.output(
+        doctor_rendered <- epwshiftr_cli(c("--store", missing_dir, "doctor")),
+        type = "message"
+    )
+    expect_equal(doctor_rendered$status, 0L)
+    expect_true(any(grepl("epwshiftr doctor", doctor_text)))
+    expect_true(any(grepl("Summary", doctor_text)))
+    expect_true(any(grepl("Checks", doctor_text)))
+    expect_false(any(grepl("^\\$summary", doctor_text)))
+    expect_false(dir.exists(missing_dir))
+
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -126,6 +137,15 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     listed <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "list"))
     expect_equal(listed$status, 0L)
     expect_equal(listed$result$query_id, query_id)
+
+    list_text <- capture.output(
+        listed_rendered <- epwshiftr_cli(c("--store", dir, "query", "list")),
+        type = "message"
+    )
+    expect_equal(listed_rendered$status, 0L)
+    expect_true(any(grepl("Stored ESGF queries", list_text)))
+    expect_true(any(grepl("Cli Query|cli query", list_text)))
+    expect_false(any(grepl("^\\[\\[|^\\$", list_text)))
 
     shown <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "show", query_id))
     expect_equal(shown$status, 0L)
@@ -264,6 +284,16 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     expect_named(preview$result, c("summary", "changes"))
     expect_equal(preview$result$summary$query_id, query_id)
 
+    preview_text <- capture.output(
+        preview_rendered <- epwshiftr_cli(c("--store", dir, "query", "preview", query_id, "--detail")),
+        type = "message"
+    )
+    expect_equal(preview_rendered$status, 0L)
+    expect_true(any(grepl("Query update preview", preview_text)))
+    expect_true(any(grepl("Summary", preview_text)))
+    expect_true(any(grepl("Changes", preview_text)))
+    expect_false(any(grepl("^\\$summary", preview_text)))
+
     updated <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "update", query_id))
     expect_equal(updated$status, 0L)
     expect_equal(nrow(updated$result), 1L)
@@ -276,6 +306,16 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     expect_equal(status$status, 0L)
     expect_named(status$result, c("summary", "updates", "changes", "downloads", "nodes"))
     expect_equal(status$result$summary$query_id, query_id)
+
+    esgf_text <- capture.output(
+        esgf_rendered <- epwshiftr_cli(c("--store", dir, "esgf", "report", "--query", query_id)),
+        type = "message"
+    )
+    expect_equal(esgf_rendered$status, 0L)
+    expect_true(any(grepl("ESGF report", esgf_text)))
+    expect_true(any(grepl("Summary", esgf_text)))
+    expect_true(any(grepl("Downloads", esgf_text)))
+    expect_false(any(grepl("^\\$summary", esgf_text)))
 
     old_workflow <- epwshiftr_cli(c("--quiet", "--store", dir, "workflow", "report", "--query", query_id))
     expect_equal(old_workflow$status, 2L)
@@ -373,10 +413,28 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     expect_equal(watch$result$summary$last_download_session_id, session_id)
     expect_lte(nrow(watch$result$events), 1L)
 
+    watch_text <- capture.output(
+        watch_rendered <- epwshiftr_cli(c("--store", dir, "download", "watch", "--query", query_id, "--session", session_id, "--events", "1")),
+        type = "message"
+    )
+    expect_equal(watch_rendered$status, 0L)
+    expect_true(any(grepl("Download activity", watch_text)))
+    expect_true(any(grepl("Tasks", watch_text)))
+    expect_true(any(grepl("Recent events", watch_text)))
+    expect_false(any(grepl("^\\$summary", watch_text)))
+
     logs <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "logs", "--session", session_id, "--tail", "1"))
     expect_equal(logs$status, 0L)
     expect_lte(nrow(logs$result), 1L)
     expect_true(all(logs$result$session_id == session_id))
+
+    logs_text <- capture.output(
+        logs_rendered <- epwshiftr_cli(c("--store", dir, "download", "logs", "--session", session_id, "--tail", "1")),
+        type = "message"
+    )
+    expect_equal(logs_rendered$status, 0L)
+    expect_true(any(grepl("Download events", logs_text)))
+    expect_false(any(grepl("^\\[\\[|^\\$", logs_text)))
 
     nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "nodes", "--service", "HTTPServer"))
     expect_equal(nodes$status, 0L)
