@@ -8,7 +8,7 @@ epwshiftr_cli_query <- function(store, command, args) {
         parsed <- epwshiftr_cli_parse_command(
             args,
             flags = c("--all", "--dry-run"),
-            options = c("--index-node", "--type", "--fields", "--limit")
+            options = c("--index-node", "--type", "--fields", "--columns", "--limit")
         )
         query <- epwshiftr_cli_search_query(parsed)
         type <- if (is.null(parsed$options[["--type"]])) "Dataset" else parsed$options[["--type"]]

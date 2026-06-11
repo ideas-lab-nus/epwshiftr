@@ -10,11 +10,26 @@ epwshiftr_cli_context <- function(parsed) {
         topic <- args[-1L]
         return(list(group = "help", command = paste(topic, collapse = " "), action = NULL))
     }
-    list(
+    context <- list(
         group = args[[1L]],
         command = if (length(args) >= 2L) args[[2L]] else NULL,
         action = if (length(args) >= 3L) args[[3L]] else NULL
     )
+    context$columns <- epwshiftr_cli_context_columns(args)
+    context
+}
+
+
+epwshiftr_cli_context_columns <- function(args) {
+    if (length(args) < 2L || !identical(args[[1L]], "query") || !identical(args[[2L]], "search")) {
+        return(NULL)
+    }
+    parsed <- epwshiftr_cli_parse_command(
+        args[-seq_len(2L)],
+        flags = c("--all", "--dry-run"),
+        options = c("--index-node", "--type", "--fields", "--columns", "--limit")
+    )
+    epwshiftr_cli_csv(parsed$options[["--columns"]])
 }
 
 
@@ -33,7 +48,7 @@ epwshiftr_cli_render <- function(result, context = NULL) {
         return(epwshiftr_cli_render_doctor(result))
     }
     if (identical(group, "query")) {
-        return(epwshiftr_cli_render_query(result, command))
+        return(epwshiftr_cli_render_query(result, command, context = context))
     }
     if (identical(group, "download")) {
         return(epwshiftr_cli_render_download(result, command, action))
@@ -68,7 +83,7 @@ epwshiftr_cli_render_doctor <- function(result) {
 }
 
 
-epwshiftr_cli_render_query <- function(result, command) {
+epwshiftr_cli_render_query <- function(result, command, context = NULL) {
     if (identical(command, "list")) {
         return(epwshiftr_cli_render_table(
             result,
@@ -85,10 +100,11 @@ epwshiftr_cli_render_query <- function(result, command) {
             }
             return(invisible(NULL))
         }
+        columns <- epwshiftr_cli_query_search_columns(result, context)
         return(epwshiftr_cli_render_table(
             result,
             title = "ESGF search results",
-            columns = c("title", "filename", "variable_id", "experiment_id", "source_id", "data_node", "size", "id", "dataset_id")
+            columns = columns
         ))
     }
     if (identical(command, "preview")) {
@@ -133,6 +149,27 @@ epwshiftr_cli_render_query <- function(result, command) {
         "Query result"
     )
     epwshiftr_cli_render_default(result, title = title)
+}
+
+
+epwshiftr_cli_query_search_columns <- function(result, context = NULL) {
+    columns <- context$columns
+    if (!is.null(columns)) {
+        return(epwshiftr_cli_validate_display_columns(result, columns))
+    }
+    c("title", "filename", "variable_id", "experiment_id", "source_id", "data_node", "size", "id", "dataset_id")
+}
+
+
+epwshiftr_cli_validate_display_columns <- function(x, columns) {
+    missing <- setdiff(columns, names(x))
+    if (length(missing)) {
+        epwshiftr_cli_usage_abort(sprintf(
+            "Unknown display column(s): %s. Add them to --fields if they are ESGF result fields.",
+            paste(missing, collapse = ", ")
+        ))
+    }
+    columns
 }
 
 

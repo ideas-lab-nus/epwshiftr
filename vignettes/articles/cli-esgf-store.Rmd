@@ -85,6 +85,20 @@ epwshiftr query search --dry-run \
 Comma-separated values become multi-value query parameters. Boolean strings
 `true` and `false` become logical query values.
 
+Use `--fields` to control fields requested from ESGF, and `--columns` to
+control the human-readable table printed by the CLI. If a display column is an
+ESGF result field, include it in `--fields` as well.
+
+```sh
+epwshiftr query search \
+  --fields source_id,experiment_id,variable_id,datetime_start,datetime_stop,size \
+  --columns variable_id,datetime_start,datetime_stop,size \
+  project=CMIP6 \
+  variable_id=tas \
+  datetime_start=2050-01-01 \
+  datetime_stop=2050-12-31
+```
+
 Use `datetime_start` and `datetime_stop` for data coverage constraints. These
 are mapped to `EsgQuery$datetime_range()`, so they are not plain ESGF facets.
 For a target year, set both boundaries:

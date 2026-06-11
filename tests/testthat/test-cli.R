@@ -207,6 +207,7 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     dry_search <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search",
         "--index-node", "https://example.org", "--dry-run",
+        "--columns", "variable_id,source_id",
         "project=CMIP6", "source_id!=BCC-CSM2-MR", "variable_id=tas,pr",
         "datetime_start=2050", "datetime_stop=2050-12-31", "latest=true"
     ))
@@ -218,6 +219,7 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     decoded_search_url <- URLdecode(dry_search$result$url)
     expect_match(decoded_search_url, "datetime_start:[* TO 2050-01-01T00:00:00Z]", fixed = TRUE)
     expect_match(decoded_search_url, "datetime_stop:[2050-12-31T00:00:00Z TO *]", fixed = TRUE)
+    expect_false("columns" %in% names(dry_search$result))
 
     mixed_negate <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search", "--dry-run",
@@ -343,12 +345,38 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     searched <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search",
         "--index-node", "https://example.org", "--type", "File",
-        "--fields", "id,title", "--limit", "1",
+        "--fields", "id,title", "--columns", "title,id", "--limit", "1",
         "experiment_id=ssp585", "variable_id=tas"
     ))
     expect_equal(searched$status, 0L)
     expect_equal(nrow(searched$result), 1L)
     expect_true(all(c("id", "title") %in% names(searched$result)))
+
+    json_search_text <- capture.output(
+        json_search <- epwshiftr_cli(c(
+            "--store", dir, "--json", "query", "search",
+            "--index-node", "https://example.org", "--type", "File",
+            "--fields", "id,title,source_id", "--columns", "title",
+            "--limit", "1",
+            "experiment_id=ssp585", "variable_id=tas"
+        ))
+    )
+    expect_equal(json_search$status, 0L)
+    json_search_result <- jsonlite::fromJSON(paste(json_search_text, collapse = "\n"))
+    expect_true(all(c("id", "title", "source_id") %in% names(json_search_result)))
+
+    capture.output(
+        bad_columns <- epwshiftr_cli(c(
+            "--store", dir, "query", "search",
+            "--index-node", "https://example.org", "--type", "File",
+            "--fields", "id,title", "--columns", "missing_column",
+            "--limit", "1",
+            "experiment_id=ssp585", "variable_id=tas"
+        )),
+        type = "message"
+    )
+    expect_equal(bad_columns$status, 2L)
+    expect_match(bad_columns$error, "Unknown display column")
 
     preview <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "preview", query_id, "--detail"))
     expect_equal(preview$status, 0L)
