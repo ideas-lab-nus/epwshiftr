@@ -371,7 +371,7 @@ epwshiftr_cli_render_summary <- function(x, title = "Summary") {
 }
 
 
-epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows = 20L) {
+epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows = 20L, show_types = TRUE) {
     x <- epwshiftr_cli_as_data_frame(x)
     augmented <- epwshiftr_cli_add_progress_column(x, columns)
     x <- augmented$x
@@ -398,7 +398,8 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     adapted <- epwshiftr_cli_adapt_table_columns(
         display = display,
         raw = shown,
-        max_width = epwshiftr_cli_console_width()
+        max_width = epwshiftr_cli_console_width(),
+        show_types = show_types
     )
     display <- adapted$display
     shown <- adapted$raw
@@ -406,6 +407,7 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     lines <- epwshiftr_cli_table_lines(
         display,
         header = epwshiftr_cli_title(names(display)),
+        types = if (isTRUE(show_types)) epwshiftr_cli_table_types(shown) else NULL,
         align = epwshiftr_cli_table_alignments(shown),
         row_style = epwshiftr_cli_table_row_styles(shown)
     )
@@ -467,11 +469,14 @@ epwshiftr_cli_column_max_width <- function(name) {
 }
 
 
-epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border = "single", row_style = NULL) {
+epwshiftr_cli_table_lines <- function(x, header = names(x), types = NULL, align = NULL, border = "single", row_style = NULL) {
     x <- as.data.frame(x, stringsAsFactors = FALSE)
     header <- as.character(header)
     if (!ncol(x)) {
         return(character())
+    }
+    if (!is.null(types)) {
+        types <- rep_len(as.character(types), ncol(x))
     }
     if (is.null(align)) {
         align <- rep("left", ncol(x))
@@ -485,14 +490,18 @@ epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border
     body <- as.data.frame(lapply(x, as.character), stringsAsFactors = FALSE)
     header <- rep_len(header, ncol(body))
     widths <- vapply(seq_along(body), function(i) {
-        max(cli::ansi_nchar(c(header[[i]], body[[i]]), type = "width"), na.rm = TRUE)
+        label <- c(header[[i]], if (!is.null(types)) types[[i]], body[[i]])
+        max(cli::ansi_nchar(label, type = "width"), na.rm = TRUE)
     }, integer(1L))
 
     lines <- c(
         epwshiftr_cli_table_rule(widths, chars, "top"),
-        epwshiftr_cli_table_row(cli::style_bold(header), widths, rep("left", length(widths)), chars),
-        epwshiftr_cli_table_rule(widths, chars, "mid")
+        epwshiftr_cli_table_row(cli::style_bold(header), widths, rep("left", length(widths)), chars)
     )
+    if (!is.null(types)) {
+        lines <- c(lines, epwshiftr_cli_table_row(cli::col_grey(types), widths, rep("left", length(widths)), chars))
+    }
+    lines <- c(lines, epwshiftr_cli_table_rule(widths, chars, "mid"))
     for (i in seq_len(nrow(body))) {
         row <- vapply(body, `[[`, character(1L), i)
         line <- epwshiftr_cli_table_row(row, widths, align, chars)
@@ -502,7 +511,7 @@ epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border
 }
 
 
-epwshiftr_cli_adapt_table_columns <- function(display, raw, max_width = epwshiftr_cli_console_width(), min_columns = 2L) {
+epwshiftr_cli_adapt_table_columns <- function(display, raw, max_width = epwshiftr_cli_console_width(), min_columns = 2L, show_types = TRUE) {
     if (!ncol(display)) {
         return(list(display = display, raw = raw, dropped = character()))
     }
@@ -512,7 +521,7 @@ epwshiftr_cli_adapt_table_columns <- function(display, raw, max_width = epwshift
     }
     min_columns <- max(1L, min(as.integer(min_columns[[1L]]), ncol(display)))
     dropped <- character()
-    while (ncol(display) > min_columns && epwshiftr_cli_table_width(display, raw) > max_width) {
+    while (ncol(display) > min_columns && epwshiftr_cli_table_width(display, raw, show_types = show_types) > max_width) {
         drop <- names(display)[[ncol(display)]]
         dropped <- c(drop, dropped)
         display <- display[-ncol(display)]
@@ -522,16 +531,50 @@ epwshiftr_cli_adapt_table_columns <- function(display, raw, max_width = epwshift
 }
 
 
-epwshiftr_cli_table_width <- function(display, raw) {
+epwshiftr_cli_table_width <- function(display, raw, show_types = TRUE) {
     lines <- epwshiftr_cli_table_lines(
         display,
         header = epwshiftr_cli_title(names(display)),
+        types = if (isTRUE(show_types)) epwshiftr_cli_table_types(raw) else NULL,
         align = epwshiftr_cli_table_alignments(raw)
     )
     if (!length(lines)) {
         return(0L)
     }
     max(cli::ansi_nchar(lines, type = "width"), na.rm = TRUE)
+}
+
+
+epwshiftr_cli_table_types <- function(x) {
+    if (!length(x)) {
+        return(character())
+    }
+    class_abbr <- c(
+        list = "<list>",
+        integer = "<int>",
+        numeric = "<num>",
+        double = "<num>",
+        character = "<char>",
+        Date = "<Date>",
+        complex = "<cplx>",
+        factor = "<fctr>",
+        POSIXct = "<POSc>",
+        POSIXlt = "<POSt>",
+        logical = "<lgcl>",
+        IDate = "<IDat>",
+        integer64 = "<i64>",
+        raw = "<raw>",
+        expression = "<expr>",
+        ordered = "<ord>"
+    )
+    vapply(x, function(col) {
+        class <- class(col)[[1L]]
+        label <- unname(class_abbr[[class]])
+        if (is.null(label) || is.na(label)) {
+            label <- paste0("<", class, ">")
+        }
+        label
+    }, character(1L), USE.NAMES = FALSE)
 }
 
 
