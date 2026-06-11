@@ -68,7 +68,8 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Run an ESGF search from command-line key=value constraints.",
             "Use comma-separated values for multi-value query parameters.",
-            "Use key!=value to negate a facet constraint."
+            "Use key!=value to negate a facet constraint.",
+            "Use datetime_start=VALUE and datetime_stop=VALUE to constrain data coverage."
         ),
         "query add" = c(
             "Usage: epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value|key!=value ...",
@@ -76,6 +77,7 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Create an EsgQuery from command-line key=value constraints or import an EsgQuery JSON file.",
             "Use key!=value to negate a facet constraint.",
+            "Use datetime_start=VALUE and datetime_stop=VALUE to constrain data coverage.",
             "This command saves query definitions only; it does not update or download ESGF files."
         ),
         "query show" = c(

@@ -77,11 +77,27 @@ epwshiftr query search --dry-run \
   experiment_id=ssp585 \
   variable_id=tas,psl \
   table_id=Amon \
+  datetime_start=2050-01-01 \
+  datetime_stop=2050-12-31 \
   latest=true
 ```
 
 Comma-separated values become multi-value query parameters. Boolean strings
 `true` and `false` become logical query values.
+
+Use `datetime_start` and `datetime_stop` for data coverage constraints. These
+are mapped to `EsgQuery$datetime_range()`, so they are not plain ESGF facets.
+For a target year, set both boundaries:
+
+```sh
+epwshiftr query search --dry-run \
+  project=CMIP6 \
+  variable_id=tas \
+  datetime_start=2050-01-01 \
+  datetime_stop=2050-12-31
+```
+
+`datetime_end` is accepted as an alias for `datetime_stop`.
 
 Use `key!=value` for a negated facet constraint:
 
@@ -112,6 +128,8 @@ epwshiftr --store ~/cmip6-store query add \
   experiment_id=ssp585 \
   variable_id=tas,psl \
   table_id=Amon \
+  datetime_start=2050-01-01 \
+  datetime_stop=2050-12-31 \
   latest=true
 ```
 

@@ -214,6 +214,11 @@ epwshiftr_cli_search_query <- function(parsed) {
 epwshiftr_cli_apply_search_params <- function(query, params) {
     for (key in names(params)) {
         value <- params[[key]]
+        condition_query <- epwshiftr_cli_apply_query_condition_param(query, key, value)
+        if (!is.null(condition_query)) {
+            query <- condition_query
+            next
+        }
         method <- tryCatch(query[[key]], error = function(e) NULL)
         if (is.function(method)) {
             query <- epwshiftr_cli_apply_query_param(method, value)
@@ -222,6 +227,40 @@ epwshiftr_cli_apply_search_params <- function(query, params) {
         }
     }
     query
+}
+
+
+epwshiftr_cli_apply_query_condition_param <- function(query, key, value) {
+    aliases <- c(
+        datetime_start = "datetime_start",
+        datetime_stop = "datetime_stop",
+        datetime_end = "datetime_stop",
+        timestamp_from = "timestamp_from",
+        timestamp_to = "timestamp_to",
+        version_min = "version_min",
+        version_max = "version_max"
+    )
+    if (!key %in% names(aliases)) {
+        return(NULL)
+    }
+    if (epwshiftr_cli_is_negated_param(value)) {
+        epwshiftr_cli_usage_abort(sprintf("Query condition cannot be negated: %s", key))
+    }
+    if (is.list(value) && all(c("value", "negate") %in% names(value))) {
+        value <- value$value
+    }
+    if (length(value) != 1L) {
+        epwshiftr_cli_usage_abort(sprintf("Query condition expects exactly one value: %s", key))
+    }
+    switch(
+        aliases[[key]],
+        datetime_start = query$datetime_range(start = value),
+        datetime_stop = query$datetime_range(stop = value),
+        timestamp_from = query$timestamp_range(from = value),
+        timestamp_to = query$timestamp_range(to = value),
+        version_min = query$version_range(min = value),
+        version_max = query$version_range(max = value)
+    )
 }
 
 

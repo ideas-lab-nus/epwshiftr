@@ -207,13 +207,17 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     dry_search <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search",
         "--index-node", "https://example.org", "--dry-run",
-        "project=CMIP6", "source_id!=BCC-CSM2-MR", "variable_id=tas,pr", "latest=true"
+        "project=CMIP6", "source_id!=BCC-CSM2-MR", "variable_id=tas,pr",
+        "datetime_start=2050", "datetime_stop=2050-12-31", "latest=true"
     ))
     expect_equal(dry_search$status, 0L)
     expect_equal(dry_search$result$type, "Dataset")
     expect_match(dry_search$result$url, "project=CMIP6")
     expect_match(dry_search$result$url, "source_id!=BCC-CSM2-MR", fixed = TRUE)
     expect_match(dry_search$result$url, "latest=true")
+    decoded_search_url <- URLdecode(dry_search$result$url)
+    expect_match(decoded_search_url, "datetime_start:[* TO 2050-01-01T00:00:00Z]", fixed = TRUE)
+    expect_match(decoded_search_url, "datetime_stop:[2050-12-31T00:00:00Z TO *]", fixed = TRUE)
 
     mixed_negate <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "search", "--dry-run",
@@ -221,6 +225,13 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     ))
     expect_equal(mixed_negate$status, 2L)
     expect_match(mixed_negate$error, "Cannot combine positive and negated values")
+
+    negated_condition <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "search", "--dry-run",
+        "datetime_start!=2050"
+    ))
+    expect_equal(negated_condition$status, 2L)
+    expect_match(negated_condition$error, "Query condition cannot be negated")
 
     before_dry_add <- store$queries()$query_id
     dry_add <- epwshiftr_cli(c(
@@ -252,6 +263,18 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     added_query <- esg_query()$load(file.path(dir, added$result$query_file))
     expect_true(query_param_negate(added_query$source_id()))
     expect_equal(query_param_value(added_query$source_id()), c("BCC-CSM2-MR", "CESM2"))
+
+    time_added <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "query", "add",
+        "--index-node", "https://example.org",
+        "--label", "time from cli",
+        "project=CMIP6", "variable_id=tas", "datetime_start=2050", "datetime_end=2060"
+    ))
+    expect_equal(time_added$status, 0L)
+    time_query <- esg_query()$load(file.path(dir, time_added$result$query_file))
+    time_range <- time_query$datetime_range()
+    expect_false(is.null(time_range$start))
+    expect_false(is.null(time_range$stop))
 
     json_text <- capture.output(
         json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))
