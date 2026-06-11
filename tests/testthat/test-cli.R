@@ -493,6 +493,38 @@ test_that("epwshiftr_cli table output adapts to console width", {
     expect_true(any(grepl("Status", text)))
 })
 
+test_that("epwshiftr_cli table output highlights status and progress", {
+    withr::local_options(cli.num_colors = 256L, width = 120L)
+
+    danger <- epwshiftr:::epwshiftr_cli_color_status("error")
+    success <- epwshiftr:::epwshiftr_cli_color_status("done")
+    expect_false(identical(danger, "error"))
+    expect_false(identical(success, "done"))
+    expect_equal(cli::ansi_nchar(danger, type = "width"), 5L)
+    expect_equal(cli::ansi_nchar(success, type = "width"), 4L)
+
+    rows <- data.frame(
+        status = c("error", "done"),
+        filename = c("failed.nc", "done.nc"),
+        bytes_done = c(128, 1024),
+        size = c(1024, 1024),
+        attempts = c(2L, 1L),
+        last_error = c("temporary failure", NA_character_),
+        stringsAsFactors = FALSE
+    )
+    text <- capture.output(
+        epwshiftr:::epwshiftr_cli_render_table(
+            rows,
+            title = "Progress table",
+            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error")
+        ),
+        type = "message"
+    )
+
+    expect_true(any(grepl("Progress", text)))
+    expect_true(any(grepl("\\[[#-]+\\]", text)))
+})
+
 test_that("install_cli and uninstall_cli manage generated launchers", {
     bin_dir <- tempfile("epwshiftr-bin-")
     name <- "epwshiftr-test"

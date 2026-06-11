@@ -373,6 +373,9 @@ epwshiftr_cli_render_summary <- function(x, title = "Summary") {
 
 epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows = 20L) {
     x <- epwshiftr_cli_as_data_frame(x)
+    augmented <- epwshiftr_cli_add_progress_column(x, columns)
+    x <- augmented$x
+    columns <- augmented$columns
     if (!is.null(title) && nzchar(title)) {
         cli::cli_h2(title)
     }
@@ -403,7 +406,8 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     lines <- epwshiftr_cli_table_lines(
         display,
         header = epwshiftr_cli_title(names(display)),
-        align = epwshiftr_cli_table_alignments(shown)
+        align = epwshiftr_cli_table_alignments(shown),
+        row_style = epwshiftr_cli_table_row_styles(shown)
     )
     cli::cli_verbatim(lines)
     extra <- nrow(x) - nrow(shown)
@@ -463,7 +467,7 @@ epwshiftr_cli_column_max_width <- function(name) {
 }
 
 
-epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border = "single") {
+epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border = "single", row_style = NULL) {
     x <- as.data.frame(x, stringsAsFactors = FALSE)
     header <- as.character(header)
     if (!ncol(x)) {
@@ -473,6 +477,10 @@ epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border
         align <- rep("left", ncol(x))
     }
     align <- rep_len(align, ncol(x))
+    if (is.null(row_style)) {
+        row_style <- rep("none", nrow(x))
+    }
+    row_style <- rep_len(row_style, nrow(x))
     chars <- epwshiftr_cli_table_border(border)
     body <- as.data.frame(lapply(x, as.character), stringsAsFactors = FALSE)
     header <- rep_len(header, ncol(body))
@@ -487,7 +495,8 @@ epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border
     )
     for (i in seq_len(nrow(body))) {
         row <- vapply(body, `[[`, character(1L), i)
-        lines <- c(lines, epwshiftr_cli_table_row(row, widths, align, chars))
+        line <- epwshiftr_cli_table_row(row, widths, align, chars)
+        lines <- c(lines, epwshiftr_cli_style_table_row(line, row_style[[i]]))
     }
     c(lines, epwshiftr_cli_table_rule(widths, chars, "bottom"))
 }
@@ -523,6 +532,36 @@ epwshiftr_cli_table_width <- function(display, raw) {
         return(0L)
     }
     max(cli::ansi_nchar(lines, type = "width"), na.rm = TRUE)
+}
+
+
+epwshiftr_cli_add_progress_column <- function(x, columns = NULL) {
+    if (!all(c("bytes_done", "size") %in% names(x)) || "progress" %in% names(x)) {
+        return(list(x = x, columns = columns))
+    }
+    x$progress <- epwshiftr_cli_progress_bar(x$bytes_done, x$size)
+    if (!is.null(columns) && "bytes_done" %in% columns && "size" %in% columns && !"progress" %in% columns) {
+        pos <- match("size", columns)
+        columns <- append(columns, "progress", after = pos)
+    }
+    list(x = x, columns = columns)
+}
+
+
+epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
+    done <- suppressWarnings(as.numeric(done))
+    total <- suppressWarnings(as.numeric(total))
+    out <- rep("-", length(done))
+    ok <- !is.na(done) & !is.na(total) & total > 0
+    if (!any(ok)) {
+        return(out)
+    }
+    ratio <- pmax(0, pmin(1, done[ok] / total[ok]))
+    filled <- pmin(width, pmax(0L, round(ratio * width)))
+    out[ok] <- vapply(seq_along(ratio), function(i) {
+        paste0("[", strrep("#", filled[[i]]), strrep("-", width - filled[[i]]), "] ", sprintf("%3.0f%%", ratio[[i]] * 100))
+    }, character(1L))
+    out
 }
 
 
@@ -623,6 +662,46 @@ epwshiftr_cli_table_alignments <- function(x) {
 }
 
 
+epwshiftr_cli_table_row_styles <- function(x) {
+    if (!nrow(x)) {
+        return(character())
+    }
+    value <- epwshiftr_cli_table_status_values(x)
+    vapply(value, function(status) {
+        group <- epwshiftr_cli_status_group(status)
+        switch(
+            group,
+            danger = "danger",
+            warning = "warning",
+            "none"
+        )
+    }, character(1L), USE.NAMES = FALSE)
+}
+
+
+epwshiftr_cli_table_status_values <- function(x) {
+    for (name in c("status", "change_type", "check_status")) {
+        if (name %in% names(x)) {
+            return(as.character(x[[name]]))
+        }
+    }
+    rep(NA_character_, nrow(x))
+}
+
+
+epwshiftr_cli_style_table_row <- function(line, style = "none") {
+    switch(
+        style,
+        danger = cli::col_red(line),
+        warning = cli::col_yellow(line),
+        info = cli::col_cyan(line),
+        success = cli::col_green(line),
+        muted = cli::col_grey(line),
+        line
+    )
+}
+
+
 epwshiftr_cli_truncate_cell <- function(x, width) {
     x <- as.character(x)
     width <- as.integer(width[[1L]])
@@ -639,6 +718,12 @@ epwshiftr_cli_truncate_cell <- function(x, width) {
 
 
 epwshiftr_cli_format_named_cell <- function(x, name) {
+    if (epwshiftr_cli_is_status_column(name)) {
+        return(epwshiftr_cli_color_status(epwshiftr_cli_format_cell(x)))
+    }
+    if (is.logical(x) || epwshiftr_cli_is_boolean_indicator(name)) {
+        return(epwshiftr_cli_color_boolean(epwshiftr_cli_format_cell(x), name))
+    }
     if (grepl("bytes|size", name, ignore.case = TRUE)) {
         return(epwshiftr_cli_format_bytes(x))
     }
@@ -646,6 +731,71 @@ epwshiftr_cli_format_named_cell <- function(x, name) {
         return(epwshiftr_cli_format_time(x))
     }
     epwshiftr_cli_format_cell(x)
+}
+
+
+epwshiftr_cli_is_status_column <- function(name) {
+    grepl("(^status$|change_type|check_status|event$)", name, ignore.case = TRUE)
+}
+
+
+epwshiftr_cli_is_boolean_indicator <- function(name) {
+    grepl("(^|_)(ok|exists|tracked|cached|resume|run|execute|dry_run|incomplete|retryable|would_block)$", name, ignore.case = TRUE)
+}
+
+
+epwshiftr_cli_color_status <- function(x) {
+    vapply(x, function(value) {
+        group <- epwshiftr_cli_status_group(value)
+        switch(
+            group,
+            danger = cli::col_red(value),
+            warning = cli::col_yellow(value),
+            success = cli::col_green(value),
+            info = cli::col_cyan(value),
+            muted = cli::col_grey(value),
+            value
+        )
+    }, character(1L), USE.NAMES = FALSE)
+}
+
+
+epwshiftr_cli_status_group <- function(x) {
+    x <- tolower(as.character(x[[1L]]))
+    if (is.na(x) || !nzchar(x) || identical(x, "-")) {
+        return("none")
+    }
+    if (x %in% c("error", "failed", "failure", "cancelled", "missing", "retracted", "invalid", "bad", "blocked")) {
+        return("danger")
+    }
+    if (x %in% c("warning", "stale", "changed", "deprecated", "cooldown", "retry", "retryable", "interrupted")) {
+        return("warning")
+    }
+    if (x %in% c("ok", "done", "current", "success", "verified", "complete", "completed")) {
+        return("success")
+    }
+    if (x %in% c("queued", "downloading", "running", "enqueue", "probe", "new", "skipped")) {
+        return("info")
+    }
+    if (x %in% c("none", "unknown", "na", "-")) {
+        return("muted")
+    }
+    "none"
+}
+
+
+epwshiftr_cli_color_boolean <- function(x, name) {
+    value <- tolower(as.character(x))
+    positive_is_bad <- grepl("incomplete|retryable|would_block|dry_run", name, ignore.case = TRUE)
+    vapply(value, function(item) {
+        if (item %in% c("yes", "true", "1")) {
+            return(if (positive_is_bad) cli::col_yellow(item) else cli::col_green(item))
+        }
+        if (item %in% c("no", "false", "0")) {
+            return(if (positive_is_bad) cli::col_green(item) else cli::col_red(item))
+        }
+        cli::col_grey(item)
+    }, character(1L), USE.NAMES = FALSE)
 }
 
 
