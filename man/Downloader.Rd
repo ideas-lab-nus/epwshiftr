@@ -141,7 +141,9 @@ Hongyuan Jia
 
 \item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
 
-\item{\code{config_file}}{Downloader config path, or \code{NULL}.}
+\item{\code{config}}{Current downloader configuration as a named list. When
+\code{manifest} is set, the configuration is stored in the
+manifest's \code{download_config} table.}
 }
 \if{html}{\out{</div>}}
 }
@@ -150,9 +152,6 @@ Hongyuan Jia
 \itemize{
 \item \href{#method-Downloader-new}{\code{Downloader$new()}}
 \item \href{#method-Downloader-download}{\code{Downloader$download()}}
-\item \href{#method-Downloader-save_config}{\code{Downloader$save_config()}}
-\item \href{#method-Downloader-export_manifest}{\code{Downloader$export_manifest()}}
-\item \href{#method-Downloader-import_manifest}{\code{Downloader$import_manifest()}}
 \item \href{#method-Downloader-enqueue}{\code{Downloader$enqueue()}}
 \item \href{#method-Downloader-preflight}{\code{Downloader$preflight()}}
 \item \href{#method-Downloader-run}{\code{Downloader$run()}}
@@ -200,8 +199,7 @@ Create a new Downloader object
   node_policy = NULL,
   transfer_policy = NULL,
   resource_policy = NULL,
-  manifest = NULL,
-  config = NULL
+  manifest = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -255,11 +253,6 @@ scheduling. Supported fields are \code{host_concurrency},
 \item{\code{manifest}}{Optional DuckDB manifest path for persistent
 sessions, tasks, candidate URLs, and events. If \code{NULL}, only
 the single-file shortcut API is available. Default: \code{NULL}.}
-
-\item{\code{config}}{Optional downloader config, either a JSON file path
-created by \verb{$save_config()} or a validated config list.
-Explicit constructor arguments override config values.
-Default: \code{NULL}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -365,74 +358,6 @@ results <- dl$wait_for_tasks(task_ids)
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Downloader-save_config"></a>}}
-\if{latex}{\out{\hypertarget{method-Downloader-save_config}{}}}
-\subsection{Method \code{save_config()}}{
-Save downloader construction config as schema-validated JSON.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$save_config(file = NULL, pretty = TRUE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{file}}{Output JSON path. If \code{NULL}, uses the config path next to
-the persistent manifest.}
-
-\item{\code{pretty}}{Whether to add indentation whitespace. Default: \code{TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The normalized output path.
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Downloader-export_manifest"></a>}}
-\if{latex}{\out{\hypertarget{method-Downloader-export_manifest}{}}}
-\subsection{Method \code{export_manifest()}}{
-Export persistent manifest state to a portable JSON file.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$export_manifest(file, pretty = TRUE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{file}}{Output JSON path.}
-
-\item{\code{pretty}}{Whether to add indentation whitespace. Default: \code{TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The normalized output path.
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Downloader-import_manifest"></a>}}
-\if{latex}{\out{\hypertarget{method-Downloader-import_manifest}{}}}
-\subsection{Method \code{import_manifest()}}{
-Import persistent manifest state from \verb{$export_manifest()}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$import_manifest(file, mode = c("append", "replace"))}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{file}}{JSON manifest export path.}
-
-\item{\code{mode}}{Import mode. \code{"append"} upserts imported rows by manifest
-primary key. \code{"replace"} clears known manifest tables first.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data.table with imported row counts.
-}
-}
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-enqueue"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-enqueue}{}}}
 \subsection{Method \code{enqueue()}}{
@@ -485,7 +410,7 @@ Default: \code{FALSE}.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A one-row data.table with byte and disk-space summary.
+A one-row data frame with byte and disk-space summary.
 }
 }
 \if{html}{\out{<hr>}}
@@ -523,7 +448,7 @@ currently synchronous.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of selected task records after the run.
+A data frame of selected task records after the run.
 }
 }
 \if{html}{\out{<hr>}}
@@ -574,7 +499,7 @@ Return persistent download task status.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of matching task records.
+A data frame of matching task records.
 }
 }
 \if{html}{\out{<hr>}}
@@ -596,7 +521,7 @@ Return persistent downloader event logs.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of event records.
+A data frame of event records.
 }
 }
 \if{html}{\out{<hr>}}
@@ -658,7 +583,7 @@ Return historical data node download performance.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of data node performance records.
+A data frame of data node performance records.
 }
 }
 \if{html}{\out{<hr>}}
@@ -731,7 +656,7 @@ Requeue failed or cancelled persistent tasks.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of requeued task records.
+A data frame of requeued task records.
 }
 }
 \if{html}{\out{<hr>}}
@@ -760,7 +685,7 @@ Cancel queued or in-progress persistent download tasks.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of cancelled task records.
+A data frame of cancelled task records.
 }
 }
 \if{html}{\out{<hr>}}
@@ -784,7 +709,7 @@ Resume queued or interrupted persistent tasks.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of selected task records after the run.
+A data frame of selected task records after the run.
 }
 }
 \if{html}{\out{<hr>}}
@@ -806,7 +731,7 @@ Verify checksums for completed persistent tasks.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data.table of completed task records with a
+A data frame of completed task records with a
 \code{checksum_ok} column.
 }
 }

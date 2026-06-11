@@ -337,7 +337,6 @@ epwshiftr_cli_download_config <- function(store, args) {
             temp = paths$temp,
             manifest = paths$manifest
         ), params))
-        downloader$save_config(paths$config)
         return(epwshiftr_cli_downloader_config(downloader))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown download config command: %s", action))
@@ -352,20 +351,17 @@ epwshiftr_cli_downloader_paths <- function(store) {
     list(
         dest = private$download_dir,
         temp = private$tmp_download_dir,
-        manifest = file.path(private$download_dir, "_downloader", "manifest.duckdb"),
-        config = file.path(private$download_dir, "_downloader", "config.json")
+        manifest = file.path(private$download_dir, "_downloader", "manifest.duckdb")
     )
 }
 
 
 epwshiftr_cli_downloader <- function(store, ...) {
     paths <- epwshiftr_cli_downloader_paths(store)
-    config <- if (file.exists(paths$config)) paths$config else NULL
     Downloader$new(
         dest = paths$dest,
         temp = paths$temp,
         manifest = paths$manifest,
-        config = config,
         ...
     )
 }
@@ -373,7 +369,6 @@ epwshiftr_cli_downloader <- function(store, ...) {
 
 epwshiftr_cli_downloader_config <- function(downloader) {
     list(
-        config_file = downloader$config_file,
         manifest = downloader$manifest,
         data_dir = downloader$data_dir,
         tmp_dir = downloader$tmp_dir,

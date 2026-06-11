@@ -108,7 +108,7 @@ DownloadTask <- R6::R6Class("DownloadTask",
 # }}}
 
 # downloader utilities {{{
-DOWNLOADER_SCHEMA_VERSION <- "1.0.0"
+DOWNLOADER_SCHEMA_VERSION <- "1.1.0"
 DOWNLOADER_TASK_STATUS <- c("queued", "downloading", "done", "error", "cancelled", "skipped")
 DOWNLOADER_NODE_POLICY_DEFAULT <- list(
     cooldown_after_failures = 3L,
@@ -178,6 +178,47 @@ downloader__resolve_path <- function(path, base = getwd()) {
 downloader__checksum_type <- function(type) {
     type <- tolower(downloader__one_chr(type))
     if (is.na(type) || !type %in% c("md5", "sha256")) "sha256" else type
+}
+
+downloader__df <- function(..., check.names = FALSE) {
+    data.frame(..., stringsAsFactors = FALSE, check.names = check.names)
+}
+
+downloader__as_df <- function(x) {
+    if (is.null(x)) {
+        return(data.frame())
+    }
+    as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
+}
+
+downloader__rbind_fill <- function(rows) {
+    rows <- rows[vapply(rows, function(x) !is.null(x) && nrow(x), logical(1L))]
+    if (!length(rows)) {
+        return(data.frame())
+    }
+    cols <- unique(unlist(lapply(rows, names), use.names = FALSE))
+    rows <- lapply(rows, function(row) {
+        missing <- setdiff(cols, names(row))
+        for (col in missing) {
+            row[[col]] <- NA
+        }
+        row[, cols, drop = FALSE]
+    })
+    out <- do.call(rbind, rows)
+    rownames(out) <- NULL
+    out
+}
+
+downloader__sql_in <- function(conn, column, values) {
+    values <- values[!is.na(values)]
+    if (!length(values)) {
+        return("FALSE")
+    }
+    sprintf(
+        "%s IN (%s)",
+        ddb_ident(conn, column),
+        paste(ddb_literal(conn, values), collapse = ", ")
+    )
 }
 
 downloader__config_validate <- function(config, name = "downloader config") {
@@ -265,26 +306,108 @@ downloader__resource_policy_defaults <- function(policy = NULL) {
     policy
 }
 
-downloader__config_read <- function(file) {
-    checkmate::assert_file(file, access = "r", extension = "json")
-    config <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-    config <- downloader__config_defaults(config)
-    downloader__config_validate(config, file)
-
-    base <- dirname(normalizePath(file, mustWork = TRUE, winslash = "/"))
-    config$dest <- downloader__resolve_path(config$dest, base)
-    config$temp <- downloader__resolve_path(config$temp, base)
-    if (!is.null(config$manifest)) {
-        config$manifest <- downloader__resolve_path(config$manifest, base)
+downloader__config_optional_integer <- function(value) {
+    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+        return(NA_integer_)
     }
-    config
+    as.integer(value[[1L]])
 }
 
-downloader__config_write <- function(config, file, pretty = TRUE) {
-    downloader__config_validate(config, file)
-    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-    jsonlite::write_json(config, file, null = "null", digits = 6, pretty = pretty, auto_unbox = TRUE)
-    normalizePath(file, mustWork = TRUE, winslash = "/")
+downloader__config_optional_number <- function(value) {
+    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+        return(NA_real_)
+    }
+    as.numeric(value[[1L]])
+}
+
+downloader__config_optional_character <- function(value) {
+    value <- downloader__one_chr(value)
+    if (is.na(value)) NA_character_ else value
+}
+
+downloader__config_null_if_na <- function(value, type = c("character", "integer", "double", "logical")) {
+    type <- match.arg(type)
+    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+        return(NULL)
+    }
+    switch(type,
+        character = as.character(value[[1L]]),
+        integer = as.integer(value[[1L]]),
+        double = as.numeric(value[[1L]]),
+        logical = as.logical(value[[1L]])
+    )
+}
+
+downloader__config_flatten <- function(config) {
+    config <- downloader__config_defaults(config)
+    downloader__config_validate(config)
+    downloader__df(
+        config_id = "default",
+        schema_version = DOWNLOADER_SCHEMA_VERSION,
+        dest = config$dest,
+        temp = config$temp,
+        retries = as.integer(config$retries),
+        timeout = as.integer(config$timeout),
+        ssl_verifypeer = isTRUE(config$ssl_verifypeer),
+        proxy = downloader__config_optional_character(config$proxy),
+        connect_timeout = downloader__config_optional_integer(config$connect_timeout),
+        useragent = downloader__config_optional_character(config$useragent),
+        cleanup = isTRUE(config$cleanup),
+        n_workers = as.integer(config$n_workers),
+        node_cooldown_after_failures = as.integer(config$node_policy$cooldown_after_failures),
+        node_cooldown_seconds = as.integer(config$node_policy$cooldown_seconds),
+        node_history_ttl_seconds = as.integer(config$node_policy$history_ttl_seconds),
+        node_min_attempts = as.integer(config$node_policy$min_attempts),
+        transfer_chunk_size = downloader__config_optional_number(config$transfer_policy$chunk_size),
+        transfer_bandwidth_limit = downloader__config_optional_number(config$transfer_policy$bandwidth_limit),
+        transfer_low_speed_limit = downloader__config_optional_number(config$transfer_policy$low_speed_limit),
+        transfer_low_speed_time = downloader__config_optional_number(config$transfer_policy$low_speed_time),
+        resource_host_concurrency = downloader__config_optional_integer(config$resource_policy$host_concurrency),
+        resource_disk_preflight = isTRUE(config$resource_policy$disk_preflight),
+        resource_min_free_space = as.numeric(config$resource_policy$min_free_space),
+        updated_at = downloader__now()
+    )
+}
+
+downloader__config_unflatten <- function(row, manifest = NULL) {
+    if (is.null(row) || !nrow(row)) {
+        return(NULL)
+    }
+    row <- row[1L, , drop = FALSE]
+    config <- list(
+        schema_version = as.character(row$schema_version[[1L]]),
+        dest = as.character(row$dest[[1L]]),
+        temp = as.character(row$temp[[1L]]),
+        manifest = manifest,
+        retries = as.integer(row$retries[[1L]]),
+        timeout = as.integer(row$timeout[[1L]]),
+        ssl_verifypeer = isTRUE(row$ssl_verifypeer[[1L]]),
+        proxy = downloader__config_null_if_na(row$proxy, "character"),
+        connect_timeout = downloader__config_null_if_na(row$connect_timeout, "integer"),
+        useragent = downloader__config_null_if_na(row$useragent, "character"),
+        cleanup = isTRUE(row$cleanup[[1L]]),
+        n_workers = as.integer(row$n_workers[[1L]]),
+        node_policy = list(
+            cooldown_after_failures = as.integer(row$node_cooldown_after_failures[[1L]]),
+            cooldown_seconds = as.integer(row$node_cooldown_seconds[[1L]]),
+            history_ttl_seconds = as.integer(row$node_history_ttl_seconds[[1L]]),
+            min_attempts = as.integer(row$node_min_attempts[[1L]])
+        ),
+        transfer_policy = list(
+            chunk_size = downloader__config_null_if_na(row$transfer_chunk_size, "double"),
+            bandwidth_limit = downloader__config_null_if_na(row$transfer_bandwidth_limit, "double"),
+            low_speed_limit = downloader__config_null_if_na(row$transfer_low_speed_limit, "double"),
+            low_speed_time = downloader__config_null_if_na(row$transfer_low_speed_time, "double")
+        ),
+        resource_policy = list(
+            host_concurrency = downloader__config_null_if_na(row$resource_host_concurrency, "integer"),
+            disk_preflight = isTRUE(row$resource_disk_preflight[[1L]]),
+            min_free_space = as.numeric(row$resource_min_free_space[[1L]])
+        )
+    )
+    config <- downloader__config_defaults(config)
+    downloader__config_validate(config)
+    config
 }
 
 downloader__url_host <- function(url) {
@@ -418,43 +541,6 @@ downloader__resume_supported <- function(url, start_byte, timeout, connect_timeo
     headers <- tolower(downloader__headers_text(response$headers))
     pattern <- sprintf("content-range:[[:space:]]*bytes[[:space:]]+%d-", as.integer(start_byte))
     grepl(pattern, headers, perl = TRUE)
-}
-
-downloader__manifest_table_keys <- function() {
-    c(
-        download_session = "session_id",
-        download_task = "task_id",
-        download_candidate = "candidate_id",
-        download_event = "event_id",
-        download_node = "node_id",
-        download_meta = "key"
-    )
-}
-
-downloader__manifest_time_columns <- function(table) {
-    switch(table,
-        download_session = c("created_at", "updated_at", "completed_at"),
-        download_task = c("created_at", "updated_at", "completed_at"),
-        download_candidate = c("created_at", "updated_at"),
-        download_event = "created_at",
-        download_node = c("last_success_at", "last_failure_at", "last_probe_at", "cooldown_until", "updated_at"),
-        download_meta = "updated_at",
-        character()
-    )
-}
-
-downloader__manifest_prepare_rows <- function(rows, table) {
-    if (is.null(rows) || (is.list(rows) && !length(rows))) {
-        return(data.frame())
-    }
-    rows <- as.data.frame(rows, stringsAsFactors = FALSE)
-    if (!nrow(rows)) {
-        return(rows)
-    }
-    for (col in intersect(downloader__manifest_time_columns(table), names(rows))) {
-        rows[[col]] <- as.POSIXct(rows[[col]], tz = "UTC")
-    }
-    rows
 }
 
 downloader__worker_download <- function(url, filename, subdir, dest, temp, retries, timeout,
@@ -753,11 +839,6 @@ Downloader <- R6::R6Class("Downloader",
         #'        sessions, tasks, candidate URLs, and events. If `NULL`, only
         #'        the single-file shortcut API is available. Default: `NULL`.
         #'
-        #' @param config Optional downloader config, either a JSON file path
-        #'        created by `$save_config()` or a validated config list.
-        #'        Explicit constructor arguments override config values.
-        #'        Default: `NULL`.
-        #'
         #' @return An `Downloader` object.
         #'
         #' @examples
@@ -775,25 +856,47 @@ Downloader <- R6::R6Class("Downloader",
                               useragent = NULL, cleanup = TRUE, n_workers = 4L,
                               node_policy = NULL, transfer_policy = NULL,
                               resource_policy = NULL,
-                              manifest = NULL, config = NULL) {
-            if (!is.null(config)) {
-                cfg <- if (is.character(config)) downloader__config_read(config) else config
-                cfg <- downloader__config_defaults(cfg)
-                downloader__config_validate(cfg)
-                if (missing(dest)) dest <- cfg$dest
-                if (missing(temp)) temp <- cfg$temp
-                if (missing(retries)) retries <- cfg$retries
-                if (missing(timeout)) timeout <- cfg$timeout
-                if (missing(ssl_verifypeer)) ssl_verifypeer <- cfg$ssl_verifypeer
-                if (missing(proxy)) proxy <- cfg$proxy
-                if (missing(connect_timeout)) connect_timeout <- cfg$connect_timeout
-                if (missing(useragent)) useragent <- cfg$useragent
-                if (missing(cleanup)) cleanup <- cfg$cleanup
-                if (missing(n_workers)) n_workers <- cfg$n_workers
-                if (missing(node_policy)) node_policy <- cfg$node_policy
-                if (missing(transfer_policy)) transfer_policy <- cfg$transfer_policy
-                if (missing(resource_policy)) resource_policy <- cfg$resource_policy
-                if (missing(manifest)) manifest <- cfg$manifest
+                              manifest = NULL) {
+            checkmate::assert_string(manifest, null.ok = TRUE)
+            manifest_config <- NULL
+            if (!is.null(manifest)) {
+                private$manifest_path <- normalizePath(path.expand(manifest), mustWork = FALSE, winslash = "/")
+                dir.create(dirname(private$manifest_path), recursive = TRUE, showWarnings = FALSE)
+                private$connect_manifest()
+                private$init_manifest_schema()
+                manifest_config <- private$read_manifest_config()
+                if (!is.null(manifest_config)) {
+                    if (missing(dest)) dest <- manifest_config$dest
+                    if (missing(temp)) temp <- manifest_config$temp
+                    if (missing(retries)) retries <- manifest_config$retries
+                    if (missing(timeout)) timeout <- manifest_config$timeout
+                    if (missing(ssl_verifypeer)) ssl_verifypeer <- manifest_config$ssl_verifypeer
+                    if (missing(proxy)) proxy <- manifest_config$proxy
+                    if (missing(connect_timeout)) connect_timeout <- manifest_config$connect_timeout
+                    if (missing(useragent)) useragent <- manifest_config$useragent
+                    if (missing(cleanup)) cleanup <- manifest_config$cleanup
+                    if (missing(n_workers)) n_workers <- manifest_config$n_workers
+                    if (missing(node_policy)) {
+                        node_policy <- manifest_config$node_policy
+                    } else if (!is.null(node_policy)) {
+                        node_policy <- utils::modifyList(manifest_config$node_policy, node_policy, keep.null = TRUE)
+                    }
+                    if (missing(transfer_policy)) {
+                        transfer_policy <- manifest_config$transfer_policy
+                    } else if (!is.null(transfer_policy)) {
+                        transfer_policy <- utils::modifyList(manifest_config$transfer_policy, transfer_policy, keep.null = TRUE)
+                    }
+                    if (missing(resource_policy)) {
+                        resource_policy <- manifest_config$resource_policy
+                    } else if (!is.null(resource_policy)) {
+                        resource_policy <- utils::modifyList(manifest_config$resource_policy, resource_policy, keep.null = TRUE)
+                    }
+                } else if (missing(dest)) {
+                    cli::cli_abort(c(
+                        "Downloader manifest does not contain typed configuration.",
+                        "i" = "Initialize it once with {.code Downloader$new(manifest = ..., dest = ...)}."
+                    ))
+                }
             }
             if (is.null(dest)) {
                 dest <- tempdir()
@@ -820,7 +923,6 @@ Downloader <- R6::R6Class("Downloader",
             node_policy <- downloader__node_policy_defaults(node_policy)
             transfer_policy <- downloader__transfer_policy_defaults(transfer_policy)
             resource_policy <- downloader__resource_policy_defaults(resource_policy)
-            checkmate::assert_string(manifest, null.ok = TRUE)
 
             # Check if in development mode via environment variable or option
             in_dev <- isTRUE(as.logical(Sys.getenv("EPWSHIFTR_DEV_MODE", "FALSE"))) ||
@@ -857,14 +959,7 @@ Downloader <- R6::R6Class("Downloader",
             private$callbacks <- list()
 
             if (!is.null(manifest)) {
-                private$manifest_path <- normalizePath(path.expand(manifest), mustWork = FALSE, winslash = "/")
-                private$config_path <- file.path(dirname(private$manifest_path), "config.json")
-                dir.create(dirname(private$manifest_path), recursive = TRUE, showWarnings = FALSE)
-                private$connect_manifest()
-                private$init_manifest_schema()
-                if (!file.exists(private$config_path)) {
-                    self$save_config(private$config_path)
-                }
+                private$write_manifest_config()
             }
 
             # Start daemon pool if needed
@@ -1155,118 +1250,6 @@ Downloader <- R6::R6Class("Downloader",
         },
         # }}}
 
-        # save_config {{{
-        #' @description
-        #' Save downloader construction config as schema-validated JSON.
-        #'
-        #' @param file Output JSON path. If `NULL`, uses the config path next to
-        #'        the persistent manifest.
-        #' @param pretty Whether to add indentation whitespace. Default: `TRUE`.
-        #'
-        #' @return The normalized output path.
-        save_config = function(file = NULL, pretty = TRUE) {
-            checkmate::assert_string(file, null.ok = TRUE)
-            checkmate::assert_flag(pretty)
-            if (is.null(file)) {
-                if (is.null(private$config_path)) {
-                    cli::cli_abort("`file` is required when the downloader has no persistent manifest.")
-                }
-                file <- private$config_path
-            }
-            downloader__config_write(private$config_payload(), file, pretty = pretty)
-        },
-        # }}}
-
-        # export_manifest {{{
-        #' @description
-        #' Export persistent manifest state to a portable JSON file.
-        #'
-        #' @param file Output JSON path.
-        #' @param pretty Whether to add indentation whitespace. Default: `TRUE`.
-        #'
-        #' @return The normalized output path.
-        export_manifest = function(file, pretty = TRUE) {
-            private$require_manifest()
-            checkmate::assert_string(file, min.chars = 1L)
-            checkmate::assert_flag(pretty)
-
-            tables <- private$manifest_table_names()
-            payload <- list(
-                kind = "epwshiftr_file_downloader_manifest",
-                schema_version = DOWNLOADER_SCHEMA_VERSION,
-                exported_at = format(downloader__now(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-                tables = stats::setNames(lapply(tables, function(table) {
-                    as.data.frame(private$read_table(table), stringsAsFactors = FALSE)
-                }), tables)
-            )
-            dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-            jsonlite::write_json(
-                payload,
-                file,
-                dataframe = "rows",
-                POSIXt = "ISO8601",
-                null = "null",
-                digits = 10,
-                pretty = pretty,
-                auto_unbox = TRUE
-            )
-            normalizePath(file, mustWork = TRUE, winslash = "/")
-        },
-        # }}}
-
-        # import_manifest {{{
-        #' @description
-        #' Import persistent manifest state from `$export_manifest()`.
-        #'
-        #' @param file JSON manifest export path.
-        #' @param mode Import mode. `"append"` upserts imported rows by manifest
-        #'        primary key. `"replace"` clears known manifest tables first.
-        #'
-        #' @return A data.table with imported row counts.
-        import_manifest = function(file, mode = c("append", "replace")) {
-            private$require_manifest()
-            checkmate::assert_file(file, access = "r", extension = "json")
-            mode <- match.arg(mode)
-
-            private$with_manifest_lock({
-            payload <- jsonlite::fromJSON(file, simplifyDataFrame = TRUE, simplifyVector = TRUE)
-            if (!is.list(payload) || !identical(payload$kind, "epwshiftr_file_downloader_manifest")) {
-                cli::cli_abort("{.path {file}} is not a Downloader manifest export.")
-            }
-            if (is.null(payload$tables) || !is.list(payload$tables)) {
-                cli::cli_abort("{.path {file}} does not contain manifest tables.")
-            }
-
-            tables <- private$manifest_table_names()
-            if (identical(mode, "replace")) {
-                for (table in rev(tables)) {
-                    ddb_exec(private$manifest_conn, sprintf(
-                        "DELETE FROM %s",
-                        ddb_ident(private$manifest_conn, table)
-                    ))
-                }
-            }
-
-            keys <- downloader__manifest_table_keys()
-            counts <- lapply(tables, function(table) {
-                rows <- downloader__manifest_prepare_rows(payload$tables[[table]], table)
-                if (!nrow(rows)) {
-                    return(data.frame(table = table, rows = 0L, stringsAsFactors = FALSE))
-                }
-                private$replace_rows(table, rows, keys[[table]])
-                data.frame(table = table, rows = nrow(rows), stringsAsFactors = FALSE)
-            })
-            private$replace_rows("download_meta", data.frame(
-                key = "schema_version",
-                value = DOWNLOADER_SCHEMA_VERSION,
-                updated_at = downloader__now(),
-                stringsAsFactors = FALSE
-            ), "key")
-            data.table::rbindlist(counts)
-            })
-        },
-        # }}}
-
         # enqueue {{{
         #' @description
         #' Add a download plan to the persistent manifest.
@@ -1318,7 +1301,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param overwrite Whether existing final files would be overwritten.
         #'        Default: `FALSE`.
         #'
-        #' @return A one-row data.table with byte and disk-space summary.
+        #' @return A one-row data frame with byte and disk-space summary.
         preflight = function(plan = NULL, session_id = NULL, task_id = NULL, overwrite = FALSE) {
             checkmate::assert_data_frame(plan, null.ok = TRUE)
             checkmate::assert_string(session_id, null.ok = TRUE)
@@ -1347,7 +1330,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param overwrite Whether to overwrite existing final files.
         #' @param resume Whether to resume `.part` files.
         #'
-        #' @return A data.table of selected task records after the run.
+        #' @return A data frame of selected task records after the run.
         run = function(session_id = NULL, task_id = NULL, block = TRUE,
                        progress = TRUE, overwrite = FALSE, resume = TRUE) {
             private$require_manifest()
@@ -1410,7 +1393,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param session_id Optional session ID.
         #' @param task_id Optional task ID vector.
         #'
-        #' @return A data.table of matching task records.
+        #' @return A data frame of matching task records.
         status = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()
             checkmate::assert_string(session_id, null.ok = TRUE)
@@ -1426,7 +1409,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param session_id Optional session ID.
         #' @param task_id Optional task ID vector.
         #'
-        #' @return A data.table of event records.
+        #' @return A data frame of event records.
         events = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()
             checkmate::assert_string(session_id, null.ok = TRUE)
@@ -1434,13 +1417,13 @@ Downloader <- R6::R6Class("Downloader",
             events <- private$read_table("download_event")
             if (!is.null(session_id) && nrow(events)) {
                 wanted_session_id <- session_id
-                events <- events[events[["session_id"]] == wanted_session_id]
+                events <- events[events[["session_id"]] == wanted_session_id, , drop = FALSE]
             }
             if (!is.null(task_id) && nrow(events)) {
                 wanted_task_id <- task_id
-                events <- events[events[["task_id"]] %in% wanted_task_id]
+                events <- events[events[["task_id"]] %in% wanted_task_id, , drop = FALSE]
             }
-            events[]
+            events
         },
         # }}}
 
@@ -1484,16 +1467,16 @@ Downloader <- R6::R6Class("Downloader",
         #'
         #' @param service Optional ESGF service filter.
         #'
-        #' @return A data.table of data node performance records.
+        #' @return A data frame of data node performance records.
         data_nodes = function(service = NULL) {
             private$require_manifest()
             checkmate::assert_string(service, null.ok = TRUE)
             nodes <- private$read_table("download_node")
             if (!is.null(service) && nrow(nodes)) {
                 wanted_service <- service
-                nodes <- nodes[nodes[["service"]] == wanted_service]
+                nodes <- nodes[nodes[["service"]] == wanted_service, , drop = FALSE]
             }
-            nodes[]
+            nodes
         },
         # }}}
 
@@ -1521,7 +1504,7 @@ Downloader <- R6::R6Class("Downloader",
                 if (!is.null(service)) {
                     remove <- remove & nodes[["service"]] == service
                 }
-                remove_rows <- nodes[remove]
+                remove_rows <- nodes[remove, , drop = FALSE]
                 if (nrow(remove_rows)) {
                     for (id in remove_rows$node_id) {
                         ddb_exec(private$manifest_conn, sprintf(
@@ -1568,7 +1551,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param status Task statuses to requeue. Default:
         #'        `c("error", "cancelled")`.
         #'
-        #' @return A data.table of requeued task records.
+        #' @return A data frame of requeued task records.
         retry = function(session_id = NULL, task_id = NULL, status = c("error", "cancelled")) {
             private$require_manifest()
             checkmate::assert_subset(status, c("error", "cancelled"), empty.ok = FALSE)
@@ -1587,7 +1570,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param status Task statuses to cancel. Default:
         #'        `c("queued", "downloading")`.
         #'
-        #' @return A data.table of cancelled task records.
+        #' @return A data frame of cancelled task records.
         cancel = function(session_id = NULL, task_id = NULL, status = c("queued", "downloading")) {
             private$require_manifest()
             checkmate::assert_string(session_id, null.ok = TRUE)
@@ -1631,7 +1614,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param task_id Optional task ID vector.
         #' @param ... Additional arguments passed to `$run()`.
         #'
-        #' @return A data.table of selected task records after the run.
+        #' @return A data frame of selected task records after the run.
         resume = function(session_id = NULL, task_id = NULL, ...) {
             private$require_manifest()
             private$with_manifest_lock({
@@ -1648,7 +1631,7 @@ Downloader <- R6::R6Class("Downloader",
         #' @param session_id Optional session ID.
         #' @param task_id Optional task ID vector.
         #'
-        #' @return A data.table of completed task records with a
+        #' @return A data frame of completed task records with a
         #'        `checksum_ok` column.
         verify = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()
@@ -1666,12 +1649,12 @@ Downloader <- R6::R6Class("Downloader",
             } else {
                 logical()
             }
-            failed <- tasks[!tasks$checksum_ok]
+            failed <- tasks[!tasks$checksum_ok, , drop = FALSE]
             if (nrow(failed)) {
                 failed$status <- "error"
                 failed$last_error <- "Checksum verification failed."
                 failed$completed_at <- downloader__now()
-                private$replace_rows("download_task", as.data.frame(failed[, setdiff(names(failed), "checksum_ok"), with = FALSE]), "task_id")
+                private$replace_rows("download_task", failed[, setdiff(names(failed), "checksum_ok"), drop = FALSE], "task_id")
                 for (i in seq_len(nrow(failed))) {
                     private$log_event(failed$session_id[[i]], failed$task_id[[i]], "verify_error", failed$last_error[[i]])
                 }
@@ -1681,7 +1664,7 @@ Downloader <- R6::R6Class("Downloader",
                 tasks$status[!tasks$checksum_ok] <- "error"
                 tasks$last_error[!tasks$checksum_ok] <- "Checksum verification failed."
             }
-            tasks[]
+            tasks
             })
         },
         # }}}
@@ -2107,10 +2090,12 @@ Downloader <- R6::R6Class("Downloader",
         },
         # }}}
 
-        # config_file {{{
-        #' @field config_file Downloader config path, or `NULL`.
-        config_file = function() {
-            private$config_path
+        # config {{{
+        #' @field config Current downloader configuration as a named list. When
+        #'        `manifest` is set, the configuration is stored in the
+        #'        manifest's `download_config` table.
+        config = function() {
+            private$config_payload()
         }
         # }}}
     ),
@@ -2120,7 +2105,6 @@ Downloader <- R6::R6Class("Downloader",
         temp = NULL,
         manifest_path = NULL,
         manifest_conn = NULL,
-        config_path = NULL,
         dl_timeout = NULL,
         ssl_verifypeer = NULL,
         proxy = NULL,
@@ -2169,9 +2153,28 @@ Downloader <- R6::R6Class("Downloader",
         },
         # }}}
 
-        manifest_table_names = function() {
-            names(downloader__manifest_table_keys())
+        # manifest config {{{
+        read_manifest_config = function() {
+            if (is.null(private$manifest_conn)) {
+                return(NULL)
+            }
+            rows <- tryCatch(private$read_table("download_config"), error = function(e) data.frame())
+            if (!nrow(rows) || !"config_id" %in% names(rows)) {
+                return(NULL)
+            }
+            rows <- rows[rows$config_id == "default", , drop = FALSE]
+            downloader__config_unflatten(rows, manifest = private$manifest_path)
         },
+
+        write_manifest_config = function() {
+            private$replace_rows(
+                "download_config",
+                downloader__config_flatten(private$config_payload()),
+                "config_id"
+            )
+            invisible(private$config_payload())
+        },
+        # }}}
 
         with_manifest_lock = function(expr) {
             private$require_manifest()
@@ -2230,6 +2233,34 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         init_manifest_schema = function() {
+            private$exec_manifest("
+                CREATE TABLE IF NOT EXISTS download_config (
+                    config_id VARCHAR PRIMARY KEY,
+                    schema_version VARCHAR,
+                    dest VARCHAR,
+                    temp VARCHAR,
+                    retries INTEGER,
+                    timeout INTEGER,
+                    ssl_verifypeer BOOLEAN,
+                    proxy VARCHAR,
+                    connect_timeout INTEGER,
+                    useragent VARCHAR,
+                    cleanup BOOLEAN,
+                    n_workers INTEGER,
+                    node_cooldown_after_failures INTEGER,
+                    node_cooldown_seconds INTEGER,
+                    node_history_ttl_seconds INTEGER,
+                    node_min_attempts INTEGER,
+                    transfer_chunk_size DOUBLE,
+                    transfer_bandwidth_limit DOUBLE,
+                    transfer_low_speed_limit DOUBLE,
+                    transfer_low_speed_time DOUBLE,
+                    resource_host_concurrency INTEGER,
+                    resource_disk_preflight BOOLEAN,
+                    resource_min_free_space DOUBLE,
+                    updated_at TIMESTAMP
+                )
+            ")
             private$exec_manifest("
                 CREATE TABLE IF NOT EXISTS download_session (
                     session_id VARCHAR PRIMARY KEY,
@@ -2328,11 +2359,11 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         manifest_schema_version = function() {
-            meta <- tryCatch(private$read_table("download_meta"), error = function(e) data.table::data.table())
+            meta <- tryCatch(private$read_table("download_meta"), error = function(e) data.frame())
             if (!nrow(meta)) {
                 return(NA_character_)
             }
-            row <- meta[meta[["key"]] == "schema_version"]
+            row <- meta[meta[["key"]] == "schema_version", , drop = FALSE]
             if (!nrow(row)) {
                 return(NA_character_)
             }
@@ -2363,6 +2394,17 @@ Downloader <- R6::R6Class("Downloader",
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_failure_count INTEGER")
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS last_probe_at TIMESTAMP")
             private$exec_manifest("ALTER TABLE download_node ADD COLUMN IF NOT EXISTS cooldown_until TIMESTAMP")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_after_failures INTEGER")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_seconds INTEGER")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_history_ttl_seconds INTEGER")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_min_attempts INTEGER")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_chunk_size DOUBLE")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_bandwidth_limit DOUBLE")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_limit DOUBLE")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_time DOUBLE")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_host_concurrency INTEGER")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_disk_preflight BOOLEAN")
+            private$exec_manifest("ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_min_free_space DOUBLE")
             invisible(NULL)
         },
 
@@ -2387,7 +2429,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         read_table = function(table) {
-            data.table::as.data.table(ddb_read_table(private$manifest_conn, table))
+            downloader__as_df(ddb_read_table(private$manifest_conn, table))
         },
 
         log_event = function(session_id, task_id, event, message = NA_character_, emit = TRUE) {
@@ -2451,9 +2493,9 @@ Downloader <- R6::R6Class("Downloader",
             session_id <- downloader__one_chr(session_id)
             task_id <- downloader__one_chr(task_id)
             message <- downloader__one_chr(message)
-            task <- data.table::data.table()
+            task <- data.frame()
             if (!is.na(task_id) && nzchar(task_id)) {
-                task <- tryCatch(private$select_tasks(task_id = task_id), error = function(e) data.table::data.table())
+                task <- tryCatch(private$select_tasks(task_id = task_id), error = function(e) data.frame())
             }
             task_value <- function(column, default = NA_character_) {
                 if (!nrow(task) || !column %in% names(task)) {
@@ -2501,13 +2543,10 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         normalize_plan = function(plan) {
-            if (inherits(plan, "data.table")) {
-                plan <- data.table::copy(plan)
-            } else if (is.data.frame(plan)) {
-                plan <- data.table::as.data.table(plan)
-            } else {
+            if (!is.data.frame(plan)) {
                 cli::cli_abort("`plan` must be a data frame returned by {.code download_plan()}.")
             }
+            plan <- downloader__as_df(plan)
 
             missing <- setdiff(c("logical_file_id", "filename", "url"), names(plan))
             if (length(missing)) {
@@ -2530,14 +2569,21 @@ Downloader <- R6::R6Class("Downloader",
             for (name in setdiff(names(defaults), names(plan))) {
                 plan[[name]] <- defaults[[name]]
             }
-            plan <- plan[!is.na(url) & nzchar(url)]
+            plan <- plan[!is.na(plan$url) & nzchar(plan$url), , drop = FALSE]
             if (!nrow(plan)) return(plan)
 
-            plan[, checksum_type := vapply(checksum_type, downloader__checksum_type, character(1L))]
-            plan[, priority := data.table::fifelse(is.na(priority), seq_len(.N), as.integer(priority))]
-            plan[, size := suppressWarnings(as.numeric(size))]
-            plan[, filename := data.table::fifelse(is.na(filename) | !nzchar(filename), basename(sub("\\?.*$", "", url)), filename)]
-            plan[]
+            plan$checksum_type <- vapply(plan$checksum_type, downloader__checksum_type, character(1L))
+            priority <- suppressWarnings(as.integer(plan$priority))
+            missing_priority <- is.na(priority)
+            priority[missing_priority] <- seq_len(nrow(plan))[missing_priority]
+            plan$priority <- priority
+            plan$size <- suppressWarnings(as.numeric(plan$size))
+            filename <- as.character(plan$filename)
+            missing_filename <- is.na(filename) | !nzchar(filename)
+            filename[missing_filename] <- basename(sub("\\?.*$", "", plan$url[missing_filename]))
+            plan$filename <- filename
+            rownames(plan) <- NULL
+            plan
         },
 
         target_path = function(filename, subdir = NA_character_) {
@@ -2549,7 +2595,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         task_needs_download = function(task, overwrite = FALSE) {
-            task <- data.table::as.data.table(task)
+            task <- downloader__as_df(task)
             if (!nrow(task)) {
                 return(logical())
             }
@@ -2571,13 +2617,13 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         preflight_task_space = function(tasks, overwrite = FALSE) {
-            tasks <- data.table::as.data.table(tasks)
+            tasks <- downloader__as_df(tasks)
             if (!nrow(tasks)) {
                 needed <- tasks
                 needs_download <- logical()
             } else {
                 needs_download <- private$task_needs_download(tasks, overwrite = overwrite)
-                needed <- tasks[needs_download]
+                needed <- tasks[needs_download, , drop = FALSE]
             }
             size <- if (nrow(needed) && "size" %in% names(needed)) {
                 suppressWarnings(as.numeric(needed$size))
@@ -2608,7 +2654,7 @@ Downloader <- R6::R6Class("Downloader",
             } else {
                 TRUE
             }
-            data.table::data.table(
+            downloader__df(
                 task_count = as.integer(nrow(tasks)),
                 needs_download = as.integer(sum(needs_download)),
                 required_bytes = as.numeric(required_bytes),
@@ -2639,107 +2685,129 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         plan_tasks = function(plan, session_id, now) {
-            task <- unique(plan[, .(
-                logical_file_id,
-                file_key,
-                esgf_id,
-                dataset_id,
-                filename,
-                subdir,
-                checksum,
-                checksum_type,
-                size
-            )])
-            task[, target_path := mapply(private$target_path, filename, subdir, USE.NAMES = FALSE)]
-            task[, task_id := vapply(seq_len(.N), function(i) {
-                downloader__hash(session_id, logical_file_id[[i]], target_path[[i]])
-            }, character(1L))]
-            task[, `:=`(
-                session_id = session_id,
-                status = "queued",
-                attempts = 0L,
-                bytes_done = 0,
-                selected_url = NA_character_,
-                data_node = NA_character_,
-                last_error = NA_character_,
-                created_at = now,
-                updated_at = now,
-                completed_at = as.POSIXct(NA)
-            )]
-            data.table::setcolorder(task, c(
+            task_cols <- c(
+                "logical_file_id",
+                "file_key",
+                "esgf_id",
+                "dataset_id",
+                "filename",
+                "subdir",
+                "checksum",
+                "checksum_type",
+                "size"
+            )
+            task <- unique(plan[, task_cols, drop = FALSE])
+            task$target_path <- mapply(private$target_path, task$filename, task$subdir, USE.NAMES = FALSE)
+            task$task_id <- vapply(seq_len(nrow(task)), function(i) {
+                downloader__hash(session_id, task$logical_file_id[[i]], task$target_path[[i]])
+            }, character(1L))
+            task$session_id <- session_id
+            task$status <- "queued"
+            task$attempts <- 0L
+            task$bytes_done <- 0
+            task$selected_url <- NA_character_
+            task$data_node <- NA_character_
+            task$last_error <- NA_character_
+            task$created_at <- now
+            task$updated_at <- now
+            task$completed_at <- as.POSIXct(NA)
+            task <- task[, c(
                 "task_id", "session_id", "logical_file_id", "file_key",
                 "esgf_id", "dataset_id", "filename", "subdir", "target_path",
                 "checksum", "checksum_type", "size", "status", "attempts",
                 "bytes_done", "selected_url", "data_node", "last_error",
                 "created_at", "updated_at", "completed_at"
-            ))
-            task[]
+            ), drop = FALSE]
+            rownames(task) <- NULL
+            task
         },
 
         plan_candidates = function(plan, tasks, now) {
             key <- c("logical_file_id", "filename", "subdir", "checksum", "checksum_type")
+            plan$.downloader_row <- seq_len(nrow(plan))
             candidate <- merge(
                 plan,
-                tasks[, c(key, "task_id"), with = FALSE],
+                tasks[, c(key, "task_id"), drop = FALSE],
                 by = key,
                 all.x = TRUE,
                 sort = FALSE
             )
-            candidate[, candidate_id := vapply(seq_len(.N), function(i) {
-                downloader__hash(task_id[[i]], url[[i]])
-            }, character(1L))]
-            unique(candidate[, .(
-                candidate_id,
-                task_id,
-                url,
-                service,
-                data_node,
-                priority = as.integer(priority),
-                probe_latency = as.numeric(probe_latency),
-                probe_throughput = as.numeric(probe_throughput),
+            candidate <- candidate[order(candidate$.downloader_row), , drop = FALSE]
+            candidate$.downloader_row <- NULL
+            candidate$candidate_id <- vapply(seq_len(nrow(candidate)), function(i) {
+                downloader__hash(candidate$task_id[[i]], candidate$url[[i]])
+            }, character(1L))
+            candidate <- downloader__df(
+                candidate_id = candidate$candidate_id,
+                task_id = candidate$task_id,
+                url = candidate$url,
+                service = candidate$service,
+                data_node = candidate$data_node,
+                priority = as.integer(candidate$priority),
+                probe_latency = as.numeric(candidate$probe_latency),
+                probe_throughput = as.numeric(candidate$probe_throughput),
                 failed_count = 0L,
                 last_error = NA_character_,
                 created_at = now,
                 updated_at = now
-            )], by = "candidate_id")
+            )
+            candidate <- candidate[!duplicated(candidate$candidate_id), , drop = FALSE]
+            rownames(candidate) <- NULL
+            candidate
         },
 
         select_tasks = function(session_id = NULL, task_id = NULL, status = NULL) {
-            tasks <- private$read_table("download_task")
-            if (!nrow(tasks)) return(tasks[])
-            sid <- session_id
-            tid <- task_id
-            task_status <- status
-            if (!is.null(sid)) tasks <- tasks[tasks[["session_id"]] == sid]
-            if (!is.null(tid)) tasks <- tasks[tasks[["task_id"]] %in% tid]
-            if (!is.null(task_status)) tasks <- tasks[tasks[["status"]] %in% task_status]
-            tasks[]
+            clauses <- character()
+            if (!is.null(session_id)) {
+                clauses <- c(clauses, sprintf(
+                    "%s = %s",
+                    ddb_ident(private$manifest_conn, "session_id"),
+                    ddb_literal(private$manifest_conn, session_id)
+                ))
+            }
+            if (!is.null(task_id)) {
+                clauses <- c(clauses, downloader__sql_in(private$manifest_conn, "task_id", task_id))
+            }
+            if (!is.null(status)) {
+                clauses <- c(clauses, downloader__sql_in(private$manifest_conn, "status", status))
+            }
+            sql <- sprintf("SELECT * FROM %s", ddb_ident(private$manifest_conn, "download_task"))
+            if (length(clauses)) {
+                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
+            }
+            sql <- paste(sql, "ORDER BY created_at, task_id")
+            downloader__as_df(ddb_query(private$manifest_conn, sql))
         },
 
         decorate_task_status = function(tasks) {
-            tasks <- data.table::as.data.table(tasks)
+            tasks <- downloader__as_df(tasks)
             if (!nrow(tasks)) {
                 tasks$candidate_count <- integer()
                 tasks$failed_candidate_count <- integer()
                 tasks$selected_data_node <- character()
-                return(tasks[])
+                return(tasks)
             }
-            candidates <- private$read_table("download_candidate")
-            if (!nrow(candidates)) {
+            summary <- downloader__as_df(ddb_query(private$manifest_conn, sprintf(
+                "SELECT task_id, COUNT(*)::INTEGER AS candidate_count, SUM(CASE WHEN COALESCE(failed_count, 0) > 0 THEN 1 ELSE 0 END)::INTEGER AS failed_candidate_count FROM %s WHERE %s GROUP BY task_id",
+                ddb_ident(private$manifest_conn, "download_candidate"),
+                downloader__sql_in(private$manifest_conn, "task_id", tasks$task_id)
+            )))
+            if (!nrow(summary)) {
                 tasks$candidate_count <- 0L
                 tasks$failed_candidate_count <- 0L
                 tasks$selected_data_node <- tasks$data_node
-                return(tasks[])
+                return(tasks)
             }
-            summary <- candidates[, .(
-                candidate_count = .N,
-                failed_candidate_count = sum(as.integer(failed_count) > 0L, na.rm = TRUE)
-            ), by = "task_id"]
+            original_order <- seq_len(nrow(tasks))
+            tasks$.downloader_order <- original_order
             tasks <- merge(tasks, summary, by = "task_id", all.x = TRUE, sort = FALSE)
-            tasks[is.na(candidate_count), candidate_count := 0L]
-            tasks[is.na(failed_candidate_count), failed_candidate_count := 0L]
-            tasks[, selected_data_node := data_node]
-            tasks[]
+            tasks <- tasks[order(tasks$.downloader_order), , drop = FALSE]
+            tasks$.downloader_order <- NULL
+            tasks$candidate_count[is.na(tasks$candidate_count)] <- 0L
+            tasks$failed_candidate_count[is.na(tasks$failed_candidate_count)] <- 0L
+            tasks$selected_data_node <- tasks$data_node
+            rownames(tasks) <- NULL
+            tasks
         },
 
         cancel_stale_downloading = function(session_id = NULL, task_id = NULL) {
@@ -2747,7 +2815,7 @@ Downloader <- R6::R6Class("Downloader",
             if (!nrow(tasks)) {
                 return(invisible(tasks))
             }
-            stale <- tasks[tasks[["updated_at"]] < DOWNLOADER_SESSION_STARTED_AT]
+            stale <- tasks[tasks[["updated_at"]] < DOWNLOADER_SESSION_STARTED_AT, , drop = FALSE]
             if (!nrow(stale)) {
                 return(invisible(stale))
             }
@@ -2766,15 +2834,17 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         get_candidates = function(task_id) {
-            tid <- task_id
-            candidates <- private$read_table("download_candidate")
-            candidates <- candidates[candidates[["task_id"]] == tid]
-            data.table::setorderv(candidates, c("priority", "failed_count"), c(1L, 1L))
-            candidates[]
+            sql <- sprintf(
+                "SELECT * FROM %s WHERE %s = %s ORDER BY priority ASC NULLS LAST, failed_count ASC NULLS LAST, created_at ASC, candidate_id ASC",
+                ddb_ident(private$manifest_conn, "download_candidate"),
+                ddb_ident(private$manifest_conn, "task_id"),
+                ddb_literal(private$manifest_conn, downloader__one_chr(task_id))
+            )
+            downloader__as_df(ddb_query(private$manifest_conn, sql))
         },
 
         candidate_host = function(candidate) {
-            candidate <- data.table::as.data.table(candidate)
+            candidate <- downloader__as_df(candidate)
             if (!nrow(candidate)) {
                 return(NA_character_)
             }
@@ -2809,8 +2879,12 @@ Downloader <- R6::R6Class("Downloader",
             if (is.na(host)) {
                 return(TRUE)
             }
-            current <- active_hosts[[host]]
-            if (is.null(current) || is.na(current)) {
+            current <- if (host %in% names(active_hosts)) {
+                active_hosts[[host]]
+            } else {
+                NA_integer_
+            }
+            if (is.na(current)) {
                 current <- 0L
             }
             as.integer(current) < as.integer(limit)
@@ -2830,7 +2904,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         update_node_stats = function(candidate, ok, bytes_done = 0) {
-            candidate <- data.table::as.data.table(candidate)
+            candidate <- downloader__as_df(candidate)
             data_node <- downloader__one_chr(candidate$data_node[[1L]])
             if (is.na(data_node)) {
                 data_node <- downloader__url_host(candidate$url[[1L]])
@@ -2846,9 +2920,9 @@ Downloader <- R6::R6Class("Downloader",
             wanted_node_id <- node_id
             now <- downloader__now()
             nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id]
+            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
             if (!nrow(row)) {
-                row <- data.table::data.table(
+                row <- downloader__df(
                     node_id = node_id,
                     data_node = data_node,
                     service = service,
@@ -2914,7 +2988,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         update_node_probe = function(plan_row, ok) {
-            plan_row <- data.table::as.data.table(plan_row)
+            plan_row <- downloader__as_df(plan_row)
             data_node <- downloader__one_chr(plan_row$data_node[[1L]])
             if (is.na(data_node)) {
                 data_node <- downloader__url_host(plan_row$url[[1L]])
@@ -2930,9 +3004,9 @@ Downloader <- R6::R6Class("Downloader",
             wanted_node_id <- node_id
             now <- downloader__now()
             nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id]
+            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
             if (!nrow(row)) {
-                row <- data.table::data.table(
+                row <- downloader__df(
                     node_id = node_id,
                     data_node = data_node,
                     service = service,
@@ -2999,7 +3073,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         record_plan_probes = function(plan) {
-            plan <- data.table::as.data.table(plan)
+            plan <- downloader__as_df(plan)
             if (!nrow(plan) || !"probe_latency" %in% names(plan)) {
                 return(invisible(NULL))
             }
@@ -3037,7 +3111,7 @@ Downloader <- R6::R6Class("Downloader",
             if (status %in% c("done", "error", "cancelled")) {
                 sessions$completed_at[idx] <- downloader__now()
             }
-            private$replace_rows("download_session", as.data.frame(sessions[idx]), "session_id")
+            private$replace_rows("download_session", sessions[idx, , drop = FALSE], "session_id")
             if (status %in% c("done", "error", "cancelled") && !isTRUE(was_complete)) {
                 private$log_event(session_id, NA_character_, "session_done", status)
             }
@@ -3060,9 +3134,9 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         run_tasks_concurrent = function(tasks, progress = TRUE, overwrite = FALSE, resume = TRUE) {
-            tasks <- data.table::as.data.table(tasks)
-            pending <- data.table::copy(tasks)
-            pending[, tried_candidate_id := replicate(.N, character(), simplify = FALSE)]
+            tasks <- downloader__as_df(tasks)
+            pending <- tasks
+            pending$tried_candidate_id <- I(rep(list(character()), nrow(pending)))
             running <- list()
             active_targets <- character()
             completed <- 0L
@@ -3100,7 +3174,7 @@ Downloader <- R6::R6Class("Downloader",
                     }
                     idx <- which(available)[[1L]]
                     tried <- pending$tried_candidate_id[[idx]]
-                    task <- pending[idx, setdiff(names(pending), "tried_candidate_id"), with = FALSE]
+                    task <- pending[idx, setdiff(names(pending), "tried_candidate_id"), drop = FALSE]
                     item <- private$launch_concurrent_task(
                         task,
                         tried_candidate_id = tried,
@@ -3109,13 +3183,13 @@ Downloader <- R6::R6Class("Downloader",
                         active_hosts = private$running_host_counts(running)
                     )
                     if (identical(item$status, "running")) {
-                        pending <- pending[-idx]
+                        pending <- pending[-idx, , drop = FALSE]
                         blocked <- blocked[-idx]
                         add_running(item)
                     } else if (identical(item$status, "deferred")) {
                         blocked[idx] <- TRUE
                     } else {
-                        pending <- pending[-idx]
+                        pending <- pending[-idx, , drop = FALSE]
                         blocked <- blocked[-idx]
                         tick()
                     }
@@ -3182,8 +3256,8 @@ Downloader <- R6::R6Class("Downloader",
                     if (identical(next_item$status, "running")) {
                         add_running(next_item)
                     } else if (identical(next_item$status, "deferred")) {
-                        task[, tried_candidate_id := list(tried)]
-                        pending <- data.table::rbindlist(list(pending, task), fill = TRUE)
+                        task$tried_candidate_id <- I(list(tried))
+                        pending <- downloader__rbind_fill(list(pending, task))
                     } else {
                         tick()
                     }
@@ -3196,7 +3270,7 @@ Downloader <- R6::R6Class("Downloader",
         launch_concurrent_task = function(task, tried_candidate_id = character(),
                                           overwrite = FALSE, resume = TRUE,
                                           active_hosts = integer()) {
-            task <- data.table::as.data.table(task)
+            task <- downloader__as_df(task)
             task_id <- task$task_id[[1L]]
             session_id <- task$session_id[[1L]]
             checksum <- downloader__one_chr(task$checksum[[1L]])
@@ -3218,7 +3292,7 @@ Downloader <- R6::R6Class("Downloader",
 
             candidates <- private$get_candidates(task_id)
             if (length(tried_candidate_id)) {
-                candidates <- candidates[!candidates[["candidate_id"]] %in% tried_candidate_id]
+                candidates <- candidates[!candidates[["candidate_id"]] %in% tried_candidate_id, , drop = FALSE]
             }
             if (!nrow(candidates)) {
                 task$status <- "error"
@@ -3236,7 +3310,7 @@ Downloader <- R6::R6Class("Downloader",
             if (!any(has_capacity)) {
                 return(list(status = "deferred", task_id = task_id))
             }
-            candidates <- candidates[has_capacity]
+            candidates <- candidates[has_capacity, , drop = FALSE]
             candidate_hosts <- candidate_hosts[has_capacity]
             candidate <- candidates[1L, , drop = FALSE]
             candidate_host <- candidate_hosts[[1L]]
@@ -3321,7 +3395,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         run_task = function(task, progress = TRUE, overwrite = FALSE, resume = TRUE) {
-            task <- data.table::as.data.table(task)
+            task <- downloader__as_df(task)
             task_id <- task$task_id[[1L]]
             session_id <- task$session_id[[1L]]
             checksum <- downloader__one_chr(task$checksum[[1L]])
@@ -3725,6 +3799,3 @@ Downloader <- R6::R6Class("Downloader",
     )
 )
 # }}}
-Downloader$load_config <- function(file) {
-    Downloader$new(config = file)
-}

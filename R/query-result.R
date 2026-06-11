@@ -1415,7 +1415,7 @@ query_result_run_http_fallback <- function(result, indices, downloader, session_
 
     session_id <- downloader$enqueue(plan, session_label = session_label)
     tasks <- downloader$run(session_id = session_id, progress = progress)
-    failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
+    failed <- tasks[!tasks[["status"]] %in% c("done", "skipped"), , drop = FALSE]
     if (nrow(failed)) {
         cli::cli_abort("HTTP fallback download failed for {nrow(failed)} task(s). Inspect downloader$status(session_id = {.val {session_id}}) for details.")
     }

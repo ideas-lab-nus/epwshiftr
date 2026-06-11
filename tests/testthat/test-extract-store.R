@@ -142,7 +142,13 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
     expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
     expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
-    expect_true(file.exists(file.path(dir, "downloads", "_downloader", "config.json")))
+    expect_true(file.exists(dl$manifest))
+    dl_conn <- ddb_connect(dl$manifest, read_only = TRUE)
+    on.exit(ddb_disconnect(dl_conn, shutdown = TRUE), add = TRUE)
+    expect_true("download_config" %in% ddb_list_tables(dl_conn))
+    dl_config <- ddb_read_table(dl_conn, "download_config")
+    expect_equal(nrow(dl_config), 1L)
+    expect_equal(dl_config$config_id, "default")
 
     tables <- ddb_list_tables(priv(store)$conn)
     expect_setequal(

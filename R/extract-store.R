@@ -1094,7 +1094,7 @@ EsgStore <- R6::R6Class(
             if (is.null(downloader)) {
                 downloader <- self$downloader()
             }
-            tasks <- downloader$tasks(session_id = session_id)
+            tasks <- data.table::as.data.table(downloader$tasks(session_id = session_id))
             if (is.null(query_id)) {
                 return(tasks[])
             }
@@ -1140,7 +1140,7 @@ EsgStore <- R6::R6Class(
 
             links <- private$read_table("esg_query_file")
             files <- private$read_table("esg_file")
-            tasks <- tryCatch(downloader$tasks(), error = function(e) data.table::data.table())
+            tasks <- tryCatch(data.table::as.data.table(downloader$tasks()), error = function(e) data.table::data.table())
             private$summarise_query_status(queries, links, files, tasks)
         },
         # }}}
@@ -1311,7 +1311,7 @@ EsgStore <- R6::R6Class(
                 data.table::data.table()
             }
             downloads <- private$workflow_downloads(summary$query_id, downloader)
-            nodes <- tryCatch(downloader$data_nodes(), error = function(e) data.table::data.table())
+            nodes <- tryCatch(data.table::as.data.table(downloader$data_nodes()), error = function(e) data.table::data.table())
 
             list(
                 summary = summary[],
@@ -1573,7 +1573,7 @@ EsgStore <- R6::R6Class(
                 downloader <- self$downloader()
             }
 
-            tasks <- downloader$tasks(session_id = session_id, status = status)
+            tasks <- data.table::as.data.table(downloader$tasks(session_id = session_id, status = status))
             if (!is.null(query_id) && nrow(tasks)) {
                 links <- self$query_files(query_id)
                 tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
@@ -1588,6 +1588,7 @@ EsgStore <- R6::R6Class(
             } else {
                 downloader$status(session_id = session_id, task_id = task_id)
             }
+            out <- data.table::as.data.table(out)
             if (isTRUE(run)) {
                 self$sync_downloads(downloader)
             }
@@ -1771,7 +1772,7 @@ EsgStore <- R6::R6Class(
                 downloader <- self$downloader()
             }
             private$with_store_lock({
-            tasks <- downloader$tasks(status = c("done", "skipped"))
+            tasks <- data.table::as.data.table(downloader$tasks(status = c("done", "skipped")))
             if (!nrow(tasks)) {
                 return(tasks)
             }
@@ -3392,7 +3393,7 @@ EsgStore <- R6::R6Class(
 
         # workflow_downloads {{{
         workflow_downloads = function(query_id, downloader) {
-            tasks <- tryCatch(downloader$tasks(), error = function(e) data.table::data.table())
+            tasks <- tryCatch(data.table::as.data.table(downloader$tasks()), error = function(e) data.table::data.table())
             if (!nrow(tasks)) {
                 return(tasks)
             }
@@ -5190,7 +5191,7 @@ EsgStore <- R6::R6Class(
             plan <- private$apply_download_layout(plan, file)
             session_id <- downloader$enqueue(plan, session_label = sprintf("extract:%s", file$file_key[[1L]]))
             tasks <- downloader$run(session_id = session_id, progress = FALSE, overwrite = overwrite)
-            failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
+            failed <- tasks[!tasks[["status"]] %in% c("done", "skipped"), , drop = FALSE]
             if (nrow(failed)) {
                 stop("HTTPServer download failed for this file record.", call. = FALSE)
             }

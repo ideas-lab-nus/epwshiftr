@@ -305,7 +305,7 @@ test_that("epwshiftr_cli dispatches store workflow commands", {
     config <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "config", "show"))
     expect_equal(config$status, 0L)
     expect_named(config$result, c(
-        "config_file", "manifest", "data_dir", "tmp_dir", "retries", "timeout", "n_workers",
+        "manifest", "data_dir", "tmp_dir", "retries", "timeout", "n_workers",
         "network_policy", "node_policy", "transfer_policy", "resource_policy"
     ))
 

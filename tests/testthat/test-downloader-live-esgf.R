@@ -94,8 +94,7 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
     expect_error(dl$get_task_status("missing-task"), "not found")
     expect_error(dl$cancel_task("missing-task"), "not found")
 
-    config_file <- dl$save_config()
-    expect_true(file.exists(config_file))
+    expect_true(file.exists(dl$manifest))
 
     shortcut_dir <- file.path(root, "shortcut")
     shortcut <- Downloader$new(dest = shortcut_dir, temp = file.path(root, "shortcut-tmp"), retries = 2L, timeout = 240L, n_workers = 0L)
@@ -176,7 +175,7 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
     expect_equal(failed_candidate$failed_count, 1L)
     ddb_disconnect(conn, shutdown = TRUE)
 
-    restored <- Downloader$load_config(config_file)
+    restored <- Downloader$new(manifest = manifest)
     expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
     expect_true(all(c(resume_session, fallback_session, error_session) %in% restored$sessions()$session_id))
     expect_true(restored$verify(session_id = resume_session)$checksum_ok)

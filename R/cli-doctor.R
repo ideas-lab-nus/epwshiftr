@@ -96,10 +96,9 @@ epwshiftr_cli_doctor <- function(store_path = NULL, args = character()) {
     )
 
     downloader_dir <- file.path(resolved_store, "downloads", "_downloader")
-    downloader_config <- file.path(downloader_dir, "config.json")
     downloader_manifest <- file.path(downloader_dir, "manifest.duckdb")
-    config_check <- epwshiftr_cli_doctor_downloader_config(downloader_config)
-    add("downloader_config", config_check$status, config_check$message, downloader_config)
+    config_check <- epwshiftr_cli_doctor_downloader_config(downloader_manifest)
+    add("downloader_config", config_check$status, config_check$message, downloader_manifest)
     download_meta <- epwshiftr_cli_doctor_manifest_meta(downloader_manifest, "download_meta")
     add("downloader_manifest", download_meta$status, download_meta$message, downloader_manifest)
     downloader_schema <- epwshiftr_cli_doctor_meta_value(download_meta$data, "schema_version")
@@ -217,15 +216,31 @@ epwshiftr_cli_doctor_meta_value <- function(meta, key) {
 
 epwshiftr_cli_doctor_downloader_config <- function(path) {
     if (!file.exists(path)) {
-        return(list(status = "warning", message = "Downloader config file does not exist."))
+        return(list(status = "warning", message = "Downloader manifest file does not exist."))
     }
+    conn <- NULL
     tryCatch(
         {
-            downloader__config_read(path)
+            conn <- ddb_connect(path, read_only = TRUE)
+            tables <- ddb_list_tables(conn)
+            if (!"download_config" %in% tables) {
+                return(list(status = "warning", message = "Downloader config table does not exist."))
+            }
+            rows <- ddb_query(conn, "SELECT * FROM download_config WHERE config_id = 'default'")
+            rows <- as.data.frame(rows, stringsAsFactors = FALSE)
+            if (!nrow(rows)) {
+                return(list(status = "warning", message = "Downloader config row is missing."))
+            }
+            downloader__config_unflatten(rows, manifest = path)
             list(status = "ok", message = "Downloader config is readable.")
         },
         error = function(e) {
             list(status = "error", message = conditionMessage(e))
+        },
+        finally = {
+            if (!is.null(conn)) {
+                try(ddb_disconnect(conn, shutdown = TRUE), silent = TRUE)
+            }
         }
     )
 }
