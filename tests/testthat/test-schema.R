@@ -89,6 +89,7 @@ test_that("result schema JSON files use local reusable definitions", {
         "facet_counts",
         "timestamp",
         "context",
+        "context_query_url",
         "context_time_filter"
     )
 
@@ -239,6 +240,12 @@ test_that("schema validates saved query result JSON fixtures", {
     expect_true(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "file-result-context"))
     file_with_context$context$time_filter$method <- "metadata"
     expect_false(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "bad-result-context"))
+
+    query_url_context <- list(query_url = c("https://example.org/search?page=1", "https://example.org/search?page=2"))
+    dataset_with_context <- schema_test_result_json("Dataset", schema_test_dataset_docs(), context = query_url_context)
+    expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "dataset-result-query-url-context"))
+    dataset_with_context$context$query_url[[1L]] <- NA_character_
+    expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "bad-result-query-url-context"))
 
     bad_file <- tempfile(fileext = ".json")
     jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)

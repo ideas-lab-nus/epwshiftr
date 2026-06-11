@@ -855,6 +855,34 @@ test_that("query_collect returns normalized effective parameters", {
     expect_null(bridge$parameter$fields())
 })
 
+test_that("query_collect records actual page query URLs", {
+    captured_url <- character()
+    testthat::local_mocked_bindings(
+        read_json_response = function(url, ...) {
+            captured_url <<- c(captured_url, url)
+            docs <- if (length(captured_url) == 1L) {
+                data.frame(id = c("dataset-1", "dataset-2"), score = 1, check.names = FALSE)
+            } else {
+                data.frame(id = "dataset-3", score = 1, check.names = FALSE)
+            }
+            list(response = list(numFound = 3L, docs = docs))
+        },
+        .package = "epwshiftr"
+    )
+
+    res <- query_collect(
+        "https://example.org",
+        QueryParamStore$new()$limit(2L),
+        all = TRUE,
+        limit = 2L
+    )
+
+    expect_equal(nrow(res$docs), 3L)
+    expect_identical(res$context$query_url, captured_url)
+    expect_true(grepl("offset=0", utils::URLdecode(captured_url[[1L]]), fixed = TRUE))
+    expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
+})
+
 test_that("EsgQuery$collect()", {
     skip_on_cran()
     index_node <- get_fast_index_node()

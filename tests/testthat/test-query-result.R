@@ -252,6 +252,45 @@ test_that("ESGF query results preserve ESGF doc timestamp fields on save", {
     expect_identical(loaded$version, "v20240509")
 })
 
+test_that("ESGF query results expose recorded query URLs", {
+    params <- query_result_test_params("Dataset")
+    result <- query_result_test_object("Dataset", query_result_test_dataset_docs(), params)
+    expect_identical(
+        result$query_url(),
+        stats::setNames(query_build("https://example.org", params), "page1")
+    )
+    expect_identical(result$query_url("all"), result$query_url())
+
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File"),
+        context = list(query_url = urls)
+    )
+    expect_identical(result$query_url(), stats::setNames(urls[[1L]], "page1"))
+    expect_identical(result$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+    expect_error(result$query_url("last"), "'arg' should be one of")
+})
+
+test_that("result query URL context persists through save/load", {
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File"),
+        context = list(query_url = urls)
+    )
+    file <- tempfile(fileext = ".json")
+
+    expect_type(result$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_identical(json$context$query_url, urls)
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_identical(loaded$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+})
+
 test_that("File and Aggregation results filter time using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))

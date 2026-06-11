@@ -53,6 +53,7 @@ has been recorded.}
 \item \href{#method-EsgResult-count}{\code{EsgResult$count()}}
 \item \href{#method-EsgResult-save}{\code{EsgResult$save()}}
 \item \href{#method-EsgResult-load}{\code{EsgResult$load()}}
+\item \href{#method-EsgResult-query_url}{\code{EsgResult$query_url()}}
 \item \href{#method-EsgResult-clone}{\code{EsgResult$clone()}}
 }
 }
@@ -197,6 +198,28 @@ from.}
 }
 \subsection{Returns}{
 The modified \code{EsgResult} object itself.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-query_url"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-query_url}{}}}
+\subsection{Method \code{query_url()}}{
+Return the ESGF search query URL used to create this result.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$query_url(pages = c("first", "all"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{pages}}{Which recorded query URLs to return. \code{"first"} returns
+the first request URL. \code{"all"} returns every recorded request
+URL, including pagination requests. Default: \code{"first"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named character vector of query URLs.
 }
 }
 \if{html}{\out{<hr>}}

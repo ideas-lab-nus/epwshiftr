@@ -6059,12 +6059,21 @@
       },
       "keys": {
         "type": "named",
-        "subset.of": "time_filter"
+        "subset.of": ["time_filter", "query_url"]
       },
       "fields": {
         "time_filter": {
           "$ref": "#/$defs/context_time_filter"
+        },
+        "query_url": {
+          "$ref": "#/$defs/context_query_url"
         }
+      }
+    },
+    "context_query_url": {
+      "check": {
+        "kind": "character",
+        "any.missing": false
       }
     },
     "context_time_filter": {

@@ -165,6 +165,27 @@ EsgResult <- R6::R6Class(
             private$register_dynamic_fields()
 
             self
+        },
+        # }}}
+
+        # query_url {{{
+        #' @description
+        #' Return the ESGF search query URL used to create this result.
+        #'
+        #' @param pages Which recorded query URLs to return. `"first"` returns
+        #'        the first request URL. `"all"` returns every recorded request
+        #'        URL, including pagination requests. Default: `"first"`.
+        #'
+        #' @return A named character vector of query URLs.
+        #'
+        query_url = function(pages = c("first", "all")) {
+            pages <- match.arg(pages)
+            urls <- private$get_query_url_context()
+            if (identical(pages, "first")) {
+                return(utils::head(urls, 1L))
+            }
+
+            urls
         }
         # }}}
     ),
@@ -306,6 +327,20 @@ EsgResult <- R6::R6Class(
             }
 
             ctx
+        },
+        # }}}
+
+        # get_query_url_context {{{
+        get_query_url_context = function() {
+            urls <- private$context$query_url
+            if (is.null(urls)) {
+                if (is.null(private$index_node) || is.null(private$parameter)) {
+                    return(character())
+                }
+                urls <- query_build(private$index_node, private$parameter)
+            }
+
+            query_result_normalize_query_url(urls)
         },
         # }}}
 
@@ -832,8 +867,25 @@ query_result_normalize_context <- function(context = NULL) {
     if (!is.list(context)) {
         stop("Saved result context must be a list.", call. = FALSE)
     }
+    if (!is.null(context$query_url)) {
+        context$query_url <- query_result_normalize_query_url(context$query_url, named = FALSE)
+    }
 
     context
+}
+
+query_result_normalize_query_url <- function(urls, named = TRUE) {
+    if (is.null(urls) || !length(urls)) {
+        return(stats::setNames(character(), character()))
+    }
+
+    checkmate::assert_character(urls, any.missing = FALSE)
+    urls <- unname(as.character(urls))
+    if (isTRUE(named)) {
+        stats::setNames(urls, paste0("page", seq_along(urls)))
+    } else {
+        urls
+    }
 }
 
 query_result_format_iso_datetime <- function(x) {
@@ -1403,7 +1455,13 @@ query_result_expand_replicas <- function(result, service = "HTTPServer", all = T
         limit = this$data_max_limit,
         constraints = FALSE
     )
-    new_query_result(EsgResultFile, priv(result)$index_node, collected$parameter, collected$response)
+    new_query_result(
+        EsgResultFile,
+        priv(result)$index_node,
+        collected$parameter,
+        collected$response,
+        context = collected$context
+    )
 }
 
 query_result_run_http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
@@ -1744,14 +1802,16 @@ EsgResultDataset <- R6::R6Class(
                     EsgResultFile,
                     child_index_node,
                     result_params,
-                    result$response
+                    result$response,
+                    context = result$context
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
                     EsgResultAggregation,
                     child_index_node,
                     result_params,
-                    result$response
+                    result$response,
+                    context = result$context
                 )
             }
         },
@@ -2870,7 +2930,12 @@ query_result_empty_response <- function(params) {
         timestamp = Sys.time()
     )
 
-    list(response = response, docs = response$response$docs, parameter = query_param_clone(params))
+    list(
+        response = response,
+        docs = response$response$docs,
+        parameter = query_param_clone(params),
+        context = list(query_url = character())
+    )
 }
 # }}}
 
