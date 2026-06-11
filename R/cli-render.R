@@ -73,7 +73,7 @@ epwshiftr_cli_render_query <- function(result, command) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Stored ESGF queries",
-            columns = c("query_id", "label", "tracked", "created_at", "updated_at", "last_checked_at")
+            columns = c("query_id", "label", "tracked", "last_checked_at", "created_at", "updated_at")
         ))
     }
     if (identical(command, "search")) {
@@ -88,7 +88,7 @@ epwshiftr_cli_render_query <- function(result, command) {
         return(epwshiftr_cli_render_table(
             result,
             title = "ESGF search results",
-            columns = c("id", "title", "dataset_id", "filename", "variable_id", "experiment_id", "source_id", "data_node", "size")
+            columns = c("title", "filename", "variable_id", "experiment_id", "source_id", "data_node", "size", "id", "dataset_id")
         ))
     }
     if (identical(command, "preview")) {
@@ -98,7 +98,7 @@ epwshiftr_cli_render_query <- function(result, command) {
             epwshiftr_cli_render_table(
                 result$changes,
                 title = "Changes",
-                columns = c("query_id", "change_type", "file_key", "filename", "size", "version", "data_node")
+                columns = c("change_type", "filename", "size", "version", "data_node", "file_key", "query_id")
             )
             return(invisible(NULL))
         }
@@ -112,7 +112,7 @@ epwshiftr_cli_render_query <- function(result, command) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Query updates",
-            columns = c("query_id", "label", "update_id", "file_total", "new_count", "changed_count", "stale_count", "created_at")
+            columns = c("query_id", "label", "new_count", "changed_count", "stale_count", "file_total", "created_at", "update_id")
         ))
     }
     if (identical(command, "show")) {
@@ -147,28 +147,28 @@ epwshiftr_cli_render_download <- function(result, command, action = NULL) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Download events",
-            columns = c("created_at", "event", "status", "session_id", "task_id", "file_key", "data_node", "error")
+            columns = c("created_at", "event", "status", "error", "data_node", "session_id", "task_id", "file_key")
         ))
     }
     if (identical(command, "status") || identical(command, "tasks")) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Download tasks",
-            columns = c("status", "session_id", "task_id", "file_key", "filename", "bytes_done", "size", "attempts", "last_error")
+            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
         ))
     }
     if (identical(command, "sessions")) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Download sessions",
-            columns = c("session_id", "label", "status", "task_count", "created_at", "started_at", "finished_at")
+            columns = c("session_id", "status", "task_count", "label", "created_at", "finished_at", "started_at")
         ))
     }
     if (identical(command, "nodes") || identical(command, "reset-nodes")) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Data nodes",
-            columns = c("data_node", "service", "success_count", "failure_count", "failure_rate", "last_latency", "cooldown_until", "dry_run")
+            columns = c("data_node", "service", "failure_rate", "failure_count", "success_count", "last_latency", "cooldown_until", "dry_run")
         ))
     }
     if (identical(command, "config")) {
@@ -193,17 +193,17 @@ epwshiftr_cli_render_download_preflight <- function(result) {
     epwshiftr_cli_render_table(
         result$changes,
         title = "Changes",
-        columns = c("change_type", "file_key", "filename", "size", "version", "data_node")
+        columns = c("change_type", "filename", "size", "version", "data_node", "file_key")
     )
     epwshiftr_cli_render_table(
         result$files,
         title = "Files",
-        columns = c("status", "file_key", "filename", "size", "local_path")
+        columns = c("status", "filename", "size", "local_path", "file_key")
     )
     epwshiftr_cli_render_table(
         result$candidates,
         title = "Candidates",
-        columns = c("file_key", "data_node", "priority", "probe_ok", "probe_cached", "probe_latency", "target_rel_path", "url")
+        columns = c("data_node", "priority", "probe_ok", "probe_latency", "probe_cached", "target_rel_path", "file_key", "url")
     )
     invisible(NULL)
 }
@@ -215,17 +215,17 @@ epwshiftr_cli_render_download_watch <- function(result) {
     epwshiftr_cli_render_table(
         result$tasks,
         title = "Tasks",
-        columns = c("status", "session_id", "task_id", "file_key", "filename", "bytes_done", "size", "attempts", "last_error")
+        columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
     )
     epwshiftr_cli_render_table(
         result$nodes,
         title = "Data nodes",
-        columns = c("data_node", "service", "success_count", "failure_count", "failure_rate", "last_latency", "cooldown_until")
+        columns = c("data_node", "service", "failure_rate", "failure_count", "success_count", "last_latency", "cooldown_until")
     )
     epwshiftr_cli_render_table(
         result$events,
         title = "Recent events",
-        columns = c("created_at", "event", "status", "session_id", "task_id", "file_key", "error")
+        columns = c("created_at", "event", "status", "error", "session_id", "task_id", "file_key")
     )
     invisible(NULL)
 }
@@ -244,22 +244,22 @@ epwshiftr_cli_render_esgf_report <- function(result) {
     epwshiftr_cli_render_table(
         result$updates,
         title = "Updates",
-        columns = c("query_id", "update_id", "file_total", "new_count", "changed_count", "stale_count", "created_at")
+        columns = c("query_id", "new_count", "changed_count", "stale_count", "file_total", "created_at", "update_id")
     )
     epwshiftr_cli_render_table(
         result$changes,
         title = "Changes",
-        columns = c("query_id", "change_type", "file_key", "filename", "size", "version", "data_node")
+        columns = c("change_type", "filename", "size", "version", "data_node", "file_key", "query_id")
     )
     epwshiftr_cli_render_table(
         result$downloads,
         title = "Downloads",
-        columns = c("status", "session_id", "task_id", "file_key", "filename", "bytes_done", "size", "last_error")
+        columns = c("status", "filename", "bytes_done", "size", "last_error", "session_id", "task_id", "file_key")
     )
     epwshiftr_cli_render_table(
         result$nodes,
         title = "Data nodes",
-        columns = c("data_node", "service", "success_count", "failure_count", "failure_rate", "last_latency", "cooldown_until")
+        columns = c("data_node", "service", "failure_rate", "failure_count", "success_count", "last_latency", "cooldown_until")
     )
     invisible(NULL)
 }
@@ -392,6 +392,14 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     }), stringsAsFactors = FALSE)
     names(display) <- names(shown)
 
+    adapted <- epwshiftr_cli_adapt_table_columns(
+        display = display,
+        raw = shown,
+        max_width = epwshiftr_cli_console_width()
+    )
+    display <- adapted$display
+    shown <- adapted$raw
+
     lines <- epwshiftr_cli_table_lines(
         display,
         header = epwshiftr_cli_title(names(display)),
@@ -401,6 +409,10 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
     extra <- nrow(x) - nrow(shown)
     if (extra > 0L) {
         cli::cli_alert_info("{extra} more rows; use --json for full output.")
+    }
+    if (length(adapted$dropped)) {
+        hidden <- paste(adapted$dropped, collapse = ", ")
+        cli::cli_alert_info("Hidden columns for console width: {hidden}. Use --json for full output.")
     }
     invisible(NULL)
 }
@@ -478,6 +490,49 @@ epwshiftr_cli_table_lines <- function(x, header = names(x), align = NULL, border
         lines <- c(lines, epwshiftr_cli_table_row(row, widths, align, chars))
     }
     c(lines, epwshiftr_cli_table_rule(widths, chars, "bottom"))
+}
+
+
+epwshiftr_cli_adapt_table_columns <- function(display, raw, max_width = epwshiftr_cli_console_width(), min_columns = 2L) {
+    if (!ncol(display)) {
+        return(list(display = display, raw = raw, dropped = character()))
+    }
+    max_width <- as.integer(max_width[[1L]])
+    if (is.na(max_width) || max_width <= 0L) {
+        max_width <- 80L
+    }
+    min_columns <- max(1L, min(as.integer(min_columns[[1L]]), ncol(display)))
+    dropped <- character()
+    while (ncol(display) > min_columns && epwshiftr_cli_table_width(display, raw) > max_width) {
+        drop <- names(display)[[ncol(display)]]
+        dropped <- c(drop, dropped)
+        display <- display[-ncol(display)]
+        raw <- raw[-ncol(raw)]
+    }
+    list(display = display, raw = raw, dropped = dropped)
+}
+
+
+epwshiftr_cli_table_width <- function(display, raw) {
+    lines <- epwshiftr_cli_table_lines(
+        display,
+        header = epwshiftr_cli_title(names(display)),
+        align = epwshiftr_cli_table_alignments(raw)
+    )
+    if (!length(lines)) {
+        return(0L)
+    }
+    max(cli::ansi_nchar(lines, type = "width"), na.rm = TRUE)
+}
+
+
+epwshiftr_cli_console_width <- function() {
+    width <- getOption("width", 80L)
+    width <- suppressWarnings(as.integer(width[[1L]]))
+    if (is.na(width) || width < 40L) {
+        return(80L)
+    }
+    width
 }
 
 

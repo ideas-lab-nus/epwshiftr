@@ -461,6 +461,38 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     expect_true(all(verified$result$checksum_ok))
 })
 
+test_that("epwshiftr_cli table output adapts to console width", {
+    withr::local_options(width = 54L)
+
+    rows <- data.frame(
+        status = "queued",
+        filename = "very-long-climate-file-name-for-cli-output.nc",
+        bytes_done = 0,
+        size = 1024,
+        attempts = 0,
+        last_error = "this error message should be hidden before core status columns",
+        session_id = paste(rep("s", 64L), collapse = ""),
+        task_id = paste(rep("t", 64L), collapse = ""),
+        file_key = paste(rep("f", 64L), collapse = ""),
+        stringsAsFactors = FALSE
+    )
+
+    text <- capture.output(
+        epwshiftr:::epwshiftr_cli_render_table(
+            rows,
+            title = "Narrow table",
+            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
+        ),
+        type = "message"
+    )
+
+    table_lines <- text[grepl("^[\u250c\u2502\u251c\u2514+|]", text)]
+    expect_true(length(table_lines) > 0L)
+    expect_lte(max(cli::ansi_nchar(table_lines, type = "width")), 54L)
+    expect_true(any(grepl("Hidden columns for console width", text)))
+    expect_true(any(grepl("Status", text)))
+})
+
 test_that("install_cli and uninstall_cli manage generated launchers", {
     bin_dir <- tempfile("epwshiftr-bin-")
     name <- "epwshiftr-test"
