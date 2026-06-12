@@ -1264,10 +1264,12 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 \code{"Aggregation"}. Dataset fields should be configured with
 \verb{$fields()} before collecting.}
 
-\item{\code{...}}{Additional File/Aggregation facet filters used only when
-\code{type} is \code{"File"} or \code{"Aggregation"}. File/Aggregation
-collection does not use ESGF datetime search parameters; use
-\verb{$filter_time()} on the returned result for time filtering.}
+\item{\code{...}}{Arguments passed to \link{EsgResultDataset} child collection
+when \code{type} is \code{"File"} or \code{"Aggregation"}, including the
+\code{data_node} scope filter, child-query controls, and
+\code{use_record_index_node}. File/Aggregation collection does not
+use ESGF datetime search parameters; use \verb{$filter_time()} on the
+returned result for time filtering.}
 }
 \if{html}{\out{</div>}}
 }

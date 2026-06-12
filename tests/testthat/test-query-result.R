@@ -1228,6 +1228,55 @@ test_that("dataset result collect accepts data node scope and clears datetime co
     expect_error(datasets$collect(time = "all"), "controlled")
 })
 
+test_that("dataset result collect can target child queries by record index node", {
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(
+            id = c("dataset-1", "dataset-2", "dataset-3"),
+            index_node = c("idx-a.example.org", NA, "https://idx-b.example.org"),
+            size = c(1, 1, 1),
+            check.names = FALSE
+        ),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            dataset_id <- query_param_value(params$flat()$dataset_id)
+            calls[[length(calls) + 1L]] <<- list(index_node = index_node, dataset_id = dataset_id)
+            docs <- data.frame(
+                id = paste0("file-", dataset_id),
+                dataset_id = dataset_id,
+                size = seq_along(dataset_id),
+                url = I(rep(list("https://example.org/file.nc|application/netcdf|HTTPServer"), length(dataset_id))),
+                check.names = FALSE
+            )
+            response <- query_result_test_response(docs)
+            params$fields(c(query_param_value(params$fields()), required_fields))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params,
+                context = list(query_url = paste0(index_node, "/search?", dataset_id))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(
+        datasets$collect(fields = "id", limit = 1L, index_node = "fallback.example.org", use_record_index_node = TRUE),
+        "EsgResultFile"
+    )
+    expect_identical(
+        vapply(calls, `[[`, character(1L), "index_node"),
+        c("https://fallback.example.org", "https://idx-a.example.org", "https://idx-b.example.org")
+    )
+    expect_identical(unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE), datasets$id[c(2L, 1L, 3L)])
+    expect_identical(files$count(), 3L)
+    expect_length(priv(files)$context$query_url, 3L)
+})
+
 test_that("dataset access helpers tolerate missing access fields", {
     datasets <- query_result_test_object("Dataset", query_result_test_dataset_docs(access = FALSE))
     expect_identical(datasets$has_opendap(), c(FALSE, FALSE))
