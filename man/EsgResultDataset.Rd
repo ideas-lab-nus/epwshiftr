@@ -153,8 +153,8 @@ used. Default: \code{100L}.}
 If \code{NULL}, the index node that created the Dataset result is
 used. Default: \code{NULL}.}
 
-\item{\code{...}}{Additional child-result facet filters, plus the control
-parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
+\item{\code{...}}{Optional child-result scope filter \code{data_node}, plus the
+control parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
 Query-level parameters such as \code{datetime_start} and
 \code{datetime_stop} cannot be passed through \code{...}.
 File/Aggregation collection does not use ESGF datetime search

@@ -3055,8 +3055,8 @@ EsgResultDataset <- R6::R6Class(
         #'        If `NULL`, the index node that created the Dataset result is
         #'        used. Default: `NULL`.
         #'
-        #' @param ... Additional child-result facet filters, plus the control
-        #'        parameters `replica`, `distrib`, `latest`, and `shards`.
+        #' @param ... Optional child-result scope filter `data_node`, plus the
+        #'        control parameters `replica`, `distrib`, `latest`, and `shards`.
         #'        Query-level parameters such as `datetime_start` and
         #'        `datetime_stop` cannot be passed through `...`.
         #'        File/Aggregation collection does not use ESGF datetime search
@@ -3228,15 +3228,13 @@ EsgResultDataset <- R6::R6Class(
                 extra_params <- overrides[!names_params %in% names_ctrl]
                 names_extra <- names(extra_params)
                 if (length(names_extra)) {
-                    not_found <- setdiff(names_extra, FIELDS_FACETS_ALL)
-                    if (length(not_found)) {
-                        warning(
-                            sprintf(
-                                "The following facet(s) are not listed in the built-in ESGF facet dictionary and will be sent as-is: [%s].",
-                                paste(sprintf("'%s'", not_found), collapse = ", ")
-                            ),
-                            call. = FALSE
-                        )
+                    allowed_child_filters <- "data_node"
+                    unsupported <- setdiff(names_extra, allowed_child_filters)
+                    if (length(unsupported)) {
+                        stop(sprintf(
+                            "Only `data_node` and control parameters (`replica`, `distrib`, `latest`, `shards`) can be passed through `...` for child File/Aggregation collection; unsupported parameter(s): [%s].",
+                            paste(sprintf("'%s'", unsupported), collapse = ", ")
+                        ), call. = FALSE)
                     }
                 }
                 extra_params <- stats::setNames(
@@ -3300,14 +3298,8 @@ EsgResultDataset <- R6::R6Class(
             query <- esg_query(private$index_node)
             query$distrib(controls$distrib)
 
-            store <- if (type == "Aggregation") {
-                QueryParamStore$new()
-            } else {
-                private$parameter$copy()
-            }
-            if (type == "Aggregation") {
-                store$project(NULL)
-            }
+            store <- QueryParamStore$new()
+            store$project(NULL)
             query_result_merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
             store$fields(query_param_value(query$fields(fields)$fields()))
             store$shards(query_param_value(query$shards(controls$shards)$shards()))

@@ -1163,7 +1163,9 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_false(query_param_value(calls[[1L]]$params$latest()))
     expect_false(query_param_value(calls[[1L]]$params$distrib()))
     expect_false(query_param_value(calls[[1L]]$params$replica()))
-    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_null(calls[[1L]]$params$project())
+    expect_null(calls[[1L]]$params$source_id())
+    expect_identical(query_param_value(calls[[1L]]$params$flat()$dataset_id), "dataset-1")
     expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param_value(priv(files)$parameter$fields())))
 
     expect_s3_class(
@@ -1191,7 +1193,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param_value(priv(aggs)$parameter$fields())))
 })
 
-test_that("dataset result collect accepts child facets and clears datetime constraints", {
+test_that("dataset result collect accepts data node scope and clears datetime constraints", {
     params <- query_result_test_params("Dataset")
     params$datetime_range(
         start = "2050-01-01T00:00:00Z",
@@ -1215,12 +1217,13 @@ test_that("dataset result collect accepts child facets and clears datetime const
     )
 
     expect_s3_class(
-        datasets$collect(fields = "id", limit = 1L, source_id = "AWI-CM-1-1-MR"),
+        datasets$collect(fields = "id", limit = 1L, data_node = "example.org"),
         "EsgResultFile"
     )
-    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_identical(query_param_value(calls[[1L]]$params$data_node()), "example.org")
     expect_identical(calls[[1L]]$params$render(c("datetime_start", "datetime_stop")), character())
 
+    expect_error(datasets$collect(source_id = "AWI-CM-1-1-MR"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
     expect_error(datasets$collect(time = "all"), "controlled")
 })

@@ -872,7 +872,7 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     )
 
     files <- expect_s3_class(
-        q$collect(type = "file", fields = "id", source_id = "AWI-CM-1-1-MR"),
+        q$collect(type = "file", fields = "id", data_node = "example.org"),
         "EsgResultFile"
     )
     expect_length(calls, 2L)
@@ -884,7 +884,8 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_equal(calls[[2L]]$limit, 3L)
     expect_true(calls[[2L]]$dict_check)
     expect_identical(query_param_value(calls[[2L]]$params$type()), "File")
-    expect_identical(query_param_value(calls[[2L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_null(calls[[2L]]$params$source_id())
+    expect_identical(query_param_value(calls[[2L]]$params$data_node()), "example.org")
     expect_identical(calls[[2L]]$params$render(c("datetime_start", "datetime_stop")), character())
     expect_identical(files$count(), 1L)
 
