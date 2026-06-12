@@ -493,6 +493,269 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     expect_equal(nrow(empty_diag), 0L)
 })
 
+test_that("File results repair unreachable OPeNDAP URLs using reachable replicas", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-bad", "file-ok")
+    docs$dataset_id <- c("dataset-bad|bad.example.org", "dataset-ok|ok.example.org")
+    docs$master_id <- c("master-file-bad", "master-file-ok")
+    docs$instance_id <- c("instance-bad", "instance-ok")
+    docs$data_node <- c("bad.example.org", "ok.example.org")
+    docs$url <- I(list(
+        c(
+            "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://bad.example.org/file.nc|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://ok.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://ok.example.org/file.nc|application/netcdf|HTTPServer"
+        )
+    ))
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File"),
+        context = list(query_url = "https://origin.example.org/search")
+    )
+
+    candidate_docs <- query_result_test_file_docs(c(
+        "https://replica.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://replica.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    candidate_docs$id <- "file-repaired"
+    candidate_docs$dataset_id <- "dataset-bad|replica.example.org"
+    candidate_docs$master_id <- "master-file-bad"
+    candidate_docs$instance_id <- "instance-repaired"
+    candidate_docs$data_node <- "replica.example.org"
+    candidate_docs$replica <- TRUE
+
+    probe_calls <- list()
+    collect_calls <- list()
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
+                                                     probe_concurrency = 1L) {
+            probe_calls[[length(probe_calls) + 1L]] <<- list(
+                urls = urls,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency
+            )
+            data.table::data.table(
+                url = urls,
+                reachable = grepl("ok|replica", urls),
+                latency_ms = ifelse(grepl("replica", urls), 10, ifelse(grepl("ok", urls), 50, NA_real_)),
+                error = ifelse(grepl("ok|replica", urls), NA_character_, "boom")
+            )
+        },
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE) {
+            collect_calls[[length(collect_calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                required_fields = required_fields,
+                all = all,
+                limit = limit,
+                constraints = constraints
+            )
+            expect_identical(index_node, "https://replica-index.example.org")
+            expect_identical(query_param_value(params$type()), "File")
+            expect_identical(query_param_value(params$params()$master_id), "master-file-bad")
+            expect_true(all(EsgResultFile$private_fields$required_fields %in% required_fields))
+            expect_true(all)
+            expect_false(constraints)
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param_clone(params),
+                context = list(query_url = "https://replica-index.example.org/replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(
+        result$repair_urls(
+            index_node = "replica-index.example.org",
+            probe = list(timeout = 11, concurrency = 2L, network_policy = list(useragent = "repair-test"))
+        ),
+        "EsgResultFile"
+    )
+
+    expect_identical(result$id, c("file-bad", "file-ok"))
+    expect_identical(repaired$id, c("file-repaired", "file-ok"))
+    expect_identical(repaired$data_node, c("replica.example.org", "ok.example.org"))
+    expect_identical(repaired$dataset_id, c("dataset-bad|replica.example.org", "dataset-ok|ok.example.org"))
+    expect_equal(repaired$count(), 2L)
+    expect_identical(repaired$selection(), result$selection())
+    expect_equal(length(collect_calls), 1L)
+    expect_equal(length(probe_calls), 2L)
+    expect_true(all(vapply(probe_calls, function(x) x$timeout, numeric(1L)) == 11))
+    expect_true(all(vapply(probe_calls, function(x) x$probe_concurrency, integer(1L)) == 2L))
+    expect_true(all(vapply(probe_calls, function(x) x$network_policy$useragent, character(1L)) == "repair-test"))
+    expect_identical(unname(repaired$query_url("all")), c(
+        "https://origin.example.org/search",
+        "https://replica-index.example.org/replicas"
+    ))
+})
+
+test_that("File results repair HTTPServer URLs independently", {
+    docs <- query_result_test_file_docs(c(
+        "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://bad-http.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    docs$id <- "file-http-bad"
+    docs$dataset_id <- "dataset-http|bad-http.example.org"
+    docs$master_id <- "master-file-http"
+    docs$data_node <- "bad-http.example.org"
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    candidate_docs <- query_result_test_file_docs(c(
+        "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://http-replica.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    candidate_docs$id <- "file-http-repaired"
+    candidate_docs$dataset_id <- "dataset-http|http-replica.example.org"
+    candidate_docs$master_id <- "master-file-http"
+    candidate_docs$data_node <- "http-replica.example.org"
+
+    probed <- character()
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
+                                                     probe_concurrency = 1L) {
+            probed <<- c(probed, urls)
+            data.table::data.table(
+                url = urls,
+                reachable = grepl("http-replica", urls),
+                latency_ms = ifelse(grepl("http-replica", urls), 8, NA_real_),
+                error = ifelse(grepl("http-replica", urls), NA_character_, "bad http")
+            )
+        },
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE) {
+            expect_identical(index_node, "https://example.org")
+            expect_identical(query_param_value(params$type()), "File")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param_clone(params),
+                context = list(query_url = "https://example.org/http-replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(result$repair_urls(service = "HTTPServer"), "EsgResultFile")
+
+    expect_identical(repaired$id, "file-http-repaired")
+    expect_identical(repaired$data_node, "http-replica.example.org")
+    expect_true(any(grepl("bad-http", probed)))
+    expect_true(any(grepl("http-replica", probed)))
+})
+
+test_that("Aggregation results repair URLs with Aggregation replica queries", {
+    docs <- query_result_test_file_docs("https://bad.example.org/dods/agg.nc|application/netcdf|OPENDAP")
+    docs$id <- "aggregation-bad"
+    docs$dataset_id <- "dataset-agg|bad.example.org"
+    docs$master_id <- "master-aggregation"
+    docs$data_node <- "bad.example.org"
+    result <- query_result_test_object("Aggregation", docs, query_result_test_params("Aggregation"))
+
+    candidate_docs <- query_result_test_file_docs("https://agg-replica.example.org/dods/agg.nc|application/netcdf|OPENDAP")
+    candidate_docs$id <- "aggregation-repaired"
+    candidate_docs$dataset_id <- "dataset-agg|agg-replica.example.org"
+    candidate_docs$master_id <- "master-aggregation"
+    candidate_docs$data_node <- "agg-replica.example.org"
+
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
+                                                     probe_concurrency = 1L) {
+            data.table::data.table(
+                url = urls,
+                reachable = grepl("agg-replica", urls),
+                latency_ms = ifelse(grepl("agg-replica", urls), 12, NA_real_),
+                error = ifelse(grepl("agg-replica", urls), NA_character_, "bad agg")
+            )
+        },
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE) {
+            expect_identical(query_param_value(params$type()), "Aggregation")
+            expect_true(all(EsgResultAggregation$private_fields$required_fields %in% required_fields))
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param_clone(params),
+                context = list(query_url = "https://example.org/aggregation-replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(result$repair_urls(), "EsgResultAggregation")
+
+    expect_identical(repaired$id, "aggregation-repaired")
+    expect_identical(repaired$data_node, "agg-replica.example.org")
+    expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/aggregation-replicas")
+})
+
+test_that("repair_urls keeps original records when repair is impossible", {
+    docs <- query_result_test_file_docs("https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP")
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-missing-master", "file-no-replica")
+    docs$master_id <- c(NA_character_, "master-no-replica")
+    docs$data_node <- c("missing-master.example.org", "no-replica.example.org")
+    docs$url <- I(list(
+        "https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://no-replica.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+    candidate_docs <- query_result_test_file_docs("https://still-bad.example.org/dods/file.nc|application/netcdf|OPENDAP")
+    candidate_docs$id <- "file-still-bad"
+    candidate_docs$master_id <- "master-no-replica"
+    candidate_docs$data_node <- "still-bad.example.org"
+
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
+                                                     probe_concurrency = 1L) {
+            data.table::data.table(
+                url = urls,
+                reachable = rep(FALSE, length(urls)),
+                latency_ms = rep(NA_real_, length(urls)),
+                error = rep("unreachable", length(urls))
+            )
+        },
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE) {
+            expect_identical(query_param_value(params$params()$master_id), "master-no-replica")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param_clone(params),
+                context = list(query_url = "https://example.org/no-replica")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    warnings <- character()
+    repaired <- withCallingHandlers(
+        result$repair_urls(),
+        warning = function(w) {
+            warnings <<- c(warnings, conditionMessage(w))
+            invokeRestart("muffleWarning")
+        }
+    )
+
+    expect_true(any(grepl("master_id", warnings)))
+    expect_true(any(grepl("No reachable OPENDAP replica", warnings)))
+    expect_identical(repaired$id, result$id)
+    expect_identical(repaired$data_node, result$data_node)
+    expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/no-replica")
+
+    expect_error(result$repair_urls(probe = list(foo = 1)), "Unknown `probe` field")
+})
+
 test_that("File and Aggregation results filter time using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))

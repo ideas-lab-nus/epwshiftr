@@ -39,6 +39,7 @@ available.}
 \item \href{#method-EsgResultAggregation-to_data_table}{\code{EsgResultAggregation$to_data_table()}}
 \item \href{#method-EsgResultAggregation-filter_time}{\code{EsgResultAggregation$filter_time()}}
 \item \href{#method-EsgResultAggregation-download_plan}{\code{EsgResultAggregation$download_plan()}}
+\item \href{#method-EsgResultAggregation-repair_urls}{\code{EsgResultAggregation$repair_urls()}}
 \item \href{#method-EsgResultAggregation-download}{\code{EsgResultAggregation$download()}}
 \item \href{#method-EsgResultAggregation-print}{\code{EsgResultAggregation$print()}}
 \item \href{#method-EsgResultAggregation-open_dataset}{\code{EsgResultAggregation$open_dataset()}}
@@ -165,6 +166,48 @@ history before probing a URL again. Default: \code{3600}.}
 }
 \subsection{Returns}{
 A data.table download plan.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultAggregation-repair_urls"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultAggregation-repair_urls}{}}}
+\subsection{Method \code{repair_urls()}}{
+Replace unreachable service URLs with reachable replica records.
+
+\verb{$repair_urls()} probes the current records for the selected service,
+queries ESGF replicas by \code{master_id} for records whose URL is missing or
+unreachable, probes candidate replica URLs, and returns a new result with
+repaired records in the original row order. The original result is not
+modified. Aggregation results are not downloadable as files; repaired
+aggregation URLs are intended for service access such as OPeNDAP.
+The returned result records the original query URL plus the replica
+lookup query URL in \verb{$query_url("all")}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$repair_urls(
+  service = c("OPENDAP", "HTTPServer"),
+  index_node = NULL,
+  probe = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{Service URL to repair. One of \code{"OPENDAP"} or
+\code{"HTTPServer"}. Default: \code{"OPENDAP"}.}
+
+\item{\code{index_node}}{Optional ESGF search index node used to look up
+replicas. If \code{NULL}, the current result index node is used.}
+
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{timeout}, \code{concurrency}, and \code{network_policy}. Defaults are
+\code{timeout = 5}, \code{concurrency = 1L}, and
+\code{network_policy = NULL}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultAggregation} object.
 }
 }
 \if{html}{\out{<hr>}}

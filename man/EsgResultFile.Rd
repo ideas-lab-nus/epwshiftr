@@ -43,6 +43,7 @@ and \code{url_download} when their source fields are available.}
 \item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
 \item \href{#method-EsgResultFile-download_plan}{\code{EsgResultFile$download_plan()}}
 \item \href{#method-EsgResultFile-expand_replicas}{\code{EsgResultFile$expand_replicas()}}
+\item \href{#method-EsgResultFile-repair_urls}{\code{EsgResultFile$repair_urls()}}
 \item \href{#method-EsgResultFile-select_replica}{\code{EsgResultFile$select_replica()}}
 \item \href{#method-EsgResultFile-download}{\code{EsgResultFile$download()}}
 \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
@@ -205,6 +206,46 @@ Default: \code{"HTTPServer"}.}
 \subsection{Returns}{
 A new \code{EsgResultFile} object with expanded replica records
 when \code{master_id} is available; otherwise \code{self}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-repair_urls"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-repair_urls}{}}}
+\subsection{Method \code{repair_urls()}}{
+Replace unreachable service URLs with reachable replica records.
+
+\verb{$repair_urls()} probes the current records for the selected service,
+queries ESGF replicas by \code{master_id} for records whose URL is missing or
+unreachable, probes candidate replica URLs, and returns a new result with
+repaired records in the original row order. The original result is not
+modified. The returned result records the original query URL plus the
+replica lookup query URL in \verb{$query_url("all")}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$repair_urls(
+  service = c("OPENDAP", "HTTPServer"),
+  index_node = NULL,
+  probe = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{Service URL to repair. One of \code{"OPENDAP"} or
+\code{"HTTPServer"}. Default: \code{"OPENDAP"}.}
+
+\item{\code{index_node}}{Optional ESGF search index node used to look up
+replicas. If \code{NULL}, the current result index node is used.}
+
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{timeout}, \code{concurrency}, and \code{network_policy}. Defaults are
+\code{timeout = 5}, \code{concurrency = 1L}, and
+\code{network_policy = NULL}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultFile} object.
 }
 }
 \if{html}{\out{<hr>}}

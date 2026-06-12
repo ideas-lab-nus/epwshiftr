@@ -1992,6 +1992,66 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
     plan[]
 }
 
+query_result_child_result_generator <- function(type) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    switch(
+        type,
+        File = EsgResultFile,
+        Aggregation = EsgResultAggregation
+    )
+}
+
+query_result_child_required_fields <- function(type) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    switch(
+        type,
+        File = EsgResultFile$private_fields$required_fields,
+        Aggregation = EsgResultAggregation$private_fields$required_fields
+    )
+}
+
+query_result_collect_replicas_by_master_id <- function(result, master_id, type, index_node = NULL,
+                                                       all = TRUE) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    checkmate::assert_character(master_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- normalize_index_node(index_node)
+    }
+
+    store <- QueryParamStore$new()
+    suppressWarnings(store$params(master_id = master_id))
+    store$replica(NULL)
+    store$latest(TRUE)
+    store$distrib(TRUE)
+    store$type(type)
+    store$format(FORMAT_JSON)
+    store$fields("*")
+    store$limit(this$data_max_limit)
+    store$offset(0L)
+
+    collected <- query_collect(
+        index_node,
+        store,
+        required_fields = query_result_child_required_fields(type),
+        all = all,
+        limit = this$data_max_limit,
+        constraints = FALSE
+    )
+    response <- collected$response
+    response$response$docs <- collected$docs
+
+    new_query_result(
+        query_result_child_result_generator(type),
+        index_node,
+        collected$parameter,
+        response,
+        context = collected$context
+    )
+}
+
 query_result_expand_replicas <- function(result, service = "HTTPServer", all = TRUE) {
     dt <- result$to_data_table()
     master_id <- query_result_column(dt, "master_id")
@@ -2000,32 +2060,154 @@ query_result_expand_replicas <- function(result, service = "HTTPServer", all = T
         return(result)
     }
 
-    store <- QueryParamStore$new()
-    store$params(master_id = master_id)
-    store$replica(NULL)
-    store$latest(TRUE)
-    store$distrib(TRUE)
-    store$type("File")
-    store$format(FORMAT_JSON)
-    store$fields("*")
-    store$limit(this$data_max_limit)
-    store$offset(0L)
+    query_result_collect_replicas_by_master_id(
+        result,
+        master_id,
+        type = "File",
+        all = all
+    )
+}
 
-    collected <- query_collect(
-        priv(result)$index_node,
-        store,
-        required_fields = EsgResultFile$private_fields$required_fields,
-        all = all,
-        limit = this$data_max_limit,
-        constraints = FALSE
+query_result_repair_normalize_probe <- function(probe = NULL) {
+    defaults <- list(timeout = 5, concurrency = 1L, network_policy = NULL)
+    if (is.null(probe)) {
+        return(defaults)
+    }
+    if (!is.list(probe) || is.data.frame(probe)) {
+        cli::cli_abort("`probe` must be `NULL` or a named list.")
+    }
+    if (length(probe)) {
+        names <- names(probe)
+        if (is.null(names) || any(!nzchar(names))) {
+            cli::cli_abort("`probe` must be a named list.")
+        }
+        unknown <- setdiff(names, names(defaults))
+        if (length(unknown)) {
+            cli::cli_abort("Unknown `probe` field{?s}: {.field {unknown}}.")
+        }
+        defaults[names] <- probe
+    }
+
+    query_result_reachable_validate_probe_args(
+        timeout = defaults$timeout,
+        network_policy = defaults$network_policy,
+        probe_concurrency = defaults$concurrency
     )
-    new_query_result(
-        EsgResultFile,
-        priv(result)$index_node,
-        collected$parameter,
-        collected$response,
-        context = collected$context
+    defaults$concurrency <- as.integer(defaults$concurrency)
+    defaults
+}
+
+query_result_merge_query_url_context <- function(result, extra_context = NULL) {
+    context <- query_result_normalize_context(priv(result)$context)
+    urls <- unname(priv(result)$get_query_url_context())
+    extra <- query_result_normalize_context(extra_context)
+    if (!is.null(extra$query_url)) {
+        urls <- c(urls, unname(extra$query_url))
+    }
+    context$query_url <- query_result_normalize_query_url(urls, named = FALSE)
+    context
+}
+
+query_result_align_docs <- function(docs, fields, template = NULL) {
+    docs <- as.data.frame(docs, stringsAsFactors = FALSE)
+    n <- nrow(docs)
+    for (field in setdiff(fields, names(docs))) {
+        is_list <- !is.null(template) && field %in% names(template) && is.list(template[[field]])
+        docs[[field]] <- if (is_list) I(rep(list(NA), n)) else rep(NA, n)
+    }
+
+    docs[, fields, drop = FALSE]
+}
+
+query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"),
+                                     index_node = NULL, probe = NULL) {
+    service <- match.arg(service)
+    probe <- query_result_repair_normalize_probe(probe)
+    type <- query_result_normalize_type(priv(result)$result_type, choices = c("File", "Aggregation"))
+
+    docs <- priv(result)$get_docs()
+    n <- nrow(docs)
+    if (!n) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    reach <- result$reachable(
+        service = service,
+        timeout = probe$timeout,
+        probe_concurrency = probe$concurrency,
+        network_policy = probe$network_policy
     )
+    needs_repair <- !(reach$reachable %in% TRUE)
+    if (!any(needs_repair)) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    master_id <- as.character(query_result_column(docs, "master_id"))
+    targets <- which(needs_repair)
+    has_master <- !is.na(master_id[targets]) & nzchar(master_id[targets])
+    missing_master <- targets[!has_master]
+    repair_targets <- targets[has_master]
+
+    if (length(missing_master)) {
+        cli::cli_warn(
+            "Cannot repair {length(missing_master)} {service} URL{?s} because `master_id` is missing."
+        )
+    }
+    if (!length(repair_targets)) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    candidates <- query_result_collect_replicas_by_master_id(
+        result,
+        unique(master_id[repair_targets]),
+        type = type,
+        index_node = index_node,
+        all = TRUE
+    )
+    candidate_docs <- priv(candidates)$get_docs()
+    context <- query_result_merge_query_url_context(result, priv(candidates)$context)
+    if (!nrow(candidate_docs)) {
+        cli::cli_warn(
+            "No reachable {service} replica found for {length(repair_targets)} record{?s}; keeping original record{?s}."
+        )
+        return(priv(result)$result_with_docs(docs, context = context))
+    }
+
+    candidate_reach <- candidates$reachable(
+        service = service,
+        timeout = probe$timeout,
+        probe_concurrency = probe$concurrency,
+        network_policy = probe$network_policy
+    )
+    candidate_master_id <- as.character(query_result_column(candidate_docs, "master_id"))
+    fields <- unique(c(names(docs), names(candidate_docs)))
+    out <- query_result_align_docs(docs, fields, template = candidate_docs)
+    candidate_docs <- query_result_align_docs(candidate_docs, fields, template = docs)
+    out <- data.table::as.data.table(out)
+    candidate_docs <- data.table::as.data.table(candidate_docs)
+
+    repaired <- rep(FALSE, n)
+    for (i in repair_targets) {
+        rows <- which(candidate_master_id == master_id[[i]] & candidate_reach$reachable %in% TRUE)
+        if (!length(rows)) {
+            next
+        }
+
+        latency <- candidate_reach$latency_ms[rows]
+        latency[is.na(latency)] <- Inf
+        chosen <- rows[order(latency, rows)[[1L]]]
+        out[i, ] <- candidate_docs[chosen, ]
+        repaired[[i]] <- TRUE
+    }
+
+    unrepaired <- repair_targets[!repaired[repair_targets]]
+    if (length(unrepaired)) {
+        cli::cli_warn(
+            "No reachable {service} replica found for {length(unrepaired)} record{?s}; keeping original record{?s}."
+        )
+    }
+
+    priv(result)$result_with_docs(as.data.frame(out, stringsAsFactors = FALSE), context = context)
 }
 
 query_result_run_http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
@@ -2681,6 +2863,33 @@ EsgResultFile <- R6::R6Class(
         },
         # }}}
 
+        # repair_urls {{{
+        #' @description
+        #' Replace unreachable service URLs with reachable replica records.
+        #'
+        #' `$repair_urls()` probes the current records for the selected service,
+        #' queries ESGF replicas by `master_id` for records whose URL is missing or
+        #' unreachable, probes candidate replica URLs, and returns a new result with
+        #' repaired records in the original row order. The original result is not
+        #' modified. The returned result records the original query URL plus the
+        #' replica lookup query URL in `$query_url("all")`.
+        #'
+        #' @param service Service URL to repair. One of `"OPENDAP"` or
+        #'        `"HTTPServer"`. Default: `"OPENDAP"`.
+        #' @param index_node Optional ESGF search index node used to look up
+        #'        replicas. If `NULL`, the current result index node is used.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, and `network_policy`. Defaults are
+        #'        `timeout = 5`, `concurrency = 1L`, and
+        #'        `network_policy = NULL`.
+        #'
+        #' @return A new `EsgResultFile` object.
+        repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,
+                               probe = NULL) {
+            query_result_repair_urls(self, service = service, index_node = index_node, probe = probe)
+        },
+        # }}}
+
         # select_replica {{{
         #' @description
         #' Select the preferred candidate URL per logical file.
@@ -3151,6 +3360,35 @@ EsgResultAggregation <- R6::R6Class(
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds
             )
+        },
+        # }}}
+
+        # repair_urls {{{
+        #' @description
+        #' Replace unreachable service URLs with reachable replica records.
+        #'
+        #' `$repair_urls()` probes the current records for the selected service,
+        #' queries ESGF replicas by `master_id` for records whose URL is missing or
+        #' unreachable, probes candidate replica URLs, and returns a new result with
+        #' repaired records in the original row order. The original result is not
+        #' modified. Aggregation results are not downloadable as files; repaired
+        #' aggregation URLs are intended for service access such as OPeNDAP.
+        #' The returned result records the original query URL plus the replica
+        #' lookup query URL in `$query_url("all")`.
+        #'
+        #' @param service Service URL to repair. One of `"OPENDAP"` or
+        #'        `"HTTPServer"`. Default: `"OPENDAP"`.
+        #' @param index_node Optional ESGF search index node used to look up
+        #'        replicas. If `NULL`, the current result index node is used.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, and `network_policy`. Defaults are
+        #'        `timeout = 5`, `concurrency = 1L`, and
+        #'        `network_policy = NULL`.
+        #'
+        #' @return A new `EsgResultAggregation` object.
+        repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,
+                               probe = NULL) {
+            query_result_repair_urls(self, service = service, index_node = index_node, probe = probe)
         },
         # }}}
 
