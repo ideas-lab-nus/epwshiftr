@@ -383,7 +383,6 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(
   which = NULL,
-  aggregate = TRUE,
   fallback = c("ask", "auto", "error"),
   store = NULL,
   downloader = NULL
@@ -394,13 +393,7 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{which}}{File records to open. Use integer indices or file IDs.
-If \code{NULL}, all file records are opened when \code{aggregate = TRUE}
-and the first record is opened when \code{aggregate = FALSE}.
-Default: \code{NULL}.}
-
-\item{\code{aggregate}}{Whether to open multiple selected files as one
-aggregated \link{EsgDataset}. If \code{FALSE}, exactly one file record
-must be selected. Default: \code{TRUE}.}
+If \code{NULL}, all file records are opened. Default: \code{NULL}.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{

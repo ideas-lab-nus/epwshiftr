@@ -1622,12 +1622,22 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_equal(length(calls$opened) - opened_before, 2L)
 
     ds_one <- expect_s3_class(
-        multi_files$open_dataset(which = "file-2", aggregate = FALSE, fallback = "auto"),
+        multi_files$open_dataset(which = "file-2", fallback = "auto"),
         "FakeEsgDataset"
     )
     expect_identical(ds_one$target, "https://example.org/dods/file-2.nc")
     expect_identical(esg_dataset_get_context(ds_one)$selection$source_indices, 2L)
-    expect_error(multi_files$open_dataset(which = 1:2, aggregate = FALSE), "aggregate = FALSE")
+
+    ds_selected <- expect_s3_class(
+        multi_files$open_dataset(which = 1:2, fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(ds_selected$target, c(
+        "https://example.org/dods/file-1.nc",
+        "https://example.org/dods/file-2.nc"
+    ))
+    expect_identical(esg_dataset_get_context(ds_selected)$selection$source_indices, c(1L, 2L))
+    expect_error(multi_files$open_dataset(aggregate = FALSE), "unused argument")
 
     agg_docs <- data.frame(
         id = c("file-1", "file-2"),
@@ -1666,6 +1676,21 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     new_open_calls <- calls$opened[(opened_before + 1L):length(calls$opened)]
     expect_identical(new_open_calls[[1L]], "https://example.org/dods/file-1.nc")
     expect_identical(new_open_calls[[2L]], agg_ds$target[[2L]])
+
+    agg_one_index <- expect_s3_class(
+        agg_result$open_dataset(which = 1L, fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(agg_one_index$target, "https://example.org/dods/file-1.nc")
+    expect_identical(esg_dataset_get_context(agg_one_index)$selection$source_indices, 1L)
+
+    agg_one_id <- expect_s3_class(
+        agg_result$open_dataset(which = "file-1", fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(agg_one_id$target, "https://example.org/dods/file-1.nc")
+    expect_identical(esg_dataset_get_context(agg_one_id)$selection$source_indices, 1L)
+    expect_error(agg_result$open_dataset(aggregate = FALSE), "unused argument")
 
     agg_fail_docs <- agg_docs
     agg_fail_docs$url <- I(list(

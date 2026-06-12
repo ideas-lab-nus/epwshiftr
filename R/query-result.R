@@ -3610,12 +3610,7 @@ EsgResultFile <- R6::R6Class(
         #' Open a file as an EsgDataset for remote data access via OPeNDAP
         #'
         #' @param which File records to open. Use integer indices or file IDs.
-        #'        If `NULL`, all file records are opened when `aggregate = TRUE`
-        #'        and the first record is opened when `aggregate = FALSE`.
-        #'        Default: `NULL`.
-        #' @param aggregate Whether to open multiple selected files as one
-        #'        aggregated [EsgDataset]. If `FALSE`, exactly one file record
-        #'        must be selected. Default: `TRUE`.
+        #'        If `NULL`, all file records are opened. Default: `NULL`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default). In a
         #'     non-interactive session this raises an error.
@@ -3627,9 +3622,8 @@ EsgResultFile <- R6::R6Class(
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(which = NULL, aggregate = TRUE, fallback = c("ask", "auto", "error"),
+        open_dataset = function(which = NULL, fallback = c("ask", "auto", "error"),
                                 store = NULL, downloader = NULL) {
-            checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
             if (!self$count()) {
@@ -3637,7 +3631,7 @@ EsgResultFile <- R6::R6Class(
             }
 
             if (is.null(which)) {
-                indices <- if (isTRUE(aggregate)) seq_len(self$count()) else 1L
+                indices <- seq_len(self$count())
             } else if (is.character(which)) {
                 checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
                 checkmate::assert_subset(which, self$id, empty.ok = FALSE)
@@ -3652,10 +3646,6 @@ EsgResultFile <- R6::R6Class(
                     unique = TRUE
                 )
                 indices <- as.integer(which)
-            }
-
-            if (!isTRUE(aggregate) && length(indices) != 1L) {
-                cli::cli_abort("`aggregate = FALSE` can only open one file record.")
             }
 
             urls <- self$url_opendap[indices]
@@ -4069,8 +4059,9 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
         #'
-        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
-        #'   If `FALSE`, open only the first file.
+        #' @param which Aggregation records to open. Use integer indices or
+        #'        aggregation record IDs. If `NULL`, all aggregation records
+        #'        are opened. Default: `NULL`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default). In a
         #'     non-interactive session this raises an error.
@@ -4082,22 +4073,33 @@ EsgResultAggregation <- R6::R6Class(
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error"),
+        open_dataset = function(which = NULL, fallback = c("ask", "auto", "error"),
                                 store = NULL, downloader = NULL) {
-            checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
-            urls <- self$url_opendap
-            indices <- seq_along(urls)
-
-            if (!aggregate) {
-                urls <- urls[1L]
-                indices <- 1L
-            }
-            if (!length(urls)) {
+            if (!self$count()) {
                 cli::cli_abort("No aggregation records are available to open.")
             }
 
+            if (is.null(which)) {
+                indices <- seq_len(self$count())
+            } else if (is.character(which)) {
+                checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
+                checkmate::assert_subset(which, self$id, empty.ok = FALSE)
+                indices <- match(which, self$id)
+            } else {
+                checkmate::assert_integerish(
+                    which,
+                    lower = 1L,
+                    upper = self$count(),
+                    any.missing = FALSE,
+                    min.len = 1L,
+                    unique = TRUE
+                )
+                indices <- as.integer(which)
+            }
+
+            urls <- self$url_opendap[indices]
             targets <- urls
             nc_handles <- vector("list", length(urls))
             opendap_errors <- vector("list", length(urls))

@@ -296,7 +296,7 @@ The \code{EsgResultAggregation} object itself, invisibly.
 Open aggregation files as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$open_dataset(
-  aggregate = TRUE,
+  which = NULL,
   fallback = c("ask", "auto", "error"),
   store = NULL,
   downloader = NULL
@@ -306,8 +306,9 @@ Open aggregation files as an EsgDataset for remote data access via OPeNDAP
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{aggregate}}{If \code{TRUE} (default), open all files as a multi-file dataset.
-If \code{FALSE}, open only the first file.}
+\item{\code{which}}{Aggregation records to open. Use integer indices or
+aggregation record IDs. If \code{NULL}, all aggregation records
+are opened. Default: \code{NULL}.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{
