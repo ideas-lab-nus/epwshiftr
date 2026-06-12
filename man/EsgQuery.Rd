@@ -1221,7 +1221,7 @@ By default it collects \strong{\code{type=Dataset}} results and returns an
 collects child File or Aggregation results for those datasets.
 The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
-\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
+\verb{access}, \verb{data_node}, \verb{id}, \verb{index_node}, \verb{instance_id}, \verb{latest}, \verb{master_id}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{replica}, \verb{size}, \verb{url}, \verb{version}.
 When a local \link{EsgDict} is available for the query project, \verb{$collect()}
 also performs a warning-only dictionary check before sending the query.
 Missing local dictionaries are ignored and never downloaded.

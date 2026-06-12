@@ -2598,22 +2598,34 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
     plan[]
 }
 
-query_result_child_result_generator <- function(type) {
-    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+query_result_result_generator <- function(type) {
+    type <- query_result_normalize_type(type)
     switch(
         type,
+        Dataset = EsgResultDataset,
         File = EsgResultFile,
         Aggregation = EsgResultAggregation
     )
 }
 
-query_result_child_required_fields <- function(type) {
-    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+query_result_required_fields <- function(type) {
+    type <- query_result_normalize_type(type)
     switch(
         type,
+        Dataset = EsgResultDataset$private_fields$required_fields,
         File = EsgResultFile$private_fields$required_fields,
         Aggregation = EsgResultAggregation$private_fields$required_fields
     )
+}
+
+query_result_child_result_generator <- function(type) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    query_result_result_generator(type)
+}
+
+query_result_child_required_fields <- function(type) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    query_result_required_fields(type)
 }
 
 query_result_replica_identity <- function(docs) {
@@ -2681,7 +2693,7 @@ query_result_replica_query_store <- function(type, params) {
 
 query_result_collect_replicas_by_identity <- function(result, identity, type, index_node = NULL,
                                                       all = TRUE) {
-    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    type <- query_result_normalize_type(type)
     if (is.null(index_node)) {
         index_node <- priv(result)$index_node
     } else {
@@ -2709,7 +2721,7 @@ query_result_collect_replicas_by_identity <- function(result, identity, type, in
         query_collect(
             index_node,
             store,
-            required_fields = query_result_child_required_fields(type),
+            required_fields = query_result_required_fields(type),
             all = all,
             limit = this$data_max_limit,
             constraints = FALSE
@@ -2720,7 +2732,39 @@ query_result_collect_replicas_by_identity <- function(result, identity, type, in
     response$response$docs <- collected$docs
 
     new_query_result(
-        query_result_child_result_generator(type),
+        query_result_result_generator(type),
+        index_node,
+        collected$parameter,
+        response,
+        context = collected$context
+    )
+}
+
+query_result_collect_replicas_by_master_id <- function(result, master_id, type, index_node = NULL,
+                                                       all = TRUE) {
+    type <- query_result_normalize_type(type)
+    checkmate::assert_character(master_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- normalize_index_node(index_node)
+    }
+
+    store <- query_result_replica_query_store(type, list(master_id = master_id))
+    collected <- query_collect(
+        index_node,
+        store,
+        required_fields = query_result_required_fields(type),
+        all = all,
+        limit = this$data_max_limit,
+        constraints = FALSE
+    )
+    response <- collected$response
+    response$response$docs <- collected$docs
+
+    new_query_result(
+        query_result_result_generator(type),
         index_node,
         collected$parameter,
         response,
@@ -2740,6 +2784,47 @@ query_result_expand_replicas <- function(result, service = "HTTPServer", all = T
         result,
         identity,
         type = "File",
+        all = all
+    )
+    expanded_docs <- priv(expanded)$get_docs()
+    expanded_identity <- query_result_replica_identity(expanded_docs)
+    keep <- query_result_replica_in_identity(expanded_identity, identity)
+    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
+}
+
+query_result_expand_dataset_replicas <- function(result, by = c("instance_id", "master_id"),
+                                                 all = TRUE, index_node = NULL) {
+    by <- match.arg(by)
+    docs <- priv(result)$get_docs()
+    if (!nrow(docs)) {
+        return(result)
+    }
+
+    if (identical(by, "master_id")) {
+        master_id <- as.character(query_result_column(docs, "master_id"))
+        master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
+        if (!length(master_id)) {
+            return(result)
+        }
+        return(query_result_collect_replicas_by_master_id(
+            result,
+            master_id,
+            type = "Dataset",
+            index_node = index_node,
+            all = all
+        ))
+    }
+
+    identity <- query_result_replica_identity(docs)
+    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
+    if (!length(keys)) {
+        return(result)
+    }
+    expanded <- query_result_collect_replicas_by_identity(
+        result,
+        identity,
+        type = "Dataset",
+        index_node = index_node,
         all = all
     )
     expanded_docs <- priv(expanded)$get_docs()
@@ -3304,6 +3389,27 @@ EsgResultDataset <- R6::R6Class(
         },
         # }}}
 
+        # expand_replicas {{{
+        #' @description
+        #' Query ESGF for Dataset master and replica records.
+        #'
+        #' @param by Replica identity key. Use `"instance_id"` to retrieve
+        #'        same-version Dataset replicas, or `"master_id"` to retrieve all
+        #'        versions and replicas for the logical Dataset. Default:
+        #'        `"instance_id"`.
+        #' @param all Whether to retrieve all matching records. Default:
+        #'        `TRUE`.
+        #' @param index_node Optional ESGF index node used for the replica query.
+        #'        If `NULL`, the index node that created this result is used.
+        #'        Default: `NULL`.
+        #'
+        #' @return A new `EsgResultDataset` object with expanded Dataset records
+        #'        when the requested identity key is available; otherwise `self`.
+        expand_replicas = function(by = c("instance_id", "master_id"), all = TRUE, index_node = NULL) {
+            query_result_expand_dataset_replicas(self, by = by, all = all, index_node = index_node)
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print a summary of the current dataset
@@ -3328,9 +3434,15 @@ EsgResultDataset <- R6::R6Class(
 
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
+            "data_node",
             "index_node",
+            "instance_id",
+            "latest",
+            "master_id",
             "number_of_files",
             "number_of_aggregations",
+            "replica",
+            "version",
             "access"
         ))),
 

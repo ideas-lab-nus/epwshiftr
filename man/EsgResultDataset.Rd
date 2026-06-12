@@ -25,6 +25,7 @@ Hongyuan Jia
 \item \href{#method-EsgResultDataset-has_opendap}{\code{EsgResultDataset$has_opendap()}}
 \item \href{#method-EsgResultDataset-has_download}{\code{EsgResultDataset$has_download()}}
 \item \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}
+\item \href{#method-EsgResultDataset-expand_replicas}{\code{EsgResultDataset$expand_replicas()}}
 \item \href{#method-EsgResultDataset-print}{\code{EsgResultDataset$print()}}
 \item \href{#method-EsgResultDataset-clone}{\code{EsgResultDataset$clone()}}
 }
@@ -187,6 +188,41 @@ expose the same facet fields as Dataset records.}
 \item If \code{type="File"}, an \link{EsgResultFile} object
 \item If \code{type="Aggregation"}, an \link{EsgResultAggregation} object
 }
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultDataset-expand_replicas"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultDataset-expand_replicas}{}}}
+\subsection{Method \code{expand_replicas()}}{
+Query ESGF for Dataset master and replica records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultDataset$expand_replicas(
+  by = c("instance_id", "master_id"),
+  all = TRUE,
+  index_node = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{by}}{Replica identity key. Use \code{"instance_id"} to retrieve
+same-version Dataset replicas, or \code{"master_id"} to retrieve all
+versions and replicas for the logical Dataset. Default:
+\code{"instance_id"}.}
+
+\item{\code{all}}{Whether to retrieve all matching records. Default:
+\code{TRUE}.}
+
+\item{\code{index_node}}{Optional ESGF index node used for the replica query.
+If \code{NULL}, the index node that created this result is used.
+Default: \code{NULL}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultDataset} object with expanded Dataset records
+when the requested identity key is available; otherwise \code{self}.
 }
 }
 \if{html}{\out{<hr>}}

@@ -1318,6 +1318,58 @@ test_that("dataset result collect can target child queries by record index node"
     expect_length(priv(files)$context$query_url, 3L)
 })
 
+test_that("dataset result expand_replicas queries dataset replicas by identity", {
+    docs <- data.frame(
+        id = "dataset-1|node-a.example.org",
+        instance_id = "dataset-instance-1",
+        master_id = "dataset-master-1",
+        version = 20260101L,
+        data_node = "node-a.example.org",
+        size = 1,
+        check.names = FALSE
+    )
+    datasets <- query_result_test_object("Dataset", docs, query_result_test_params("Dataset"))
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params, required_fields = required_fields)
+            if (!is.null(params$params()$instance_id)) {
+                expect_identical(query_param_value(params$params()$instance_id), "dataset-instance-1")
+                out <- docs[rep(1L, 2L), , drop = FALSE]
+                out$id <- c("dataset-1|node-a.example.org", "dataset-1|node-b.example.org")
+                out$data_node <- c("node-a.example.org", "node-b.example.org")
+            } else {
+                expect_identical(query_param_value(params$params()$master_id), "dataset-master-1")
+                out <- docs[rep(1L, 2L), , drop = FALSE]
+                out$id <- c("dataset-1.v20260101|node-a.example.org", "dataset-1.v20270101|node-a.example.org")
+                out$version <- c(20260101L, 20270101L)
+            }
+            expect_identical(index_node, "https://replica-index.example.org")
+            expect_null(params$project())
+            expect_identical(query_param_value(params$type()), "Dataset")
+            expect_true(all(EsgResultDataset$private_fields$required_fields %in% required_fields))
+            list(
+                response = query_result_test_response(out),
+                docs = out,
+                parameter = query_param_clone(params),
+                context = list(query_url = paste0(index_node, "/dataset-replicas"))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    same_version <- expect_s3_class(datasets$expand_replicas(index_node = "replica-index.example.org"), "EsgResultDataset")
+    expect_identical(same_version$data_node, c("node-a.example.org", "node-b.example.org"))
+
+    logical_dataset <- expect_s3_class(
+        datasets$expand_replicas(by = "master_id", index_node = "replica-index.example.org"),
+        "EsgResultDataset"
+    )
+    expect_identical(logical_dataset$version, c(20260101L, 20270101L))
+    expect_length(calls, 2L)
+})
+
 test_that("dataset access helpers tolerate missing access fields", {
     datasets <- query_result_test_object("Dataset", query_result_test_dataset_docs(access = FALSE))
     expect_identical(datasets$has_opendap(), c(FALSE, FALSE))
