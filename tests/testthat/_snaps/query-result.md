@@ -8,8 +8,9 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
-      * Fields: 12 | [ id, access, activity_id, experiment_id, frequency, index_node,
-        number_of_files, project, size, source_id, variable_id, and variant_label ]
+      * Fields: 18 | [ id, version, access, activity_id, data_node, experiment_id,
+        frequency, index_node, instance_id, latest, master_id, number_of_files,
+        project, replica, size, source_id, variable_id, and variant_label ]
       
       -- <Query Parameter> -----------------------------------------------------------
       * project=CMIP6
@@ -18,7 +19,7 @@
       * variable_id=tas
       * frequency=day
       * variant_label=r1i1p1f1
-      * fields=source_id,experiment_id,frequency,access,id,index_node,number_of_aggregations,number_of_files,size,url,project,activity_id,variable_id,variant_label
+      * fields=source_id,experiment_id,frequency,access,data_node,id,index_node,instance_id,latest,master_id,number_of_aggregations,number_of_files,replica,size,url,version,project,activity_id,variable_id,variant_label
       * type=Dataset
       * offset=0
       * distrib=true
@@ -27,7 +28,7 @@
     Output
       
     Message
-      -- <Dataset> -------------------------------------------------------------------
+      -- <Dataset> (From 1 Data Nodes) -----------------------------------------------
     Output
       [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
           [ 86 Files, 6.6 GiB | No Aggregations ]
@@ -53,13 +54,6 @@
         url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * project=CMIP6
-      * activity_id=ScenarioMIP
-      * experiment_id=ssp585
-      * source_id=AWI-CM-1-1-MR
-      * variable_id=tas
-      * frequency=day
-      * variant_label=r1i1p1f1
       * type=File
       * offset=0
       * distrib=true

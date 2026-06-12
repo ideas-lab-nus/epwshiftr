@@ -62,7 +62,7 @@ test_that("QueryParamStore", {
 
     expect_s3_class(store, "QueryParamStore")
     expect_identical(query_param_spec("project")$role, "result_field")
-    expect_identical(query_param_spec("fields")$role, "facet")
+    expect_identical(query_param_spec("fields")$role, "keyword")
     expect_identical(query_param_spec("datetime_start")$role, "query")
     expect_identical(query_param_spec("limit")$role, "control")
     expect_identical(query_param_spec("bbox")$role, "facet")
@@ -87,6 +87,21 @@ test_that("QueryParamStore", {
     expect_identical(QueryParamStore$new()$type("File")$type()@value, "File")
     expect_identical(QueryParamStore$new()$type("Aggregation")$type()@value, "Aggregation")
     expect_error(QueryParamStore$new()$params(format = "application/xml"), "Only JSON")
+    expect_warning(
+        QueryParamStore$new()$params(
+            id = "record-id",
+            dataset_id = "dataset-id",
+            master_id = "master-id",
+            instance_id = "instance-id",
+            checksum = "abc",
+            checksum_type = "SHA256",
+            tracking_id = "hdl:21.14100/mock",
+            retracted = FALSE,
+            number_of_files = 1L,
+            number_of_aggregations = 1L
+        ),
+        NA
+    )
     expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
     expect_null(state_all$query$datetime_start)
 

@@ -958,10 +958,12 @@ Get or set version range constraints.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{min, max}}{Version boundary strings such as \code{"20200101"},
-simplified dates, \code{"*"}, or \code{NULL}. Solr Date Math and complete
-range expressions are not accepted here. If both are omitted,
-the current range state is returned.}
+\item{\code{min, max}}{Version boundaries such as \code{20200101}, \code{"20200101"},
+simplified dates, \code{"*"}, or \code{NULL}. ESGF \code{version} is queried
+as a numeric field; simplified date inputs are normalized to
+comparable \code{YYYYMMDD} integer boundaries before rendering.
+Solr Date Math and complete range expressions are not accepted
+here. If both are omitted, the current range state is returned.}
 }
 \if{html}{\out{</div>}}
 }

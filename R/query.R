@@ -800,10 +800,12 @@ EsgQuery <- R6::R6Class(
         #' @description
         #' Get or set version range constraints.
         #'
-        #' @param min,max Version boundary strings such as `"20200101"`,
-        #'        simplified dates, `"*"`, or `NULL`. Solr Date Math and complete
-        #'        range expressions are not accepted here. If both are omitted,
-        #'        the current range state is returned.
+        #' @param min,max Version boundaries such as `20200101`, `"20200101"`,
+        #'        simplified dates, `"*"`, or `NULL`. ESGF `version` is queried
+        #'        as a numeric field; simplified date inputs are normalized to
+        #'        comparable `YYYYMMDD` integer boundaries before rendering.
+        #'        Solr Date Math and complete range expressions are not accepted
+        #'        here. If both are omitted, the current range state is returned.
         #'
         #' @return If either boundary is supplied, the modified `EsgQuery`
         #'         object. Otherwise, a list with `min` and `max` elements.

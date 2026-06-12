@@ -13,7 +13,8 @@ PARAM_BUCKETS <- c(
 )
 # }}}
 
-QUERY_PARAM_NON_RESULT_FIELDS <- c("facets", "fields", "shards", "bbox", "start", "end", "from", "to")
+QUERY_PARAM_KEYWORDS <- c("facets", "fields", "shards")
+QUERY_PARAM_NON_RESULT_FIELDS <- c(QUERY_PARAM_KEYWORDS, "bbox", "start", "end", "from", "to")
 
 # FIELDS_FACETS_ALL {{{
 FIELDS_FACETS_ALL <- c(
@@ -33,7 +34,10 @@ FIELDS_FACETS_ALL <- c(
     "data_structure",
     "dataset_category",
     "dataset_status",
+    "dataset_id",
     "datetime_end",
+    "datetime_start",
+    "datetime_stop",
     "deprecated",
     "directory_format_template_",
     "domain",
@@ -50,11 +54,15 @@ FIELDS_FACETS_ALL <- c(
     "globus_url",
     "grid",
     "grid_label",
+    "id",
     "index_node",
+    "instance_id",
     "institute",
     "institution",
     "institution_id",
+    "latest",
     "master_gateway",
+    "master_id",
     "member_id",
     "metadata_format",
     "mip_era",
@@ -68,6 +76,8 @@ FIELDS_FACETS_ALL <- c(
     "rcm_version",
     "realm",
     "region",
+    "replica",
+    "retracted",
     "short_description",
     "source",
     "source_id",
@@ -79,12 +89,23 @@ FIELDS_FACETS_ALL <- c(
     "table_id",
     "target_mip",
     "target_mip_list",
+    "title",
     "time_frequency",
+    "tracking_id",
+    "type",
+    "url",
     "variable",
     "variable_id",
     "variable_long_name",
     "variant_label",
     "version",
+    "checksum",
+    "checksum_type",
+    "number_of_aggregations",
+    "number_of_files",
+    "schema",
+    "size",
+    "timestamp",
     "amodell",
     "cera_acronym",
     "data_type",
@@ -302,6 +323,8 @@ S7::method(print, QueryParam) <- function(x) {
 # QueryParam helpers {{{
 query_param_names <- function(class = c("facet", "query", "control", "all")) {
     class <- match.arg(class)
+    # `fields`, `facets`, and `shards` are REST keywords stored in the facet
+    # bucket for backwards-compatible rendering, not metadata facets.
     facet <- c(
         "project",
         "activity_id",
@@ -361,7 +384,9 @@ query_param_spec <- function(name) {
         "facet"
     }
 
-    role <- if (
+    role <- if (name %in% QUERY_PARAM_KEYWORDS) {
+        "keyword"
+    } else if (
         class == "facet" &&
             !name %in% QUERY_PARAM_NON_RESULT_FIELDS
     ) {
@@ -1533,17 +1558,18 @@ QueryParamStore <- R6::R6Class(
         #' @description
         #' Get or set the version range for data search.
         #'
-        #' `$version_range()` constrains the search to datasets whose `version`
-        #' field (a string field using lexicographic ordering) falls within the
-        #' specified range. Each boundary generates an independent Solr range
-        #' condition placed in the `query=` parameter:
+        #' `$version_range()` constrains the search to records whose integer
+        #' `version` field falls within the specified range. Each boundary
+        #' generates an independent numeric Solr range condition placed in the
+        #' `query=` parameter:
         #'
         #' - `min` → `version:[min TO *]`
         #' - `max` → `version:[* TO max]`
         #'
-        #' Because `version` is a **string** field, lexicographic comparison is
-        #' used. ESGF stores versions in `YYYYMMDD` format, so lexicographic
-        #' order matches chronological order for well-formed values.
+        #' ESGF stores most CMIP-style versions in `YYYYMMDD` form, but the
+        #' search field is numeric. Inputs such as `"2020"` or `"2020-06"` are
+        #' normalized to comparable `YYYYMMDD` integer boundaries before
+        #' rendering.
         #'
         #' Solr Date Math syntax (e.g. `NOW-1YEAR`) is **not** supported because
         #' `version` is not a date field.
@@ -1551,7 +1577,7 @@ QueryParamStore <- R6::R6Class(
         #' Range expressions (e.g. `[2020 TO 2025]`) are **not** accepted as
         #' input; use the `min` and `max` parameters separately instead.
         #'
-        #' @param min,max A single string specifying the version boundary,
+        #' @param min,max A single string or number specifying the version boundary,
         #'   e.g. `"20200101"`, `"2020"`, or `"2020-06"`. Simplified date
         #'   strings are normalized to `YYYYMMDD`. Inputs must **not** contain
         #'   Solr range syntax (`[... TO ...]`) or Solr Date Math expressions.

@@ -1908,16 +1908,22 @@ test_that("ESGF Query Result Dataset works", {
         c(
             "access",
             "activity_id",
+            "data_node",
             "experiment_id",
             "frequency",
             "id",
             "index_node",
+            "instance_id",
+            "latest",
+            "master_id",
             "number_of_files",
             "project",
+            "replica",
             "size",
             "source_id",
             "variable_id",
-            "variant_label"
+            "variant_label",
+            "version"
         )
     )
 
@@ -1990,8 +1996,9 @@ test_that("ESGF Query Result Dataset works", {
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgResultFile")
     expect_length(files$fields, 56L)
 
-    ## $collect(): can specify additional child-result facet filters
-    expect_s3_class(datasets$collect(fields = "id", limit = 1, experiment_id = "ssp585"), "EsgResultFile")
+    ## $collect(): can specify data node scope
+    dataset_data_node <- datasets$data_node[[1]]
+    expect_s3_class(datasets$collect(fields = "id", limit = 1, data_node = dataset_data_node), "EsgResultFile")
 
     ## $collect(): can stop if controlled query parameters are supplied through dots
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")

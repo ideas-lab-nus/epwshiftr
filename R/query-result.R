@@ -3304,12 +3304,14 @@ EsgResultDataset <- R6::R6Class(
             }
 
             selected <- if (is.null(which)) seq_len(self$count()) else which
+            dots_env <- parent.frame()
 
             built <- private$build_params(
                 fields = fields,
                 limit = limit,
                 type = type,
                 index = which,
+                dots_env = dots_env,
                 ...
             )
             params <- built$params
@@ -3339,6 +3341,7 @@ EsgResultDataset <- R6::R6Class(
                         limit = limit,
                         type = type,
                         index = groups[[group_index_node]],
+                        dots_env = dots_env,
                         ...
                     )
                     query_collect(
@@ -3447,7 +3450,7 @@ EsgResultDataset <- R6::R6Class(
         ))),
 
         # build_params {{{
-        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
+        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ..., dots_env = parent.frame()) {
             type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
@@ -3463,7 +3466,7 @@ EsgResultDataset <- R6::R6Class(
                     "limit", "offset", "query", "_timestamp", "time",
                     query_param_names("query")
                 )
-                overrides <- eval_with_bang(...)
+                overrides <- eval_with_bang(..., .env = dots_env)
 
                 # stop if unsupported parameter found
                 names_params <- names(overrides)
