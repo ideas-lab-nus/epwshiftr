@@ -23,6 +23,12 @@ test_that("Downloader can be created", {
     expect_equal(dl$node_policy$cooldown_after_failures, 3L)
     expect_null(dl$transfer_policy$chunk_size)
     expect_null(dl$transfer_policy$bandwidth_limit)
+    expect_equal(dl$transfer_policy$range_mode, "off")
+    expect_equal(dl$transfer_policy$piece_size, 16L * 1024L^2L)
+    expect_equal(dl$transfer_policy$piece_concurrency, 4L)
+    expect_equal(dl$transfer_policy$max_sources, 4L)
+    expect_true(dl$transfer_policy$require_checksum_for_multisource)
+    expect_equal(dl$transfer_policy$range_probe_timeout, 30L)
     expect_true(dl$resource_policy$disk_preflight)
     expect_null(dl$resource_policy$host_concurrency)
     expect_equal(dl$resource_policy$min_free_space, 0)
@@ -42,7 +48,13 @@ test_that("Downloader can be created", {
             chunk_size = 65536L,
             bandwidth_limit = 1048576L,
             low_speed_limit = 128L,
-            low_speed_time = 10L
+            low_speed_time = 10L,
+            range_mode = "single",
+            piece_size = 1024L,
+            piece_concurrency = 2L,
+            max_sources = 3L,
+            require_checksum_for_multisource = FALSE,
+            range_probe_timeout = 11L
         ),
         resource_policy = list(
             host_concurrency = 2L,
@@ -63,6 +75,12 @@ test_that("Downloader can be created", {
     expect_equal(dl$transfer_policy$bandwidth_limit, 1048576)
     expect_equal(dl$transfer_policy$low_speed_limit, 128)
     expect_equal(dl$transfer_policy$low_speed_time, 10)
+    expect_equal(dl$transfer_policy$range_mode, "single")
+    expect_equal(dl$transfer_policy$piece_size, 1024L)
+    expect_equal(dl$transfer_policy$piece_concurrency, 2L)
+    expect_equal(dl$transfer_policy$max_sources, 3L)
+    expect_false(dl$transfer_policy$require_checksum_for_multisource)
+    expect_equal(dl$transfer_policy$range_probe_timeout, 11L)
     expect_equal(dl$resource_policy$host_concurrency, 2)
     expect_false(dl$resource_policy$disk_preflight)
     expect_equal(dl$resource_policy$min_free_space, 1024)
@@ -105,7 +123,13 @@ test_that("Downloader persists config and manifest state", {
             chunk_size = 32768L,
             bandwidth_limit = 2048L,
             low_speed_limit = 64L,
-            low_speed_time = 5L
+            low_speed_time = 5L,
+            range_mode = "auto",
+            piece_size = 8L,
+            piece_concurrency = 2L,
+            max_sources = 2L,
+            require_checksum_for_multisource = TRUE,
+            range_probe_timeout = 7L
         ),
         resource_policy = list(
             host_concurrency = 1L,
@@ -156,6 +180,12 @@ test_that("Downloader persists config and manifest state", {
     expect_equal(restored$transfer_policy$bandwidth_limit, 2048)
     expect_equal(restored$transfer_policy$low_speed_limit, 64)
     expect_equal(restored$transfer_policy$low_speed_time, 5)
+    expect_equal(restored$transfer_policy$range_mode, "auto")
+    expect_equal(restored$transfer_policy$piece_size, 8L)
+    expect_equal(restored$transfer_policy$piece_concurrency, 2L)
+    expect_equal(restored$transfer_policy$max_sources, 2L)
+    expect_true(restored$transfer_policy$require_checksum_for_multisource)
+    expect_equal(restored$transfer_policy$range_probe_timeout, 7L)
     expect_equal(restored$resource_policy$host_concurrency, 1)
     expect_true(restored$resource_policy$disk_preflight)
     expect_equal(restored$resource_policy$min_free_space, 4096)
@@ -167,8 +197,170 @@ test_that("Downloader persists config and manifest state", {
     on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
     expect_setequal(
         ddb_list_tables(conn),
-        c("download_candidate", "download_config", "download_event", "download_meta", "download_node", "download_session", "download_task")
+        c("download_candidate", "download_config", "download_event", "download_meta", "download_node", "download_piece", "download_session", "download_task")
     )
+})
+
+test_that("Downloader probes local range metadata", {
+    root <- tempfile("downloader-range-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    src <- file.path(root, "source.bin")
+    writeBin(as.raw(seq_len(64L) - 1L), src)
+
+    probe <- downloader__range_probe_url(paste0("file://", normalizePath(src, winslash = "/")))
+    expect_true(probe$range_supported)
+    expect_equal(probe$range_size, 64)
+    expect_true(is.na(probe$range_probe_error))
+
+    missing <- downloader__range_probe_url(paste0("file://", file.path(root, "missing.bin")))
+    expect_false(missing$range_supported)
+    expect_match(missing$range_probe_error, "does not exist")
+})
+
+test_that("Downloader uses manifest-backed single-source pieces", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- file.path(root, "single-source.bin")
+    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
+    bytes <- as.raw(rep(0:255, length.out = 257L))
+    writeBin(bytes, src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L,
+        transfer_policy = list(
+            range_mode = "single",
+            piece_size = 31L,
+            piece_concurrency = 3L
+        )
+    )
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:segmented-single",
+        filename = "single.bin",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        data_node = "local-single",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "segmented-single")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_equal(tasks$status, "done")
+    expect_equal(readBin(file.path(dest, "single.bin"), "raw", n = 257L), bytes)
+    candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
+    expect_true(candidates$range_supported[[1L]])
+    expect_equal(candidates$range_size[[1L]], 257)
+    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
+    expect_false(dir.exists(file.path(temp, paste0(tasks$task_id[[1L]], ".pieces"))))
+})
+
+test_that("Downloader uses pieces inside a persistent worker", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- file.path(root, "worker-source.bin")
+    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
+    bytes <- as.raw(rep(0:255, length.out = 389L))
+    writeBin(bytes, src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 2L,
+        transfer_policy = list(
+            range_mode = "single",
+            piece_size = 43L,
+            piece_concurrency = 2L
+        )
+    )
+    plan <- downloader_test_df(
+        logical_file_id = c("tracking:segmented-worker", "tracking:plain-worker"),
+        filename = c("worker.bin", "plain.bin"),
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        data_node = "local-worker",
+        priority = c(1L, 2L)
+    )
+    session_id <- dl$enqueue(plan, session_label = "segmented-worker")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_equal(nrow(tasks), 2L)
+    expect_true(all(tasks$status == "done"))
+    expect_equal(readBin(file.path(dest, "worker.bin"), "raw", n = 389L), bytes)
+    expect_equal(readBin(file.path(dest, "plain.bin"), "raw", n = 389L), bytes)
+    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
+})
+
+test_that("Downloader can stitch one file from multiple range sources", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src_1 <- file.path(root, "source-a.bin")
+    src_2 <- file.path(root, "source-b.bin")
+    dir.create(root, recursive = TRUE, showWarnings = FALSE)
+    bytes <- as.raw(rep(c(1L, 3L, 5L, 7L, 11L), length.out = 123L))
+    writeBin(bytes, src_1)
+    writeBin(bytes, src_2)
+    checksum <- as.character(tools::md5sum(src_1))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L,
+        transfer_policy = list(
+            range_mode = "multi",
+            piece_size = 17L,
+            piece_concurrency = 2L,
+            max_sources = 2L
+        )
+    )
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:segmented-multi",
+        filename = "multi.bin",
+        url = paste0("file://", normalizePath(c(src_1, src_2), winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        data_node = c("local-a", "local-b"),
+        priority = c(1L, 2L)
+    )
+    session_id <- dl$enqueue(plan, session_label = "segmented-multi")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_equal(tasks$status, "done")
+    expect_equal(readBin(file.path(dest, "multi.bin"), "raw", n = 123L), bytes)
+    candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
+    expect_true(all(candidates$range_supported))
+    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
+    nodes <- dl$data_nodes()
+    expect_true(all(c("local-a", "local-b") %in% nodes$data_node))
 })
 
 test_that("Downloader preflights disk requirements", {

@@ -241,10 +241,15 @@ Default: \code{4L}.}
 \item{\code{node_policy}}{A list controlling historical data-node cooldown
 and ranking. Missing fields use conservative defaults.}
 
-\item{\code{transfer_policy}}{A list controlling curl transfer options.
-Supported fields are \code{chunk_size}, \code{bandwidth_limit},
-\code{low_speed_limit}, and \code{low_speed_time}. Use \code{NULL} values
-to keep libcurl defaults.}
+\item{\code{transfer_policy}}{A list controlling curl transfer options and
+optional experimental Range-piece downloads. Supported curl
+fields are \code{chunk_size}, \code{bandwidth_limit}, \code{low_speed_limit},
+and \code{low_speed_time}. Range fields are \code{range_mode}
+(\code{"off"}, \code{"single"}, \code{"multi"}, or \code{"auto"}), \code{piece_size},
+\code{piece_concurrency}, \code{max_sources},
+\code{require_checksum_for_multisource}, and \code{range_probe_timeout}.
+The default \code{range_mode = "off"} keeps the existing streaming
+download behavior.}
 
 \item{\code{resource_policy}}{A list controlling local resource checks and
 scheduling. Supported fields are \code{host_concurrency},
