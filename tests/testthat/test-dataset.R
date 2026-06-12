@@ -475,6 +475,134 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
     expect_identical(unique(dt_outside$file_index), 2L)
 })
 
+test_that("EsgDataset slice() selects files and preserves runtime context", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        ),
+        local_dataset_table_file(
+            time_vals = c(4, 5),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(31, 32)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    esg_dataset_set_context(ds, list(
+        time_filter = list(
+            start = "2000-01-01T00:00:00Z",
+            stop = "2000-01-02T23:59:59Z",
+            method = "drs"
+        ),
+        selection = list(
+            source_count = 5L,
+            source_num_found = 10L,
+            source_indices = c(2L, 4L, 5L)
+        )
+    ))
+
+    sliced <- ds$slice(c(3L, 1L))
+    expect_false(sliced$is_open)
+    expect_identical(sliced$url, paths[c(3L, 1L)])
+    expect_identical(ds$url, paths)
+    expect_identical(sliced$time_filter$method, "drs")
+    expect_identical(sliced$selection(), list(
+        source_count = 5L,
+        source_num_found = 10L,
+        source_indices = c(5L, 2L)
+    ))
+
+    logical_slice <- ds$slice(c(TRUE, FALSE, TRUE))
+    expect_identical(logical_slice$url, paths[c(1L, 3L)])
+    expect_identical(logical_slice$selection()$source_indices, c(2L, 5L))
+
+    negative_slice <- ds$slice(-2L)
+    expect_identical(negative_slice$url, paths[c(1L, 3L)])
+    expect_identical(negative_slice$selection()$source_indices, c(2L, 5L))
+
+    identity <- EsgDataset$new(paths[1:2])$selection()
+    expect_identical(identity, list(
+        source_count = 2L,
+        source_num_found = 2L,
+        source_indices = 1:2
+    ))
+})
+
+test_that("EsgDataset slice() validates selectors", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+
+    expect_error(ds$slice(), "must be supplied")
+    expect_error(ds$slice(NULL), "must not be `NULL`")
+    expect_error(ds$slice(integer()), "at least one file")
+    expect_error(ds$slice(c(FALSE, FALSE)), "at least one file")
+    expect_error(ds$slice(c(TRUE, FALSE, TRUE)), "length")
+    expect_error(ds$slice(c(1L, 1L)), "duplicate")
+    expect_error(ds$slice(0L), "zero")
+    expect_error(ds$slice(c(1L, -2L)), "mix")
+    expect_error(ds$slice(3L), "outside")
+    expect_error(ds$slice("1"), "integer")
+})
+
+test_that("EsgDataset slice() reopens selected files only when requested", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_error(ds$slice(1L), "reopen = TRUE")
+
+    sliced <- ds$slice(2L, reopen = TRUE)
+    on.exit(sliced$close(), add = TRUE)
+
+    expect_true(ds$is_open)
+    expect_true(sliced$is_open)
+    expect_identical(sliced$url, paths[2L])
+    expect_identical(sliced$selection()$source_indices, 2L)
+    expect_equal(
+        as.numeric(sliced$var_get("tas", start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        21
+    )
+    expect_equal(
+        as.numeric(ds$var_get("tas", index = 2L, start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        21
+    )
+})
+
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),

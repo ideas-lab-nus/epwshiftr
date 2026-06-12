@@ -2638,7 +2638,7 @@ EsgResultFile <- R6::R6Class(
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$context)
+            esg_dataset_set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }
@@ -3050,7 +3050,7 @@ EsgResultAggregation <- R6::R6Class(
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$context)
+            esg_dataset_set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }

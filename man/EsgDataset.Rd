@@ -188,6 +188,7 @@ Hongyuan Jia
 \item \href{#method-EsgDataset-new}{\code{EsgDataset$new()}}
 \item \href{#method-EsgDataset-open}{\code{EsgDataset$open()}}
 \item \href{#method-EsgDataset-close}{\code{EsgDataset$close()}}
+\item \href{#method-EsgDataset-slice}{\code{EsgDataset$slice()}}
 \item \href{#method-EsgDataset-file_inq}{\code{EsgDataset$file_inq()}}
 \item \href{#method-EsgDataset-var_inq}{\code{EsgDataset$var_inq()}}
 \item \href{#method-EsgDataset-dim_inq}{\code{EsgDataset$dim_inq()}}
@@ -200,6 +201,7 @@ Hongyuan Jia
 \item \href{#method-EsgDataset-read_array}{\code{EsgDataset$read_array()}}
 \item \href{#method-EsgDataset-read_data_table}{\code{EsgDataset$read_data_table()}}
 \item \href{#method-EsgDataset-read_region}{\code{EsgDataset$read_region()}}
+\item \href{#method-EsgDataset-selection}{\code{EsgDataset$selection()}}
 \item \href{#method-EsgDataset-print}{\code{EsgDataset$print()}}
 \item \href{#method-EsgDataset-clone}{\code{EsgDataset$clone()}}
 }
@@ -302,6 +304,38 @@ ds$close()
 
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgDataset-slice"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-slice}{}}}
+\subsection{Method \code{slice()}}{
+Select files from this dataset by file position.
+
+\verb{$slice()} creates a new \code{EsgDataset} with a subset of the current
+dataset URLs. This is a file/URL-level operation; NetCDF variable,
+dimension, time, and spatial slicing is still performed by
+\verb{$var_get()}, \verb{$read_array()}, \verb{$read_data_table()}, and
+\verb{$read_region()}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$slice(i, reopen = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{i}}{A positive or negative integer vector, or a logical vector
+with one value per file.}
+
+\item{\code{reopen}}{Whether to open the returned dataset when the current
+dataset is already open. If \code{FALSE} (default), slicing an
+open dataset raises an error because RNetCDF handles cannot
+be safely shared between dataset objects.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgDataset} object.
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-file_inq"></a>}}
@@ -785,6 +819,24 @@ dt <- ds$read_region(
 
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgDataset-selection"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-selection}{}}}
+\subsection{Method \code{selection()}}{
+Return file selection provenance for this dataset.
+
+\verb{$selection()} maps the current dataset file positions back to the
+result rows that produced the dataset when that information is
+available. It does not record intermediate filter steps.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$selection()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list with \code{source_count}, \code{source_num_found}, and
+\code{source_indices}.
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-print"></a>}}

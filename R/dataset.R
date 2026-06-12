@@ -285,6 +285,47 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # slice {{{
+        #' @description
+        #' Select files from this dataset by file position.
+        #'
+        #' `$slice()` creates a new `EsgDataset` with a subset of the current
+        #' dataset URLs. This is a file/URL-level operation; NetCDF variable,
+        #' dimension, time, and spatial slicing is still performed by
+        #' `$var_get()`, `$read_array()`, `$read_data_table()`, and
+        #' `$read_region()`.
+        #'
+        #' @param i A positive or negative integer vector, or a logical vector
+        #'        with one value per file.
+        #' @param reopen Whether to open the returned dataset when the current
+        #'        dataset is already open. If `FALSE` (default), slicing an
+        #'        open dataset raises an error because RNetCDF handles cannot
+        #'        be safely shared between dataset objects.
+        #'
+        #' @return A new `EsgDataset` object.
+        slice = function(i, reopen = FALSE) {
+            if (missing(i)) {
+                cli::cli_abort("`i` must be supplied.")
+            }
+            checkmate::assert_flag(reopen)
+            index <- private$normalize_slice_index(i)
+            if (!length(index)) {
+                cli::cli_abort("`i` must select at least one file.")
+            }
+            if (private$opened && !isTRUE(reopen)) {
+                cli::cli_abort("Cannot slice an open dataset unless `reopen = TRUE`.")
+            }
+
+            out <- EsgDataset$new(private$urls[index])
+            esg_dataset_set_context(out, private$update_selection_context(index))
+            if (private$opened) {
+                out$open()
+            }
+
+            out
+        },
+        # }}}
+
         # file_inq {{{
         #' @description
         #' Get file information
@@ -768,6 +809,21 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # selection {{{
+        #' @description
+        #' Return file selection provenance for this dataset.
+        #'
+        #' `$selection()` maps the current dataset file positions back to the
+        #' result rows that produced the dataset when that information is
+        #' available. It does not record intermediate filter steps.
+        #'
+        #' @return A list with `source_count`, `source_num_found`, and
+        #'        `source_indices`.
+        selection = function() {
+            private$get_selection_context()
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print dataset summary
@@ -848,6 +904,77 @@ EsgDataset <- R6::R6Class(
         async_task = NULL,
         async_state = "idle",
         async_sequence = 0L,
+
+        # get_selection_context {{{
+        get_selection_context = function() {
+            ctx <- private$context$selection
+            if (!is.null(ctx) && length(ctx)) {
+                return(query_result_normalize_selection_context(ctx))
+            }
+
+            n <- length(private$urls)
+            list(
+                source_count = as.integer(n),
+                source_num_found = as.integer(n),
+                source_indices = seq_len(n)
+            )
+        },
+        # }}}
+
+        # update_selection_context {{{
+        update_selection_context = function(index, context = private$context) {
+            selection <- private$get_selection_context()
+            context$selection <- list(
+                source_count = selection$source_count,
+                source_num_found = selection$source_num_found,
+                source_indices = selection$source_indices[index]
+            )
+
+            context
+        },
+        # }}}
+
+        # normalize_slice_index {{{
+        normalize_slice_index = function(i) {
+            n <- length(private$urls)
+            if (is.null(i)) {
+                cli::cli_abort("`i` must not be `NULL`.")
+            }
+            if (is.logical(i)) {
+                checkmate::assert_logical(i, len = n, any.missing = FALSE, .var.name = "i")
+                return(which(i))
+            }
+
+            checkmate::assert_integerish(i, any.missing = FALSE, .var.name = "i")
+            i <- as.integer(i)
+            if (!length(i)) {
+                return(integer())
+            }
+            if (any(i == 0L)) {
+                cli::cli_abort("`i` cannot contain zero.")
+            }
+
+            has_positive <- any(i > 0L)
+            has_negative <- any(i < 0L)
+            if (has_positive && has_negative) {
+                cli::cli_abort("`i` cannot mix positive and negative positions.")
+            }
+
+            abs_i <- abs(i)
+            if (anyDuplicated(abs_i)) {
+                cli::cli_abort("`i` cannot contain duplicate file positions.")
+            }
+            if (any(abs_i > n)) {
+                cli::cli_abort("`i` contains file positions outside the dataset.")
+            }
+
+            if (has_negative) {
+                setdiff(seq_len(n), abs_i)
+            } else {
+                i
+            }
+        },
+        # }}}
 
         # normalize_region_time {{
         normalize_region_time = function(time) {

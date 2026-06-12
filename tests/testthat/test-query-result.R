@@ -1053,7 +1053,8 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         ),
         private = list(
             nc_handles = NULL,
-            opened = FALSE
+            opened = FALSE,
+            context = list()
         )
     )
     FakeDownloader <- R6::R6Class(
@@ -1134,6 +1135,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         "https://example.org/dods/file-1.nc",
         "https://example.org/dods/file-2.nc"
     ))
+    expect_identical(esg_dataset_get_context(ds_all)$selection$source_indices, c(1L, 2L))
     expect_equal(length(calls$opened) - opened_before, 2L)
 
     ds_one <- expect_s3_class(
@@ -1141,6 +1143,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         "FakeEsgDataset"
     )
     expect_identical(ds_one$target, "https://example.org/dods/file-2.nc")
+    expect_identical(esg_dataset_get_context(ds_one)$selection$source_indices, 2L)
     expect_error(multi_files$open_dataset(which = 1:2, aggregate = FALSE), "aggregate = FALSE")
 
     agg_docs <- data.frame(
@@ -1175,6 +1178,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_length(agg_ds$target, 2L)
     expect_identical(agg_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_ds$target[[2L]]))
+    expect_identical(esg_dataset_get_context(agg_ds)$selection$source_indices, c(1L, 2L))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
     new_open_calls <- calls$opened[(opened_before + 1L):length(calls$opened)]
     expect_identical(new_open_calls[[1L]], "https://example.org/dods/file-1.nc")
