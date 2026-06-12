@@ -1,5 +1,130 @@
 # QueryParam helpers {{{
 local_test_cache(scope = "persist")
+
+local_query_test_response <- function(docs = NULL) {
+    if (is.null(docs)) {
+        docs <- data.frame(
+            id = "dataset-id",
+            size = 1,
+            index_node = "example.org",
+            number_of_files = 1L,
+            number_of_aggregations = 0L,
+            project = "CMIP6",
+            activity_id = "CMIP",
+            experiment_id = "historical",
+            source_id = "EC-Earth3",
+            table_id = "day",
+            variable_id = "tas",
+            check.names = FALSE
+        )
+        docs$url <- I(list("https://example.org/file.nc|application/netcdf|HTTPServer"))
+        docs$access <- I(list("HTTPServer"))
+    }
+
+    list(
+        responseHeader = list(status = 0L, QTime = 0L, params = stats::setNames(list(), character())),
+        response = list(numFound = nrow(docs), start = 0L, docs = docs, maxScore = 1),
+        facet_counts = list(
+            facet_queries = stats::setNames(list(), character()),
+            facet_fields = stats::setNames(list(), character()),
+            facet_ranges = stats::setNames(list(), character()),
+            facet_intervals = stats::setNames(list(), character()),
+            facet_heatmaps = stats::setNames(list(), character())
+        ),
+        timestamp = Sys.time()
+    )
+}
+
+local_query_test_esgdict <- function() {
+    dict <- EsgDict$new(project = "CMIP6")
+    values <- data.table::data.table(
+        field = c(
+            "project", "mip_era",
+            "activity_id", "activity_id",
+            "experiment_id", "experiment_id",
+            "source_id",
+            "table_id", "table_id",
+            "frequency", "frequency",
+            "realm", "realm",
+            "variable_id", "variable_id"
+        ),
+        value = c(
+            "CMIP6", "CMIP6",
+            "CMIP", "ScenarioMIP",
+            "historical", "ssp585",
+            "EC-Earth3",
+            "day", "fx",
+            "day", "fx",
+            "atmos", "land",
+            "tas", "sftlf"
+        ),
+        description = NA_character_,
+        source = "test"
+    )
+    indices <- list(
+        values = values,
+        activity_experiment = data.table::data.table(
+            activity_id = c("CMIP", "ScenarioMIP"),
+            experiment_id = c("historical", "ssp585"),
+            sub_experiment_id = c("none", "none")
+        ),
+        activity_source = data.table::data.table(
+            activity_id = c("CMIP", "ScenarioMIP"),
+            source_id = c("EC-Earth3", "EC-Earth3"),
+            institution_id = c("EC-Earth-Consortium", "EC-Earth-Consortium")
+        ),
+        variable = data.table::data.table(
+            variable_id = c("tas", "sftlf"),
+            table_id = c("day", "fx"),
+            frequency = c("day", "fx"),
+            realm = c("atmos", "land"),
+            long_name = c("Near-Surface Air Temperature", "Percentage of the grid cell occupied by land"),
+            units = c("K", "%")
+        )
+    )
+
+    priv(dict)$replace(
+        list(
+            project = "CMIP6",
+            profile = "cmip6",
+            version = list(vocab = "test", request = "test"),
+            sources = list(),
+            timestamps = list(),
+            built_time = as.POSIXct("2025-01-01", tz = "UTC"),
+            data = list(
+                vocab = list(activity_id = c("CMIP", "ScenarioMIP")),
+                request = data.table::data.table(variable = c("tas", "sftlf"))
+            ),
+            indices = indices
+        ),
+        status = "built"
+    )
+    dict
+}
+
+local_esgdict_default <- function(dict = NULL, project = "CMIP6", env = parent.frame()) {
+    project <- esgdict__normalize_project(project)
+    default_env <- esgdict__default_env()
+    old_exists <- exists(project, envir = default_env, inherits = FALSE)
+    old <- if (old_exists) get(project, envir = default_env, inherits = FALSE) else NULL
+
+    withr::defer({
+        if (old_exists) {
+            assign(project, old, envir = default_env)
+        } else if (exists(project, envir = default_env, inherits = FALSE)) {
+            rm(list = project, envir = default_env)
+        }
+    }, envir = env)
+
+    if (is.null(dict)) {
+        if (exists(project, envir = default_env, inherits = FALSE)) {
+            rm(list = project, envir = default_env)
+        }
+    } else {
+        esgdict_set_default(dict)
+    }
+}
+
 test_that("QueryParam helpers use typed objects", {
     param <- expect_s3_class(
         as_query_param("x", list(value = LETTERS[1:3], negate = TRUE)),
@@ -721,14 +846,15 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     )))
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(
                 index_node = index_node,
                 params = params,
                 required_fields = required_fields,
                 all = all,
                 limit = limit,
-                constraints = constraints
+                constraints = constraints,
+                dict_check = dict_check
             )
 
             type <- query_param_value(params$type())
@@ -751,9 +877,11 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_length(calls, 2L)
     expect_true(calls[[1L]]$all)
     expect_false(calls[[1L]]$limit)
+    expect_false(calls[[1L]]$dict_check)
     expect_identical(query_param_value(calls[[1L]]$params$type()), "Dataset")
     expect_false(calls[[2L]]$all)
     expect_equal(calls[[2L]]$limit, 3L)
+    expect_true(calls[[2L]]$dict_check)
     expect_identical(query_param_value(calls[[2L]]$params$type()), "File")
     expect_identical(query_param_value(calls[[2L]]$params$source_id()), "AWI-CM-1-1-MR")
     expect_identical(calls[[2L]]$params$render(c("datetime_start", "datetime_stop")), character())
@@ -881,6 +1009,42 @@ test_that("query_collect records actual page query URLs", {
     expect_identical(res$context$query_url, captured_url)
     expect_true(grepl("offset=0", utils::URLdecode(captured_url[[1L]]), fixed = TRUE))
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
+})
+
+test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
+    local_esgdict_default(local_query_test_esgdict())
+    testthat::local_mocked_bindings(
+        read_json_response = function(url, ...) local_query_test_response(),
+        .package = "epwshiftr"
+    )
+
+    q <- esg_query("https://example.org")$
+        activity_id("ScenarioMIP")$
+        experiment_id("historical")$
+        limit(1L)
+
+    expect_warning(
+        res <- q$collect(),
+        "ESG dictionary check found invalid query constraint"
+    )
+    expect_s3_class(res, "EsgResultDataset")
+})
+
+test_that("EsgQuery$collect() skips dictionary check when no local dictionary is available", {
+    local_esgdict_default(NULL)
+    withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
+    testthat::local_mocked_bindings(
+        read_json_response = function(url, ...) local_query_test_response(),
+        .package = "epwshiftr"
+    )
+
+    q <- esg_query("https://example.org")$
+        activity_id("ScenarioMIP")$
+        experiment_id("historical")$
+        limit(1L)
+
+    expect_warning(res <- q$collect(), NA)
+    expect_s3_class(res, "EsgResultDataset")
 })
 
 test_that("EsgQuery$collect()", {

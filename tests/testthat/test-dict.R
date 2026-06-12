@@ -216,8 +216,8 @@ local_test_esgdict <- function() {
     spec <- esgdict__project_spec("CMIP6")
     fetched <- list(
         project = "CMIP6",
-        vocab = cmip6dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv")),
-        request = cmip6dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request")),
+        vocab = esgdict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv")),
+        request = esgdict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request")),
         built_time = as.POSIXct("2025-01-04 00:00:00", tz = "UTC"),
         sources = list(
             vocab = list(repo = spec$vocab$repo, tag = "test-cv", commit = "abc123", source_dir = file.path(source_root, "vocab", "test-cv")),
@@ -225,7 +225,7 @@ local_test_esgdict <- function() {
         )
     )
 
-    built <- cmip6dict__build(fetched)
+    built <- esgdict__build(fetched)
     dict <- EsgDict$new()
     private <- priv(dict)
     private$replace(built, status = "built")
@@ -565,8 +565,8 @@ test_that("EsgDict cache policy follows package cache mode", {
 test_that("source files can rebuild parsed data without network", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
-    cvs <- cmip6dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv"))
-    dreq <- cmip6dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request"))
+    cvs <- esgdict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv"))
+    dreq <- esgdict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request"))
 
     expect_named(cvs, tolower(CV_TYPES))
     expect_s3_class(cvs$experiment_id, "data.table")

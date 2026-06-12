@@ -64,7 +64,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     )
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_false(all)
             expect_false(constraints)
 

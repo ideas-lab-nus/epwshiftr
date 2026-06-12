@@ -163,6 +163,10 @@ time filtering. If control parameters are omitted, they are
 inherited from the dataset query when available, with
 \code{distrib = TRUE} and \code{latest = TRUE} as fallbacks. For details
 on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.
+When a local \link{EsgDict} is available for the query project, child
+collection performs a warning-only dictionary check before sending
+the query. Missing local dictionaries are ignored and never
+downloaded.
 \code{Aggregation} collection uses \code{dataset_id} plus explicit child filters
 in \code{...}; parent Dataset facet filters are not inherited because
 Aggregation records on standard ESGF search nodes do not necessarily

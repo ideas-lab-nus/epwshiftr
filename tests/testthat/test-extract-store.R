@@ -293,7 +293,7 @@ test_that("EsgStore previews tracked query updates without mutating the store", 
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
             params$fields(c(query_param_value(params$fields()), required_fields))
@@ -363,7 +363,7 @@ test_that("EsgStore updates tracked queries and links file records", {
     second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
     file_calls <- 0L
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             type <- query_param_value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 dataset_docs
@@ -445,7 +445,7 @@ test_that("EsgStore summarizes download preflight without enqueueing tasks", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
             params$fields(c(query_param_value(params$fields()), required_fields))
@@ -514,7 +514,7 @@ test_that("EsgStore applies configured download layouts to downloader plans", {
     )
     file_docs <- extract_store_test_file_docs(path = "layout.nc")
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
             params$fields(c(query_param_value(params$fields()), required_fields))
@@ -578,7 +578,7 @@ test_that("EsgStore download preflight reports layout collisions and missing fie
     file_docs <- rbind(first, second)
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
             params$fields(c(query_param_value(params$fields()), required_fields))
@@ -636,7 +636,7 @@ test_that("EsgStore downloads tracked query files through downloader", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
             params$fields(c(query_param_value(params$fields()), required_fields))

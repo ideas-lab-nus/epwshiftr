@@ -3065,6 +3065,10 @@ EsgResultDataset <- R6::R6Class(
         #'        inherited from the dataset query when available, with
         #'        `distrib = TRUE` and `latest = TRUE` as fallbacks. For details
         #'        on possible parameters, please see [esg_query()].
+        #'        When a local [EsgDict] is available for the query project, child
+        #'        collection performs a warning-only dictionary check before sending
+        #'        the query. Missing local dictionaries are ignored and never
+        #'        downloaded.
         #'        `Aggregation` collection uses `dataset_id` plus explicit child filters
         #'        in `...`; parent Dataset facet filters are not inherited because
         #'        Aggregation records on standard ESGF search nodes do not necessarily
@@ -3127,7 +3131,8 @@ EsgResultDataset <- R6::R6Class(
                     required_fields = req_fld,
                     all = all,
                     limit = limit,
-                    constraints = FALSE
+                    constraints = FALSE,
+                    dict_check = TRUE
                 )
             }
 

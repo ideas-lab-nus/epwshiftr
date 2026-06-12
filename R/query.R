@@ -1060,6 +1060,9 @@ EsgQuery <- R6::R6Class(
         #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
         #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
+        #' When a local [EsgDict] is available for the query project, `$collect()`
+        #' also performs a warning-only dictionary check before sending the query.
+        #' Missing local dictionaries are ignored and never downloaded.
         #'
         #' @param all Whether to collect all results despite of the value of
         #'        `offset`. Default: `FALSE`.
@@ -1122,14 +1125,15 @@ EsgQuery <- R6::R6Class(
             type <- query_result_normalize_type(type)
             dots <- eval(substitute(alist(...)))
 
-            collect_dataset <- function(all, limit) {
+            collect_dataset <- function(all, limit, dict_check = TRUE) {
                 result <- query_collect(
                     private$index_node_url,
                     private$parameter,
                     required_fields = EsgResultDataset$private_fields$required_fields,
                     all = all,
                     limit = limit,
-                    constraints = params
+                    constraints = params,
+                    dict_check = dict_check
                 )
 
                 # replace docs in the last response
@@ -1163,7 +1167,7 @@ EsgQuery <- R6::R6Class(
             }
 
             child_limit <- private$collect_child_limit(limit)
-            datasets <- collect_dataset(all = TRUE, limit = FALSE)
+            datasets <- collect_dataset(all = TRUE, limit = FALSE, dict_check = FALSE)
             datasets$collect(
                 fields = fields,
                 all = all,
@@ -1590,10 +1594,141 @@ query_build <- function(index_node, params, type = "search") {
 }
 # }}}
 
+# query dict check {{{
+query_dict_check_project <- function(store) {
+    project <- store$project()
+    if (is.null(project) || isTRUE(query_param_negate(project))) {
+        return(NULL)
+    }
+
+    values <- esgdict__as_character(query_param_value(project))
+    values <- unique(values[nzchar(values)])
+    if (length(values) != 1L) {
+        return(NULL)
+    }
+
+    tryCatch(
+        {
+            project <- esgdict__normalize_project(values[[1L]])
+            esgdict__assert_implemented(project)
+            project
+        },
+        error = function(e) NULL
+    )
+}
+
+query_dict_check_load <- function(project) {
+    dict <- esgdict_get_default(project)
+    if (!is.null(dict) && dict$has_data()) {
+        return(dict)
+    }
+
+    tryCatch(
+        {
+            dict <- EsgDict$new(project = project)
+            suppressWarnings(suppressMessages(dict$load()))
+            if (dict$has_data()) dict else NULL
+        },
+        error = function(e) NULL
+    )
+}
+
+query_dict_check_args <- function(store, dict) {
+    params <- store$flat()
+    if (!length(params)) {
+        return(list())
+    }
+
+    out <- list()
+    for (name in names(params)) {
+        param <- params[[name]]
+        if (
+            is.null(param) ||
+                !S7::S7_inherits(param, QueryParamFacet) ||
+                isTRUE(query_param_negate(param)) ||
+                !identical(query_param_spec(name)$role, "result_field")
+        ) {
+            next
+        }
+
+        field <- tryCatch(esgdict__normalize_field(name, dict), error = function(e) NULL)
+        if (is.null(field)) {
+            next
+        }
+
+        values <- esgdict__as_character(query_param_value(param))
+        values <- unique(values[nzchar(values) & !grepl("[*?]", values)])
+        if (!length(values)) {
+            next
+        }
+
+        out[[field]] <- unique(c(out[[field]], values))
+    }
+
+    out
+}
+
+query_dict_check_warning <- function(invalid, n = 5L) {
+    n <- min(n, nrow(invalid))
+    lines <- vapply(seq_len(n), function(i) {
+        msg <- invalid$message[[i]]
+        suggestions <- invalid$suggestions[[i]]
+        if (length(suggestions)) {
+            msg <- sprintf("%s Suggestions: %s.", msg, paste(utils::head(suggestions, 3L), collapse = ", "))
+        }
+        sprintf("- %s", msg)
+    }, character(1L))
+
+    extra <- nrow(invalid) - n
+    if (extra > 0L) {
+        lines <- c(lines, sprintf("- ... and %d more.", extra))
+    }
+
+    paste(
+        c("ESG dictionary check found invalid query constraint(s):", lines),
+        collapse = "\n"
+    )
+}
+
+query_warn_dict_check <- function(params) {
+    store <- query_param_as_store(params)
+    project <- query_dict_check_project(store)
+    if (is.null(project)) {
+        return(invisible(NULL))
+    }
+
+    dict <- query_dict_check_load(project)
+    if (is.null(dict)) {
+        return(invisible(NULL))
+    }
+
+    args <- query_dict_check_args(store, dict)
+    if (!length(args)) {
+        return(invisible(NULL))
+    }
+
+    result <- tryCatch(
+        esgdict__check(dict, args, error = FALSE, suggest = TRUE, relationship = "any"),
+        error = function(e) NULL
+    )
+    if (is.null(result) || !nrow(result)) {
+        return(invisible(result))
+    }
+
+    invalid <- result[!is.na(result$valid) & !result$valid]
+    if (nrow(invalid)) {
+        warning(query_dict_check_warning(invalid), call. = FALSE)
+    }
+
+    invisible(result)
+}
+# }}}
+
 # query_collect {{{
-query_collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+query_collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
     checkmate::assert_flag(all)
     checkmate::assert_flag(constraints)
+    checkmate::assert_flag(dict_check)
     checkmate::assert(
         checkmate::check_flag(limit),
         checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
@@ -1633,6 +1768,10 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         }
 
         store$offset(0L)
+    }
+
+    if (dict_check) {
+        query_warn_dict_check(store)
     }
 
     effective_store <- store$copy()

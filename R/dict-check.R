@@ -150,12 +150,12 @@ esgdict__indices <- function(project, data) {
         indices$variable <- variable
     }
 
-    activity_experiment <- cmip6dict__index_activity_experiment(data$vocab$experiment_id)
+    activity_experiment <- esgdict__index_activity_experiment(data$vocab$experiment_id)
     if (nrow(activity_experiment)) {
         indices$activity_experiment <- activity_experiment
     }
 
-    activity_source <- cmip6dict__index_activity_source(data$vocab$source_id)
+    activity_source <- esgdict__index_activity_source(data$vocab$source_id)
     if (nrow(activity_source)) {
         indices$activity_source <- activity_source
     }
@@ -163,17 +163,11 @@ esgdict__indices <- function(project, data) {
     indices
 }
 
-cmip6dict__indices <- function(data) {
-    if (is.null(data$vocab) && !is.null(data$cvs)) data$vocab <- data$cvs
-    if (is.null(data$request) && !is.null(data$dreq)) data$request <- data$dreq
-    esgdict__indices("CMIP6", data)
-}
-
 esgdict__index_values <- function(project, data) {
     project <- esgdict__normalize_project(project)
     rows <- list(
-        cmip6dict__value_rows("project", project, sprintf("%s project", project), "constant"),
-        cmip6dict__value_rows("mip_era", project, sprintf("%s project", project), "constant")
+        esgdict__value_rows("project", project, sprintf("%s project", project), "constant"),
+        esgdict__value_rows("mip_era", project, sprintf("%s project", project), "constant")
     )
     if (identical(project, "CMIP6")) {
         rows[[length(rows) + 1L]] <- data.table::data.table(
@@ -194,20 +188,20 @@ esgdict__index_values <- function(project, data) {
             rows[[length(rows) + 1L]] <- esgdict__value_rows_from_table(field, cv)
         } else if (is.list(cv)) {
             value <- names(cv)
-            if (is.null(value)) value <- cmip6dict__as_character(cv)
-            rows[[length(rows) + 1L]] <- cmip6dict__value_rows(
+            if (is.null(value)) value <- esgdict__as_character(cv)
+            rows[[length(rows) + 1L]] <- esgdict__value_rows(
                 field,
                 value,
-                vapply(cv, cmip6dict__description, character(1L), USE.NAMES = FALSE),
+                vapply(cv, esgdict__description, character(1L), USE.NAMES = FALSE),
                 "vocab"
             )
         } else {
-            rows[[length(rows) + 1L]] <- cmip6dict__value_rows(field, unclass(cv), NA_character_, "vocab")
+            rows[[length(rows) + 1L]] <- esgdict__value_rows(field, unclass(cv), NA_character_, "vocab")
         }
     }
 
     if (!is.null(data$request) && nrow(data$request)) {
-        rows[[length(rows) + 1L]] <- cmip6dict__value_rows(
+        rows[[length(rows) + 1L]] <- esgdict__value_rows(
             "variable_id",
             unique(data$request$variable),
             NA_character_,
@@ -216,12 +210,6 @@ esgdict__index_values <- function(project, data) {
     }
 
     unique(data.table::rbindlist(rows, use.names = TRUE, fill = TRUE))
-}
-
-cmip6dict__index_values <- function(data) {
-    if (is.null(data$vocab) && !is.null(data$cvs)) data$vocab <- data$cvs
-    if (is.null(data$request) && !is.null(data$dreq)) data$request <- data$dreq
-    esgdict__index_values("CMIP6", data)
 }
 
 esgdict__value_rows_from_table <- function(field, dt) {
@@ -241,10 +229,10 @@ esgdict__value_rows_from_table <- function(field, dt) {
         desc[empty] <- replacement[empty]
     }
 
-    cmip6dict__value_rows(field, dt[[value_col]], desc, "vocab")
+    esgdict__value_rows(field, dt[[value_col]], desc, "vocab")
 }
 
-cmip6dict__value_rows <- function(field, value, description = NA_character_, source = NA_character_) {
+esgdict__value_rows <- function(field, value, description = NA_character_, source = NA_character_) {
     data.table::data.table(
         field = field,
         value = as.character(value),
@@ -254,7 +242,7 @@ cmip6dict__value_rows <- function(field, value, description = NA_character_, sou
     )
 }
 
-cmip6dict__description <- function(x) {
+esgdict__description <- function(x) {
     x <- unlst(x)
     if (length(x) == 1L) return(as.character(x))
     NA_character_
@@ -283,16 +271,14 @@ esgdict__index_request <- function(request) {
     unique(out)
 }
 
-cmip6dict__index_dreq <- esgdict__index_request
-
-cmip6dict__index_activity_experiment <- function(dt) {
-    cmip6dict__expand_relation(
+esgdict__index_activity_experiment <- function(dt) {
+    esgdict__expand_relation(
         dt,
         c("activity_id", "experiment_id", "sub_experiment_id")
     )
 }
 
-cmip6dict__index_activity_source <- function(dt) {
+esgdict__index_activity_source <- function(dt) {
     if (is.null(dt) || !nrow(dt)) {
         return(data.table::data.table(
             activity_id = character(),
@@ -304,22 +290,22 @@ cmip6dict__index_activity_source <- function(dt) {
     rows <- vector("list", nrow(dt))
     for (i in seq_len(nrow(dt))) {
         rows[[i]] <- data.table::CJ(
-            activity_id = cmip6dict__cell_values(dt$activity_participation, i),
-            source_id = cmip6dict__cell_values(dt$source_id, i),
-            institution_id = cmip6dict__cell_values(dt$institution_id, i),
+            activity_id = esgdict__cell_values(dt$activity_participation, i),
+            source_id = esgdict__cell_values(dt$source_id, i),
+            institution_id = esgdict__cell_values(dt$institution_id, i),
             sorted = FALSE
         )
     }
     unique(data.table::rbindlist(rows, use.names = TRUE))
 }
 
-cmip6dict__expand_relation <- function(dt, fields) {
+esgdict__expand_relation <- function(dt, fields) {
     empty <- data.table::as.data.table(stats::setNames(rep(list(character()), length(fields)), fields))
     if (is.null(dt) || !nrow(dt)) return(empty)
 
     rows <- vector("list", nrow(dt))
     for (i in seq_len(nrow(dt))) {
-        args <- lapply(fields, function(field) cmip6dict__cell_values(dt[[field]], i))
+        args <- lapply(fields, function(field) esgdict__cell_values(dt[[field]], i))
         names(args) <- fields
         args$sorted <- FALSE
         rows[[i]] <- do.call(data.table::CJ, args)
@@ -327,11 +313,11 @@ cmip6dict__expand_relation <- function(dt, fields) {
     unique(data.table::rbindlist(rows, use.names = TRUE))
 }
 
-cmip6dict__cell_values <- function(col, i) {
+esgdict__cell_values <- function(col, i) {
     if (is.list(col) && !inherits(col, c("Date", "POSIXt", "numeric_version"))) {
-        return(cmip6dict__as_character(col[[i]]))
+        return(esgdict__as_character(col[[i]]))
     }
-    cmip6dict__as_character(col[i])
+    esgdict__as_character(col[i])
 }
 
 esgdict__options <- function(dict, field, constraints = list(), warn_ignored = TRUE) {
@@ -371,8 +357,6 @@ esgdict__options <- function(dict, field, constraints = list(), warn_ignored = T
     out
 }
 
-cmip6dict__options <- esgdict__options
-
 esgdict__candidate_values <- function(dict, field, constraints) {
     all_values <- esgdict__field_values(dict, field)
     candidates <- all_values$value
@@ -390,7 +374,7 @@ esgdict__candidate_values <- function(dict, field, constraints) {
 
         idx <- data.table::copy(indices[[idx_name]])
         for (constraint in active) {
-            values <- cmip6dict__as_character(constraints[[constraint]])
+            values <- esgdict__as_character(constraints[[constraint]])
             idx <- idx[idx[[constraint]] %in% values]
         }
         candidates <- intersect(candidates, unique(idx[[field]]))
@@ -405,16 +389,12 @@ esgdict__candidate_values <- function(dict, field, constraints) {
     )
 }
 
-cmip6dict__candidate_values <- esgdict__candidate_values
-
 esgdict__field_values <- function(dict, field) {
     values <- dict$indices("values")
     target_field <- field
     out <- values[values[["field"]] == target_field & !is.na(values[["value"]]), .(value, source)]
     unique(out)
 }
-
-cmip6dict__field_values <- esgdict__field_values
 
 esgdict__check <- function(
     dict,
@@ -430,7 +410,7 @@ esgdict__check <- function(
     relationship <- match.arg(relationship)
 
     args <- esgdict__normalize_constraints(args, dict)
-    args <- lapply(args, cmip6dict__as_character)
+    args <- lapply(args, esgdict__as_character)
     args <- args[lengths(args) > 0L]
 
     rows <- list()
@@ -442,8 +422,8 @@ esgdict__check <- function(
             next
         }
         for (value in args[[field]]) {
-            valid <- cmip6dict__value_is_valid(field, value, choices)
-            rows[[length(rows) + 1L]] <- cmip6dict__check_row(
+            valid <- esgdict__value_is_valid(field, value, choices)
+            rows[[length(rows) + 1L]] <- esgdict__check_row(
                 field = field,
                 value = value,
                 valid = valid,
@@ -452,7 +432,7 @@ esgdict__check <- function(
                 source = esgdict__check_source(dict, field),
                 constraint_fields = character(),
                 message = if (valid) NA_character_ else sprintf("`%s` is not a valid `%s`.", value, field),
-                suggestions = if (!valid && suggest) cmip6dict__suggest(value, choices, n_suggestions) else character(),
+                suggestions = if (!valid && suggest) esgdict__suggest(value, choices, n_suggestions) else character(),
                 compatible_values = character()
             )
         }
@@ -469,8 +449,6 @@ esgdict__check <- function(
     res
 }
 
-cmip6dict__check <- esgdict__check
-
 esgdict__check_source <- function(dict, field) {
     values <- dict$indices("values")
     target_field <- field
@@ -478,16 +456,14 @@ esgdict__check_source <- function(dict, field) {
     if (length(src)) src[[1L]] else NA_character_
 }
 
-cmip6dict__check_source <- esgdict__check_source
-
-cmip6dict__value_is_valid <- function(field, value, choices) {
+esgdict__value_is_valid <- function(field, value, choices) {
     if (identical(field, "variant_label")) {
         return(grepl(CMIP6DICT_VARIANT_PATTERN, value))
     }
     value %in% choices
 }
 
-cmip6dict__suggest <- function(value, choices, n) {
+esgdict__suggest <- function(value, choices, n) {
     choices <- unique(stats::na.omit(choices))
     if (!length(choices)) return(character())
 
@@ -511,22 +487,20 @@ esgdict__check_relations <- function(dict, args, relationship) {
             next
         }
         if (identical(relationship, "any")) {
-            rows <- c(rows, cmip6dict__check_relation_any(idx, idx_name, fields, args))
+            rows <- c(rows, esgdict__check_relation_any(idx, idx_name, fields, args))
         } else {
-            rows <- c(rows, cmip6dict__check_relation_all_pairs(idx, idx_name, fields, args))
+            rows <- c(rows, esgdict__check_relation_all_pairs(idx, idx_name, fields, args))
         }
     }
     rows
 }
 
-cmip6dict__check_relations <- esgdict__check_relations
-
 esgdict__not_checked_row <- function(idx_name, fields, args) {
     value <- paste(sprintf("%s=%s", fields, vapply(fields, function(field) {
-        paste(cmip6dict__as_character(args[[field]]), collapse = "|")
+        paste(esgdict__as_character(args[[field]]), collapse = "|")
     }, character(1L))), collapse = ", ")
 
-    cmip6dict__check_row(
+    esgdict__check_row(
         field = paste(fields, collapse = "+"),
         value = value,
         valid = NA,
@@ -540,7 +514,7 @@ esgdict__not_checked_row <- function(idx_name, fields, args) {
     )
 }
 
-cmip6dict__check_relation_any <- function(idx, idx_name, fields, args) {
+esgdict__check_relation_any <- function(idx, idx_name, fields, args) {
     rows <- list()
     valid_args <- lapply(fields, function(field) intersect(args[[field]], unique(idx[[field]])))
     names(valid_args) <- fields
@@ -554,7 +528,7 @@ cmip6dict__check_relation_any <- function(idx, idx_name, fields, args) {
                 filtered <- filtered[filtered[[other]] %in% valid_args[[other]]]
             }
             if (!nrow(filtered)) {
-                rows[[length(rows) + 1L]] <- cmip6dict__relation_row(
+                rows[[length(rows) + 1L]] <- esgdict__relation_row(
                     field = field,
                     value = value,
                     rule = idx_name,
@@ -565,7 +539,7 @@ cmip6dict__check_relation_any <- function(idx, idx_name, fields, args) {
                         value,
                         paste(other_fields, collapse = ", ")
                     ),
-                    compatible_values = cmip6dict__compatible_values(idx, field, value, other_fields)
+                    compatible_values = esgdict__compatible_values(idx, field, value, other_fields)
                 )
             }
         }
@@ -573,7 +547,7 @@ cmip6dict__check_relation_any <- function(idx, idx_name, fields, args) {
     rows
 }
 
-cmip6dict__check_relation_all_pairs <- function(idx, idx_name, fields, args) {
+esgdict__check_relation_all_pairs <- function(idx, idx_name, fields, args) {
     grids <- lapply(fields, function(field) intersect(args[[field]], unique(idx[[field]])))
     names(grids) <- fields
     if (any(lengths(grids) == 0L)) return(list())
@@ -587,7 +561,7 @@ cmip6dict__check_relation_all_pairs <- function(idx, idx_name, fields, args) {
         }
         if (!nrow(filtered)) {
             combo_value <- paste(sprintf("%s=%s", fields, unlist(combos[i], use.names = FALSE)), collapse = ", ")
-            rows[[length(rows) + 1L]] <- cmip6dict__relation_row(
+            rows[[length(rows) + 1L]] <- esgdict__relation_row(
                 field = paste(fields, collapse = "+"),
                 value = combo_value,
                 rule = idx_name,
@@ -601,13 +575,13 @@ cmip6dict__check_relation_all_pairs <- function(idx, idx_name, fields, args) {
     rows
 }
 
-cmip6dict__compatible_values <- function(idx, field, value, other_fields) {
+esgdict__compatible_values <- function(idx, field, value, other_fields) {
     filtered <- idx[idx[[field]] == value]
     unique(unlist(filtered[, other_fields, with = FALSE], use.names = FALSE))
 }
 
-cmip6dict__relation_row <- function(field, value, rule, source, constraint_fields, message, compatible_values) {
-    cmip6dict__check_row(
+esgdict__relation_row <- function(field, value, rule, source, constraint_fields, message, compatible_values) {
+    esgdict__check_row(
         field = field,
         value = value,
         valid = FALSE,
@@ -621,7 +595,7 @@ cmip6dict__relation_row <- function(field, value, rule, source, constraint_field
     )
 }
 
-cmip6dict__check_row <- function(
+esgdict__check_row <- function(
     field,
     value,
     valid,
@@ -683,8 +657,6 @@ esgdict__normalize_field <- function(field, dict = NULL) {
     field
 }
 
-cmip6dict__normalize_field <- esgdict__normalize_field
-
 esgdict__normalize_constraints <- function(args, dict = NULL) {
     if (!length(args)) return(list())
 
@@ -708,9 +680,7 @@ esgdict__normalize_constraints <- function(args, dict = NULL) {
     out
 }
 
-cmip6dict__normalize_constraints <- esgdict__normalize_constraints
-
-cmip6dict__as_character <- function(x) {
+esgdict__as_character <- function(x) {
     if (is.null(x)) return(character())
     x <- unlst(x)
     x <- x[!is.na(x)]

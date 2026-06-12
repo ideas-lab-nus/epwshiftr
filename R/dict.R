@@ -77,18 +77,6 @@ CMIP6DICT_FIELDS <- c(
     "variant_label"
 )
 
-CMIP6DICT_FIELD_ALIASES <- c(
-    activity = "activity_id",
-    activity_drs = "activity_id",
-    experiment = "experiment_id",
-    source = "source_id",
-    variable = "variable_id",
-    variant = "variant_label",
-    member_id = "variant_label",
-    resolution = "nominal_resolution",
-    modeling_realm = "realm"
-)
-
 esgdict__normalize_project <- function(project = "CMIP6") {
     checkmate::assert_string(project, min.chars = 1L)
     toupper(project)

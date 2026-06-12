@@ -629,7 +629,7 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                 limit = TRUE, constraints = TRUE) {
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             collect_calls[[length(collect_calls) + 1L]] <<- list(
                 index_node = index_node,
                 params = params,
@@ -756,7 +756,7 @@ test_that("File results repair HTTPServer URLs independently", {
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                 limit = TRUE, constraints = TRUE) {
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(index_node, "https://example.org")
             expect_identical(query_param_value(params$type()), "File")
             list(
@@ -809,7 +809,7 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                 limit = TRUE, constraints = TRUE) {
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(query_param_value(params$type()), "Aggregation")
             expect_true(all(EsgResultAggregation$private_fields$required_fields %in% required_fields))
             list(
@@ -861,7 +861,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                 limit = TRUE, constraints = TRUE) {
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(query_param_value(params$params()$master_id), "master-no-replica")
             list(
                 response = query_result_test_response(candidate_docs),
@@ -1141,7 +1141,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(
                 index_node = index_node,
                 params = params,
@@ -1205,7 +1205,7 @@ test_that("dataset result collect accepts child facets and clears datetime const
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(params = params, limit = limit)
             response <- query_result_test_response(query_result_test_file_docs())
             params$fields(c(query_param_value(params$fields()), required_fields))
