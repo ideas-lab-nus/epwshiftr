@@ -600,7 +600,7 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
     candidate_docs$id <- "file-repaired"
     candidate_docs$dataset_id <- "dataset-bad|replica.example.org"
     candidate_docs$master_id <- "master-file-bad"
-    candidate_docs$instance_id <- "instance-repaired"
+    candidate_docs$instance_id <- "instance-bad"
     candidate_docs$data_node <- "replica.example.org"
     candidate_docs$replica <- TRUE
 
@@ -640,7 +640,8 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
             )
             expect_identical(index_node, "https://replica-index.example.org")
             expect_identical(query_param_value(params$type()), "File")
-            expect_identical(query_param_value(params$params()$master_id), "master-file-bad")
+            expect_null(params$project())
+            expect_identical(query_param_value(params$params()$instance_id), "instance-bad")
             expect_true(all(EsgResultFile$private_fields$required_fields %in% required_fields))
             expect_true(all)
             expect_false(constraints)
@@ -688,7 +689,7 @@ test_that("repair_urls prefers reachable replicas already present in the current
     docs$id <- c("file-bad", "file-current-replica")
     docs$dataset_id <- c("dataset-1|bad.example.org", "dataset-1|good.example.org")
     docs$master_id <- c("master-file-current", "master-file-current")
-    docs$instance_id <- c("instance-bad", "instance-current-replica")
+    docs$instance_id <- c("instance-current", "instance-current")
     docs$data_node <- c("bad.example.org", "good.example.org")
     docs$replica <- c(FALSE, TRUE)
     docs$url <- I(list(
@@ -721,6 +722,39 @@ test_that("repair_urls prefers reachable replicas already present in the current
 
     expect_identical(repaired$id, c("file-current-replica", "file-current-replica"))
     expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
+})
+
+test_that("expand_replicas falls back to master and version without crossing versions", {
+    docs <- query_result_test_file_docs()
+    docs$instance_id <- NA_character_
+    docs$master_id <- "master-file-fallback"
+    docs$version <- 20260101L
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    candidate_docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(candidate_docs) <- NULL
+    candidate_docs$id <- c("file-same-version", "file-other-version")
+    candidate_docs$data_node <- c("same.example.org", "other.example.org")
+    candidate_docs$version <- c(20260101L, 20270101L)
+
+    testthat::local_mocked_bindings(
+        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_null(params$project())
+            expect_identical(query_param_value(params$params()$master_id), "master-file-fallback")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param_clone(params),
+                context = list(query_url = "https://example.org/master-version")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    expanded <- expect_s3_class(result$expand_replicas(), "EsgResultFile")
+    expect_identical(expanded$id, "file-same-version")
+    expect_identical(expanded$version, 20260101L)
 })
 
 test_that("File results repair HTTPServer URLs independently", {
@@ -759,6 +793,8 @@ test_that("File results repair HTTPServer URLs independently", {
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(index_node, "https://example.org")
             expect_identical(query_param_value(params$type()), "File")
+            expect_null(params$project())
+            expect_identical(query_param_value(params$params()$instance_id), "file-instance-1")
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
@@ -811,6 +847,8 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(query_param_value(params$type()), "Aggregation")
+            expect_null(params$project())
+            expect_identical(query_param_value(params$params()$instance_id), "file-instance-1")
             expect_true(all(EsgResultAggregation$private_fields$required_fields %in% required_fields))
             list(
                 response = query_result_test_response(candidate_docs),
@@ -835,6 +873,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
     row.names(docs) <- NULL
     docs$id <- c("file-missing-master", "file-no-replica")
     docs$master_id <- c(NA_character_, "master-no-replica")
+    docs$instance_id <- c(NA_character_, NA_character_)
     docs$data_node <- c("missing-master.example.org", "no-replica.example.org")
     docs$url <- I(list(
         "https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP",
@@ -844,6 +883,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
     candidate_docs <- query_result_test_file_docs("https://still-bad.example.org/dods/file.nc|application/netcdf|OPENDAP")
     candidate_docs$id <- "file-still-bad"
     candidate_docs$master_id <- "master-no-replica"
+    candidate_docs$instance_id <- NA_character_
     candidate_docs$data_node <- "still-bad.example.org"
 
     testthat::local_mocked_bindings(
@@ -862,6 +902,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_null(params$project())
             expect_identical(query_param_value(params$params()$master_id), "master-no-replica")
             list(
                 response = query_result_test_response(candidate_docs),
@@ -882,7 +923,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
         }
     )
 
-    expect_true(any(grepl("master_id", warnings)))
+    expect_true(any(grepl("instance_id", warnings)))
     expect_true(any(grepl("No reachable OPENDAP replica", warnings)))
     expect_identical(repaired$id, result$id)
     expect_identical(repaired$data_node, result$data_node)

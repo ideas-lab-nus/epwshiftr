@@ -2616,19 +2616,58 @@ query_result_child_required_fields <- function(type) {
     )
 }
 
-query_result_collect_replicas_by_master_id <- function(result, master_id, type, index_node = NULL,
-                                                       all = TRUE) {
-    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
-    checkmate::assert_character(master_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
-    if (is.null(index_node)) {
-        index_node <- priv(result)$index_node
-    } else {
-        checkmate::assert_string(index_node)
-        index_node <- normalize_index_node(index_node)
+query_result_replica_identity <- function(docs) {
+    instance_id <- as.character(query_result_column(docs, "instance_id"))
+    master_id <- as.character(query_result_column(docs, "master_id"))
+    version <- as.character(query_result_column(docs, "version"))
+    has_instance <- !is.na(instance_id) & nzchar(instance_id)
+    has_master_version <- !has_instance & !is.na(master_id) & nzchar(master_id) & !is.na(version) & nzchar(version)
+
+    key <- rep(NA_character_, nrow(docs))
+    key[has_instance] <- paste("instance_id", instance_id[has_instance], sep = "\r")
+    key[has_master_version] <- paste("master_version", master_id[has_master_version], version[has_master_version], sep = "\r")
+
+    data.frame(
+        key = key,
+        instance_id = instance_id,
+        master_id = master_id,
+        version = version,
+        has_instance = has_instance,
+        has_master_version = has_master_version,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+    )
+}
+
+query_result_replica_match_indices <- function(target, candidates) {
+    if (isTRUE(target$has_instance)) {
+        return(which(candidates$has_instance & candidates$instance_id == target$instance_id))
+    }
+    if (isTRUE(target$has_master_version)) {
+        return(which(
+            !is.na(candidates$master_id) &
+                !is.na(candidates$version) &
+                candidates$master_id == target$master_id &
+                candidates$version == target$version
+        ))
     }
 
+    integer()
+}
+
+query_result_replica_in_identity <- function(candidates, targets) {
+    keep <- rep(FALSE, nrow(candidates))
+    for (i in seq_len(nrow(targets))) {
+        keep[query_result_replica_match_indices(targets[i, , drop = FALSE], candidates)] <- TRUE
+    }
+
+    keep
+}
+
+query_result_replica_query_store <- function(type, params) {
     store <- QueryParamStore$new()
-    suppressWarnings(store$params(master_id = master_id))
+    store$project(NULL)
+    suppressWarnings(do.call(store$params, params))
     store$replica(NULL)
     store$latest(NULL)
     store$distrib(TRUE)
@@ -2637,15 +2676,46 @@ query_result_collect_replicas_by_master_id <- function(result, master_id, type, 
     store$fields("*")
     store$limit(this$data_max_limit)
     store$offset(0L)
+    store
+}
 
-    collected <- query_collect(
-        index_node,
-        store,
-        required_fields = query_result_child_required_fields(type),
-        all = all,
-        limit = this$data_max_limit,
-        constraints = FALSE
-    )
+query_result_collect_replicas_by_identity <- function(result, identity, type, index_node = NULL,
+                                                      all = TRUE) {
+    type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- normalize_index_node(index_node)
+    }
+
+    instance_id <- unique(identity$instance_id[identity$has_instance])
+    instance_id <- instance_id[!is.na(instance_id) & nzchar(instance_id)]
+    master_id <- unique(identity$master_id[identity$has_master_version])
+    master_id <- master_id[!is.na(master_id) & nzchar(master_id)]
+
+    stores <- list()
+    if (length(instance_id)) {
+        stores[[length(stores) + 1L]] <- query_result_replica_query_store(type, list(instance_id = instance_id))
+    }
+    if (length(master_id)) {
+        stores[[length(stores) + 1L]] <- query_result_replica_query_store(type, list(master_id = master_id))
+    }
+    if (!length(stores)) {
+        stores[[1L]] <- query_result_replica_query_store(type, list())
+    }
+
+    collected_parts <- lapply(stores, function(store) {
+        query_collect(
+            index_node,
+            store,
+            required_fields = query_result_child_required_fields(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result_merge_child_collects(collected_parts, stores[[1L]])
     response <- collected$response
     response$response$docs <- collected$docs
 
@@ -2660,18 +2730,22 @@ query_result_collect_replicas_by_master_id <- function(result, master_id, type, 
 
 query_result_expand_replicas <- function(result, service = "HTTPServer", all = TRUE) {
     dt <- result$to_data_table()
-    master_id <- query_result_column(dt, "master_id")
-    master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
-    if (!length(master_id)) {
+    identity <- query_result_replica_identity(dt)
+    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
+    if (!length(keys)) {
         return(result)
     }
 
-    query_result_collect_replicas_by_master_id(
+    expanded <- query_result_collect_replicas_by_identity(
         result,
-        master_id,
+        identity,
         type = "File",
         all = all
     )
+    expanded_docs <- priv(expanded)$get_docs()
+    expanded_identity <- query_result_replica_identity(expanded_docs)
+    keep <- query_result_replica_in_identity(expanded_identity, identity)
+    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
 }
 
 query_result_repair_normalize_probe <- function(probe = NULL) {
@@ -2749,15 +2823,15 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
         return(priv(result)$result_with_docs(docs))
     }
 
-    master_id <- as.character(query_result_column(docs, "master_id"))
+    identity <- query_result_replica_identity(docs)
     targets <- which(needs_repair)
-    has_master <- !is.na(master_id[targets]) & nzchar(master_id[targets])
-    missing_master <- targets[!has_master]
-    repair_targets <- targets[has_master]
+    has_identity <- !is.na(identity$key[targets]) & nzchar(identity$key[targets])
+    missing_identity <- targets[!has_identity]
+    repair_targets <- targets[has_identity]
 
-    if (length(missing_master)) {
+    if (length(missing_identity)) {
         cli::cli_warn(
-            "Cannot repair {length(missing_master)} {service} URL{?s} because `master_id` is missing."
+            "Cannot repair {length(missing_identity)} {service} URL{?s} because `instance_id` or `master_id` + `version` is missing."
         )
     }
     if (!length(repair_targets)) {
@@ -2768,7 +2842,8 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
 
     repaired <- rep(FALSE, n)
     for (i in repair_targets) {
-        rows <- which(seq_len(n) != i & master_id == master_id[[i]] & reach$reachable %in% TRUE)
+        rows <- setdiff(query_result_replica_match_indices(identity[i, , drop = FALSE], identity), i)
+        rows <- rows[reach$reachable[rows] %in% TRUE]
         if (!length(rows)) {
             next
         }
@@ -2783,9 +2858,9 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
     external_targets <- repair_targets[!repaired[repair_targets]]
     context <- query_result_normalize_context(priv(result)$context)
     if (length(external_targets)) {
-        candidates <- query_result_collect_replicas_by_master_id(
+        candidates <- query_result_collect_replicas_by_identity(
             result,
-            unique(master_id[external_targets]),
+            identity[external_targets, , drop = FALSE],
             type = type,
             index_node = index_node,
             all = TRUE
@@ -2798,7 +2873,7 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
                 level = probe$level,
                 probe = probe[names(probe) != "level"]
             )
-            candidate_master_id <- as.character(query_result_column(candidate_docs, "master_id"))
+            candidate_identity <- query_result_replica_identity(candidate_docs)
             fields <- unique(c(names(out), names(candidate_docs)))
             out <- query_result_align_docs(out, fields, template = candidate_docs)
             candidate_docs <- query_result_align_docs(candidate_docs, fields, template = out)
@@ -2806,7 +2881,8 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
             candidate_docs <- data.table::as.data.table(candidate_docs)
 
             for (i in external_targets) {
-                rows <- which(candidate_master_id == master_id[[i]] & candidate_reach$reachable %in% TRUE)
+                rows <- query_result_replica_match_indices(identity[i, , drop = FALSE], candidate_identity)
+                rows <- rows[candidate_reach$reachable[rows] %in% TRUE]
                 if (!length(rows)) {
                     next
                 }
@@ -3503,7 +3579,7 @@ EsgResultFile <- R6::R6Class(
 
         # expand_replicas {{{
         #' @description
-        #' Query ESGF for master and replica records for known `master_id`s.
+        #' Query ESGF for same-version master and replica records.
         #'
         #' @param service ESGF URL service to keep in the method contract.
         #'        Default: `"HTTPServer"`.
@@ -3511,7 +3587,8 @@ EsgResultFile <- R6::R6Class(
         #'        `TRUE`.
         #'
         #' @return A new `EsgResultFile` object with expanded replica records
-        #'        when `master_id` is available; otherwise `self`.
+        #'        when `instance_id`, or `master_id` plus `version`, is available;
+        #'        otherwise `self`.
         expand_replicas = function(service = "HTTPServer", all = TRUE) {
             query_result_expand_replicas(self, service = service, all = all)
         },

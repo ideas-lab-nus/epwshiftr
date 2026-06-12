@@ -187,7 +187,7 @@ A data.table download plan.
 \if{html}{\out{<a id="method-EsgResultFile-expand_replicas"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-expand_replicas}{}}}
 \subsection{Method \code{expand_replicas()}}{
-Query ESGF for master and replica records for known \code{master_id}s.
+Query ESGF for same-version master and replica records.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$expand_replicas(service = "HTTPServer", all = TRUE)}\if{html}{\out{</div>}}
 }
@@ -205,7 +205,8 @@ Default: \code{"HTTPServer"}.}
 }
 \subsection{Returns}{
 A new \code{EsgResultFile} object with expanded replica records
-when \code{master_id} is available; otherwise \code{self}.
+when \code{instance_id}, or \code{master_id} plus \code{version}, is available;
+otherwise \code{self}.
 }
 }
 \if{html}{\out{<hr>}}
