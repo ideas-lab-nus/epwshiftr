@@ -89,15 +89,22 @@ esgf_query_normalize_legacy_fq <- function(response, replica, latest) {
     }
 
     fq <- unlist(params$fq, use.names = FALSE)
+    clear_flag <- function(x, name) {
+        x[!grepl(sprintf("^%s:", name), x)]
+    }
     set_flag <- function(x, name, value) {
-        x <- x[!grepl(sprintf("^%s:", name), x)]
+        x <- clear_flag(x, name)
         c(x, sprintf("%s:%s", name, tolower(as.character(value))))
     }
 
-    if (!is.null(replica)) {
+    if (is.null(replica)) {
+        fq <- clear_flag(fq, "replica")
+    } else {
         fq <- set_flag(fq, "replica", replica)
     }
-    if (!is.null(latest)) {
+    if (is.null(latest)) {
+        fq <- clear_flag(fq, "latest")
+    } else {
         fq <- set_flag(fq, "latest", latest)
     }
 
@@ -288,9 +295,10 @@ esgf_query_build <- function(host, type, activity, variable, frequency, experime
 #'        Use `NULL` to return both the master and the replicas.
 #'        Default: `FALSE`.
 #'
-#' @param latest Whether the record is the latest available version, or a
-#'        previous version. Use `TRUE` to return only the latest version of all
-#'        records and `FALSE` to return previous versions. Default: `FALSE`.
+#' @param latest Whether to constrain records by latest-version status. Use
+#'        `TRUE` to return only the latest version of all records, `FALSE` to
+#'        return previous versions, and `NULL` to return all versions.
+#'        Default: `NULL`.
 #'
 #' @param resolution A character vector indicating approximate horizontal
 #'        resolution. Default: `c("50 km", "100 km")`.
@@ -414,7 +422,7 @@ esgf_query <- function(
     ),
     variant = "r1i1p1f1",
     replica = FALSE,
-    latest = TRUE,
+    latest = NULL,
     resolution = c("100 km", "50 km"),
     type = "Dataset",
     limit = 10000L,
@@ -479,7 +487,7 @@ esgf_query <- function(
     checkmate::assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
     checkmate::assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_flag(replica, null.ok = TRUE)
-    checkmate::assert_flag(latest)
+    checkmate::assert_flag(latest, null.ok = TRUE)
     checkmate::assert_count(limit, positive = TRUE)
     checkmate::assert_choice(type, choices = c("Dataset", "File"))
     checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
@@ -749,7 +757,7 @@ init_cmip6_index <- function(
     ),
     variant = "r1i1p1f1",
     replica = FALSE,
-    latest = TRUE,
+    latest = NULL,
     resolution = c("100 km", "50 km"),
     limit = 10000L,
     data_node = NULL,

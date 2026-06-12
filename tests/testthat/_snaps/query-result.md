@@ -19,7 +19,6 @@
       * frequency=day
       * variant_label=r1i1p1f1
       * fields=source_id,experiment_id,frequency,access,id,index_node,number_of_aggregations,number_of_files,size,url,project,activity_id,variable_id,variant_label
-      * latest=true
       * type=Dataset
       * offset=0
       * distrib=true
@@ -61,7 +60,6 @@
       * variable_id=tas
       * frequency=day
       * variant_label=r1i1p1f1
-      * latest=true
       * type=File
       * offset=0
       * distrib=true
@@ -91,7 +89,6 @@
       
       -- <Query Parameter> -----------------------------------------------------------
       * fields=id,activity_id,data_node,dataset_id,instance_id,institution_id,master_id,replica,size,title,url,version
-      * latest=true
       * type=Aggregation
       * offset=0
       * distrib=true
@@ -123,7 +120,6 @@
       -- <Query Parameter> -----------------------------------------------------------
       * project=CMIP6
       * fields=*
-      * latest=true
       * type=Dataset
       * offset=0
       * distrib=true
@@ -151,7 +147,6 @@
       -- <Query Parameter> -----------------------------------------------------------
       * project=CMIP6
       * fields=*
-      * latest=true
       * type=Dataset
       * offset=0
       * distrib=true
@@ -179,7 +174,6 @@
       -- <Query Parameter> -----------------------------------------------------------
       * project=CMIP6
       * fields=*
-      * latest=true
       * type=Dataset
       * offset=0
       * distrib=true

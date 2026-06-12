@@ -2630,7 +2630,7 @@ query_result_collect_replicas_by_master_id <- function(result, master_id, type, 
     store <- QueryParamStore$new()
     suppressWarnings(store$params(master_id = master_id))
     store$replica(NULL)
-    store$latest(TRUE)
+    store$latest(NULL)
     store$distrib(TRUE)
     store$type(type)
     store$format(FORMAT_JSON)
@@ -3063,7 +3063,8 @@ EsgResultDataset <- R6::R6Class(
         #'        parameters; call `$filter_time()` on the returned result for
         #'        time filtering. If control parameters are omitted, they are
         #'        inherited from the dataset query when available, with
-        #'        `distrib = TRUE` and `latest = TRUE` as fallbacks. For details
+        #'        `distrib = TRUE` as fallback. If `latest` is omitted and was not
+        #'        set on the dataset query, no `latest` constraint is sent. For details
         #'        on possible parameters, please see [esg_query()].
         #'        When a local [EsgDict] is available for the query project, child
         #'        collection performs a warning-only dictionary check before sending
@@ -3286,9 +3287,6 @@ EsgResultDataset <- R6::R6Class(
                 latest = inherited_value("latest"),
                 distrib = inherited_value("distrib")
             )
-            if (is.null(controls$latest)) {
-                controls$latest <- TRUE
-            }
             if (is.null(controls$distrib)) {
                 controls$distrib <- TRUE
             }

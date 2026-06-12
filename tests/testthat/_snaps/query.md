@@ -9,7 +9,6 @@
       -- <Query Parameter> -----------------------------------------------------------
       * project=CMIP6
       * fields=*
-      * latest=true
       * type=Dataset
       * offset=0
       * distrib=true

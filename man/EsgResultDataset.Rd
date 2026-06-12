@@ -161,7 +161,8 @@ File/Aggregation collection does not use ESGF datetime search
 parameters; call \verb{$filter_time()} on the returned result for
 time filtering. If control parameters are omitted, they are
 inherited from the dataset query when available, with
-\code{distrib = TRUE} and \code{latest = TRUE} as fallbacks. For details
+\code{distrib = TRUE} as fallback. If \code{latest} is omitted and was not
+set on the dataset query, no \code{latest} constraint is sent. For details
 on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.
 When a local \link{EsgDict} is available for the query project, child
 collection performs a warning-only dictionary check before sending

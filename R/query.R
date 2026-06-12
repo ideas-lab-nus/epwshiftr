@@ -839,12 +839,12 @@ EsgQuery <- R6::R6Class(
         #' @description
         #' Get or set the `latest` parameter.
         #'
-        #' @param value A flag. If omitted, the current value is returned.
-        #'        Default when setting without an explicit value: `TRUE`.
+        #' @param value A flag, or `NULL` to remove the `latest` constraint. If
+        #'        omitted, the current value is returned.
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
-        latest = function(value = TRUE) {
+        latest = function(value = NULL) {
             if (missing(value)) {
                 return(private$parameter$latest())
             }

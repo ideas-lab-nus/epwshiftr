@@ -95,7 +95,9 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_named(attr(qd, "response")$response$docs, RES_DATASET)
     expect_match(calls[[1L]]$index_node, "esgf-node\\.ornl\\.gov/esgf-1-5-bridge$")
     expect_type(qd$version, "character")
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qd, "response")$responseHeader$params$fq)))
+    fq_qd <- unlist(attr(qd, "response")$responseHeader$params$fq)
+    expect_true("replica:false" %in% fq_qd)
+    expect_false(any(grepl("^latest:", fq_qd)))
 
     resolution_param <- calls[[1L]]$params$nominal_resolution()
     resolution_value <- query_param_value(resolution_param)
@@ -120,7 +122,9 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_identical(query_param_value(calls[[3L]]$params$type()), "File")
     expect_setequal(calls[[3L]]$required_fields, EsgResultFile$private_fields$required_fields)
     expect_type(qf$version, "character")
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qf, "response")$responseHeader$params$fq)))
+    fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
+    expect_true("replica:false" %in% fq_qf)
+    expect_false(any(grepl("^latest:", fq_qf)))
 })
 
 test_that("esgf_query() keeps legacy empty-result behavior", {
@@ -143,8 +147,9 @@ test_that("esgf_query() keeps legacy empty-result behavior", {
         "No matched data\\. Please examine the actual response"
     )
     expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(q, "response")$responseHeader$params$fq)))
-    empty_response$responseHeader$params$fq <- c("type:Dataset", "replica:false", "latest:true")
+    expect_true("replica:false" %in% unlist(attr(q, "response")$responseHeader$params$fq))
+    expect_false(any(grepl("^latest:", unlist(attr(q, "response")$responseHeader$params$fq))))
+    empty_response$responseHeader$params$fq <- c("type:Dataset", "replica:false")
     expect_identical(attr(q, "response"), empty_response)
 })
 

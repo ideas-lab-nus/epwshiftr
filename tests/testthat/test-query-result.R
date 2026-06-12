@@ -29,7 +29,7 @@ query_result_test_params <- function(type = "Dataset", ...) {
     values <- list(...)
     params <- list(
         project = "CMIP6",
-        latest = TRUE,
+        latest = NULL,
         distrib = TRUE,
         limit = 1L,
         type = type,

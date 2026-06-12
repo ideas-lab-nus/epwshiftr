@@ -1077,12 +1077,13 @@ QueryParamStore <- R6::R6Class(
         #' @description
         #' Get or set the `latest` parameter.
         #'
-        #' By default, a query to the ESGF search services returns only the very
-        #' last, up-to-date version of the matching records, i.e.
-        #' `$latest(TRUE)`. You can use `$latest(FALSE)` to return all versions.
+        #' By default, no `latest` constraint is sent, i.e. `$latest(NULL)`,
+        #' and ESGF returns all versions. Use `$latest(TRUE)` to return only
+        #' the latest version of each record, or `$latest(FALSE)` to return
+        #' only records superseded by newer versions.
         #'
         #' @param value
-        #' `r rd_query_method_param("latest", "flag", default = TRUE, nullable = FALSE)`
+        #' `r rd_query_method_param("latest", "flag", default = NULL, nullable = TRUE)`
         #'
         #' @return
         #' `r rd_query_method_return()`
@@ -1094,8 +1095,11 @@ QueryParamStore <- R6::R6Class(
         #'
         #' # set the parameter
         #' q$latest(TRUE)
+        #'
+        #' # remove the parameter
+        #' q$latest(NULL)
         #' }
-        latest = function(value = TRUE) {
+        latest = function(value = NULL) {
             if (missing(value)) {
                 return(private$get_or_set_control("latest"))
             }
@@ -1976,7 +1980,7 @@ QueryParamStore <- R6::R6Class(
         # pagination, distribution, or transport format.
         control = list(
             replica = NULL,
-            latest = TRUE,
+            latest = NULL,
             type = "Dataset",
             offset = 0L,
             distrib = TRUE,

@@ -33,9 +33,6 @@
     },
     "query": [],
     "control": {
-      "latest": {
-        "value": [true]
-      },
       "type": {
         "value": ["Dataset"]
       },
@@ -65,7 +62,7 @@
         "echoParams": ["all"],
         "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
         "start": ["0"],
-        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\""],
         "rows": ["2"],
         "q": ["*:*"],
         "shards": ["solr-slave:8983/solr/datasets,solr-replica-ipsl:8983/solr/datasets,solr-replica-liu:8983/solr/datasets,solr-replica-ceda:8983/solr/datasets,solr-replica-nci:8983/solr/datasets,solr-replica-gfdl:8983/solr/datasets"],

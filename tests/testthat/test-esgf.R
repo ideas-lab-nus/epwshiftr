@@ -25,7 +25,6 @@ test_that("esgf_query() compatibility wrapper", {
                     "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
                     "frequency:\"day\"",
                     "replica:false",
-                    "latest:true",
                     "variant_label:\"r1i1p1f1\""
                 ) %in%
                     fq_qd
@@ -76,7 +75,6 @@ test_that("esgf_query() compatibility wrapper", {
                     "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
                     "frequency:\"day\"",
                     "replica:false",
-                    "latest:true",
                     "variant_label:\"r1i1p1f1\""
                 ) %in%
                     fq_qf

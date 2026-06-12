@@ -998,14 +998,14 @@ Otherwise, a \code{QueryParam} object or \code{NULL}.
 \subsection{Method \code{latest()}}{
 Get or set the \code{latest} parameter.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$latest(value = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$latest(value = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{A flag. If omitted, the current value is returned.
-Default when setting without an explicit value: \code{TRUE}.}
+\item{\code{value}}{A flag, or \code{NULL} to remove the \code{latest} constraint. If
+omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }

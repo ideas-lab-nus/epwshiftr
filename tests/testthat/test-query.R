@@ -722,9 +722,10 @@ test_that("EsgQuery$version_range()", {
 
 # EsgQuery$latest() {{{
 test_that("EsgQuery$latest()", {
-    expect_true(query_param_value(esg_query()$latest()))
+    expect_null(esg_query()$latest())
     expect_false(query_param_value(esg_query()$latest(FALSE)$latest()))
     expect_true(query_param_value(esg_query()$latest(TRUE)$latest()))
+    expect_null(esg_query()$latest(TRUE)$latest(NULL)$latest())
 })
 # }}}
 
