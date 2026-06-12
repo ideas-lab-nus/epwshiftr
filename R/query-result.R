@@ -186,6 +186,75 @@ EsgResult <- R6::R6Class(
             }
 
             urls
+        },
+        # }}}
+
+        # slice {{{
+        #' @description
+        #' Subset result records by row, logical selector, or record ID.
+        #'
+        #' `$slice()` filters the records already held in memory. It does not
+        #' change the original ESGF query parameters or query URL provenance.
+        #'
+        #' @param i A positive or negative integer vector, logical vector,
+        #'        character vector of record IDs, or `NULL`. `NULL` returns an
+        #'        empty result.
+        #'
+        #' @return A new result object of the same type.
+        slice = function(i = NULL) {
+            index <- private$normalize_slice_index(i)
+            docs <- private$get_docs()
+            out <- docs[index, , drop = FALSE]
+            private$result_with_docs(
+                out,
+                context = private$update_selection_context(index)
+            )
+        },
+        # }}}
+
+        # filter {{{
+        #' @description
+        #' Subset result records with a predicate function.
+        #'
+        #' @param predicate A function that accepts `self$to_data_table()` and
+        #'        returns a logical vector with one value per current record.
+        #' @param formatted Whether to use formatted values when creating the
+        #'        predicate input data table. Default: `FALSE`.
+        #'
+        #' @return A new result object of the same type.
+        filter = function(predicate, formatted = FALSE) {
+            checkmate::assert_function(predicate)
+            checkmate::assert_flag(formatted)
+
+            dt <- if (isTRUE(formatted)) {
+                self$to_data_table(formatted = TRUE)
+            } else {
+                self$to_data_table()
+            }
+            keep <- predicate(dt)
+            checkmate::assert_logical(
+                keep,
+                len = nrow(dt),
+                any.missing = FALSE,
+                .var.name = "predicate result"
+            )
+
+            self$slice(keep)
+        },
+        # }}}
+
+        # selection {{{
+        #' @description
+        #' Return local selection provenance for this result.
+        #'
+        #' `$selection()` maps current rows back to the result object that first
+        #' recorded selection provenance. It does not record intermediate filter
+        #' steps.
+        #'
+        #' @return A list with `source_count`, `source_num_found`, and
+        #'        `source_indices`.
+        selection = function() {
+            private$get_selection_context()
         }
         # }}}
     ),
@@ -302,9 +371,13 @@ EsgResult <- R6::R6Class(
         # }}}
 
         get_docs = function() {
+            if (is.null(private$response)) {
+                return(data.frame(check.names = FALSE))
+            }
+
             docs <- private$response$response$docs
             if (is.null(docs)) {
-                data.frame()
+                data.frame(check.names = FALSE)
             } else {
                 docs
             }
@@ -344,6 +417,31 @@ EsgResult <- R6::R6Class(
         },
         # }}}
 
+        # get_selection_context {{{
+        get_selection_context = function() {
+            ctx <- private$context$selection
+            if (!is.null(ctx) && length(ctx)) {
+                return(query_result_normalize_selection_context(ctx))
+            }
+
+            n <- nrow(private$get_docs())
+            source_num_found <- if (is.null(private$response)) {
+                n
+            } else {
+                private$response$response$numFound
+            }
+            if (is.null(source_num_found) || !length(source_num_found) || is.na(source_num_found[[1L]])) {
+                source_num_found <- n
+            }
+
+            list(
+                source_count = as.integer(n),
+                source_num_found = as.integer(source_num_found[[1L]]),
+                source_indices = seq_len(n)
+            )
+        },
+        # }}}
+
         # update_time_filter_context {{{
         update_time_filter_context = function(start, stop, method, total, selected, unknown) {
             context <- private$context
@@ -355,6 +453,19 @@ EsgResult <- R6::R6Class(
                 total = as.integer(total),
                 selected = as.integer(selected),
                 unknown_count = as.integer(unknown)
+            )
+
+            context
+        },
+        # }}}
+
+        # update_selection_context {{{
+        update_selection_context = function(index, context = private$context) {
+            selection <- private$get_selection_context()
+            context$selection <- list(
+                source_count = selection$source_count,
+                source_num_found = selection$source_num_found,
+                source_indices = selection$source_indices[index]
             )
 
             context
@@ -402,7 +513,10 @@ EsgResult <- R6::R6Class(
                     selected = 0L,
                     unknown = 0L
                 )
-                return(private$result_with_docs(docs, context = context))
+                return(private$result_with_docs(
+                    docs,
+                    context = private$update_selection_context(integer(), context = context)
+                ))
             }
 
             ranges <- switch(
@@ -415,7 +529,8 @@ EsgResult <- R6::R6Class(
             keep[is.na(keep)] <- TRUE
 
             docs <- private$add_time_range_fields(docs, ranges)
-            out <- docs[keep, , drop = FALSE]
+            index <- which(keep)
+            out <- docs[index, , drop = FALSE]
             context <- private$update_time_filter_context(
                 window$start,
                 window$stop,
@@ -424,8 +539,74 @@ EsgResult <- R6::R6Class(
                 selected = nrow(out),
                 unknown = sum(!known)
             )
+            context <- private$update_selection_context(index, context = context)
 
             private$result_with_docs(out, context = context)
+        },
+        # }}}
+
+        # normalize_slice_index {{{
+        normalize_slice_index = function(i) {
+            n <- nrow(private$get_docs())
+            if (is.null(i)) {
+                return(integer())
+            }
+
+            if (is.logical(i)) {
+                checkmate::assert_logical(i, len = n, any.missing = FALSE, .var.name = "i")
+                return(which(i))
+            }
+
+            if (is.character(i)) {
+                checkmate::assert_character(i, any.missing = FALSE, .var.name = "i")
+                ids <- self$id
+                if (!length(i)) {
+                    return(integer())
+                }
+                if (anyDuplicated(i)) {
+                    stop("`i` must not contain duplicate record IDs.", call. = FALSE)
+                }
+                index <- match(i, ids)
+                if (anyNA(index)) {
+                    missing <- i[is.na(index)]
+                    stop(sprintf(
+                        "Unknown record ID(s): [%s].",
+                        paste(sprintf("'%s'", missing), collapse = ", ")
+                    ), call. = FALSE)
+                }
+                return(index)
+            }
+
+            if (!checkmate::test_integerish(i, any.missing = FALSE)) {
+                stop("`i` must be an integer, logical, character, or NULL selector.", call. = FALSE)
+            }
+
+            i <- as.integer(i)
+            if (!length(i)) {
+                return(integer())
+            }
+            if (any(i == 0L)) {
+                stop("`i` must not contain zero.", call. = FALSE)
+            }
+            if (any(i > 0L) && any(i < 0L)) {
+                stop("`i` must not mix positive and negative indices.", call. = FALSE)
+            }
+            if (anyDuplicated(i)) {
+                stop("`i` must not contain duplicate indices.", call. = FALSE)
+            }
+
+            if (all(i < 0L)) {
+                if (any(abs(i) > n)) {
+                    stop(sprintf("Negative indices must be between -%d and -1.", n), call. = FALSE)
+                }
+                return(setdiff(seq_len(n), abs(i)))
+            }
+
+            if (any(i > n)) {
+                stop(sprintf("Positive indices must be between 1 and %d.", n), call. = FALSE)
+            }
+
+            i
         },
         # }}}
 
@@ -870,8 +1051,51 @@ query_result_normalize_context <- function(context = NULL) {
     if (!is.null(context$query_url)) {
         context$query_url <- query_result_normalize_query_url(context$query_url, named = FALSE)
     }
+    if (!is.null(context$selection)) {
+        context$selection <- query_result_normalize_selection_context(context$selection)
+    }
 
     context
+}
+
+query_result_normalize_selection_context <- function(selection) {
+    if (is.null(selection) || !length(selection)) {
+        return(NULL)
+    }
+    if (!is.list(selection)) {
+        stop("Saved result selection context must be a list.", call. = FALSE)
+    }
+
+    required <- c("source_count", "source_num_found", "source_indices")
+    missing <- setdiff(required, names(selection))
+    if (length(missing)) {
+        stop(sprintf(
+            "Saved result selection context is missing required field(s): [%s].",
+            paste(sprintf("'%s'", missing), collapse = ", ")
+        ), call. = FALSE)
+    }
+
+    source_indices <- selection$source_indices
+    if (is.list(source_indices) && !length(source_indices)) {
+        source_indices <- integer()
+    }
+
+    checkmate::assert_integerish(selection$source_count, lower = 0L, len = 1L, any.missing = FALSE)
+    checkmate::assert_integerish(selection$source_num_found, lower = 0L, len = 1L, any.missing = FALSE)
+    checkmate::assert_integerish(source_indices, lower = 1L, any.missing = FALSE)
+
+    source_count <- as.integer(selection$source_count[[1L]])
+    source_num_found <- as.integer(selection$source_num_found[[1L]])
+    source_indices <- as.integer(source_indices)
+    if (length(source_indices) && any(source_indices > source_count)) {
+        stop("Saved result selection source indices must not exceed `source_count`.", call. = FALSE)
+    }
+
+    list(
+        source_count = source_count,
+        source_num_found = source_num_found,
+        source_indices = source_indices
+    )
 }
 
 query_result_normalize_query_url <- function(urls, named = TRUE) {
@@ -2942,6 +3166,30 @@ query_result_empty_response <- function(params) {
 # new_query_result {{{
 new_query_result <- function(generator, index_node = NULL, params = NULL, result = NULL, ...) {
     generator$new(index_node, params, result, ...)
+}
+# }}}
+
+# result subset method {{{
+#' Subset an ESGF query result
+#'
+#' `[` is a one-dimensional shortcut for `x$slice(i)`.
+#'
+#' @param x An [EsgResult] object.
+#' @param i A row selector accepted by `x$slice(i)`.
+#' @param j,...,drop Unsupported.
+#'
+#' @return A new result object of the same type, or `x` for `x[]`.
+#'
+#' @export
+`[.EsgResult` <- function(x, i, j, ..., drop = FALSE) {
+    if (nargs() > 2L || !missing(j) || length(list(...)) || !identical(drop, FALSE)) {
+        stop("EsgResult subsetting only supports one-dimensional `result[i]`.", call. = FALSE)
+    }
+    if (missing(i)) {
+        return(x)
+    }
+
+    x$slice(i)
 }
 # }}}
 

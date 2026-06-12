@@ -90,6 +90,7 @@ test_that("result schema JSON files use local reusable definitions", {
         "timestamp",
         "context",
         "context_query_url",
+        "context_selection",
         "context_time_filter"
     )
 
@@ -246,6 +247,34 @@ test_that("schema validates saved query result JSON fixtures", {
     expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "dataset-result-query-url-context"))
     dataset_with_context$context$query_url[[1L]] <- NA_character_
     expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "bad-result-query-url-context"))
+
+    selection_context <- list(selection = list(
+        source_count = 3L,
+        source_num_found = 10L,
+        source_indices = c(3L, 1L)
+    ))
+    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+    expect_true(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "aggregation-result-selection-context"
+    ))
+    aggregation_with_context$context$selection$source_indices[[1L]] <- NA_integer_
+    expect_false(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "bad-result-selection-context-missing"
+    ))
+    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+    aggregation_with_context$context$selection$source_count <- NULL
+    expect_false(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "bad-result-selection-context-fields"
+    ))
 
     bad_file <- tempfile(fileext = ".json")
     jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)

@@ -1745,6 +1745,15 @@ query_load <- function(file, schema = NULL) {
     ) {
         json$response$response$docs <- data.frame()
     }
+    if (
+        length(json$context) &&
+            length(json$context$selection) &&
+            "source_indices" %in% names(json$context$selection) &&
+            is.list(json$context$selection$source_indices) &&
+            !length(json$context$selection$source_indices)
+    ) {
+        json$context$selection$source_indices <- integer()
+    }
 
     if (!is.null(schema)) {
         schema_validate(schema, json, mode = "assert", name = file)

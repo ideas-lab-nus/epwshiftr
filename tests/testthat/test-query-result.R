@@ -291,6 +291,123 @@ test_that("result query URL context persists through save/load", {
     expect_identical(loaded$query_url("all"), stats::setNames(urls, c("page1", "page2")))
 })
 
+test_that("ESGF query results support local selection", {
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    time_filter <- list(
+        start = "2050-01-01T00:00:00Z",
+        stop = "2050-12-31T23:59:59Z",
+        method = "drs"
+    )
+    cases <- list(
+        Dataset = query_result_test_dataset_docs(),
+        File = query_result_test_file_time_docs("File"),
+        Aggregation = query_result_test_file_time_docs("Aggregation")
+    )
+
+    for (type in names(cases)) {
+        result <- query_result_test_object(
+            type,
+            cases[[type]],
+            query_result_test_params(type),
+            context = list(query_url = urls, time_filter = time_filter)
+        )
+        priv(result)$response$response$numFound <- 10L
+
+        expect_identical(result[], result)
+        expect_identical(result$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = seq_len(nrow(cases[[type]]))
+        ))
+
+        selected <- result[c(nrow(cases[[type]]), 1L)]
+        expect_s3_class(selected, class(result)[[1L]])
+        expect_identical(selected$id, result$id[c(nrow(cases[[type]]), 1L)])
+        expect_identical(selected$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+        expect_identical(selected$time_filter, time_filter)
+        expect_identical(selected$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = as.integer(c(nrow(cases[[type]]), 1L))
+        ))
+
+        chained <- selected[2L]
+        expect_identical(chained$id, result$id[1L])
+        expect_identical(chained$selection()$source_indices, 1L)
+
+        logical_selected <- result[seq_len(nrow(cases[[type]])) %% 2L == 1L]
+        expect_identical(logical_selected$id, result$id[seq_len(nrow(cases[[type]])) %% 2L == 1L])
+
+        character_selected <- result[result$id[1L]]
+        expect_identical(character_selected$id, result$id[1L])
+
+        empty <- result$slice(NULL)
+        expect_s3_class(empty, class(result)[[1L]])
+        expect_identical(empty$id, character())
+        expect_identical(empty$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = integer()
+        ))
+
+        expect_identical(result[-1L]$id, result$id[-1L])
+    }
+})
+
+test_that("ESGF query results filter with predicates", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+
+    filtered <- result$filter(function(dt) grepl("2050", dt$title))
+    expect_s3_class(filtered, "EsgResultFile")
+    expect_identical(filtered$id, result$id[1L])
+    expect_identical(filtered$selection()$source_indices, 1L)
+
+    formatted <- result$filter(function(dt) rep(TRUE, nrow(dt)), formatted = TRUE)
+    expect_identical(formatted$id, result$id)
+
+    expect_error(result$filter(function(dt) TRUE), "predicate result")
+    expect_error(result$filter(function(dt) c(TRUE, NA, FALSE)), "predicate result")
+    expect_error(result$filter(function(dt) seq_len(nrow(dt))), "predicate result")
+})
+
+test_that("ESGF query result local selection rejects invalid selectors", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+
+    expect_error(result[c(1L, 1L)], "duplicate indices")
+    expect_error(result[c(result$id[1L], result$id[1L])], "duplicate record IDs")
+    expect_error(result[4L], "between 1 and 3")
+    expect_error(result[c(1L, -2L)], "must not mix")
+    expect_error(result[0L], "must not contain zero")
+    expect_error(result[c(TRUE, FALSE)], "length")
+    expect_error(result["missing-id"], "Unknown record ID")
+    expect_error(result[1L, ], "one-dimensional")
+    expect_error(result[1L, drop = TRUE], "one-dimensional")
+})
+
+test_that("result selection context persists through save/load", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+    priv(result)$response$response$numFound <- 10L
+    selected <- result[c(3L, 1L)]
+    file <- tempfile(fileext = ".json")
+
+    expect_type(selected$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_named(json$context, "selection")
+    expect_identical(json$context$selection$source_count, 3L)
+    expect_identical(json$context$selection$source_num_found, 10L)
+    expect_identical(json$context$selection$source_indices, c(3L, 1L))
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_identical(loaded$id, selected$id)
+    expect_identical(loaded$selection(), selected$selection())
+
+    empty <- result$slice(integer())
+    empty_file <- tempfile(fileext = ".json")
+    expect_type(empty$save(empty_file), "character")
+    loaded_empty <- expect_s3_class(esg_result("file")$load(empty_file), "EsgResultFile")
+    expect_identical(loaded_empty$selection(), empty$selection())
+})
+
 test_that("File and Aggregation results filter time using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))
@@ -314,6 +431,7 @@ test_that("File and Aggregation results filter time using DRS filename ranges", 
         expect_identical(filtered$time_filter$total, 3L)
         expect_identical(filtered$time_filter$selected, 2L)
         expect_identical(filtered$time_filter$unknown_count, 1L)
+        expect_identical(filtered$selection()$source_indices, c(1L, 3L))
 
         dt <- filtered$to_data_table(c("id", "datetime_start", "datetime_end"))
         expect_identical(dt$datetime_start[[1L]], "2050-01-01T00:00:00Z")
@@ -330,11 +448,12 @@ test_that("result time filter context persists through save/load", {
 
     expect_type(filtered$save(file), "character")
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-    expect_named(json$context, "time_filter")
+    expect_true(all(c("time_filter", "selection") %in% names(json$context)))
     expect_identical(json$context$time_filter$method, "drs")
 
     loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
     expect_identical(loaded$time_filter, filtered$time_filter)
+    expect_identical(loaded$selection(), filtered$selection())
     expect_identical(loaded$id, filtered$id)
 })
 

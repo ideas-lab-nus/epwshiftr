@@ -6059,7 +6059,7 @@
       },
       "keys": {
         "type": "named",
-        "subset.of": ["time_filter", "query_url"]
+        "subset.of": ["time_filter", "query_url", "selection"]
       },
       "fields": {
         "time_filter": {
@@ -6067,6 +6067,9 @@
         },
         "query_url": {
           "$ref": "#/$defs/context_query_url"
+        },
+        "selection": {
+          "$ref": "#/$defs/context_selection"
         }
       }
     },
@@ -6074,6 +6077,41 @@
       "check": {
         "kind": "character",
         "any.missing": false
+      }
+    },
+    "context_selection": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "subset.of": ["source_count", "source_num_found", "source_indices"],
+        "must.include": ["source_count", "source_num_found", "source_indices"]
+      },
+      "fields": {
+        "source_count": {
+          "check": {
+            "kind": "integer",
+            "lower": 0,
+            "len": 1,
+            "any.missing": false
+          }
+        },
+        "source_num_found": {
+          "check": {
+            "kind": "integer",
+            "lower": 0,
+            "len": 1,
+            "any.missing": false
+          }
+        },
+        "source_indices": {
+          "check": {
+            "kind": "integer",
+            "lower": 1,
+            "any.missing": false
+          }
+        }
       }
     },
     "context_time_filter": {
