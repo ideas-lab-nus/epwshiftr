@@ -603,6 +603,93 @@ test_that("EsgDataset slice() reopens selected files only when requested", {
     )
 })
 
+test_that("EsgDataset reachable() checks current local files and selection source indices", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        tempfile(fileext = ".nc"),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    sliced <- ds$slice(c(3L, 2L))
+    diag <- sliced$reachable()
+
+    expect_named(diag, c("file_index", "source_index", "data_node", "service", "url", "reachable", "latency_ms", "error"))
+    expect_s3_class(diag, "data.table")
+    expect_identical(diag$file_index, 1:2)
+    expect_identical(diag$source_index, c(3L, 2L))
+    expect_identical(diag$data_node, c(NA_character_, NA_character_))
+    expect_identical(diag$service, c("local", "local"))
+    expect_identical(diag$url, paths[c(3L, 2L)])
+    expect_identical(diag$reachable, c(TRUE, FALSE))
+    expect_equal(diag$latency_ms, c(0, 0))
+    expect_identical(diag$error, c(NA_character_, "File does not exist."))
+
+    file_url <- EsgDataset$new(paste0("file://", paths[[1L]]))$reachable()
+    expect_identical(file_url$service, "local")
+    expect_true(file_url$reachable)
+    expect_equal(file_url$latency_ms, 0)
+})
+
+test_that("EsgDataset reachable() probes current remote URLs without cached result context", {
+    urls <- c("https://ok.example.org/data.nc", "https://bad.example.org/data.nc")
+    ds <- EsgDataset$new(urls)
+    esg_dataset_set_context(ds, list(
+        selection = list(
+            source_count = 11L,
+            source_num_found = 20L,
+            source_indices = c(10L, 11L)
+        ),
+        reachability = list(stale = TRUE)
+    ))
+
+    seen <- NULL
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
+            seen <<- list(
+                urls = urls,
+                timeout = timeout,
+                useragent = network_policy$useragent,
+                probe_concurrency = probe_concurrency
+            )
+            data.table::data.table(
+                url = urls,
+                reachable = c(TRUE, FALSE),
+                latency_ms = c(12, NA_real_),
+                error = c(NA_character_, "remote boom")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- ds$reachable(
+        timeout = 7,
+        probe_concurrency = 2L,
+        network_policy = list(useragent = "dataset-agent")
+    )
+
+    expect_identical(seen$urls, urls)
+    expect_identical(seen$timeout, 7)
+    expect_identical(seen$useragent, "dataset-agent")
+    expect_identical(seen$probe_concurrency, 2L)
+    expect_identical(diag$file_index, 1:2)
+    expect_identical(diag$source_index, c(10L, 11L))
+    expect_identical(diag$data_node, c("ok.example.org", "bad.example.org"))
+    expect_true(all(is.na(diag$service)))
+    expect_identical(diag$reachable, c(TRUE, FALSE))
+    expect_equal(diag$latency_ms, c(12, NA))
+    expect_identical(diag$error, c(NA_character_, "remote boom"))
+})
+
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),

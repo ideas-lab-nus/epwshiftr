@@ -408,6 +408,91 @@ test_that("result selection context persists through save/load", {
     expect_identical(loaded_empty$selection(), empty$selection())
 })
 
+test_that("result reachable() returns per-record service probe diagnostics", {
+    docs <- data.frame(
+        id = c("file-ok", "file-dup", "file-missing", "file-fail"),
+        dataset_id = "dataset-1",
+        size = c(1, 2, 3, 4),
+        checksum = c("abc", "def", "ghi", "jkl"),
+        checksum_type = "SHA256",
+        instance_id = paste0("file-instance-", 1:4),
+        master_id = paste0("master-file-", 1:4),
+        replica = FALSE,
+        tracking_id = paste0("hdl:21.14100/mock-file-", 1:4),
+        title = paste0("file-", 1:4, ".nc"),
+        version = 20260101L,
+        data_node = c("same.example.org", "same.example.org", "missing.example.org", "bad.example.org"),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        c(
+            "https://same.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://same.example.org/file.nc|application/netcdf|HTTPServer"
+        ),
+        "https://same.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        character(),
+        "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    calls <- character()
+    timeouts <- numeric()
+    agents <- character()
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_url = function(url, timeout = 5, network_policy = NULL) {
+            calls <<- c(calls, url)
+            timeouts <<- c(timeouts, timeout)
+            useragent <- if (is.null(network_policy$useragent)) NA_character_ else network_policy$useragent
+            agents <<- c(agents, useragent)
+            if (is.na(url) || !nzchar(url)) {
+                return(list(reachable = NA, latency_ms = NA_real_, error = "Missing URL."))
+            }
+            if (grepl("bad", url)) {
+                return(list(reachable = FALSE, latency_ms = NA_real_, error = "boom"))
+            }
+
+            list(reachable = TRUE, latency_ms = 125, error = NA_character_)
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- result$reachable(timeout = 9, network_policy = list(useragent = "test-agent"))
+
+    expect_named(diag, c("record_index", "id", "data_node", "service", "url", "reachable", "latency_ms", "error"))
+    expect_s3_class(diag, "data.table")
+    expect_identical(diag$record_index, 1:4)
+    expect_identical(diag$id, docs$id)
+    expect_identical(diag$data_node, docs$data_node)
+    expect_identical(diag$service, rep("OPENDAP", 4L))
+    expect_identical(diag$url, c(
+        "https://same.example.org/dods/file.nc",
+        "https://same.example.org/dods/file.nc",
+        NA_character_,
+        "https://bad.example.org/dods/file.nc"
+    ))
+    expect_identical(diag$reachable, c(TRUE, TRUE, NA, FALSE))
+    expect_equal(diag$latency_ms, c(125, 125, NA, NA))
+    expect_identical(diag$error, c(NA_character_, NA_character_, "Missing URL.", "boom"))
+    expect_equal(sum(calls == "https://same.example.org/dods/file.nc", na.rm = TRUE), 1L)
+    expect_equal(sum(calls == "https://bad.example.org/dods/file.nc", na.rm = TRUE), 1L)
+    expect_true(any(is.na(calls)))
+    expect_true(all(timeouts == 9))
+    expect_true(all(agents == "test-agent"))
+
+    selected <- result$slice(diag$reachable %in% TRUE)
+    expect_identical(selected$id, c("file-ok", "file-dup"))
+
+    http <- result$reachable(service = "HTTPServer")
+    expect_identical(http$service, rep("HTTPServer", 4L))
+    expect_identical(http$url, c("https://same.example.org/file.nc", rep(NA_character_, 3L)))
+    expect_identical(http$reachable, c(TRUE, NA, NA, NA))
+
+    empty <- query_result_test_object("File", docs[0L, , drop = FALSE], query_result_test_params("File"))
+    empty_diag <- empty$reachable()
+    expect_named(empty_diag, names(diag))
+    expect_equal(nrow(empty_diag), 0L)
+})
+
 test_that("File and Aggregation results filter time using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))

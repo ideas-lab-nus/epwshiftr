@@ -326,6 +326,56 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # reachable {{{
+        #' @description
+        #' Probe whether this dataset's current files or URLs are reachable.
+        #'
+        #' `$reachable()` checks the actual URLs or local paths stored in the
+        #' dataset. It does not reuse reachability checks from an `EsgResult`;
+        #' opened datasets, fallback downloads, and manually created datasets
+        #' are always evaluated from their current `url` values.
+        #'
+        #' @param timeout Timeout for each remote URL probe in seconds.
+        #'        Default: `5`.
+        #' @param probe_concurrency Maximum concurrent remote URL probes.
+        #'        Default: `1`.
+        #' @param network_policy Optional list of curl options, including
+        #'        `connect_timeout`, `ssl_verifypeer`, `proxy`, and `useragent`.
+        #'
+        #' @return A [data.table][data.table::data.table()] with columns
+        #'        `file_index`, `source_index`, `data_node`, `service`, `url`,
+        #'        `reachable`, `latency_ms`, and `error`.
+        reachable = function(timeout = 5, probe_concurrency = 1L, network_policy = NULL) {
+            urls <- private$urls
+            probes <- query_result_reachable_probe_urls(
+                urls,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency
+            )
+            selection <- private$get_selection_context()
+            source_index <- rep(NA_integer_, length(urls))
+            if (length(selection$source_indices) == length(urls)) {
+                source_index <- selection$source_indices
+            }
+
+            data.table::data.table(
+                file_index = seq_along(urls),
+                source_index = source_index,
+                data_node = query_result_reachable_url_host(urls),
+                service = data.table::fifelse(
+                    query_result_reachable_is_local_url(urls),
+                    "local",
+                    NA_character_
+                ),
+                url = urls,
+                reachable = probes$reachable,
+                latency_ms = probes$latency_ms,
+                error = probes$error
+            )
+        },
+        # }}}
+
         # file_inq {{{
         #' @description
         #' Get file information

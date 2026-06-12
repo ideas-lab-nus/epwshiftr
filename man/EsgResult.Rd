@@ -54,6 +54,7 @@ has been recorded.}
 \item \href{#method-EsgResult-save}{\code{EsgResult$save()}}
 \item \href{#method-EsgResult-load}{\code{EsgResult$load()}}
 \item \href{#method-EsgResult-query_url}{\code{EsgResult$query_url()}}
+\item \href{#method-EsgResult-reachable}{\code{EsgResult$reachable()}}
 \item \href{#method-EsgResult-slice}{\code{EsgResult$slice()}}
 \item \href{#method-EsgResult-filter}{\code{EsgResult$filter()}}
 \item \href{#method-EsgResult-selection}{\code{EsgResult$selection()}}
@@ -223,6 +224,45 @@ URL, including pagination requests. Default: \code{"first"}.}
 }
 \subsection{Returns}{
 A named character vector of query URLs.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-reachable"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-reachable}{}}}
+\subsection{Method \code{reachable()}}{
+Probe whether result records are reachable through a service URL.
+
+\verb{$reachable()} performs a lightweight probe of the selected service
+URL for each record already held in the result. It returns diagnostic
+rows and does not modify result context or saved-result metadata.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$reachable(
+  service = "OPENDAP",
+  timeout = 5,
+  probe_concurrency = 1L,
+  network_policy = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{ESGF URL service to probe. Default: \code{"OPENDAP"}.}
+
+\item{\code{timeout}}{Timeout for each URL probe in seconds. Default: \code{5}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default:
+\code{1}.}
+
+\item{\code{network_policy}}{Optional list of curl options, including
+\code{connect_timeout}, \code{ssl_verifypeer}, \code{proxy}, and \code{useragent}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table} with columns
+\code{record_index}, \code{id}, \code{data_node}, \code{service}, \code{url},
+\code{reachable}, \code{latency_ms}, and \code{error}.
 }
 }
 \if{html}{\out{<hr>}}

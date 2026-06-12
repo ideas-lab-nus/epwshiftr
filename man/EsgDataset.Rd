@@ -189,6 +189,7 @@ Hongyuan Jia
 \item \href{#method-EsgDataset-open}{\code{EsgDataset$open()}}
 \item \href{#method-EsgDataset-close}{\code{EsgDataset$close()}}
 \item \href{#method-EsgDataset-slice}{\code{EsgDataset$slice()}}
+\item \href{#method-EsgDataset-reachable}{\code{EsgDataset$reachable()}}
 \item \href{#method-EsgDataset-file_inq}{\code{EsgDataset$file_inq()}}
 \item \href{#method-EsgDataset-var_inq}{\code{EsgDataset$var_inq()}}
 \item \href{#method-EsgDataset-dim_inq}{\code{EsgDataset$dim_inq()}}
@@ -335,6 +336,44 @@ be safely shared between dataset objects.}
 }
 \subsection{Returns}{
 A new \code{EsgDataset} object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgDataset-reachable"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-reachable}{}}}
+\subsection{Method \code{reachable()}}{
+Probe whether this dataset's current files or URLs are reachable.
+
+\verb{$reachable()} checks the actual URLs or local paths stored in the
+dataset. It does not reuse reachability checks from an \code{EsgResult};
+opened datasets, fallback downloads, and manually created datasets
+are always evaluated from their current \code{url} values.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$reachable(
+  timeout = 5,
+  probe_concurrency = 1L,
+  network_policy = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{timeout}}{Timeout for each remote URL probe in seconds.
+Default: \code{5}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent remote URL probes.
+Default: \code{1}.}
+
+\item{\code{network_policy}}{Optional list of curl options, including
+\code{connect_timeout}, \code{ssl_verifypeer}, \code{proxy}, and \code{useragent}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table} with columns
+\code{file_index}, \code{source_index}, \code{data_node}, \code{service}, \code{url},
+\code{reachable}, \code{latency_ms}, and \code{error}.
 }
 }
 \if{html}{\out{<hr>}}

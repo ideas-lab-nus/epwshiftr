@@ -189,6 +189,51 @@ EsgResult <- R6::R6Class(
         },
         # }}}
 
+        # reachable {{{
+        #' @description
+        #' Probe whether result records are reachable through a service URL.
+        #'
+        #' `$reachable()` performs a lightweight probe of the selected service
+        #' URL for each record already held in the result. It returns diagnostic
+        #' rows and does not modify result context or saved-result metadata.
+        #'
+        #' @param service ESGF URL service to probe. Default: `"OPENDAP"`.
+        #' @param timeout Timeout for each URL probe in seconds. Default: `5`.
+        #' @param probe_concurrency Maximum concurrent URL probes. Default:
+        #'        `1`.
+        #' @param network_policy Optional list of curl options, including
+        #'        `connect_timeout`, `ssl_verifypeer`, `proxy`, and `useragent`.
+        #'
+        #' @return A [data.table][data.table::data.table()] with columns
+        #'        `record_index`, `id`, `data_node`, `service`, `url`,
+        #'        `reachable`, `latency_ms`, and `error`.
+        reachable = function(service = "OPENDAP", timeout = 5, probe_concurrency = 1L,
+                             network_policy = NULL) {
+            checkmate::assert_string(service)
+
+            docs <- private$get_docs()
+            n <- nrow(docs)
+            urls <- private$get_url(service, service)
+            probes <- query_result_reachable_probe_urls(
+                urls,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency
+            )
+
+            data.table::data.table(
+                record_index = seq_len(n),
+                id = as.character(query_result_column(docs, "id")),
+                data_node = as.character(query_result_column(docs, "data_node")),
+                service = rep(service, n),
+                url = urls,
+                reachable = probes$reachable,
+                latency_ms = probes$latency_ms,
+                error = probes$error
+            )
+        },
+        # }}}
+
         # slice {{{
         #' @description
         #' Subset result records by row, logical selector, or record ID.
@@ -1257,6 +1302,301 @@ query_result_logical_file_id <- function(dt) {
     out[use] <- paste0("id:", id[use])
     out[is.na(out)] <- paste0("row:", which(is.na(out)))
     out
+}
+
+query_result_reachable_url_scheme <- function(url) {
+    url <- as.character(url)
+    out <- rep(NA_character_, length(url))
+    ok <- !is.na(url) & nzchar(url)
+    has_scheme <- ok & grepl("^[A-Za-z][A-Za-z0-9+.-]*:", url)
+    out[has_scheme] <- tolower(sub("^([A-Za-z][A-Za-z0-9+.-]*):.*$", "\\1", url[has_scheme]))
+    out
+}
+
+query_result_reachable_is_http_url <- function(url) {
+    query_result_reachable_url_scheme(url) %in% c("http", "https")
+}
+
+query_result_reachable_is_local_url <- function(url) {
+    scheme <- query_result_reachable_url_scheme(url)
+    missing <- is.na(url) | !nzchar(url)
+    !missing & (is.na(scheme) | scheme == "file")
+}
+
+query_result_reachable_file_path <- function(url) {
+    url <- as.character(url[[1L]])
+    scheme <- query_result_reachable_url_scheme(url)
+    if (identical(scheme, "file")) {
+        path <- sub("^file://", "", url, ignore.case = TRUE)
+        path <- sub("^localhost(?=/)", "", path, perl = TRUE)
+        return(utils::URLdecode(path))
+    }
+
+    url
+}
+
+query_result_reachable_url_host <- function(url) {
+    url <- as.character(url)
+    out <- rep(NA_character_, length(url))
+    use <- query_result_reachable_is_http_url(url)
+    out[use] <- sub("^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+).*$", "\\1", url[use])
+    out
+}
+
+query_result_reachable_missing_probe <- function(error) {
+    list(reachable = NA, latency_ms = NA_real_, error = error)
+}
+
+query_result_reachable_local_probe <- function(url) {
+    path <- query_result_reachable_file_path(url)
+    ok <- file.exists(path)
+    list(
+        reachable = ok,
+        latency_ms = 0,
+        error = if (ok) NA_character_ else "File does not exist."
+    )
+}
+
+query_result_reachable_validate_probe_args <- function(timeout = 5, network_policy = NULL,
+                                                       probe_concurrency = NULL) {
+    checkmate::assert_number(timeout, lower = 0, finite = TRUE)
+    if (timeout <= 0) {
+        cli::cli_abort("`timeout` must be greater than zero.")
+    }
+    if (!is.null(network_policy)) {
+        checkmate::assert_list(network_policy, names = "unique")
+    }
+    if (!is.null(probe_concurrency)) {
+        checkmate::assert_count(probe_concurrency, positive = TRUE)
+    }
+
+    invisible(NULL)
+}
+
+query_result_reachable_http_attempt <- function(url, timeout = 5, network_policy = NULL,
+                                                nobody = TRUE, range = FALSE) {
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
+    }
+
+    start <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            handle <- downloader__curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = nobody
+            )
+            curl::handle_setopt(handle, failonerror = TRUE)
+            if (isTRUE(range)) {
+                curl::handle_setheaders(handle, Range = "bytes=0-0")
+            }
+            curl::curl_fetch_memory(url, handle = handle)
+            list(
+                ok = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                error = NA_character_
+            )
+        },
+        error = function(e) {
+            list(ok = FALSE, latency_ms = NA_real_, error = conditionMessage(e))
+        }
+    )
+}
+
+query_result_reachable_probe_url <- function(url, timeout = 5, network_policy = NULL) {
+    query_result_reachable_validate_probe_args(timeout, network_policy)
+
+    if (is.na(url) || !nzchar(url)) {
+        return(query_result_reachable_missing_probe("Missing URL."))
+    }
+    if (query_result_reachable_is_local_url(url)) {
+        return(query_result_reachable_local_probe(url))
+    }
+    if (!query_result_reachable_is_http_url(url)) {
+        return(query_result_reachable_missing_probe("Unsupported URL scheme."))
+    }
+
+    head <- query_result_reachable_http_attempt(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = TRUE
+    )
+    if (isTRUE(head$ok)) {
+        return(list(reachable = TRUE, latency_ms = head$latency_ms, error = NA_character_))
+    }
+
+    body <- query_result_reachable_http_attempt(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = FALSE,
+        range = TRUE
+    )
+    if (isTRUE(body$ok)) {
+        return(list(reachable = TRUE, latency_ms = body$latency_ms, error = NA_character_))
+    }
+
+    error <- body$error
+    if (is.null(error) || !length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+        error <- head$error
+    }
+    if (is.null(error) || !length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+        error <- "URL probe failed."
+    }
+    list(
+        reachable = FALSE,
+        latency_ms = NA_real_,
+        error = error
+    )
+}
+
+query_result_reachable_probe_http_urls_network <- function(urls, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result_reachable_is_http_url(urls)]
+    if (!length(urls)) {
+        return(stats::setNames(list(), character()))
+    }
+    if (probe_concurrency <= 1L || length(urls) <= 1L) {
+        return(stats::setNames(
+            lapply(urls, query_result_reachable_probe_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    out <- vector("list", length(urls))
+    names(out) <- urls
+    failed <- rep(FALSE, length(urls))
+    ok <- tryCatch({
+        if (is.null(network_policy)) {
+            network_policy <- list()
+        }
+        connect_timeout <- network_policy$connect_timeout
+        if (is.null(connect_timeout)) {
+            connect_timeout <- min(timeout, 3)
+        }
+        ssl_verifypeer <- network_policy$ssl_verifypeer
+        if (is.null(ssl_verifypeer)) {
+            ssl_verifypeer <- TRUE
+        }
+        pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+        for (i in seq_along(urls)) {
+            local({
+                j <- i
+                start <- proc.time()[["elapsed"]]
+                handle <- downloader__curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent,
+                    nobody = TRUE
+                )
+                curl::handle_setopt(handle, failonerror = TRUE)
+                curl::handle_setopt(handle, url = urls[[j]])
+                curl::multi_add(
+                    handle,
+                    done = function(response) {
+                        out[[j]] <<- list(
+                            reachable = TRUE,
+                            latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                            error = NA_character_
+                        )
+                    },
+                    fail = function(error) {
+                        failed[[j]] <<- TRUE
+                    },
+                    pool = pool
+                )
+            })
+        }
+        curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+        TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(ok)) {
+        return(stats::setNames(
+            lapply(urls, query_result_reachable_probe_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    missing <- vapply(out, is.null, logical(1L)) | failed
+    if (any(missing)) {
+        out[missing] <- lapply(
+            urls[missing],
+            query_result_reachable_probe_url,
+            timeout = timeout,
+            network_policy = network_policy
+        )
+    }
+
+    out
+}
+
+query_result_reachable_probe_urls <- function(urls, timeout = 5, network_policy = NULL,
+                                              probe_concurrency = 1L) {
+    checkmate::assert_character(urls, any.missing = TRUE)
+    query_result_reachable_validate_probe_args(timeout, network_policy, probe_concurrency)
+
+    out <- data.table::data.table(
+        url = urls,
+        reachable = rep(NA, length(urls)),
+        latency_ms = rep(NA_real_, length(urls)),
+        error = rep(NA_character_, length(urls))
+    )
+    if (!length(urls)) {
+        return(out)
+    }
+
+    unique_urls <- unique(urls)
+    use_http <- !is.na(unique_urls) & nzchar(unique_urls) & query_result_reachable_is_http_url(unique_urls)
+    probes <- query_result_reachable_probe_http_urls_network(
+        unique_urls[use_http],
+        timeout = timeout,
+        network_policy = network_policy,
+        probe_concurrency = probe_concurrency
+    )
+
+    for (url in unique_urls[!use_http]) {
+        probe <- query_result_reachable_probe_url(url, timeout = timeout, network_policy = network_policy)
+        if (is.na(url)) {
+            idx <- is.na(out$url)
+        } else {
+            idx <- !is.na(out$url) & out$url == url
+        }
+        out[idx, `:=`(
+            reachable = as.logical(probe$reachable),
+            latency_ms = as.numeric(probe$latency_ms),
+            error = as.character(probe$error)
+        )]
+    }
+    if (length(probes)) {
+        for (url in names(probes)) {
+            probe <- probes[[url]]
+            target_url <- url
+            out[!is.na(out[["url"]]) & out[["url"]] == target_url, `:=`(
+                reachable = as.logical(probe$reachable),
+                latency_ms = as.numeric(probe$latency_ms),
+                error = as.character(probe$error)
+            )]
+        }
+    }
+
+    out[]
 }
 
 query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
