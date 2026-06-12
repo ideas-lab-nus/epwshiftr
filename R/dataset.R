@@ -335,23 +335,31 @@ EsgDataset <- R6::R6Class(
         #' opened datasets, fallback downloads, and manually created datasets
         #' are always evaluated from their current `url` values.
         #'
-        #' @param timeout Timeout for each remote URL probe in seconds.
-        #'        Default: `5`.
-        #' @param probe_concurrency Maximum concurrent remote URL probes.
-        #'        Default: `1`.
-        #' @param network_policy Optional list of curl options, including
-        #'        `connect_timeout`, `ssl_verifypeer`, `proxy`, and `useragent`.
+        #' @param level Probe level. `"data_node"` probes the root URL of each
+        #'        remote data node; `"url"` probes the actual dataset URL.
+        #'        Default: `"data_node"`.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`.
         #'
         #' @return A [data.table][data.table::data.table()] with columns
         #'        `file_index`, `source_index`, `data_node`, `service`, `url`,
-        #'        `reachable`, `latency_ms`, and `error`.
-        reachable = function(timeout = 5, probe_concurrency = 1L, network_policy = NULL) {
+        #'        `reachable`, `latency_ms`, `error`, `probe_level`,
+        #'        `probe_url`, and `probe_cached`.
+        reachable = function(level = c("data_node", "url"), probe = NULL) {
+            level <- match.arg(level)
+            probe <- query_result_reachable_normalize_probe(probe)
             urls <- private$urls
-            probes <- query_result_reachable_probe_urls(
+            data_node <- query_result_reachable_url_host(urls)
+            probes <- query_result_reachable_probe_targets(
                 urls,
-                timeout = timeout,
-                network_policy = network_policy,
-                probe_concurrency = probe_concurrency
+                data_node = data_node,
+                level = level,
+                timeout = probe$timeout,
+                network_policy = probe$network_policy,
+                probe_concurrency = probe$concurrency,
+                cache_seconds = probe$cache_seconds,
+                cache_failures_seconds = probe$cache_failures_seconds
             )
             selection <- private$get_selection_context()
             source_index <- rep(NA_integer_, length(urls))
@@ -362,7 +370,7 @@ EsgDataset <- R6::R6Class(
             data.table::data.table(
                 file_index = seq_along(urls),
                 source_index = source_index,
-                data_node = query_result_reachable_url_host(urls),
+                data_node = data_node,
                 service = data.table::fifelse(
                     query_result_reachable_is_local_url(urls),
                     "local",
@@ -371,7 +379,10 @@ EsgDataset <- R6::R6Class(
                 url = urls,
                 reachable = probes$reachable,
                 latency_ms = probes$latency_ms,
-                error = probes$error
+                error = probes$error,
+                probe_level = probes$probe_level,
+                probe_url = probes$probe_url,
+                probe_cached = probes$probe_cached
             )
         },
         # }}}

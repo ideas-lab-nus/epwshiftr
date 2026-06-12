@@ -238,9 +238,8 @@ rows and does not modify result context or saved-result metadata.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResult$reachable(
   service = "OPENDAP",
-  timeout = 5,
-  probe_concurrency = 1L,
-  network_policy = NULL
+  level = c("data_node", "url"),
+  probe = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -249,20 +248,21 @@ rows and does not modify result context or saved-result metadata.
 \describe{
 \item{\code{service}}{ESGF URL service to probe. Default: \code{"OPENDAP"}.}
 
-\item{\code{timeout}}{Timeout for each URL probe in seconds. Default: \code{5}.}
+\item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
+data node; \code{"url"} probes the actual service URL for each
+record. Default: \code{"data_node"}.}
 
-\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default:
-\code{1}.}
-
-\item{\code{network_policy}}{Optional list of curl options, including
-\code{connect_timeout}, \code{ssl_verifypeer}, \code{proxy}, and \code{useragent}.}
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{timeout}, \code{concurrency}, \code{network_policy},
+\code{cache_seconds}, and \code{cache_failures_seconds}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table} with columns
 \code{record_index}, \code{id}, \code{data_node}, \code{service}, \code{url},
-\code{reachable}, \code{latency_ms}, and \code{error}.
+\code{reachable}, \code{latency_ms}, \code{error}, \code{probe_level},
+\code{probe_url}, and \code{probe_cached}.
 }
 }
 \if{html}{\out{<hr>}}

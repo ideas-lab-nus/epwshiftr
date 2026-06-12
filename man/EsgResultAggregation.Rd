@@ -200,9 +200,9 @@ lookup query URL in \verb{$query_url("all")}.
 replicas. If \code{NULL}, the current result index node is used.}
 
 \item{\code{probe}}{Optional named list of probe settings. Supported fields
-are \code{timeout}, \code{concurrency}, and \code{network_policy}. Defaults are
-\code{timeout = 5}, \code{concurrency = 1L}, and
-\code{network_policy = NULL}.}
+are \code{level}, \code{timeout}, \code{concurrency}, \code{network_policy},
+\code{cache_seconds}, and \code{cache_failures_seconds}. Default
+\code{level} is \code{"data_node"}.}
 }
 \if{html}{\out{</div>}}
 }

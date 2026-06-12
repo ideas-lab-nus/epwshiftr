@@ -198,38 +198,50 @@ EsgResult <- R6::R6Class(
         #' rows and does not modify result context or saved-result metadata.
         #'
         #' @param service ESGF URL service to probe. Default: `"OPENDAP"`.
-        #' @param timeout Timeout for each URL probe in seconds. Default: `5`.
-        #' @param probe_concurrency Maximum concurrent URL probes. Default:
-        #'        `1`.
-        #' @param network_policy Optional list of curl options, including
-        #'        `connect_timeout`, `ssl_verifypeer`, `proxy`, and `useragent`.
+        #' @param level Probe level. `"data_node"` probes the root URL of each
+        #'        data node; `"url"` probes the actual service URL for each
+        #'        record. Default: `"data_node"`.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`.
         #'
         #' @return A [data.table][data.table::data.table()] with columns
         #'        `record_index`, `id`, `data_node`, `service`, `url`,
-        #'        `reachable`, `latency_ms`, and `error`.
-        reachable = function(service = "OPENDAP", timeout = 5, probe_concurrency = 1L,
-                             network_policy = NULL) {
+        #'        `reachable`, `latency_ms`, `error`, `probe_level`,
+        #'        `probe_url`, and `probe_cached`.
+        reachable = function(service = "OPENDAP", level = c("data_node", "url"),
+                             probe = NULL) {
             checkmate::assert_string(service)
+            level <- match.arg(level)
+            probe <- query_result_reachable_normalize_probe(probe)
 
             docs <- private$get_docs()
             n <- nrow(docs)
             urls <- private$get_url(service, service)
-            probes <- query_result_reachable_probe_urls(
+            data_node <- as.character(query_result_column(docs, "data_node"))
+            probes <- query_result_reachable_probe_targets(
                 urls,
-                timeout = timeout,
-                network_policy = network_policy,
-                probe_concurrency = probe_concurrency
+                data_node = data_node,
+                level = level,
+                timeout = probe$timeout,
+                network_policy = probe$network_policy,
+                probe_concurrency = probe$concurrency,
+                cache_seconds = probe$cache_seconds,
+                cache_failures_seconds = probe$cache_failures_seconds
             )
 
             data.table::data.table(
                 record_index = seq_len(n),
                 id = as.character(query_result_column(docs, "id")),
-                data_node = as.character(query_result_column(docs, "data_node")),
+                data_node = data_node,
                 service = rep(service, n),
                 url = urls,
                 reachable = probes$reachable,
                 latency_ms = probes$latency_ms,
-                error = probes$error
+                error = probes$error,
+                probe_level = probes$probe_level,
+                probe_url = probes$probe_url,
+                probe_cached = probes$probe_cached
             )
         },
         # }}}
@@ -1357,6 +1369,52 @@ query_result_reachable_local_probe <- function(url) {
     )
 }
 
+query_result_reachable_normalize_probe <- function(probe = NULL, include_level = FALSE,
+                                                   default_level = "data_node") {
+    defaults <- list(
+        timeout = 5,
+        concurrency = 1L,
+        network_policy = NULL,
+        cache_seconds = 3600L,
+        cache_failures_seconds = 0L
+    )
+    if (isTRUE(include_level)) {
+        defaults$level <- default_level
+    }
+    if (!is.null(probe)) {
+        if (!is.list(probe) || is.data.frame(probe)) {
+            cli::cli_abort("`probe` must be `NULL` or a named list.")
+        }
+        if (length(probe)) {
+            names <- names(probe)
+            if (is.null(names) || any(!nzchar(names))) {
+                cli::cli_abort("`probe` must be a named list.")
+            }
+            unknown <- setdiff(names, names(defaults))
+            if (length(unknown)) {
+                cli::cli_abort("Unknown `probe` field{?s}: {.field {unknown}}.")
+            }
+            defaults[names] <- probe
+        }
+    }
+
+    query_result_reachable_validate_probe_args(
+        timeout = defaults$timeout,
+        network_policy = defaults$network_policy,
+        probe_concurrency = defaults$concurrency
+    )
+    checkmate::assert_count(defaults$cache_seconds, positive = FALSE)
+    checkmate::assert_count(defaults$cache_failures_seconds, positive = FALSE)
+    defaults$concurrency <- as.integer(defaults$concurrency)
+    defaults$cache_seconds <- as.integer(defaults$cache_seconds)
+    defaults$cache_failures_seconds <- as.integer(defaults$cache_failures_seconds)
+    if (isTRUE(include_level)) {
+        defaults$level <- match.arg(defaults$level, c("data_node", "url"))
+    }
+
+    defaults
+}
+
 query_result_reachable_validate_probe_args <- function(timeout = 5, network_policy = NULL,
                                                        probe_concurrency = NULL) {
     checkmate::assert_number(timeout, lower = 0, finite = TRUE)
@@ -1370,6 +1428,236 @@ query_result_reachable_validate_probe_args <- function(timeout = 5, network_poli
         checkmate::assert_count(probe_concurrency, positive = TRUE)
     }
 
+    invisible(NULL)
+}
+
+query_result_reachable_node_urls <- function(node) {
+    node <- as.character(node[[1L]])
+    if (is.na(node) || !nzchar(node)) {
+        return(character())
+    }
+    if (grepl("^https?://", node, ignore.case = TRUE)) {
+        return(node)
+    }
+
+    c(sprintf("https://%s/", node), sprintf("http://%s/", node))
+}
+
+query_result_reachable_http_node_attempt <- function(url, timeout = 5, network_policy = NULL) {
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
+    }
+
+    start <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            handle <- downloader__curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = TRUE
+            )
+            curl::handle_setopt(handle, failonerror = FALSE)
+            curl::curl_fetch_memory(url, handle = handle)
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                error = NA_character_,
+                probe_url = url
+            )
+        },
+        error = function(e) {
+            list(
+                reachable = FALSE,
+                latency_ms = NA_real_,
+                error = conditionMessage(e),
+                probe_url = url
+            )
+        }
+    )
+}
+
+query_result_reachable_probe_data_node_url <- function(url, timeout = 5, network_policy = NULL) {
+    query_result_reachable_validate_probe_args(timeout, network_policy)
+    if (is.na(url) || !nzchar(url)) {
+        probe <- query_result_reachable_missing_probe("Missing URL.")
+        probe$probe_url <- NA_character_
+        return(probe)
+    }
+    if (!query_result_reachable_is_http_url(url)) {
+        probe <- query_result_reachable_missing_probe("Unsupported URL scheme.")
+        probe$probe_url <- url
+        return(probe)
+    }
+
+    query_result_reachable_http_node_attempt(url, timeout = timeout, network_policy = network_policy)
+}
+
+query_result_reachable_probe_data_node_urls_network <- function(urls, timeout = 5,
+                                                                network_policy = NULL,
+                                                                probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result_reachable_is_http_url(urls)]
+    if (!length(urls)) {
+        return(stats::setNames(list(), character()))
+    }
+    if (probe_concurrency <= 1L || length(urls) <= 1L) {
+        return(stats::setNames(
+            lapply(urls, query_result_reachable_probe_data_node_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    out <- vector("list", length(urls))
+    names(out) <- urls
+    failed <- rep(FALSE, length(urls))
+    ok <- tryCatch({
+        if (is.null(network_policy)) {
+            network_policy <- list()
+        }
+        connect_timeout <- network_policy$connect_timeout
+        if (is.null(connect_timeout)) {
+            connect_timeout <- min(timeout, 3)
+        }
+        ssl_verifypeer <- network_policy$ssl_verifypeer
+        if (is.null(ssl_verifypeer)) {
+            ssl_verifypeer <- TRUE
+        }
+        pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+        for (i in seq_along(urls)) {
+            local({
+                j <- i
+                start <- proc.time()[["elapsed"]]
+                handle <- downloader__curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent,
+                    nobody = TRUE
+                )
+                curl::handle_setopt(handle, failonerror = FALSE)
+                curl::handle_setopt(handle, url = urls[[j]])
+                curl::multi_add(
+                    handle,
+                    done = function(response) {
+                        out[[j]] <<- list(
+                            reachable = TRUE,
+                            latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                            error = NA_character_,
+                            probe_url = urls[[j]]
+                        )
+                    },
+                    fail = function(error) {
+                        failed[[j]] <<- TRUE
+                    },
+                    pool = pool
+                )
+            })
+        }
+        curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+        TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(ok)) {
+        return(stats::setNames(
+            lapply(urls, query_result_reachable_probe_data_node_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    missing <- vapply(out, is.null, logical(1L)) | failed
+    if (any(missing)) {
+        out[missing] <- lapply(
+            urls[missing],
+            query_result_reachable_probe_data_node_url,
+            timeout = timeout,
+            network_policy = network_policy
+        )
+    }
+
+    out
+}
+
+query_result_reachable_network_policy_key <- function(network_policy = NULL) {
+    if (is.null(network_policy) || !length(network_policy)) {
+        return(NULL)
+    }
+    network_policy[sort(names(network_policy))]
+}
+
+query_result_reachable_cache_key <- function(level, target, timeout = 5, network_policy = NULL) {
+    make_cache_key(
+        "reach",
+        list(
+            level = level,
+            target = target,
+            timeout = timeout,
+            network_policy = query_result_reachable_network_policy_key(network_policy)
+        )
+    )
+}
+
+query_result_reachable_cache_get <- function(level, target, timeout = 5, network_policy = NULL,
+                                             cache_seconds = 3600L, cache_failures_seconds = 0L) {
+    if (cache_mode() == "off") {
+        return(NULL)
+    }
+    key <- query_result_reachable_cache_key(level, target, timeout, network_policy)
+    cached <- get_cache()$get(key)
+    if (is.key_missing(cached)) {
+        if (cache_mode() == "offline") {
+            cli::cli_abort("Cache miss in offline mode for reachability probe target {.val {target}}.")
+        }
+        return(NULL)
+    }
+    if (is.null(cached$timestamp) || !inherits(cached$timestamp, "POSIXt")) {
+        return(NULL)
+    }
+
+    age <- as.numeric(difftime(Sys.time(), cached$timestamp, units = "secs"))
+    ttl <- if (isTRUE(cached$result$reachable)) cache_seconds else cache_failures_seconds
+    if (is.na(age) || is.na(ttl) || ttl <= 0L || age > ttl) {
+        return(NULL)
+    }
+
+    result <- cached$result
+    result$probe_cached <- TRUE
+    result
+}
+
+query_result_reachable_cache_set <- function(level, target, timeout = 5, network_policy = NULL,
+                                             result, cache_seconds = 3600L,
+                                             cache_failures_seconds = 0L) {
+    if (cache_mode() == "off" || is.na(target) || !nzchar(target)) {
+        return(invisible(NULL))
+    }
+    ok <- isTRUE(result$reachable)
+    if ((!ok && cache_failures_seconds <= 0L) || (ok && cache_seconds <= 0L)) {
+        return(invisible(NULL))
+    }
+
+    key <- query_result_reachable_cache_key(level, target, timeout, network_policy)
+    value <- list(
+        timestamp = Sys.time(),
+        result = list(
+            reachable = as.logical(result$reachable),
+            latency_ms = as.numeric(result$latency_ms),
+            error = as.character(result$error),
+            probe_url = as.character(result$probe_url)
+        )
+    )
+    get_cache()$set(key, value)
     invisible(NULL)
 }
 
@@ -1594,6 +1882,324 @@ query_result_reachable_probe_urls <- function(urls, timeout = 5, network_policy 
                 error = as.character(probe$error)
             )]
         }
+    }
+
+    out[]
+}
+
+query_result_reachable_probe_data_node <- function(node, timeout = 5, network_policy = NULL,
+                                                   probe_concurrency = 1L) {
+    urls <- query_result_reachable_node_urls(node)
+    if (!length(urls)) {
+        probe <- query_result_reachable_missing_probe("Missing data node.")
+        probe$probe_url <- NA_character_
+        return(probe)
+    }
+
+    errors <- character()
+    for (url in urls) {
+        probes <- query_result_reachable_probe_data_node_urls_network(
+            url,
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency
+        )
+        if (!length(probes)) {
+            error <- "Unsupported data node URL scheme."
+            errors <- c(errors, sprintf("%s: %s", url, error))
+            next
+        }
+        probe <- probes[[url]]
+        if (isTRUE(probe$reachable)) {
+            return(probe)
+        }
+        error <- as.character(probe$error)
+        if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+            error <- "Data node probe failed."
+        }
+        errors <- c(errors, sprintf("%s: %s", url, error[[1L]]))
+    }
+
+    list(
+        reachable = FALSE,
+        latency_ms = NA_real_,
+        error = paste(errors, collapse = " | "),
+        probe_url = urls[[1L]]
+    )
+}
+
+query_result_reachable_probe_data_nodes <- function(data_node, timeout = 5, network_policy = NULL,
+                                                    probe_concurrency = 1L,
+                                                    cache_seconds = 3600L,
+                                                    cache_failures_seconds = 0L) {
+    checkmate::assert_character(data_node, any.missing = TRUE)
+    query_result_reachable_validate_probe_args(timeout, network_policy, probe_concurrency)
+    checkmate::assert_count(cache_seconds, positive = FALSE)
+    checkmate::assert_count(cache_failures_seconds, positive = FALSE)
+
+    out <- data.table::data.table(
+        data_node = data_node,
+        reachable = rep(NA, length(data_node)),
+        latency_ms = rep(NA_real_, length(data_node)),
+        error = rep(NA_character_, length(data_node)),
+        probe_url = rep(NA_character_, length(data_node)),
+        probe_cached = rep(FALSE, length(data_node))
+    )
+    if (!length(data_node)) {
+        return(out)
+    }
+
+    unique_nodes <- unique(data_node)
+    probes <- vector("list", length(unique_nodes))
+    network_pos <- integer()
+    for (k in seq_along(unique_nodes)) {
+        node <- unique_nodes[[k]]
+        if (is.na(node) || !nzchar(node)) {
+            probe <- query_result_reachable_missing_probe("Missing data node.")
+            probe$probe_url <- NA_character_
+            probe$probe_cached <- FALSE
+            probes[[k]] <- probe
+            next
+        }
+        cached <- query_result_reachable_cache_get(
+            "data_node",
+            node,
+            timeout = timeout,
+            network_policy = network_policy,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
+        )
+        if (!is.null(cached)) {
+            probes[[k]] <- cached
+            next
+        }
+
+        network_pos <- c(network_pos, k)
+    }
+
+    if (length(network_pos)) {
+        node_values <- unique_nodes[network_pos]
+        node_urls <- lapply(node_values, query_result_reachable_node_urls)
+        first_urls <- vapply(node_urls, function(urls) {
+            if (length(urls)) urls[[1L]] else NA_character_
+        }, character(1L))
+        first_probes <- query_result_reachable_probe_data_node_urls_network(
+            first_urls,
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency
+        )
+
+        second_pos <- integer()
+        first_errors <- rep(NA_character_, length(network_pos))
+        for (j in seq_along(network_pos)) {
+            k <- network_pos[[j]]
+            urls <- node_urls[[j]]
+            if (!length(urls)) {
+                probe <- query_result_reachable_missing_probe("Missing data node.")
+                probe$probe_url <- NA_character_
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+                next
+            }
+
+            probe <- first_probes[[first_urls[[j]]]]
+            if (is.null(probe)) {
+                probe <- query_result_reachable_missing_probe("Unsupported data node URL scheme.")
+                probe$probe_url <- first_urls[[j]]
+            }
+            if (isTRUE(probe$reachable)) {
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+                next
+            }
+
+            error <- as.character(probe$error)
+            if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+                error <- "Data node probe failed."
+            }
+            first_errors[[j]] <- sprintf("%s: %s", first_urls[[j]], error[[1L]])
+            if (length(urls) > 1L) {
+                second_pos <- c(second_pos, j)
+            } else {
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+            }
+        }
+
+        if (length(second_pos)) {
+            second_urls <- vapply(node_urls[second_pos], `[[`, character(1L), 2L)
+            second_probes <- query_result_reachable_probe_data_node_urls_network(
+                second_urls,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency
+            )
+            for (j in second_pos) {
+                k <- network_pos[[j]]
+                probe <- second_probes[[node_urls[[j]][[2L]]]]
+                if (is.null(probe)) {
+                    probe <- query_result_reachable_missing_probe("Unsupported data node URL scheme.")
+                    probe$probe_url <- node_urls[[j]][[2L]]
+                }
+                if (!isTRUE(probe$reachable)) {
+                    error <- as.character(probe$error)
+                    if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+                        error <- "Data node probe failed."
+                    }
+                    probe$error <- paste(c(first_errors[[j]], sprintf("%s: %s", node_urls[[j]][[2L]], error[[1L]])), collapse = " | ")
+                    probe$probe_url <- node_urls[[j]][[1L]]
+                }
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+            }
+        }
+
+        for (k in network_pos) {
+            probe <- probes[[k]]
+            query_result_reachable_cache_set(
+                "data_node",
+                unique_nodes[[k]],
+                timeout = timeout,
+                network_policy = network_policy,
+                result = probe,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
+            )
+        }
+    }
+
+    for (k in seq_along(unique_nodes)) {
+        node <- unique_nodes[[k]]
+        probe <- probes[[k]]
+        if (is.na(node)) {
+            idx <- is.na(out$data_node)
+        } else {
+            idx <- !is.na(out$data_node) & out$data_node == node
+        }
+        out[idx, `:=`(
+            reachable = as.logical(probe$reachable),
+            latency_ms = as.numeric(probe$latency_ms),
+            error = as.character(probe$error),
+            probe_url = as.character(probe$probe_url),
+            probe_cached = isTRUE(probe$probe_cached)
+        )]
+    }
+
+    out[]
+}
+
+query_result_reachable_normalize_url_probes <- function(probes, urls) {
+    if (!"probe_level" %in% names(probes)) {
+        probes[, probe_level := data.table::fifelse(
+            !is.na(url) & nzchar(url) & query_result_reachable_is_local_url(url),
+            "local",
+            "url"
+        )]
+    }
+    if (!"probe_url" %in% names(probes)) {
+        probes[, probe_url := url]
+    }
+    if (!"probe_cached" %in% names(probes)) {
+        probes[, probe_cached := FALSE]
+    }
+    probes[]
+}
+
+query_result_reachable_probe_targets <- function(urls, data_node = NULL,
+                                                 level = c("data_node", "url"),
+                                                 timeout = 5,
+                                                 network_policy = NULL,
+                                                 probe_concurrency = 1L,
+                                                 cache_seconds = 3600L,
+                                                 cache_failures_seconds = 0L) {
+    level <- match.arg(level)
+    checkmate::assert_character(urls, any.missing = TRUE)
+    query_result_reachable_validate_probe_args(timeout, network_policy, probe_concurrency)
+    n <- length(urls)
+    if (is.null(data_node)) {
+        data_node <- rep(NA_character_, n)
+    }
+    checkmate::assert_character(data_node, any.missing = TRUE, len = n)
+
+    if (identical(level, "url")) {
+        probes <- query_result_reachable_probe_urls(
+            urls,
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency
+        )
+        return(query_result_reachable_normalize_url_probes(probes, urls))
+    }
+
+    out <- data.table::data.table(
+        url = urls,
+        reachable = rep(NA, n),
+        latency_ms = rep(NA_real_, n),
+        error = rep(NA_character_, n),
+        probe_level = rep("data_node", n),
+        probe_url = rep(NA_character_, n),
+        probe_cached = rep(FALSE, n)
+    )
+    if (!n) {
+        return(out)
+    }
+
+    missing <- is.na(urls) | !nzchar(urls)
+    if (any(missing)) {
+        out[missing, `:=`(
+            reachable = NA,
+            latency_ms = NA_real_,
+            error = "Missing URL."
+        )]
+    }
+
+    local <- !missing & query_result_reachable_is_local_url(urls)
+    if (any(local)) {
+        for (i in which(local)) {
+            probe <- query_result_reachable_local_probe(urls[[i]])
+            out[i, `:=`(
+                reachable = as.logical(probe$reachable),
+                latency_ms = as.numeric(probe$latency_ms),
+                error = as.character(probe$error),
+                probe_level = "local",
+                probe_url = urls[[i]],
+                probe_cached = FALSE
+            )]
+        }
+    }
+
+    remote <- !missing & !local & query_result_reachable_is_http_url(urls)
+    unsupported <- !missing & !local & !remote
+    if (any(unsupported)) {
+        out[unsupported, `:=`(
+            reachable = NA,
+            latency_ms = NA_real_,
+            error = "Unsupported URL scheme.",
+            probe_url = urls[unsupported]
+        )]
+    }
+
+    if (any(remote)) {
+        nodes <- data_node
+        fallback <- is.na(nodes) | !nzchar(nodes)
+        nodes[fallback] <- query_result_reachable_url_host(urls[fallback])
+        node_probes <- query_result_reachable_probe_data_nodes(
+            nodes[remote],
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
+        )
+        idx <- which(remote)
+        out[idx, `:=`(
+            reachable = node_probes$reachable,
+            latency_ms = node_probes$latency_ms,
+            error = node_probes$error,
+            probe_url = node_probes$probe_url,
+            probe_cached = node_probes$probe_cached
+        )]
     }
 
     out[]
@@ -2069,32 +2675,7 @@ query_result_expand_replicas <- function(result, service = "HTTPServer", all = T
 }
 
 query_result_repair_normalize_probe <- function(probe = NULL) {
-    defaults <- list(timeout = 5, concurrency = 1L, network_policy = NULL)
-    if (is.null(probe)) {
-        return(defaults)
-    }
-    if (!is.list(probe) || is.data.frame(probe)) {
-        cli::cli_abort("`probe` must be `NULL` or a named list.")
-    }
-    if (length(probe)) {
-        names <- names(probe)
-        if (is.null(names) || any(!nzchar(names))) {
-            cli::cli_abort("`probe` must be a named list.")
-        }
-        unknown <- setdiff(names, names(defaults))
-        if (length(unknown)) {
-            cli::cli_abort("Unknown `probe` field{?s}: {.field {unknown}}.")
-        }
-        defaults[names] <- probe
-    }
-
-    query_result_reachable_validate_probe_args(
-        timeout = defaults$timeout,
-        network_policy = defaults$network_policy,
-        probe_concurrency = defaults$concurrency
-    )
-    defaults$concurrency <- as.integer(defaults$concurrency)
-    defaults
+    query_result_reachable_normalize_probe(probe, include_level = TRUE, default_level = "data_node")
 }
 
 query_result_merge_query_url_context <- function(result, extra_context = NULL) {
@@ -2133,9 +2714,8 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
 
     reach <- result$reachable(
         service = service,
-        timeout = probe$timeout,
-        probe_concurrency = probe$concurrency,
-        network_policy = probe$network_policy
+        level = probe$level,
+        probe = probe[names(probe) != "level"]
     )
     needs_repair <- !(reach$reachable %in% TRUE)
     if (!any(needs_repair)) {
@@ -2157,47 +2737,60 @@ query_result_repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"
         return(priv(result)$result_with_docs(docs))
     }
 
-    candidates <- query_result_collect_replicas_by_master_id(
-        result,
-        unique(master_id[repair_targets]),
-        type = type,
-        index_node = index_node,
-        all = TRUE
-    )
-    candidate_docs <- priv(candidates)$get_docs()
-    context <- query_result_merge_query_url_context(result, priv(candidates)$context)
-    if (!nrow(candidate_docs)) {
-        cli::cli_warn(
-            "No reachable {service} replica found for {length(repair_targets)} record{?s}; keeping original record{?s}."
-        )
-        return(priv(result)$result_with_docs(docs, context = context))
-    }
-
-    candidate_reach <- candidates$reachable(
-        service = service,
-        timeout = probe$timeout,
-        probe_concurrency = probe$concurrency,
-        network_policy = probe$network_policy
-    )
-    candidate_master_id <- as.character(query_result_column(candidate_docs, "master_id"))
-    fields <- unique(c(names(docs), names(candidate_docs)))
-    out <- query_result_align_docs(docs, fields, template = candidate_docs)
-    candidate_docs <- query_result_align_docs(candidate_docs, fields, template = docs)
-    out <- data.table::as.data.table(out)
-    candidate_docs <- data.table::as.data.table(candidate_docs)
+    out <- data.table::as.data.table(docs)
 
     repaired <- rep(FALSE, n)
     for (i in repair_targets) {
-        rows <- which(candidate_master_id == master_id[[i]] & candidate_reach$reachable %in% TRUE)
+        rows <- which(seq_len(n) != i & master_id == master_id[[i]] & reach$reachable %in% TRUE)
         if (!length(rows)) {
             next
         }
 
-        latency <- candidate_reach$latency_ms[rows]
+        latency <- reach$latency_ms[rows]
         latency[is.na(latency)] <- Inf
         chosen <- rows[order(latency, rows)[[1L]]]
-        out[i, ] <- candidate_docs[chosen, ]
+        out[i, ] <- out[chosen, ]
         repaired[[i]] <- TRUE
+    }
+
+    external_targets <- repair_targets[!repaired[repair_targets]]
+    context <- query_result_normalize_context(priv(result)$context)
+    if (length(external_targets)) {
+        candidates <- query_result_collect_replicas_by_master_id(
+            result,
+            unique(master_id[external_targets]),
+            type = type,
+            index_node = index_node,
+            all = TRUE
+        )
+        candidate_docs <- priv(candidates)$get_docs()
+        context <- query_result_merge_query_url_context(result, priv(candidates)$context)
+        if (nrow(candidate_docs)) {
+            candidate_reach <- candidates$reachable(
+                service = service,
+                level = probe$level,
+                probe = probe[names(probe) != "level"]
+            )
+            candidate_master_id <- as.character(query_result_column(candidate_docs, "master_id"))
+            fields <- unique(c(names(out), names(candidate_docs)))
+            out <- query_result_align_docs(out, fields, template = candidate_docs)
+            candidate_docs <- query_result_align_docs(candidate_docs, fields, template = out)
+            out <- data.table::as.data.table(out)
+            candidate_docs <- data.table::as.data.table(candidate_docs)
+
+            for (i in external_targets) {
+                rows <- which(candidate_master_id == master_id[[i]] & candidate_reach$reachable %in% TRUE)
+                if (!length(rows)) {
+                    next
+                }
+
+                latency <- candidate_reach$latency_ms[rows]
+                latency[is.na(latency)] <- Inf
+                chosen <- rows[order(latency, rows)[[1L]]]
+                out[i, ] <- candidate_docs[chosen, ]
+                repaired[[i]] <- TRUE
+            }
+        }
     }
 
     unrepaired <- repair_targets[!repaired[repair_targets]]
@@ -2879,9 +3472,9 @@ EsgResultFile <- R6::R6Class(
         #' @param index_node Optional ESGF search index node used to look up
         #'        replicas. If `NULL`, the current result index node is used.
         #' @param probe Optional named list of probe settings. Supported fields
-        #'        are `timeout`, `concurrency`, and `network_policy`. Defaults are
-        #'        `timeout = 5`, `concurrency = 1L`, and
-        #'        `network_policy = NULL`.
+        #'        are `level`, `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`. Default
+        #'        `level` is `"data_node"`.
         #'
         #' @return A new `EsgResultFile` object.
         repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,
@@ -3381,9 +3974,9 @@ EsgResultAggregation <- R6::R6Class(
         #' @param index_node Optional ESGF search index node used to look up
         #'        replicas. If `NULL`, the current result index node is used.
         #' @param probe Optional named list of probe settings. Supported fields
-        #'        are `timeout`, `concurrency`, and `network_policy`. Defaults are
-        #'        `timeout = 5`, `concurrency = 1L`, and
-        #'        `network_policy = NULL`.
+        #'        are `level`, `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`. Default
+        #'        `level` is `"data_node"`.
         #'
         #' @return A new `EsgResultAggregation` object.
         repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,

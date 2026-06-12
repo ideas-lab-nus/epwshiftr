@@ -456,9 +456,16 @@ test_that("result reachable() returns per-record service probe diagnostics", {
         .package = "epwshiftr"
     )
 
-    diag <- result$reachable(timeout = 9, network_policy = list(useragent = "test-agent"))
+    diag <- result$reachable(
+        level = "url",
+        probe = list(timeout = 9, network_policy = list(useragent = "test-agent"))
+    )
 
-    expect_named(diag, c("record_index", "id", "data_node", "service", "url", "reachable", "latency_ms", "error"))
+    expect_named(diag, c(
+        "record_index", "id", "data_node", "service", "url",
+        "reachable", "latency_ms", "error", "probe_level",
+        "probe_url", "probe_cached"
+    ))
     expect_s3_class(diag, "data.table")
     expect_identical(diag$record_index, 1:4)
     expect_identical(diag$id, docs$id)
@@ -473,6 +480,9 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     expect_identical(diag$reachable, c(TRUE, TRUE, NA, FALSE))
     expect_equal(diag$latency_ms, c(125, 125, NA, NA))
     expect_identical(diag$error, c(NA_character_, NA_character_, "Missing URL.", "boom"))
+    expect_identical(diag$probe_level, rep("url", 4L))
+    expect_identical(diag$probe_url, diag$url)
+    expect_false(any(diag$probe_cached))
     expect_equal(sum(calls == "https://same.example.org/dods/file.nc", na.rm = TRUE), 1L)
     expect_equal(sum(calls == "https://bad.example.org/dods/file.nc", na.rm = TRUE), 1L)
     expect_true(any(is.na(calls)))
@@ -482,7 +492,7 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     selected <- result$slice(diag$reachable %in% TRUE)
     expect_identical(selected$id, c("file-ok", "file-dup"))
 
-    http <- result$reachable(service = "HTTPServer")
+    http <- result$reachable(service = "HTTPServer", level = "url")
     expect_identical(http$service, rep("HTTPServer", 4L))
     expect_identical(http$url, c("https://same.example.org/file.nc", rep(NA_character_, 3L)))
     expect_identical(http$reachable, c(TRUE, NA, NA, NA))
@@ -491,6 +501,70 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     empty_diag <- empty$reachable()
     expect_named(empty_diag, names(diag))
     expect_equal(nrow(empty_diag), 0L)
+})
+
+test_that("result reachable() probes data node root URLs by default", {
+    docs <- data.frame(
+        id = c("file-a", "file-b", "file-missing", "file-fallback"),
+        dataset_id = "dataset-1",
+        size = c(1, 2, 3, 4),
+        checksum = c("abc", "def", "ghi", "jkl"),
+        checksum_type = "SHA256",
+        instance_id = paste0("file-instance-", 1:4),
+        master_id = paste0("master-file-", 1:4),
+        replica = FALSE,
+        tracking_id = paste0("hdl:21.14100/mock-file-", 1:4),
+        title = paste0("file-", 1:4, ".nc"),
+        version = 20260101L,
+        data_node = c("same.example.org", "same.example.org", "missing.example.org", NA_character_),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        "https://same.example.org/dods/a.nc|application/netcdf|OPENDAP",
+        "https://same.example.org/dods/b.nc|application/netcdf|OPENDAP",
+        character(),
+        "https://fallback.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    calls <- character()
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_data_node_urls_network = function(urls, timeout = 5,
+                                                                       network_policy = NULL,
+                                                                       probe_concurrency = 1L) {
+            calls <<- c(calls, urls)
+            stats::setNames(lapply(urls, function(url) {
+                list(
+                    reachable = grepl("same|fallback", url),
+                    latency_ms = if (grepl("fallback", url)) 44 else 22,
+                    error = if (grepl("same|fallback", url)) NA_character_ else "node boom",
+                    probe_url = url
+                )
+            }), urls)
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- result$reachable(probe = list(cache_seconds = 0L, cache_failures_seconds = 0L))
+
+    expect_identical(diag$url, c(
+        "https://same.example.org/dods/a.nc",
+        "https://same.example.org/dods/b.nc",
+        NA_character_,
+        "https://fallback.example.org/dods/file.nc"
+    ))
+    expect_identical(diag$reachable, c(TRUE, TRUE, NA, TRUE))
+    expect_identical(diag$error, c(NA_character_, NA_character_, "Missing URL.", NA_character_))
+    expect_identical(diag$probe_level, rep("data_node", 4L))
+    expect_identical(diag$probe_url, c(
+        "https://same.example.org/",
+        "https://same.example.org/",
+        NA_character_,
+        "https://fallback.example.org/"
+    ))
+    expect_equal(sum(calls == "https://same.example.org/"), 1L)
+    expect_false(any(grepl("/dods/", calls, fixed = TRUE)))
+    expect_false(any(grepl("missing.example.org", calls, fixed = TRUE)))
 })
 
 test_that("File results repair unreachable OPeNDAP URLs using reachable replicas", {
@@ -533,19 +607,25 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
     probe_calls <- list()
     collect_calls <- list()
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
-                                                     probe_concurrency = 1L) {
+        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
             probe_calls[[length(probe_calls) + 1L]] <<- list(
-                urls = urls,
+                data_node = data_node,
                 timeout = timeout,
                 network_policy = network_policy,
-                probe_concurrency = probe_concurrency
+                probe_concurrency = probe_concurrency,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
             )
             data.table::data.table(
-                url = urls,
-                reachable = grepl("ok|replica", urls),
-                latency_ms = ifelse(grepl("replica", urls), 10, ifelse(grepl("ok", urls), 50, NA_real_)),
-                error = ifelse(grepl("ok|replica", urls), NA_character_, "boom")
+                data_node = data_node,
+                reachable = grepl("ok|replica", data_node),
+                latency_ms = ifelse(grepl("replica", data_node), 10, ifelse(grepl("ok", data_node), 50, NA_real_)),
+                error = ifelse(grepl("ok|replica", data_node), NA_character_, "boom"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
@@ -593,10 +673,54 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
     expect_true(all(vapply(probe_calls, function(x) x$timeout, numeric(1L)) == 11))
     expect_true(all(vapply(probe_calls, function(x) x$probe_concurrency, integer(1L)) == 2L))
     expect_true(all(vapply(probe_calls, function(x) x$network_policy$useragent, character(1L)) == "repair-test"))
+    expect_true(all(vapply(probe_calls, function(x) x$cache_seconds, integer(1L)) == 3600L))
+    expect_true(all(vapply(probe_calls, function(x) x$cache_failures_seconds, integer(1L)) == 0L))
     expect_identical(unname(repaired$query_url("all")), c(
         "https://origin.example.org/search",
         "https://replica-index.example.org/replicas"
     ))
+})
+
+test_that("repair_urls prefers reachable replicas already present in the current result", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-bad", "file-current-replica")
+    docs$dataset_id <- c("dataset-1|bad.example.org", "dataset-1|good.example.org")
+    docs$master_id <- c("master-file-current", "master-file-current")
+    docs$instance_id <- c("instance-bad", "instance-current-replica")
+    docs$data_node <- c("bad.example.org", "good.example.org")
+    docs$replica <- c(FALSE, TRUE)
+    docs$url <- I(list(
+        "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://good.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    testthat::local_mocked_bindings(
+        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            data.table::data.table(
+                data_node = data_node,
+                reachable = data_node == "good.example.org",
+                latency_ms = ifelse(data_node == "good.example.org", 7, NA_real_),
+                error = ifelse(data_node == "good.example.org", NA_character_, "bad node"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        query_collect = function(...) {
+            stop("current result replica should avoid an external query")
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(result$repair_urls(), "EsgResultFile")
+
+    expect_identical(repaired$id, c("file-current-replica", "file-current-replica"))
+    expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
 })
 
 test_that("File results repair HTTPServer URLs independently", {
@@ -645,7 +769,10 @@ test_that("File results repair HTTPServer URLs independently", {
         .package = "epwshiftr"
     )
 
-    repaired <- expect_s3_class(result$repair_urls(service = "HTTPServer"), "EsgResultFile")
+    repaired <- expect_s3_class(
+        result$repair_urls(service = "HTTPServer", probe = list(level = "url")),
+        "EsgResultFile"
+    )
 
     expect_identical(repaired$id, "file-http-repaired")
     expect_identical(repaired$data_node, "http-replica.example.org")
@@ -668,13 +795,17 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
     candidate_docs$data_node <- "agg-replica.example.org"
 
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
-                                                     probe_concurrency = 1L) {
+        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
             data.table::data.table(
-                url = urls,
-                reachable = grepl("agg-replica", urls),
-                latency_ms = ifelse(grepl("agg-replica", urls), 12, NA_real_),
-                error = ifelse(grepl("agg-replica", urls), NA_character_, "bad agg")
+                data_node = data_node,
+                reachable = grepl("agg-replica", data_node),
+                latency_ms = ifelse(grepl("agg-replica", data_node), 12, NA_real_),
+                error = ifelse(grepl("agg-replica", data_node), NA_character_, "bad agg"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
@@ -716,13 +847,17 @@ test_that("repair_urls keeps original records when repair is impossible", {
     candidate_docs$data_node <- "still-bad.example.org"
 
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
-                                                     probe_concurrency = 1L) {
+        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
             data.table::data.table(
-                url = urls,
-                reachable = rep(FALSE, length(urls)),
-                latency_ms = rep(NA_real_, length(urls)),
-                error = rep("unreachable", length(urls))
+                data_node = data_node,
+                reachable = rep(FALSE, length(data_node)),
+                latency_ms = rep(NA_real_, length(data_node)),
+                error = rep("unreachable", length(data_node)),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
             )
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,

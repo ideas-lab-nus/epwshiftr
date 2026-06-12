@@ -349,31 +349,27 @@ dataset. It does not reuse reachability checks from an \code{EsgResult};
 opened datasets, fallback downloads, and manually created datasets
 are always evaluated from their current \code{url} values.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$reachable(
-  timeout = 5,
-  probe_concurrency = 1L,
-  network_policy = NULL
-)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$reachable(level = c("data_node", "url"), probe = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{timeout}}{Timeout for each remote URL probe in seconds.
-Default: \code{5}.}
+\item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
+remote data node; \code{"url"} probes the actual dataset URL.
+Default: \code{"data_node"}.}
 
-\item{\code{probe_concurrency}}{Maximum concurrent remote URL probes.
-Default: \code{1}.}
-
-\item{\code{network_policy}}{Optional list of curl options, including
-\code{connect_timeout}, \code{ssl_verifypeer}, \code{proxy}, and \code{useragent}.}
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{timeout}, \code{concurrency}, \code{network_policy},
+\code{cache_seconds}, and \code{cache_failures_seconds}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table} with columns
 \code{file_index}, \code{source_index}, \code{data_node}, \code{service}, \code{url},
-\code{reachable}, \code{latency_ms}, and \code{error}.
+\code{reachable}, \code{latency_ms}, \code{error}, \code{probe_level},
+\code{probe_url}, and \code{probe_cached}.
 }
 }
 \if{html}{\out{<hr>}}
