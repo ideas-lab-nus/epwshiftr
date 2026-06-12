@@ -18,16 +18,26 @@ site_lon <- 103.98
 site_lat <- 1.37
 
 variables <- data.frame(
-    variable_id = c("tas", "psl"),
+    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt"),
     standard_name = c(
         "air_temperature",
-        "air_pressure_at_mean_sea_level"
+        "relative_humidity",
+        "air_pressure_at_mean_sea_level",
+        "surface_downwelling_longwave_flux_in_air",
+        "surface_downwelling_shortwave_flux_in_air",
+        "wind_speed",
+        "cloud_area_fraction"
     ),
     long_name = c(
         "Near-Surface Air Temperature",
-        "Sea Level Pressure"
+        "Near-Surface Relative Humidity",
+        "Sea Level Pressure",
+        "Surface Downwelling Longwave Radiation",
+        "Surface Downwelling Shortwave Radiation",
+        "Near-Surface Wind Speed",
+        "Total Cloud Cover Percentage"
     ),
-    units = c("K", "Pa"),
+    units = c("K", "%", "Pa", "W m-2", "W m-2", "m s-1", "%"),
     stringsAsFactors = FALSE
 )
 
@@ -48,7 +58,12 @@ variable_values <- function(variable_id, i, j, time) {
     base <- switch(
         variable_id,
         tas = 299 + 5 * seasonal,
+        hurs = pmin(95, pmax(40, 72 + 10 * cos(2 * pi * time / length(time)))),
         psl = 101300 + 250 * seasonal,
+        rlds = 340 + 18 * seasonal,
+        rsds = pmax(0, 260 + 180 * sin(2 * pi * time / length(time) - pi / 3)),
+        sfcWind = pmax(0.1, 3 + 0.6 * cos(2 * pi * time / length(time))),
+        clt = pmin(100, pmax(0, 52 + 22 * cos(2 * pi * time / length(time) - pi / 6))),
         1 + seasonal
     )
     base + i / 10 + j / 20

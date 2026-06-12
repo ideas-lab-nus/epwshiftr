@@ -22,6 +22,8 @@ navbar:
       menu:
       - text: "Extract Future Weather Data"
         href: articles/future-weather-workflow.html
+      - text: "Store-Native EPW Morphing Workflow"
+        href: articles/store-native-morphing-workflow.html
       - text: "Select ESGF Data for Future Weather"
         href: articles/select-esgf-data.html
       - text: "Store, Download, and Extract ESGF Files"
@@ -76,6 +78,14 @@ reference:
     contents:
       - morphing_epw
       - future_epw
+
+  - title: Store-native EPW morphing
+    contents:
+      - EpwMorpher
+      - epw_morpher
+      - epw_morph_variables
+      - epw_morph_recipe
+      - epw_morph_periods
 
   - title: Local ESGF store and downloads
     contents:
