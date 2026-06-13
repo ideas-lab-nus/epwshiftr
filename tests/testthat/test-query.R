@@ -127,24 +127,24 @@ local_esgdict_default <- function(dict = NULL, project = "CMIP6", env = parent.f
 
 test_that("QueryParam helpers use typed objects", {
     param <- expect_s3_class(
-        as_query_param("x", list(value = LETTERS[1:3], negate = TRUE)),
+        query_param__as("x", list(value = LETTERS[1:3], negate = TRUE)),
         "S7_object"
     )
-    expect_identical(query_param_kind(param), "facet")
-    expect_identical(query_param_name(param), "x")
-    expect_identical(query_param_value(param), LETTERS[1:3])
-    expect_true(query_param_negate(param))
+    expect_identical(query_param__kind(param), "facet")
+    expect_identical(query_param__name(param), "x")
+    expect_identical(query_param__value(param), LETTERS[1:3])
+    expect_true(query_param__negate(param))
 
-    query_param <- expect_s3_class(as_query_param("datetime_start", "2017"), "S7_object")
-    expect_s3_class(as_query_param("datetime_start", "2017"), "S7_object")
-    expect_identical(query_param_kind(query_param), "datetime_start")
-    expect_identical(query_param_name(query_param), "datetime_start")
-    expect_true(is.solr_date(query_param_value(query_param)))
+    query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
+    expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
+    expect_identical(query_param__kind(query_param), "datetime_start")
+    expect_identical(query_param__name(query_param), "datetime_start")
+    expect_true(is.solr_date(query_param__value(query_param)))
 
-    expect_identical(query_param_spec("project")$class, "facet")
-    expect_identical(query_param_spec("_timestamp")$class, "query")
+    expect_identical(query_param__spec("project")$class, "facet")
+    expect_identical(query_param__spec("_timestamp")$class, "query")
     expect_identical(
-        query_param_names("query"),
+        query_param__names("query"),
         c(
             "datetime_start",
             "datetime_stop",
@@ -156,25 +156,25 @@ test_that("QueryParam helpers use typed objects", {
         )
     )
 
-    flat_params <- query_param_flat(list(
+    flat_params <- query_param__as_store(list(
         datetime_start = solr_date("2017"),
         project = "CMIP6",
         others = list(variable_id = "tas")
-    ))
+    ))$flat()
     expect_s3_class(flat_params$datetime_start, "S7_object")
     expect_s3_class(flat_params$project, "S7_object")
     expect_s3_class(flat_params$variable_id, "S7_object")
 
-    expect_identical(query_param_render(as_query_param("x", list(value = TRUE, negate = TRUE))), "x=false")
-    expect_identical(query_param_render(as_query_param("x", list(value = 1.0, negate = TRUE))), "x!=1")
+    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE))), "x=false")
+    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE))), "x!=1")
     expect_identical(
-        query_param_render(as_query_param("x", list(value = "solr+json", negate = TRUE))),
+        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE))),
         "x!=solr%2Bjson"
     )
 
-    expect_identical(query_param_render(as_query_param("x", TRUE), space = TRUE), "x = true")
-    expect_identical(query_param_render(as_query_param("x", 1.0), space = TRUE), "x = 1")
-    expect_identical(query_param_render(as_query_param("x", "solr+json"), space = TRUE), "x = solr%2Bjson")
+    expect_identical(query_param__render(query_param__as("x", TRUE), space = TRUE), "x = true")
+    expect_identical(query_param__render(query_param__as("x", 1.0), space = TRUE), "x = 1")
+    expect_identical(query_param__render(query_param__as("x", "solr+json"), space = TRUE), "x = solr%2Bjson")
 
     # can build query url
     index_node <- "https://esgf-node.llnl.gov/esg-search"
@@ -194,10 +194,10 @@ test_that("QueryParam helpers use typed objects", {
         query_build(
             index_node,
             list(
-                project = as_query_param("project", "CMIP6"),
+                project = query_param__as("project", "CMIP6"),
                 others = list(
                     project = "CMIP5",
-                    table_id = as_query_param("table_id", "Amon")
+                    table_id = query_param__as("table_id", "Amon")
                 )
             )
         ),
@@ -237,7 +237,7 @@ test_that("QueryParam helpers use typed objects", {
 
     bridge_url <- query_build(
         "https://esgf-node.ornl.gov/esgf-1-5-bridge",
-        list(activity_id = as_query_param("activity_id", list(value = "ScenarioMIP", negate = TRUE)))
+        list(activity_id = query_param__as("activity_id", list(value = "ScenarioMIP", negate = TRUE)))
     )
     expect_true(grepl("query=NOT%20%28activity_id%3A%22ScenarioMIP%22%29", bridge_url, fixed = TRUE))
 
@@ -265,7 +265,7 @@ test_that("esg_query()", {
     expect_named(state, c("index_node", "parameter"))
     expect_identical(state$index_node, "https://esgf.ceda.ac.uk")
     expect_named(state$parameter, c("facet", "control"))
-    expect_identical(query_param_value(state$parameter$facet$experiment_id), "ssp585")
+    expect_identical(query_param__value(state$parameter$facet$experiment_id), "ssp585")
 
     state_all <- q_state$state(null = TRUE)
     expect_named(state_all$parameter, c("facet", "query", "control", "others"))
@@ -273,14 +273,14 @@ test_that("esg_query()", {
 
     expect_s3_class(q_state$index_node("esgf.nci.org.au"), "EsgQuery")
     expect_identical(q_state$index_node(), "https://esgf.nci.org.au")
-    expect_identical(query_param_value(q_state$experiment_id()), "ssp585")
-    expect_identical(query_param_value(q_state$fields()), "source_id")
+    expect_identical(query_param__value(q_state$experiment_id()), "ssp585")
+    expect_identical(query_param__value(q_state$fields()), "source_id")
 
     expect_s3_class(q_state$reset(), "EsgQuery")
     expect_identical(q_state$index_node(), "https://esgf.nci.org.au")
     expect_null(q_state$experiment_id())
-    expect_identical(query_param_value(q_state$project()), "CMIP6")
-    expect_identical(query_param_value(q_state$fields()), "*")
+    expect_identical(query_param__value(q_state$project()), "CMIP6")
+    expect_identical(query_param__value(q_state$fields()), "*")
 
     skip_on_cran()
 
@@ -406,47 +406,47 @@ test_that("EsgQuery$project() and other facet methods", {
     q <- esg_query()
 
     # project
-    expect_equal(query_param_value(q$project()), "CMIP6")
-    expect_equal(query_param_value(q$project("CMIP5")$project()), "CMIP5")
-    expect_equal(query_param_value(q$project(-"CMIP5")$project()), "CMIP5")
-    expect_equal(query_param_value(q$project(!"CMIP5")$project()), "CMIP5")
+    expect_equal(query_param__value(q$project()), "CMIP6")
+    expect_equal(query_param__value(q$project("CMIP5")$project()), "CMIP5")
+    expect_equal(query_param__value(q$project(-"CMIP5")$project()), "CMIP5")
+    expect_equal(query_param__value(q$project(!"CMIP5")$project()), "CMIP5")
 
     # activity id
     expect_null(q$activity_id())
-    expect_equal(query_param_value(q$activity_id(!c("CFMIP", "ScenarioMIP"))$activity_id()), c("CFMIP", "ScenarioMIP"))
+    expect_equal(query_param__value(q$activity_id(!c("CFMIP", "ScenarioMIP"))$activity_id()), c("CFMIP", "ScenarioMIP"))
     expect_null(q$activity_id(NULL)$activity_id())
 
     # experiment_id
     expect_null(q$experiment_id())
-    expect_equal(query_param_value(q$experiment_id(!c("ssp126", "ssp585"))$experiment_id()), c("ssp126", "ssp585"))
+    expect_equal(query_param__value(q$experiment_id(!c("ssp126", "ssp585"))$experiment_id()), c("ssp126", "ssp585"))
     expect_null(q$experiment_id(NULL)$experiment_id())
 
     # source_id
     expect_null(q$source_id())
-    expect_equal(query_param_value(q$source_id(!c("BCC-CSM2-MR", "CESM2"))$source_id()), c("BCC-CSM2-MR", "CESM2"))
+    expect_equal(query_param__value(q$source_id(!c("BCC-CSM2-MR", "CESM2"))$source_id()), c("BCC-CSM2-MR", "CESM2"))
     expect_null(q$source_id(NULL)$source_id())
 
     # variable_id
     expect_null(q$variable_id())
-    expect_equal(query_param_value(q$variable_id(!c("tas", "pr"))$variable_id()), c("tas", "pr"))
+    expect_equal(query_param__value(q$variable_id(!c("tas", "pr"))$variable_id()), c("tas", "pr"))
     expect_null(q$variable_id(NULL)$variable_id())
 
     # frequency
     expect_null(q$frequency())
-    expect_equal(query_param_value(q$frequency(!c("1hr", "day"))$frequency()), c("1hr", "day"))
+    expect_equal(query_param__value(q$frequency(!c("1hr", "day"))$frequency()), c("1hr", "day"))
     expect_null(q$frequency(NULL)$frequency())
 
     # variant_label
     expect_null(q$variant_label())
     expect_equal(
-        query_param_value(q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))$variant_label()),
+        query_param__value(q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))$variant_label()),
         c("r1i1p1f1", "r1i2p1f1")
     )
     expect_null(q$variant_label(NULL)$variant_label())
 
     # nominal_resolution
     expect_null(q$nominal_resolution())
-    expect_equal(query_param_value(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()), {
+    expect_equal(query_param__value(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()), {
         c("100+km", "1x1+degree", "100km")
     })
     expect_true(q$nominal_resolution()@encoded)
@@ -454,7 +454,7 @@ test_that("EsgQuery$project() and other facet methods", {
 
     # data_node
     expect_null(q$data_node())
-    expect_equal(query_param_value(q$data_node("esgf-node.ornl.gov")$data_node()), "esgf-node.ornl.gov")
+    expect_equal(query_param__value(q$data_node("esgf-node.ornl.gov")$data_node()), "esgf-node.ornl.gov")
     expect_null(q$data_node(NULL)$data_node())
 })
 # }}}
@@ -463,7 +463,7 @@ test_that("EsgQuery$project() and other facet methods", {
 test_that("EsgQuery$facets()", {
     expect_null(esg_query()$facets())
     expect_equal(
-        query_param_value(esg_query()$facets(c("activity_id", "source_id"))$facets()),
+        query_param__value(esg_query()$facets(c("activity_id", "source_id"))$facets()),
         c("activity_id", "source_id")
     )
     expect_null(esg_query()$facets(NULL)$facets())
@@ -472,12 +472,12 @@ test_that("EsgQuery$facets()", {
 
 # EsgQuery$fields() {{{
 test_that("EsgQuery$fields()", {
-    expect_equal(query_param_value(esg_query()$fields()), "*")
+    expect_equal(query_param__value(esg_query()$fields()), "*")
     expect_equal(
-        query_param_value(esg_query()$fields(c("activity_id", "source_id"))$fields()),
+        query_param__value(esg_query()$fields(c("activity_id", "source_id"))$fields()),
         c("activity_id", "source_id")
     )
-    expect_equal(query_param_value(esg_query()$fields("*")$fields()), "*")
+    expect_equal(query_param__value(esg_query()$fields("*")$fields()), "*")
     expect_null(esg_query()$fields(NULL)$fields())
 })
 # }}}
@@ -487,12 +487,12 @@ test_that("EsgQuery$shards()", {
     q <- expect_s3_class(esg_query(), "EsgQuery")
 
     expect_null(q$shards())
-    expect_false(query_param_value(q$distrib(FALSE)$distrib()))
+    expect_false(query_param__value(q$distrib(FALSE)$distrib()))
     expect_error(q$shards("a"), "distrib")
-    expect_true(query_param_value(q$distrib(TRUE)$distrib()))
+    expect_true(query_param__value(q$distrib(TRUE)$distrib()))
     expect_s3_class(q$shards("a"), "EsgQuery")
     expect_equal(
-        query_param_value(q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()),
+        query_param__value(q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()),
         "esgf-solr.ceda.ac.uk:8983/solr"
     )
     expect_null(q$shards(NULL)$shards())
@@ -502,8 +502,8 @@ test_that("EsgQuery$shards()", {
 # EsgQuery$replica() {{{
 test_that("EsgQuery$replica()", {
     expect_null(esg_query()$replica())
-    expect_equal(query_param_value(esg_query()$replica(TRUE)$replica()), TRUE)
-    expect_equal(query_param_value(esg_query()$replica(FALSE)$replica()), FALSE)
+    expect_equal(query_param__value(esg_query()$replica(TRUE)$replica()), TRUE)
+    expect_equal(query_param__value(esg_query()$replica(FALSE)$replica()), FALSE)
     expect_null(esg_query()$replica(NULL)$replica())
 })
 # }}}
@@ -660,8 +660,8 @@ test_that("EsgQuery$timestamp_range()", {
     ts1 <- q1$timestamp_range()
     expect_s3_class(ts1$from, "S7_object")
     expect_s3_class(ts1$to, "S7_object")
-    expect_true(is.solr_date(query_param_value(ts1$from)))
-    expect_true(is.solr_date(query_param_value(ts1$to)))
+    expect_true(is.solr_date(query_param__value(ts1$from)))
+    expect_true(is.solr_date(query_param__value(ts1$to)))
     expect_identical(
         unname(priv(q1)$parameter$render("_timestamp")),
         "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]"
@@ -803,25 +803,25 @@ test_that("EsgQuery$version_range()", {
 # EsgQuery$latest() {{{
 test_that("EsgQuery$latest()", {
     expect_null(esg_query()$latest())
-    expect_false(query_param_value(esg_query()$latest(FALSE)$latest()))
-    expect_true(query_param_value(esg_query()$latest(TRUE)$latest()))
+    expect_false(query_param__value(esg_query()$latest(FALSE)$latest()))
+    expect_true(query_param__value(esg_query()$latest(TRUE)$latest()))
     expect_null(esg_query()$latest(TRUE)$latest(NULL)$latest())
 })
 # }}}
 
 # EsgQuery$limit() {{{
 test_that("EsgQuery$limit()", {
-    expect_equal(query_param_value(esg_query()$limit()), 10L)
+    expect_equal(query_param__value(esg_query()$limit()), 10L)
     expect_warning(lim <- esg_query()$limit(12000)$limit(), "10,000")
-    expect_equal(query_param_value(lim), 10000L)
-    expect_equal(query_param_value(esg_query()$limit(10L)$limit()), 10L)
+    expect_equal(query_param__value(lim), 10000L)
+    expect_equal(query_param__value(esg_query()$limit(10L)$limit()), 10L)
 })
 # }}}
 
 # EsgQuery$offset() {{{
 test_that("EsgQuery$offset()", {
-    expect_equal(query_param_value(esg_query()$offset()), 0L)
-    expect_equal(query_param_value(esg_query()$offset(0)$offset()), 0L)
+    expect_equal(query_param__value(esg_query()$offset()), 0L)
+    expect_equal(query_param__value(esg_query()$offset(0)$offset()), 0L)
 })
 # }}}
 
@@ -837,15 +837,15 @@ test_that("EsgQuery$params()", {
     expect_error(q$params(table_id = "day", table_id = "hour"), "unique names")
 
     # can reset existing parameters
-    expect_equal(query_param_value(q$frequency("day")$frequency()), "day")
+    expect_equal(query_param__value(q$frequency("day")$frequency()), "day")
     expect_equal(q$params(frequency = NULL)$params(), list())
     expect_null(q$frequency())
     params <- q$params(table_id = "Amon", member_id = "r1i1p1f1")$params()
     expect_named(params, c("table_id", "member_id"))
     expect_s3_class(params$table_id, "S7_object")
     expect_s3_class(params$member_id, "S7_object")
-    expect_identical(query_param_value(params$table_id), "Amon")
-    expect_identical(query_param_value(params$member_id), "r1i1p1f1")
+    expect_identical(query_param__value(params$table_id), "Amon")
+    expect_identical(query_param__value(params$member_id), "r1i1p1f1")
 
     # cannot set query orchestration controls
     expect_error(q$params(format = "xml"), "cannot be set")
@@ -853,9 +853,9 @@ test_that("EsgQuery$params()", {
     expect_named(q$params(), c("table_id", "member_id"))
 
     # can restore original values in case of error
-    expect_equal(query_param_value(q$frequency("day")$frequency()), "day")
+    expect_equal(query_param__value(q$frequency("day")$frequency()), "day")
     expect_error(q$params(frequency = "1hr", frequency = "a"), "Assertion")
-    expect_equal(query_param_value(q$frequency()), "day")
+    expect_equal(query_param__value(q$frequency()), "day")
 
     # can remove all paramters
     expect_equal(q$params(NULL)$params(), list())
@@ -938,14 +938,14 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
                 dict_check = dict_check
             )
 
-            type <- query_param_value(params$type())
+            type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 local_dataset_docs
             } else {
                 local_file_docs
             }
             response <- local_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -959,13 +959,13 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_true(calls[[1L]]$all)
     expect_false(calls[[1L]]$limit)
     expect_false(calls[[1L]]$dict_check)
-    expect_identical(query_param_value(calls[[1L]]$params$type()), "Dataset")
+    expect_identical(query_param__value(calls[[1L]]$params$type()), "Dataset")
     expect_false(calls[[2L]]$all)
     expect_equal(calls[[2L]]$limit, 3L)
     expect_true(calls[[2L]]$dict_check)
-    expect_identical(query_param_value(calls[[2L]]$params$type()), "File")
+    expect_identical(query_param__value(calls[[2L]]$params$type()), "File")
     expect_null(calls[[2L]]$params$source_id())
-    expect_identical(query_param_value(calls[[2L]]$params$data_node()), "example.org")
+    expect_identical(query_param__value(calls[[2L]]$params$data_node()), "example.org")
     expect_identical(calls[[2L]]$params$render(c("datetime_start", "datetime_stop")), character())
     expect_identical(files$count(), 1L)
 
@@ -1026,7 +1026,7 @@ test_that("query_collect includes only result-field constraints in fields", {
     expect_named(res$docs, c("id", "source_id", "project", "activity_id", "table_id"), ignore.order = TRUE)
     expect_s3_class(res$parameter, "QueryParamStore")
     expect_identical(
-        query_param_value(res$parameter$fields()),
+        query_param__value(res$parameter$fields()),
         c("source_id", "id", "project", "activity_id", "table_id")
     )
 })
@@ -1054,9 +1054,9 @@ test_that("query_collect returns normalized effective parameters", {
     )
 
     expect_s3_class(res$parameter, "QueryParamStore")
-    expect_identical(query_param_value(res$parameter$fields()), c("id", "size", "url", "project"))
-    expect_identical(query_param_value(res$parameter$limit()), 3L)
-    expect_identical(query_param_value(res$parameter$offset()), 0L)
+    expect_identical(query_param__value(res$parameter$fields()), c("id", "size", "url", "project"))
+    expect_identical(query_param__value(res$parameter$limit()), 3L)
+    expect_identical(query_param__value(res$parameter$offset()), 0L)
 
     bridge <- query_collect(
         "https://esgf-node.ornl.gov/esgf-1-5-bridge",

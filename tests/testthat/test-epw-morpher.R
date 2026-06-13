@@ -23,13 +23,13 @@ epw_morpher_test_response <- function(docs) {
 }
 
 epw_morpher_test_params <- function() {
-    query_param_as_store(list(
+    query_param__as_store(list(
         project = "CMIP6",
         latest = TRUE,
         distrib = TRUE,
         limit = 10L,
         type = "File",
-        format = FORMAT_JSON
+        format = QUERY_PARAM__FORMAT_JSON
     ))
 }
 

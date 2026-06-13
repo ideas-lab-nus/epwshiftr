@@ -33,11 +33,11 @@ query_result_test_params <- function(type = "Dataset", ...) {
         distrib = TRUE,
         limit = 1L,
         type = type,
-        format = FORMAT_JSON
+        format = QUERY_PARAM__FORMAT_JSON
     )
     params[names(values)] <- values
 
-    query_param_as_store(params)
+    query_param__as_store(params)
 }
 
 query_result_test_object <- function(type = "Dataset", docs, params = query_result_test_params(type), context = NULL) {
@@ -639,16 +639,16 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
                 constraints = constraints
             )
             expect_identical(index_node, "https://replica-index.example.org")
-            expect_identical(query_param_value(params$type()), "File")
+            expect_identical(query_param__value(params$type()), "File")
             expect_null(params$project())
-            expect_identical(query_param_value(params$params()$instance_id), "instance-bad")
+            expect_identical(query_param__value(params$params()$instance_id), "instance-bad")
             expect_true(all(EsgResultFile$private_fields$required_fields %in% required_fields))
             expect_true(all)
             expect_false(constraints)
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = "https://replica-index.example.org/replicas")
             )
         },
@@ -741,11 +741,11 @@ test_that("expand_replicas falls back to master and version without crossing ver
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_null(params$project())
-            expect_identical(query_param_value(params$params()$master_id), "master-file-fallback")
+            expect_identical(query_param__value(params$params()$master_id), "master-file-fallback")
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = "https://example.org/master-version")
             )
         },
@@ -792,13 +792,13 @@ test_that("File results repair HTTPServer URLs independently", {
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(index_node, "https://example.org")
-            expect_identical(query_param_value(params$type()), "File")
+            expect_identical(query_param__value(params$type()), "File")
             expect_null(params$project())
-            expect_identical(query_param_value(params$params()$instance_id), "file-instance-1")
+            expect_identical(query_param__value(params$params()$instance_id), "file-instance-1")
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = "https://example.org/http-replicas")
             )
         },
@@ -846,14 +846,14 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
         },
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            expect_identical(query_param_value(params$type()), "Aggregation")
+            expect_identical(query_param__value(params$type()), "Aggregation")
             expect_null(params$project())
-            expect_identical(query_param_value(params$params()$instance_id), "file-instance-1")
+            expect_identical(query_param__value(params$params()$instance_id), "file-instance-1")
             expect_true(all(EsgResultAggregation$private_fields$required_fields %in% required_fields))
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = "https://example.org/aggregation-replicas")
             )
         },
@@ -903,11 +903,11 @@ test_that("repair_urls keeps original records when repair is impossible", {
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_null(params$project())
-            expect_identical(query_param_value(params$params()$master_id), "master-no-replica")
+            expect_identical(query_param__value(params$params()$master_id), "master-no-replica")
             list(
                 response = query_result_test_response(candidate_docs),
                 docs = candidate_docs,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = "https://example.org/no-replica")
             )
         },
@@ -1163,12 +1163,12 @@ test_that("empty dataset results collect empty child results without querying", 
     files <- expect_s3_class(datasets$collect(type = "File"), "EsgResultFile")
     expect_equal(files$count(), 0L)
     expect_identical(files$fields, character())
-    expect_identical(query_param_value(priv(files)$parameter$type()), "File")
+    expect_identical(query_param__value(priv(files)$parameter$type()), "File")
 
     aggs <- expect_s3_class(datasets$collect(type = "Aggregation"), "EsgResultAggregation")
     expect_equal(aggs$count(), 0L)
     expect_identical(aggs$fields, character())
-    expect_identical(query_param_value(priv(aggs)$parameter$type()), "Aggregation")
+    expect_identical(query_param__value(priv(aggs)$parameter$type()), "Aggregation")
 })
 
 test_that("dataset result collect inherits controls and normalizes limit", {
@@ -1192,7 +1192,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
                 constraints = constraints
             )
             response <- query_result_test_response(query_result_test_file_docs())
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -1201,22 +1201,22 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     files <- expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
     expect_identical(calls[[1L]]$index_node, "https://example.org")
     expect_equal(calls[[1L]]$limit, this$data_max_limit)
-    expect_false(query_param_value(calls[[1L]]$params$latest()))
-    expect_false(query_param_value(calls[[1L]]$params$distrib()))
-    expect_false(query_param_value(calls[[1L]]$params$replica()))
+    expect_false(query_param__value(calls[[1L]]$params$latest()))
+    expect_false(query_param__value(calls[[1L]]$params$distrib()))
+    expect_false(query_param__value(calls[[1L]]$params$replica()))
     expect_null(calls[[1L]]$params$project())
     expect_null(calls[[1L]]$params$source_id())
-    expect_identical(query_param_value(calls[[1L]]$params$flat()$dataset_id), "dataset-1")
-    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param_value(priv(files)$parameter$fields())))
+    expect_identical(query_param__value(calls[[1L]]$params$flat()$dataset_id), "dataset-1")
+    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param__value(priv(files)$parameter$fields())))
 
     expect_s3_class(
         datasets$collect(fields = "id", limit = 1L, latest = TRUE, distrib = TRUE, replica = TRUE),
         "EsgResultFile"
     )
     expect_equal(calls[[2L]]$limit, 1L)
-    expect_true(query_param_value(calls[[2L]]$params$latest()))
-    expect_true(query_param_value(calls[[2L]]$params$distrib()))
-    expect_true(query_param_value(calls[[2L]]$params$replica()))
+    expect_true(query_param__value(calls[[2L]]$params$latest()))
+    expect_true(query_param__value(calls[[2L]]$params$distrib()))
+    expect_true(query_param__value(calls[[2L]]$params$replica()))
 
     aggs <- expect_s3_class(
         datasets$collect(fields = "id", limit = 1L, type = "Aggregation", index_node = "esg-dn1.nsc.liu.se"),
@@ -1225,13 +1225,13 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_identical(calls[[3L]]$index_node, "https://esg-dn1.nsc.liu.se")
     expect_identical(priv(aggs)$index_node, "https://esg-dn1.nsc.liu.se")
     expect_equal(calls[[3L]]$limit, 1L)
-    expect_false(query_param_value(calls[[3L]]$params$latest()))
-    expect_false(query_param_value(calls[[3L]]$params$distrib()))
-    expect_false(query_param_value(calls[[3L]]$params$replica()))
+    expect_false(query_param__value(calls[[3L]]$params$latest()))
+    expect_false(query_param__value(calls[[3L]]$params$distrib()))
+    expect_false(query_param__value(calls[[3L]]$params$replica()))
     expect_null(calls[[3L]]$params$project())
     expect_null(calls[[3L]]$params$source_id())
-    expect_identical(query_param_value(calls[[3L]]$params$flat()$dataset_id), "dataset-1")
-    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param_value(priv(aggs)$parameter$fields())))
+    expect_identical(query_param__value(calls[[3L]]$params$flat()$dataset_id), "dataset-1")
+    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param__value(priv(aggs)$parameter$fields())))
 })
 
 test_that("dataset result collect accepts data node scope and clears datetime constraints", {
@@ -1251,7 +1251,7 @@ test_that("dataset result collect accepts data node scope and clears datetime co
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(params = params, limit = limit)
             response <- query_result_test_response(query_result_test_file_docs())
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -1261,7 +1261,7 @@ test_that("dataset result collect accepts data node scope and clears datetime co
         datasets$collect(fields = "id", limit = 1L, data_node = "example.org"),
         "EsgResultFile"
     )
-    expect_identical(query_param_value(calls[[1L]]$params$data_node()), "example.org")
+    expect_identical(query_param__value(calls[[1L]]$params$data_node()), "example.org")
     expect_identical(calls[[1L]]$params$render(c("datetime_start", "datetime_stop")), character())
 
     expect_error(datasets$collect(source_id = "AWI-CM-1-1-MR"), "unsupported parameter")
@@ -1286,7 +1286,7 @@ test_that("dataset result collect can target child queries by record index node"
     calls <- list()
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            dataset_id <- query_param_value(params$flat()$dataset_id)
+            dataset_id <- query_param__value(params$flat()$dataset_id)
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, dataset_id = dataset_id)
             docs <- data.frame(
                 id = paste0("file-", dataset_id),
@@ -1296,7 +1296,7 @@ test_that("dataset result collect can target child queries by record index node"
                 check.names = FALSE
             )
             response <- query_result_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(
                 response = response,
                 docs = response$response$docs,
@@ -1337,24 +1337,24 @@ test_that("dataset result expand_replicas queries dataset replicas by identity",
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params, required_fields = required_fields)
             if (!is.null(params$params()$instance_id)) {
-                expect_identical(query_param_value(params$params()$instance_id), "dataset-instance-1")
+                expect_identical(query_param__value(params$params()$instance_id), "dataset-instance-1")
                 out <- docs[rep(1L, 2L), , drop = FALSE]
                 out$id <- c("dataset-1|node-a.example.org", "dataset-1|node-b.example.org")
                 out$data_node <- c("node-a.example.org", "node-b.example.org")
             } else {
-                expect_identical(query_param_value(params$params()$master_id), "dataset-master-1")
+                expect_identical(query_param__value(params$params()$master_id), "dataset-master-1")
                 out <- docs[rep(1L, 2L), , drop = FALSE]
                 out$id <- c("dataset-1.v20260101|node-a.example.org", "dataset-1.v20270101|node-a.example.org")
                 out$version <- c(20260101L, 20270101L)
             }
             expect_identical(index_node, "https://replica-index.example.org")
             expect_null(params$project())
-            expect_identical(query_param_value(params$type()), "Dataset")
+            expect_identical(query_param__value(params$type()), "Dataset")
             expect_true(all(EsgResultDataset$private_fields$required_fields %in% required_fields))
             list(
                 response = query_result_test_response(out),
                 docs = out,
-                parameter = query_param_clone(params),
+                parameter = query_param__clone(params),
                 context = list(query_url = paste0(index_node, "/dataset-replicas"))
             )
         },

@@ -23,13 +23,13 @@ extract_store_test_response <- function(docs) {
 }
 
 extract_store_test_params <- function(type = "File") {
-    query_param_as_store(list(
+    query_param__as_store(list(
         project = "CMIP6",
         latest = TRUE,
         distrib = TRUE,
         limit = 10L,
         type = type,
-        format = FORMAT_JSON
+        format = QUERY_PARAM__FORMAT_JSON
     ))
 }
 
@@ -294,9 +294,9 @@ test_that("EsgStore previews tracked query updates without mutating the store", 
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -364,7 +364,7 @@ test_that("EsgStore updates tracked queries and links file records", {
     file_calls <- 0L
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            type <- query_param_value(params$type())
+            type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 dataset_docs
             } else {
@@ -372,7 +372,7 @@ test_that("EsgStore updates tracked queries and links file records", {
                 if (identical(file_calls, 1L)) first_files else second_files
             }
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -446,9 +446,9 @@ test_that("EsgStore summarizes download preflight without enqueueing tasks", {
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -515,9 +515,9 @@ test_that("EsgStore applies configured download layouts to downloader plans", {
     file_docs <- extract_store_test_file_docs(path = "layout.nc")
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -579,9 +579,9 @@ test_that("EsgStore download preflight reports layout collisions and missing fie
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
@@ -637,9 +637,9 @@ test_that("EsgStore downloads tracked query files through downloader", {
 
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param_value(params$type()), "Dataset")) dataset_docs else file_docs
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
             response <- extract_store_test_response(docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"

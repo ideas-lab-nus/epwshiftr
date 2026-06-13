@@ -154,8 +154,8 @@ FIELDS_FACETS_COMMON <- c(
 #'
 #'   * `NULL`, i.e. there is no constraint on the corresponding parameter
 #'
-#'   * A `QueryParam` object. Use `query_param_value()`, `query_param_negate()`,
-#'     `query_param_name()` and `query_param_kind()` to inspect it.
+#'   * A `QueryParam` object. Use `query_param__value()`, `query_param__negate()`,
+#'     `query_param__name()` and `query_param__kind()` to inspect it.
 #'
 #' Despite methods for specific keywords and facets, you can specify arbitrary
 #' query parameters using
@@ -367,7 +367,7 @@ EsgQuery <- R6::R6Class(
                     facets = "*",
                     limit = 0,
                     distrib = FALSE,
-                    format = FORMAT_JSON
+                    format = QUERY_PARAM__FORMAT_JSON
                 )
             )
 
@@ -402,7 +402,7 @@ EsgQuery <- R6::R6Class(
                     limit = 1,
                     fields = "*",
                     distrib = FALSE,
-                    format = FORMAT_JSON
+                    format = QUERY_PARAM__FORMAT_JSON
                 )
             )
 
@@ -438,7 +438,7 @@ EsgQuery <- R6::R6Class(
                     limit = 0,
                     # Shards are not available if distrib is set to FALSE.
                     distrib = TRUE,
-                    format = FORMAT_JSON
+                    format = QUERY_PARAM__FORMAT_JSON
                 )
             )
 
@@ -494,7 +494,7 @@ EsgQuery <- R6::R6Class(
         #' q$list_values(c("activity_id", "experiment_id"))
         #' }
         list_values = function(facets, force = FALSE) {
-            checkmate::assert_subset(facets, FIELDS_FACETS_ALL)
+            checkmate::assert_subset(facets, QUERY_PARAM__FACET_FIELDS)
             checkmate::assert_flag(force)
 
             url <- query_build(
@@ -506,7 +506,7 @@ EsgQuery <- R6::R6Class(
                     offset = 0,
                     limit = 0,
                     distrib = private$parameter$distrib(),
-                    format = FORMAT_JSON
+                    format = QUERY_PARAM__FORMAT_JSON
                 )
             )
 
@@ -1225,7 +1225,7 @@ EsgQuery <- R6::R6Class(
         #' q$experiment_id("ssp585")$reset()
         #' }
         reset = function() {
-            private$parameter <- query_param_store()
+            private$parameter <- query_param__new_store()
             self
         },
         # }}}
@@ -1315,7 +1315,7 @@ EsgQuery <- R6::R6Class(
             cli::cli_li("Index Node: {private$index_node_url}")
 
             cli::cli_h1("<Query Parameter>")
-            print_query_params(private$parameter)
+            query_param__print(private$parameter)
 
             invisible(self)
         }
@@ -1334,7 +1334,7 @@ EsgQuery <- R6::R6Class(
             )
 
             if (isTRUE(limit)) {
-                value <- query_param_value(private$parameter$limit())
+                value <- query_param__value(private$parameter$limit())
                 if (is.null(value)) {
                     value <- 10L
                 }
@@ -1349,7 +1349,7 @@ EsgQuery <- R6::R6Class(
 
         validate_query_state = function(parameter) {
             type <- parameter$type()
-            type_value <- query_param_value(type)
+            type_value <- query_param__value(type)
             if (!identical(type_value, "Dataset")) {
                 stop(
                     sprintf(
@@ -1365,12 +1365,12 @@ EsgQuery <- R6::R6Class(
             }
 
             format <- parameter$format()
-            format_value <- query_param_value(format)
-            if (!identical(format_value, FORMAT_JSON)) {
+            format_value <- query_param__value(format)
+            if (!identical(format_value, QUERY_PARAM__FORMAT_JSON)) {
                 stop(
                     sprintf(
                         "'EsgQuery' only supports JSON response format '%s'. Loaded query has 'format' = %s.",
-                        FORMAT_JSON,
+                        QUERY_PARAM__FORMAT_JSON,
                         if (is.null(format_value)) "NULL" else sprintf("'%s'", format_value)
                     ),
                     call. = FALSE
@@ -1444,7 +1444,7 @@ assert_bridge_index_node_type <- function(index_node, params) {
         return(invisible(TRUE))
     }
 
-    type <- query_param_value(query_param_as_store(params)$type())
+    type <- query_param__value(query_param__as_store(params)$type())
     if (identical(type, "Aggregation")) {
         cli::cli_abort(c(
             "Bridge index nodes do not support {.val Aggregation} queries.",
@@ -1497,17 +1497,17 @@ query_render_free_text <- function(query) {
         return(character())
     }
 
-    paste0("query=", query_param_encode(query))
+    paste0("query=", query_param__encode(query))
 }
 
 query_render_globus_value <- function(value) {
     value <- as.character(value)
-    ifelse(grepl("*", value, fixed = TRUE), value, query_param_quote_range_bound(value))
+    ifelse(grepl("*", value, fixed = TRUE), value, query_param__quote_bound(value))
 }
 
 query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
-    store <- query_param_clone(params)
+    store <- query_param__clone(params)
 
     if (type == "wget") {
         store$type(NULL)
@@ -1555,11 +1555,11 @@ query_build <- function(index_node, params, type = "search") {
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
     params <- params[!names(params) %in% query_names]
 
-    is_negate <- vapply(params, function(param) isTRUE(query_param_negate(param)), logical(1L))
+    is_negate <- vapply(params, function(param) isTRUE(query_param__negate(param)), logical(1L))
     # facet queries without any negated inputs
     if (!is_bridge || !any(is_negate)) {
         rendered <- c(
-            vapply(params, query_param_render, FUN.VALUE = ""),
+            vapply(params, query_param__render, FUN.VALUE = ""),
             if (length(query_clauses)) {
                 query_render_free_text(paste(query_clauses, collapse = " AND "))
             }
@@ -1576,18 +1576,18 @@ query_build <- function(index_node, params, type = "search") {
     # query syntax should be used since bridge does not support negate syntax
     # like 'project!=CMIP6'.
     # see: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#free-text-queries
-    facets <- paste(vapply(params[!is_negate], query_param_render, FUN.VALUE = ""), collapse = "&")
+    facets <- paste(vapply(params[!is_negate], query_param__render, FUN.VALUE = ""), collapse = "&")
     negate_query <- paste(
         vapply(
             params[is_negate],
             function(param) {
-                value <- query_render_globus_value(query_param_value(param))
+                value <- query_render_globus_value(query_param__value(param))
                 if (length(value) == 1L) {
                     value <- value
                 } else {
                     value <- sprintf("(%s)", paste(value, collapse = " "))
                 }
-                sprintf("NOT (%s:%s)", query_param_name(param), value)
+                sprintf("NOT (%s:%s)", query_param__name(param), value)
             },
             FUN.VALUE = ""
         ),
@@ -1610,11 +1610,11 @@ query_build <- function(index_node, params, type = "search") {
 # query dict check {{{
 query_dict_check_project <- function(store) {
     project <- store$project()
-    if (is.null(project) || isTRUE(query_param_negate(project))) {
+    if (is.null(project) || isTRUE(query_param__negate(project))) {
         return(NULL)
     }
 
-    values <- esgdict__as_character(query_param_value(project))
+    values <- esgdict__as_character(query_param__value(project))
     values <- unique(values[nzchar(values)])
     if (length(values) != 1L) {
         return(NULL)
@@ -1658,8 +1658,8 @@ query_dict_check_args <- function(store, dict) {
         if (
             is.null(param) ||
                 !S7::S7_inherits(param, QueryParamFacet) ||
-                isTRUE(query_param_negate(param)) ||
-                !identical(query_param_spec(name)$role, "result_field")
+                isTRUE(query_param__negate(param)) ||
+                !identical(query_param__spec(name)$role, "result_field")
         ) {
             next
         }
@@ -1669,7 +1669,7 @@ query_dict_check_args <- function(store, dict) {
             next
         }
 
-        values <- esgdict__as_character(query_param_value(param))
+        values <- esgdict__as_character(query_param__value(param))
         values <- unique(values[nzchar(values) & !grepl("[*?]", values)])
         if (!length(values)) {
             next
@@ -1704,7 +1704,7 @@ query_dict_check_warning <- function(invalid, n = 5L) {
 }
 
 query_warn_dict_check <- function(params) {
-    store <- query_param_as_store(params)
+    store <- query_param__as_store(params)
     project <- query_dict_check_project(store)
     if (is.null(project)) {
         return(invisible(NULL))
@@ -1747,7 +1747,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
     )
 
-    store <- query_param_clone(params)
+    store <- query_param__clone(params)
     params <- store$flat()
 
     # include necessary fields
@@ -1755,8 +1755,8 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         if (is_bridge_index_node(index_node)) {
             # bridge index node does not support 'fields='
             store$fields(NULL)
-        } else if (!"*" %in% query_param_value(params$fields)) {
-            fields <- query_param_value(params$fields)
+        } else if (!"*" %in% query_param__value(params$fields)) {
+            fields <- query_param__value(params$fields)
 
             if (!is.null(required_fields)) {
                 fields <- unique(c(fields, required_fields))
@@ -1819,8 +1819,8 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
     # remove if unless explicitly required
     fields <- store$fields()
     if ("score" %in% names(docs) && !is.null(fields)) {
-        in_facets <- "score" %in% query_param_value(fields)
-        if ((in_facets && query_param_negate(fields)) || (!in_facets && !query_param_negate(fields))) {
+        in_facets <- "score" %in% query_param__value(fields)
+        if ((in_facets && query_param__negate(fields)) || (!in_facets && !query_param__negate(fields))) {
             docs$score <- NULL
         }
     }
@@ -1839,7 +1839,7 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
-    params <- query_param_as_store(parameter)$serialize(null = TRUE)
+    params <- query_param__as_store(parameter)$serialize(null = TRUE)
 
     if (length(response)) {
         # NOTE: the timestamp may include sub-seconds, but
@@ -1932,8 +1932,8 @@ query_load <- function(file, schema = NULL) {
 # }}}
 
 # restore_params {{{
-restore_params <- function(input, params = query_param_store()) {
-    query_param_as_store(input)
+restore_params <- function(input, params = query_param__new_store()) {
+    query_param__as_store(input)
 }
 # }}}
 

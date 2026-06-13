@@ -37,7 +37,7 @@ EsgResult <- R6::R6Class(
         #'
         initialize = function(index_node, params, response, context = NULL) {
             private$index_node <- index_node
-            private$parameter <- query_param_clone(params)
+            private$parameter <- query_param__clone(params)
             private$response <- query_result_normalize_response(response)
             private$context <- query_result_normalize_context(context)
             private$register_dynamic_fields()
@@ -763,7 +763,7 @@ EsgResult <- R6::R6Class(
         # validate_loaded_result {{{
         validate_loaded_result = function(q) {
             expected <- private$result_type
-            actual <- query_param_value(q$parameter$type())
+            actual <- query_param__value(q$parameter$type())
             if (!identical(actual, expected)) {
                 stop(sprintf(
                     "Cannot load %s result into %s object. Use esg_result('%s')$load() instead.",
@@ -1004,7 +1004,7 @@ EsgResult <- R6::R6Class(
         # print_parameters {{{
         print_parameters = function() {
             cli::cli_h1("<Query Parameter>")
-            print_query_params(private$parameter)
+            query_param__print(private$parameter)
         },
         # }}}
 
@@ -2684,7 +2684,7 @@ query_result_replica_query_store <- function(type, params) {
     store$latest(NULL)
     store$distrib(TRUE)
     store$type(type)
-    store$format(FORMAT_JSON)
+    store$format(QUERY_PARAM__FORMAT_JSON)
     store$fields("*")
     store$limit(this$data_max_limit)
     store$offset(0L)
@@ -2881,7 +2881,7 @@ query_result_merge_child_collects <- function(results, params) {
     list(
         response = response,
         docs = docs,
-        parameter = query_param_clone(params),
+        parameter = query_param__clone(params),
         context = list(query_url = query_result_normalize_query_url(urls, named = FALSE))
     )
 }
@@ -3130,7 +3130,7 @@ query_result_merge_params <- function(store, params) {
         return(store)
     }
 
-    extra <- query_param_as_store(params)$state(null = FALSE)
+    extra <- query_param__as_store(params)$state(null = FALSE)
     state <- store$state(null = TRUE)
     for (bucket in names(extra)) {
         state[[bucket]][names(extra[[bucket]])] <- extra[[bucket]]
@@ -3464,7 +3464,7 @@ EsgResultDataset <- R6::R6Class(
                 names_reserved <- c(
                     "dataset_id", "fields", "facets", "type", "format",
                     "limit", "offset", "query", "_timestamp", "time",
-                    query_param_names("query")
+                    query_param__names("query")
                 )
                 overrides <- eval_with_bang(..., .env = dots_env)
 
@@ -3500,7 +3500,7 @@ EsgResultDataset <- R6::R6Class(
                         if (is.null(param$value)) {
                             return(NULL)
                         }
-                        query_param_meta(
+                        query_param__meta(
                             QueryParamFacet(
                                 param$value,
                                 negate = isTRUE(param$negate),
@@ -3525,7 +3525,7 @@ EsgResultDataset <- R6::R6Class(
                     return(NULL)
                 }
                 if (S7::S7_inherits(param, QueryParam)) {
-                    return(query_param_value(param))
+                    return(query_param__value(param))
                 }
                 param$value
             }
@@ -3558,15 +3558,15 @@ EsgResultDataset <- R6::R6Class(
             store <- QueryParamStore$new()
             store$project(NULL)
             query_result_merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
-            store$fields(query_param_value(query$fields(fields)$fields()))
-            store$shards(query_param_value(query$shards(controls$shards)$shards()))
-            store$replica(query_param_value(query$replica(controls$replica)$replica()))
-            store$latest(query_param_value(query$latest(controls$latest)$latest()))
-            store$distrib(query_param_value(query$distrib()))
+            store$fields(query_param__value(query$fields(fields)$fields()))
+            store$shards(query_param__value(query$shards(controls$shards)$shards()))
+            store$replica(query_param__value(query$replica(controls$replica)$replica()))
+            store$latest(query_param__value(query$latest(controls$latest)$latest()))
+            store$distrib(query_param__value(query$distrib()))
             store$limit(limit)
             store$offset(0L)
             store$type(type)
-            store$format(FORMAT_JSON)
+            store$format(QUERY_PARAM__FORMAT_JSON)
             store$facets(NULL)
             store$datetime_range(start = NULL, stop = NULL)
 
@@ -4583,7 +4583,7 @@ query_result_empty_response <- function(params) {
     list(
         response = response,
         docs = response$response$docs,
-        parameter = query_param_clone(params),
+        parameter = query_param__clone(params),
         context = list(query_url = character())
     )
 }

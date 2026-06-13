@@ -75,7 +75,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
                 limit = limit
             )
 
-            type <- query_param_value(params$flat()$type)
+            type <- query_param__value(params$flat()$type)
             response <- if (identical(type, "Dataset")) dataset_response else file_response
             list(response = response, docs = response$response$docs)
         },
@@ -100,7 +100,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_false(any(grepl("^latest:", fq_qd)))
 
     resolution_param <- calls[[1L]]$params$nominal_resolution()
-    resolution_value <- query_param_value(resolution_param)
+    resolution_value <- query_param__value(resolution_param)
     expect_identical(resolution_value, c("100km", "50km", "100+km", "50+km"))
     expect_true(resolution_param@encoded)
 
@@ -117,12 +117,12 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     ))
     expect_named(attr(qf, "response")$response$docs, RES_FILE)
     expect_identical(calls[[2L]]$index_node, "https://esgf.ceda.ac.uk")
-    expect_identical(query_param_value(calls[[2L]]$params$type()), "Dataset")
+    expect_identical(query_param__value(calls[[2L]]$params$type()), "Dataset")
     expect_identical(calls[[3L]]$index_node, "https://esgf.ceda.ac.uk")
-    expect_identical(query_param_value(calls[[3L]]$params$type()), "File")
+    expect_identical(query_param__value(calls[[3L]]$params$type()), "File")
     expect_null(calls[[3L]]$params$project())
     expect_null(calls[[3L]]$params$source_id())
-    expect_identical(query_param_value(calls[[3L]]$params$flat()$dataset_id), "dataset-id")
+    expect_identical(query_param__value(calls[[3L]]$params$flat()$dataset_id), "dataset-id")
     expect_setequal(calls[[3L]]$required_fields, EsgResultFile$private_fields$required_fields)
     expect_type(qf$version, "character")
     fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)

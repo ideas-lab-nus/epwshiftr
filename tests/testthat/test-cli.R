@@ -263,8 +263,8 @@ test_that("epwshiftr_cli reports usage and JSON output", {
     expect_equal(added$result$index_node, "https://example.org")
     expect_setequal(store$query_tags(added$result$query_id)$tag, c("cmip", "daily"))
     added_query <- esg_query()$load(file.path(dir, added$result$query_file))
-    expect_true(query_param_negate(added_query$source_id()))
-    expect_equal(query_param_value(added_query$source_id()), c("BCC-CSM2-MR", "CESM2"))
+    expect_true(query_param__negate(added_query$source_id()))
+    expect_equal(query_param__value(added_query$source_id()), c("BCC-CSM2-MR", "CESM2"))
 
     time_added <- epwshiftr_cli(c(
         "--quiet", "--store", dir, "query", "add",
@@ -336,7 +336,7 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             response <- cli_test_response(file_docs)
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"

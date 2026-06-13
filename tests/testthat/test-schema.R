@@ -153,7 +153,7 @@ schema_test_response <- function(docs) {
 schema_test_result_json <- function(type, docs, context = NULL) {
     result <- list(
         index_node = "https://example.org",
-        parameter = query_param_as_store(list(type = type, format = FORMAT_JSON))$serialize(null = TRUE),
+        parameter = query_param__as_store(list(type = type, format = QUERY_PARAM__FORMAT_JSON))$serialize(null = TRUE),
         response = schema_test_response(docs)
     )
     if (!is.null(context)) {

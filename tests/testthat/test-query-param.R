@@ -38,7 +38,7 @@ test_that("QueryParamCtrl", {
     expect_equal(render(ctrl, "latest"), "latest=true")
     expect_equal(render(QueryParamCtrl(1L), "limit"), "limit=1")
     expect_equal(
-        render(QueryParamCtrl(FORMAT_JSON), "format"),
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format"),
         "format=application%2Fsolr%2Bjson"
     )
 })
@@ -61,19 +61,19 @@ test_that("QueryParamStore", {
     store <- QueryParamStore$new()
 
     expect_s3_class(store, "QueryParamStore")
-    expect_identical(query_param_spec("project")$role, "result_field")
-    expect_identical(query_param_spec("fields")$role, "keyword")
-    expect_identical(query_param_spec("datetime_start")$role, "query")
-    expect_identical(query_param_spec("limit")$role, "control")
-    expect_identical(query_param_spec("bbox")$role, "keyword")
+    expect_identical(query_param__spec("project")$role, "result_field")
+    expect_identical(query_param__spec("fields")$role, "keyword")
+    expect_identical(query_param__spec("datetime_start")$role, "query")
+    expect_identical(query_param__spec("limit")$role, "control")
+    expect_identical(query_param__spec("bbox")$role, "keyword")
     expect_true(all(vapply(
         c("start", "end", "from", "to"),
-        function(name) identical(query_param_spec(name)$role, "keyword"),
+        function(name) identical(query_param__spec(name)$role, "keyword"),
         logical(1L)
     )))
     expect_true(all(vapply(
-        QUERY_PARAM_NON_RESULT_FIELDS,
-        function(name) query_param_spec(name)$role != "result_field",
+        QUERY_PARAM__NON_RESULT_FIELDS,
+        function(name) query_param__spec(name)$role != "result_field",
         logical(1L)
     )))
 
@@ -86,7 +86,7 @@ test_that("QueryParamStore", {
     expect_null(store$latest())
     expect_identical(store$offset()@value, 0L)
     expect_identical(store$distrib()@value, TRUE)
-    expect_identical(store$format()@value, FORMAT_JSON)
+    expect_identical(store$format()@value, QUERY_PARAM__FORMAT_JSON)
     expect_error(QueryParamStore$new()$format("application/xml"), "Only JSON")
     expect_null(QueryParamStore$new()$format(NULL)$format())
     expect_identical(QueryParamStore$new()$type("File")$type()@value, "File")
