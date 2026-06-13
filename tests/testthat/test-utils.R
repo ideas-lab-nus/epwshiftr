@@ -105,6 +105,59 @@ test_that("checkmate_any() builds a union spec", {
     )
 })
 
+test_that("checkmate_class_match() handles S7 base classes", {
+    expect_true(checkmate_class_match(90, S7::class_double))
+    expect_true(checkmate_class_match(1L, S7::class_integer))
+    expect_true(checkmate_class_match(TRUE, S7::class_logical))
+    expect_true(checkmate_class_match(1 + 2i, S7::class_complex))
+    expect_true(checkmate_class_match("x", S7::class_character))
+    expect_true(checkmate_class_match(as.raw(1), S7::class_raw))
+    expect_true(checkmate_class_match(list(1), S7::class_list))
+    expect_true(checkmate_class_match(expression(x), S7::class_expression))
+    expect_true(checkmate_class_match(as.name("x"), S7::class_name))
+    expect_true(checkmate_class_match(quote(f(x)), S7::class_call))
+    expect_true(checkmate_class_match(function() NULL, S7::class_function))
+    expect_true(checkmate_class_match(sum, S7::class_function))
+    expect_true(checkmate_class_match(`if`, S7::class_function))
+    expect_true(checkmate_class_match(new.env(), S7::class_environment))
+
+    expect_false(checkmate_class_match(90, S7::class_integer))
+    expect_false(checkmate_class_match(1L, S7::class_double))
+})
+
+test_that("checkmate_class_match() handles S7 union classes", {
+    expect_true(checkmate_class_match(90, S7::class_numeric))
+    expect_true(checkmate_class_match(1L, S7::class_numeric))
+
+    expect_true(checkmate_class_match(TRUE, S7::class_atomic))
+    expect_true(checkmate_class_match(1L, S7::class_atomic))
+    expect_true(checkmate_class_match(1, S7::class_atomic))
+    expect_true(checkmate_class_match(1 + 2i, S7::class_atomic))
+    expect_true(checkmate_class_match("x", S7::class_atomic))
+    expect_true(checkmate_class_match(as.raw(1), S7::class_atomic))
+    expect_false(checkmate_class_match(list(1), S7::class_atomic))
+
+    expect_true(checkmate_class_match(TRUE, S7::class_vector))
+    expect_true(checkmate_class_match(list(1), S7::class_vector))
+    expect_true(checkmate_class_match(expression(x), S7::class_vector))
+    expect_false(checkmate_class_match(new.env(), S7::class_vector))
+
+    expect_true(checkmate_class_match(as.name("x"), S7::class_language))
+    expect_true(checkmate_class_match(quote(f(x)), S7::class_language))
+    expect_false(checkmate_class_match("x", S7::class_language))
+})
+
+test_that("checkmate_class_match() handles S3 and S4 class boundaries", {
+    CheckmateS4ForTest <- methods::setClass("CheckmateS4ForTest", slots = c(value = "numeric"))
+
+    expect_true(checkmate_class_match(Sys.Date(), S7::class_Date))
+    expect_false(checkmate_class_match(1, S7::class_Date))
+    expect_false(checkmate_class_match(CheckmateS4ForTest(value = 1), S7::class_Date))
+
+    expect_true(checkmate_class_match(CheckmateS4ForTest(value = 1), methods::getClass("CheckmateS4ForTest")))
+    expect_false(checkmate_class_match(list(value = 1), methods::getClass("CheckmateS4ForTest")))
+})
+
 test_that("checkmate_property() supports union specs", {
     UnionHolderForTest <- S7::new_class(
         "UnionHolderForTest",
@@ -136,6 +189,32 @@ test_that("checkmate_property() supports union specs", {
     expect_error(UnionHolderForTest(-1L), ">= 0")
     expect_error(UnionHolderForTest(""), "\\[chr\\]")
     expect_error(UnionHolderForTest(1.5), "must be <integer> or <character>")
+})
+
+test_that("checkmate_property() union spec accepts double branches", {
+    NumericHolderForTest <- S7::new_class(
+        "NumericHolderForTest",
+        properties = list(
+            value = checkmate_property(
+                checkmate_any(
+                    checkmate_rule(
+                        S7::class_integer,
+                        checkmate::check_integer,
+                        branch = "int"
+                    ),
+                    checkmate_rule(
+                        S7::class_double,
+                        checkmate::check_double,
+                        branch = "dbl"
+                    )
+                )
+            )
+        )
+    )
+
+    expect_identical(NumericHolderForTest(2L)@value, 2L)
+    expect_identical(NumericHolderForTest(2)@value, 2)
+    expect_error(NumericHolderForTest("2"), "must be <integer> or <double>")
 })
 
 test_that("checkmate_property() union spec uses first matching branch", {

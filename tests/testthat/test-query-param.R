@@ -26,6 +26,12 @@ test_that("QueryParamFacet", {
         render(facet_encoded, "nominal_resolution", encode = TRUE),
         "nominal_resolution=100km,100 km"
     )
+
+    facet_double <- QueryParamFacet(c(90, 180))
+    expect_equal(
+        S7::props(facet_double),
+        list(value = c(90, 180), negate = FALSE, encoded = FALSE)
+    )
 })
 
 test_that("QueryParamCtrl", {
@@ -36,6 +42,7 @@ test_that("QueryParamCtrl", {
         list(value = TRUE)
     )
     expect_equal(render(ctrl, "latest"), "latest=true")
+    expect_equal(render(QueryParamCtrl(0), "offset"), "offset=0")
     expect_equal(render(QueryParamCtrl(1L), "limit"), "limit=1")
     expect_equal(
         render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format"),
@@ -65,9 +72,20 @@ test_that("QueryParamStore", {
     expect_false(query_param__field("fields"))
     expect_false(query_param__field("bbox"))
     expect_false(any(query_param__field(c(
-        "datetime_start", "datetime_stop", "timestamp_from", "timestamp_to",
-        "version_min", "version_max", "type", "format", "facets", "shards",
-        "start", "end", "from", "to"
+        "datetime_start",
+        "datetime_stop",
+        "timestamp_from",
+        "timestamp_to",
+        "version_min",
+        "version_max",
+        "type",
+        "format",
+        "facets",
+        "shards",
+        "start",
+        "end",
+        "from",
+        "to"
     ))))
     expect_true(all(QUERY_PARAM__REST_KEYS %in% query_param__names("all")))
 
@@ -289,7 +307,9 @@ test_that("QueryParamStore", {
     )
 
     expect_warning(
-        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards(
+            "node"
+        )$params(
             table_id = "Amon",
             bbox = "0,0,1,1",
             start = "2020",

@@ -202,7 +202,7 @@ query_param__prop_value <- checkmate_property(
 query_param__prop_values <- checkmate_property(
     checkmate_any(
         checkmate_rule(S7::class_logical, checkmate::check_logical, any.missing = FALSE, branch = "flag"),
-        checkmate_rule(S7::class_double, checkmate::check_numeric, any.missing = FALSE, branch = "double"),
+        checkmate_rule(S7::class_double, checkmate::check_double, any.missing = FALSE, branch = "double"),
         checkmate_rule(S7::class_integer, checkmate::check_integerish, any.missing = FALSE, branch = "integer"),
         checkmate_rule(
             S7::class_character,
@@ -467,7 +467,8 @@ query_param__names <- function(type = c("facet", "date", "control", "dedicated",
 # Date, control, and raw REST keywords are not result fields even when the
 # underlying ESGF metadata exposes similarly named fields.
 query_param__field <- function(name) {
-    name %in% QUERY_PARAM__FIELDS &
+    name %in%
+        QUERY_PARAM__FIELDS &
         !name %in% QUERY_PARAM__REST_KEYS &
         !name %in% query_param__names("date") &
         !name %in% query_param__names("control")
@@ -1888,7 +1889,10 @@ QueryParamStore <- R6::R6Class(
                 checkmate::assert_names(names(state), type = "unique")
             }
             if (any(c("facet", "query", "control", "others") %in% names(state))) {
-                stop("Bucketed query parameter states are no longer supported. Use the flat parameter schema.", call. = FALSE)
+                stop(
+                    "Bucketed query parameter states are no longer supported. Use the flat parameter schema.",
+                    call. = FALSE
+                )
             }
             # store current state in a temp variable and roll back if restore fails at any point
             original <- self$state(name = NULL, null = TRUE)
@@ -2138,7 +2142,12 @@ QueryParamStore <- R6::R6Class(
 
             # directly return existing parameters if no new parameter is given
             if (length(dots) == 0L) {
-                return(private$items[private$extra_names()])
+                extra_names <- private$extra_names()
+                if (!length(extra_names)) {
+                    return(list())
+                }
+
+                return(private$items[extra_names])
             }
 
             # remove all existing parameters if `NULL` is given

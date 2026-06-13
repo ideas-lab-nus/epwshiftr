@@ -115,15 +115,52 @@ checkmate_any <- function(...) {
     )
 }
 
+checkmate_base_type <- function(value) {
+    switch(
+        typeof(value),
+        closure = ,
+        builtin = ,
+        special = "function",
+        language = "call",
+        symbol = "name",
+        typeof(value)
+    )
+}
+
+checkmate_class_match <- function(value, class) {
+    if (is.null(class)) {
+        return(is.null(value))
+    }
+    if (inherits(class, "S7_any")) {
+        return(TRUE)
+    }
+    if (inherits(class, "S7_missing")) {
+        return(missing(value))
+    }
+    if (inherits(class, "S7_base_class")) {
+        return(identical(checkmate_base_type(value), class$class))
+    }
+    if (inherits(class, "S7_union")) {
+        return(any(vapply(class$classes, checkmate_class_match, logical(1L), value = value)))
+    }
+    if (inherits(class, "S7_S3_class")) {
+        return(!isS4(value) && all(class$class %in% class(value)))
+    }
+    if (inherits(class, "S7_class")) {
+        return(S7::S7_inherits(value, class))
+    }
+    if (isS4(class)) {
+        return(isS4(value) && inherits(value, class@className))
+    }
+
+    inherits(value, class)
+}
+
 checkmate_match_rule <- function(value, rules) {
     for (i in seq_along(rules)) {
         rule_class <- rules[[i]]$class
 
-        if (is.null(rule_class)) {
-            if (is.null(value)) {
-                return(i)
-            }
-        } else if (inherits(value, rule_class)) {
+        if (checkmate_class_match(value, rule_class)) {
             return(i)
         }
     }
@@ -610,19 +647,25 @@ write_parquet_file <- function(dt, path) {
 
     tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
     tmp_table <- sprintf("tmp_parquet_%s", fast_hash(list(path, Sys.time(), stats::runif(1L))))
-    on.exit({
-        try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
-        if (file.exists(tmp_file)) {
-            unlink(tmp_file)
-        }
-    }, add = TRUE)
+    on.exit(
+        {
+            try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
+            if (file.exists(tmp_file)) {
+                unlink(tmp_file)
+            }
+        },
+        add = TRUE
+    )
 
     ddb_write_table(conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
-    ddb_exec(conn, sprintf(
-        "COPY %s TO %s (FORMAT PARQUET)",
-        ddb_ident(conn, tmp_table),
-        ddb_literal(conn, tmp_file)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "COPY %s TO %s (FORMAT PARQUET)",
+            ddb_ident(conn, tmp_table),
+            ddb_literal(conn, tmp_file)
+        )
+    )
 
     if (file.exists(path)) {
         unlink(path)
@@ -708,7 +751,11 @@ mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), lab
         return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
     }
 
-    compute_profile <- sprintf("epwshiftr-%s-%s", gsub("[^A-Za-z0-9]+", "-", label), fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L))))
+    compute_profile <- sprintf(
+        "epwshiftr-%s-%s",
+        gsub("[^A-Za-z0-9]+", "-", label),
+        fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
+    )
     mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
@@ -743,12 +790,15 @@ mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), lab
     errors <- vapply(results, mirai_error_message, character(1L))
     failed <- nzchar(errors)
     if (any(failed)) {
-        stop(sprintf(
-            "Failed to complete %s for %d task(s). First error: %s",
-            label,
-            sum(failed),
-            errors[failed][[1L]]
-        ), call. = FALSE)
+        stop(
+            sprintf(
+                "Failed to complete %s for %d task(s). First error: %s",
+                label,
+                sum(failed),
+                errors[failed][[1L]]
+            ),
+            call. = FALSE
+        )
     }
 
     results
