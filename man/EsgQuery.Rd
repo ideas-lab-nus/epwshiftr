@@ -913,7 +913,9 @@ Get or set temporal coverage overlap constraints.
 \describe{
 \item{\code{start, stop}}{Temporal boundary strings accepted by \code{solr_date()},
 complete Solr range expressions, \code{"*"}, or \code{NULL}. If both are
-omitted, the current range state is returned.}
+omitted, the current range state is returned. The helper renders
+Solr constraints for the ESGF REST \code{start}/\code{end} temporal
+coverage keyword semantics.}
 }
 \if{html}{\out{</div>}}
 }

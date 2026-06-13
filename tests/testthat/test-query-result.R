@@ -1265,6 +1265,8 @@ test_that("dataset result collect accepts data node scope and clears datetime co
     expect_identical(calls[[1L]]$params$render(c("datetime_start", "datetime_stop")), character())
 
     expect_error(datasets$collect(source_id = "AWI-CM-1-1-MR"), "unsupported parameter")
+    expect_error(datasets$collect(bbox = "0,0,1,1"), "unsupported parameter")
+    expect_error(datasets$collect(start = "2050"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
     expect_error(datasets$collect(time = "all"), "controlled")
 })
@@ -2001,6 +2003,8 @@ test_that("ESGF Query Result Dataset works", {
     expect_s3_class(datasets$collect(fields = "id", limit = 1, data_node = dataset_data_node), "EsgResultFile")
 
     ## $collect(): can stop if controlled query parameters are supplied through dots
+    expect_error(datasets$collect(bbox = "0,0,1,1"), "unsupported parameter")
+    expect_error(datasets$collect(start = "2050"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
 
     ## $collect(): can collect aggregation

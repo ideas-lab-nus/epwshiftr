@@ -13,8 +13,9 @@ PARAM_BUCKETS <- c(
 )
 # }}}
 
-QUERY_PARAM_KEYWORDS <- c("facets", "fields", "shards")
-QUERY_PARAM_NON_RESULT_FIELDS <- c(QUERY_PARAM_KEYWORDS, "bbox", "start", "end", "from", "to")
+QUERY_PARAM_RAW_REST_KEYWORDS <- c("bbox", "start", "end", "from", "to")
+QUERY_PARAM_KEYWORDS <- c("facets", "fields", "shards", QUERY_PARAM_RAW_REST_KEYWORDS)
+QUERY_PARAM_NON_RESULT_FIELDS <- QUERY_PARAM_KEYWORDS
 
 # FIELDS_FACETS_ALL {{{
 FIELDS_FACETS_ALL <- c(
@@ -54,6 +55,10 @@ FIELDS_FACETS_ALL <- c(
     "globus_url",
     "grid",
     "grid_label",
+    "east_degrees",
+    "height_bottom",
+    "height_top",
+    "height_units",
     "id",
     "index_node",
     "instance_id",
@@ -69,6 +74,7 @@ FIELDS_FACETS_ALL <- c(
     "model",
     "model_cohort",
     "nominal_resolution",
+    "north_degrees",
     "product",
     "product_version",
     "project",
@@ -84,6 +90,7 @@ FIELDS_FACETS_ALL <- c(
     "source_type",
     "source_version",
     "source_version_number",
+    "south_degrees",
     "start_date_string",
     "sub_experiment_id",
     "table_id",
@@ -97,8 +104,10 @@ FIELDS_FACETS_ALL <- c(
     "variable",
     "variable_id",
     "variable_long_name",
+    "variable_units",
     "variant_label",
     "version",
+    "west_degrees",
     "checksum",
     "checksum_type",
     "number_of_aggregations",
@@ -323,8 +332,8 @@ S7::method(print, QueryParam) <- function(x) {
 # QueryParam helpers {{{
 query_param_names <- function(class = c("facet", "query", "control", "all")) {
     class <- match.arg(class)
-    # `fields`, `facets`, and `shards` are REST keywords stored in the facet
-    # bucket for backwards-compatible rendering, not metadata facets.
+    # REST keywords are stored in facet/others buckets for backwards-compatible
+    # rendering, not because they are metadata facets.
     facet <- c(
         "project",
         "activity_id",
@@ -1379,7 +1388,7 @@ QueryParamStore <- R6::R6Class(
         #'
         #' `$datetime_range()` constrains the search to datasets whose temporal
         #' coverage overlaps the specified range. It uses an interval-overlap
-        #' logic consistent with the ESG search server's `start`/`stop` parameters:
+        #' logic consistent with the ESG search server's `start`/`end` keywords:
         #'
         #' - `start` constrains `datetime_start:[* TO start]`: datasets whose
         #'   start time is no later than the specified `start`.
@@ -1454,12 +1463,18 @@ QueryParamStore <- R6::R6Class(
                 bound
             }
 
+            start_bound <- if (!missing(start)) ensure_bound("start", start) else NULL
+            stop_bound <- if (!missing(stop)) ensure_bound("stop", stop) else NULL
+            if ((!missing(start) && !is.null(start_bound)) || (!missing(stop) && !is.null(stop_bound))) {
+                private$clear_raw_keywords_for_helper(c("start", "end"), "$datetime_range()")
+            }
+
             if (!missing(start)) {
-                private$set_param_value("query", "datetime_start", ensure_bound("start", start))
+                private$set_param_value("query", "datetime_start", start_bound)
             }
 
             if (!missing(stop)) {
-                private$set_param_value("query", "datetime_stop", ensure_bound("stop", stop))
+                private$set_param_value("query", "datetime_stop", stop_bound)
             }
 
             self
@@ -1542,12 +1557,18 @@ QueryParamStore <- R6::R6Class(
                 bound
             }
 
+            from_bound <- if (!missing(from)) ensure_bound("from", from) else NULL
+            to_bound <- if (!missing(to)) ensure_bound("to", to) else NULL
+            if ((!missing(from) && !is.null(from_bound)) || (!missing(to) && !is.null(to_bound))) {
+                private$clear_raw_keywords_for_helper(c("from", "to"), "$timestamp_range()")
+            }
+
             if (!missing(from)) {
-                private$set_param_value("query", "timestamp_from", ensure_bound("from", from))
+                private$set_param_value("query", "timestamp_from", from_bound)
             }
 
             if (!missing(to)) {
-                private$set_param_value("query", "timestamp_to", ensure_bound("to", to))
+                private$set_param_value("query", "timestamp_to", to_bound)
             }
 
             self
@@ -1825,7 +1846,7 @@ QueryParamStore <- R6::R6Class(
         #' @return A character vector of parameter names.
         param_names = function(role = NULL, null = FALSE) {
             checkmate::assert_character(role, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
-            checkmate::assert_subset(role, c("result_field", "facet", "query", "control"), empty.ok = TRUE)
+            checkmate::assert_subset(role, c("result_field", "keyword", "facet", "query", "control"), empty.ok = TRUE)
             checkmate::assert_flag(null)
 
             params <- self$flat(null = null)
@@ -2311,6 +2332,10 @@ QueryParamStore <- R6::R6Class(
                     names_oth <- names_oth[!clear]
                 }
             }
+            if (length(params_oth)) {
+                params_oth <- private$filter_raw_keywords_for_helpers(params_oth)
+                names_oth <- names(params_oth)
+            }
 
             # stop for query and control parameters
             reserved_query <- names_oth[names_oth %in% c(names(private$query), "_timestamp")]
@@ -2328,7 +2353,7 @@ QueryParamStore <- R6::R6Class(
                 ))
             }
 
-            not_found <- setdiff(names_oth, FIELDS_FACETS_ALL)
+            not_found <- setdiff(names_oth, c(FIELDS_FACETS_ALL, QUERY_PARAM_KEYWORDS))
             if (length(not_found)) {
                 warning(sprintf(
                     paste(
@@ -2415,6 +2440,52 @@ QueryParamStore <- R6::R6Class(
             }
 
             self
+        },
+        # }}}
+
+        # raw REST keyword helpers {{{
+        raw_keyword_precedence_warning = function(keywords, helper, action) {
+            warning(sprintf(
+                "%s raw REST keyword(s) %s because structured helper %s takes precedence over raw REST keyword constraints.",
+                action,
+                paste(sprintf("'%s'", keywords), collapse = ", "),
+                helper
+            ), call. = FALSE)
+        },
+
+        structured_query_active = function(names) {
+            any(!vapply(private$query[names], is.null, logical(1L)))
+        },
+
+        filter_raw_keywords_for_helpers = function(params) {
+            nms <- names(params)
+            if (private$structured_query_active(c("datetime_start", "datetime_stop"))) {
+                drop <- intersect(nms, c("start", "end"))
+                if (length(drop)) {
+                    private$raw_keyword_precedence_warning(drop, "$datetime_range()", "Ignoring")
+                    params <- params[!nms %in% drop]
+                    nms <- names(params)
+                }
+            }
+            if (private$structured_query_active(c("timestamp_from", "timestamp_to"))) {
+                drop <- intersect(nms, c("from", "to"))
+                if (length(drop)) {
+                    private$raw_keyword_precedence_warning(drop, "$timestamp_range()", "Ignoring")
+                    params <- params[!nms %in% drop]
+                }
+            }
+
+            params
+        },
+
+        clear_raw_keywords_for_helper = function(keywords, helper) {
+            existing <- intersect(keywords, names(private$others))
+            existing <- existing[!vapply(private$others[existing], is.null, logical(1L))]
+            if (length(existing)) {
+                private$others[existing] <- NULL
+                private$raw_keyword_precedence_warning(existing, helper, "Removing")
+            }
+            invisible(existing)
         },
         # }}}
 

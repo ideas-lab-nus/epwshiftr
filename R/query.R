@@ -757,7 +757,9 @@ EsgQuery <- R6::R6Class(
         #'
         #' @param start,stop Temporal boundary strings accepted by `solr_date()`,
         #'        complete Solr range expressions, `"*"`, or `NULL`. If both are
-        #'        omitted, the current range state is returned.
+        #'        omitted, the current range state is returned. The helper renders
+        #'        Solr constraints for the ESGF REST `start`/`end` temporal
+        #'        coverage keyword semantics.
         #'
         #' @return If either boundary is supplied, the modified `EsgQuery`
         #'         object. Otherwise, a list with `start` and `stop` elements.

@@ -65,7 +65,12 @@ test_that("QueryParamStore", {
     expect_identical(query_param_spec("fields")$role, "keyword")
     expect_identical(query_param_spec("datetime_start")$role, "query")
     expect_identical(query_param_spec("limit")$role, "control")
-    expect_identical(query_param_spec("bbox")$role, "facet")
+    expect_identical(query_param_spec("bbox")$role, "keyword")
+    expect_true(all(vapply(
+        c("start", "end", "from", "to"),
+        function(name) identical(query_param_spec(name)$role, "keyword"),
+        logical(1L)
+    )))
     expect_true(all(vapply(
         QUERY_PARAM_NON_RESULT_FIELDS,
         function(name) query_param_spec(name)$role != "result_field",
@@ -98,10 +103,59 @@ test_that("QueryParamStore", {
             tracking_id = "hdl:21.14100/mock",
             retracted = FALSE,
             number_of_files = 1L,
-            number_of_aggregations = 1L
+            number_of_aggregations = 1L,
+            variable_units = "K",
+            north_degrees = 90,
+            east_degrees = 180,
+            south_degrees = -90,
+            west_degrees = -180,
+            height_bottom = 100000,
+            height_top = 1000,
+            height_units = "Pa"
         ),
         NA
     )
+    expect_warning(
+        raw_store <- QueryParamStore$new()$params(
+            bbox = "0,0,1,1",
+            start = "2020",
+            end = "2021",
+            from = "2020",
+            to = "2021"
+        ),
+        NA
+    )
+    expect_setequal(names(raw_store$params()), c("bbox", "start", "end", "from", "to"))
+    expect_true(all(c("bbox", "start", "end", "from", "to") %in% raw_store$param_names(role = "keyword")))
+
+    helper_first <- QueryParamStore$new()$datetime_range(start = "2020")
+    expect_warning(
+        helper_first$params(bbox = "0,0,1,1", start = "2019", end = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_setequal(names(helper_first$params()), "bbox")
+    expect_s3_class(helper_first$datetime_range()$start, "S7_object")
+
+    raw_first <- QueryParamStore$new()$params(start = "2019", end = "2021")
+    expect_warning(
+        raw_first$datetime_range(stop = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(raw_first$params(), 0L)
+
+    timestamp_helper_first <- QueryParamStore$new()$timestamp_range(from = "2020")
+    expect_warning(
+        timestamp_helper_first$params(from = "2019", to = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(timestamp_helper_first$params(), 0L)
+
+    timestamp_raw_first <- QueryParamStore$new()$params(from = "2019", to = "2021")
+    expect_warning(
+        timestamp_raw_first$timestamp_range(to = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(timestamp_raw_first$params(), 0L)
     expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
     expect_null(state_all$query$datetime_start)
 
@@ -251,15 +305,16 @@ test_that("QueryParamStore", {
         c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
     )
 
-    role_store <- suppressWarnings(
-        QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+    expect_warning(
+        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
             table_id = "Amon",
             bbox = "0,0,1,1",
             start = "2020",
             end = "2021",
             from = "2020",
             to = "2021"
-        )
+        ),
+        NA
     )
     expect_setequal(
         role_store$param_names(role = "result_field"),

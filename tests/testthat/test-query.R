@@ -583,6 +583,39 @@ test_that("EsgQuery$datetime_range()", {
     q8$datetime_range(start = NULL)
     expect_null(q8$datetime_range()$start)
 
+    # raw REST temporal keywords are supported when no structured helper is set
+    raw <- esg_query()$params(start = "2020", end = "2021")
+    raw_url <- utils::URLdecode(raw$url())
+    expect_match(raw_url, "start=2020", fixed = TRUE)
+    expect_match(raw_url, "end=2021", fixed = TRUE)
+
+    # structured helper takes precedence over raw REST temporal keywords
+    helper_first <- esg_query()$datetime_range(start = "2020")
+    expect_warning(
+        helper_first$params(start = "2019", end = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    helper_first_query <- decode_query(helper_first$url())
+    helper_first_url <- utils::URLdecode(helper_first$url())
+    expect_match(helper_first_query, 'datetime_start:[* TO "2020-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_false(grepl("start=2019", helper_first_url, fixed = TRUE))
+    expect_false(grepl("end=2021", helper_first_url, fixed = TRUE))
+
+    raw_first <- esg_query()$params(start = "2019", end = "2021")
+    expect_warning(
+        raw_first$datetime_range(stop = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    raw_first_query <- decode_query(raw_first$url())
+    raw_first_url <- utils::URLdecode(raw_first$url())
+    expect_match(
+        raw_first_query,
+        '(datetime_stop:["2020-01-01T00:00:00Z" TO *] OR datetime_end:["2020-01-01T00:00:00Z" TO *])',
+        fixed = TRUE
+    )
+    expect_false(grepl("start=2019", raw_first_url, fixed = TRUE))
+    expect_false(grepl("end=2021", raw_first_url, fixed = TRUE))
+
     # --- error inputs ---
 
     # invalid format: solrdt_parse() errors
@@ -662,6 +695,35 @@ test_that("EsgQuery$timestamp_range()", {
     expect_null(q8$timestamp_range()$from)
     expect_null(q8$timestamp_range()$to)
     expect_identical(decode_query(q8$url()), character(0L))
+
+    # raw REST timestamp keywords are supported when no structured helper is set
+    raw <- esg_query()$params(from = "2020", to = "2021")
+    raw_url <- utils::URLdecode(raw$url())
+    expect_match(raw_url, "from=2020", fixed = TRUE)
+    expect_match(raw_url, "to=2021", fixed = TRUE)
+
+    # structured helper takes precedence over raw REST timestamp keywords
+    helper_first <- esg_query()$timestamp_range(from = "2020")
+    expect_warning(
+        helper_first$params(from = "2019", to = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    helper_first_query <- decode_query(helper_first$url())
+    helper_first_url <- utils::URLdecode(helper_first$url())
+    expect_match(helper_first_query, '_timestamp:["2020-01-01T00:00:00Z" TO *]', fixed = TRUE)
+    expect_false(grepl("from=2019", helper_first_url, fixed = TRUE))
+    expect_false(grepl("to=2021", helper_first_url, fixed = TRUE))
+
+    raw_first <- esg_query()$params(from = "2019", to = "2021")
+    expect_warning(
+        raw_first$timestamp_range(to = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    raw_first_query <- decode_query(raw_first$url())
+    raw_first_url <- utils::URLdecode(raw_first$url())
+    expect_match(raw_first_query, '_timestamp:[* TO "2020-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_false(grepl("from=2019", raw_first_url, fixed = TRUE))
+    expect_false(grepl("to=2021", raw_first_url, fixed = TRUE))
 
     # --- error inputs ---
 
@@ -914,15 +976,16 @@ test_that("query_collect includes only result-field constraints in fields", {
         .package = "epwshiftr"
     )
 
-    params <- suppressWarnings(
-        QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+    expect_warning(
+        params <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
             table_id = "Amon",
             bbox = "0,0,1,1",
             start = "2020",
             end = "2021",
             from = "2020",
             to = "2021"
-        )
+        ),
+        NA
     )
 
     res <- query_collect(
