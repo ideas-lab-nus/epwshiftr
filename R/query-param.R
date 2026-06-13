@@ -365,6 +365,7 @@ query_param__quote_range <- function(x) {
 #' @param quote_date If `TRUE`, quote concrete date boundaries.
 #' @param eval_math If `TRUE`, evaluate Solr date math before formatting.
 #' @param now Optional current time used when evaluating `NOW`.
+#' @param space If `TRUE`, add a display-only space after the field separator.
 #'
 #' @return A length-one Solr field clause.
 #'
@@ -376,11 +377,13 @@ S7::method(render, QueryParamDate) <- function(
     as = "iso",
     quote_date = FALSE,
     eval_math = FALSE,
-    now = NULL
+    now = NULL,
+    space = FALSE
 ) {
     checkmate::assert_string(as)
     checkmate::assert_flag(quote_date)
     checkmate::assert_flag(eval_math)
+    checkmate::assert_flag(space)
 
     value <- if (eval_math) {
         solrdate__eval(x@value, now = if (is.null(now)) Sys.time() else now)
@@ -392,13 +395,15 @@ S7::method(render, QueryParamDate) <- function(
         value <- query_param__quote_range(value)
     }
 
-    paste0(name, ":", value)
+    paste0(name, ":", if (space) " " else "", value)
 }
 
 # Render control parameters as plain `name=value` query components.
-# Character controls are URL-escaped unless the caller requests display output.
-S7::method(render, QueryParamCtrl) <- function(x, name, ..., encode = TRUE) {
+# Character controls are URL-escaped unless the caller requests display output;
+# `space` only affects human-facing print output.
+S7::method(render, QueryParamCtrl) <- function(x, name, ..., encode = TRUE, space = FALSE) {
     checkmate::assert_flag(encode)
+    checkmate::assert_flag(space)
 
     value <- x@value
     if (is.logical(value)) {
@@ -410,7 +415,8 @@ S7::method(render, QueryParamCtrl) <- function(x, name, ..., encode = TRUE) {
     } else {
         res <- as.character(value)
     }
-    paste0(name, "=", paste0(res, collapse = ","))
+    spc <- if (space) " " else ""
+    paste0(name, spc, "=", spc, paste0(res, collapse = ","))
 }
 # }}}
 
@@ -546,7 +552,7 @@ query_param__render <- function(x, name, ..., encode = TRUE) {
     checkmate::assert_flag(encode)
 
     if (name %in% c("version_min", "version_max")) {
-        return(render(x, name = "version", as = "num"))
+        return(render(x, name = "version", ..., as = "num"))
     }
     if (identical(name, "_timestamp")) {
         return(render(x, name = "_timestamp", ...))
@@ -683,7 +689,8 @@ query_param__render_many <- function(
     output_names = render_names,
     ...,
     encode = TRUE,
-    datetime_end_alias = FALSE
+    datetime_end_alias = FALSE,
+    style = FALSE
 ) {
     if (!length(params)) {
         return(stats::setNames(character(), character()))
@@ -693,6 +700,7 @@ query_param__render_many <- function(
     checkmate::assert_character(output_names, any.missing = FALSE, len = length(params))
     checkmate::assert_flag(encode)
     checkmate::assert_flag(datetime_end_alias)
+    checkmate::assert_flag(style)
 
     rendered <- character(length(params))
     names(rendered) <- output_names
@@ -706,6 +714,54 @@ query_param__render_many <- function(
                 query_param__render(params[[i]], "datetime_end", ..., encode = encode)
             )
         }
+        if (style) {
+            rendered[i] <- query_param__style_label(params[[i]], output_names[[i]], rendered[i])
+        }
+    }
+
+    rendered
+}
+
+# Add CLI strong markup to a known label prefix and leave the value unstyled.
+# Prefixes are built from parameter metadata instead of rediscovered from text.
+query_param__style_prefix <- function(rendered, prefix) {
+    if (!startsWith(rendered, prefix)) {
+        return(rendered)
+    }
+
+    label <- substr(prefix, 1L, nchar(prefix) - 1L)
+    paste0("{.strong ", label, "}", substring(rendered, nchar(label) + 1L))
+}
+
+# Style the display label for a single rendered query parameter.
+# Repeated negated facets are styled once per repeated `name !=` fragment.
+query_param__style_label <- function(param, name, rendered) {
+    if (S7::S7_inherits(param, QueryParamDate)) {
+        return(query_param__style_prefix(rendered, paste0(name, ": ")))
+    }
+
+    if (S7::S7_inherits(param, QueryParamCtrl)) {
+        return(query_param__style_prefix(rendered, paste(name, "=", "")))
+    }
+
+    if (S7::S7_inherits(param, QueryParamFacet)) {
+        sep <- if (param@negate && !is.logical(param@value)) "!=" else "="
+        prefix <- paste(name, sep, "")
+        if (param@negate && !is.logical(param@value)) {
+            pieces <- strsplit(rendered, paste0(" & ", prefix), fixed = TRUE)[[1L]]
+            if (length(pieces) > 1L) {
+                label <- substr(prefix, 1L, nchar(prefix) - 1L)
+                return(paste(
+                    c(
+                        query_param__style_prefix(pieces[[1L]], prefix),
+                        paste0("{.strong ", label, "} ", pieces[-1L])
+                    ),
+                    collapse = " & "
+                ))
+            }
+        }
+
+        return(query_param__style_prefix(rendered, prefix))
     }
 
     rendered
@@ -727,8 +783,20 @@ query_param__display <- function(params) {
 
     query <- query_param__query_params(params[query_names])
     c(
-        query_param__render_many(params[facet_names], encode = FALSE),
-        query_param__render_many(query$params, query$render_names, query$output_names, encode = FALSE)
+        query_param__render_many(
+            params[facet_names],
+            encode = FALSE,
+            space = TRUE,
+            style = TRUE
+        ),
+        query_param__render_many(
+            query$params,
+            query$render_names,
+            query$output_names,
+            encode = FALSE,
+            space = TRUE,
+            style = TRUE
+        )
     )
 }
 
@@ -741,9 +809,7 @@ query_param__print <- function(params) {
         return(invisible(params))
     }
 
-    for (line in rendered) {
-        cli::cli_bullets(c("*" = line))
-    }
+    cli::cli_bullets(stats::setNames(rendered, rep("*", length(rendered))))
 
     invisible(params)
 }
@@ -2042,8 +2108,9 @@ QueryParamStore <- R6::R6Class(
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_h1("<Query Parameter>")
-            for (line in query_param__display(self)) {
-                cli::cli_bullets(c("*" = line))
+            rendered <- query_param__display(self)
+            if (length(rendered)) {
+                cli::cli_bullets(stats::setNames(rendered, rep("*", length(rendered))))
             }
 
             invisible(self)

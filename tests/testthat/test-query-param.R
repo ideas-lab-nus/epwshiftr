@@ -6,6 +6,7 @@ test_that("QueryParamFacet", {
         list(value = c("CMIP6", "CMIP5"), negate = FALSE, encoded = FALSE)
     )
     expect_equal(render(facet, "project"), "project=CMIP6,CMIP5")
+    expect_equal(render(facet, "project", space = TRUE), "project = CMIP6, CMIP5")
 
     facet_negate <- QueryParamFacet(c("100km", "100 km"), negate = TRUE)
     expect_equal(
@@ -15,6 +16,10 @@ test_that("QueryParamFacet", {
     expect_equal(
         render(facet_negate, "nominal_resolution", encode = TRUE),
         "nominal_resolution!=100km&nominal_resolution!=100%20km"
+    )
+    expect_equal(
+        render(facet_negate, "nominal_resolution", encode = TRUE, space = TRUE),
+        "nominal_resolution != 100km & nominal_resolution != 100%20km"
     )
 
     facet_encoded <- QueryParamFacet(c("100km", "100 km"), encoded = TRUE)
@@ -52,6 +57,10 @@ test_that("QueryParamCtrl", {
         render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE),
         "format=application/solr+json"
     )
+    expect_equal(
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE, space = TRUE),
+        "format = application/solr+json"
+    )
 })
 
 test_that("QueryParamDate", {
@@ -62,6 +71,10 @@ test_that("QueryParamDate", {
         list(value = solr_date("[2017-02-03T05:06:07Z+2MONTHS TO *]"))
     )
     expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
+    expect_equal(
+        render(date, "datetime_start", space = TRUE),
+        "datetime_start: [2017-02-03T05:06:07Z+2MONTHS TO *]"
+    )
     expect_equal(
         render(date, "datetime_start", quote_date = TRUE),
         'datetime_start:["2017-02-03T05:06:07Z+2MONTHS" TO *]'
@@ -225,17 +238,24 @@ test_that("QueryParamStore", {
         query_param__render(query_param__as("table_id", "B+C"), "table_id", encode = FALSE),
         "table_id=B+C"
     )
+    expect_equal(
+        query_param__display(display_store)[c("format", "table_id")],
+        c(
+            format = "{.strong format =} application/solr+json",
+            table_id = "{.strong table_id =} A mon, B+C"
+        )
+    )
 
     store_print <- paste(capture.output(display_store$print(), type = "message"), collapse = "\n")
-    expect_true(grepl("format=application/solr+json", store_print, fixed = TRUE))
-    expect_true(grepl("table_id=A mon,B+C", store_print, fixed = TRUE))
+    expect_true(grepl("format = application/solr+json", store_print, fixed = TRUE))
+    expect_true(grepl("table_id = A mon, B+C", store_print, fixed = TRUE))
     expect_false(grepl("application%2Fsolr%2Bjson", store_print, fixed = TRUE))
     expect_false(grepl("A%20mon", store_print, fixed = TRUE))
     expect_false(grepl("B%2BC", store_print, fixed = TRUE))
 
     helper_print <- paste(capture.output(query_param__print(display_store), type = "message"), collapse = "\n")
-    expect_true(grepl("format=application/solr+json", helper_print, fixed = TRUE))
-    expect_true(grepl("table_id=A mon,B+C", helper_print, fixed = TRUE))
+    expect_true(grepl("format = application/solr+json", helper_print, fixed = TRUE))
+    expect_true(grepl("table_id = A mon, B+C", helper_print, fixed = TRUE))
     expect_false(grepl("application%2Fsolr%2Bjson", helper_print, fixed = TRUE))
 
     expect_error(
@@ -315,10 +335,14 @@ test_that("QueryParamStore", {
     )
 
     displayed <- query_param__display(q)
-    expect_true(any(grepl("^_timestamp:", displayed)))
+    expect_identical(
+        unname(displayed["activity_id"]),
+        "{.strong activity_id !=} CFMIP & {.strong activity_id !=} ScenarioMIP"
+    )
+    expect_true(any(startsWith(displayed, "{.strong _timestamp:} ")))
     expect_identical(
         unname(displayed[names(displayed) == "version"]),
-        c("version:[20200101 TO *]", "version:[* TO 20210101]")
+        c("{.strong version:} [20200101 TO *]", "{.strong version:} [* TO 20210101]")
     )
 
     expect_true(serialized$activity_id$negate)
