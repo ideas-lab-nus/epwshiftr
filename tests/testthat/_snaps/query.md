@@ -13,7 +13,7 @@
       * offset=0
       * distrib=true
       * limit=10
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
       * table_id=Amon
       * member_id=r1i1p1f1
 

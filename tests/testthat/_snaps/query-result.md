@@ -24,7 +24,7 @@
       * offset=0
       * distrib=true
       * limit=2
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
     Output
       
     Message
@@ -58,7 +58,7 @@
       * offset=0
       * distrib=true
       * limit=1
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
       * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
@@ -87,7 +87,7 @@
       * offset=0
       * distrib=true
       * limit=2
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
       * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
@@ -118,7 +118,7 @@
       * offset=0
       * distrib=true
       * limit=10
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
     Output
       
     Message
@@ -145,7 +145,7 @@
       * offset=0
       * distrib=true
       * limit=10
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
     Output
       
     Message
@@ -172,7 +172,7 @@
       * offset=0
       * distrib=true
       * limit=10
-      * format=application%2Fsolr%2Bjson
+      * format=application/solr+json
     Output
       
     Message

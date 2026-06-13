@@ -48,6 +48,10 @@ test_that("QueryParamCtrl", {
         render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format"),
         "format=application%2Fsolr%2Bjson"
     )
+    expect_equal(
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE),
+        "format=application/solr+json"
+    )
 })
 
 test_that("QueryParamDate", {
@@ -213,6 +217,26 @@ test_that("QueryParamStore", {
     expect_true(nr$nominal_resolution()@encoded)
     expect_true(any(grepl("^nominal_resolution=100\\+km,100km$", nr$render())))
     expect_null(nr$nominal_resolution(NULL)$nominal_resolution())
+
+    display_store <- QueryParamStore$new()$params(table_id = c("A mon", "B+C"))
+    expect_true(any(grepl("format=application%2Fsolr%2Bjson", display_store$render(), fixed = TRUE)))
+    expect_true(any(grepl("table_id=A%20mon,B%2BC", display_store$render(), fixed = TRUE)))
+    expect_equal(
+        query_param__render(query_param__as("table_id", "B+C"), "table_id", encode = FALSE),
+        "table_id=B+C"
+    )
+
+    store_print <- paste(capture.output(display_store$print(), type = "message"), collapse = "\n")
+    expect_true(grepl("format=application/solr+json", store_print, fixed = TRUE))
+    expect_true(grepl("table_id=A mon,B+C", store_print, fixed = TRUE))
+    expect_false(grepl("application%2Fsolr%2Bjson", store_print, fixed = TRUE))
+    expect_false(grepl("A%20mon", store_print, fixed = TRUE))
+    expect_false(grepl("B%2BC", store_print, fixed = TRUE))
+
+    helper_print <- paste(capture.output(query_param__print(display_store), type = "message"), collapse = "\n")
+    expect_true(grepl("format=application/solr+json", helper_print, fixed = TRUE))
+    expect_true(grepl("table_id=A mon,B+C", helper_print, fixed = TRUE))
+    expect_false(grepl("application%2Fsolr%2Bjson", helper_print, fixed = TRUE))
 
     expect_error(
         QueryParamStore$new()$timestamp_range(from = "[2020 TO 2021]"),

@@ -396,15 +396,19 @@ S7::method(render, QueryParamDate) <- function(
 }
 
 # Render control parameters as plain `name=value` query components.
-# Character controls are URL-escaped while logical values use lower-case strings.
-S7::method(render, QueryParamCtrl) <- function(x, name, ...) {
+# Character controls are URL-escaped unless the caller requests display output.
+S7::method(render, QueryParamCtrl) <- function(x, name, ..., encode = TRUE) {
+    checkmate::assert_flag(encode)
+
     value <- x@value
     if (is.logical(value)) {
         res <- tolower(value)
     } else if (is.numeric(value)) {
         res <- as.character(value)
-    } else {
+    } else if (encode) {
         res <- query_param__encode(as.character(value))
+    } else {
+        res <- as.character(value)
     }
     paste0(name, "=", paste0(res, collapse = ","))
 }
@@ -537,8 +541,9 @@ query_param__as <- function(name, value, negate = FALSE) {
 
 # Render one `QueryParam` object using the explicit parameter name.
 # Synthetic timestamp and version names are normalized to their Solr field names.
-query_param__render <- function(x, name, ...) {
+query_param__render <- function(x, name, ..., encode = TRUE) {
     checkmate::assert_string(name, min.chars = 1L)
+    checkmate::assert_flag(encode)
 
     if (name %in% c("version_min", "version_max")) {
         return(render(x, name = "version", as = "num"))
@@ -548,7 +553,10 @@ query_param__render <- function(x, name, ...) {
     }
 
     if (S7::S7_inherits(x, QueryParamFacet)) {
-        return(render(x, name = name, encode = TRUE, ...))
+        return(render(x, name = name, encode = encode, ...))
+    }
+    if (S7::S7_inherits(x, QueryParamCtrl)) {
+        return(render(x, name = name, encode = encode, ...))
     }
 
     render(x, name = name, ...)
@@ -594,11 +602,72 @@ query_param__clone <- function(params) {
     query_param__as_store(params)$copy()
 }
 
+# Render all parameters in the same order as query output, for display.
+# This folds synthetic timestamp/version query fields without URL encoding values.
+query_param__display <- function(params) {
+    store <- query_param__as_store(params)
+    params <- store$state()
+    if (!length(params)) {
+        return(character())
+    }
+
+    names_all <- names(params)
+    selected <- unique(c(
+        intersect(query_param__names("facet"), names_all),
+        intersect(query_param__names("control"), names_all),
+        setdiff(names_all, query_param__names("dedicated")),
+        intersect(query_param__names("date"), names_all)
+    ))
+
+    query_names <- selected[selected %in% query_param__names("date")]
+    facet_names <- selected[!selected %in% query_names]
+
+    rendered <- character()
+    if (length(facet_names)) {
+        facet_params <- params[facet_names]
+        rendered <- c(rendered, stats::setNames(
+            vapply(seq_along(facet_params), function(i) {
+                query_param__render(facet_params[[i]], names(facet_params)[[i]], encode = FALSE)
+            }, character(1L)),
+            names(facet_params)
+        ))
+    }
+
+    if (!length(query_names)) {
+        return(rendered)
+    }
+
+    query_params <- params[query_names]
+    if (any(c("timestamp_from", "timestamp_to") %in% names(query_params))) {
+        from <- query_params$timestamp_from
+        to <- query_params$timestamp_to
+        from_value <- if (is.null(from)) SolrDateUnbounded() else from@value
+        to_value <- if (is.null(to)) SolrDateUnbounded() else to@value
+
+        if (!S7::S7_inherits(from_value, SolrDateUnbounded) || !S7::S7_inherits(to_value, SolrDateUnbounded)) {
+            query_params$`_timestamp` <- QueryParamDate(SolrDateRange(from_value, to_value))
+        }
+        query_params$timestamp_from <- NULL
+        query_params$timestamp_to <- NULL
+    }
+
+    idx_ver <- match(c("version_min", "version_max"), names(query_params), 0L)
+    if (any(idx_ver > 0L)) {
+        names(query_params)[idx_ver] <- "version"
+    }
+
+    c(rendered, stats::setNames(
+        vapply(seq_along(query_params), function(i) {
+            query_param__render(query_params[[i]], names(query_params)[[i]], encode = FALSE)
+        }, character(1L)),
+        names(query_params)
+    ))
+}
+
 # Print all query parameters in a user-facing bullet list.
 # Empty stores are rendered explicitly so debugging output is not silent.
 query_param__print <- function(params) {
-    store <- query_param__as_store(params)
-    rendered <- store$render()
+    rendered <- query_param__display(params)
     if (!length(rendered)) {
         cli::cli_bullets(c(" " = "<Empty>"))
         return(invisible(params))
@@ -1932,7 +2001,7 @@ QueryParamStore <- R6::R6Class(
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_h1("<Query Parameter>")
-            for (line in self$render()) {
+            for (line in query_param__display(self)) {
                 cli::cli_bullets(c("*" = line))
             }
 
