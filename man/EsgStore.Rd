@@ -732,6 +732,8 @@ Refresh, enqueue, and optionally run downloads for a stored ESGF query.
   replica = "auto",
   dry_run = FALSE,
   run = TRUE,
+  background = FALSE,
+  mode = c("process", "daemon"),
   session_label = NULL,
   service = "HTTPServer",
   probe = TRUE,
@@ -764,6 +766,13 @@ changing the store, enqueueing, or downloading. Default:
 \item{\code{run}}{Whether to run the queued session immediately. Default:
 \code{TRUE}.}
 
+\item{\code{background}}{Whether to run the queued session in the background.
+Default: \code{FALSE}.}
+
+\item{\code{mode}}{Background execution mode. \code{"process"} starts a detached
+\code{Rscript}; \code{"daemon"} submits the job to a running downloader
+daemon.}
+
 \item{\code{session_label}}{Optional download session label.}
 
 \item{\code{service, probe, strategy}}{Download plan arguments.}
@@ -783,7 +792,8 @@ history before probing a URL again. Default: \code{3600}.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-The created downloader session ID.
+The created downloader session ID, or a one-row background
+job record when \code{run = TRUE} and \code{background = TRUE}.
 }
 }
 \if{html}{\out{<hr>}}
@@ -1191,6 +1201,8 @@ Enqueue and optionally download ESGF file records through the store downloader.
   replica = "auto",
   downloader = NULL,
   run = TRUE,
+  background = FALSE,
+  mode = c("process", "daemon"),
   session_label = NULL,
   service = "HTTPServer",
   probe = TRUE,
@@ -1215,6 +1227,13 @@ If supplied, it is cataloged before the download plan is created.}
 \item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 
 \item{\code{run}}{Whether to run the queued session immediately. Default: \code{TRUE}.}
+
+\item{\code{background}}{Whether to run the queued session in the background.
+Default: \code{FALSE}.}
+
+\item{\code{mode}}{Background execution mode. \code{"process"} starts a detached
+\code{Rscript}; \code{"daemon"} submits the job to a running downloader
+daemon.}
 
 \item{\code{session_label}}{Optional download session label.}
 
@@ -1243,7 +1262,8 @@ history before probing a URL again. Default: \code{3600}.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-The created downloader session ID.
+The created downloader session ID, or a one-row background
+job record when \code{run = TRUE} and \code{background = TRUE}.
 }
 }
 \if{html}{\out{<hr>}}

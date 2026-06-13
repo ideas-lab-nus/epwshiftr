@@ -197,8 +197,122 @@ test_that("Downloader persists config and manifest state", {
     on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
     expect_setequal(
         ddb_list_tables(conn),
-        c("download_candidate", "download_config", "download_event", "download_meta", "download_node", "download_piece", "download_session", "download_task")
+        c(
+            "download_candidate", "download_config", "download_control",
+            "download_daemon", "download_event", "download_job",
+            "download_meta", "download_node", "download_piece",
+            "download_session", "download_task"
+        )
     )
+})
+
+test_that("Downloader creates background jobs with a mock launcher", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-bg-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+    src <- file.path(root, "background.txt")
+    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
+    writeLines("background content", src)
+
+    launched <- list()
+    withr::local_options(list(epwshiftr.downloader.launcher = function(kind, id, manifest, log_path) {
+        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+        TRUE
+    }))
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:background",
+        filename = "background.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ))
+
+    job <- dl$run(session_id = session_id, block = FALSE, progress = FALSE)
+    expect_equal(nrow(job), 1L)
+    expect_equal(job$status, "queued")
+    expect_match(job$job_id, "^job-")
+    expect_length(launched, 1L)
+    expect_equal(launched[[1L]]$kind, "job")
+    expect_equal(launched[[1L]]$id, job$job_id[[1L]])
+    expect_equal(launched[[1L]]$manifest, dl$manifest)
+
+    tasks <- dl$tasks(job_id = job$job_id[[1L]])
+    expect_equal(nrow(tasks), 1L)
+    expect_equal(tasks$session_id, session_id)
+    expect_equal(tasks$job_id, job$job_id[[1L]])
+    expect_equal(dl$job_status(job$job_id[[1L]])$status, "queued")
+})
+
+test_that("Downloader job runner updates job, task, and progress state", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-job-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+    src <- file.path(root, "job.txt")
+    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
+    writeLines(rep("job content", 20L), src)
+
+    withr::local_options(list(epwshiftr.downloader.launcher = function(...) TRUE))
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:job",
+        filename = "job.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ))
+
+    job <- dl$start(session_id = session_id)
+    priv(dl)$run_job(job$job_id[[1L]])
+
+    job <- dl$job_status(job$job_id[[1L]])
+    tasks <- dl$tasks(job_id = job$job_id[[1L]])
+    events <- dl$events(job_id = job$job_id[[1L]])
+
+    expect_equal(job$status, "done")
+    expect_equal(tasks$status, "done")
+    expect_equal(tasks$bytes_done, file.info(src, extra_cols = FALSE)$size)
+    expect_false(is.na(tasks$progress_updated_at))
+    expect_true(all(!is.na(events$job_id)))
+    expect_true(file.exists(file.path(dest, "job.txt")))
+})
+
+test_that("Downloader daemon lifecycle records manifest state with a mock launcher", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-daemon-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+    launched <- list()
+    withr::local_options(list(epwshiftr.downloader.launcher = function(kind, id, manifest, log_path) {
+        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+        TRUE
+    }))
+
+    dl <- Downloader$new(
+        dest = file.path(root, "downloads"),
+        temp = file.path(root, "tmp"),
+        manifest = manifest,
+        n_workers = 0L
+    )
+    daemon <- dl$daemon_start(port = 45678L)
+    expect_equal(daemon$status, "starting")
+    expect_match(daemon$daemon_id, "^daemon-")
+    expect_length(launched, 1L)
+    expect_equal(launched[[1L]]$kind, "daemon")
+    expect_equal(launched[[1L]]$id, daemon$daemon_id[[1L]])
+
+    status <- dl$daemon_status()
+    expect_true(daemon$daemon_id[[1L]] %in% status$daemon_id)
+    stopped <- dl$daemon_stop()
+    expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
 })
 
 test_that("Downloader probes local range metadata", {
@@ -404,7 +518,7 @@ test_that("Downloader preflights disk requirements", {
         dest = file.path(root, "blocked-downloads"),
         temp = file.path(root, "blocked-tmp"),
         manifest = file.path(root, "blocked", "manifest.duckdb"),
-        resource_policy = list(min_free_space = free + size + 1024),
+        resource_policy = list(min_free_space = free + size + 1024^3),
         n_workers = 0L
     )
     blocked_session <- blocker$enqueue(plan)
@@ -434,6 +548,18 @@ test_that("Downloader migrates older manifests to the current schema version", {
     ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_failure_count")
     ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS last_probe_at")
     ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS cooldown_until")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS speed_bps")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS eta_seconds")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS progress_updated_at")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS current_url")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS job_id")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS owner_id")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS lease_until")
+    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS heartbeat_at")
+    ddb_exec(conn, "ALTER TABLE download_event DROP COLUMN IF EXISTS job_id")
+    ddb_exec(conn, "DROP TABLE IF EXISTS download_job")
+    ddb_exec(conn, "DROP TABLE IF EXISTS download_daemon")
+    ddb_exec(conn, "DROP TABLE IF EXISTS download_control")
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
@@ -444,11 +570,20 @@ test_that("Downloader migrates older manifests to the current schema version", {
     conn <- ddb_connect(manifest, read_only = TRUE)
     meta <- ddb_read_table(conn, "download_meta")
     nodes <- ddb_read_table(conn, "download_node")
+    tasks <- ddb_read_table(conn, "download_task")
+    events <- ddb_read_table(conn, "download_event")
+    tables <- ddb_list_tables(conn)
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
     expect_equal(meta[meta$key == "schema_version", "value", drop = TRUE], DOWNLOADER_SCHEMA_VERSION)
     expect_true(all(c("probe_success_count", "probe_failure_count", "last_probe_at", "cooldown_until") %in% names(nodes)))
+    expect_true(all(c(
+        "speed_bps", "eta_seconds", "progress_updated_at", "current_url",
+        "job_id", "owner_id", "lease_until", "heartbeat_at"
+    ) %in% names(tasks)))
+    expect_true("job_id" %in% names(events))
+    expect_true(all(c("download_job", "download_daemon", "download_control") %in% tables))
 })
 
 test_that("Downloader stores typed config in the manifest", {

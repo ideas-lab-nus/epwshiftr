@@ -535,6 +535,53 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
     expect_true(any(grepl("Download events", logs_text)))
     expect_false(any(grepl("^\\[\\[|^\\$", logs_text)))
 
+    launched <- list()
+    withr::local_options(list(epwshiftr.downloader.launcher = function(kind, id, manifest, log_path) {
+        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+        TRUE
+    }))
+    background <- epwshiftr_cli(c(
+        "--quiet", "--store", dir, "download", "run", query_id,
+        "--background", "--mode", "process", "--no-probe", "--no-progress"
+    ))
+    expect_equal(background$status, 0L)
+    expect_equal(background$result$status, "queued")
+    expect_match(background$result$job_id, "^job-")
+    expect_length(launched, 1L)
+    expect_equal(launched[[1L]]$kind, "job")
+
+    jobs <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "jobs"))
+    expect_equal(jobs$status, 0L)
+    expect_true(background$result$job_id %in% jobs$result$job_id)
+
+    job_tasks <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "tasks", "--job", background$result$job_id))
+    expect_equal(job_tasks$status, 0L)
+    expect_true(all(job_tasks$result$job_id == background$result$job_id))
+
+    job_watch <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "watch", "--job", background$result$job_id, "--events", "1"))
+    expect_equal(job_watch$status, 0L)
+    expect_named(job_watch$result, c("summary", "tasks", "nodes", "events", "jobs"))
+    expect_equal(job_watch$result$jobs$job_id, background$result$job_id)
+
+    jsonl_text <- capture.output(
+        jsonl_watch <- epwshiftr_cli(c(
+            "--store", dir, "--jsonl", "download", "watch",
+            "--job", background$result$job_id, "--follow", "--count", "1"
+        ))
+    )
+    expect_equal(jsonl_watch$status, 0L)
+    expect_gte(length(jsonl_text), 1L)
+    jsonl <- jsonlite::fromJSON(jsonl_text[[1L]])
+    expect_true(jsonl$type %in% c("job", "progress", "event", "summary"))
+
+    job_logs <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "logs", "--job", background$result$job_id))
+    expect_equal(job_logs$status, 0L)
+    expect_true(all(c("job_id", "line", "message") %in% names(job_logs$result)))
+
+    stopped <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "stop", "--job", background$result$job_id))
+    expect_equal(stopped$status, 0L)
+    expect_equal(stopped$result$status, "cancelled")
+
     nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "nodes", "--service", "HTTPServer"))
     expect_equal(nodes$status, 0L)
     expect_s3_class(nodes$result, "data.table")

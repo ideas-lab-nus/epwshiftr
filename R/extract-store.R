@@ -991,6 +991,11 @@ EsgStore <- R6::R6Class(
         #'        `FALSE`.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
+        #' @param background Whether to run the queued session in the background.
+        #'        Default: `FALSE`.
+        #' @param mode Background execution mode. `"process"` starts a detached
+        #'        `Rscript`; `"daemon"` submits the job to a running downloader
+        #'        daemon.
         #' @param session_label Optional download session label.
         #' @param service,probe,strategy Download plan arguments.
         #' @param probe_concurrency Maximum concurrent URL probes when
@@ -1001,13 +1006,16 @@ EsgStore <- R6::R6Class(
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
-        #' @return The created downloader session ID.
+        #' @return The created downloader session ID, or a one-row background
+        #'         job record when `run = TRUE` and `background = TRUE`.
         download_query = function(
             query_id,
             downloader = NULL,
             replica = "auto",
             dry_run = FALSE,
             run = TRUE,
+            background = FALSE,
+            mode = c("process", "daemon"),
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
@@ -1026,10 +1034,12 @@ EsgStore <- R6::R6Class(
             checkmate::assert_string(query_id, min.chars = 1L)
             checkmate::assert_flag(dry_run)
             checkmate::assert_flag(run)
+            checkmate::assert_flag(background)
             checkmate::assert_flag(progress)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
             strategy <- match.arg(strategy)
+            mode <- match.arg(mode)
             if (isTRUE(dry_run)) {
                 return(self$download_preflight(
                     query_id = query_id,
@@ -1070,6 +1080,15 @@ EsgStore <- R6::R6Class(
             )
             private$set_query_update_session(links$update_id[[1L]], session_id)
             if (isTRUE(run)) {
+                if (isTRUE(background)) {
+                    return(downloader$start(
+                        session_id = session_id,
+                        overwrite = overwrite,
+                        resume = resume,
+                        mode = mode,
+                        store_path = private$store_path
+                    ))
+                }
                 downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
                 self$sync_downloads(downloader)
             }
@@ -1685,6 +1704,11 @@ EsgStore <- R6::R6Class(
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param run Whether to run the queued session immediately. Default: `TRUE`.
+        #' @param background Whether to run the queued session in the background.
+        #'        Default: `FALSE`.
+        #' @param mode Background execution mode. `"process"` starts a detached
+        #'        `Rscript`; `"daemon"` submits the job to a running downloader
+        #'        daemon.
         #' @param session_label Optional download session label.
         #' @param service ESGF URL service to download from. Default:
         #'        `"HTTPServer"`.
@@ -1700,12 +1724,15 @@ EsgStore <- R6::R6Class(
         #' @param ... Additional arguments passed to `$download_plan()` and
         #'        `Downloader$run()`.
         #'
-        #' @return The created downloader session ID.
+        #' @return The created downloader session ID, or a one-row background
+        #'         job record when `run = TRUE` and `background = TRUE`.
         download_files = function(
             files = NULL,
             replica = "auto",
             downloader = NULL,
             run = TRUE,
+            background = FALSE,
+            mode = c("process", "daemon"),
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
@@ -1719,6 +1746,12 @@ EsgStore <- R6::R6Class(
         ) {
             private$check_open()
             strategy <- match.arg(strategy)
+            mode <- match.arg(mode)
+            checkmate::assert_flag(run)
+            checkmate::assert_flag(background)
+            checkmate::assert_flag(progress)
+            checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
             if (is.null(downloader)) {
                 downloader <- self$downloader()
             }
@@ -1751,6 +1784,15 @@ EsgStore <- R6::R6Class(
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
+                if (isTRUE(background)) {
+                    return(downloader$start(
+                        session_id = session_id,
+                        overwrite = overwrite,
+                        resume = resume,
+                        mode = mode,
+                        store_path = private$store_path
+                    ))
+                }
                 downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
                 self$sync_downloads(downloader)
             }
