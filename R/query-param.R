@@ -651,16 +651,18 @@ query_param__display <- function(params) {
         query_params$timestamp_to <- NULL
     }
 
-    idx_ver <- match(c("version_min", "version_max"), names(query_params), 0L)
+    render_names <- names(query_params)
+    output_names <- render_names
+    idx_ver <- match(c("version_min", "version_max"), output_names, 0L)
     if (any(idx_ver > 0L)) {
-        names(query_params)[idx_ver] <- "version"
+        output_names[idx_ver] <- "version"
     }
 
     c(rendered, stats::setNames(
         vapply(seq_along(query_params), function(i) {
-            query_param__render(query_params[[i]], names(query_params)[[i]], encode = FALSE)
+            query_param__render(query_params[[i]], render_names[[i]], encode = FALSE)
         }, character(1L)),
-        names(query_params)
+        output_names
     ))
 }
 
@@ -2486,15 +2488,17 @@ QueryParamStore <- R6::R6Class(
                 params$timestamp_to <- NULL
             }
 
-            idx_ver <- match(c("version_min", "version_max"), names(params), 0L)
+            render_names <- names(params)
+            output_names <- render_names
+            idx_ver <- match(c("version_min", "version_max"), output_names, 0L)
             if (any(idx_ver > 0L)) {
-                names(params)[idx_ver] <- "version"
+                output_names[idx_ver] <- "version"
             }
 
             rendered <- character(length(params))
-            names(rendered) <- names(params)
+            names(rendered) <- output_names
             for (i in seq_along(params)) {
-                name <- names(params)[[i]]
+                name <- render_names[[i]]
                 rendered[i] <- query_param__render(
                     params[[i]],
                     name,
