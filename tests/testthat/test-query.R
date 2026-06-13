@@ -139,7 +139,7 @@ test_that("QueryParam helpers use typed objects", {
     expect_s3_class(as_query_param("datetime_start", "2017"), "S7_object")
     expect_identical(query_param_kind(query_param), "datetime_start")
     expect_identical(query_param_name(query_param), "datetime_start")
-    expect_true(is.solrdt(query_param_value(query_param)))
+    expect_true(is.solr_date(query_param_value(query_param)))
 
     expect_identical(query_param_spec("project")$class, "facet")
     expect_identical(query_param_spec("_timestamp")$class, "query")
@@ -157,7 +157,7 @@ test_that("QueryParam helpers use typed objects", {
     )
 
     flat_params <- query_param_flat(list(
-        datetime_start = solrdt("2017"),
+        datetime_start = solr_date("2017"),
         project = "CMIP6",
         others = list(variable_id = "tas")
     ))
@@ -634,7 +634,7 @@ test_that("EsgQuery$datetime_range()", {
 
     # --- error inputs ---
 
-    # invalid format: solrdt_parse() errors
+    # invalid format: solr_date() errors
     expect_error(esg_query()$datetime_range(start = "not-a-date"))
 })
 # }}}
@@ -660,8 +660,8 @@ test_that("EsgQuery$timestamp_range()", {
     ts1 <- q1$timestamp_range()
     expect_s3_class(ts1$from, "S7_object")
     expect_s3_class(ts1$to, "S7_object")
-    expect_true(is.solrdt(query_param_value(ts1$from)))
-    expect_true(is.solrdt(query_param_value(ts1$to)))
+    expect_true(is.solr_date(query_param_value(ts1$from)))
+    expect_true(is.solr_date(query_param_value(ts1$to)))
     expect_identical(
         unname(priv(q1)$parameter$render("_timestamp")),
         "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]"

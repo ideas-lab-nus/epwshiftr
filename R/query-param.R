@@ -1,4 +1,4 @@
-#' @include solr_date.R
+#' @include solr-date.R
 
 FORMAT_JSON <- "application/solr+json"
 
@@ -305,7 +305,7 @@ S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso", quote_d
     checkmate::assert_flag(eval_math)
 
     value <- if (eval_math) {
-        eval_date_math(x@value, now = if (is.null(now)) Sys.time() else now)
+        solrdate__eval(x@value, now = if (is.null(now)) Sys.time() else now)
     } else {
         x@value
     }

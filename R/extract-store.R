@@ -5692,7 +5692,7 @@ extract_store_parse_datetime <- function(x) {
     out <- as.POSIXct(rep(NA_real_, length(x)), origin = "1970-01-01", tz = "UTC")
     ok <- !is.na(x) & nzchar(x)
     if (any(ok)) {
-        out[ok] <- parse_datetime(x[ok], tz = "UTC")
+        out[ok] <- solrdate__parse(x[ok], tz = "UTC")
     }
 
     out

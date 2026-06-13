@@ -1042,7 +1042,7 @@ EsgDataset <- R6::R6Class(
             context <- private$context$time_filter
             context_range <- NULL
             if (!is.null(context) && length(context$start) && length(context$stop)) {
-                context_range <- parse_datetime(c(context$start, context$stop), tz = "UTC")
+                context_range <- solrdate__parse(c(context$start, context$stop), tz = "UTC")
                 if (any(is.na(context_range)) || context_range[[2L]] < context_range[[1L]]) {
                     context_range <- NULL
                 }
@@ -1061,7 +1061,7 @@ EsgDataset <- R6::R6Class(
             if (length(time) != 2L) {
                 stop("`time` must be 'auto', `NULL`, or a length-2 range.", call. = FALSE)
             }
-            time <- parse_datetime(time, tz = "UTC")
+            time <- solrdate__parse(time, tz = "UTC")
             if (any(is.na(time))) {
                 stop("`time` contains values that cannot be parsed as datetimes.", call. = FALSE)
             }

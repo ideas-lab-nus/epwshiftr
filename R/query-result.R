@@ -1185,7 +1185,7 @@ query_result_parse_time_window <- function(start, stop) {
     checkmate::assert_scalar(start)
     checkmate::assert_scalar(stop)
 
-    time <- parse_datetime(c(start, stop), tz = "UTC")
+    time <- solrdate__parse(c(start, stop), tz = "UTC")
     if (any(is.na(time))) {
         stop("`start` and `stop` must be parseable datetimes.", call. = FALSE)
     }

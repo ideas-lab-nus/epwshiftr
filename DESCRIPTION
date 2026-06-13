@@ -73,7 +73,7 @@ Collate:
     'gh.R'
     'import-standalone-schema.R'
     'netcdf.R'
-    'solr_date.R'
+    'solr-date.R'
     'query-param.R'
     'query-result.R'
     'query.R'
