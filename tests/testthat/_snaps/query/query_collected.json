@@ -13,17 +13,29 @@
       "value": ["ssp585"],
       "negate": [false]
     },
+    "source_id": null,
     "variable_id": {
       "value": ["tas"],
       "negate": [false]
     },
+    "frequency": null,
+    "variant_label": null,
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
     "fields": {
       "value": ["*"],
       "negate": [false]
     },
-    "latest": {
-      "value": [true]
-    },
+    "shards": null,
+    "datetime_start": null,
+    "datetime_stop": null,
+    "timestamp_from": null,
+    "timestamp_to": null,
+    "version_min": null,
+    "version_max": null,
+    "replica": null,
+    "latest": null,
     "type": {
       "value": ["Dataset"]
     },

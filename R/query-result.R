@@ -135,7 +135,7 @@ EsgResult <- R6::R6Class(
                 args$context <- private$context
             }
 
-            do.call(query_save, args)
+            do.call(query__save, args)
         },
         # }}}
 
@@ -155,7 +155,7 @@ EsgResult <- R6::R6Class(
         #' @return The modified `EsgResult` object itself.
         #'
         load = function(file) {
-            q <- query_load(file, private$result_schema())
+            q <- query__load(file, private$result_schema())
             private$validate_loaded_result(q)
 
             private$index_node <- q$index_node
@@ -467,7 +467,7 @@ EsgResult <- R6::R6Class(
                 if (is.null(private$index_node) || is.null(private$parameter)) {
                     return(character())
                 }
-                urls <- query_build(private$index_node, private$parameter)
+                urls <- query__build(private$index_node, private$parameter)
             }
 
             query_result_normalize_query_url(urls)
@@ -2698,7 +2698,7 @@ query_result_collect_replicas_by_identity <- function(result, identity, type, in
         index_node <- priv(result)$index_node
     } else {
         checkmate::assert_string(index_node)
-        index_node <- normalize_index_node(index_node)
+        index_node <- query__normalize_node(index_node)
     }
 
     instance_id <- unique(identity$instance_id[identity$has_instance])
@@ -2718,7 +2718,7 @@ query_result_collect_replicas_by_identity <- function(result, identity, type, in
     }
 
     collected_parts <- lapply(stores, function(store) {
-        query_collect(
+        query__collect(
             index_node,
             store,
             required_fields = query_result_required_fields(type),
@@ -2748,11 +2748,11 @@ query_result_collect_replicas_by_master_id <- function(result, master_id, type, 
         index_node <- priv(result)$index_node
     } else {
         checkmate::assert_string(index_node)
-        index_node <- normalize_index_node(index_node)
+        index_node <- query__normalize_node(index_node)
     }
 
     store <- query_result_replica_query_store(type, list(master_id = master_id))
-    collected <- query_collect(
+    collected <- query__collect(
         index_node,
         store,
         required_fields = query_result_required_fields(type),
@@ -3130,11 +3130,16 @@ query_result_merge_params <- function(store, params) {
         return(store)
     }
 
-    extra <- query_param__as_store(params)$state(null = FALSE)
-    state <- store$state(null = TRUE)
-    for (bucket in names(extra)) {
-        state[[bucket]][names(extra[[bucket]])] <- extra[[bucket]]
+    checkmate::assert_list(params, names = "named")
+    if (any(!nzchar(names(params)))) {
+        stop("All query parameters to merge must be named.", call. = FALSE)
     }
+
+    extra_store <- query_param__as_store(params)
+    extra_names <- intersect(names(params), names(extra_store$state(null = TRUE)))
+    extra <- extra_store$state(extra_names, null = TRUE)
+    state <- store$state(null = TRUE)
+    state[names(extra)] <- extra
 
     store$restore(state)
 }
@@ -3282,7 +3287,7 @@ EsgResultDataset <- R6::R6Class(
                 private$index_node
             } else {
                 checkmate::assert_string(index_node)
-                normalize_index_node(index_node)
+                query__normalize_node(index_node)
             }
             if (!is.null(which)) {
                 if (!self$count()) {
@@ -3332,7 +3337,7 @@ EsgResultDataset <- R6::R6Class(
                     if (is.na(node) || !nzchar(node)) {
                         return(child_index_node)
                     }
-                    normalize_index_node(node)
+                    query__normalize_node(node)
                 }, character(1L))
                 groups <- split(selected, record_index_node)
                 results <- lapply(names(groups), function(group_index_node) {
@@ -3344,7 +3349,7 @@ EsgResultDataset <- R6::R6Class(
                         dots_env = dots_env,
                         ...
                     )
-                    query_collect(
+                    query__collect(
                         group_index_node,
                         group_built$params,
                         required_fields = req_fld,
@@ -3356,7 +3361,7 @@ EsgResultDataset <- R6::R6Class(
                 })
                 result <- query_result_merge_child_collects(results, params)
             } else {
-                result <- query_collect(
+                result <- query__collect(
                     child_index_node,
                     params,
                     required_fields = req_fld,

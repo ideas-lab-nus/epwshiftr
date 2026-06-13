@@ -63,7 +63,7 @@ esgf_host_to_index_node <- function(host) {
     host <- sub("/esg-search/?$", "", host)
     host <- sub("/+$", "", host)
 
-    normalize_index_node(host)
+    query__normalize_node(host)
 }
 
 esgf_subset_response_docs <- function(response, fields) {
@@ -114,7 +114,7 @@ esgf_query_normalize_legacy_fq <- function(response, replica, latest) {
 
 esgf_query_collect <- function(q) {
     withCallingHandlers(
-        query_collect(
+        query__collect(
             priv(q)$index_node_url,
             priv(q)$parameter,
             required_fields = NULL,
@@ -1173,7 +1173,7 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
     path <- "proxy/status"
-    parsed <- normalize_index_node(index_node, raw = TRUE)
+    parsed <- query__normalize_node(index_node, raw = TRUE)
     if (parsed$path == "/esgf-1-5-bridge") {
         url <- curl::curl_modify_url(parsed$url, path = path)
     } else {

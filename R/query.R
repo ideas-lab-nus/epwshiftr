@@ -290,7 +290,7 @@ EsgQuery <- R6::R6Class(
         #' }
         initialize = function(index_node = "https://esgf-node.ornl.gov") {
             checkmate::assert_string(index_node)
-            private$index_node_url <- normalize_index_node(index_node)
+            private$index_node_url <- query__normalize_node(index_node)
 
             private$parameter <- QueryParamStore$new()
 
@@ -323,7 +323,7 @@ EsgQuery <- R6::R6Class(
                 return(private$index_node_url)
             }
             checkmate::assert_string(value)
-            private$index_node_url <- normalize_index_node(value)
+            private$index_node_url <- query__normalize_node(value)
             self
         },
         # }}}
@@ -351,7 +351,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(force)
 
             # for bridge nodes, give a hint
-            if (is_bridge_index_node(private$index_node_url)) {
+            if (query__is_bridge(private$index_node_url)) {
                 verbose(cli::cli_alert_info(paste(
                     "Current index node is a bridge node. Facet listing is not available.",
                     "Predefined common facets are returned.",
@@ -360,7 +360,7 @@ EsgQuery <- R6::R6Class(
                 return(FIELDS_FACETS_COMMON)
             }
 
-            url <- query_build(
+            url <- query__build(
                 private$index_node_url,
                 list(
                     project = private$parameter$project(),
@@ -395,7 +395,7 @@ EsgQuery <- R6::R6Class(
         list_fields = function(force = FALSE) {
             checkmate::assert_flag(force)
 
-            url <- query_build(
+            url <- query__build(
                 private$index_node_url,
                 list(
                     project = private$parameter$project(),
@@ -429,7 +429,7 @@ EsgQuery <- R6::R6Class(
         list_shards = function(force = FALSE) {
             checkmate::assert_flag(force)
 
-            url <- query_build(
+            url <- query__build(
                 private$index_node_url,
                 list(
                     project = private$parameter$project(),
@@ -497,7 +497,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_subset(facets, QUERY_PARAM__FIELDS)
             checkmate::assert_flag(force)
 
-            url <- query_build(
+            url <- query__build(
                 private$index_node_url,
                 list(
                     project = private$parameter$project(),
@@ -980,7 +980,7 @@ EsgQuery <- R6::R6Class(
         #' }
         url = function(wget = FALSE) {
             checkmate::assert_flag(wget)
-            query_build(
+            query__build(
                 private$index_node_url,
                 private$parameter,
                 type = if (wget) "wget" else "search"
@@ -1040,7 +1040,7 @@ EsgQuery <- R6::R6Class(
                 }
             }
 
-            url <- query_build(private$index_node_url, params)
+            url <- query__build(private$index_node_url, params)
             res <- read_json_response(url, simplifyVector = FALSE)
 
             if (!facets) {
@@ -1132,7 +1132,7 @@ EsgQuery <- R6::R6Class(
             dots <- eval(substitute(alist(...)))
 
             collect_dataset <- function(all, limit, dict_check = TRUE) {
-                result <- query_collect(
+                result <- query__collect(
                     private$index_node_url,
                     private$parameter,
                     required_fields = EsgResultDataset$private_fields$required_fields,
@@ -1251,7 +1251,7 @@ EsgQuery <- R6::R6Class(
         #' q$save(tempfile(fileext = ".json"))
         #' }
         save = function(file = "query.json", pretty = TRUE) {
-            query_save(
+            query__save(
                 index_node = private$index_node_url,
                 parameter = private$parameter,
                 response = NULL,
@@ -1284,7 +1284,7 @@ EsgQuery <- R6::R6Class(
         #' q$load(f)
         #' }
         load = function(file) {
-            q <- query_load(file, SCHEMA_QUERY)
+            q <- query__load(file, SCHEMA_QUERY)
             private$validate_query_state(q$parameter)
 
             private$index_node_url <- q$index_node
@@ -1434,13 +1434,13 @@ EsgQuery <- R6::R6Class(
 )
 # }}}
 
-# is_bridge_index_node {{{
-is_bridge_index_node <- function(index_node) {
+# query__is_bridge {{{
+query__is_bridge <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
 
-assert_bridge_index_node_type <- function(index_node, params) {
-    if (!is_bridge_index_node(index_node)) {
+query__assert_bridge_type <- function(index_node, params) {
+    if (!query__is_bridge(index_node)) {
         return(invisible(TRUE))
     }
 
@@ -1457,8 +1457,8 @@ assert_bridge_index_node_type <- function(index_node, params) {
 }
 # }}}
 
-# normalize_index_node {{{
-normalize_index_node <- function(index_node, raw = FALSE) {
+# query__normalize_node {{{
+query__normalize_node <- function(index_node, raw = FALSE) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
     if (!grepl("://", index_node, fixed = TRUE)) {
@@ -1491,8 +1491,8 @@ normalize_index_node <- function(index_node, raw = FALSE) {
 }
 # }}}
 
-# query_build {{{
-query_render_free_text <- function(query) {
+# query__build {{{
+query__free_text <- function(query) {
     if (!length(query) || !nchar(query)) {
         return(character())
     }
@@ -1500,12 +1500,12 @@ query_render_free_text <- function(query) {
     paste0("query=", query_param__encode(query))
 }
 
-query_render_globus_value <- function(value) {
+query__glob_value <- function(value) {
     value <- as.character(value)
     ifelse(grepl("*", value, fixed = TRUE), value, query_param__quote_bound(value))
 }
 
-query_build <- function(index_node, params, type = "search") {
+query__build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
     store <- query_param__clone(params)
 
@@ -1514,10 +1514,10 @@ query_build <- function(index_node, params, type = "search") {
         store$format(NULL)
     }
 
-    assert_bridge_index_node_type(index_node, store)
+    query__assert_bridge_type(index_node, store)
 
     # NOTE: handle special endpoint for bridge
-    if (is_bridge_index_node(index_node)) {
+    if (query__is_bridge(index_node)) {
         if (type == "wget") {
             stop("Input index node is a bridge. Wget script is not supported.")
         }
@@ -1539,7 +1539,7 @@ query_build <- function(index_node, params, type = "search") {
 
     # separate query= params from regular facet params
     query_names <- intersect(names(store$state()), query_param__names("date"))
-    is_bridge <- is_bridge_index_node(index_node)
+    is_bridge <- query__is_bridge(index_node)
     bridge_now <- if (is_bridge) getOption("epwshiftr.solr_date_math_now", Sys.time()) else NULL
     query_clauses <- if (length(query_names)) {
         store$render(
@@ -1561,7 +1561,7 @@ query_build <- function(index_node, params, type = "search") {
         rendered <- c(
             vapply(names(params), function(name) query_param__render(params[[name]], name), FUN.VALUE = ""),
             if (length(query_clauses)) {
-                query_render_free_text(paste(query_clauses, collapse = " AND "))
+                query__free_text(paste(query_clauses, collapse = " AND "))
             }
         )
         rendered <- rendered[nchar(rendered) > 0L]
@@ -1589,7 +1589,7 @@ query_build <- function(index_node, params, type = "search") {
             names(params[is_negate]),
             function(name) {
                 param <- params[[name]]
-                value <- query_render_globus_value(query_param__value(param))
+                value <- query__glob_value(query_param__value(param))
                 if (length(value) == 1L) {
                     value <- value
                 } else {
@@ -1610,13 +1610,13 @@ query_build <- function(index_node, params, type = "search") {
         endpoint,
         "?",
         if (nchar(facets)) paste0(facets, "&"),
-        query_render_free_text(query)
+        query__free_text(query)
     )
 }
 # }}}
 
 # query dict check {{{
-query_dict_check_project <- function(store) {
+query__dict_project <- function(store) {
     project <- store$project()
     if (is.null(project) || isTRUE(query_param__negate(project))) {
         return(NULL)
@@ -1638,7 +1638,7 @@ query_dict_check_project <- function(store) {
     )
 }
 
-query_dict_check_load <- function(project) {
+query__dict_load <- function(project) {
     dict <- esgdict_get_default(project)
     if (!is.null(dict) && dict$has_data()) {
         return(dict)
@@ -1654,7 +1654,7 @@ query_dict_check_load <- function(project) {
     )
 }
 
-query_dict_check_args <- function(store, dict) {
+query__dict_args <- function(store, dict) {
     params <- store$state()
     if (!length(params)) {
         return(list())
@@ -1689,7 +1689,7 @@ query_dict_check_args <- function(store, dict) {
     out
 }
 
-query_dict_check_warning <- function(invalid, n = 5L) {
+query__dict_warning <- function(invalid, n = 5L) {
     n <- min(n, nrow(invalid))
     lines <- vapply(seq_len(n), function(i) {
         msg <- invalid$message[[i]]
@@ -1711,19 +1711,19 @@ query_dict_check_warning <- function(invalid, n = 5L) {
     )
 }
 
-query_warn_dict_check <- function(params) {
+query__warn_dict <- function(params) {
     store <- query_param__as_store(params)
-    project <- query_dict_check_project(store)
+    project <- query__dict_project(store)
     if (is.null(project)) {
         return(invisible(NULL))
     }
 
-    dict <- query_dict_check_load(project)
+    dict <- query__dict_load(project)
     if (is.null(dict)) {
         return(invisible(NULL))
     }
 
-    args <- query_dict_check_args(store, dict)
+    args <- query__dict_args(store, dict)
     if (!length(args)) {
         return(invisible(NULL))
     }
@@ -1738,15 +1738,15 @@ query_warn_dict_check <- function(params) {
 
     invalid <- result[!is.na(result$valid) & !result$valid]
     if (nrow(invalid)) {
-        warning(query_dict_check_warning(invalid), call. = FALSE)
+        warning(query__dict_warning(invalid), call. = FALSE)
     }
 
     invisible(result)
 }
 # }}}
 
-# query_collect {{{
-query_collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+# query__collect {{{
+query__collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
     checkmate::assert_flag(all)
     checkmate::assert_flag(constraints)
     checkmate::assert_flag(dict_check)
@@ -1760,7 +1760,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 
     # include necessary fields
     if (!is.null(params$fields)) {
-        if (is_bridge_index_node(index_node)) {
+        if (query__is_bridge(index_node)) {
             # bridge index node does not support 'fields='
             store$fields(NULL)
         } else if (!"*" %in% query_param__value(params$fields)) {
@@ -1792,12 +1792,12 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
     }
 
     if (dict_check) {
-        query_warn_dict_check(store)
+        query__warn_dict(store)
     }
 
     effective_store <- store$copy()
     query_urls <- character()
-    url <- query_build(index_node, store)
+    url <- query__build(index_node, store)
     query_urls <- c(query_urls, url)
     response <- read_json_response(url)
     docs <- response$response$docs
@@ -1811,7 +1811,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         while (left > 0L) {
             store$offset(current)
 
-            url <- query_build(index_node, store)
+            url <- query__build(index_node, store)
             query_urls <- c(query_urls, url)
             response <- read_json_response(url)
 
@@ -1842,8 +1842,8 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
 }
 # }}}
 
-# query_save {{{
-query_save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE, schema = NULL) {
+# query__save {{{
+query__save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE, schema = NULL) {
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
@@ -1887,8 +1887,8 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
 }
 # }}}
 
-# query_load {{{
-query_load <- function(file, schema = NULL) {
+# query__load {{{
+query__load <- function(file, schema = NULL) {
     checkmate::assert_file(file, "r", extension = "json")
 
     # simplifyVector will convert facet counts to characters
@@ -1915,6 +1915,13 @@ query_load <- function(file, schema = NULL) {
         json$context$selection$source_indices <- integer()
     }
 
+    if (length(json$parameter) && any(c("facet", "query", "control", "others") %in% names(json$parameter))) {
+        stop(
+            "Bucketed query parameter states are no longer supported. Use the flat parameter schema.",
+            call. = FALSE
+        )
+    }
+
     if (!is.null(schema)) {
         schema_validate(schema, json, mode = "assert", name = file)
     }
@@ -1936,12 +1943,6 @@ query_load <- function(file, schema = NULL) {
     }
 
     json
-}
-# }}}
-
-# restore_params {{{
-restore_params <- function(input, params = query_param__new_store()) {
-    query_param__as_store(input)
 }
 # }}}
 

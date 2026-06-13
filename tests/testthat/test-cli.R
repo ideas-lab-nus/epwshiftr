@@ -334,7 +334,7 @@ test_that("epwshiftr_cli dispatches esgf store commands", {
 
     file_docs <- cli_test_file_docs()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             response <- cli_test_response(file_docs)
             params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)

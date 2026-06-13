@@ -225,29 +225,28 @@ param <- function(value) {
     list(value = value, negate = FALSE)
 }
 
+control_param <- function(value) {
+    list(value = value)
+}
+
 query_parameter <- function(type, variable_id = variables$variable_id, fields = "*", limit = 20L) {
     list(
-        facet = list(
-            project = param("CMIP6"),
-            activity_id = param("ScenarioMIP"),
-            experiment_id = param("ssp585"),
-            source_id = param("EC-Earth3"),
-            variant_label = param("r1i1p1f1"),
-            frequency = param(frequency),
-            variable_id = param(variable_id),
-            data_node = param(data_node),
-            fields = param(fields)
-        ),
-        query = list(),
-        control = list(
-            latest = param(TRUE),
-            type = param(type),
-            offset = param(0L),
-            distrib = param(TRUE),
-            limit = param(limit),
-            format = param("application/solr+json")
-        ),
-        others = list(table_id = param(table_id))
+        project = param("CMIP6"),
+        activity_id = param("ScenarioMIP"),
+        experiment_id = param("ssp585"),
+        source_id = param("EC-Earth3"),
+        variant_label = param("r1i1p1f1"),
+        frequency = param(frequency),
+        variable_id = param(variable_id),
+        data_node = param(data_node),
+        fields = param(fields),
+        latest = control_param(TRUE),
+        type = control_param(type),
+        offset = control_param(0L),
+        distrib = control_param(TRUE),
+        limit = control_param(limit),
+        format = control_param("application/solr+json"),
+        table_id = param(table_id)
     )
 }
 

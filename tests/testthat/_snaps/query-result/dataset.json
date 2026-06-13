@@ -9,6 +9,7 @@
       "value": ["ScenarioMIP"],
       "negate": [false]
     },
+    "experiment_id": null,
     "source_id": {
       "value": ["AWI-CM-1-1-MR"],
       "negate": [false]
@@ -25,10 +26,22 @@
       "value": ["r1i1p1f1"],
       "negate": [false]
     },
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
     "fields": {
       "value": ["source_id", "experiment_id", "frequency", "access", "data_node", "id", "index_node", "instance_id", "latest", "master_id", "number_of_aggregations", "number_of_files", "replica", "size", "url", "version", "project", "activity_id", "variable_id", "variant_label"],
       "negate": [false]
     },
+    "shards": null,
+    "datetime_start": null,
+    "datetime_stop": null,
+    "timestamp_from": null,
+    "timestamp_to": null,
+    "version_min": null,
+    "version_max": null,
+    "replica": null,
+    "latest": null,
     "type": {
       "value": ["Dataset"]
     },

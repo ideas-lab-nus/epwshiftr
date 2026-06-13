@@ -64,7 +64,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     )
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_false(all)
             expect_false(constraints)
 
@@ -141,7 +141,7 @@ test_that("esgf_query() keeps legacy empty-result behavior", {
     )
 
     testthat::local_mocked_bindings(
-        query_collect = function(...) list(response = empty_response, docs = empty_response$response$docs),
+        query__collect = function(...) list(response = empty_response, docs = empty_response$response$docs),
         .package = "epwshiftr"
     )
 

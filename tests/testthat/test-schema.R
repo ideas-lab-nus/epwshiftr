@@ -78,10 +78,8 @@ test_that("result schema JSON files use local reusable definitions", {
     required_defs <- c(
         "index_node",
         "parameter",
-        "parameter_facet",
-        "parameter_query",
-        "parameter_control",
-        "parameter_others",
+        "parameter_type",
+        "parameter_entry",
         "response",
         "response_header",
         "response_body",
@@ -104,6 +102,7 @@ test_that("result schema JSON files use local reusable definitions", {
         expect_identical(json$fields$response$`$ref`, "#/$defs/response")
         expect_identical(json$fields$context$`$ref`, "#/$defs/context")
         expect_true(all(required_defs %in% names(json[["$defs"]])))
+        expect_false(any(c("parameter_facet", "parameter_query", "parameter_control", "parameter_others") %in% names(json[["$defs"]])))
     }
 })
 

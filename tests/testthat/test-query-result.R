@@ -145,7 +145,7 @@ query_result_test_file_time_docs <- function(type = "File") {
 test_that("loaded ESGF query results restore dynamic fields", {
     state <- query_result_test_state("Dataset", query_result_test_dataset_docs())
     testthat::local_mocked_bindings(
-        query_load = function(file, schema = NULL) state,
+        query__load = function(file, schema = NULL) state,
         .package = "epwshiftr"
     )
 
@@ -164,7 +164,7 @@ test_that("loaded ESGF query results restore dynamic fields", {
 test_that("loaded ESGF query results validate result type", {
     state <- query_result_test_state("File", query_result_test_file_docs(), query_result_test_params("File"))
     testthat::local_mocked_bindings(
-        query_load = function(file, schema = NULL) state,
+        query__load = function(file, schema = NULL) state,
         .package = "epwshiftr"
     )
 
@@ -257,7 +257,7 @@ test_that("ESGF query results expose recorded query URLs", {
     result <- query_result_test_object("Dataset", query_result_test_dataset_docs(), params)
     expect_identical(
         result$query_url(),
-        stats::setNames(query_build("https://example.org", params), "page1")
+        stats::setNames(query__build("https://example.org", params), "page1")
     )
     expect_identical(result$query_url("all"), result$query_url())
 
@@ -628,7 +628,7 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
                 probe_cached = FALSE
             )
         },
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             collect_calls[[length(collect_calls) + 1L]] <<- list(
                 index_node = index_node,
@@ -712,7 +712,7 @@ test_that("repair_urls prefers reachable replicas already present in the current
                 probe_cached = FALSE
             )
         },
-        query_collect = function(...) {
+        query__collect = function(...) {
             stop("current result replica should avoid an external query")
         },
         .package = "epwshiftr"
@@ -738,7 +738,7 @@ test_that("expand_replicas falls back to master and version without crossing ver
     candidate_docs$version <- c(20260101L, 20270101L)
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_null(params$project())
             expect_identical(query_param__value(params$params()$master_id), "master-file-fallback")
@@ -789,7 +789,7 @@ test_that("File results repair HTTPServer URLs independently", {
                 error = ifelse(grepl("http-replica", urls), NA_character_, "bad http")
             )
         },
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(index_node, "https://example.org")
             expect_identical(query_param__value(params$type()), "File")
@@ -844,7 +844,7 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
                 probe_cached = FALSE
             )
         },
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_identical(query_param__value(params$type()), "Aggregation")
             expect_null(params$project())
@@ -900,7 +900,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
                 probe_cached = FALSE
             )
         },
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE,
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_null(params$project())
             expect_identical(query_param__value(params$params()$master_id), "master-no-replica")
@@ -1153,7 +1153,7 @@ test_that("empty dataset results collect empty child results without querying", 
     datasets <- query_result_test_object("Dataset", docs)
 
     testthat::local_mocked_bindings(
-        query_collect = function(...) stop("query_collect should not be called"),
+        query__collect = function(...) stop("query__collect should not be called"),
         .package = "epwshiftr"
     )
 
@@ -1182,7 +1182,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(
                 index_node = index_node,
                 params = params,
@@ -1248,7 +1248,7 @@ test_that("dataset result collect accepts data node scope and clears datetime co
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(params = params, limit = limit)
             response <- query_result_test_response(query_result_test_file_docs())
             params$fields(c(query_param__value(params$fields()), required_fields))
@@ -1285,7 +1285,7 @@ test_that("dataset result collect can target child queries by record index node"
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             dataset_id <- query_param__value(params$state()$dataset_id)
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, dataset_id = dataset_id)
             docs <- data.frame(
@@ -1334,7 +1334,7 @@ test_that("dataset result expand_replicas queries dataset replicas by identity",
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params, required_fields = required_fields)
             if (!is.null(params$params()$instance_id)) {
                 expect_identical(query_param__value(params$params()$instance_id), "dataset-instance-1")

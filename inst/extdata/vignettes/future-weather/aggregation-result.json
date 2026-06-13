@@ -1,76 +1,66 @@
 {
   "index_node": "https://esgf-data.dkrz.de",
   "parameter": {
-    "facet": {
-      "project": {
-        "value": "CMIP6",
-        "negate": false
-      },
-      "activity_id": {
-        "value": "ScenarioMIP",
-        "negate": false
-      },
-      "experiment_id": {
-        "value": "ssp585",
-        "negate": false
-      },
-      "source_id": {
-        "value": "EC-Earth3",
-        "negate": false
-      },
-      "variant_label": {
-        "value": "r1i1p1f1",
-        "negate": false
-      },
-      "frequency": {
-        "value": "mon",
-        "negate": false
-      },
-      "variable_id": {
-        "value": ["tas", "psl"],
-        "negate": false
-      },
-      "data_node": {
-        "value": "esgf.ceda.ac.uk",
-        "negate": false
-      },
-      "fields": {
-        "value": "*",
-        "negate": false
-      }
+    "project": {
+      "value": "CMIP6",
+      "negate": false
     },
-    "query": [],
-    "control": {
-      "latest": {
-        "value": true,
-        "negate": false
-      },
-      "type": {
-        "value": "Aggregation",
-        "negate": false
-      },
-      "offset": {
-        "value": 0,
-        "negate": false
-      },
-      "distrib": {
-        "value": true,
-        "negate": false
-      },
-      "limit": {
-        "value": 20,
-        "negate": false
-      },
-      "format": {
-        "value": "application/solr+json",
-        "negate": false
-      }
+    "activity_id": {
+      "value": "ScenarioMIP",
+      "negate": false
     },
-    "others": {
-      "table_id": {
-        "value": "Amon",
-        "negate": false
-      }
+    "experiment_id": {
+      "value": "ssp585",
+      "negate": false
+    },
+    "source_id": {
+      "value": "EC-Earth3",
+      "negate": false
+    },
+    "variant_label": {
+      "value": "r1i1p1f1",
+      "negate": false
+    },
+    "frequency": {
+      "value": "mon",
+      "negate": false
+    },
+    "variable_id": {
+      "value": [
+        "tas",
+        "psl"
+      ],
+      "negate": false
+    },
+    "data_node": {
+      "value": "esgf.ceda.ac.uk",
+      "negate": false
+    },
+    "fields": {
+      "value": "*",
+      "negate": false
+    },
+    "latest": {
+      "value": true
+    },
+    "type": {
+      "value": "Aggregation"
+    },
+    "offset": {
+      "value": 0
+    },
+    "distrib": {
+      "value": true
+    },
+    "limit": {
+      "value": 20
+    },
+    "format": {
+      "value": "application/solr+json"
+    },
+    "table_id": {
+      "value": "Amon",
+      "negate": false
     }
   },
   "response": {
@@ -110,7 +100,10 @@
           "latest": true,
           "retracted": false,
           "deprecated": false,
-          "url": ["__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP", "file://__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"]
+          "url": [
+            "__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP",
+            "file://__FUTURE_WEATHER_FIXTURE_DIR__/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"
+          ]
         },
         {
           "id": "psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|aggregation",
@@ -137,7 +130,10 @@
           "latest": true,
           "retracted": false,
           "deprecated": false,
-          "url": ["__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP", "file://__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"]
+          "url": [
+            "__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|OPENDAP",
+            "file://__FUTURE_WEATHER_FIXTURE_DIR__/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc|application/netcdf|HTTPServer"
+          ]
         }
       ],
       "maxScore": 1

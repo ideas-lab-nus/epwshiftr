@@ -283,7 +283,7 @@ test_that("data_node_status()", {
     )
 
     testthat::local_mocked_bindings(
-        normalize_index_node = function(index_node, raw = TRUE) {
+        query__normalize_node = function(index_node, raw = TRUE) {
             expect_true(raw)
             list(url = "https://example.org", path = "/esgf-1-5-bridge")
         },
