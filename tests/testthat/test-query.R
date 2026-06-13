@@ -519,6 +519,8 @@ decode_query <- function(url) {
 
 # EsgQuery$datetime_range() {{{
 test_that("EsgQuery$datetime_range()", {
+    withr::local_options(epwshiftr.solr_date_math_now = utc("2025-06-13 12:34:56"))
+
     q <- esg_query()
 
     # getter: initially returns NULL for both
@@ -544,17 +546,31 @@ test_that("EsgQuery$datetime_range()", {
     q3 <- esg_query()$datetime_range(start = "2017")
     expect_match(decode_query(q3$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
 
-    # Date Math: passed through verbatim
+    # Bridge Date Math is evaluated locally because the bridge API does not support it.
     q4 <- esg_query()$datetime_range(start = "NOW-1YEAR")
-    expect_match(decode_query(q4$url()), 'datetime_start:[* TO "NOW-1YEAR"]', fixed = TRUE)
+    expect_match(decode_query(q4$url()), 'datetime_start:[* TO "2024-06-13T12:34:56Z"]', fixed = TRUE)
 
     q5 <- esg_query()$datetime_range(stop = "NOW+6MONTHS")
     expect_match(
         decode_query(q5$url()),
-        '(datetime_stop:["NOW+6MONTHS" TO *] OR datetime_end:["NOW+6MONTHS" TO *])',
+        '(datetime_stop:["2025-12-13T12:34:56Z" TO *] OR datetime_end:["2025-12-13T12:34:56Z" TO *])',
         fixed = TRUE
     )
-    expect_true(grepl("NOW%2B6MONTHS", q5$url(), fixed = TRUE))
+
+    q_fixed_math <- esg_query()$datetime_range(start = "2025-06-13T00:00:00Z-1YEAR")
+    expect_match(
+        decode_query(q_fixed_math$url()),
+        'datetime_start:[* TO "2024-06-13T00:00:00Z"]',
+        fixed = TRUE
+    )
+
+    normal_math <- esg_query("https://example.org")$datetime_range(
+        start = "NOW-1YEAR",
+        stop = "2025-06-13T00:00:00Z+1YEAR"
+    )
+    normal_query <- decode_query(normal_math$url())
+    expect_match(normal_query, "datetime_start:[* TO NOW-1YEAR]", fixed = TRUE)
+    expect_match(normal_query, "datetime_stop:[2025-06-13T00:00:00Z+1YEAR TO *]", fixed = TRUE)
 
     # complete Range expression: used directly as the field value
     q6 <- esg_query()$datetime_range(start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]")
@@ -625,6 +641,8 @@ test_that("EsgQuery$datetime_range()", {
 
 # EsgQuery$timestamp_range() {{{
 test_that("EsgQuery$timestamp_range()", {
+    withr::local_options(epwshiftr.solr_date_math_now = utc("2025-06-13 12:34:56"))
+
     q <- esg_query()
 
     # getter: initially returns NULL for both
@@ -660,7 +678,7 @@ test_that("EsgQuery$timestamp_range()", {
 
     # Date Math
     q3 <- esg_query()$timestamp_range(from = "NOW-1YEAR")
-    expect_match(decode_query(q3$url()), '_timestamp:["NOW-1YEAR" TO *]', fixed = TRUE)
+    expect_match(decode_query(q3$url()), '_timestamp:["2024-06-13T12:34:56Z" TO *]', fixed = TRUE)
 
     # only to
     q4 <- esg_query()$timestamp_range(to = "2021-01-01T00:00:00Z")
@@ -680,7 +698,7 @@ test_that("EsgQuery$timestamp_range()", {
     q6$timestamp_range(to = "2021")
     expect_match(
         decode_query(q6$url()),
-        '_timestamp:["NOW-1YEAR" TO "2021-01-01T00:00:00Z"]',
+        '_timestamp:["2024-06-13T12:34:56Z" TO "2021-01-01T00:00:00Z"]',
         fixed = TRUE
     )
 

@@ -122,3 +122,57 @@ test_that("solr_date", {
         "UTC"
     )
 })
+
+test_that("eval_date_math evaluates Solr Date Math for bridge rendering", {
+    now <- utc("2025-06-13 12:34:56")
+
+    expect_identical(
+        format(eval_date_math(solr_date("NOW-1YEAR"), now = now)),
+        "2024-06-13T12:34:56Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("NOW"), now = now)),
+        "2025-06-13T12:34:56Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("2025-06-13T00:00:00Z-1YEAR"))),
+        "2024-06-13T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("2023-06-13T00:00:00Z+1YEAR"))),
+        "2024-06-13T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("NOW/DAY-1YEAR+6MONTHS"), now = now)),
+        "2024-12-13T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("2024-02-29T00:00:00Z+1YEAR"))),
+        "2025-02-28T00:00:00Z"
+    )
+
+    expect_identical(
+        format(solr_date("-0009-01-01T00:00:00Z")),
+        "-0009-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solr_date("0000-01-01T00:00:00Z")),
+        "0000-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solr_date("+10000-01-01T00:00:00Z")),
+        "+10000-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("-0009-01-01T00:00:00Z+1YEAR"))),
+        "-0008-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("+10000-01-01T00:00:00Z-1YEAR"))),
+        "9999-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(eval_date_math(solr_date("+10000-06-13T12:34:56Z/YEAR"))),
+        "+10000-01-01T00:00:00Z"
+    )
+})

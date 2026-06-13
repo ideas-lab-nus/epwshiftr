@@ -1540,8 +1540,15 @@ query_build <- function(index_node, params, type = "search") {
     # separate query= params from regular facet params
     query_names <- names(store$state()$query)
     is_bridge <- is_bridge_index_node(index_node)
+    bridge_now <- if (is_bridge) getOption("epwshiftr.solr_date_math_now", Sys.time()) else NULL
     query_clauses <- if (length(query_names)) {
-        store$render(query_names, quote_date = is_bridge, datetime_end_alias = is_bridge)
+        store$render(
+            query_names,
+            quote_date = is_bridge,
+            datetime_end_alias = is_bridge,
+            eval_math = is_bridge,
+            now = bridge_now
+        )
     } else {
         character()
     }

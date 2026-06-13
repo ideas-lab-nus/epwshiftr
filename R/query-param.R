@@ -1,5 +1,4 @@
 #' @include solr_date.R
-NULL
 
 FORMAT_JSON <- "application/solr+json"
 
@@ -19,13 +18,20 @@ QUERY_PARAM_NON_RESULT_FIELDS <- QUERY_PARAM_KEYWORDS
 
 # FIELDS_FACETS_ALL {{{
 FIELDS_FACETS_ALL <- c(
+    "ACK",
+    "Acknowledgement",
     "Conventions",
     "access",
     "activity",
     "activity_drs",
     "activity_id",
+    "amodell",
+    "bias_adjustment",
     "branch_method",
+    "cera_acronym",
     "cf_standard_name",
+    "checksum",
+    "checksum_type",
     "cmor_table",
     "collection",
     "contact",
@@ -33,18 +39,33 @@ FIELDS_FACETS_ALL <- c(
     "data_node",
     "data_specs_version",
     "data_structure",
+    "data_type",
     "dataset_category",
-    "dataset_status",
     "dataset_id",
+    "dataset_status",
+    "dataset_version_number",
     "datetime_end",
     "datetime_start",
     "datetime_stop",
     "deprecated",
     "directory_format_template_",
+    "doi",
+    "doi_author",
+    "doi_publication_year",
+    "doi_publisher",
+    "doi_title",
     "domain",
+    "downscaling_model_type",
+    "driving_ensemble",
     "driving_model",
+    "driving_model_ensemble_member",
+    "driving_model_id",
+    "driving_reanalysis",
+    "east_degrees",
     "ensemble",
+    "exp",
     "experiment",
+    "experiment_description",
     "experiment_family",
     "experiment_id",
     "experiment_title",
@@ -52,10 +73,11 @@ FIELDS_FACETS_ALL <- c(
     "format",
     "framework",
     "frequency",
+    "gebiet",
     "globus_url",
     "grid",
     "grid_label",
-    "east_degrees",
+    "grid_resolution",
     "height_bottom",
     "height_top",
     "height_units",
@@ -66,38 +88,64 @@ FIELDS_FACETS_ALL <- c(
     "institution",
     "institution_id",
     "latest",
+    "lta",
     "master_gateway",
     "master_id",
     "member_id",
     "metadata_format",
+    "metadata_url",
     "mip_era",
     "model",
     "model_cohort",
+    "modelvers",
     "nominal_resolution",
     "north_degrees",
+    "number_of_aggregations",
+    "number_of_files",
+    "pid_prefix",
+    "predictand_calibration_dataset",
+    "processing_level",
     "product",
     "product_version",
     "project",
+    "project_name",
+    "project_under",
+    "rcm_model",
     "rcm_name",
     "rcm_version",
+    "realization",
     "realm",
+    "reanalysis",
+    "reanalysis_ensemble",
     "region",
+    "region_id",
     "replica",
     "retracted",
+    "run_model",
+    "schema",
+    "shard",
     "short_description",
+    "size",
     "source",
+    "source_data_id",
     "source_id",
     "source_type",
     "source_version",
     "source_version_number",
     "south_degrees",
     "start_date_string",
+    "std_citation",
+    "std_citation_author",
+    "std_citation_publication_year",
+    "std_citation_publisher",
+    "std_citation_title",
     "sub_experiment_id",
     "table_id",
     "target_mip",
     "target_mip_list",
-    "title",
     "time_frequency",
+    "timestamp",
+    "title",
     "tracking_id",
     "type",
     "url",
@@ -108,56 +156,7 @@ FIELDS_FACETS_ALL <- c(
     "variant_label",
     "version",
     "west_degrees",
-    "checksum",
-    "checksum_type",
-    "number_of_aggregations",
-    "number_of_files",
-    "schema",
-    "size",
-    "timestamp",
-    "amodell",
-    "cera_acronym",
-    "data_type",
-    "dataset_version_number",
-    "doi",
-    "doi_author",
-    "doi_publication_year",
-    "doi_publisher",
-    "doi_title",
-    "exp",
-    "experiment_description",
-    "gebiet",
-    "grid_resolution",
-    "lta",
-    "modelvers",
-    "pid_prefix",
-    "rcm_model",
-    "shard",
-    "std_citation",
-    "std_citation_author",
-    "std_citation_publication_year",
-    "std_citation_publisher",
-    "std_citation_title",
-    "ACK",
-    "Acknowledgement",
-    "bias_adjustment",
-    "driving_ensemble",
-    "driving_reanalysis",
-    "project_name",
-    "project_under",
-    "reanalysis",
-    "reanalysis_ensemble",
-    "run_model",
-    "metadata_url",
-    "processing_level",
-    "realization",
-    "source_data_id",
-    "work_package",
-    "downscaling_model_type",
-    "driving_model_ensemble_member",
-    "driving_model_id",
-    "predictand_calibration_dataset",
-    "region_id"
+    "work_package"
 )
 # }}}
 
@@ -173,6 +172,15 @@ prop_single_value <- checkmate_property(
     )
 )
 
+prop_single_nullable <- checkmate_property(
+    checkmate_any(
+        checkmate_rule(S7::class_logical, checkmate::check_flag, null.ok = TRUE, branch = "flag"),
+        checkmate_rule(S7::class_double, checkmate::check_number, null.ok = TRUE, branch = "double"),
+        checkmate_rule(S7::class_integer, checkmate::check_number, null.ok = TRUE, branch = "integer"),
+        checkmate_rule(S7::class_character, checkmate::check_string, null.ok = TRUE, min.chars = 1L, branch = "string")
+    )
+)
+
 prop_atomic_value <- checkmate_property(
     S7::class_atomic,
     checkmate::check_atomic,
@@ -180,22 +188,25 @@ prop_atomic_value <- checkmate_property(
     min.len = 1L
 )
 
+# control parameters that only accept single values, such as `replica` and `latest`
 QueryParamCtrl <- S7::new_class(
     "QueryParamCtrl",
     parent = QueryParam,
-    properties = list(value = prop_atomic_value)
+    properties = list(value = prop_single_value)
 )
 
+# facet parameters that can accept multiple values, such as `source_id` and `variable_id`, and also support negation
 QueryParamFacet <- S7::new_class(
     "QueryParamFacet",
     parent = QueryParam,
     properties = list(
-        value = prop_atomic_value,
+        value = prop_single_value,
         negate = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE),
         encoded = checkmate_property(S7::class_logical, checkmate::check_flag, default = FALSE)
     )
 )
 
+# free-form query parameters that represent structured query constraints, such as `datetime_start` and `datetime_stop`
 QueryParamDate <- S7::new_class(
     "QueryParamDate",
     parent = QueryParam,
@@ -211,6 +222,7 @@ render <- S7::new_generic("render", "x", function(x, name, ...) {
     checkmate::assert_string(name, null.ok = TRUE)
     S7::S7_dispatch()
 })
+
 S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE, space = FALSE) {
     checkmate::assert_flag(encode)
     checkmate::assert_flag(space)
@@ -238,6 +250,7 @@ S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE, sp
             paste(s, collapse = "")
         })
     } else {
+        # directly return for already encoded values
         res <- value
     }
 
@@ -251,37 +264,52 @@ S7::method(render, QueryParamFacet) <- function(x, name, ..., encode = FALSE, sp
         paste0(name, equal, paste0(res, collapse = paste0(",", spc)))
     }
 }
+
 query_param_quote_range_bound <- function(x) {
+    # do not quote for empty, wildcard, or already quoted values
     if (!nzchar(x) || identical(x, "*") || grepl('^".*"$', x)) {
         return(x)
     }
 
+    # escape double quotes and wrap the value in double quotes
     sprintf('"%s"', gsub('"', '\\"', x, fixed = TRUE))
 }
 
 query_param_quote_range <- function(x) {
-    vapply(x, function(value) {
-        match <- regexec("^([\\[{])\\s*(.*?)\\s+TO\\s+(.*?)\\s*([\\]}])$", value, perl = TRUE)
-        parts <- regmatches(value, match)[[1L]]
-        if (length(parts) != 5L) {
-            return(query_param_quote_range_bound(value))
-        }
+    vapply(
+        x,
+        function(value) {
+            match <- regexec("^([\\[{])\\s*(.*?)\\s+TO\\s+(.*?)\\s*([\\]}])$", value, perl = TRUE)
+            parts <- regmatches(value, match)[[1L]]
+            # directly quote the value if not match the expected range format
+            if (length(parts) != 5L) {
+                return(query_param_quote_range_bound(value))
+            }
 
-        paste0(
-            parts[[2L]],
-            query_param_quote_range_bound(parts[[3L]]),
-            " TO ",
-            query_param_quote_range_bound(parts[[4L]]),
-            parts[[5L]]
-        )
-    }, character(1L), USE.NAMES = FALSE)
+            paste0(
+                parts[[2L]],
+                query_param_quote_range_bound(parts[[3L]]),
+                " TO ",
+                query_param_quote_range_bound(parts[[4L]]),
+                parts[[5L]]
+            )
+        },
+        character(1L),
+        USE.NAMES = FALSE
+    )
 }
 
-S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso", quote_date = FALSE) {
+S7::method(render, QueryParamDate) <- function(x, name, ..., as = "iso", quote_date = FALSE, eval_math = FALSE, now = NULL) {
     checkmate::assert_string(as)
     checkmate::assert_flag(quote_date)
+    checkmate::assert_flag(eval_math)
 
-    value <- format(x@value, as = as)
+    value <- if (eval_math) {
+        eval_date_math(x@value, now = if (is.null(now)) Sys.time() else now)
+    } else {
+        x@value
+    }
+    value <- format(value, as = as)
     if (quote_date && !identical(as, "num")) {
         value <- query_param_quote_range(value)
     }
@@ -1318,10 +1346,13 @@ QueryParamStore <- R6::R6Class(
             }
 
             if (!is.null(value) && !identical(value, FORMAT_JSON)) {
-                stop(sprintf(
-                    "Only JSON response format '%s' is supported.",
-                    FORMAT_JSON
-                ), call. = FALSE)
+                stop(
+                    sprintf(
+                        "Only JSON response format '%s' is supported.",
+                        FORMAT_JSON
+                    ),
+                    call. = FALSE
+                )
             }
 
             private$get_or_set_control("format", value, type = "string")
@@ -1716,9 +1747,10 @@ QueryParamStore <- R6::R6Class(
         #' # render only selected parameters
         #' q$render(c("project", "limit"))
         #' }
-        render = function(name = NULL, quote_date = FALSE, datetime_end_alias = FALSE) {
+        render = function(name = NULL, quote_date = FALSE, datetime_end_alias = FALSE, eval_math = FALSE, now = NULL) {
             checkmate::assert_flag(quote_date)
             checkmate::assert_flag(datetime_end_alias)
+            checkmate::assert_flag(eval_math)
 
             if (!is.null(name)) {
                 checkmate::assert_character(name, any.missing = FALSE, unique = TRUE)
@@ -1771,11 +1803,16 @@ QueryParamStore <- R6::R6Class(
                     if (!length(param_names)) {
                         next
                     }
-                    rendered <- c(rendered, private$render_query(
-                        param_names,
-                        quote_date = quote_date,
-                        datetime_end_alias = datetime_end_alias
-                    ))
+                    rendered <- c(
+                        rendered,
+                        private$render_query(
+                            param_names,
+                            quote_date = quote_date,
+                            datetime_end_alias = datetime_end_alias,
+                            eval_math = eval_math,
+                            now = now
+                        )
+                    )
                 }
             }
 
@@ -2445,12 +2482,15 @@ QueryParamStore <- R6::R6Class(
 
         # raw REST keyword helpers {{{
         raw_keyword_precedence_warning = function(keywords, helper, action) {
-            warning(sprintf(
-                "%s raw REST keyword(s) %s because structured helper %s takes precedence over raw REST keyword constraints.",
-                action,
-                paste(sprintf("'%s'", keywords), collapse = ", "),
-                helper
-            ), call. = FALSE)
+            warning(
+                sprintf(
+                    "%s raw REST keyword(s) %s because structured helper %s takes precedence over raw REST keyword constraints.",
+                    action,
+                    paste(sprintf("'%s'", keywords), collapse = ", "),
+                    helper
+                ),
+                call. = FALSE
+            )
         },
 
         structured_query_active = function(names) {
@@ -2533,9 +2573,10 @@ QueryParamStore <- R6::R6Class(
         # Render free-text query constraints. This helper folds timestamp
         # boundaries into `_timestamp` and normalizes version boundary names so
         # downstream consumers see the final Solr query representation.
-        render_query = function(name = NULL, null = FALSE, quote_date = FALSE, datetime_end_alias = FALSE) {
+        render_query = function(name = NULL, null = FALSE, quote_date = FALSE, datetime_end_alias = FALSE, eval_math = FALSE, now = NULL) {
             checkmate::assert_flag(quote_date)
             checkmate::assert_flag(datetime_end_alias)
+            checkmate::assert_flag(eval_math)
 
             params <- private$subset_params(
                 name = name,
@@ -2562,12 +2603,12 @@ QueryParamStore <- R6::R6Class(
             names(rendered) <- names(params)
             for (i in seq_along(params)) {
                 name <- names(params)[[i]]
-                rendered[i] <- query_param_render(params[[i]], name, quote_date = quote_date)
+                rendered[i] <- query_param_render(params[[i]], name, quote_date = quote_date, eval_math = eval_math, now = now)
                 if (datetime_end_alias && identical(name, "datetime_stop")) {
                     rendered[i] <- sprintf(
                         "(%s OR %s)",
                         rendered[i],
-                        query_param_render(params[[i]], "datetime_end", quote_date = quote_date)
+                        query_param_render(params[[i]], "datetime_end", quote_date = quote_date, eval_math = eval_math, now = now)
                     )
                 }
             }
