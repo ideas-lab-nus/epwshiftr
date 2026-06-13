@@ -49,6 +49,55 @@ FIELDS_FACETS_COMMON <- c(
     "variant_label"
 )
 
+# Read an ESGF JSON response, honoring the explicit cache mode for this request.
+cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", TRUE), ...) {
+    mode <- cache__mode(cache, name = "`cache`")
+
+    if (mode != "off") {
+        disk_cache <- cache__get()
+        key <- cache__response_key(url)
+
+        cached <- disk_cache$get(key)
+        if (!cache__missing(cached)) {
+            return(cached)
+        }
+
+        if (mode == "offline") {
+            stop("Cache miss in offline mode for URL '", url, "'. Cannot fetch data while offline.", call. = FALSE)
+        }
+    }
+
+    res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    timestamp <- Sys.time()
+
+    if (inherits(res, "warning") || inherits(res, "error")) {
+        msg <- paste0(
+            "Failed to read the JSON response. Details: \n",
+            conditionMessage(res)
+        )
+        if (isTRUE(strict)) {
+            stop(msg, call. = FALSE)
+        }
+        warning(msg, call. = FALSE)
+        return(NULL)
+    } else if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
+        cache__verbose(warning(
+            "No matched data. ",
+            "Please examine your query and the actual response."
+        ))
+    }
+
+    res$timestamp <- timestamp
+
+    # Cache successful results only.
+    if (mode != "off" && !is.null(res)) {
+        res$cache <- key
+        disk_cache$set(key, res)
+    }
+
+    res
+}
+
 # esg_query {{{
 #' Query CMIP6 data using ESGF search RESTful API
 #'
@@ -1398,7 +1447,7 @@ EsgQuery <- R6::R6Class(
         query_listing_cached = function(url, force, type) {
             mode <- cache__mode()
             if (mode != "off") {
-                cache <- get_cache()
+                cache <- cache__get()
                 key <- cache__response_key(url)
                 cached <- if (force) {
                     cache$remove(key)

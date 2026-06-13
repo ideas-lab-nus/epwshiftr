@@ -247,7 +247,7 @@ test_that("load_cmip6_index()", {
 
     # only check when LLNL ESGF node works
     if (nrow(idx)) {
-        cache <- get_cache()
+        cache <- cache__get()
 
         expect_s3_class(idx1 <- load_cmip6_index(), "data.table")
         expect_equal(idx, idx1)

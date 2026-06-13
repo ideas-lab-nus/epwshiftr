@@ -400,9 +400,9 @@ test_that("EsgQuery$list_values()", {
 test_that("EsgQuery listing cache respects max_age", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
-    old_cache <- set_cache(cache)
+    old_cache <- cache__set(cache)
     withr::defer({
-        set_cache(old_cache)
+        cache__set(old_cache)
         cache$destroy()
     })
     local_cache_mode("normal")
@@ -431,9 +431,9 @@ test_that("EsgQuery listing cache respects max_age", {
 test_that("EsgQuery listing cache treats expired offline entries as misses", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
-    old_cache <- set_cache(cache)
+    old_cache <- cache__set(cache)
     withr::defer({
-        set_cache(old_cache)
+        cache__set(old_cache)
         cache$destroy()
     })
     local_cache_mode("offline")

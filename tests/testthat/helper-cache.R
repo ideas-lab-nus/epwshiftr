@@ -158,10 +158,10 @@ local_test_cache <- function(scope = c("test", "session", "persist"), env = pare
     )
 
     cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
-    old_cache <- set_cache(cache)
+    old_cache <- cache__set(cache)
     withr::defer(
         {
-            set_cache(old_cache)
+            cache__set(old_cache)
             if (scope == "test") unlink(dir, recursive = TRUE)
         },
         envir = env

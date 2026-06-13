@@ -66,7 +66,7 @@ esgdict__fetch_cached <- function(
     # Parsed vocab/request payloads are cached separately from source JSON files. A forced
     # build skips this read path, but still writes a fresh parsed value later.
     if (isTRUE(policy$read) && !isTRUE(force)) {
-        cached <- get_cache()$get(cache_key)
+        cached <- cache__get()$get(cache_key)
         if (!cache__missing(cached)) {
             return(esgdict__with_built_time(cached))
         }
@@ -89,7 +89,7 @@ esgdict__fetch_cached <- function(
     )
 
     if (isTRUE(policy$write)) {
-        get_cache()$set(cache_key, esgdict__cached_fetch_value(fetched))
+        cache__get()$set(cache_key, esgdict__cached_fetch_value(fetched))
     }
 
     fetched

@@ -264,10 +264,10 @@ local_esgdict_disk_cache <- function(env = parent.frame()) {
     cache_dir <- tempfile("epwshiftr-esgdict-cache-")
     dir.create(cache_dir, recursive = TRUE)
     cache <- DiskCache$new(cache_dir, max_size = Inf, max_age = Inf, max_n = Inf, prune_on_init = FALSE)
-    old <- set_cache(cache)
+    old <- cache__set(cache)
 
     withr::defer({
-        set_cache(old)
+        cache__set(old)
         unlink(cache_dir, recursive = TRUE)
     }, envir = env)
 
@@ -602,7 +602,7 @@ test_that("parsed EsgDict cache can satisfy offline builds without source files"
     first <- EsgDict$new()
     first$build(cv_tag = "test-cv", request_tag = "test-request", source_dir = source_root)
     expect_true(first$has_data())
-    expect_equal(get_cache()$size(), 1L)
+    expect_equal(cache__get()$size(), 1L)
 
     local_cache_mode_for_test("offline")
     empty_source <- withr::local_tempdir()

@@ -1614,7 +1614,7 @@ query_result_reachable_cache_get <- function(level, target, timeout = 5, network
         return(NULL)
     }
     key <- query_result_reachable_cache_key(level, target, timeout, network_policy)
-    cached <- get_cache()$get(key)
+    cached <- cache__get()$get(key)
     if (cache__missing(cached)) {
         if (cache__mode() == "offline") {
             cli::cli_abort("Cache miss in offline mode for reachability probe target {.val {target}}.")
@@ -1657,7 +1657,7 @@ query_result_reachable_cache_set <- function(level, target, timeout = 5, network
             probe_url = as.character(result$probe_url)
         )
     )
-    get_cache()$set(key, value)
+    cache__get()$set(key, value)
     invisible(NULL)
 }
 

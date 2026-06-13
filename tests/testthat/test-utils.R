@@ -326,6 +326,8 @@ test_that(".onLoad() initializes directory options without requiring existing di
     on_load <- get(".onLoad", envir = asNamespace("epwshiftr"))
     expect_warning(on_load("", "epwshiftr"), NA)
 
+    expect_identical(cache__env$package, "epwshiftr")
+    expect_identical(cache__env$option_prefix, "epwshiftr")
     expect_identical(getOption("epwshiftr.dir_store"), store_default)
     expect_identical(getOption("epwshiftr.dir_cache"), cache_default)
     if (!store_exists) {
@@ -347,6 +349,8 @@ test_that(".onLoad() preserves explicit directory options", {
     on_load <- get(".onLoad", envir = asNamespace("epwshiftr"))
     expect_warning(on_load("", "epwshiftr"), NA)
 
+    expect_identical(cache__env$package, "epwshiftr")
+    expect_identical(cache__env$option_prefix, "epwshiftr")
     expect_identical(getOption("epwshiftr.dir_store"), store)
     expect_identical(getOption("epwshiftr.dir_cache"), cache)
     expect_false(dir.exists(store))

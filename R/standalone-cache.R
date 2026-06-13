@@ -1,3 +1,91 @@
+# ---
+# repo: ideas-lab-nus/epwshiftr
+# file: standalone-cache.R
+# last-updated: 2026-06-14
+# license: MIT + file LICENSE
+# imports: [R6]
+# optional: []
+# ---
+
+cache__env <- new.env(parent = emptyenv())
+cache__env$package <- "cache"
+cache__env$option_prefix <- "cache"
+cache__env$default_dir <- NULL
+cache__env$cache <- NULL
+
+cache__configure <- function(package, option_prefix = package, dir = NULL) {
+    if (!is.character(package) || length(package) != 1L ||
+        is.na(package) || !nzchar(package)) {
+        stop("'package' must be a single non-empty string.", call. = FALSE)
+    }
+    if (!is.character(option_prefix) || length(option_prefix) != 1L ||
+        is.na(option_prefix) || !nzchar(option_prefix)) {
+        stop("'option_prefix' must be a single non-empty string.", call. = FALSE)
+    }
+    if (!is.null(dir) &&
+        (!is.character(dir) || length(dir) != 1L || is.na(dir) || !nzchar(dir))) {
+        stop("'dir' must be NULL or a single non-empty string.", call. = FALSE)
+    }
+
+    cache__env$package <- package
+    cache__env$option_prefix <- option_prefix
+    cache__env$default_dir <- dir
+    cache__env$cache <- NULL
+    invisible(NULL)
+}
+
+cache__option_name <- function(name) {
+    paste0(cache__env$option_prefix, ".", name)
+}
+
+cache__option <- function(name, default) {
+    getOption(cache__option_name(name), default)
+}
+
+cache__default_dir <- function() {
+    if (!is.null(cache__env$default_dir)) {
+        return(cache__env$default_dir)
+    }
+    tools::R_user_dir(cache__env$package, "cache")
+}
+
+cache__hash <- function(x) {
+    FNV_PRIME <- 16777619
+    FNV_OFFSET <- 2166136261
+
+    if (is.character(x) && length(x) == 1L) {
+        bytes <- as.integer(charToRaw(x))
+    } else {
+        bytes <- as.integer(serialize(x, connection = NULL, ascii = FALSE))
+    }
+
+    hash <- FNV_OFFSET
+    for (byte in bytes) {
+        hash_hi <- hash %/% 65536
+        hash_lo <- hash %% 65536
+
+        hash_lo <- bitwXor(as.integer(hash_lo), byte)
+
+        hash <- (hash_hi * 65536 + hash_lo) * FNV_PRIME
+        hash <- hash %% (2^32)
+    }
+
+    if (hash <= .Machine$integer.max) {
+        sprintf("%08x", as.integer(hash))
+    } else {
+        hash_hi <- as.integer(hash %/% 65536)
+        hash_lo <- as.integer(hash %% 65536)
+        sprintf("%04x%04x", hash_hi, hash_lo)
+    }
+}
+
+cache__verbose <- function(expr) {
+    if (!cache__option("verbose", FALSE)) {
+        return(invisible(NULL))
+    }
+    force(expr)
+}
+
 DiskCache <- R6::R6Class(
     "DiskCache",
     public = list(
@@ -506,8 +594,35 @@ cache__missing <- function(x) {
     inherits(x, "key_missing")
 }
 
+# Get the package-level DiskCache instance.
+cache__get <- function() {
+    if (is.null(cache__env$cache)) {
+        cache_dir <- cache__option("dir_cache", cache__default_dir())
+        cache__env$cache <- DiskCache$new(
+            dir = cache_dir,
+            max_size = cache__option("cache_max_size", 1024^3),
+            max_age = cache__option("cache_max_age", 30 * 60),
+            max_n = cache__option("cache_max_n", Inf)
+        )
+    }
+    cache__env$cache
+}
+
+# Set or replace the package-level DiskCache instance.
+cache__set <- function(cache) {
+    old <- cache__env$cache
+    cache__env$cache <- cache
+    invisible(old)
+}
+
+# Reset the package-level cache singleton.
+cache__reset <- function() {
+    cache__env$cache <- NULL
+    invisible(NULL)
+}
+
 # Resolve a cache option value into the internal mode string.
-cache__mode <- function(x = getOption("epwshiftr.cache", TRUE), name = "epwshiftr.cache") {
+cache__mode <- function(x = cache__option("cache", TRUE), name = cache__option_name("cache")) {
     if (isTRUE(x)) {
         "normal"
     } else if (isFALSE(x)) {
@@ -531,62 +646,12 @@ cache__offline <- function() {
 
 # Generate a deterministic cache key from a prefix and hashed payload.
 cache__key <- function(prefix, ...) {
-    paste0(prefix, "-", fast_hash(list(...)))
+    paste0(prefix, "-", cache__hash(list(...)))
 }
 
 # Generate the fixed cache key used for JSON responses.
 cache__response_key <- function(url) {
-    paste0("response-", fast_hash(url))
-}
-
-# Read a JSON response, honoring the explicit cache mode for this request.
-cache__read_json <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
-    mode <- cache__mode(cache, name = "`cache`")
-
-    if (mode != "off") {
-        disk_cache <- get_cache()
-        key <- cache__response_key(url)
-
-        cached <- disk_cache$get(key)
-        if (!cache__missing(cached)) {
-            return(cached)
-        }
-
-        if (mode == "offline") {
-            stop("Cache miss in offline mode for URL '", url, "'. Cannot fetch data while offline.", call. = FALSE)
-        }
-    }
-
-    res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
-    timestamp <- Sys.time()
-
-    if (inherits(res, "warning") || inherits(res, "error")) {
-        msg <- paste0(
-            "Failed to read the JSON response. Details: \n",
-            conditionMessage(res)
-        )
-        if (isTRUE(strict)) {
-            stop(msg, call. = FALSE)
-        }
-        warning(msg, call. = FALSE)
-        return(NULL)
-    } else if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
-        verbose(warning(
-            "No matched data. ",
-            "Please examine your query and the actual response."
-        ))
-    }
-
-    res$timestamp <- timestamp
-
-    # cache successful results only
-    if (mode != "off" && !is.null(res)) {
-        # record the cache key
-        res$cache <- key
-        disk_cache$set(key, res)
-    }
-
-    res
+    paste0("response-", cache__hash(url))
 }
 
 # Wrap a URL fetch in the package cache.
@@ -599,7 +664,7 @@ cache__url <- function(key_prefix, key_data, fn, validate = NULL) {
     }
 
     # Normal or offline: check cache
-    cache <- get_cache()
+    cache <- cache__get()
     key <- cache__key(key_prefix, key_data)
     value <- cache$get(key)
 
@@ -636,7 +701,7 @@ cache__download <- function(url, destfile, fn) {
     }
 
     # Normal or offline: check cache
-    cache <- get_cache()
+    cache <- cache__get()
     key <- cache__key("dl", url)
     value <- cache$get(key)
 
