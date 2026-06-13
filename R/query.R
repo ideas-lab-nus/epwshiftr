@@ -154,8 +154,8 @@ FIELDS_FACETS_COMMON <- c(
 #'
 #'   * `NULL`, i.e. there is no constraint on the corresponding parameter
 #'
-#'   * A `QueryParam` object. Use `query_param__value()`, `query_param__negate()`,
-#'     `query_param__name()` and `query_param__kind()` to inspect it.
+#'   * A `QueryParam` object. Use `query_param__value()` and
+#'     `query_param__negate()` to inspect it.
 #'
 #' Despite methods for specific keywords and facets, you can specify arbitrary
 #' query parameters using
@@ -494,7 +494,7 @@ EsgQuery <- R6::R6Class(
         #' q$list_values(c("activity_id", "experiment_id"))
         #' }
         list_values = function(facets, force = FALSE) {
-            checkmate::assert_subset(facets, QUERY_PARAM__FACET_FIELDS)
+            checkmate::assert_subset(facets, QUERY_PARAM__FIELDS)
             checkmate::assert_flag(force)
 
             url <- query_build(
@@ -1532,13 +1532,13 @@ query_build <- function(index_node, params, type = "search") {
         endpoint <- sprintf("%s/esg-search/%s", index_node, type)
     }
 
-    params <- store$flat()
+    params <- store$state()
     if (!length(params)) {
         return(NULL)
     }
 
     # separate query= params from regular facet params
-    query_names <- names(store$state()$query)
+    query_names <- intersect(names(store$state()), query_param__names("date"))
     is_bridge <- is_bridge_index_node(index_node)
     bridge_now <- if (is_bridge) getOption("epwshiftr.solr_date_math_now", Sys.time()) else NULL
     query_clauses <- if (length(query_names)) {
@@ -1559,7 +1559,7 @@ query_build <- function(index_node, params, type = "search") {
     # facet queries without any negated inputs
     if (!is_bridge || !any(is_negate)) {
         rendered <- c(
-            vapply(params, query_param__render, FUN.VALUE = ""),
+            vapply(names(params), function(name) query_param__render(params[[name]], name), FUN.VALUE = ""),
             if (length(query_clauses)) {
                 query_render_free_text(paste(query_clauses, collapse = " AND "))
             }
@@ -1576,18 +1576,26 @@ query_build <- function(index_node, params, type = "search") {
     # query syntax should be used since bridge does not support negate syntax
     # like 'project!=CMIP6'.
     # see: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#free-text-queries
-    facets <- paste(vapply(params[!is_negate], query_param__render, FUN.VALUE = ""), collapse = "&")
+    facets <- paste(
+        vapply(
+            names(params[!is_negate]),
+            function(name) query_param__render(params[[name]], name),
+            FUN.VALUE = ""
+        ),
+        collapse = "&"
+    )
     negate_query <- paste(
         vapply(
-            params[is_negate],
-            function(param) {
+            names(params[is_negate]),
+            function(name) {
+                param <- params[[name]]
                 value <- query_render_globus_value(query_param__value(param))
                 if (length(value) == 1L) {
                     value <- value
                 } else {
                     value <- sprintf("(%s)", paste(value, collapse = " "))
                 }
-                sprintf("NOT (%s:%s)", query_param__name(param), value)
+                sprintf("NOT (%s:%s)", name, value)
             },
             FUN.VALUE = ""
         ),
@@ -1647,7 +1655,7 @@ query_dict_check_load <- function(project) {
 }
 
 query_dict_check_args <- function(store, dict) {
-    params <- store$flat()
+    params <- store$state()
     if (!length(params)) {
         return(list())
     }
@@ -1659,7 +1667,7 @@ query_dict_check_args <- function(store, dict) {
             is.null(param) ||
                 !S7::S7_inherits(param, QueryParamFacet) ||
                 isTRUE(query_param__negate(param)) ||
-                !identical(query_param__spec(name)$role, "result_field")
+                !query_param__field(name)
         ) {
             next
         }
@@ -1748,7 +1756,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
     )
 
     store <- query_param__clone(params)
-    params <- store$flat()
+    params <- store$state()
 
     # include necessary fields
     if (!is.null(params$fields)) {

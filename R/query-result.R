@@ -3464,7 +3464,7 @@ EsgResultDataset <- R6::R6Class(
                 names_reserved <- c(
                     "dataset_id", "fields", "facets", "type", "format",
                     "limit", "offset", "query", "_timestamp", "time",
-                    query_param__names("query")
+                    query_param__names("date")
                 )
                 overrides <- eval_with_bang(..., .env = dots_env)
 
@@ -3500,14 +3500,10 @@ EsgResultDataset <- R6::R6Class(
                         if (is.null(param$value)) {
                             return(NULL)
                         }
-                        query_param__meta(
-                            QueryParamFacet(
-                                param$value,
-                                negate = isTRUE(param$negate),
-                                encoded = FALSE
-                            ),
-                            name = names(extra_params)[[i]],
-                            kind = "facet"
+                        QueryParamFacet(
+                            param$value,
+                            negate = isTRUE(param$negate),
+                            encoded = FALSE
                         )
                     }),
                     names(extra_params)

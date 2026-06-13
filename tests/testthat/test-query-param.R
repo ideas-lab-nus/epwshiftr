@@ -61,26 +61,15 @@ test_that("QueryParamStore", {
     store <- QueryParamStore$new()
 
     expect_s3_class(store, "QueryParamStore")
-    expect_identical(query_param__spec("project")$role, "result_field")
-    expect_identical(query_param__spec("fields")$role, "keyword")
-    expect_identical(query_param__spec("datetime_start")$role, "query")
-    expect_identical(query_param__spec("limit")$role, "control")
-    expect_identical(query_param__spec("bbox")$role, "keyword")
-    expect_true(all(vapply(
-        c("start", "end", "from", "to"),
-        function(name) identical(query_param__spec(name)$role, "keyword"),
-        logical(1L)
-    )))
-    expect_true(all(vapply(
-        QUERY_PARAM__NON_RESULT_FIELDS,
-        function(name) query_param__spec(name)$role != "result_field",
-        logical(1L)
-    )))
+    expect_true(query_param__field("project"))
+    expect_false(query_param__field("fields"))
+    expect_false(query_param__field("bbox"))
+    expect_true(all(QUERY_PARAM__REST_KEYS %in% query_param__names("all")))
 
     state_all <- store$state(null = TRUE)
-    expect_named(state_all, c("facet", "query", "control", "others"))
-    expect_s3_class(state_all$facet$project, "S7_object")
-    expect_identical(state_all$facet$project@value, "CMIP6")
+    expect_named(state_all, names(QUERY_PARAM__DEF))
+    expect_s3_class(state_all$project, "S7_object")
+    expect_identical(state_all$project@value, "CMIP6")
     expect_s3_class(store$fields(), "S7_object")
     expect_identical(store$fields()@value, "*")
     expect_null(store$latest())
@@ -157,18 +146,18 @@ test_that("QueryParamStore", {
     )
     expect_length(timestamp_raw_first$params(), 0L)
     expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
-    expect_null(state_all$query$datetime_start)
+    expect_null(state_all$datetime_start)
 
     store$project(NULL)$fields(NULL)
     state_after_null <- store$state(null = TRUE)
-    expect_null(state_after_null$facet$project)
-    expect_null(state_after_null$facet$fields)
+    expect_null(state_after_null$project)
+    expect_null(state_after_null$fields)
 
     store$project("CMIP6")$fields("*")
     store$params(table_id = "Amon")
     state <- store$state()
-    expect_s3_class(state$others$table_id, "S7_object")
-    expect_identical(state$others$table_id@value, "Amon")
+    expect_s3_class(state$table_id, "S7_object")
+    expect_identical(state$table_id@value, "Amon")
     expect_identical(store$params()$table_id@value, "Amon")
 
     vals <- c("CFMIP", "ScenarioMIP")
@@ -263,17 +252,10 @@ test_that("QueryParamStore", {
     restored <- QueryParamStore$new()$restore(serialized)
 
     subset_state <- q$state(name = c("activity_id", "version_max", "table_id", "limit"), null = TRUE)
-    expect_named(subset_state, c("facet", "query", "others", "control"))
-    expect_named(subset_state$facet, "activity_id")
-    expect_named(subset_state$query, "version_max")
-    expect_named(subset_state$control, "limit")
-    expect_named(subset_state$others, "table_id")
+    expect_named(subset_state, c("activity_id", "version_max", "table_id", "limit"))
 
     subset_serialized <- q$serialize(name = c("activity_id", "version_max"))
-    expect_named(subset_serialized$facet, "activity_id")
-    expect_named(subset_serialized$query, "version_max")
-    expect_identical(subset_serialized$control, list())
-    expect_identical(subset_serialized$others, list())
+    expect_named(subset_serialized, c("activity_id", "version_max"))
 
     expect_equal(
         q$render(name = c("limit", "project")),
@@ -282,12 +264,11 @@ test_that("QueryParamStore", {
     expect_true(any(grepl("^_timestamp:", q$render(name = "_timestamp"))))
     expect_true(any(grepl("^version:", q$render(name = "version"))))
 
-    expect_named(serialized, c("facet", "query", "control", "others"))
-    expect_true(serialized$facet$activity_id$negate)
-    expect_identical(serialized$others$table_id$value, "Amon")
-    expect_true("datetime_start" %in% names(serialized$query))
-    expect_identical(serialized$query$version_min$value, "[20200101 TO *]")
-    expect_identical(serialized$query$version_max$value, "[* TO 20210101]")
+    expect_true(serialized$activity_id$negate)
+    expect_identical(serialized$table_id$value, "Amon")
+    expect_true("datetime_start" %in% names(serialized))
+    expect_identical(serialized$version_min$value, "[20200101 TO *]")
+    expect_identical(serialized$version_max$value, "[* TO 20210101]")
 
     expect_s3_class(restored$activity_id(), "S7_object")
     expect_true(restored$activity_id()@negate)
@@ -295,7 +276,7 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
-    expect_error(QueryParamStore$new()$restore(list(project = serialized$facet$project)), "subset")
+    expect_error(QueryParamStore$new()$restore(list(facet = list(project = serialized$project))), "Bucketed")
     expect_setequal(
         q$param_names(role = "result_field"),
         c("project", "activity_id", "table_id")

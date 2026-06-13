@@ -331,7 +331,6 @@ rd_query_method_return <- function() {
             "\\itemize{",
             "\\item Use \\code{query_param__value()} to read the stored value.",
             "\\item Use \\code{query_param__negate()} to read whether the facet is negated.",
-            "\\item Use \\code{query_param__name()} and \\code{query_param__kind()} to inspect metadata.",
             "}"
         ),
         "}"

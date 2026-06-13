@@ -214,7 +214,7 @@ test_that("ESGF query results save/load through real JSON files", {
 
         expect_type(result$save(file), "character")
         json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-        expect_named(json$parameter, c("facet", "query", "control", "others"))
+        expect_true(all(c("project", "fields", "type", "limit", "format") %in% names(json$parameter)))
 
         loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
         expect_identical(loaded$id, result$id)
@@ -1206,7 +1206,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_false(query_param__value(calls[[1L]]$params$replica()))
     expect_null(calls[[1L]]$params$project())
     expect_null(calls[[1L]]$params$source_id())
-    expect_identical(query_param__value(calls[[1L]]$params$flat()$dataset_id), "dataset-1")
+    expect_identical(query_param__value(calls[[1L]]$params$state()$dataset_id), "dataset-1")
     expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param__value(priv(files)$parameter$fields())))
 
     expect_s3_class(
@@ -1230,7 +1230,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_false(query_param__value(calls[[3L]]$params$replica()))
     expect_null(calls[[3L]]$params$project())
     expect_null(calls[[3L]]$params$source_id())
-    expect_identical(query_param__value(calls[[3L]]$params$flat()$dataset_id), "dataset-1")
+    expect_identical(query_param__value(calls[[3L]]$params$state()$dataset_id), "dataset-1")
     expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param__value(priv(aggs)$parameter$fields())))
 })
 
@@ -1286,7 +1286,7 @@ test_that("dataset result collect can target child queries by record index node"
     calls <- list()
     testthat::local_mocked_bindings(
         query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            dataset_id <- query_param__value(params$flat()$dataset_id)
+            dataset_id <- query_param__value(params$state()$dataset_id)
             calls[[length(calls) + 1L]] <<- list(index_node = index_node, dataset_id = dataset_id)
             docs <- data.frame(
                 id = paste0("file-", dataset_id),

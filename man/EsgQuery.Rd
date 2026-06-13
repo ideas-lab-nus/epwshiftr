@@ -129,8 +129,8 @@ directly calling \code{EsgQuery$project()} returns the current value of the
 \code{project} parameter. The returned value can be two types:
 \itemize{
 \item \code{NULL}, i.e. there is no constraint on the corresponding parameter
-\item A \code{QueryParam} object. Use \code{query_param_value()}, \code{query_param_negate()},
-\code{query_param_name()} and \code{query_param_kind()} to inspect it.
+\item A \code{QueryParam} object. Use \code{query_param__value()} and
+\code{query_param__negate()} to inspect it.
 }
 }
 

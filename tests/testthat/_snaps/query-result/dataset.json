@@ -1,55 +1,49 @@
 {
   "index_node": ["..."],
   "parameter": {
-    "facet": {
-      "project": {
-        "value": ["CMIP6"],
-        "negate": [false]
-      },
-      "activity_id": {
-        "value": ["ScenarioMIP"],
-        "negate": [false]
-      },
-      "source_id": {
-        "value": ["AWI-CM-1-1-MR"],
-        "negate": [false]
-      },
-      "variable_id": {
-        "value": ["tas"],
-        "negate": [false]
-      },
-      "frequency": {
-        "value": ["day"],
-        "negate": [false]
-      },
-      "variant_label": {
-        "value": ["r1i1p1f1"],
-        "negate": [false]
-      },
-      "fields": {
-        "value": ["source_id", "experiment_id", "frequency", "access", "data_node", "id", "index_node", "instance_id", "latest", "master_id", "number_of_aggregations", "number_of_files", "replica", "size", "url", "version", "project", "activity_id", "variable_id", "variant_label"],
-        "negate": [false]
-      }
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
     },
-    "query": [],
-    "control": {
-      "type": {
-        "value": ["Dataset"]
-      },
-      "offset": {
-        "value": [0]
-      },
-      "distrib": {
-        "value": [true]
-      },
-      "limit": {
-        "value": [2]
-      },
-      "format": {
-        "value": ["application/solr+json"]
-      }
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
     },
-    "others": []
+    "source_id": {
+      "value": ["AWI-CM-1-1-MR"],
+      "negate": [false]
+    },
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": {
+      "value": ["day"],
+      "negate": [false]
+    },
+    "variant_label": {
+      "value": ["r1i1p1f1"],
+      "negate": [false]
+    },
+    "fields": {
+      "value": ["source_id", "experiment_id", "frequency", "access", "data_node", "id", "index_node", "instance_id", "latest", "master_id", "number_of_aggregations", "number_of_files", "replica", "size", "url", "version", "project", "activity_id", "variable_id", "variant_label"],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"]
+    },
+    "offset": {
+      "value": [0]
+    },
+    "distrib": {
+      "value": [true]
+    },
+    "limit": {
+      "value": [2]
+    },
+    "format": {
+      "value": ["application/solr+json"]
+    }
   },
   "response": {
     "responseHeader": {

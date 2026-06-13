@@ -130,27 +130,22 @@ test_that("QueryParam helpers use typed objects", {
         query_param__as("x", list(value = LETTERS[1:3], negate = TRUE)),
         "S7_object"
     )
-    expect_identical(query_param__kind(param), "facet")
-    expect_identical(query_param__name(param), "x")
+    expect_true(S7::S7_inherits(param, QueryParamFacet))
     expect_identical(query_param__value(param), LETTERS[1:3])
     expect_true(query_param__negate(param))
 
     query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
     expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
-    expect_identical(query_param__kind(query_param), "datetime_start")
-    expect_identical(query_param__name(query_param), "datetime_start")
+    expect_true(S7::S7_inherits(query_param, QueryParamDate))
     expect_true(is.solr_date(query_param__value(query_param)))
 
-    expect_identical(query_param__spec("project")$class, "facet")
-    expect_identical(query_param__spec("_timestamp")$class, "query")
     expect_identical(
-        query_param__names("query"),
+        query_param__names("date"),
         c(
             "datetime_start",
             "datetime_stop",
             "timestamp_from",
             "timestamp_to",
-            "_timestamp",
             "version_min",
             "version_max"
         )
@@ -159,20 +154,20 @@ test_that("QueryParam helpers use typed objects", {
     flat_params <- query_param__as_store(list(
         datetime_start = solr_date("2017"),
         project = "CMIP6",
-        others = list(variable_id = "tas")
-    ))$flat()
+        variable_id = "tas"
+    ))$state()
     expect_s3_class(flat_params$datetime_start, "S7_object")
     expect_s3_class(flat_params$project, "S7_object")
     expect_s3_class(flat_params$variable_id, "S7_object")
 
-    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE))), "x=false")
-    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE))), "x!=1")
+    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE)), "x"), "x=false")
+    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE)), "x"), "x!=1")
     expect_identical(
-        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE))),
+        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE)), "x"),
         "x!=solr%2Bjson"
     )
 
-    expect_identical(query_param__render(query_param__as("x", TRUE), space = TRUE), "x = true")
+    expect_identical(query_param__render(query_param__as("x", TRUE), "x", space = TRUE), "x = true")
     expect_identical(query_param__render(query_param__as("x", 1.0), space = TRUE), "x = 1")
     expect_identical(query_param__render(query_param__as("x", "solr+json"), space = TRUE), "x = solr%2Bjson")
 
@@ -264,12 +259,12 @@ test_that("esg_query()", {
     state <- q_state$state()
     expect_named(state, c("index_node", "parameter"))
     expect_identical(state$index_node, "https://esgf.ceda.ac.uk")
-    expect_named(state$parameter, c("facet", "control"))
-    expect_identical(query_param__value(state$parameter$facet$experiment_id), "ssp585")
+    expect_true(all(c("experiment_id", "fields") %in% names(state$parameter)))
+    expect_identical(query_param__value(state$parameter$experiment_id), "ssp585")
 
     state_all <- q_state$state(null = TRUE)
-    expect_named(state_all$parameter, c("facet", "query", "control", "others"))
-    expect_null(state_all$parameter$query$datetime_start)
+    expect_named(state_all$parameter, names(QUERY_PARAM__DEF))
+    expect_null(state_all$parameter$datetime_start)
 
     expect_s3_class(q_state$index_node("esgf.nci.org.au"), "EsgQuery")
     expect_identical(q_state$index_node(), "https://esgf.nci.org.au")
@@ -1175,32 +1170,32 @@ test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
     )
 
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-    expect_named(json$parameter, c("facet", "query", "control", "others"))
+    expect_true(all(c("project", "activity_id", "datetime_start", "limit", "type", "table_id") %in% names(json$parameter)))
 
     invalid_type <- json
-    invalid_type$parameter$control$type$value <- "File"
+    invalid_type$parameter$type$value <- "File"
     invalid_type_file <- tempfile(fileext = ".json")
     jsonlite::write_json(invalid_type, invalid_type_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_query()$load(invalid_type_file), "Dataset queries")
 
     invalid_format <- json
-    invalid_format$parameter$control$format$value <- "application/xml"
+    invalid_format$parameter$format$value <- "application/xml"
     invalid_format_file <- tempfile(fileext = ".json")
     jsonlite::write_json(invalid_format, invalid_format_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_query()$load(invalid_format_file), "JSON response format")
 
-    flat_parameter <- json
-    flat_parameter$parameter <- c(
-        json$parameter$facet,
-        json$parameter$query,
-        json$parameter$control,
-        json$parameter$others
+    bucketed_parameter <- json
+    bucketed_parameter$parameter <- list(
+        facet = list(project = json$parameter$project),
+        query = list(datetime_start = json$parameter$datetime_start),
+        control = list(type = json$parameter$type),
+        others = list(table_id = json$parameter$table_id)
     )
-    flat_parameter_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(flat_parameter, flat_parameter_file, null = "null", auto_unbox = TRUE)
-    expect_error(esg_query()$load(flat_parameter_file), "subset")
+    bucketed_parameter_file <- tempfile(fileext = ".json")
+    jsonlite::write_json(bucketed_parameter, bucketed_parameter_file, null = "null", auto_unbox = TRUE)
+    expect_error(esg_query()$load(bucketed_parameter_file), "Bucketed")
 
-    unlink(c(file, invalid_type_file, invalid_format_file, flat_parameter_file))
+    unlink(c(file, invalid_type_file, invalid_format_file, bucketed_parameter_file))
 })
 # }}}
 
@@ -1243,13 +1238,13 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     query_json <- jsonlite::fromJSON(file_query, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
     file_invalid_type <- tempfile(fileext = ".json")
-    query_json$parameter$control$type$value <- "File"
+    query_json$parameter$type$value <- "File"
     jsonlite::write_json(query_json, file_invalid_type, null = "null", auto_unbox = TRUE)
     expect_error(esg_query()$load(file_invalid_type), "Dataset queries")
 
     file_invalid_format <- tempfile(fileext = ".json")
-    query_json$parameter$control$type$value <- "Dataset"
-    query_json$parameter$control$format$value <- "application/xml"
+    query_json$parameter$type$value <- "Dataset"
+    query_json$parameter$format$value <- "application/xml"
     jsonlite::write_json(query_json, file_invalid_format, null = "null", auto_unbox = TRUE)
     expect_error(esg_query()$load(file_invalid_format), "JSON response format")
 

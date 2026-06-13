@@ -75,7 +75,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
                 limit = limit
             )
 
-            type <- query_param__value(params$flat()$type)
+            type <- query_param__value(params$state()$type)
             response <- if (identical(type, "Dataset")) dataset_response else file_response
             list(response = response, docs = response$response$docs)
         },
@@ -122,7 +122,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_identical(query_param__value(calls[[3L]]$params$type()), "File")
     expect_null(calls[[3L]]$params$project())
     expect_null(calls[[3L]]$params$source_id())
-    expect_identical(query_param__value(calls[[3L]]$params$flat()$dataset_id), "dataset-id")
+    expect_identical(query_param__value(calls[[3L]]$params$state()$dataset_id), "dataset-id")
     expect_setequal(calls[[3L]]$required_fields, EsgResultFile$private_fields$required_fields)
     expect_type(qf$version, "character")
     fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
