@@ -1771,7 +1771,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
             }
 
             if (constraints) {
-                fields <- unique(c(fields, store$param_names(role = "result_field")))
+                fields <- unique(c(fields, names(params)[query_param__field(names(params))]))
             }
 
             store$fields(fields)

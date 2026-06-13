@@ -64,6 +64,11 @@ test_that("QueryParamStore", {
     expect_true(query_param__field("project"))
     expect_false(query_param__field("fields"))
     expect_false(query_param__field("bbox"))
+    expect_false(any(query_param__field(c(
+        "datetime_start", "datetime_stop", "timestamp_from", "timestamp_to",
+        "version_min", "version_max", "type", "format", "facets", "shards",
+        "start", "end", "from", "to"
+    ))))
     expect_true(all(QUERY_PARAM__REST_KEYS %in% query_param__names("all")))
 
     state_all <- store$state(null = TRUE)
@@ -115,7 +120,6 @@ test_that("QueryParamStore", {
         NA
     )
     expect_setequal(names(raw_store$params()), c("bbox", "start", "end", "from", "to"))
-    expect_true(all(c("bbox", "start", "end", "from", "to") %in% raw_store$param_names(role = "keyword")))
 
     helper_first <- QueryParamStore$new()$datetime_range(start = "2020")
     expect_warning(
@@ -277,13 +281,11 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
     expect_error(QueryParamStore$new()$restore(list(facet = list(project = serialized$project))), "Bucketed")
+
+    q_fields <- names(q$state())[query_param__field(names(q$state()))]
     expect_setequal(
-        q$param_names(role = "result_field"),
+        q_fields,
         c("project", "activity_id", "table_id")
-    )
-    expect_setequal(
-        q$param_names(role = "query"),
-        c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
     )
 
     expect_warning(
@@ -297,8 +299,9 @@ test_that("QueryParamStore", {
         ),
         NA
     )
+    role_fields <- names(role_store$state())[query_param__field(names(role_store$state()))]
     expect_setequal(
-        role_store$param_names(role = "result_field"),
+        role_fields,
         c("project", "activity_id", "table_id")
     )
 
