@@ -15,7 +15,7 @@ esgdict__volatile_source_dir <- function(project = "CMIP6") {
 }
 
 esgdict__parsed_cache_key <- function(project, cv_tag_info, request_tag_info, spec) {
-    make_cache_key(
+    cache__key(
         "esgdict",
         project = esgdict__normalize_project(project),
         profile = esgdict__profile(project),
@@ -67,7 +67,7 @@ esgdict__fetch_cached <- function(
     # build skips this read path, but still writes a fresh parsed value later.
     if (isTRUE(policy$read) && !isTRUE(force)) {
         cached <- get_cache()$get(cache_key)
-        if (!is.key_missing(cached)) {
+        if (!cache__missing(cached)) {
             return(esgdict__with_built_time(cached))
         }
     }
@@ -161,7 +161,7 @@ esgdict__resolve_tag_cached <- function(repo, tag = NULL, token = NULL, policy) 
     }
 
     tryCatch(
-        with_url_cache(
+        cache__url(
             "esgdict-tag",
             list(repo = repo),
             fn = function() esgdict__resolve_tag(repo, tag, token),

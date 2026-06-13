@@ -1805,7 +1805,7 @@ Downloader <- R6::R6Class("Downloader",
             }
 
             # In offline mode, refuse to download files that don't exist locally
-            if (is_cache_offline() && status != FileStatus$Downloaded) {
+            if (cache__offline() && status != FileStatus$Downloaded) {
                 stop(
                     "Cannot download file in offline mode: ", url,
                     "\nExpected file at: ", dest,
@@ -5734,7 +5734,7 @@ Downloader <- R6::R6Class("Downloader",
         download_async = function(url, filename, subdir, progress,
                                   overwrite, checksum, checksum_type, resume) {
             # Check offline mode before launching async download
-            if (is_cache_offline()) {
+            if (cache__offline()) {
                 stop(
                     "Cannot download file in offline mode: ", url,
                     call. = FALSE

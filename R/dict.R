@@ -175,7 +175,7 @@ esgdict__assert_implemented <- function(project) {
 esgdict__cache_policy <- function(use_cache = TRUE) {
     checkmate::assert_flag(use_cache)
 
-    mode <- cache_mode()
+    mode <- cache__mode()
     enabled <- isTRUE(use_cache) && !identical(mode, "off")
     list(
         mode = mode,

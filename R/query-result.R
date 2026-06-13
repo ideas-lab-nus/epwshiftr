@@ -1597,7 +1597,7 @@ query_result_reachable_network_policy_key <- function(network_policy = NULL) {
 }
 
 query_result_reachable_cache_key <- function(level, target, timeout = 5, network_policy = NULL) {
-    make_cache_key(
+    cache__key(
         "reach",
         list(
             level = level,
@@ -1610,13 +1610,13 @@ query_result_reachable_cache_key <- function(level, target, timeout = 5, network
 
 query_result_reachable_cache_get <- function(level, target, timeout = 5, network_policy = NULL,
                                              cache_seconds = 3600L, cache_failures_seconds = 0L) {
-    if (cache_mode() == "off") {
+    if (cache__mode() == "off") {
         return(NULL)
     }
     key <- query_result_reachable_cache_key(level, target, timeout, network_policy)
     cached <- get_cache()$get(key)
-    if (is.key_missing(cached)) {
-        if (cache_mode() == "offline") {
+    if (cache__missing(cached)) {
+        if (cache__mode() == "offline") {
             cli::cli_abort("Cache miss in offline mode for reachability probe target {.val {target}}.")
         }
         return(NULL)
@@ -1639,7 +1639,7 @@ query_result_reachable_cache_get <- function(level, target, timeout = 5, network
 query_result_reachable_cache_set <- function(level, target, timeout = 5, network_policy = NULL,
                                              result, cache_seconds = 3600L,
                                              cache_failures_seconds = 0L) {
-    if (cache_mode() == "off" || is.na(target) || !nzchar(target)) {
+    if (cache__mode() == "off" || is.na(target) || !nzchar(target)) {
         return(invisible(NULL))
     }
     ok <- isTRUE(result$reachable)

@@ -1181,7 +1181,7 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
     }
 
     msg <- NULL
-    res <- with_url_cache(
+    res <- cache__url(
         "datanode",
         url,
         function() {

@@ -306,7 +306,7 @@ test_that("EsgQuery$list_facets()", {
     calls <- character()
 
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             calls <<- c(calls, url)
             local_query_listing_response(params = list(facet.field = c("activity_id", "source_id")))
         },
@@ -332,7 +332,7 @@ test_that("EsgQuery$list_fields()", {
     fields <- c("id", "activity_id", "source_id")
 
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             local_query_listing_response(docs = list(stats::setNames(as.list(seq_along(fields)), fields)))
         },
         .package = "epwshiftr"
@@ -352,7 +352,7 @@ test_that("EsgQuery$list_shards()", {
     shards <- "localhost:8983/solr/datasets,esgf.example.org/solr/datasets"
 
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             local_query_listing_response(params = list(shards = shards))
         },
         .package = "epwshiftr"
@@ -381,7 +381,7 @@ test_that("EsgQuery$list_values()", {
     )
 
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             local_query_listing_response(facet_fields = facet_fields, num_found = 4L)
         },
         .package = "epwshiftr"
@@ -408,7 +408,7 @@ test_that("EsgQuery listing cache respects max_age", {
     local_cache_mode("normal")
 
     url <- "https://example.org/esg-search/search?project=CMIP6"
-    key <- get_response_cache_key(url)
+    key <- cache__response_key(url)
     cached <- list(timestamp = Sys.time() - 3600, value = "old")
     cache$set(key, cached)
     Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".rds")), Sys.time() - 3600)
@@ -416,7 +416,7 @@ test_that("EsgQuery listing cache respects max_age", {
     calls <- 0L
     fetched <- list(timestamp = Sys.time(), value = "new")
     testthat::local_mocked_bindings(
-        read_json_response = function(...) {
+        cache__read_json = function(...) {
             calls <<- calls + 1L
             fetched
         },
@@ -439,7 +439,7 @@ test_that("EsgQuery listing cache treats expired offline entries as misses", {
     local_cache_mode("offline")
 
     url <- "https://example.org/esg-search/search?project=CMIP6"
-    key <- get_response_cache_key(url)
+    key <- cache__response_key(url)
     cache$set(key, list(timestamp = Sys.time() - 3600, value = "old"))
     Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".rds")), Sys.time() - 3600)
 
@@ -917,7 +917,7 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             decoded <- utils::URLdecode(url)
             facet_fields <- if (grepl("facets=activity_id", decoded, fixed = TRUE)) {
                 list(activity_id = list("CMIP", 2L, "ScenarioMIP", 1L))
@@ -1039,7 +1039,7 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
 test_that("query__collect includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             list(response = list(
                 numFound = 1L,
@@ -1097,7 +1097,7 @@ test_that("query__collect includes only result-field constraints in fields", {
 test_that("query__collect returns normalized effective parameters", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             list(response = list(
                 numFound = 1L,
@@ -1132,7 +1132,7 @@ test_that("query__collect returns normalized effective parameters", {
 test_that("query__collect records actual page query URLs", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) {
+        cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             docs <- if (length(captured_url) == 1L) {
                 data.frame(id = c("dataset-1", "dataset-2"), score = 1, check.names = FALSE)
@@ -1160,7 +1160,7 @@ test_that("query__collect records actual page query URLs", {
 test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) local_query_test_response(),
+        cache__read_json = function(url, ...) local_query_test_response(),
         .package = "epwshiftr"
     )
 
@@ -1180,7 +1180,7 @@ test_that("EsgQuery$collect() skips dictionary check when no local dictionary is
     local_esgdict_default(NULL)
     withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) local_query_test_response(),
+        cache__read_json = function(url, ...) local_query_test_response(),
         .package = "epwshiftr"
     )
 
@@ -1272,7 +1272,7 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     skip_on_cran()
     index_node <- INDEX_NODES[["CEDA"]]
     testthat::local_mocked_bindings(
-        read_json_response = function(url, ...) local_query_test_response(),
+        cache__read_json = function(url, ...) local_query_test_response(),
         .package = "epwshiftr"
     )
 

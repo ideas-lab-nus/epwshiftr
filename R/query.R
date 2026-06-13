@@ -1041,7 +1041,7 @@ EsgQuery <- R6::R6Class(
             }
 
             url <- query__build(private$index_node_url, params)
-            res <- read_json_response(url, simplifyVector = FALSE)
+            res <- cache__read_json(url, simplifyVector = FALSE)
 
             if (!facets) {
                 return(res$response$numFound)
@@ -1396,10 +1396,10 @@ EsgQuery <- R6::R6Class(
         },
 
         query_listing_cached = function(url, force, type) {
-            mode <- cache_mode()
+            mode <- cache__mode()
             if (mode != "off") {
                 cache <- get_cache()
-                key <- get_response_cache_key(url)
+                key <- cache__response_key(url)
                 cached <- if (force) {
                     cache$remove(key)
                     structure(list(), class = "key_missing")
@@ -1407,7 +1407,7 @@ EsgQuery <- R6::R6Class(
                     cache$get(key)
                 }
 
-                if (!is.key_missing(cached)) {
+                if (!cache__missing(cached)) {
                     verbose(cli::cli_alert_info(paste(
                         "Loaded cached {type} listing for index node {.var {private$index_node_url}}",
                         "built at {format(cached$timestamp, '%F %T %Z')}."
@@ -1428,7 +1428,7 @@ EsgQuery <- R6::R6Class(
                 ),
                 "Failed to retrieve {type} listing for index node {.var {private$index_node_url}}."
             ))
-            with_timeout(300, read_json_response(url, simplifyVector = FALSE))
+            with_timeout(300, cache__read_json(url, simplifyVector = FALSE))
         }
     )
 )
@@ -1799,7 +1799,7 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
     query_urls <- character()
     url <- query__build(index_node, store)
     query_urls <- c(query_urls, url)
-    response <- read_json_response(url)
+    response <- cache__read_json(url)
     docs <- response$response$docs
 
     # check if the total number is less that the limit
@@ -1813,7 +1813,7 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
 
             url <- query__build(index_node, store)
             query_urls <- c(query_urls, url)
-            response <- read_json_response(url)
+            response <- cache__read_json(url)
 
             # combine results
             docs <- rbind(docs, response$response$docs)

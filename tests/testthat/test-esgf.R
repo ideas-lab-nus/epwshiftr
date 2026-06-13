@@ -287,7 +287,7 @@ test_that("data_node_status()", {
             expect_true(raw)
             list(url = "https://example.org", path = "/esgf-1-5-bridge")
         },
-        with_url_cache = function(name, url, fn, validate) {
+        cache__url = function(name, url, fn, validate) {
             expect_identical(name, "datanode")
             expect_identical(url, "https://example.org/proxy/status")
             res <- fn()
