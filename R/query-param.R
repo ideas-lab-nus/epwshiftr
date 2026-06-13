@@ -602,6 +602,115 @@ query_param__clone <- function(params) {
     query_param__as_store(params)$copy()
 }
 
+# Return the default render order for a flat parameter list.
+# Facet-like URL parameters are rendered before structured Solr query clauses.
+query_param__order <- function(params) {
+    nms <- names(params)
+    unique(c(
+        intersect(query_param__names("facet"), nms),
+        intersect(query_param__names("control"), nms),
+        setdiff(nms, query_param__names("dedicated")),
+        intersect(query_param__names("date"), nms)
+    ))
+}
+
+# Expand synthetic render names to their stored flat parameter names.
+# This keeps `$render("version")` and `$render("_timestamp")` convenient.
+query_param__expand_names <- function(name) {
+    checkmate::assert_character(name, null.ok = TRUE, any.missing = FALSE, unique = TRUE)
+    if (is.null(name) || !length(name)) {
+        return(name)
+    }
+
+    idx_time <- match("_timestamp", name, nomatch = 0L)
+    if (idx_time > 0L) {
+        name <- c(
+            name[seq_len(idx_time - 1L)],
+            "timestamp_from",
+            "timestamp_to",
+            name[-seq_len(idx_time)]
+        )
+    }
+
+    idx_ver <- match("version", name, nomatch = 0L)
+    if (idx_ver > 0L) {
+        name <- c(
+            name[seq_len(idx_ver - 1L)],
+            "version_min",
+            "version_max",
+            name[-seq_len(idx_ver)]
+        )
+    }
+
+    unique(name)
+}
+
+# Normalize flat date parameters into render-ready Solr query clauses.
+# Timestamp bounds are folded into `_timestamp`; version bounds render as `version`.
+query_param__query_params <- function(params) {
+    if (!length(params)) {
+        return(list(params = params, render_names = character(), output_names = character()))
+    }
+
+    if (any(c("timestamp_from", "timestamp_to") %in% names(params))) {
+        from <- params$timestamp_from
+        to <- params$timestamp_to
+        from_value <- if (is.null(from)) SolrDateUnbounded() else from@value
+        to_value <- if (is.null(to)) SolrDateUnbounded() else to@value
+
+        if (!S7::S7_inherits(from_value, SolrDateUnbounded) || !S7::S7_inherits(to_value, SolrDateUnbounded)) {
+            params$`_timestamp` <- QueryParamDate(SolrDateRange(from_value, to_value))
+        }
+        params$timestamp_from <- NULL
+        params$timestamp_to <- NULL
+    }
+
+    render_names <- names(params)
+    output_names <- render_names
+    idx_ver <- match(c("version_min", "version_max"), output_names, 0L)
+    if (any(idx_ver > 0L)) {
+        output_names[idx_ver] <- "version"
+    }
+
+    list(params = params, render_names = render_names, output_names = output_names)
+}
+
+# Render a flat list of QueryParam objects using paired internal and output names.
+# Internal names drive formatting; output names label the returned fragments.
+query_param__render_many <- function(
+    params,
+    render_names = names(params),
+    output_names = render_names,
+    ...,
+    encode = TRUE,
+    datetime_end_alias = FALSE
+) {
+    if (!length(params)) {
+        return(stats::setNames(character(), character()))
+    }
+
+    checkmate::assert_character(render_names, any.missing = FALSE, len = length(params))
+    checkmate::assert_character(output_names, any.missing = FALSE, len = length(params))
+    checkmate::assert_flag(encode)
+    checkmate::assert_flag(datetime_end_alias)
+
+    rendered <- character(length(params))
+    names(rendered) <- output_names
+    for (i in seq_along(params)) {
+        name <- render_names[[i]]
+        rendered[i] <- query_param__render(params[[i]], name, ..., encode = encode)
+        if (datetime_end_alias && identical(name, "datetime_stop")) {
+            rendered[i] <- sprintf(
+                "(%s OR %s)",
+                rendered[i],
+                query_param__render(params[[i]], "datetime_end", ..., encode = encode)
+            )
+        }
+    }
+
+    rendered
+}
+
 # Render all parameters in the same order as query output, for display.
 # This folds synthetic timestamp/version query fields without URL encoding values.
 query_param__display <- function(params) {
@@ -611,59 +720,16 @@ query_param__display <- function(params) {
         return(character())
     }
 
-    names_all <- names(params)
-    selected <- unique(c(
-        intersect(query_param__names("facet"), names_all),
-        intersect(query_param__names("control"), names_all),
-        setdiff(names_all, query_param__names("dedicated")),
-        intersect(query_param__names("date"), names_all)
-    ))
+    selected <- query_param__order(params)
 
     query_names <- selected[selected %in% query_param__names("date")]
     facet_names <- selected[!selected %in% query_names]
 
-    rendered <- character()
-    if (length(facet_names)) {
-        facet_params <- params[facet_names]
-        rendered <- c(rendered, stats::setNames(
-            vapply(seq_along(facet_params), function(i) {
-                query_param__render(facet_params[[i]], names(facet_params)[[i]], encode = FALSE)
-            }, character(1L)),
-            names(facet_params)
-        ))
-    }
-
-    if (!length(query_names)) {
-        return(rendered)
-    }
-
-    query_params <- params[query_names]
-    if (any(c("timestamp_from", "timestamp_to") %in% names(query_params))) {
-        from <- query_params$timestamp_from
-        to <- query_params$timestamp_to
-        from_value <- if (is.null(from)) SolrDateUnbounded() else from@value
-        to_value <- if (is.null(to)) SolrDateUnbounded() else to@value
-
-        if (!S7::S7_inherits(from_value, SolrDateUnbounded) || !S7::S7_inherits(to_value, SolrDateUnbounded)) {
-            query_params$`_timestamp` <- QueryParamDate(SolrDateRange(from_value, to_value))
-        }
-        query_params$timestamp_from <- NULL
-        query_params$timestamp_to <- NULL
-    }
-
-    render_names <- names(query_params)
-    output_names <- render_names
-    idx_ver <- match(c("version_min", "version_max"), output_names, 0L)
-    if (any(idx_ver > 0L)) {
-        output_names[idx_ver] <- "version"
-    }
-
-    c(rendered, stats::setNames(
-        vapply(seq_along(query_params), function(i) {
-            query_param__render(query_params[[i]], render_names[[i]], encode = FALSE)
-        }, character(1L)),
-        output_names
-    ))
+    query <- query_param__query_params(params[query_names])
+    c(
+        query_param__render_many(params[facet_names], encode = FALSE),
+        query_param__render_many(query$params, query$render_names, query$output_names, encode = FALSE)
+    )
 }
 
 # Print all query parameters in a user-facing bullet list.
@@ -1798,37 +1864,10 @@ QueryParamStore <- R6::R6Class(
             checkmate::assert_flag(datetime_end_alias)
             checkmate::assert_flag(eval_math)
 
-            # expand synthetic names {{{
-            if (!is.null(name)) {
-                checkmate::assert_character(name, any.missing = FALSE, unique = TRUE)
-                if (!length(name)) {
-                    return(character())
-                }
-
-                idx_time <- match("_timestamp", name, nomatch = 0L)
-                if (idx_time > 0L) {
-                    name <- c(
-                        name[seq_len(idx_time - 1L)],
-                        "timestamp_from",
-                        "timestamp_to",
-                        name[-seq_len(idx_time)]
-                    )
-                }
-
-                idx_ver <- match("version", name, nomatch = 0L)
-                if (idx_ver > 0L) {
-                    name <- c(
-                        name[seq_len(idx_ver - 1L)],
-                        "version_min",
-                        "version_max",
-                        name[-seq_len(idx_ver)]
-                    )
-                }
-
-                # in case that the original 'name' contains `timestamp_*` or `version_*`
-                name <- unique(name)
+            name <- query_param__expand_names(name)
+            if (!is.null(name) && !length(name)) {
+                return(character())
             }
-            # }}}
 
             # render selected parameters {{{
             names_all <- names(private$items)
@@ -1836,7 +1875,7 @@ QueryParamStore <- R6::R6Class(
                 checkmate::assert_subset(name, names_all)
                 selected <- name
             } else {
-                selected <- private$order()
+                selected <- query_param__order(private$items)
             }
 
             query_names <- selected[selected %in% query_param__names("date")]
@@ -2099,42 +2138,11 @@ QueryParamStore <- R6::R6Class(
         },
         # }}}
 
-        # timestamp {{{
-        # Combine `timestamp_from` and `timestamp_to` into a single synthetic
-        # `_timestamp` range parameter used by the rendered Solr query.
-        timestamp = function() {
-            from <- private$items$timestamp_from
-            to <- private$items$timestamp_to
-
-            from_value <- if (is.null(from)) SolrDateUnbounded() else from@value
-            to_value <- if (is.null(to)) SolrDateUnbounded() else to@value
-
-            if (S7::S7_inherits(from_value, SolrDateUnbounded) && S7::S7_inherits(to_value, SolrDateUnbounded)) {
-                return(NULL)
-            }
-
-            QueryParamDate(SolrDateRange(from_value, to_value))
-        },
-        # }}}
-
         # extra_names {{{
         # Return names that do not have dedicated setter methods.
         # These are the parameters exposed through `$params()`.
         extra_names = function() {
             setdiff(names(private$items), query_param__names("dedicated"))
-        },
-        # }}}
-
-        # order {{{
-        # Return the default render order for the flat parameter list.
-        # Facet-like URL parameters are rendered before structured Solr queries.
-        order = function() {
-            c(
-                intersect(query_param__names("facet"), names(private$items)),
-                intersect(query_param__names("control"), names(private$items)),
-                private$extra_names(),
-                intersect(query_param__names("date"), names(private$items))
-            )
         },
         # }}}
 
@@ -2448,13 +2456,7 @@ QueryParamStore <- R6::R6Class(
                 null = null
             )
 
-            rendered <- character(length(params))
-            names(rendered) <- names(params)
-            for (i in seq_along(params)) {
-                rendered[i] <- query_param__render(params[[i]], names(params)[[i]])
-            }
-
-            rendered
+            query_param__render_many(params)
         },
         # }}}
 
@@ -2479,49 +2481,16 @@ QueryParamStore <- R6::R6Class(
                 null = null
             )
 
-            if (any(c("timestamp_from", "timestamp_to") %in% names(params))) {
-                timestamp <- private$timestamp()
-                if (!is.null(timestamp)) {
-                    params$`_timestamp` <- timestamp
-                }
-                params$timestamp_from <- NULL
-                params$timestamp_to <- NULL
-            }
-
-            render_names <- names(params)
-            output_names <- render_names
-            idx_ver <- match(c("version_min", "version_max"), output_names, 0L)
-            if (any(idx_ver > 0L)) {
-                output_names[idx_ver] <- "version"
-            }
-
-            rendered <- character(length(params))
-            names(rendered) <- output_names
-            for (i in seq_along(params)) {
-                name <- render_names[[i]]
-                rendered[i] <- query_param__render(
-                    params[[i]],
-                    name,
-                    quote_date = quote_date,
-                    eval_math = eval_math,
-                    now = now
-                )
-                if (datetime_end_alias && identical(name, "datetime_stop")) {
-                    rendered[i] <- sprintf(
-                        "(%s OR %s)",
-                        rendered[i],
-                        query_param__render(
-                            params[[i]],
-                            "datetime_end",
-                            quote_date = quote_date,
-                            eval_math = eval_math,
-                            now = now
-                        )
-                    )
-                }
-            }
-
-            rendered
+            query <- query_param__query_params(params)
+            query_param__render_many(
+                query$params,
+                query$render_names,
+                query$output_names,
+                quote_date = quote_date,
+                eval_math = eval_math,
+                now = now,
+                datetime_end_alias = datetime_end_alias
+            )
         }
         # }}}
     )

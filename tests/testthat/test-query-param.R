@@ -309,6 +309,17 @@ test_that("QueryParamStore", {
     )
     expect_true(any(grepl("^_timestamp:", q$render(name = "_timestamp"))))
     expect_true(any(grepl("^version:", q$render(name = "version"))))
+    expect_identical(
+        unname(q$render(name = "version")),
+        c("version:[20200101 TO *]", "version:[* TO 20210101]")
+    )
+
+    displayed <- query_param__display(q)
+    expect_true(any(grepl("^_timestamp:", displayed)))
+    expect_identical(
+        unname(displayed[names(displayed) == "version"]),
+        c("version:[20200101 TO *]", "version:[* TO 20210101]")
+    )
 
     expect_true(serialized$activity_id$negate)
     expect_identical(serialized$table_id$value, "Amon")
