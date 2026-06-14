@@ -1,4 +1,4 @@
-# cache test helpers {{{
+# cache_disk_deterministic() {{{
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
     cache <- DiskCache$new(dir = dir, ...)
