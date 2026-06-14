@@ -3864,7 +3864,7 @@ EsgResultFile <- R6::R6Class(
                     return(invisible(NULL))
                 }
 
-                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
                 nc_handles[open_pos] <<- vector("list", length(open_pos))
                 invisible(NULL)
             }
@@ -3882,7 +3882,7 @@ EsgResultFile <- R6::R6Class(
                     {
                         d <- EsgDataset$new(urls[[j]])
                         d$open()
-                        handles <- esg_dataset_detach_handles(d)
+                        handles <- dataset__detach_handles(d)
                         if (!length(handles) || is.null(handles[[1L]])) {
                             stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                         }
@@ -3969,11 +3969,11 @@ EsgResultFile <- R6::R6Class(
             }
 
             ds <- EsgDataset$new(targets)
-            esg_dataset_adopt_handles(ds, nc_handles)
+            dataset__adopt_handles(ds, nc_handles)
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$update_selection_context(indices))
+            dataset__set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }
@@ -4315,7 +4315,7 @@ EsgResultAggregation <- R6::R6Class(
                     return(invisible(NULL))
                 }
 
-                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
                 nc_handles[open_pos] <<- vector("list", length(open_pos))
                 invisible(NULL)
             }
@@ -4334,7 +4334,7 @@ EsgResultAggregation <- R6::R6Class(
                         {
                             d <- EsgDataset$new(urls[[j]])
                             d$open()
-                            handles <- esg_dataset_detach_handles(d)
+                            handles <- dataset__detach_handles(d)
                             if (!length(handles) || is.null(handles[[1L]])) {
                                 stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                             }
@@ -4422,11 +4422,11 @@ EsgResultAggregation <- R6::R6Class(
             }
 
             ds <- EsgDataset$new(targets)
-            esg_dataset_adopt_handles(ds, nc_handles)
+            dataset__adopt_handles(ds, nc_handles)
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$update_selection_context(indices))
+            dataset__set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }

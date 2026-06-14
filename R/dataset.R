@@ -1,16 +1,16 @@
 # EsgDataset {{{
 # DatasetAsyncTask {{{
-dataset_async_error_condition <- function(class, message) {
+dataset__async_condition <- function(class, message) {
     structure(list(message = message, call = NULL), class = c(class, "error", "condition"))
 }
 
-dataset_async_result_error <- function(operation, result, timeout_ms = NULL) {
+dataset__async_error <- function(operation, result, timeout_ms = NULL) {
     if (inherits(result, "miraiError")) {
         message <- attr(result, "message", exact = TRUE)
         if (is.null(message) || !nzchar(message)) {
             message <- as.character(result)
         }
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_failure",
             sprintf("Failed to %s: %s", operation, message)
         ))
@@ -23,20 +23,20 @@ dataset_async_result_error <- function(operation, result, timeout_ms = NULL) {
     code <- unclass(result)[[1L]]
     if (identical(code, 5L)) {
         suffix <- if (is.null(timeout_ms)) "" else sprintf(" after %d ms", timeout_ms)
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_timeout",
             sprintf("Failed to %s: async operation timed out%s.", operation, suffix)
         ))
     }
 
     if (identical(code, 20L)) {
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_cancelled",
             sprintf("Failed to %s: async operation was cancelled (best-effort).", operation)
         ))
     }
 
-    dataset_async_error_condition(
+    dataset__async_condition(
         "epwshiftr_async_failure",
         sprintf("Failed to %s: async operation failed with mirai error code %s.", operation, code)
     )
@@ -93,7 +93,7 @@ DatasetAsyncTask <- R6::R6Class(
             }
 
             result <- mirai::collect_mirai(self$mirai_obj)
-            error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+            error <- dataset__async_error(self$operation, result, self$timeout_ms)
             if (!is.null(error)) {
                 status <- if (inherits(error, "epwshiftr_async_timeout")) {
                     "timed_out"
@@ -118,7 +118,7 @@ DatasetAsyncTask <- R6::R6Class(
             if (is.null(self$mirai_obj)) {
                 self$mark_terminal(
                     "cancelled",
-                    error = dataset_async_error_condition(
+                    error = dataset__async_condition(
                         "epwshiftr_async_cancelled",
                         sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
                     )
@@ -129,7 +129,7 @@ DatasetAsyncTask <- R6::R6Class(
 
             if (!mirai::unresolved(self$mirai_obj)) {
                 result <- self$mirai_obj$data
-                error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+                error <- dataset__async_error(self$operation, result, self$timeout_ms)
                 if (is.null(error)) {
                     self$mark_terminal("completed", result = result)
                 } else {
@@ -149,7 +149,7 @@ DatasetAsyncTask <- R6::R6Class(
             requested <- isTRUE(mirai::stop_mirai(self$mirai_obj))
             self$mark_terminal(
                 "cancelled",
-                error = dataset_async_error_condition(
+                error = dataset__async_condition(
                     "epwshiftr_async_cancelled",
                     sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
                 )
@@ -317,7 +317,7 @@ EsgDataset <- R6::R6Class(
             }
 
             out <- EsgDataset$new(private$urls[index])
-            esg_dataset_set_context(out, private$update_selection_context(index))
+            dataset__set_context(out, private$update_selection_context(index))
             if (private$opened) {
                 out$open()
             }
@@ -1630,8 +1630,8 @@ EsgDataset <- R6::R6Class(
 )
 # }}}
 
-# esg_dataset_private {{{
-esg_dataset_private <- function(dataset) {
+# dataset__private {{{
+dataset__private <- function(dataset) {
     private <- tryCatch(dataset$.__enclos_env__$private, error = function(e) NULL)
     if (is.null(private) || !is.environment(private)) {
         stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
@@ -1651,9 +1651,9 @@ esg_dataset_private <- function(dataset) {
 }
 # }}}
 
-# esg_dataset_detach_handles {{{
-esg_dataset_detach_handles <- function(dataset) {
-    private <- esg_dataset_private(dataset)
+# dataset__detach_handles {{{
+dataset__detach_handles <- function(dataset) {
+    private <- dataset__private(dataset)
     handles <- private$nc_handles
     private$nc_handles <- vector("list", length(handles))
     private$opened <- FALSE
@@ -1661,11 +1661,11 @@ esg_dataset_detach_handles <- function(dataset) {
 }
 # }}}
 
-# esg_dataset_adopt_handles {{{
-esg_dataset_adopt_handles <- function(dataset, handles) {
+# dataset__adopt_handles {{{
+dataset__adopt_handles <- function(dataset, handles) {
     checkmate::assert_list(handles)
 
-    private <- esg_dataset_private(dataset)
+    private <- dataset__private(dataset)
     if (length(handles) != length(private$nc_handles)) {
         stop("`handles` must have the same length as the target dataset.", call. = FALSE)
     }
@@ -1677,9 +1677,9 @@ esg_dataset_adopt_handles <- function(dataset, handles) {
 }
 # }}}
 
-# esg_dataset_set_context {{{
-esg_dataset_set_context <- function(dataset, context = NULL) {
-    private <- esg_dataset_private(dataset)
+# dataset__set_context {{{
+dataset__set_context <- function(dataset, context = NULL) {
+    private <- dataset__private(dataset)
     if (!"context" %in% names(private)) {
         return(invisible(dataset))
     }
@@ -1695,19 +1695,8 @@ esg_dataset_set_context <- function(dataset, context = NULL) {
 }
 # }}}
 
-# esg_dataset_get_context {{{
-esg_dataset_get_context <- function(dataset) {
-    private <- esg_dataset_private(dataset)
-    if (!"context" %in% names(private)) {
-        return(list())
-    }
-
-    private$context
-}
-# }}}
-
-# esg_dataset_close_handles {{{
-esg_dataset_close_handles <- function(urls, handles) {
+# dataset__close_handles {{{
+dataset__close_handles <- function(urls, handles) {
     checkmate::assert_character(urls, any.missing = FALSE)
     checkmate::assert_list(handles)
     if (length(urls) != length(handles)) {
@@ -1718,7 +1707,7 @@ esg_dataset_close_handles <- function(urls, handles) {
     }
 
     holder <- EsgDataset$new(urls)
-    esg_dataset_adopt_handles(holder, handles)
+    dataset__adopt_handles(holder, handles)
     holder$close()
     invisible(NULL)
 }

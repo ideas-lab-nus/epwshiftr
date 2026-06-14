@@ -47,8 +47,8 @@ local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along
 mirai_dataset_symbols <- c(
     "EsgDataset",
     "DatasetAsyncTask",
-    "dataset_async_error_condition",
-    "dataset_async_result_error"
+    "dataset__async_condition",
+    "dataset__async_error"
 )
 
 start_mirai_dataset_runtime <- function(workers) {
@@ -440,7 +440,7 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds <- EsgDataset$new(c(path1, path2))
-    esg_dataset_set_context(ds, list(time_filter = list(
+    dataset__set_context(ds, list(time_filter = list(
         start = "2060-01-02T00:00:00Z",
         stop = "2060-01-03T23:59:59Z",
         method = "drs"
@@ -496,7 +496,7 @@ test_that("EsgDataset slice() selects files and preserves runtime context", {
     on.exit(unlink(paths), add = TRUE)
 
     ds <- EsgDataset$new(paths)
-    esg_dataset_set_context(ds, list(
+    dataset__set_context(ds, list(
         time_filter = list(
             start = "2000-01-01T00:00:00Z",
             stop = "2000-01-02T23:59:59Z",
@@ -650,7 +650,7 @@ test_that("EsgDataset reachable() checks current local files and selection sourc
 test_that("EsgDataset reachable() probes current remote data nodes without cached result context", {
     urls <- c("https://ok.example.org/data.nc", "https://bad.example.org/data.nc")
     ds <- EsgDataset$new(urls)
-    esg_dataset_set_context(ds, list(
+    dataset__set_context(ds, list(
         selection = list(
             source_count = 11L,
             source_num_found = 20L,
@@ -915,15 +915,15 @@ test_that("EsgDataset internal helpers transfer partially opened handles", {
 
     source <- EsgDataset$new(path_opened)
     source$open()
-    handles <- esg_dataset_detach_handles(source)
-    on.exit(esg_dataset_close_handles(path_opened, handles), add = TRUE)
+    handles <- dataset__detach_handles(source)
+    on.exit(dataset__close_handles(path_opened, handles), add = TRUE)
     source_private <- source$.__enclos_env__$private
 
     expect_false(source$is_open)
     expect_true(all(vapply(source_private$nc_handles, is.null, logical(1L))))
 
     ds <- EsgDataset$new(c(path_opened, path_pending))
-    esg_dataset_adopt_handles(ds, list(handles[[1L]], NULL))
+    dataset__adopt_handles(ds, list(handles[[1L]], NULL))
     handles <- vector("list", length(handles))
     private <- ds$.__enclos_env__$private
     on.exit(ds$close(), add = TRUE)
@@ -950,9 +950,9 @@ test_that("EsgDataset internal helpers transfer partially opened handles", {
     }
     failing_source <- EsgDataset$new(path_opened)
     failing_source$open()
-    failing_handles <- esg_dataset_detach_handles(failing_source)
+    failing_handles <- dataset__detach_handles(failing_source)
     failing <- EsgDataset$new(c(path_opened, missing_path))
-    esg_dataset_adopt_handles(failing, list(failing_handles[[1L]], NULL))
+    dataset__adopt_handles(failing, list(failing_handles[[1L]], NULL))
     failing_handles <- vector("list", length(failing_handles))
     failing_private <- failing$.__enclos_env__$private
 
