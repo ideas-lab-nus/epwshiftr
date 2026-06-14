@@ -1,5 +1,5 @@
-# EsgDict constructor/defaults/lifecycle {{{
-test_that("esgdict() and explicit default dictionary helpers", {
+# esgdict() / esgdict_get_default() / esgdict_set_default() {{{
+test_that("esgdict() / esgdict_get_default() / esgdict_set_default()", {
     old <- this$dicts
     this$dicts <- new.env(parent = emptyenv())
     withr::defer(this$dicts <- old)
@@ -24,7 +24,7 @@ test_that("esgdict() and explicit default dictionary helpers", {
     expect_error(esgdict_check(activity = "CMIP", project = "CMIP5"), "not implemented")
 })
 
-test_that("EsgDict state and getters are explicit", {
+test_that("EsgDict$status() / EsgDict$has_data() / EsgDict$is_empty() / EsgDict$get() / EsgDict$options() / EsgDict$indices()", {
     empty <- EsgDict$new()
     expect_equal(empty$status(), "empty")
     expect_false(empty$has_data())
@@ -51,8 +51,8 @@ test_that("EsgDict$print()", {
     expect_snapshot(dict$print())
 })
 # }}}
-# EsgDict build/cache policy {{{
-test_that("CV-only ESG projects can build and report unchecked relationships", {
+# EsgDict$build() / EsgDict$save() / EsgDict$load() / dict__cache() {{{
+test_that("EsgDict$build() supports CV-only ESG projects", {
     projects <- c("CMIP6PLUS", "INPUT4MIP", "OBS4REF", "CORDEX-CMIP6", "CMIP7", "EMD")
     for (project in projects) {
         dict <- esgdict(project = project)
@@ -95,7 +95,7 @@ test_that("CV-only ESG projects can build and report unchecked relationships", {
     expect_equal(loaded$options("activity_id")$value, "CMIP")
 })
 
-test_that("EsgDict cache policy follows package cache mode", {
+test_that("dict__cache() follows package cache mode", {
     local_cache_mode_for_test(TRUE)
     normal <- dict__cache(TRUE)
     expect_equal(normal$mode, "normal")
