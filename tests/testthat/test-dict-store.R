@@ -1,5 +1,4 @@
 # dict store save/load {{{
-
 test_that("EsgDict save/load uses typed schema-validated JSON", {
     dict <- local_test_esgdict()
     dir <- withr::local_tempdir()
@@ -68,5 +67,4 @@ test_that("EsgDict load reports missing store entry and rejects malformed JSON",
     bad <- EsgDict$new()
     expect_error(bad$load(path = file.path(dir, "bad.json")))
 })
-
 # }}}

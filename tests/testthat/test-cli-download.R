@@ -1,5 +1,4 @@
 # epwshiftr_cli_download() {{{
-
 test_that("epwshiftr_cli_download() dispatches download workflows", {
     skip_if_not_installed("duckdb")
 
@@ -186,5 +185,4 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_equal(verified$status, 0L)
     expect_true(all(verified$result$checksum_ok))
 })
-
 # }}}

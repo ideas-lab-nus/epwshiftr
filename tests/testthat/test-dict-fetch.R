@@ -1,5 +1,4 @@
 # dict fetch/source/cache {{{
-
 test_that("source files can rebuild parsed data without network", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
@@ -50,5 +49,4 @@ test_that("parsed EsgDict cache can satisfy offline builds without source files"
     expect_true(second$has_data())
     expect_equal(second$options("experiment_id", activity_id = "CMIP")$value, "historical")
 })
-
 # }}}

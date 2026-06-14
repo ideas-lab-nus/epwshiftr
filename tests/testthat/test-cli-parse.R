@@ -1,5 +1,4 @@
 # epwshiftr_cli_parse_command() {{{
-
 test_that("epwshiftr_cli_parse_command() separates flags, options, and positionals", {
     parsed <- epwshiftr_cli_parse_command(
         c("--dry-run", "--limit", "2", "--tag", "tas", "--tag", "daily", "project=CMIP6"),
@@ -23,5 +22,4 @@ test_that("epwshiftr_cli parse coercion helpers validate scalar inputs", {
     expect_error(epwshiftr_cli_count("0", "limit"), ">= 1", fixed = TRUE)
     expect_error(epwshiftr_cli_bool("maybe", "latest"), "true or false")
 })
-
 # }}}

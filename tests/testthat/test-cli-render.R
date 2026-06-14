@@ -91,9 +91,7 @@ test_that("epwshiftr_cli renders selected query search columns", {
         "Unknown display column"
     )
 })
-
 # CLI table rendering behavior {{{
-
 test_that("epwshiftr_cli table output adapts to console width", {
     withr::local_options(width = 54L)
 
@@ -157,5 +155,4 @@ test_that("epwshiftr_cli table output highlights status and progress", {
     expect_true(any(grepl("Progress", text)))
     expect_true(any(grepl("\\[[#-]+\\]", text)))
 })
-
 # }}}

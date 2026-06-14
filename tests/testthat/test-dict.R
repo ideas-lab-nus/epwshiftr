@@ -1,5 +1,4 @@
 # EsgDict constructor/defaults/lifecycle {{{
-
 test_that("esgdict() and explicit default dictionary helpers", {
     old <- this$dicts
     this$dicts <- new.env(parent = emptyenv())
@@ -51,11 +50,8 @@ test_that("EsgDict$print()", {
     dict <- local_test_esgdict()
     expect_snapshot(dict$print())
 })
-
 # }}}
-
 # EsgDict build/cache policy {{{
-
 test_that("CV-only ESG projects can build and report unchecked relationships", {
     projects <- c("CMIP6PLUS", "INPUT4MIP", "OBS4REF", "CORDEX-CMIP6", "CMIP7", "EMD")
     for (project in projects) {
@@ -137,5 +133,4 @@ test_that("EsgDict cache policy follows package cache mode", {
     expect_false(offline_no_call_cache$source_write)
     expect_true(offline_no_call_cache$offline)
 })
-
 # }}}

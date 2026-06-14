@@ -8,11 +8,8 @@ downloader_test_file_url <- function(root, filename, size) {
     writeBin(as.raw(rep(0:255, length.out = size)), path)
     paste0("file://", normalizePath(path, winslash = "/"))
 }
-
 # }}}
-
 # Downloader$new() {{{
-
 test_that("Downloader$new()", {
     dl <- Downloader$new()
     expect_s3_class(dl, "Downloader")
@@ -93,9 +90,7 @@ test_that("Downloader$new()", {
     unlink(temp, recursive = TRUE)
 })
 # }}}
-
 # Downloader$enqueue() / Downloader$run() / Downloader$verify() {{{
-
 test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify()", {
     skip_if_not_installed("duckdb")
 
@@ -210,11 +205,8 @@ test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify()", {
         )
     )
 })
-
 # }}}
-
 # Downloader$run() / Downloader$start() / Downloader$job_status() {{{
-
 test_that("Downloader$run(block = FALSE)", {
     skip_if_not_installed("duckdb")
 
@@ -292,11 +284,8 @@ test_that("Downloader$start() / Downloader$job_status()", {
     expect_true(all(!is.na(events$job_id)))
     expect_true(file.exists(file.path(dest, "job.txt")))
 })
-
 # }}}
-
 # Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop() {{{
-
 test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop()", {
     skip_if_not_installed("duckdb")
 
@@ -327,11 +316,8 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     stopped <- dl$daemon_stop()
     expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
 })
-
 # }}}
-
 # downloader__range_probe_url() {{{
-
 test_that("downloader__range_probe_url() probes local files", {
     root <- tempfile("downloader-range-")
     dir.create(root)
@@ -366,11 +352,8 @@ test_that("downloader__range_probe_url() probes HTTP range metadata", {
     expect_false(missing$range_supported)
     expect_match(missing$range_probe_error, "206 Content-Range")
 })
-
 # }}}
-
 # Downloader workflow: segmented range downloads {{{
-
 test_that("Downloader workflow: manifest-backed single-source pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
@@ -510,11 +493,8 @@ test_that("Downloader workflow: multi-source range pieces", {
     nodes <- dl$data_nodes()
     expect_true(all(c("local-http-a", "local-http-b") %in% nodes$data_node))
 })
-
 # }}}
-
 # Downloader$preflight() {{{
-
 test_that("Downloader$preflight()", {
     skip_if_not_installed("duckdb")
 
@@ -565,11 +545,8 @@ test_that("Downloader$preflight()", {
         "Insufficient disk space"
     )
 })
-
 # }}}
-
 # Downloader$new() manifest compatibility {{{
-
 test_that("Downloader$new() migrates older manifests", {
     skip_if_not_installed("duckdb")
 
@@ -736,11 +713,8 @@ test_that("Downloader$clone() reconnects manifest after finalization", {
     expect_equal(tasks$status, "done")
     expect_true(file.exists(file.path(dest, "clone.txt")))
 })
-
 # }}}
-
 # Downloader$cancel() / Downloader$retry() / Downloader$resume() {{{
-
 test_that("Downloader$run() cancels stale downloading tasks", {
     skip_if_not_installed("duckdb")
 
@@ -879,11 +853,8 @@ test_that("Downloader$cancel(task_id =)", {
     expect_equal(dl$status(task_id = task_id)$status, "cancelled")
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
-
 # }}}
-
 # Downloader workflow: candidate fallback and retry {{{
-
 test_that("Downloader workflow: candidate fallback", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
@@ -1007,11 +978,8 @@ test_that("Downloader workflow: candidate URLs stay task-scoped", {
     expect_equal(readLines(file.path(dest, "first.txt")), "first task content")
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
-
 # }}}
-
 # Downloader$record_probes() / Downloader$data_nodes() / Downloader$reset_data_nodes() {{{
-
 test_that("Downloader$record_probes() / Downloader$reset_data_nodes()", {
     skip_if_not_installed("duckdb")
 
@@ -1056,11 +1024,8 @@ test_that("Downloader$record_probes() / Downloader$reset_data_nodes()", {
     expect_false("fail.example.org" %in% remaining$data_node)
     expect_true("ok.example.org" %in% remaining$data_node)
 })
-
 # }}}
-
 # Downloader$events() / Downloader$on() / Downloader$off() {{{
-
 test_that("Downloader$events() / Downloader$on() / Downloader$off()", {
     skip_if_not_installed("duckdb")
 
@@ -1137,11 +1102,8 @@ test_that("Downloader$events() / Downloader$on() / Downloader$off()", {
     expect_false(dl$off(done_token))
     expect_true(dl$off(session_token))
 })
-
 # }}}
-
 # Downloader$run() worker scheduling {{{
-
 test_that("Downloader$run() uses worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
@@ -1268,9 +1230,7 @@ test_that("Downloader$run() serializes tasks for the same target path", {
     expect_equal(readLines(file.path(dest, "shared.txt")), "shared target content")
 })
 # }}}
-
 # Downloader$download() {{{
-
 test_that("Downloader$download()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -1358,9 +1318,7 @@ test_that("Downloader$download() restarts unsupported Range resume", {
     expect_false(file.exists(file.path(temp, paste0(tmp_id, ".part"))))
 })
 # }}}
-
 # Downloader$list_incomplete() {{{
-
 test_that("Downloader$list_incomplete()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -1375,11 +1333,8 @@ test_that("Downloader$list_incomplete()", {
 
     unlink(temp_dir, recursive = TRUE)
 })
-
 # }}}
-
 # Downloader$cleanup_tmp() {{{
-
 test_that("Downloader$cleanup_tmp()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -1397,11 +1352,8 @@ test_that("Downloader$cleanup_tmp()", {
 
     unlink(temp_dir, recursive = TRUE)
 })
-
 # }}}
-
 # Downloader$verify() / Downloader$verify_checksum() {{{
-
 test_that("Downloader$verify_checksum()", {
     dl <- Downloader$new()
 
@@ -1538,7 +1490,6 @@ test_that("Downloader$download() handles checksum mismatch", {
     unlink(temp_dir, recursive = TRUE)
 })
 # }}}
-
 # Downloader$print() {{{
 test_that("Downloader$print()", {
     dl <- Downloader$new()
@@ -1550,11 +1501,8 @@ test_that("Downloader$print()", {
         }
     )
 })
-
 # }}}
-
 # Downloader$download() offline mode {{{
-
 test_that("Downloader$download() offline mode blocks new downloads", {
     local_cache_mode("offline")
     dl <- Downloader$new(dest = tempdir(), n_workers = 0L)

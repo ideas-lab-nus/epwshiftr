@@ -1,5 +1,4 @@
 # epwshiftr_cli_doctor() {{{
-
 test_that("epwshiftr_cli_doctor() reports missing and valid stores", {
     skip_if_not_installed("duckdb")
 
@@ -33,5 +32,4 @@ test_that("epwshiftr_cli_doctor() reports missing and valid stores", {
     expect_equal(doctor$result$checks$status[doctor$result$checks$check == "store_manifest"], "ok")
     expect_equal(doctor$result$checks$status[doctor$result$checks$check == "downloader_manifest"], "ok")
 })
-
 # }}}

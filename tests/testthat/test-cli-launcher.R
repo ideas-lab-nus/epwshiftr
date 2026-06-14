@@ -1,5 +1,4 @@
 # install_cli() and uninstall_cli() {{{
-
 test_that("install_cli and uninstall_cli manage generated launchers", {
     bin_dir <- tempfile("epwshiftr-bin-")
     name <- "epwshiftr-test"
@@ -28,5 +27,4 @@ test_that("install_cli and uninstall_cli manage generated launchers", {
     expect_error(uninstall_cli(bin_dir = bin_dir, name = name), "Refusing to remove")
     expect_true(file.exists(unsafe))
 })
-
 # }}}

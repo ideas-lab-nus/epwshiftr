@@ -1,5 +1,4 @@
-# DiskCache constructor/config {{{
-
+# cache test helpers {{{
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
     cache <- DiskCache$new(dir = dir, ...)
@@ -7,7 +6,8 @@ cache_disk_deterministic <- function(dir, ...) {
     cache$.__enclos_env__$private$set_count <- 0L
     cache
 }
-
+# }}}
+# DiskCache$new() / DiskCache$info() {{{
 # Basic functionality tests
 test_that("DiskCache: initialization with valid parameters", {
     cache_dir <- tempfile("cache-init-")
@@ -103,7 +103,8 @@ test_that("DiskCache: human-readable age formats", {
         "When 'max_age' is a string"
     )
 })
-
+# }}}
+# DiskCache$get() / DiskCache$set() / cache__missing() {{{
 test_that("DiskCache: handling missing values", {
     cache_dir <- tempfile("cache-missing-")
     cache <- DiskCache$new(cache_dir)
@@ -114,11 +115,8 @@ test_that("DiskCache: handling missing values", {
 
     cache$destroy()
 })
-
 # }}}
-
-# DiskCache get/set/query/remove {{{
-
+# DiskCache$get() / DiskCache$set() {{{
 test_that("DiskCache: basic get/set operations", {
     cache_dir <- tempfile("cache-basic-")
     cache <- DiskCache$new(cache_dir)
@@ -139,7 +137,8 @@ test_that("DiskCache: basic get/set operations", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$exists() {{{
 test_that("DiskCache: exists() method", {
     cache_dir <- tempfile("cache-exists-")
     cache <- DiskCache$new(cache_dir)
@@ -153,7 +152,8 @@ test_that("DiskCache: exists() method", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$keys() / DiskCache$size() {{{
 test_that("DiskCache: keys() and size() methods", {
     cache_dir <- tempfile("cache-keys-")
     cache <- DiskCache$new(cache_dir)
@@ -171,7 +171,8 @@ test_that("DiskCache: keys() and size() methods", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$remove() {{{
 test_that("DiskCache: remove() method", {
     cache_dir <- tempfile("cache-remove-")
     cache <- DiskCache$new(cache_dir)
@@ -189,7 +190,8 @@ test_that("DiskCache: remove() method", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$reset() {{{
 test_that("DiskCache: reset() method", {
     cache_dir <- tempfile("cache-reset-")
     cache <- DiskCache$new(cache_dir)
@@ -205,7 +207,8 @@ test_that("DiskCache: reset() method", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache key validation {{{
 test_that("DiskCache: key validation", {
     cache_dir <- tempfile("cache-key-validation-")
     cache <- DiskCache$new(cache_dir)
@@ -229,7 +232,8 @@ test_that("DiskCache: key validation", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$info() {{{
 test_that("DiskCache: info() method", {
     cache_dir <- tempfile("cache-info-")
     cache <- DiskCache$new(
@@ -258,11 +262,8 @@ test_that("DiskCache: info() method", {
 
     cache$destroy()
 })
-
 # }}}
-
-# DiskCache prune/destroy/metadata {{{
-
+# DiskCache$prune() {{{
 test_that("DiskCache: pruning respects max_n", {
     skip_on_cran()
     delay <- 0.01
@@ -421,7 +422,8 @@ test_that("DiskCache: pruning throttling with prune_limit", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$destroy() / DiskCache$is_destroyed() {{{
 test_that("DiskCache: destroy() and is_destroyed()", {
     cache_dir <- tempfile("cache-destroy-")
     cache <- DiskCache$new(cache_dir, prune_rate = 100)
@@ -457,7 +459,8 @@ test_that("DiskCache: operations after destroy throw errors", {
     expect_error(cache$size(), "Cache .* has been destroyed")
     expect_error(cache$prune(), "Cache .* has been destroyed")
 })
-
+# }}}
+# DiskCache$new() / DiskCache$prune() configuration policy {{{
 test_that("DiskCache: configuration change detection", {
     skip_on_cran()
 
@@ -506,7 +509,8 @@ test_that("DiskCache: prune_on_init parameter", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$get() / DiskCache$set() storage behavior {{{
 test_that("DiskCache: storing different data types", {
     cache_dir <- tempfile("cache-types-")
     cache <- DiskCache$new(cache_dir, prune_rate = 100)
@@ -577,7 +581,8 @@ test_that("DiskCache: atomic write prevents corruption", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$get() / DiskCache$set() / DiskCache$keys() / DiskCache$size() edge cases {{{
 test_that("DiskCache: empty cache operations", {
     cache_dir <- tempfile("cache-empty-")
     cache <- DiskCache$new(cache_dir)
@@ -643,7 +648,8 @@ test_that("DiskCache: concurrent access simulation", {
 
     cache1$destroy()
 })
-
+# }}}
+# cache__missing() {{{
 test_that("DiskCache: cache__missing() helper", {
     cache_dir <- tempfile("cache-key-missing-")
     cache <- DiskCache$new(cache_dir)
@@ -658,7 +664,8 @@ test_that("DiskCache: cache__missing() helper", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$get() / DiskCache$set() special values {{{
 test_that("DiskCache: special characters in values", {
     cache_dir <- tempfile("cache-special-")
     cache <- DiskCache$new(cache_dir)
@@ -677,7 +684,8 @@ test_that("DiskCache: special characters in values", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache metadata persistence {{{
 test_that("DiskCache: metadata persistence", {
     skip_on_cran()
 
@@ -700,7 +708,8 @@ test_that("DiskCache: metadata persistence", {
 
     cache$destroy()
 })
-
+# }}}
+# DiskCache$print() {{{
 test_that("DiskCache$print()", {
     cache_dir <- tempfile("cache-print-")
     cache <- DiskCache$new(cache_dir)
@@ -715,11 +724,8 @@ test_that("DiskCache$print()", {
         }
     )
 })
-
 # }}}
-
-# cache mode/key/url/download helpers {{{
-
+# cache__mode() / cache__offline() {{{
 test_that("cache__mode() returns correct mode", {
     local_cache_mode("normal")
     expect_equal(cache__mode(), "normal")
@@ -746,7 +752,8 @@ test_that("cache__offline() returns correct values", {
     local_cache_mode("offline")
     expect_true(cache__offline())
 })
-
+# }}}
+# cache__read_json() {{{
 test_that("cache__read_json() honors explicit cache mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
@@ -782,7 +789,8 @@ test_that("cache__read_json() does not cache failed non-strict reads", {
     expect_null(res)
     expect_equal(cache$size(), 0L)
 })
-
+# }}}
+# cache__key() {{{
 test_that("cache__key() is deterministic", {
     key1 <- cache__key("test", "a", "b")
     key2 <- cache__key("test", "a", "b")
@@ -803,7 +811,8 @@ test_that("cache__key() has correct format", {
     key <- cache__key("myprefix", "data")
     expect_match(key, "^myprefix-[0-9a-f]{8}$")
 })
-
+# }}}
+# cache__url() {{{
 test_that("cache__url() bypasses cache in off mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
@@ -900,8 +909,8 @@ test_that("cache__url() validate=NULL caches everything (default)", {
     expect_null(result2)
     expect_equal(call_count, 1L)
 })
-
-
+# }}}
+# cache__download() {{{
 test_that("cache__download() bypasses cache in off mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
@@ -992,7 +1001,8 @@ test_that("cache__download() works in offline mode", {
         "offline"
     )
 })
-
+# }}}
+# cache__set() / cache__get() / cache__reset() {{{
 test_that("cache__set() sets and returns old cache", {
     # Save original cache
     original <- cache__set(NULL)
@@ -1065,5 +1075,4 @@ test_that("cache__reset() sets cache to NULL", {
     # Clean up the auto-created cache
     cache__reset()
 })
-
 # }}}

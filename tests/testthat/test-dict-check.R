@@ -1,5 +1,4 @@
 # esgdict_option() {{{
-
 test_that("esgdict_option() uses bidirectional relation indices and reports ignored constraints", {
     dict <- local_test_esgdict()
 
@@ -34,11 +33,8 @@ test_that("esgdict_option() uses bidirectional relation indices and reports igno
 
     expect_equal(dict$options("experiment_id", activity_id = "ScenarioMIP")$value, "ssp585")
 })
-
 # }}}
-
 # esgdict_check() {{{
-
 test_that("esgdict_check() returns rich value and relationship diagnostics", {
     dict <- local_test_esgdict()
 
@@ -76,5 +72,4 @@ test_that("esgdict_check() returns rich value and relationship diagnostics", {
     expect_error(esgdict_check(experiment = "historial", dict = dict, error = TRUE))
     expect_s3_class(dict$check(activity = "CMIP", experiment = "historical"), "esgdict_check_result")
 })
-
 # }}}

@@ -1,5 +1,4 @@
 # store test helpers {{{
-
 store_test__response <- function(docs) {
     list(
         responseHeader = list(
@@ -118,11 +117,8 @@ store_test__completed_store <- function() {
 
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
-
 # }}}
-
 # EsgStore$new() / EsgStore$close() / EsgStore$downloader() {{{
-
 test_that("EsgStore$new() / EsgStore$close() / EsgStore$downloader()", {
     skip_if_not_installed("duckdb")
 
@@ -215,11 +211,8 @@ test_that("EsgStore$new() migrates older manifests", {
     cols <- names(ddb_read_table(priv(store)$conn, "esg_query_update"))
     expect_true(all(c("download_session_id", "last_error") %in% cols))
 })
-
 # }}}
-
 # EsgStore$add_query() / EsgStore$track_query() {{{
-
 test_that("EsgStore$add_query() / EsgStore$track_query()", {
     skip_if_not_installed("duckdb")
 
@@ -272,11 +265,8 @@ test_that("EsgStore$add_query() / EsgStore$track_query()", {
     expect_true(child_id %in% store$query_graph(query_id, direction = "children")$query_id)
     expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
-
 # }}}
-
 # EsgStore$preview_update_queries() / EsgStore$update_queries() {{{
-
 test_that("EsgStore$preview_update_queries()", {
     skip_if_not_installed("duckdb")
 
@@ -422,11 +412,8 @@ test_that("EsgStore$update_queries()", {
     expect_equal(nrow(store$query_changes(update_id = latest$update_id, change_type = "stale")), 1L)
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
-
 # }}}
-
 # EsgStore$download_preflight() / EsgStore$download_query() {{{
-
 test_that("EsgStore$download_preflight()", {
     skip_if_not_installed("duckdb")
 
@@ -710,11 +697,8 @@ test_that("EsgStore$download_query()", {
     expect_equal(report$downloads$query_file_status, "current")
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
-
 # }}}
-
 # EsgStore$remove_query() / EsgStore$remove_files() {{{
-
 test_that("EsgStore$remove_query()", {
     skip_if_not_installed("duckdb")
 
@@ -791,11 +775,8 @@ test_that("EsgStore$remove_files()", {
     expect_equal(nrow(ddb_read_table(conn, "file_catalog")), 0L)
     expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
 })
-
 # }}}
-
 # EsgStore$storage_report() / EsgStore$cleanup_downloads() {{{
-
 test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     skip_if_not_installed("duckdb")
 
@@ -834,11 +815,8 @@ test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     expect_equal(summary$untracked_file_count, 0L)
     expect_equal(summary$tmp_file_count, 0L)
 })
-
 # }}}
-
 # EsgStore$validate_files() / EsgStore$repair_files() {{{
-
 test_that("EsgStore$validate_files()", {
     skip_if_not_installed("duckdb")
 
@@ -1137,11 +1115,8 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     expect_true(is.na(esg_file$local_artifact_id[[1L]]))
     expect_false(artifact_id %in% artifacts$artifact_id)
 })
-
 # }}}
-
 # EsgStore$add_files() {{{
-
 test_that("EsgStore$add_files() catalogs File records", {
     skip_if_not_installed("duckdb")
 
@@ -1221,11 +1196,8 @@ test_that("EsgStore$add_files() deduplicates File replicas", {
     expect_equal(catalog$data_node, "master.example.org")
     expect_equal(catalog$url_download, "https://master.example.org/fileServer/tas.nc")
 })
-
 # }}}
-
 # EsgStore$plan_region() {{{
-
 test_that("EsgStore$plan_region() respects variable filters", {
     skip_if_not_installed("duckdb")
 
@@ -1253,11 +1225,8 @@ test_that("EsgStore$plan_region() respects variable filters", {
     expect_equal(nrow(plan), 1L)
     expect_equal(plan$variable_id, "tas")
 })
-
 # }}}
-
 # EsgStore$download_files() / EsgStore$sync_downloads() {{{
-
 test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     skip_if_not_installed("duckdb")
 
@@ -1298,11 +1267,8 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     expect_false(is.na(catalog$local_artifact_id))
     expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
 })
-
 # }}}
-
 # EsgStore$add_files() {{{
-
 test_that("EsgStore$add_files() catalogs Aggregation records", {
     skip_if_not_installed("duckdb")
 
@@ -1364,11 +1330,8 @@ test_that("EsgStore$add_files() records empty child query runs", {
     expect_true(all(validation$checksum_ok))
     expect_true(all(validation$size_ok))
 })
-
 # }}}
-
 # EsgStore$plan_region() {{{
-
 test_that("EsgStore$plan_region()", {
     skip_if_not_installed("duckdb")
 
@@ -1473,11 +1436,8 @@ test_that("EsgStore$plan_region() rejects invalid plans", {
         "No cataloged file records match"
     )
 })
-
 # }}}
-
 # EsgStore$extract() {{{
-
 test_that("EsgStore$extract()", {
     skip_if_not_installed("duckdb")
 
@@ -1573,11 +1533,8 @@ test_that("EsgStore$extract() records failed plans", {
     expect_equal(plans$attempt_count, 1L)
     expect_match(plans$last_error, "None of the requested variable")
 })
-
 # }}}
-
 # EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() {{{
-
 test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete()", {
     skip_if_not_installed("duckdb")
 
@@ -1624,5 +1581,4 @@ test_that("EsgStore$coverage() detects incomplete outputs", {
     expect_true(any(!validation$exists))
     expect_error(store$assert_complete(), "incomplete")
 })
-
 # }}}

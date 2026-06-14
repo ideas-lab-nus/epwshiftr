@@ -1,5 +1,4 @@
 # epwshiftr_cli() {{{
-
 test_that("epwshiftr_cli() emits JSON output and dispatch errors", {
     skip_if_not_installed("duckdb")
 
@@ -28,5 +27,4 @@ test_that("epwshiftr_cli() emits JSON output and dispatch errors", {
     expect_equal(quiet_bad$status, 2L)
     expect_match(quiet_bad$error, "Missing required argument")
 })
-
 # }}}

@@ -1,5 +1,4 @@
 # epwshiftr_cli_storage() and epwshiftr_cli_esgf() {{{
-
 test_that("epwshiftr_cli_storage() and epwshiftr_cli_esgf() dispatch store commands", {
     skip_if_not_installed("duckdb")
 
@@ -79,5 +78,4 @@ test_that("epwshiftr_cli_storage() and epwshiftr_cli_esgf() dispatch store comma
     expect_equal(cleanup$status, 0L)
     expect_s3_class(cleanup$result, "data.table")
 })
-
 # }}}

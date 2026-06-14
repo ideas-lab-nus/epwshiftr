@@ -1,5 +1,4 @@
 # dict print methods {{{
-
 test_that("print.Cmip6CV() and print.Cmip6DReq()", {
     dict <- local_test_esgdict()
     normalize_dreq_indent <- function(x) {
@@ -14,5 +13,4 @@ test_that("print.Cmip6CV() and print.Cmip6DReq()", {
     expect_snapshot(print(dict$get("activity_id")))
     expect_snapshot(print(dict$get("request"), n = 1L), transform = normalize_dreq_indent)
 })
-
 # }}}

@@ -1,5 +1,4 @@
 # fixtures/runtime {{{
-
 local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along(time_vals), calendar = "standard") {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
@@ -121,11 +120,8 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
 
     lapply(tasks, mirai::collect_mirai)
 }
-
 # }}}
-
 # constructor/open/close/introspection {{{
-
 test_that("EsgDataset can work with a single file", {
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
@@ -290,11 +286,8 @@ test_that("EsgDataset can work with multiple files", {
     expect_true("file_index" %in% names(dt_all))
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
 })
-
 # }}}
-
 # read methods {{{
-
 test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -445,11 +438,8 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
     )
     expect_identical(unique(dt_outside$file_index), 2L)
 })
-
 # }}}
-
 # slice/reachable {{{
-
 test_that("EsgDataset slice() selects files and preserves runtime context", {
     paths <- c(
         local_dataset_table_file(
@@ -685,11 +675,8 @@ test_that("EsgDataset reachable() probes current remote data nodes without cache
     expect_identical(diag$probe_url, c("https://ok.example.org/", "https://bad.example.org/"))
     expect_false(any(diag$probe_cached))
 })
-
 # }}}
-
 # public async {{{
-
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -876,11 +863,8 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     expect_null(private$async_task)
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
-
 # }}}
-
 # internal async lifecycle {{{
-
 test_that("EsgDataset internal helpers transfer partially opened handles", {
     path_opened <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -1093,11 +1077,8 @@ test_that("EsgDataset internal async cancel race keeps cancelled terminal state"
     expect_true(task$backend_released)
     expect_null(private$async_task)
 })
-
 # }}}
-
 # errors/print {{{
-
 test_that("EsgDataset handles errors gracefully", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 
@@ -1111,7 +1092,5 @@ test_that("EsgDataset$print()", {
 
     expect_snapshot(print(ds))
 })
-
 # }}}
-
 # vim: fdm=marker :

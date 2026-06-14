@@ -1,5 +1,4 @@
 # dict CV parsers {{{
-
 test_that("dict__parse_cv_*() parses local CMIP6 CV fixtures", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
     cv_dir <- file.path(source_root, "vocab", "test-cv")
@@ -19,5 +18,4 @@ test_that("dict__parse_cv_*() parses local CMIP6 CV fixtures", {
     expect_s3_class(tables, "Cmip6CV_TableId")
     expect_setequal(unclass(tables), c("Amon", "day", "fx"))
 })
-
 # }}}

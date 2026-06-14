@@ -1,5 +1,4 @@
 # epwshiftr_cli_query() stored queries {{{
-
 test_that("epwshiftr_cli_query() manages stored query metadata", {
     skip_if_not_installed("duckdb")
 
@@ -179,11 +178,8 @@ test_that("epwshiftr_cli_query() manages stored query metadata", {
     expect_equal(mixed_add$status, 2L)
     expect_match(mixed_add$error, "cannot combine --query-file")
 })
-
 # }}}
-
 # epwshiftr_cli_query() ESGF-backed commands {{{
-
 test_that("epwshiftr_cli_query() searches, previews, and updates mocked ESGF results", {
     skip_if_not_installed("duckdb")
 
@@ -264,5 +260,4 @@ test_that("epwshiftr_cli_query() searches, previews, and updates mocked ESGF res
     expect_equal(updated$status, 0L)
     expect_equal(nrow(updated$result), 1L)
 })
-
 # }}}

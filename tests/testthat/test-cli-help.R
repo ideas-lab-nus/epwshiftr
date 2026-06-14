@@ -1,5 +1,4 @@
 # epwshiftr_cli_help() {{{
-
 test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
     skip_if_not_installed("duckdb")
 
@@ -39,5 +38,4 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
     expect_match(doctor_help$result[[1L]], "Usage: epwshiftr doctor")
     expect_false(dir.exists(missing_dir))
 })
-
 # }}}
