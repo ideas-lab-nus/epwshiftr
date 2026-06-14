@@ -1,4 +1,4 @@
-# Basic Tests {{{
+# constructor/config {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
 }
@@ -90,7 +90,7 @@ test_that("Downloader can be created", {
 })
 # }}}
 
-# Persistent Manifest Tests {{{
+# persistent sessions/tasks {{{
 test_that("Downloader persists config and manifest state", {
     skip_if_not_installed("duckdb")
 
@@ -206,6 +206,10 @@ test_that("Downloader persists config and manifest state", {
     )
 })
 
+# }}}
+
+# jobs/daemon {{{
+
 test_that("Downloader creates background jobs with a mock launcher", {
     skip_if_not_installed("duckdb")
 
@@ -314,6 +318,10 @@ test_that("Downloader daemon lifecycle records manifest state with a mock launch
     stopped <- dl$daemon_stop()
     expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
 })
+
+# }}}
+
+# range/HTTP fake server {{{
 
 test_that("Downloader probes local range metadata", {
     root <- tempfile("downloader-range-")
@@ -489,6 +497,10 @@ test_that("Downloader can stitch one file from multiple range sources", {
     nodes <- dl$data_nodes()
     expect_true(all(c("local-http-a", "local-http-b") %in% nodes$data_node))
 })
+
+# }}}
+
+# persistent sessions/tasks {{{
 
 test_that("Downloader preflights disk requirements", {
     skip_if_not_installed("duckdb")
@@ -847,6 +859,10 @@ test_that("Downloader cancels persistent downloading tasks", {
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
 
+# }}}
+
+# retry/cancel/resume/verify/cleanup {{{
+
 test_that("Downloader falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
@@ -971,6 +987,10 @@ test_that("Downloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
 
+# }}}
+
+# data node/probe state {{{
+
 test_that("Downloader records probe outcomes and resets data node health", {
     skip_if_not_installed("duckdb")
 
@@ -1015,6 +1035,10 @@ test_that("Downloader records probe outcomes and resets data node health", {
     expect_false("fail.example.org" %in% remaining$data_node)
     expect_true("ok.example.org" %in% remaining$data_node)
 })
+
+# }}}
+
+# persistent sessions/tasks {{{
 
 test_that("Downloader exposes persistent events and callbacks", {
     skip_if_not_installed("duckdb")
@@ -1220,7 +1244,7 @@ test_that("Downloader serializes persistent tasks for the same target path", {
 })
 # }}}
 
-# Download Tests {{{
+# direct download {{{
 test_that("Downloader can download a single file", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -1309,7 +1333,7 @@ test_that("Downloader restarts partial downloads when Range resume is unsupporte
 })
 # }}}
 
-# File Status Tests {{{
+# retry/cancel/resume/verify/cleanup {{{
 test_that("Downloader tracks file status correctly", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -1342,9 +1366,7 @@ test_that("cleanup_tmp works", {
 
     unlink(temp_dir, recursive = TRUE)
 })
-# }}}
 
-# Checksum Tests {{{
 test_that("Downloader can verify checksums", {
     dl <- Downloader$new()
 
@@ -1431,9 +1453,7 @@ test_that("Downloader can download with checksum verification", {
 
     unlink(temp_dir, recursive = TRUE)
 })
-# }}}
 
-# Error Handling Tests {{{
 test_that("Downloader handles download errors", {
     skip_if_not_installed("webfakes")
 
@@ -1484,7 +1504,7 @@ test_that("Downloader handles checksum mismatch", {
 })
 # }}}
 
-# Print Tests {{{
+# print/offline {{{
 test_that("Downloader$print()", {
     dl <- Downloader$new()
 
@@ -1495,9 +1515,7 @@ test_that("Downloader$print()", {
         }
     )
 })
-# }}}
 
-# Offline Mode Tests {{{
 test_that("Downloader: offline mode blocks new downloads", {
     local_cache_mode("offline")
     dl <- Downloader$new(dest = tempdir(), n_workers = 0L)
