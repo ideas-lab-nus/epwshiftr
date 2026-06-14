@@ -1,4 +1,4 @@
-# EsgResultDataset {{{
+# EsgResult {{{
 local_test_cache(scope = "persist")
 
 query_result_test_response <- function(docs) {
@@ -1108,6 +1108,10 @@ test_that("to_data_table accepts all advertised fields", {
     )
 })
 
+# }}}
+
+# EsgResultDataset {{{
+
 test_that("empty child query results save/load through real JSON files", {
     empty_file_docs <- query_result_test_file_docs(character())[0L, ]
 
@@ -1378,6 +1382,10 @@ test_that("dataset access helpers tolerate missing access fields", {
     expect_identical(datasets$has_download(), c(FALSE, FALSE))
 })
 
+# }}}
+
+# EsgResultFile {{{
+
 test_that("URL helpers preserve result length for missing and malformed URLs", {
     docs <- data.frame(
         id = paste0("file-", 1:4),
@@ -1614,6 +1622,10 @@ test_that("download_plan ranks cooling data nodes after available candidates", {
     )
     expect_true(all(plan$node_cooldown_rank == 0L))
 })
+
+# }}}
+
+# Cross-class workflows {{{
 
 test_that("open_dataset fallback behavior is explicit before side effects", {
     http_only <- query_result_test_object(
@@ -2147,7 +2159,7 @@ test_that("ESGF Query Result Aggregation works", {
 })
 # }}}
 
-# esg_result() {{{
+# esg_result() and helpers {{{
 test_that("esg_result() works", {
     expect_s3_class(esg_result(), "EsgResultDataset")
     expect_s3_class(esg_result("file"), "EsgResultFile")
