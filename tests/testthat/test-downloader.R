@@ -332,8 +332,27 @@ test_that("Downloader probes local range metadata", {
     expect_match(missing$range_probe_error, "does not exist")
 })
 
+test_that("Downloader probes HTTP range metadata and follows redirects", {
+    skip_if_not_installed("webfakes")
+
+    server <- local_downloader_http_server()
+    probe <- downloader__range_probe_url(server$url("/files/range.bin"))
+    expect_true(probe$range_supported)
+    expect_equal(probe$range_size, 8193)
+    expect_true(is.na(probe$range_probe_error))
+
+    redirected <- downloader__range_probe_url(server$url("/redirect/range.bin"))
+    expect_true(redirected$range_supported)
+    expect_equal(redirected$range_size, 8193)
+
+    missing <- downloader__range_probe_url(server$url("/files/missing.bin"))
+    expect_false(missing$range_supported)
+    expect_match(missing$range_probe_error, "206 Content-Range")
+})
+
 test_that("Downloader uses manifest-backed single-source pieces", {
     skip_if_not_installed("duckdb")
+    skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -341,11 +360,8 @@ test_that("Downloader uses manifest-backed single-source pieces", {
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    src <- file.path(root, "single-source.bin")
-    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
-    bytes <- as.raw(rep(0:255, length.out = 257L))
-    writeBin(bytes, src)
-    checksum <- as.character(tools::md5sum(src))
+    server <- local_downloader_http_server()
+    checksum <- checksum_bytes(downloader_http_bytes(8193L), "md5")
 
     dl <- Downloader$new(
         dest = dest,
@@ -362,20 +378,20 @@ test_that("Downloader uses manifest-backed single-source pieces", {
     plan <- downloader_test_df(
         logical_file_id = "tracking:segmented-single",
         filename = "single.bin",
-        url = paste0("file://", normalizePath(src, winslash = "/")),
+        url = server$url("/files/range.bin"),
         checksum = checksum,
         checksum_type = "md5",
-        data_node = "local-single",
+        data_node = "local-http-single",
         priority = 1L
     )
     session_id <- dl$enqueue(plan, session_label = "segmented-single")
     tasks <- dl$run(session_id = session_id, progress = FALSE)
 
     expect_equal(tasks$status, "done")
-    expect_equal(readBin(file.path(dest, "single.bin"), "raw", n = 257L), bytes)
+    expect_equal(readBin(file.path(dest, "single.bin"), "raw", n = 8193L), downloader_http_bytes(8193L))
     candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
     expect_true(candidates$range_supported[[1L]])
-    expect_equal(candidates$range_size[[1L]], 257)
+    expect_equal(candidates$range_size[[1L]], 8193)
     expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
     expect_false(dir.exists(file.path(temp, paste0(tasks$task_id[[1L]], ".pieces"))))
 })
@@ -428,6 +444,7 @@ test_that("Downloader uses pieces inside a persistent worker", {
 
 test_that("Downloader can stitch one file from multiple range sources", {
     skip_if_not_installed("duckdb")
+    skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -435,13 +452,9 @@ test_that("Downloader can stitch one file from multiple range sources", {
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    src_1 <- file.path(root, "source-a.bin")
-    src_2 <- file.path(root, "source-b.bin")
-    dir.create(root, recursive = TRUE, showWarnings = FALSE)
-    bytes <- as.raw(rep(c(1L, 3L, 5L, 7L, 11L), length.out = 123L))
-    writeBin(bytes, src_1)
-    writeBin(bytes, src_2)
-    checksum <- as.character(tools::md5sum(src_1))
+    server <- local_downloader_http_server()
+    bytes <- downloader_http_bytes(8193L)
+    checksum <- checksum_bytes(bytes, "md5")
 
     dl <- Downloader$new(
         dest = dest,
@@ -459,22 +472,22 @@ test_that("Downloader can stitch one file from multiple range sources", {
     plan <- downloader_test_df(
         logical_file_id = "tracking:segmented-multi",
         filename = "multi.bin",
-        url = paste0("file://", normalizePath(c(src_1, src_2), winslash = "/")),
+        url = c(server$url("/files/range.bin"), server$url("/files/range-copy.bin")),
         checksum = checksum,
         checksum_type = "md5",
-        data_node = c("local-a", "local-b"),
+        data_node = c("local-http-a", "local-http-b"),
         priority = c(1L, 2L)
     )
     session_id <- dl$enqueue(plan, session_label = "segmented-multi")
     tasks <- dl$run(session_id = session_id, progress = FALSE)
 
     expect_equal(tasks$status, "done")
-    expect_equal(readBin(file.path(dest, "multi.bin"), "raw", n = 123L), bytes)
+    expect_equal(readBin(file.path(dest, "multi.bin"), "raw", n = 8193L), bytes)
     candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
     expect_true(all(candidates$range_supported))
     expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
     nodes <- dl$data_nodes()
-    expect_true(all(c("local-a", "local-b") %in% nodes$data_node))
+    expect_true(all(c("local-http-a", "local-http-b") %in% nodes$data_node))
 })
 
 test_that("Downloader preflights disk requirements", {
@@ -836,6 +849,7 @@ test_that("Downloader cancels persistent downloading tasks", {
 
 test_that("Downloader falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
+    skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -843,9 +857,8 @@ test_that("Downloader falls back across candidate URLs", {
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    src <- tempfile()
-    writeLines("candidate content", src)
-    checksum <- as.character(tools::md5sum(src))
+    server <- local_downloader_http_server()
+    checksum <- downloader_http_checksum()
 
     dl <- Downloader$new(
         dest = dest,
@@ -858,25 +871,25 @@ test_that("Downloader falls back across candidate URLs", {
         logical_file_id = "tracking:fallback-test",
         filename = "fallback.txt",
         url = c(
-            paste0("file://", normalizePath(file.path(root, "missing.txt"), mustWork = FALSE, winslash = "/")),
-            paste0("file://", normalizePath(src, winslash = "/"))
+            server$url("/files/missing.bin"),
+            server$url("/files/ok.bin")
         ),
         checksum = checksum,
         checksum_type = "md5",
-        data_node = c("bad-node.example.org", "good-node.example.org"),
+        data_node = c("bad-node.example.test", "good-node.example.test"),
         priority = c(1L, 2L)
     )
 
     session_id <- dl$enqueue(plan, session_label = "fallback")
     expect_warning(
         tasks <- dl$run(session_id = session_id, progress = FALSE),
-        "Failed to open"
+        "Failed to open|Download failed|HTTP"
     )
     expect_equal(tasks$status, "done")
     expect_identical(tasks$selected_url, plan$url[[2L]])
     nodes <- dl$data_nodes()
-    expect_equal(nodes[nodes$data_node == "bad-node.example.org", , drop = FALSE]$failure_count, 1L)
-    expect_equal(nodes[nodes$data_node == "good-node.example.org", , drop = FALSE]$success_count, 1L)
+    expect_equal(nodes[nodes$data_node == "bad-node.example.test", , drop = FALSE]$failure_count, 1L)
+    expect_equal(nodes[nodes$data_node == "good-node.example.test", , drop = FALSE]$success_count, 1L)
 
     rm(dl)
     gc()
@@ -887,6 +900,34 @@ test_that("Downloader falls back across candidate URLs", {
         "download_candidate"
     )
     expect_equal(candidates[order(candidates$priority), , drop = FALSE]$failed_count, c(1L, 0L))
+})
+
+test_that("Downloader retries transient HTTP failures", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("webfakes")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+    server <- local_downloader_http_server()
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 2L, n_workers = 0L)
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:flaky-test",
+        filename = "flaky.bin",
+        url = server$url("/files/flaky.bin"),
+        checksum = downloader_http_checksum(),
+        checksum_type = "md5",
+        data_node = "flaky-node.example.test",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "flaky")
+    tasks <- suppressWarnings(dl$run(session_id = session_id, progress = FALSE))
+    expect_equal(tasks$status, "done")
+    expect_true(dl$verify(session_id = session_id)$checksum_ok)
 })
 
 test_that("Downloader keeps candidate URLs scoped to each task", {
@@ -1241,30 +1282,29 @@ test_that("Downloader respects overwrite parameter with local files", {
 })
 
 test_that("Downloader restarts partial downloads when Range resume is unsupported", {
+    skip_if_not_installed("webfakes")
+
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
     temp <- file.path(root, "tmp")
     dir.create(temp, recursive = TRUE)
 
-    src <- file.path(root, "source.txt")
-    writeLines("complete content", src)
+    server <- local_downloader_http_server()
     tmp_id <- "range-restart"
     writeLines("stale partial", file.path(temp, paste0(tmp_id, ".part")))
 
     dl <- Downloader$new(dest = dest, temp = temp, retries = 1L, n_workers = 0L)
-    testthat::local_mocked_bindings(
-        downloader__resume_supported = function(...) FALSE,
-        .package = "epwshiftr"
-    )
     path <- dl$download(
-        paste0("file://", normalizePath(src, winslash = "/")),
-        filename = "source.txt",
+        server$url("/files/no-range.bin"),
+        filename = "source.bin",
+        checksum = downloader_http_checksum(8193L),
+        checksum_type = "md5",
         progress = FALSE,
         .tmp_id = tmp_id
     )
 
-    expect_equal(readLines(path), "complete content")
+    expect_equal(readBin(path, "raw", n = 8193L), downloader_http_bytes(8193L))
     expect_false(file.exists(file.path(temp, paste0(tmp_id, ".part"))))
 })
 # }}}
@@ -1363,54 +1403,12 @@ test_that("Downloader verify marks checksum failures as error", {
 })
 
 test_that("Downloader can download with checksum verification", {
-    skip_on_cran()
-    skip_if_offline()
-
-    query <- tryCatch(
-        esg_query()$
-            source_id("CMCC-CM2-SR5")$
-            experiment_id("dcppA-hindcast")$
-            variable_id("sftgif")$
-            frequency("fx")$
-            nominal_resolution("100 km")$
-            variant_label(c("r32i1p1f1", "r34i1p1f1"))$
-            params(institution_id = "CMCC", sub_experiment_id = "s2017"),
-        error = function(e) {
-            skip("ESGF query failed")
-        }
-    )
-
-    datasets <- tryCatch(
-        query$collect(),
-        error = function(e) {
-            skip("ESGF query failed")
-        }
-    )
-
-    if (datasets$count() == 0) {
-        skip("No datasets found")
-    }
-
-    files <- tryCatch(
-        datasets$collect(type = "File"),
-        error = function(e) {
-            skip("Failed to get files")
-        }
-    )
-
-    if (files$count() == 0) {
-        skip("No files found")
-    }
-
-    file_url <- files$url_download[1]
-    file_checksum <- files$checksum[1]
-
-    if (is.na(file_url) || is.na(file_checksum)) {
-        skip("File URL or checksum not available")
-    }
+    skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    server <- local_downloader_http_server()
+    file_checksum <- downloader_http_checksum(algo = "sha256")
 
     dl <- Downloader$new(
         dest = temp_dir,
@@ -1418,18 +1416,12 @@ test_that("Downloader can download with checksum verification", {
         timeout = 300
     )
 
-    path <- tryCatch(
-        dl$download(
-            url = file_url,
-            filename = basename(files$title[1]),
-            checksum = file_checksum,
-            checksum_type = "sha256",
-            progress = FALSE
-        ),
-        error = function(e) {
-            unlink(temp_dir, recursive = TRUE)
-            skip(paste("Download failed:", conditionMessage(e)))
-        }
+    path <- dl$download(
+        url = server$url("/files/ok.bin"),
+        filename = "ok.bin",
+        checksum = file_checksum,
+        checksum_type = "sha256",
+        progress = FALSE
     )
 
     expect_true(file.exists(path))
@@ -1443,10 +1435,11 @@ test_that("Downloader can download with checksum verification", {
 
 # Error Handling Tests {{{
 test_that("Downloader handles download errors", {
-    skip_on_cran()
+    skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    server <- local_downloader_http_server()
 
     dl <- Downloader$new(
         dest = temp_dir,
@@ -1454,7 +1447,7 @@ test_that("Downloader handles download errors", {
         timeout = 1L
     )
 
-    url <- "https://nonexistent.example.com/file.nc"
+    url <- server$url("/files/missing.bin")
 
     expect_warning(expect_error(
         dl$download(url, filename = "nonexistent.nc", progress = FALSE),
@@ -1465,23 +1458,21 @@ test_that("Downloader handles download errors", {
 })
 
 test_that("Downloader handles checksum mismatch", {
-    skip_on_cran()
-    skip_if_offline()
+    skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
+    server <- local_downloader_http_server()
 
     dl <- Downloader$new(
         dest = temp_dir,
         retries = 1L
     )
 
-    url <- "https://raw.githubusercontent.com/ideas-lab-nus/epwshiftr/main/README.md"
-
     expect_error(
         dl$download(
-            url,
-            filename = "readme.md",
+            server$url("/files/ok.bin"),
+            filename = "ok.bin",
             checksum = "wrongchecksum",
             checksum_type = "sha256",
             progress = FALSE

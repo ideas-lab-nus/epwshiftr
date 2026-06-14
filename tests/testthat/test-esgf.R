@@ -4,6 +4,13 @@ test_that("esgf_query() compatibility wrapper", {
     withr::defer(this$esgf_query_deprecated_warned <- old_warned)
 
     options(epwshiftr.verbose = FALSE)
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            esgf_fixture_collect(params)
+        },
+        .package = "epwshiftr"
+    )
+
     # Dataset query
     expect_s3_class(
         qd <- esgf_query(variable = "tas", source = "EC-Earth3", frequency = "day", limit = 1L),
@@ -95,11 +102,16 @@ test_that("esgf_query() compatibility wrapper", {
     }
 
     # empty found
-    expect_s3_class(q <- esgf_query(variable = "NONSENSE"), "data.table")
-    expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
-
-    # can return if no data has been found
-    expect_s3_class(esgf_query(resolution = "1 m"), "data.table")
+    local({
+        testthat::local_mocked_bindings(
+            query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+                esgf_fixture_collect(params, response = esgf_fixture_response("empty-response.json"))
+            },
+            .package = "epwshiftr"
+        )
+        expect_s3_class(q <- esgf_query(variable = "tas"), "data.table")
+        expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
+    })
 })
 
 test_that("init_cmip6_index()", {
@@ -108,10 +120,28 @@ test_that("init_cmip6_index()", {
     withr::defer(this$esgf_query_deprecated_warned <- old_warned)
 
     withr::local_options(list(epwshiftr.dir_store = withr::local_tempdir()))
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            esgf_fixture_collect(params)
+        },
+        .package = "epwshiftr"
+    )
 
     # can return if no data has been found
-    expect_s3_class(init_cmip6_index(resolution = "1 m"), "data.table")
+    local({
+        testthat::local_mocked_bindings(
+            esgf_query = function(...) data.table::data.table(),
+            .package = "epwshiftr"
+        )
+        expect_s3_class(init_cmip6_index(resolution = "100 km"), "data.table")
+    })
 
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            esgf_fixture_collect(params)
+        },
+        .package = "epwshiftr"
+    )
     expect_s3_class(
         idx <- init_cmip6_index(
             variable = "tas",
@@ -199,10 +229,14 @@ test_that("load_cmip6_index()", {
     this$esgf_query_deprecated_warned <- TRUE
     withr::defer(this$esgf_query_deprecated_warned <- old_warned)
 
-    skip_on_cran()
-
     dir <- withr::local_tempdir()
     withr::local_options(list(epwshiftr.dir_store = dir))
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            esgf_fixture_collect(params)
+        },
+        .package = "epwshiftr"
+    )
 
     # can stop if no active index artifact is available
     expect_error(load_cmip6_index(TRUE))
@@ -245,8 +279,6 @@ test_that("load_cmip6_index()", {
 })
 
 test_that("set_cmip6_index()", {
-    skip_on_cran()
-
     withr::local_options(list(epwshiftr.dir_store = withr::local_tempdir()))
     idx <- data.table::data.table(file_id = "file-1", dataset_id = "dataset-1")
 
@@ -311,7 +343,7 @@ test_that("data_node_status()", {
 })
 
 test_that("data_node_status() live query", {
-    skip_on_cran()
+    skip_live_esgf()
 
     node <- expect_s3_class(data_node_status(), "data.table")
     expect_named(node, c("data_node", "status"))

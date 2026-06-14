@@ -1,15 +1,3 @@
-skip_live_esgf_downloader <- function() {
-    run <- tolower(Sys.getenv("EPWSHIFTR_RUN_LIVE_ESGF", "false"))
-    testthat::skip_if_not(
-        run %in% c("1", "true", "yes"),
-        "Set EPWSHIFTR_RUN_LIVE_ESGF=true to run live ESGF downloader tests."
-    )
-    skip_on_cran()
-    skip_if_offline()
-    skip_if_not_installed("curl")
-    skip_if_not_installed("duckdb")
-}
-
 live_esgf_files <- function() {
     q <- esg_query(INDEX_NODES[["DKRZ"]])$
         source_id("CMCC-CM2-SR5")$
@@ -89,7 +77,7 @@ skip_live_download_error <- function(expr) {
 }
 
 test_that("Downloader live ESGF workflow covers persistent methods and resume", {
-    skip_live_esgf_downloader()
+    skip_live_esgf()
 
     live <- tryCatch(live_esgf_files(), error = function(e) skip(conditionMessage(e)))
     files <- live$files

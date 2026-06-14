@@ -1059,10 +1059,7 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
                     ssl_verifypeer = ssl_verifypeer,
                     proxy = proxy,
                     useragent = useragent,
-                    chunk_size = transfer_policy$chunk_size,
-                    bandwidth_limit = transfer_policy$bandwidth_limit,
-                    low_speed_limit = transfer_policy$low_speed_limit,
-                    low_speed_time = transfer_policy$low_speed_time
+                    transfer_policy = transfer_policy
                 )
                 curl::handle_setheaders(
                     handle,
@@ -1075,11 +1072,11 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
                 curl::handle_setopt(handle, url = candidate$url[[1L]], failonerror = FALSE)
                 curl::multi_add(
                     handle,
-                    data = function(chunk) {
+                    data = function(chunk, ...) {
                         writeBin(chunk, con)
                         TRUE
                     },
-                    done = function(response) {
+                    done = function(response, ...) {
                         close_conn(as.character(j))
                         size <- if (file.exists(tmp)) as.numeric(file.info(tmp, extra_cols = FALSE)$size) else NA_real_
                         ok <- identical(as.integer(response$status_code), 206L) &&
@@ -1100,7 +1097,7 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
                             )
                         }
                     },
-                    fail = function(error) {
+                    fail = function(error, ...) {
                         close_conn(as.character(j))
                         unlink(tmp)
                         out[[j]] <<- list(ok = FALSE, bytes_done = 0, error = as.character(error))
@@ -1110,12 +1107,22 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
             })
         }
         ok <- tryCatch({
-            curl::multi_run(timeout = max(timeout * nrow(batch), 1), poll = TRUE, pool = pool)
+            deadline <- Sys.time() + max(timeout * nrow(batch), 1)
+            repeat {
+                state <- curl::multi_run(timeout = max(as.numeric(deadline - Sys.time(), units = "secs"), 0.001), poll = TRUE, pool = pool)
+                if (is.null(state$pending) || identical(as.integer(state$pending), 0L)) {
+                    break
+                }
+                if (Sys.time() >= deadline) {
+                    stop("curl multi transfer timed out.", call. = FALSE)
+                }
+            }
             TRUE
         }, error = function(e) {
             for (key in names(conns)) close_conn(key)
             FALSE
         })
+        for (key in names(conns)) close_conn(key)
         if (!isTRUE(ok)) {
             for (i in seq_len(nrow(batch))) {
                 if (is.null(out[[i]])) {
@@ -1171,12 +1178,16 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
             http_rows <- which(!file_batch)
             http_results <- download_http_batch(batch[http_rows, , drop = FALSE])
             for (k in seq_along(http_rows)) {
-                results[[http_rows[[k]]]] <- http_results[[k]]
+                result <- if (k <= length(http_results)) http_results[[k]] else NULL
+                if (is.null(result)) {
+                    result <- list(ok = FALSE, bytes_done = 0, error = "HTTP piece download did not return a result.")
+                }
+                results[[http_rows[[k]]]] <- result
             }
         }
         for (pos in seq_along(batch_idx)) {
             idx <- batch_idx[[pos]]
-            result <- results[[pos]]
+            result <- if (pos <= length(results)) results[[pos]] else NULL
             if (is.null(result)) {
                 result <- list(ok = FALSE, bytes_done = 0, error = "Piece download did not return a result.")
             }
@@ -1337,6 +1348,7 @@ downloader__worker_download <- function(url, filename, subdir, dest, temp, retri
             useragent = useragent,
             transfer_policy = transfer_policy
         )
+        curl::handle_setopt(handle, failonerror = TRUE)
         if (start_byte > 0) {
             curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
         }
@@ -5889,6 +5901,7 @@ Downloader <- R6::R6Class("Downloader",
                 low_speed_limit = private$transfer_policy_config$low_speed_limit,
                 low_speed_time = private$transfer_policy_config$low_speed_time
             )
+            curl::handle_setopt(handle, failonerror = TRUE)
 
             # Add Range header for resume
             if (start_byte > 0) {

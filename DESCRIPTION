@@ -36,6 +36,7 @@ Imports:
     S7
 Suggests:
     testthat (>= 3.0.0),
+    webfakes,
     withr
 License: MIT + file LICENSE
 Encoding: UTF-8
