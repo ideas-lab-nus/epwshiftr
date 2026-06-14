@@ -1,4 +1,4 @@
-# store lifecycle/meta/layout {{{
+# store test helpers {{{
 
 store_test__response <- function(docs) {
     list(
@@ -119,7 +119,11 @@ store_test__completed_store <- function() {
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
 
-test_that("EsgStore creates a DuckDB manifest and store layout", {
+# }}}
+
+# EsgStore$new() / EsgStore$close() / EsgStore$downloader() {{{
+
+test_that("EsgStore$new() / EsgStore$close() / EsgStore$downloader()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -175,7 +179,7 @@ test_that("EsgStore creates a DuckDB manifest and store layout", {
     expect_false(store$is_open)
 })
 
-test_that("EsgStore can reopen an existing store", {
+test_that("EsgStore$new(create = FALSE)", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -188,7 +192,7 @@ test_that("EsgStore can reopen an existing store", {
     expect_true(file.exists(file.path(dir, "manifest.duckdb")))
 })
 
-test_that("EsgStore migrates older manifests to the current schema version", {
+test_that("EsgStore$new() migrates older manifests", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -214,9 +218,9 @@ test_that("EsgStore migrates older manifests to the current schema version", {
 
 # }}}
 
-# query tracking/update graph {{{
+# EsgStore$add_query() / EsgStore$track_query() {{{
 
-test_that("EsgStore tracks long-lived ESGF queries", {
+test_that("EsgStore$add_query() / EsgStore$track_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -269,7 +273,11 @@ test_that("EsgStore tracks long-lived ESGF queries", {
     expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
 
-test_that("EsgStore previews tracked query updates without mutating the store", {
+# }}}
+
+# EsgStore$preview_update_queries() / EsgStore$update_queries() {{{
+
+test_that("EsgStore$preview_update_queries()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -333,7 +341,7 @@ test_that("EsgStore previews tracked query updates without mutating the store", 
     expect_equal(nrow(updated), 1L)
 })
 
-test_that("EsgStore updates tracked queries and links file records", {
+test_that("EsgStore$update_queries()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -417,9 +425,9 @@ test_that("EsgStore updates tracked queries and links file records", {
 
 # }}}
 
-# download planning/catalog/sync {{{
+# EsgStore$download_preflight() / EsgStore$download_query() {{{
 
-test_that("EsgStore summarizes download preflight without enqueueing tasks", {
+test_that("EsgStore$download_preflight()", {
     skip_if_not_installed("duckdb")
 
     src <- tempfile(fileext = ".nc")
@@ -497,7 +505,7 @@ test_that("EsgStore summarizes download preflight without enqueueing tasks", {
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
 })
 
-test_that("EsgStore applies configured download layouts to downloader plans", {
+test_that("EsgStore$download_layout() / EsgStore$set_download_layout()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -558,7 +566,7 @@ test_that("EsgStore applies configured download layouts to downloader plans", {
     expect_match(tasks$target_path, "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$")
 })
 
-test_that("EsgStore download preflight reports layout collisions and missing fields", {
+test_that("EsgStore$download_preflight() reports layout issues", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -610,7 +618,7 @@ test_that("EsgStore download preflight reports layout collisions and missing fie
     expect_true(all(startsWith(preflight$candidates$subdir, "datasets/")))
 })
 
-test_that("EsgStore downloads tracked query files through downloader", {
+test_that("EsgStore$download_query()", {
     skip_if_not_installed("duckdb")
 
     src <- tempfile(fileext = ".nc")
@@ -705,9 +713,9 @@ test_that("EsgStore downloads tracked query files through downloader", {
 
 # }}}
 
-# validation/repair/cleanup {{{
+# EsgStore$remove_query() / EsgStore$remove_files() {{{
 
-test_that("EsgStore removes tracked queries without deleting local files by default", {
+test_that("EsgStore$remove_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -737,7 +745,7 @@ test_that("EsgStore removes tracked queries without deleting local files by defa
     expect_equal(orphans$file_key, file_key)
 })
 
-test_that("EsgStore removes file records and local artifacts explicitly", {
+test_that("EsgStore$remove_files()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -784,7 +792,11 @@ test_that("EsgStore removes file records and local artifacts explicitly", {
     expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
 })
 
-test_that("EsgStore reports and cleans download storage candidates", {
+# }}}
+
+# EsgStore$storage_report() / EsgStore$cleanup_downloads() {{{
+
+test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -823,7 +835,11 @@ test_that("EsgStore reports and cleans download storage candidates", {
     expect_equal(summary$tmp_file_count, 0L)
 })
 
-test_that("EsgStore validates download file records without modifying the store", {
+# }}}
+
+# EsgStore$validate_files() / EsgStore$repair_files() {{{
+
+test_that("EsgStore$validate_files()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -892,7 +908,7 @@ test_that("EsgStore validates download file records without modifying the store"
     expect_true(file.exists(untracked_file))
 })
 
-test_that("EsgStore validates missing local records and layout mismatches", {
+test_that("EsgStore$validate_files(layout = TRUE)", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -941,7 +957,7 @@ test_that("EsgStore validates missing local records and layout mismatches", {
     expect_false(file.exists(wrong_file))
 })
 
-test_that("EsgStore repairs missing local download records conservatively", {
+test_that("EsgStore$repair_files() clears missing records", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -998,7 +1014,7 @@ test_that("EsgStore repairs missing local download records conservatively", {
     expect_false(artifact_id %in% artifacts$artifact_id)
 })
 
-test_that("EsgStore repairs layout mismatches by moving registered files", {
+test_that("EsgStore$repair_files() moves layout mismatches", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1061,7 +1077,7 @@ test_that("EsgStore repairs layout mismatches by moving registered files", {
     expect_equal(artifact$relative_path[artifact$artifact_id == artifact_id], target_rel)
 })
 
-test_that("EsgStore clears missing local download records", {
+test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1124,9 +1140,9 @@ test_that("EsgStore clears missing local download records", {
 
 # }}}
 
-# download planning/catalog/sync {{{
+# EsgStore$add_files() {{{
 
-test_that("EsgStore catalogs File result records", {
+test_that("EsgStore$add_files() catalogs File records", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1166,7 +1182,7 @@ test_that("EsgStore catalogs File result records", {
     expect_true(file.exists(store$artifact_path(artifacts$artifact_id)))
 })
 
-test_that("EsgStore catalogs one active record for duplicate File replicas", {
+test_that("EsgStore$add_files() deduplicates File replicas", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1206,7 +1222,11 @@ test_that("EsgStore catalogs one active record for duplicate File replicas", {
     expect_equal(catalog$url_download, "https://master.example.org/fileServer/tas.nc")
 })
 
-test_that("EsgStore regional plans respect requested variable filters", {
+# }}}
+
+# EsgStore$plan_region() {{{
+
+test_that("EsgStore$plan_region() respects variable filters", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1234,7 +1254,11 @@ test_that("EsgStore regional plans respect requested variable filters", {
     expect_equal(plan$variable_id, "tas")
 })
 
-test_that("EsgStore downloads files through downloader and syncs completed assets", {
+# }}}
+
+# EsgStore$download_files() / EsgStore$sync_downloads() {{{
+
+test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     skip_if_not_installed("duckdb")
 
     src <- tempfile(fileext = ".nc")
@@ -1275,7 +1299,11 @@ test_that("EsgStore downloads files through downloader and syncs completed asset
     expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
 })
 
-test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
+# }}}
+
+# EsgStore$add_files() {{{
+
+test_that("EsgStore$add_files() catalogs Aggregation records", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1298,7 +1326,7 @@ test_that("EsgStore catalogs Aggregation records and replaces duplicates", {
     expect_equal(ddb_read_table(conn, "query_run")$result_type, "Aggregation")
 })
 
-test_that("EsgStore records empty child query runs", {
+test_that("EsgStore$add_files() records empty child query runs", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1339,9 +1367,9 @@ test_that("EsgStore records empty child query runs", {
 
 # }}}
 
-# regional extraction/coverage {{{
+# EsgStore$plan_region() {{{
 
-test_that("EsgStore plans regional extraction jobs from catalog filters", {
+test_that("EsgStore$plan_region()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1406,7 +1434,7 @@ test_that("EsgStore plans regional extraction jobs from catalog filters", {
     expect_equal(unique(plan_again$status), "done")
 })
 
-test_that("EsgStore rejects invalid extraction plans", {
+test_that("EsgStore$plan_region() rejects invalid plans", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1446,7 +1474,11 @@ test_that("EsgStore rejects invalid extraction plans", {
     )
 })
 
-test_that("EsgStore extracts regional data to Parquet", {
+# }}}
+
+# EsgStore$extract() {{{
+
+test_that("EsgStore$extract()", {
     skip_if_not_installed("duckdb")
 
     nc <- tempfile(fileext = ".nc")
@@ -1508,7 +1540,7 @@ test_that("EsgStore extracts regional data to Parquet", {
     expect_true(all(validation$size_ok, na.rm = TRUE))
 })
 
-test_that("EsgStore records failed extraction plans", {
+test_that("EsgStore$extract() records failed plans", {
     skip_if_not_installed("duckdb")
 
     nc <- tempfile(fileext = ".nc")
@@ -1542,7 +1574,11 @@ test_that("EsgStore records failed extraction plans", {
     expect_match(plans$last_error, "None of the requested variable")
 })
 
-test_that("EsgStore summarises and checks complete coverage", {
+# }}}
+
+# EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() {{{
+
+test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete()", {
     skip_if_not_installed("duckdb")
 
     fixture <- store_test__completed_store()
@@ -1571,7 +1607,7 @@ test_that("EsgStore summarises and checks complete coverage", {
     expect_equal(sql$n, 1)
 })
 
-test_that("EsgStore detects incomplete coverage", {
+test_that("EsgStore$coverage() detects incomplete outputs", {
     skip_if_not_installed("duckdb")
 
     fixture <- store_test__completed_store()

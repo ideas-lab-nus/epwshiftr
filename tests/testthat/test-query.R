@@ -363,8 +363,8 @@ test_that("EsgQuery$list_values()", {
 })
 # }}}
 
-# EsgQuery listing cache {{{
-test_that("EsgQuery listing cache respects max_age", {
+# query_listing_cached() {{{
+test_that("query_listing_cached() respects max_age", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
     old_cache <- cache__set(cache)
@@ -395,7 +395,7 @@ test_that("EsgQuery listing cache respects max_age", {
     expect_equal(calls, 1L)
 })
 
-test_that("EsgQuery listing cache treats expired offline entries as misses", {
+test_that("query_listing_cached() treats expired offline entries as misses", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
     old_cache <- cache__set(cache)
@@ -418,8 +418,8 @@ test_that("EsgQuery listing cache treats expired offline entries as misses", {
 })
 # }}}
 
-# EsgQuery$project() and other facet methods {{{
-test_that("EsgQuery$project() and other facet methods", {
+# EsgQuery$project() / EsgQuery$activity_id() / EsgQuery$experiment_id() / EsgQuery$source_id() / EsgQuery$variable_id() / EsgQuery$frequency() / EsgQuery$variant_label() / EsgQuery$nominal_resolution() / EsgQuery$data_node() {{{
+test_that("EsgQuery facet setter methods", {
     q <- esg_query()
 
     # project
@@ -878,8 +878,8 @@ test_that("EsgQuery$params()", {
 })
 # }}}
 
-# EsgQuery$url(), EsgQuery$count() {{{
-test_that("EsgQuery$url(), EsgQuery$count()", {
+# EsgQuery$url() / EsgQuery$count() {{{
+test_that("EsgQuery$url() / EsgQuery$count()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
@@ -1010,6 +1010,10 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
 })
 
+# }}}
+
+# query__collect() {{{
+
 test_that("query__collect includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(
@@ -1137,6 +1141,10 @@ test_that("query__collect records actual page query URLs", {
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
 })
 
+# }}}
+
+# EsgQuery$collect() {{{
+
 test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(
@@ -1208,8 +1216,8 @@ test_that("EsgQuery$collect()", {
 })
 # }}}
 
-# EsgQuery local save/load round-trip {{{
-test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
+# EsgQuery$save() / EsgQuery$load() {{{
+test_that("EsgQuery$save() / EsgQuery$load() round-trip without network", {
     q <- EsgQuery$new("https://example.org")$activity_id("ScenarioMIP")$experiment_id("ssp585")$variable_id(
         "tas"
     )$limit(
@@ -1257,10 +1265,7 @@ test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
 
     unlink(c(file, invalid_type_file, invalid_format_file, bucketed_parameter_file))
 })
-# }}}
-
-# EsgQuery$save() & EsgQuery$load() {{{
-test_that("EsgQuery$save() & EsgQuery$load()", {
+test_that("EsgQuery$save() / EsgQuery$load()", {
     index_node <- INDEX_NODES[["CEDA"]]
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) esgf_fixture_response("dataset-success.json"),
