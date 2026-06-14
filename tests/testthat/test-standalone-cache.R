@@ -9,7 +9,7 @@ cache_disk_deterministic <- function(dir, ...) {
 # }}}
 # DiskCache$new() / DiskCache$info() {{{
 # Basic functionality tests
-test_that("DiskCache: initialization with valid parameters", {
+test_that("DiskCache$new()", {
     cache_dir <- tempfile("cache-init-")
     cache <- DiskCache$new(cache_dir)
 
@@ -21,7 +21,7 @@ test_that("DiskCache: initialization with valid parameters", {
     cache$destroy()
 })
 
-test_that("DiskCache: initialization with invalid parameters", {
+test_that("DiskCache$new() validates parameters", {
     expect_error(DiskCache$new(NULL), "'dir' must be a single string")
     expect_error(DiskCache$new(c("a", "b")), "'dir' must be a single string")
     expect_error(DiskCache$new(""), "'dir' must be a single string")
@@ -58,7 +58,7 @@ test_that("DiskCache: initialization with invalid parameters", {
     )
 })
 
-test_that("DiskCache: human-readable size formats", {
+test_that("DiskCache$new() parses human-readable max_size", {
     cache_dir <- tempfile("cache-size-")
 
     cache <- DiskCache$new(cache_dir, max_size = "100 MB")
@@ -79,7 +79,7 @@ test_that("DiskCache: human-readable size formats", {
     )
 })
 
-test_that("DiskCache: human-readable age formats", {
+test_that("DiskCache$new() parses human-readable max_age", {
     cache_dir <- tempfile("cache-age-")
 
     cache <- DiskCache$new(cache_dir, max_age = "1 hour")
@@ -105,7 +105,7 @@ test_that("DiskCache: human-readable age formats", {
 })
 # }}}
 # DiskCache$get() / DiskCache$set() / cache__missing() {{{
-test_that("DiskCache: handling missing values", {
+test_that("DiskCache$get() / DiskCache$set() / cache__missing()", {
     cache_dir <- tempfile("cache-missing-")
     cache <- DiskCache$new(cache_dir)
 
@@ -117,7 +117,7 @@ test_that("DiskCache: handling missing values", {
 })
 # }}}
 # DiskCache$get() / DiskCache$set() {{{
-test_that("DiskCache: basic get/set operations", {
+test_that("DiskCache$get() / DiskCache$set()", {
     cache_dir <- tempfile("cache-basic-")
     cache <- DiskCache$new(cache_dir)
 
@@ -139,7 +139,7 @@ test_that("DiskCache: basic get/set operations", {
 })
 # }}}
 # DiskCache$exists() {{{
-test_that("DiskCache: exists() method", {
+test_that("DiskCache$exists()", {
     cache_dir <- tempfile("cache-exists-")
     cache <- DiskCache$new(cache_dir)
 
@@ -154,7 +154,7 @@ test_that("DiskCache: exists() method", {
 })
 # }}}
 # DiskCache$keys() / DiskCache$size() {{{
-test_that("DiskCache: keys() and size() methods", {
+test_that("DiskCache$keys() / DiskCache$size()", {
     cache_dir <- tempfile("cache-keys-")
     cache <- DiskCache$new(cache_dir)
 
@@ -173,7 +173,7 @@ test_that("DiskCache: keys() and size() methods", {
 })
 # }}}
 # DiskCache$remove() {{{
-test_that("DiskCache: remove() method", {
+test_that("DiskCache$remove()", {
     cache_dir <- tempfile("cache-remove-")
     cache <- DiskCache$new(cache_dir)
 
@@ -192,7 +192,7 @@ test_that("DiskCache: remove() method", {
 })
 # }}}
 # DiskCache$reset() {{{
-test_that("DiskCache: reset() method", {
+test_that("DiskCache$reset()", {
     cache_dir <- tempfile("cache-reset-")
     cache <- DiskCache$new(cache_dir)
 
@@ -208,8 +208,8 @@ test_that("DiskCache: reset() method", {
     cache$destroy()
 })
 # }}}
-# DiskCache key validation {{{
-test_that("DiskCache: key validation", {
+# DiskCache$get() / DiskCache$set() key validation {{{
+test_that("DiskCache$get() / DiskCache$set() reject invalid keys", {
     cache_dir <- tempfile("cache-key-validation-")
     cache <- DiskCache$new(cache_dir)
 
@@ -234,7 +234,7 @@ test_that("DiskCache: key validation", {
 })
 # }}}
 # DiskCache$info() {{{
-test_that("DiskCache: info() method", {
+test_that("DiskCache$info()", {
     cache_dir <- tempfile("cache-info-")
     cache <- DiskCache$new(
         cache_dir,
@@ -264,7 +264,7 @@ test_that("DiskCache: info() method", {
 })
 # }}}
 # DiskCache$prune() {{{
-test_that("DiskCache: pruning respects max_n", {
+test_that("DiskCache$prune() respects max_n", {
     skip_on_cran()
     delay <- 0.01
 
@@ -283,7 +283,7 @@ test_that("DiskCache: pruning respects max_n", {
     cache$destroy()
 })
 
-test_that("DiskCache: pruning respects max_size", {
+test_that("DiskCache$prune() respects max_size", {
     skip_on_cran()
     delay <- 0.01
 
@@ -309,7 +309,7 @@ test_that("DiskCache: pruning respects max_size", {
     cache$destroy()
 })
 
-test_that("DiskCache: pruning respects both max_n and max_size", {
+test_that("DiskCache$prune() respects max_n and max_size", {
     skip_on_cran()
     delay <- 0.01
 
@@ -329,7 +329,7 @@ test_that("DiskCache: pruning respects both max_n and max_size", {
     cache$destroy()
 })
 
-test_that("DiskCache: pruning respects max_age", {
+test_that("DiskCache$prune() respects max_age", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-prune-age-")
@@ -349,7 +349,7 @@ test_that("DiskCache: pruning respects max_age", {
     cache$destroy()
 })
 
-test_that("DiskCache: max_age affects get()", {
+test_that("DiskCache$get() honors max_age", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-age-get-")
@@ -368,7 +368,7 @@ test_that("DiskCache: max_age affects get()", {
     cache$destroy()
 })
 
-test_that("DiskCache: pruning throttling with prune_rate", {
+test_that("DiskCache$prune() honors prune_rate throttling", {
     skip_on_cran()
     delay <- 0.01
 
@@ -399,7 +399,7 @@ test_that("DiskCache: pruning throttling with prune_rate", {
     cache$destroy()
 })
 
-test_that("DiskCache: pruning throttling with prune_limit", {
+test_that("DiskCache$prune() honors prune_limit throttling", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-throttle-limit-")
@@ -424,7 +424,7 @@ test_that("DiskCache: pruning throttling with prune_limit", {
 })
 # }}}
 # DiskCache$destroy() / DiskCache$is_destroyed() {{{
-test_that("DiskCache: destroy() and is_destroyed()", {
+test_that("DiskCache$destroy() / DiskCache$is_destroyed()", {
     cache_dir <- tempfile("cache-destroy-")
     cache <- DiskCache$new(cache_dir, prune_rate = 100)
 
@@ -444,7 +444,7 @@ test_that("DiskCache: destroy() and is_destroyed()", {
     expect_false(result)
 })
 
-test_that("DiskCache: operations after destroy throw errors", {
+test_that("DiskCache$get() / DiskCache$set() / DiskCache$exists() / DiskCache$remove() / DiskCache$reset() / DiskCache$keys() / DiskCache$size() / DiskCache$prune() reject operations after destroy", {
     cache_dir <- tempfile("cache-after-destroy-")
     cache <- DiskCache$new(cache_dir)
 
@@ -461,7 +461,7 @@ test_that("DiskCache: operations after destroy throw errors", {
 })
 # }}}
 # DiskCache$new() / DiskCache$prune() configuration policy {{{
-test_that("DiskCache: configuration change detection", {
+test_that("DiskCache$new() detects configuration changes", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-config-")
@@ -482,7 +482,7 @@ test_that("DiskCache: configuration change detection", {
     cache$destroy()
 })
 
-test_that("DiskCache: prune_on_init parameter", {
+test_that("DiskCache$new(prune_on_init = TRUE)", {
     skip_on_cran()
     delay <- 0.01
 
@@ -511,7 +511,7 @@ test_that("DiskCache: prune_on_init parameter", {
 })
 # }}}
 # DiskCache$get() / DiskCache$set() storage behavior {{{
-test_that("DiskCache: storing different data types", {
+test_that("DiskCache$get() / DiskCache$set() store different data types", {
     cache_dir <- tempfile("cache-types-")
     cache <- DiskCache$new(cache_dir, prune_rate = 100)
 
@@ -563,7 +563,7 @@ test_that("DiskCache: storing different data types", {
     cache$destroy()
 })
 
-test_that("DiskCache: atomic write prevents corruption", {
+test_that("DiskCache$set() uses atomic writes", {
     cache_dir <- tempfile("cache-atomic-")
     cache <- DiskCache$new(cache_dir)
 
@@ -583,7 +583,7 @@ test_that("DiskCache: atomic write prevents corruption", {
 })
 # }}}
 # DiskCache$get() / DiskCache$set() / DiskCache$keys() / DiskCache$size() edge cases {{{
-test_that("DiskCache: empty cache operations", {
+test_that("DiskCache$reset() / DiskCache$prune() / DiskCache$info() handle empty caches", {
     cache_dir <- tempfile("cache-empty-")
     cache <- DiskCache$new(cache_dir)
 
@@ -606,7 +606,7 @@ test_that("DiskCache: empty cache operations", {
     cache$destroy()
 })
 
-test_that("DiskCache: large number of keys", {
+test_that("DiskCache$keys() handles many keys", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-many-keys-")
@@ -629,7 +629,7 @@ test_that("DiskCache: large number of keys", {
     cache$destroy()
 })
 
-test_that("DiskCache: concurrent access simulation", {
+test_that("DiskCache$get() / DiskCache$set() support shared directories", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-concurrent-")
@@ -650,7 +650,7 @@ test_that("DiskCache: concurrent access simulation", {
 })
 # }}}
 # cache__missing() {{{
-test_that("DiskCache: cache__missing() helper", {
+test_that("cache__missing()", {
     cache_dir <- tempfile("cache-key-missing-")
     cache <- DiskCache$new(cache_dir)
 
@@ -666,7 +666,7 @@ test_that("DiskCache: cache__missing() helper", {
 })
 # }}}
 # DiskCache$get() / DiskCache$set() special values {{{
-test_that("DiskCache: special characters in values", {
+test_that("DiskCache$get() / DiskCache$set() preserve special values", {
     cache_dir <- tempfile("cache-special-")
     cache <- DiskCache$new(cache_dir)
 
@@ -685,8 +685,8 @@ test_that("DiskCache: special characters in values", {
     cache$destroy()
 })
 # }}}
-# DiskCache metadata persistence {{{
-test_that("DiskCache: metadata persistence", {
+# DiskCache$new() / DiskCache$set() metadata persistence {{{
+test_that("DiskCache$new() loads persisted metadata", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-metadata-")
