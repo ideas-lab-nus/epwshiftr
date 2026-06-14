@@ -99,6 +99,110 @@ query_result_test_file_docs <- function(url = "https://example.org/file.nc|appli
     docs
 }
 
+query_result_test_contract_dataset_docs <- function() {
+    docs <- data.frame(
+        id = c(
+            "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.v20190529|esgf.example.org",
+            "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp245.r1i1p1f1.day.tas.gn.v20190529|esgf.example.org"
+        ),
+        version = c(20190529L, 20190529L),
+        activity_id = c("ScenarioMIP", "ScenarioMIP"),
+        data_node = c("esgf.example.org", "esgf.example.org"),
+        experiment_id = c("ssp126", "ssp245"),
+        frequency = c("day", "day"),
+        index_node = c("https://esgf.example.org", "https://esgf.example.org"),
+        instance_id = c("dataset-instance-ssp126", "dataset-instance-ssp245"),
+        latest = c(TRUE, TRUE),
+        master_id = c("dataset-master-ssp126", "dataset-master-ssp245"),
+        number_of_files = c(2L, 1L),
+        project = c("CMIP6", "CMIP6"),
+        replica = c(FALSE, FALSE),
+        size = c(1024^3, 2 * 1024^3),
+        source_id = c("AWI-CM-1-1-MR", "AWI-CM-1-1-MR"),
+        variable_id = c("tas", "tas"),
+        variant_label = c("r1i1p1f1", "r1i1p1f1"),
+        check.names = FALSE
+    )
+    docs$access <- I(list(c("OPENDAP", "HTTPServer"), "HTTPServer"))
+    docs
+}
+
+query_result_test_contract_file_docs <- function() {
+    dataset_ids <- query_result_test_contract_dataset_docs()$id
+    docs <- data.frame(
+        id = c(
+            "tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20500101-20501231.nc|dataset-ssp126",
+            "tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20510101-20511231.nc|dataset-ssp126",
+            "tas_day_AWI-CM-1-1-MR_ssp245_r1i1p1f1_gn_20500101-20501231.nc|dataset-ssp245"
+        ),
+        version = c(20190529L, 20190529L, 20190529L),
+        activity_id = c("ScenarioMIP", "ScenarioMIP", "ScenarioMIP"),
+        institution_id = c("AWI", "AWI", "AWI"),
+        dataset_id = c(dataset_ids[[1L]], dataset_ids[[1L]], dataset_ids[[2L]]),
+        size = c(1024^2, 2 * 1024^2, 3 * 1024^2),
+        checksum = c("sha-1", "sha-2", "sha-3"),
+        checksum_type = c("SHA256", "SHA256", "SHA256"),
+        instance_id = c("file-instance-1", "file-instance-2", "file-instance-3"),
+        master_id = c("file-master-1", "file-master-2", "file-master-3"),
+        replica = c(FALSE, FALSE, FALSE),
+        tracking_id = c("hdl:21.14100/mock-1", "hdl:21.14100/mock-2", "hdl:21.14100/mock-3"),
+        title = c(
+            "tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20500101-20501231.nc",
+            "tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20510101-20511231.nc",
+            "tas_day_AWI-CM-1-1-MR_ssp245_r1i1p1f1_gn_20500101-20501231.nc"
+        ),
+        data_node = c("esgf.example.org", "esgf.example.org", "esgf.example.org"),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        c(
+            "https://esgf.example.org/dods/ssp126-2050.nc.html|application/netcdf|OPENDAP",
+            "https://esgf.example.org/files/ssp126-2050.nc|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://esgf.example.org/dods/ssp126-2051.nc.html|application/netcdf|OPENDAP",
+            "https://esgf.example.org/files/ssp126-2051.nc|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://esgf.example.org/dods/ssp245-2050.nc.html|application/netcdf|OPENDAP",
+            "https://esgf.example.org/files/ssp245-2050.nc|application/netcdf|HTTPServer"
+        )
+    ))
+    docs
+}
+
+query_result_test_contract_aggregation_docs <- function() {
+    dataset_ids <- query_result_test_contract_dataset_docs()$id
+    docs <- data.frame(
+        id = c(
+            "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.tas.20500101.aggregation|esgf.example.org",
+            "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp245.r1i1p1f1.day.tas.gn.tas.20500101.aggregation|esgf.example.org"
+        ),
+        version = c(20190529L, 20190529L),
+        activity_id = c("ScenarioMIP", "ScenarioMIP"),
+        institution_id = c("AWI", "AWI"),
+        data_node = c("esgf.example.org", "esgf.example.org"),
+        dataset_id = c(dataset_ids[[1L]], dataset_ids[[2L]]),
+        instance_id = c("aggregation-instance-1", "aggregation-instance-2"),
+        master_id = c("aggregation-master-1", "aggregation-master-2"),
+        replica = c(FALSE, FALSE),
+        size = c(0, 0),
+        title = c("tas aggregation 2050 ssp126", "tas aggregation 2050 ssp245"),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        c(
+            "https://esgf.example.org/dods/ssp126-aggregation.ncml|application/netcdf|OPENDAP",
+            "https://esgf.example.org/files/ssp126-aggregation.ncml|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://esgf.example.org/dods/ssp245-aggregation.ncml|application/netcdf|OPENDAP",
+            "https://esgf.example.org/files/ssp245-aggregation.ncml|application/netcdf|HTTPServer"
+        )
+    ))
+    docs
+}
+
 query_result_test_file_time_docs <- function(type = "File") {
     docs <- data.frame(
         id = c(
@@ -1887,15 +1991,57 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
 })
 
 test_that("ESGF Query Result Dataset works", {
-    skip_on_cran()
+    params <- query_result_test_params(
+        "Dataset",
+        activity_id = "ScenarioMIP",
+        source_id = "AWI-CM-1-1-MR",
+        frequency = "day",
+        variable_id = "tas",
+        variant_label = "r1i1p1f1",
+        fields = c("source_id", "experiment_id", "frequency"),
+        limit = 2L
+    )
+    datasets <- expect_s3_class(
+        query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
+        "EsgResultDataset"
+    )
 
-    index_node <- INDEX_NODES[["DKRZ"]]
-    q <- esg_query(index_node)$activity_id("ScenarioMIP")$source_id("AWI-CM-1-1-MR")$frequency("day")$variable_id(
-        "tas"
-    )$variant_label("r1i1p1f1")$fields(c("source_id", "experiment_id", "frequency"))$limit(2)
-
-    # can create a new result dataset from Esg$collect
-    datasets <- expect_s3_class(q$collect(), "EsgResultDataset")
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            type <- query_param__value(params$type())
+            docs <- switch(
+                type,
+                File = query_result_test_contract_file_docs(),
+                Aggregation = query_result_test_contract_aggregation_docs()
+            )
+            dataset_id <- query_param__value(params$state()$dataset_id)
+            if (!is.null(dataset_id)) {
+                docs <- docs[docs$dataset_id %in% dataset_id, , drop = FALSE]
+            }
+            if (!isTRUE(all) && is.numeric(limit) && length(limit) == 1L) {
+                docs <- docs[seq_len(min(nrow(docs), limit)), , drop = FALSE]
+            }
+            fields <- query_param__value(params$fields())
+            if (is.null(fields) || identical(fields, "*")) {
+                fields <- names(docs)
+            }
+            fields <- unique(c(fields, required_fields))
+            params$fields(fields)
+            response <- query_result_test_response(docs)
+            calls[[length(calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                type = type,
+                all = all,
+                limit = limit,
+                constraints = constraints,
+                dict_check = dict_check
+            )
+            list(response = response, docs = docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
 
     # $to_data_table(): can extract the data into a data.table
     expect_s3_class(datasets$to_data_table(), "data.table")
@@ -1984,14 +2130,16 @@ test_that("ESGF Query Result Dataset works", {
     priv(de)$response$response$docs <- priv(de)$response$response$docs[,
         names(priv(datasets)$response$response$docs)
     ]
-    expect_equal(priv(de)$response, priv(datasets)$response)
+    expect_equal(priv(de)$response, priv(datasets)$response, ignore_attr = TRUE)
 
     # $collect():
     ## $collect(): can specify dataset index
-    expect_s3_class(datasets$collect(1, limit = 2, fields = "id"), "EsgResultFile")
+    expect_s3_class(files_by_index <- datasets$collect(1, limit = 2, fields = "id"), "EsgResultFile")
+    expect_equal(files_by_index$count(), 2L)
 
     ## $collect(): can specify dataset id
-    expect_s3_class(datasets$collect(datasets$id[1], fields = "id"), "EsgResultFile")
+    expect_s3_class(files_by_id <- datasets$collect(datasets$id[1], fields = "id"), "EsgResultFile")
+    expect_equal(files_by_id$count(), 2L)
 
     ## $collect(): can limit fields and record number
     expect_s3_class(files <- datasets$collect(fields = "id", limit = 1), "EsgResultFile")
@@ -2002,13 +2150,14 @@ test_that("ESGF Query Result Dataset works", {
     ## $collect(): can collect all fields
     expect_s3_class(files <- datasets$collect(fields = "id", all = TRUE), "EsgResultFile")
     expect_equal(files$count(), sum(datasets$number_of_files))
+    expect_true(calls[[4L]]$all)
 
     ## $collect(): can specify specific parameters
     expect_s3_class(datasets$collect(fields = "id", limit = 1, replica = FALSE), "EsgResultFile")
 
     ## $collect(): can collect all possible fields
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgResultFile")
-    expect_length(files$fields, 56L)
+    expect_true(all(EsgResultFile$private_fields$required_fields %in% files$fields))
 
     ## $collect(): can specify data node scope
     dataset_data_node <- datasets$data_node[[1]]
@@ -2020,7 +2169,9 @@ test_that("ESGF Query Result Dataset works", {
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
 
     ## $collect(): can collect aggregation
-    expect_s3_class(datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgResultAggregation")
+    expect_s3_class(aggs <- datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgResultAggregation")
+    expect_equal(aggs$count(), 2L)
+    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% aggs$fields))
 
     # $print()
     expect_snapshot(datasets$print(), transform = transform_print)
@@ -2029,14 +2180,16 @@ test_that("ESGF Query Result Dataset works", {
 
 # EsgResultFile {{{
 test_that("ESGF Query Result File works", {
-    skip_on_cran()
-    index_node <- INDEX_NODES[["DKRZ"]]
-
-    files <- esg_query(index_node)$activity_id("ScenarioMIP")$source_id("AWI-CM-1-1-MR")$frequency("day")$variable_id(
-        "tas"
-    )$experiment_id("ssp585")$variant_label("r1i1p1f1")$fields(c("source_id", "experiment_id", "frequency"))$limit(
-        2
-    )$collect()$collect(limit = 1)
+    params <- query_result_test_params(
+        "File",
+        fields = c("source_id", "experiment_id", "frequency"),
+        dataset_id = query_result_test_contract_dataset_docs()$id[[1L]],
+        limit = 1L
+    )
+    files <- expect_s3_class(
+        query_result_test_object("File", query_result_test_contract_file_docs()[1L, , drop = FALSE], params),
+        "EsgResultFile"
+    )
 
     # $to_data_table(): can extract the data into a data.table
     expect_s3_class(files$to_data_table(), "data.table")
@@ -2103,14 +2256,16 @@ test_that("ESGF Query Result File works", {
 
 # EsgResultAggregation {{{
 test_that("ESGF Query Result Aggregation works", {
-    skip_on_cran()
-    index_node <- INDEX_NODES[["DKRZ"]]
-
-    aggs <- esg_query(index_node)$activity_id("ScenarioMIP")$source_id("AWI-CM-1-1-MR")$frequency("day")$variable_id(
-        "tas"
-    )$experiment_id("ssp585")$variant_label("r1i1p1f1")$fields(c("source_id", "experiment_id", "frequency"))$limit(
-        2
-    )$collect()$collect(fields = "id", limit = 2, type = "Aggregation")
+    params <- query_result_test_params(
+        "Aggregation",
+        fields = "id",
+        dataset_id = query_result_test_contract_dataset_docs()$id,
+        limit = 2L
+    )
+    aggs <- expect_s3_class(
+        query_result_test_object("Aggregation", query_result_test_contract_aggregation_docs(), params),
+        "EsgResultAggregation"
+    )
 
     # $to_data_table(): can extract the data into a data.table
     expect_s3_class(aggs$to_data_table(), "data.table")

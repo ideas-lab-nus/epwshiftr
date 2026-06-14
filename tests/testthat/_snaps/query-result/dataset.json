@@ -30,7 +30,7 @@
     "data_node": null,
     "facets": null,
     "fields": {
-      "value": ["source_id", "experiment_id", "frequency", "access", "data_node", "id", "index_node", "instance_id", "latest", "master_id", "number_of_aggregations", "number_of_files", "replica", "size", "url", "version", "project", "activity_id", "variable_id", "variant_label"],
+      "value": ["source_id", "experiment_id", "frequency"],
       "negate": [false]
     },
     "shards": null,
@@ -63,72 +63,55 @@
       "status": [0],
       "QTime": [-1],
       "params": {
-        "df": ["text"],
-        "q.alt": ["*:*"],
-        "indent": ["true"],
-        "echoParams": ["all"],
-        "fl": ["master_id,number_of_aggregations,access,data_node,replica,experiment_id,number_of_files,project,index_node,version,url,frequency,instance_id,variant_label,size,variable_id,activity_id,source_id,id,latest,score"],
-        "start": ["0"],
-        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\""],
-        "rows": ["2"],
-        "q": ["*:*"],
-        "shards": ["..."],
-        "tie": ["0.01"],
-        "facet.limit": ["-1"],
-        "qf": ["text"],
-        "facet.method": ["enum"],
-        "facet.mincount": ["1"],
-        "wt": ["json"],
-        "facet": ["true"],
-        "facet.sort": ["lex"]
+        "shards": ["..."]
       }
     },
     "response": {
       "numFound": [-1],
       "start": [0],
-      "maxScore": [0.5],
       "docs": [
         {
           "id": "...",
-          "version": "...",
-          "access": ["...", "..."],
-          "activity_id": ["..."],
+          "version": -1,
+          "activity_id": "...",
           "data_node": "...",
-          "experiment_id": ["..."],
-          "frequency": ["..."],
+          "experiment_id": "...",
+          "frequency": "...",
           "index_node": "...",
           "instance_id": "...",
           "latest": true,
           "master_id": "...",
           "number_of_files": -1,
-          "project": ["..."],
+          "project": "...",
           "replica": true,
           "size": -1.5,
-          "source_id": ["..."],
-          "variable_id": ["..."],
-          "variant_label": ["..."]
+          "source_id": "...",
+          "variable_id": "...",
+          "variant_label": "...",
+          "access": ["...", "..."]
         },
         {
           "id": "...",
-          "version": "...",
-          "access": ["...", "..."],
-          "activity_id": ["..."],
+          "version": -1,
+          "activity_id": "...",
           "data_node": "...",
-          "experiment_id": ["..."],
-          "frequency": ["..."],
+          "experiment_id": "...",
+          "frequency": "...",
           "index_node": "...",
           "instance_id": "...",
           "latest": true,
           "master_id": "...",
           "number_of_files": -1,
-          "project": ["..."],
+          "project": "...",
           "replica": true,
           "size": -1.5,
-          "source_id": ["..."],
-          "variable_id": ["..."],
-          "variant_label": ["..."]
+          "source_id": "...",
+          "variable_id": "...",
+          "variant_label": "...",
+          "access": ["..."]
         }
-      ]
+      ],
+      "maxScore": [0.5]
     },
     "facet_counts": {
       "facet_queries": {},
