@@ -1,5 +1,5 @@
-# dict store save/load {{{
-test_that("EsgDict save/load uses typed schema-validated JSON", {
+# EsgDict$save() / EsgDict$load() / dict__validate() {{{
+test_that("EsgDict$save() writes typed schema-validated JSON", {
     dict <- local_test_esgdict()
     dir <- withr::local_tempdir()
     withr::local_options(list(epwshiftr.dir_store = dir))
@@ -34,7 +34,7 @@ test_that("EsgDict save/load uses typed schema-validated JSON", {
     expect_s3_class(loaded$indices("activity_experiment"), "data.table")
 })
 
-test_that("EsgDict load reports missing store entry and rejects malformed JSON", {
+test_that("EsgDict$load() handles missing entries and malformed JSON", {
     dir <- withr::local_tempdir()
     withr::local_options(list(epwshiftr.dir_store = dir))
 

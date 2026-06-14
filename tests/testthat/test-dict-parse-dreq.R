@@ -1,4 +1,4 @@
-# dict DReq parsers {{{
+# dict__parse_dreq() {{{
 test_that("dict__parse_dreq() parses local request table fixtures", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
     dreq_file <- file.path(source_root, "request", "test-request", "CMIP6_day.json")

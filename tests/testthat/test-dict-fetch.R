@@ -1,5 +1,5 @@
-# dict fetch/source/cache {{{
-test_that("source files can rebuild parsed data without network", {
+# dict__fetch_cv() / dict__fetch_dreq() / EsgDict$build() source/cache policy {{{
+test_that("dict__fetch_cv() / dict__fetch_dreq() rebuild parsed data from source files", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
     cvs <- dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv"))
@@ -11,7 +11,7 @@ test_that("source files can rebuild parsed data without network", {
     expect_true(all(c("tas", "sftlf") %in% dreq$variable))
 })
 
-test_that("offline EsgDict build can use source files but rejects source misses", {
+test_that("EsgDict$build() uses source files in offline mode", {
     local_esgdict_disk_cache()
     local_cache_mode_for_test("offline")
     source_root <- local_cmip6_source_store(withr::local_tempdir())
@@ -31,7 +31,7 @@ test_that("offline EsgDict build can use source files but rejects source misses"
     )
 })
 
-test_that("parsed EsgDict cache can satisfy offline builds without source files", {
+test_that("EsgDict$build() uses parsed cache in offline mode", {
     local_esgdict_disk_cache()
     local_cache_mode_for_test(TRUE)
     source_root <- local_cmip6_source_store(withr::local_tempdir())
