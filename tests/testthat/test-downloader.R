@@ -1,4 +1,4 @@
-# downloader test helpers {{{
+# downloader_test_df() / downloader_test_file_url() {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
 }
@@ -353,8 +353,8 @@ test_that("downloader__range_probe_url() probes HTTP range metadata", {
     expect_match(missing$range_probe_error, "206 Content-Range")
 })
 # }}}
-# Downloader workflow: segmented range downloads {{{
-test_that("Downloader workflow: manifest-backed single-source pieces", {
+# Downloader$enqueue() / Downloader$run() segmented range downloads {{{
+test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -400,7 +400,7 @@ test_that("Downloader workflow: manifest-backed single-source pieces", {
     expect_false(dir.exists(file.path(temp, paste0(tasks$task_id[[1L]], ".pieces"))))
 })
 
-test_that("Downloader workflow: pieces inside a persistent worker", {
+test_that("Downloader$run() downloads pieces inside a persistent worker", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -446,7 +446,7 @@ test_that("Downloader workflow: pieces inside a persistent worker", {
     expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
 })
 
-test_that("Downloader workflow: multi-source range pieces", {
+test_that("Downloader$run() downloads multi-source range pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -854,8 +854,8 @@ test_that("Downloader$cancel(task_id =)", {
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
 # }}}
-# Downloader workflow: candidate fallback and retry {{{
-test_that("Downloader workflow: candidate fallback", {
+# Downloader$run() candidate fallback / retry {{{
+test_that("Downloader$run() falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -910,7 +910,7 @@ test_that("Downloader workflow: candidate fallback", {
     expect_equal(candidates[order(candidates$priority), , drop = FALSE]$failed_count, c(1L, 0L))
 })
 
-test_that("Downloader workflow: transient HTTP retry", {
+test_that("Downloader$run() retries transient HTTP failures", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -938,7 +938,7 @@ test_that("Downloader workflow: transient HTTP retry", {
     expect_true(dl$verify(session_id = session_id)$checksum_ok)
 })
 
-test_that("Downloader workflow: candidate URLs stay task-scoped", {
+test_that("Downloader$run() keeps candidate URLs task-scoped", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
