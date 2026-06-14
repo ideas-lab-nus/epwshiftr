@@ -1,3 +1,5 @@
+# store lifecycle/meta/layout {{{
+
 store_test__response <- function(docs) {
     list(
         responseHeader = list(
@@ -210,6 +212,10 @@ test_that("EsgStore migrates older manifests to the current schema version", {
     expect_true(all(c("download_session_id", "last_error") %in% cols))
 })
 
+# }}}
+
+# query tracking/update graph {{{
+
 test_that("EsgStore tracks long-lived ESGF queries", {
     skip_if_not_installed("duckdb")
 
@@ -408,6 +414,10 @@ test_that("EsgStore updates tracked queries and links file records", {
     expect_equal(nrow(store$query_changes(update_id = latest$update_id, change_type = "stale")), 1L)
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
+
+# }}}
+
+# download planning/catalog/sync {{{
 
 test_that("EsgStore summarizes download preflight without enqueueing tasks", {
     skip_if_not_installed("duckdb")
@@ -692,6 +702,10 @@ test_that("EsgStore downloads tracked query files through downloader", {
     expect_equal(report$downloads$query_file_status, "current")
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
+
+# }}}
+
+# validation/repair/cleanup {{{
 
 test_that("EsgStore removes tracked queries without deleting local files by default", {
     skip_if_not_installed("duckdb")
@@ -1108,6 +1122,10 @@ test_that("EsgStore clears missing local download records", {
     expect_false(artifact_id %in% artifacts$artifact_id)
 })
 
+# }}}
+
+# download planning/catalog/sync {{{
+
 test_that("EsgStore catalogs File result records", {
     skip_if_not_installed("duckdb")
 
@@ -1318,6 +1336,10 @@ test_that("EsgStore records empty child query runs", {
     expect_true(all(validation$checksum_ok))
     expect_true(all(validation$size_ok))
 })
+
+# }}}
+
+# regional extraction/coverage {{{
 
 test_that("EsgStore plans regional extraction jobs from catalog filters", {
     skip_if_not_installed("duckdb")
@@ -1566,3 +1588,5 @@ test_that("EsgStore detects incomplete coverage", {
     expect_true(any(!validation$exists))
     expect_error(store$assert_complete(), "incomplete")
 })
+
+# }}}
