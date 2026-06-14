@@ -125,8 +125,8 @@ local_query_test_esgdict <- function() {
 }
 
 local_esgdict_default <- function(dict = NULL, project = "CMIP6", env = parent.frame()) {
-    project <- esgdict__normalize_project(project)
-    default_env <- esgdict__default_env()
+    project <- dict__project(project)
+    default_env <- dict__env()
     old_exists <- exists(project, envir = default_env, inherits = FALSE)
     old <- if (old_exists) get(project, envir = default_env, inherits = FALSE) else NULL
 

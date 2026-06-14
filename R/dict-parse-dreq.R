@@ -1,4 +1,4 @@
-esgdict__parse_dreq_header <- function(lst) {
+dict__parse_dreq_header <- function(lst) {
     res <- list()
 
     ori <- Sys.getlocale("LC_TIME")
@@ -18,11 +18,11 @@ esgdict__parse_dreq_header <- function(lst) {
     res
 }
 
-esgdict__parse_dreq_file <- function(file) {
+dict__parse_dreq <- function(file) {
     json <- jsonlite::read_json(file)
-    header <- esgdict__parse_dreq_header(json[["Header"]])
+    header <- dict__parse_dreq_header(json[["Header"]])
 
-    d <- esgdict__format_cv_nest(json[["variable_entry"]])
+    d <- dict__nest(json[["variable_entry"]])
     data.table::set(d, NULL, "variable", names(json[["variable_entry"]]))
     data.table::setcolorder(d, "variable")
 

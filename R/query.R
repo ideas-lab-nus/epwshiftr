@@ -1671,7 +1671,7 @@ query__dict_project <- function(store) {
         return(NULL)
     }
 
-    values <- esgdict__as_character(query_param__value(project))
+    values <- dict__chr(query_param__value(project))
     values <- unique(values[nzchar(values)])
     if (length(values) != 1L) {
         return(NULL)
@@ -1679,8 +1679,8 @@ query__dict_project <- function(store) {
 
     tryCatch(
         {
-            project <- esgdict__normalize_project(values[[1L]])
-            esgdict__assert_implemented(project)
+            project <- dict__project(values[[1L]])
+            dict__assert_project(project)
             project
         },
         error = function(e) NULL
@@ -1721,12 +1721,12 @@ query__dict_args <- function(store, dict) {
             next
         }
 
-        field <- tryCatch(esgdict__normalize_field(name, dict), error = function(e) NULL)
+        field <- tryCatch(dict__field(name, dict), error = function(e) NULL)
         if (is.null(field)) {
             next
         }
 
-        values <- esgdict__as_character(query_param__value(param))
+        values <- dict__chr(query_param__value(param))
         values <- unique(values[nzchar(values) & !grepl("[*?]", values)])
         if (!length(values)) {
             next
@@ -1778,7 +1778,7 @@ query__warn_dict <- function(params) {
     }
 
     result <- tryCatch(
-        esgdict__check(dict, args, error = FALSE, suggest = TRUE, relationship = "any"),
+        dict__check(dict, args, error = FALSE, suggest = TRUE, relationship = "any"),
         error = function(e) NULL
     )
     if (is.null(result) || !nrow(result)) {

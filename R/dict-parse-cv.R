@@ -1,9 +1,9 @@
-esgdict__format_cv_nest <- function(json) {
+dict__nest <- function(json) {
     transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
     data.table::setnames(data.table::as.data.table(transposed), names(json[[1L]]))
 }
 
-esgdict__parse_cv_version_metadata <- function(lst) {
+dict__parse_cv_version <- function(lst) {
     res <- list()
 
     ori <- Sys.getlocale("LC_TIME")
@@ -27,37 +27,37 @@ esgdict__parse_cv_version_metadata <- function(lst) {
     res
 }
 
-esgdict__parse_cv_vec <- function(file, subclass = NULL) {
+dict__parse_cv_vec <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- unlst(json[[1L]])
     data.table::setattr(res, "version",
-        esgdict__parse_cv_version_metadata(json$version_metadata)
+        dict__parse_cv_version(json$version_metadata)
     )
 
     structure(res, class = c(subclass, "Cmip6CV", typeof(res)))
 }
 
-esgdict__parse_cv_list <- function(file, subclass = NULL) {
+dict__parse_cv_list <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- json[[1L]]
     data.table::setattr(res, "version",
-        esgdict__parse_cv_version_metadata(json$version_metadata)
+        dict__parse_cv_version(json$version_metadata)
     )
 
     structure(res, class = c(subclass, "Cmip6CV", "list"))
 }
 
-esgdict__parse_cv_drs <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_DRS")
+dict__parse_cv_drs <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_DRS")
 }
 
-esgdict__parse_cv_activity_id <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_ActivityId")
+dict__parse_cv_activity_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_ActivityId")
 }
 
-esgdict__parse_cv_experiment_id <- function(file) {
+dict__parse_cv_experiment_id <- function(file) {
     json <- jsonlite::read_json(file)
-    d <- esgdict__format_cv_nest(json[[1L]])
+    d <- dict__nest(json[[1L]])
 
     data.table::setcolorder(d, "experiment_id")
 
@@ -87,38 +87,38 @@ esgdict__parse_cv_experiment_id <- function(file) {
         "activity_id", "parent_activity_id",
         "additional_allowed_model_components"
     ))
-    data.table::setattr(d, "version", esgdict__parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", dict__parse_cv_version(json$version_metadata))
 
     structure(d, class = c("Cmip6CV_ExperimentId", "Cmip6CV", class(d)))
 }
 
-esgdict__parse_cv_frequency <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_Frequency")
+dict__parse_cv_frequency <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_Frequency")
 }
 
-esgdict__parse_cv_grid_label <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_GridLabel")
+dict__parse_cv_grid_label <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_GridLabel")
 }
 
-esgdict__parse_cv_institution_id <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_InstitutionId")
+dict__parse_cv_institution_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_InstitutionId")
 }
 
-esgdict__parse_cv_nominal_resolution <- function(file) {
-    esgdict__parse_cv_vec(file, "Cmip6CV_Resolution")
+dict__parse_cv_nominal_resolution <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_Resolution")
 }
 
-esgdict__parse_cv_realm <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_Realm")
+dict__parse_cv_realm <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_Realm")
 }
 
-esgdict__parse_cv_required_global_attributes <- function(file) {
-    esgdict__parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
+dict__parse_cv_required_global_attributes <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
 }
 
-esgdict__parse_cv_source_id <- function(file) {
+dict__parse_cv_source_id <- function(file) {
     json <- jsonlite::read_json(file)
-    d <- esgdict__format_cv_nest(json[[1L]])
+    d <- dict__nest(json[[1L]])
 
     data.table::setcolorder(d, "source_id")
 
@@ -138,19 +138,19 @@ esgdict__parse_cv_source_id <- function(file) {
         "source_id", "release_year", "institution_id", "label", "label_extended",
         "cohort", "activity_participation", "model_component", "license_info"
     ))
-    data.table::setattr(d, "version", esgdict__parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", dict__parse_cv_version(json$version_metadata))
 
     structure(d, class = c("Cmip6CV_SourceId", "Cmip6CV", class(d)))
 }
 
-esgdict__parse_cv_source_type <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_SourceType")
+dict__parse_cv_source_type <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_SourceType")
 }
 
-esgdict__parse_cv_sub_experiment_id <- function(file) {
-    esgdict__parse_cv_list(file, "Cmip6CV_SubExperimentId")
+dict__parse_cv_sub_experiment_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_SubExperimentId")
 }
 
-esgdict__parse_cv_table_id <- function(file) {
-    esgdict__parse_cv_vec(file, "Cmip6CV_TableId")
+dict__parse_cv_table_id <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_TableId")
 }
