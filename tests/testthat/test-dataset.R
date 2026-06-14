@@ -121,7 +121,7 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     lapply(tasks, mirai::collect_mirai)
 }
 # }}}
-# constructor/open/close/introspection {{{
+# EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() {{{
 test_that("EsgDataset can work with a single file", {
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
@@ -287,7 +287,7 @@ test_that("EsgDataset can work with multiple files", {
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
 })
 # }}}
-# read methods {{{
+# EsgDataset$read_data_table() / EsgDataset$read_region() {{{
 test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -439,7 +439,7 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
     expect_identical(unique(dt_outside$file_index), 2L)
 })
 # }}}
-# slice/reachable {{{
+# EsgDataset$slice() / EsgDataset$selection() / EsgDataset$reachable() {{{
 test_that("EsgDataset slice() selects files and preserves runtime context", {
     paths <- c(
         local_dataset_table_file(
@@ -676,7 +676,7 @@ test_that("EsgDataset reachable() probes current remote data nodes without cache
     expect_false(any(diag$probe_cached))
 })
 # }}}
-# public async {{{
+# EsgDataset$open(async = TRUE) / EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) {{{
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -864,7 +864,7 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
 # }}}
-# internal async lifecycle {{{
+# dataset__detach_handles() / dataset__adopt_handles() / private$start_async_operation() / private$collect_async_task() / private$cancel_async_task() {{{
 test_that("EsgDataset internal helpers transfer partially opened handles", {
     path_opened <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -1078,7 +1078,7 @@ test_that("EsgDataset internal async cancel race keeps cancelled terminal state"
     expect_null(private$async_task)
 })
 # }}}
-# errors/print {{{
+# EsgDataset error handling / EsgDataset$print() {{{
 test_that("EsgDataset handles errors gracefully", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 
