@@ -1,4 +1,4 @@
-# query test helpers {{{
+# local_query_test_response() / local_query_listing_response() / local_query_test_esgdict() / local_esgdict_default() {{{
 local_test_cache(scope = "persist")
 
 local_query_test_response <- function(docs = NULL) {
@@ -412,7 +412,7 @@ test_that("query_listing_cached() treats expired offline entries as misses", {
 })
 # }}}
 # EsgQuery$project() / EsgQuery$activity_id() / EsgQuery$experiment_id() / EsgQuery$source_id() / EsgQuery$variable_id() / EsgQuery$frequency() / EsgQuery$variant_label() / EsgQuery$nominal_resolution() / EsgQuery$data_node() {{{
-test_that("EsgQuery facet setter methods", {
+test_that("EsgQuery$project() / EsgQuery$activity_id() / EsgQuery$experiment_id() / EsgQuery$source_id() / EsgQuery$variable_id() / EsgQuery$frequency() / EsgQuery$variant_label() / EsgQuery$nominal_resolution() / EsgQuery$data_node()", {
     q <- esg_query()
 
     # project
@@ -513,7 +513,7 @@ test_that("EsgQuery$replica()", {
     expect_null(esg_query()$replica(NULL)$replica())
 })
 # }}}
-# helper: decode a query URL and return the query= value as plain text
+# decode_query() {{{
 decode_query <- function(url) {
     m <- regmatches(url, regexpr("(?<=query=)[^&]*", url, perl = TRUE))
     if (!length(m)) {
@@ -521,6 +521,7 @@ decode_query <- function(url) {
     }
     URLdecode(m)
 }
+# }}}
 # EsgQuery$datetime_range() {{{
 test_that("EsgQuery$datetime_range()", {
     withr::local_options(epwshiftr.solr_date_math_now = as.POSIXct("2025-06-13 12:34:56", tz = "UTC"))
@@ -888,7 +889,7 @@ test_that("EsgQuery$url() / EsgQuery$count()", {
     expect_identical(cnt$activity_id, c(CMIP = 2L, ScenarioMIP = 1L))
 })
 # }}}
-# EsgQuery$collect() {{{
+# EsgQuery$collect(type = "file") {{{
 test_that("EsgQuery$collect(type=) collects child results through Dataset workflow", {
     q <- esg_query("https://example.org")$project("CMIP6")$datetime_range(
         start = "2050-01-01T00:00:00Z",
@@ -990,7 +991,7 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
 })
 # }}}
 # query__collect() {{{
-test_that("query__collect includes only result-field constraints in fields", {
+test_that("query__collect() includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1052,7 +1053,7 @@ test_that("query__collect includes only result-field constraints in fields", {
     )
 })
 
-test_that("query__collect returns normalized effective parameters", {
+test_that("query__collect() returns normalized effective parameters", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1089,7 +1090,7 @@ test_that("query__collect returns normalized effective parameters", {
     expect_null(bridge$parameter$fields())
 })
 
-test_that("query__collect records actual page query URLs", {
+test_that("query__collect() records actual page query URLs", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1117,8 +1118,8 @@ test_that("query__collect records actual page query URLs", {
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
 })
 # }}}
-# EsgQuery$collect() {{{
-test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
+# EsgQuery$collect() dictionary validation / Dataset results {{{
+test_that("EsgQuery$collect() validates local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) local_query_test_response(),
@@ -1134,7 +1135,7 @@ test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
     expect_s3_class(res, "EsgResultDataset")
 })
 
-test_that("EsgQuery$collect() skips dictionary check when no local dictionary is available", {
+test_that("EsgQuery$collect() skips dictionary validation without a local dictionary", {
     local_esgdict_default(NULL)
     withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
     testthat::local_mocked_bindings(
@@ -1148,7 +1149,7 @@ test_that("EsgQuery$collect() skips dictionary check when no local dictionary is
     expect_s3_class(res, "EsgResultDataset")
 })
 
-test_that("EsgQuery$collect()", {
+test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
