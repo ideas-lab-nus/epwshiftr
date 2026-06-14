@@ -1,3 +1,5 @@
+# DiskCache constructor/config {{{
+
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
     cache <- DiskCache$new(dir = dir, ...)
@@ -112,6 +114,10 @@ test_that("DiskCache: handling missing values", {
 
     cache$destroy()
 })
+
+# }}}
+
+# DiskCache get/set/query/remove {{{
 
 test_that("DiskCache: basic get/set operations", {
     cache_dir <- tempfile("cache-basic-")
@@ -252,6 +258,10 @@ test_that("DiskCache: info() method", {
 
     cache$destroy()
 })
+
+# }}}
+
+# DiskCache prune/destroy/metadata {{{
 
 test_that("DiskCache: pruning respects max_n", {
     skip_on_cran()
@@ -691,6 +701,24 @@ test_that("DiskCache: metadata persistence", {
     cache$destroy()
 })
 
+test_that("DiskCache$print()", {
+    cache_dir <- tempfile("cache-print-")
+    cache <- DiskCache$new(cache_dir)
+    on.exit(cache$destroy(), add = TRUE)
+
+    expect_snapshot(
+        print(cache),
+        transform = function(lines) {
+            lines <- gsub("^(\\s*)dir: .+$", "\\1dir: <cache-dir>", lines)
+            lines <- gsub("^(\\s*)last_prune_time: .+$", "\\1last_prune_time: <time>", lines)
+            gsub("^(\\s*)set_count: .+$", "\\1set_count: <count>", lines)
+        }
+    )
+})
+
+# }}}
+
+# cache mode/key/url/download helpers {{{
 
 test_that("cache__mode() returns correct mode", {
     local_cache_mode("normal")
@@ -1037,3 +1065,5 @@ test_that("cache__reset() sets cache to NULL", {
     # Clean up the auto-created cache
     cache__reset()
 })
+
+# }}}
