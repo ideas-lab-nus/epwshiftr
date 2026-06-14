@@ -34,7 +34,7 @@ epw_morpher_test_params <- function() {
 }
 
 epw_morpher_test_result <- function(docs) {
-    new_query_result(
+    query_result__new(
         EsgResultFile,
         index_node = "https://example.org",
         params = epw_morpher_test_params(),

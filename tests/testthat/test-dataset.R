@@ -661,7 +661,7 @@ test_that("EsgDataset reachable() probes current remote data nodes without cache
 
     seen <- NULL
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
                                                            probe_concurrency = 1L,
                                                            cache_seconds = 3600L,
                                                            cache_failures_seconds = 0L) {

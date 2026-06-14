@@ -517,7 +517,7 @@ esgf_query <- function(
             response <- if (type == "Dataset" || res$response$response$numFound == 0L) {
                 esgf_subset_response_docs(res$response, RES_DATASET)
             } else {
-                datasets <- new_query_result(
+                datasets <- query_result__new(
                     EsgResultDataset,
                     priv(q)$index_node_url,
                     if (!is.null(res$parameter)) res$parameter else priv(q)$parameter,

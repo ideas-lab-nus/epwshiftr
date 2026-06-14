@@ -348,10 +348,10 @@ EsgDataset <- R6::R6Class(
         #'        `probe_url`, and `probe_cached`.
         reachable = function(level = c("data_node", "url"), probe = NULL) {
             level <- match.arg(level)
-            probe <- query_result_reachable_normalize_probe(probe)
+            probe <- query_result__reach_config(probe)
             urls <- private$urls
-            data_node <- query_result_reachable_url_host(urls)
-            probes <- query_result_reachable_probe_targets(
+            data_node <- query_result__url_host(urls)
+            probes <- query_result__reach_targets(
                 urls,
                 data_node = data_node,
                 level = level,
@@ -372,7 +372,7 @@ EsgDataset <- R6::R6Class(
                 source_index = source_index,
                 data_node = data_node,
                 service = data.table::fifelse(
-                    query_result_reachable_is_local_url(urls),
+                    query_result__url_local(urls),
                     "local",
                     NA_character_
                 ),
@@ -970,7 +970,7 @@ EsgDataset <- R6::R6Class(
         get_selection_context = function() {
             ctx <- private$context$selection
             if (!is.null(ctx) && length(ctx)) {
-                return(query_result_normalize_selection_context(ctx))
+                return(query_result__selection(ctx))
             }
 
             n <- length(private$urls)

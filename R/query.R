@@ -1177,7 +1177,7 @@ EsgQuery <- R6::R6Class(
         #' identical(res2$count(), res4$count())
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL, ...) {
-            type <- query_result_normalize_type(type)
+            type <- query_result__type(type)
             dots <- eval(substitute(alist(...)))
 
             collect_dataset <- function(all, limit, dict_check = TRUE) {
@@ -1196,7 +1196,7 @@ EsgQuery <- R6::R6Class(
                 result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
 
                 # create new results
-                new_query_result(
+                query_result__new(
                     EsgResultDataset,
                     private$index_node_url,
                     result_params,
@@ -1886,7 +1886,7 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
         response = response,
         docs = docs,
         parameter = effective_store,
-        context = list(query_url = query_result_normalize_query_url(query_urls, named = FALSE))
+        context = list(query_url = query_result__query_urls(query_urls, named = FALSE))
     )
 }
 # }}}

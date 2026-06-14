@@ -47,7 +47,7 @@ query_result_test_object <- function(type = "Dataset", docs, params = query_resu
         File = EsgResultFile,
         Aggregation = EsgResultAggregation
     )
-    new_query_result(
+    query_result__new(
         generator,
         index_node = "https://example.org",
         params = params,
@@ -173,7 +173,7 @@ test_that("loaded ESGF query results validate result type", {
 })
 
 test_that("base ESGF query results cannot choose a saved-result schema", {
-    result <- new_query_result(
+    result <- query_result__new(
         EsgResult,
         index_node = "https://example.org",
         params = query_result_test_params("Dataset"),
@@ -439,7 +439,7 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     timeouts <- numeric()
     agents <- character()
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_url = function(url, timeout = 5, network_policy = NULL) {
+        query_result__reach_url = function(url, timeout = 5, network_policy = NULL) {
             calls <<- c(calls, url)
             timeouts <<- c(timeouts, timeout)
             useragent <- if (is.null(network_policy$useragent)) NA_character_ else network_policy$useragent
@@ -529,7 +529,7 @@ test_that("result reachable() probes data node root URLs by default", {
 
     calls <- character()
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_node_urls_network = function(urls, timeout = 5,
+        query_result__reach_node_urls = function(urls, timeout = 5,
                                                                        network_policy = NULL,
                                                                        probe_concurrency = 1L) {
             calls <<- c(calls, urls)
@@ -607,7 +607,7 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
     probe_calls <- list()
     collect_calls <- list()
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
                                                            probe_concurrency = 1L,
                                                            cache_seconds = 3600L,
                                                            cache_failures_seconds = 0L) {
@@ -699,7 +699,7 @@ test_that("repair_urls prefers reachable replicas already present in the current
     result <- query_result_test_object("File", docs, query_result_test_params("File"))
 
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
                                                            probe_concurrency = 1L,
                                                            cache_seconds = 3600L,
                                                            cache_failures_seconds = 0L) {
@@ -779,7 +779,7 @@ test_that("File results repair HTTPServer URLs independently", {
 
     probed <- character()
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_urls = function(urls, timeout = 5, network_policy = NULL,
+        query_result__reach_urls = function(urls, timeout = 5, network_policy = NULL,
                                                      probe_concurrency = 1L) {
             probed <<- c(probed, urls)
             data.table::data.table(
@@ -831,7 +831,7 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
     candidate_docs$data_node <- "agg-replica.example.org"
 
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
                                                            probe_concurrency = 1L,
                                                            cache_seconds = 3600L,
                                                            cache_failures_seconds = 0L) {
@@ -887,7 +887,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
     candidate_docs$data_node <- "still-bad.example.org"
 
     testthat::local_mocked_bindings(
-        query_result_reachable_probe_data_nodes = function(data_node, timeout = 5, network_policy = NULL,
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
                                                            probe_concurrency = 1L,
                                                            cache_seconds = 3600L,
                                                            cache_failures_seconds = 0L) {
@@ -1130,7 +1130,7 @@ test_that("empty child query results save/load through real JSON files", {
         generator <- switch(case_name, file = EsgResultFile, aggregation = EsgResultAggregation)
         response <- query_result_test_response(empty_file_docs)
         response$response$docs <- list()
-        result <- new_query_result(
+        result <- query_result__new(
             generator,
             "https://example.org",
             query_result_test_params(type),
@@ -1491,7 +1491,7 @@ test_that("download_plan deduplicates URL probes", {
     files <- query_result_test_object("File", docs, query_result_test_params("File"))
     calls <- 0L
     testthat::local_mocked_bindings(
-        query_result_probe_url = function(url, timeout = 5, network_policy = NULL) {
+        query_result__latency_url = function(url, timeout = 5, network_policy = NULL) {
             calls <<- calls + 1L
             list(latency = 0.5, throughput = NA_real_)
         },
@@ -1526,7 +1526,7 @@ test_that("download_plan reuses fresh data node probe cache", {
         updated_at = Sys.time()
     )
     testthat::local_mocked_bindings(
-        query_result_probe_url = function(...) {
+        query_result__latency_url = function(...) {
             stop("cached probe should not hit the network")
         },
         .package = "epwshiftr"
@@ -1962,7 +1962,7 @@ test_that("ESGF Query Result Dataset works", {
     expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
 
     # $load() empty datasets
-    de <- expect_s3_class(new_query_result(EsgResultDataset)$load(file), "EsgResultDataset")
+    de <- expect_s3_class(query_result__new(EsgResultDataset)$load(file), "EsgResultDataset")
     expect_equal(priv(de)$index_node, priv(datasets)$index_node)
     expect_equal(priv(de)$parameter, priv(datasets)$parameter)
     # manually add the cache key since '$save()' will exclude it

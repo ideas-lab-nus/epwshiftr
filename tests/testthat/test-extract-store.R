@@ -39,7 +39,7 @@ extract_store_test_result <- function(type = "File", docs, context = NULL) {
         File = EsgResultFile,
         Aggregation = EsgResultAggregation
     )
-    new_query_result(
+    query_result__new(
         generator,
         index_node = "https://example.org",
         params = extract_store_test_params(type),
@@ -1293,7 +1293,7 @@ test_that("EsgStore records empty child query runs", {
         generator <- switch(type, File = EsgResultFile, Aggregation = EsgResultAggregation)
         response <- extract_store_test_response(empty_docs)
         response$response$docs <- list()
-        result <- new_query_result(
+        result <- query_result__new(
             generator,
             index_node = "https://example.org",
             params = extract_store_test_params(type),
