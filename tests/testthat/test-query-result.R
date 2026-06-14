@@ -1145,7 +1145,7 @@ test_that("File results filter time using OPeNDAP time axes", {
     expect_identical(filtered$time_filter$unknown_count, 1L)
 })
 # }}}
-# EsgResult active fields / EsgResult$to_data_table() {{{
+# EsgResult$fields / EsgResult$to_data_table() active fields {{{
 test_that("empty query result fields are stable character vectors", {
     empty_dataset <- query_result_test_object(
         "Dataset",
@@ -1998,8 +1998,8 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
 })
 # }}}
-# EsgResultDataset workflow: EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() {{{
-test_that("EsgResultDataset workflow: offline contract", {
+# EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() offline contract {{{
+test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() offline contract", {
     params <- query_result_test_params(
         "Dataset",
         activity_id = "ScenarioMIP",
@@ -2186,8 +2186,8 @@ test_that("EsgResultDataset workflow: offline contract", {
     expect_snapshot(datasets$print(), transform = transform_print)
 })
 # }}}
-# EsgResultFile workflow: EsgResultFile$to_data_table() / EsgResultFile$print() / active fields {{{
-test_that("EsgResultFile workflow: offline contract", {
+# EsgResultFile$to_data_table() / EsgResultFile$print() active fields offline contract {{{
+test_that("EsgResultFile$to_data_table() / EsgResultFile$print() active fields offline contract", {
     params <- query_result_test_params(
         "File",
         fields = c("source_id", "experiment_id", "frequency"),
@@ -2261,8 +2261,8 @@ test_that("EsgResultFile workflow: offline contract", {
     expect_snapshot(files$print(), transform = transform_print)
 })
 # }}}
-# EsgResultAggregation workflow: EsgResultAggregation$to_data_table() / EsgResultAggregation$print() / active fields {{{
-test_that("EsgResultAggregation workflow: offline contract", {
+# EsgResultAggregation$to_data_table() / EsgResultAggregation$print() active fields offline contract {{{
+test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() active fields offline contract", {
     params <- query_result_test_params(
         "Aggregation",
         fields = "id",
