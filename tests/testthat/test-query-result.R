@@ -1990,7 +1990,11 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
 })
 
-test_that("ESGF Query Result Dataset works", {
+# }}}
+
+# EsgResultDataset workflows {{{
+
+test_that("EsgResultDataset workflow: offline contract", {
     params <- query_result_test_params(
         "Dataset",
         activity_id = "ScenarioMIP",
@@ -2178,8 +2182,8 @@ test_that("ESGF Query Result Dataset works", {
 })
 # }}}
 
-# EsgResultFile {{{
-test_that("ESGF Query Result File works", {
+# EsgResultFile workflows {{{
+test_that("EsgResultFile workflow: offline contract", {
     params <- query_result_test_params(
         "File",
         fields = c("source_id", "experiment_id", "frequency"),
@@ -2254,8 +2258,8 @@ test_that("ESGF Query Result File works", {
 })
 # }}}
 
-# EsgResultAggregation {{{
-test_that("ESGF Query Result Aggregation works", {
+# EsgResultAggregation workflows {{{
+test_that("EsgResultAggregation workflow: offline contract", {
     params <- query_result_test_params(
         "Aggregation",
         fields = "id",

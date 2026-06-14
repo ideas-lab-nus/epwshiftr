@@ -1,4 +1,4 @@
-# ESGF Query Result Dataset works
+# EsgResultDataset workflow: offline contract
 
     Code
       datasets$print()
@@ -37,7 +37,7 @@
           [ 1 Files, 2 GiB | No Aggregations ]
           [ Access: <...> ]
 
-# ESGF Query Result File works
+# EsgResultFile workflow: offline contract
 
     Code
       files$print()
@@ -69,7 +69,7 @@
       [1] tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
           [ 1 MiB | Access: <OPENDAP, HTTPServer> ]
 
-# ESGF Query Result Aggregation works
+# EsgResultAggregation workflow: offline contract
 
     Code
       aggs$print()
