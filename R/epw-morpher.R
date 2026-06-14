@@ -1,4 +1,4 @@
-#' @include extract-store.R morph.R utils.R
+#' @include store.R morph.R utils.R
 NULL
 
 # epw morph helpers {{{
@@ -116,7 +116,7 @@ epw_morph_recipe_rules <- function(recipe) {
 }
 
 epw_morph_hash <- function(...) {
-    extract_store_hash(...)
+    store__hash(...)
 }
 
 epw_morph_hash_rows <- function(...) {
@@ -178,7 +178,7 @@ epw_morph_drop_units <- function(x) {
 }
 
 epw_morph_unit_alias <- function(x) {
-    x <- extract_store_na_character(x)
+    x <- store__chr1(x)
     if (is.na(x) || !nzchar(x)) {
         return(NA_character_)
     }
@@ -514,7 +514,7 @@ EpwMorpher <- R6::R6Class(
                 epw_id = private$epw_id,
                 summary_id = summary_id,
                 baseline_id = baseline_id,
-                label = extract_store_na_character(private$label),
+                label = store__chr1(private$label),
                 by_json = epw_morph_json(by),
                 recipe_json = epw_morph_json(private$recipe),
                 strict = strict,
@@ -716,10 +716,10 @@ EpwMorpher <- R6::R6Class(
                     case_id = result$case_id[[1L]],
                     artifact_id = artifact_id,
                     path = store_rel_path(output_path, root = private$store$path),
-                    source_id = extract_store_na_character(meta$source_id),
-                    experiment_id = extract_store_na_character(meta$experiment_id),
-                    variant_label = extract_store_na_character(meta$variant_label),
-                    period = extract_store_na_character(meta$period),
+                    source_id = store__chr1(meta$source_id),
+                    experiment_id = store__chr1(meta$experiment_id),
+                    variant_label = store__chr1(meta$variant_label),
+                    period = store__chr1(meta$period),
                     created_at = epw_morph_now(),
                     stringsAsFactors = FALSE
                 )
@@ -801,8 +801,8 @@ EpwMorpher <- R6::R6Class(
             row <- data.frame(
                 epw_id = epw_id,
                 artifact_id = artifact_id,
-                label = extract_store_na_character(private$label),
-                site_id = extract_store_na_character(private$site_id),
+                label = store__chr1(private$label),
+                site_id = store__chr1(private$site_id),
                 path = store_rel_path(target, root = private$store$path),
                 checksum = checksum,
                 created_at = now,
@@ -869,9 +869,9 @@ EpwMorpher <- R6::R6Class(
                             status <- "missing_baseline"
                         }
                         future_value <- if (nrow(future)) future$value[[1L]] else NA_real_
-                        future_units <- if (nrow(future)) extract_store_na_character(future$units[[1L]]) else NA_character_
+                        future_units <- if (nrow(future)) store__chr1(future$units[[1L]]) else NA_character_
                         base_value <- if (nrow(base)) base$value[[1L]] else NA_real_
-                        base_units <- if (nrow(base)) extract_store_na_character(base$units[[1L]]) else NA_character_
+                        base_units <- if (nrow(base)) store__chr1(base$units[[1L]]) else NA_character_
                         if (is.na(base_units) || !nzchar(base_units)) {
                             base_units <- epw_morph_default_epw_units(rule$epw_field[[1L]])
                         }
@@ -891,10 +891,10 @@ EpwMorpher <- R6::R6Class(
                             case_id = case_id,
                             epw_field = rule$epw_field[[1L]],
                             variable_id = rule$variable_id[[1L]],
-                            source_id = extract_store_na_character(row_case$source_id),
-                            experiment_id = extract_store_na_character(row_case$experiment_id),
-                            variant_label = extract_store_na_character(row_case$variant_label),
-                            period = extract_store_na_character(row_case$period),
+                            source_id = store__chr1(row_case$source_id),
+                            experiment_id = store__chr1(row_case$experiment_id),
+                            variant_label = store__chr1(row_case$variant_label),
+                            period = store__chr1(row_case$period),
                             month = as.integer(m),
                             method = rule$method[[1L]],
                             baseline = base_value,
@@ -925,7 +925,7 @@ EpwMorpher <- R6::R6Class(
             plan <- private$get_plan(morph_id)
             plan$status <- status
             plan$updated_at <- epw_morph_now()
-            plan$last_error <- extract_store_na_character(error)
+            plan$last_error <- store__chr1(error)
             epw_morph_replace_rows(private$store, "epw_morph_plan", plan, "morph_id")
             invisible(NULL)
         },
@@ -973,19 +973,19 @@ EpwMorpher <- R6::R6Class(
         case_metadata = function(factors) {
             row <- factors[1L]
             list(
-                source_id = extract_store_na_character(row$source_id[[1L]]),
-                experiment_id = extract_store_na_character(row$experiment_id[[1L]]),
-                variant_label = extract_store_na_character(row$variant_label[[1L]]),
-                period = extract_store_na_character(row$period[[1L]])
+                source_id = store__chr1(row$source_id[[1L]]),
+                experiment_id = store__chr1(row$experiment_id[[1L]]),
+                variant_label = store__chr1(row$variant_label[[1L]]),
+                period = store__chr1(row$period[[1L]])
             )
         },
 
         case_metadata_from_result = function(dt) {
             list(
-                source_id = if ("source_id" %in% names(dt)) extract_store_na_character(dt$source_id[[1L]]) else NA_character_,
-                experiment_id = if ("experiment_id" %in% names(dt)) extract_store_na_character(dt$experiment_id[[1L]]) else NA_character_,
-                variant_label = if ("variant_label" %in% names(dt)) extract_store_na_character(dt$variant_label[[1L]]) else NA_character_,
-                period = if ("period" %in% names(dt)) extract_store_na_character(dt$period[[1L]]) else NA_character_
+                source_id = if ("source_id" %in% names(dt)) store__chr1(dt$source_id[[1L]]) else NA_character_,
+                experiment_id = if ("experiment_id" %in% names(dt)) store__chr1(dt$experiment_id[[1L]]) else NA_character_,
+                variant_label = if ("variant_label" %in% names(dt)) store__chr1(dt$variant_label[[1L]]) else NA_character_,
+                period = if ("period" %in% names(dt)) store__chr1(dt$period[[1L]]) else NA_character_
             )
         },
 

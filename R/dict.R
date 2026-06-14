@@ -133,7 +133,7 @@ esgdict__hashable <- function(x) {
 }
 
 esgdict__dict_id <- function(project, version, sources, built_time = NULL) {
-    extract_store_hash(
+    store__hash(
         esgdict__normalize_project(project),
         ESGDICT_FORMAT_VERSION,
         jsonlite::toJSON(esgdict__hashable(version), auto_unbox = TRUE, null = "null"),
