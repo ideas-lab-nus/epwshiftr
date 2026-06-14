@@ -93,7 +93,7 @@ test_that("result schema JSON files use local reusable definitions", {
     )
 
     for (filename in c("result-dataset.json", "result-file.json", "result-aggregation.json")) {
-        schema_file <- test_path("..", "..", "inst", "extdata", "schema", filename)
+        schema_file <- system.file("extdata", "schema", filename, package = "epwshiftr", mustWork = TRUE)
         json <- jsonlite::fromJSON(schema_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
         expect_named(json$fields, c("index_node", "parameter", "response", "context"))

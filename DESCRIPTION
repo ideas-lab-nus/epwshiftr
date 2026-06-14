@@ -44,7 +44,6 @@ BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Collate:
-    'standalone-cache.R'
     'cli-doctor.R'
     'cli-download.R'
     'cli-help.R'
@@ -78,6 +77,7 @@ Collate:
     'query-result.R'
     'query.R'
     'schema.R'
+    'standalone-cache.R'
     'zzz.R'
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
 Config/testthat/edition: 3

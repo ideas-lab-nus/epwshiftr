@@ -166,7 +166,7 @@ epw_morph_units_label <- function(x) {
     if (!inherits(x, "units")) {
         return(NA_character_)
     }
-    out <- tryCatch(units::deparse_unit(units::units(x)), error = function(e) NA_character_)
+    out <- tryCatch(units::deparse_unit(x), error = function(e) NA_character_)
     if (length(out) != 1L || is.na(out) || !nzchar(out)) NA_character_ else out
 }
 
@@ -186,7 +186,7 @@ epw_morph_unit_alias <- function(x) {
         x,
         "K" = "K",
         "kelvin" = "K",
-        "°C" = "degC",
+        "\u00b0C" = "degC",
         "degC" = "degC",
         "degree_Celsius" = "degC",
         "C" = "degC",

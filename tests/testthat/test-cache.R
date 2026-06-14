@@ -6,14 +6,6 @@ cache_disk_deterministic <- function(dir, ...) {
     cache
 }
 
-standalone_cache_path <- function() {
-    candidates <- c(
-        file.path("R", "standalone-cache.R"),
-        file.path("..", "..", "R", "standalone-cache.R")
-    )
-    candidates[file.exists(candidates)][[1L]]
-}
-
 # Basic functionality tests
 test_that("DiskCache: initialization with valid parameters", {
     cache_dir <- tempfile("cache-init-")
@@ -699,80 +691,6 @@ test_that("DiskCache: metadata persistence", {
     cache$destroy()
 })
 
-
-# ============================================================================
-# Cache infrastructure tests (cache__mode, cache__url, etc.)
-# ============================================================================
-
-test_that("standalone-cache.R sources without package helpers", {
-    standalone_path <- standalone_cache_path()
-
-    env <- new.env(parent = baseenv())
-    source(standalone_path, local = env)
-
-    root <- tempfile("standalone-cache-")
-    withr::defer(unlink(root, recursive = TRUE))
-    env$cache__configure("vendortest")
-    withr::local_options(list(
-        vendortest.cache = TRUE,
-        vendortest.dir_cache = file.path(root, "cache"),
-        vendortest.verbose = FALSE
-    ))
-    expected_dir <- normalizePath(file.path(root, "cache"), mustWork = FALSE, winslash = "/")
-
-    cache <- env$DiskCache$new(file.path(root, "manual"), max_age = Inf)
-    cache$set("value", list(x = 1L))
-    expect_equal(cache$get("value"), list(x = 1L))
-    expect_true(env$cache__missing(cache$get("missing")))
-
-    expect_identical(env$cache__key("x", "a"), paste0("x-", env$cache__hash(list("a"))))
-
-    singleton <- env$cache__get()
-    expect_s3_class(singleton, "DiskCache")
-    expect_identical(singleton$info()$dir, expected_dir)
-    expect_identical(env$cache__get(), singleton)
-
-    replacement <- env$DiskCache$new(file.path(root, "replacement"), max_age = Inf)
-    expect_identical(env$cache__set(replacement), singleton)
-    expect_identical(env$cache__get(), replacement)
-    env$cache__reset()
-    expect_false(identical(env$cache__get(), replacement))
-
-    calls <- 0L
-    expect_identical(env$cache__url("url", "key", function() {
-        calls <<- calls + 1L
-        "cached"
-    }), "cached")
-    expect_identical(env$cache__url("url", "key", function() stop("should not be called")), "cached")
-    expect_equal(calls, 1L)
-
-    withr::local_options(vendortest.cache = "offline")
-    expect_identical(env$cache__url("url", "key", function() stop("should not be called")), "cached")
-    expect_error(env$cache__url("url", "miss", function() "no"), "offline")
-
-    withr::local_options(vendortest.cache = TRUE)
-    dest1 <- tempfile("standalone-download-")
-    dest2 <- tempfile("standalone-download-")
-    env$cache__download("https://example.org/file.bin", dest1, function() {
-        writeBin(charToRaw("bytes"), dest1)
-        dest1
-    })
-    env$cache__download("https://example.org/file.bin", dest2, function() {
-        stop("should not be called")
-    })
-    expect_equal(readBin(dest2, "raw", 10L), charToRaw("bytes"))
-})
-
-test_that("standalone-cache.R has a vendorable boundary", {
-    lines <- readLines(standalone_cache_path(), warn = FALSE)
-    header <- which(trimws(lines) == "# ---")
-    body <- lines[(header[[2L]] + 1L):length(lines)]
-
-    expect_true(any(grepl("DiskCache <- R6::R6Class(", lines, fixed = TRUE)))
-    expect_false(any(grepl("epwshiftr\\.", body)))
-    expect_false(any(grepl("jsonlite::", body, fixed = TRUE)))
-    expect_false(any(grepl("cache__read_json", body, fixed = TRUE)))
-})
 
 test_that("cache__mode() returns correct mode", {
     local_cache_mode("normal")

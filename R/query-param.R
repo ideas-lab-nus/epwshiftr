@@ -423,7 +423,7 @@ S7::method(render, QueryParamCtrl) <- function(x, name, ..., encode = TRUE, spac
 # as.list {{{
 # Convert a facet parameter to a serializable list payload.
 # The payload preserves value, negation, and encoding state.
-S7::method(as.list, QueryParamFacet) <- function(x) {
+S7::method(as.list, QueryParamFacet) <- function(x, ...) {
     list(
         value = x@value,
         negate = x@negate,
@@ -433,13 +433,13 @@ S7::method(as.list, QueryParamFacet) <- function(x) {
 
 # Convert a date parameter to a serializable ISO string payload.
 # The date object is formatted without applying bridge-only date math evaluation.
-S7::method(as.list, QueryParamDate) <- function(x) {
+S7::method(as.list, QueryParamDate) <- function(x, ...) {
     list(value = format(x@value, as = "iso"))
 }
 
 # Convert a control parameter to a serializable list payload.
 # Control parameters only need to persist their scalar value.
-S7::method(as.list, QueryParamCtrl) <- function(x) {
+S7::method(as.list, QueryParamCtrl) <- function(x, ...) {
     list(value = x@value)
 }
 # }}}
@@ -447,7 +447,7 @@ S7::method(as.list, QueryParamCtrl) <- function(x) {
 # print {{{
 # Print a compact representation of a single query parameter.
 # Date parameters drop the synthetic leading field separator used by `render()`.
-S7::method(print, QueryParam) <- function(x) {
+S7::method(print, QueryParam) <- function(x, ...) {
     rendered <- render(x, name = NULL)
     if (S7::S7_inherits(x, QueryParamDate)) {
         # remove the leading ":"

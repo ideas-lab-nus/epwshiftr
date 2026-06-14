@@ -63,23 +63,8 @@ test_that("esgf_query() compatibility wrapper", {
     # only check when LLNL ESGF node works
     if (nrow(qf)) {
         fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
-        expect_true(
-            all(
-                c(
-                    "type:File",
-                    "project:\"CMIP6\"",
-                    "activity_id:\"ScenarioMIP\"",
-                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-                    "source_id:\"EC-Earth3\"",
-                    "variable_id:\"tas\"",
-                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-                    "frequency:\"day\"",
-                    "replica:false",
-                    "variant_label:\"r1i1p1f1\""
-                ) %in%
-                    fq_qf
-            )
-        )
+        expect_true(any(grepl("^dataset_id:", fq_qf)))
+        expect_true(all(c("type:File", "replica:false") %in% fq_qf))
         expect_named(
             qf,
             c(

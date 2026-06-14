@@ -831,13 +831,13 @@ solrdate__format <- function(x, as = c("iso", "num")) {
     }
 }
 
-S7::method(format, SolrDateUnbounded) <- function(x, as = "iso") {
+S7::method(format, SolrDateUnbounded) <- function(x, as = "iso", ...) {
     "*"
 }
-S7::method(format, SolrDateInstant) <- function(x, as = "iso") {
+S7::method(format, SolrDateInstant) <- function(x, as = "iso", ...) {
     solrdate__format(S7::prop(x, "value"), as = as)
 }
-S7::method(format, SolrDateMath) <- function(x, as = "iso") {
+S7::method(format, SolrDateMath) <- function(x, as = "iso", ...) {
     value <- S7::prop(x, "value")
     value <- if (solrdate__is_na(value)) {
         "NOW"
@@ -847,7 +847,7 @@ S7::method(format, SolrDateMath) <- function(x, as = "iso") {
 
     paste0(value, S7::prop(x, "math"))
 }
-S7::method(format, SolrDateRange) <- function(x, as = "iso") {
+S7::method(format, SolrDateRange) <- function(x, as = "iso", ...) {
     paste0(
         if (isTRUE(S7::prop(x, "start_inclusive"))) "[" else "{",
         format(S7::prop(x, "start"), as = as),
@@ -856,7 +856,7 @@ S7::method(format, SolrDateRange) <- function(x, as = "iso") {
         if (isTRUE(S7::prop(x, "end_inclusive"))) "]" else "}"
     )
 }
-S7::method(print, SolrDate) <- function(x) {
+S7::method(print, SolrDate) <- function(x, ...) {
     cat(sprintf("<SolrDate>\n- \"%s\"\n", format(x)), sep = "")
 }
 
