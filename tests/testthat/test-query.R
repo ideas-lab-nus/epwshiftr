@@ -1,4 +1,4 @@
-# QueryParam helpers {{{
+# query test helpers {{{
 local_test_cache(scope = "persist")
 
 local_query_test_response <- function(docs = NULL) {
@@ -165,52 +165,10 @@ local_esgdict_default <- function(dict = NULL, project = "CMIP6", env = parent.f
         esgdict_set_default(dict)
     }
 }
+# }}}
 
-test_that("QueryParam helpers use typed objects", {
-    param <- expect_s3_class(
-        query_param__as("x", list(value = LETTERS[1:3], negate = TRUE)),
-        "S7_object"
-    )
-    expect_true(S7::S7_inherits(param, QueryParamFacet))
-    expect_identical(query_param__value(param), LETTERS[1:3])
-    expect_true(query_param__negate(param))
-
-    query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
-    expect_true(S7::S7_inherits(query_param, QueryParamDate))
-    expect_true(is.solr_date(query_param__value(query_param)))
-
-    expect_identical(
-        query_param__names("date"),
-        c(
-            "datetime_start",
-            "datetime_stop",
-            "timestamp_from",
-            "timestamp_to",
-            "version_min",
-            "version_max"
-        )
-    )
-
-    flat_params <- query_param__as_store(list(
-        datetime_start = solr_date("2017"),
-        project = "CMIP6",
-        variable_id = "tas"
-    ))$state()
-    expect_s7_class(flat_params$datetime_start, QueryParamDate)
-    expect_s7_class(flat_params$project, QueryParamFacet)
-    expect_s7_class(flat_params$variable_id, QueryParamFacet)
-
-    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE)), "x"), "x=false")
-    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE)), "x"), "x!=1")
-    expect_identical(
-        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE)), "x"),
-        "x!=solr%2Bjson"
-    )
-
-    expect_identical(query_param__render(query_param__as("x", TRUE), "x", space = TRUE), "x = true")
-    expect_identical(query_param__render(query_param__as("x", 1.0), "x", space = TRUE), "x = 1")
-    expect_identical(query_param__render(query_param__as("x", "solr+json"), "x", space = TRUE), "x = solr%2Bjson")
-
+# esg_query() {{{
+test_that("esg_query()", {
     # can build query url
     index_node <- "https://example.org"
     without_project <- query__build(index_node, list(project = NULL))
@@ -275,11 +233,7 @@ test_that("QueryParam helpers use typed objects", {
         query__build("https://esgf-data.dkrz.de", list(type = "Aggregation")),
         fixed = TRUE
     ))
-})
-# }}}
 
-# esg_query() {{{
-test_that("esg_query()", {
     expect_s3_class(EsgQuery$new(), "EsgQuery")
     expect_s3_class(esg_query(), "EsgQuery")
 
@@ -591,8 +545,7 @@ test_that("EsgQuery$datetime_range()", {
     expect_null(result$start)
     expect_null(result$stop)
 
-    # --- normal inputs ---
-
+    # normal inputs
     # full ISO 8601: start -> datetime_start:[* TO ...]
     q$datetime_range(start = "2017-01-01T00:00:00Z")
     expect_match(decode_query(q$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
@@ -1218,7 +1171,15 @@ test_that("EsgQuery$collect()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE
+        ) {
             esgf_fixture_collect(params)
         },
         .package = "epwshiftr"

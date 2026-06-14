@@ -391,3 +391,49 @@ test_that("QueryParamStore", {
     serialized_all <- q$serialize(null = TRUE, type = "json")
     expect_s3_class(serialized_all, "json")
 })
+
+test_that("QueryParam helpers", {
+    param <- expect_s3_class(
+        query_param__as("x", list(value = LETTERS[1:3], negate = TRUE)),
+        "S7_object"
+    )
+    expect_true(S7::S7_inherits(param, QueryParamFacet))
+    expect_identical(query_param__value(param), LETTERS[1:3])
+    expect_true(query_param__negate(param))
+
+    query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
+    expect_true(S7::S7_inherits(query_param, QueryParamDate))
+    expect_true(is.solr_date(query_param__value(query_param)))
+
+    expect_identical(
+        query_param__names("date"),
+        c(
+            "datetime_start",
+            "datetime_stop",
+            "timestamp_from",
+            "timestamp_to",
+            "version_min",
+            "version_max"
+        )
+    )
+
+    flat_params <- query_param__as_store(list(
+        datetime_start = solr_date("2017"),
+        project = "CMIP6",
+        variable_id = "tas"
+    ))$state()
+    expect_s7_class(flat_params$datetime_start, QueryParamDate)
+    expect_s7_class(flat_params$project, QueryParamFacet)
+    expect_s7_class(flat_params$variable_id, QueryParamFacet)
+
+    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE)), "x"), "x=false")
+    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE)), "x"), "x!=1")
+    expect_identical(
+        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE)), "x"),
+        "x!=solr%2Bjson"
+    )
+
+    expect_identical(query_param__render(query_param__as("x", TRUE), "x", space = TRUE), "x = true")
+    expect_identical(query_param__render(query_param__as("x", 1.0), "x", space = TRUE), "x = 1")
+    expect_identical(query_param__render(query_param__as("x", "solr+json"), "x", space = TRUE), "x = solr%2Bjson")
+})
