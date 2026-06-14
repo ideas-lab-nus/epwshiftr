@@ -996,16 +996,13 @@ test_that("EsgDataset handles errors gracefully", {
     expect_error(ds$var_get("tas"), "not open")
 })
 
-test_that("EsgDataset print works", {
+test_that("EsgDataset$print()", {
     skip_on_cran()
 
     url <- "https://example.com/data.nc"
     ds <- EsgDataset$new(url)
 
-    msg <- capture.output(print(ds), type = "message")
-    expect_true(any(grepl("ESGF Dataset", msg, fixed = TRUE)))
-    expect_true(any(grepl("URLs: 1", msg, fixed = TRUE)))
-    expect_true(any(grepl("Status: Closed", msg, fixed = TRUE)))
+    expect_snapshot(print(ds))
 })
 
 test_that("EsgDataset internal async tasks keep sync handle state separate", {

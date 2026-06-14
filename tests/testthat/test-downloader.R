@@ -1485,12 +1485,15 @@ test_that("Downloader handles checksum mismatch", {
 # }}}
 
 # Print Tests {{{
-test_that("Downloader print works", {
+test_that("Downloader$print()", {
     dl <- Downloader$new()
 
-    # Just test that print doesn't error
-    # cli output produces messages, which is expected
-    expect_no_error(expect_message(print(dl)))
+    expect_snapshot(
+        print(dl),
+        transform = function(lines) {
+            gsub("^/.+", "<path>", lines)
+        }
+    )
 })
 # }}}
 

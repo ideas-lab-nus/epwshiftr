@@ -312,7 +312,7 @@ test_that("esgdict() and explicit default dictionary helpers", {
     expect_error(esgdict_check(activity = "CMIP", project = "CMIP5"), "not implemented")
 })
 
-test_that("EsgDict state, getters, and print are explicit", {
+test_that("EsgDict state and getters are explicit", {
     empty <- EsgDict$new()
     expect_equal(empty$status(), "empty")
     expect_false(empty$has_data())
@@ -332,10 +332,11 @@ test_that("EsgDict state, getters, and print are explicit", {
     expect_s3_class(dict$indices("variable"), "data.table")
     expect_error(dict$get(c("request", "activity_id")), "Must have length 1")
     expect_error(dict$indices(c("variable", "values")), "Must have length 1")
+})
 
-    out <- testthat::capture_messages(expect_invisible(dict$print()))
-    expect_true(any(grepl("Status", out, fixed = TRUE)))
-    expect_true(any(grepl("Vocab Contents [13 types]", out, fixed = TRUE)))
+test_that("EsgDict$print()", {
+    dict <- local_test_esgdict()
+    expect_snapshot(dict$print())
 })
 
 test_that("EsgDict save/load uses typed schema-validated JSON", {

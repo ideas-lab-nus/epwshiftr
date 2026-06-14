@@ -9,7 +9,7 @@ live_esgf_files <- function() {
         params(institution_id = "CMCC", sub_experiment_id = "s2017")$
         limit(2L)
 
-    datasets <- q$collect()
+    datasets <- allow_live_esgf_dict_warnings(q$collect())
     files <- datasets$collect(type = "File", limit = 2L)
     if (files$count() < 2L) {
         skip("Live ESGF query returned fewer than two file records.")
@@ -44,8 +44,11 @@ capture_live_warnings <- function(expr) {
     value <- withCallingHandlers(
         force(expr),
         warning = function(w) {
-            warnings <<- c(warnings, conditionMessage(w))
-            invokeRestart("muffleWarning")
+            message <- conditionMessage(w)
+            if (is_live_esgf_transient_warning(message)) {
+                warnings <<- c(warnings, message)
+                invokeRestart("muffleWarning")
+            }
         }
     )
     list(value = value, warnings = warnings)
@@ -53,7 +56,7 @@ capture_live_warnings <- function(expr) {
 
 skip_live_download_error <- function(expr) {
     tryCatch(
-        force(expr),
+        allow_live_esgf_transient_warnings(force(expr)),
         error = function(e) {
             msg <- conditionMessage(e)
             pattern <- paste(
