@@ -1,4 +1,4 @@
-# store test helpers {{{
+# store_test__response() / store_test__params() / store_test__result() / store_test__file_docs() / store_test__completed_store() {{{
 store_test__response <- function(docs) {
     list(
         responseHeader = list(
@@ -413,7 +413,7 @@ test_that("EsgStore$update_queries()", {
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
 # }}}
-# EsgStore$download_preflight() / EsgStore$download_query() {{{
+# EsgStore$download_preflight() / EsgStore$download_layout() / EsgStore$set_download_layout() / EsgStore$download_query() {{{
 test_that("EsgStore$download_preflight()", {
     skip_if_not_installed("duckdb")
 
@@ -816,7 +816,7 @@ test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     expect_equal(summary$tmp_file_count, 0L)
 })
 # }}}
-# EsgStore$validate_files() / EsgStore$repair_files() {{{
+# EsgStore$validate_files() / EsgStore$repair_files() / EsgStore$cleanup_downloads() {{{
 test_that("EsgStore$validate_files()", {
     skip_if_not_installed("duckdb")
 
@@ -1116,7 +1116,7 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     expect_false(artifact_id %in% artifacts$artifact_id)
 })
 # }}}
-# EsgStore$add_files() {{{
+# EsgStore$add_files() File records {{{
 test_that("EsgStore$add_files() catalogs File records", {
     skip_if_not_installed("duckdb")
 
@@ -1197,7 +1197,7 @@ test_that("EsgStore$add_files() deduplicates File replicas", {
     expect_equal(catalog$url_download, "https://master.example.org/fileServer/tas.nc")
 })
 # }}}
-# EsgStore$plan_region() {{{
+# EsgStore$plan_region() variable filters {{{
 test_that("EsgStore$plan_region() respects variable filters", {
     skip_if_not_installed("duckdb")
 
@@ -1268,7 +1268,7 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
 })
 # }}}
-# EsgStore$add_files() {{{
+# EsgStore$add_files() Aggregation records / empty child runs {{{
 test_that("EsgStore$add_files() catalogs Aggregation records", {
     skip_if_not_installed("duckdb")
 
@@ -1331,8 +1331,8 @@ test_that("EsgStore$add_files() records empty child query runs", {
     expect_true(all(validation$size_ok))
 })
 # }}}
-# EsgStore$plan_region() {{{
-test_that("EsgStore$plan_region()", {
+# EsgStore$plan_region() extraction plans / validation {{{
+test_that("EsgStore$plan_region() creates extraction plans", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
