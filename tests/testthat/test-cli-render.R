@@ -1,3 +1,4 @@
+# epwshiftr_cli_render_table() {{{
 test_that("epwshiftr_cli_render_table() renders stable boxed tables", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 96L)
@@ -52,7 +53,8 @@ test_that("epwshiftr_cli_render_table() snapshots narrow table adaptation", {
 
     expect_snapshot(cat(text, sep = "\n"))
 })
-
+# }}}
+# epwshiftr_cli_context() / epwshiftr_cli_render() {{{
 test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected query search columns", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 96L)
@@ -91,6 +93,7 @@ test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected quer
         "Unknown display column"
     )
 })
+# }}}
 # epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() {{{
 test_that("epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() adapt table output to console width", {
     withr::local_options(width = 54L)
@@ -123,7 +126,8 @@ test_that("epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() ad
     expect_true(any(grepl("Hidden columns for console width", text)))
     expect_true(any(grepl("Status", text)))
 })
-
+# }}}
+# epwshiftr_cli_color_status() / epwshiftr_cli_render_table() {{{
 test_that("epwshiftr_cli_color_status() / epwshiftr_cli_render_table() highlight status and progress", {
     withr::local_options(cli.num_colors = 256L, width = 120L)
 

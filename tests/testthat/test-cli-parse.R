@@ -11,7 +11,8 @@ test_that("epwshiftr_cli_parse_command() separates flags, options, and positiona
     expect_equal(parsed$options[["--tag"]], c("tas", "daily"))
     expect_equal(parsed$positionals, "project=CMIP6")
 })
-
+# }}}
+# epwshiftr_cli_csv() / epwshiftr_cli_count() / epwshiftr_cli_count_or_default() / epwshiftr_cli_bool() / epwshiftr_cli_empty_to_null() {{{
 test_that("epwshiftr_cli_csv() / epwshiftr_cli_count() / epwshiftr_cli_count_or_default() / epwshiftr_cli_bool() / epwshiftr_cli_empty_to_null() validate scalar inputs", {
     expect_equal(epwshiftr_cli_csv("tas, pr"), c("tas", "pr"))
     expect_equal(epwshiftr_cli_count("2", "limit"), 2L)
