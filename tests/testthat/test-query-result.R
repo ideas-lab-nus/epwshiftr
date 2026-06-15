@@ -676,7 +676,7 @@ test_that("EsgResult$reachable() probes data node root URLs by default", {
     expect_false(any(grepl("missing.example.org", calls, fixed = TRUE)))
 })
 # }}}
-# EsgResult$repair_urls() / EsgResult$expand_replicas() {{{
+# EsgResult$repair_urls() {{{
 test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reachable replicas", {
     docs <- query_result_test_file_docs()
     docs <- docs[rep(1L, 2L), , drop = FALSE]
@@ -833,7 +833,8 @@ test_that("EsgResult$repair_urls() prefers reachable replicas already present in
     expect_identical(repaired$id, c("file-current-replica", "file-current-replica"))
     expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
 })
-
+# }}}
+# EsgResult$expand_replicas() {{{
 test_that("EsgResult$expand_replicas() falls back to master and version without crossing versions", {
     docs <- query_result_test_file_docs()
     docs$instance_id <- NA_character_
@@ -866,7 +867,8 @@ test_that("EsgResult$expand_replicas() falls back to master and version without 
     expect_identical(expanded$id, "file-same-version")
     expect_identical(expanded$version, 20260101L)
 })
-
+# }}}
+# EsgResult$repair_urls() {{{
 test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
     docs <- query_result_test_file_docs(c(
         "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
@@ -1145,7 +1147,7 @@ test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes"
     expect_identical(filtered$time_filter$unknown_count, 1L)
 })
 # }}}
-# EsgResult$fields / EsgResult$to_data_table() {{{
+# EsgResult$fields {{{
 test_that("EsgResult$fields returns stable character vectors for empty results", {
     empty_dataset <- query_result_test_object(
         "Dataset",
@@ -1184,7 +1186,8 @@ test_that("EsgResult$fields returns stable character vectors for empty results",
     )
     expect_identical(empty_aggregation_without_fields$fields, character())
 })
-
+# }}}
+# EsgResult$to_data_table() {{{
 test_that("EsgResult$to_data_table() accepts all advertised fields", {
     docs <- query_result_test_file_docs(c(
         "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
@@ -2187,7 +2190,7 @@ test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgRe
 })
 # }}}
 # EsgResultFile$to_data_table() / EsgResultFile$print() {{{
-test_that("EsgResultFile$to_data_table() / EsgResultFile$print() active fields offline contract", {
+test_that("EsgResultFile$to_data_table() / EsgResultFile$print() offline contract", {
     params <- query_result_test_params(
         "File",
         fields = c("source_id", "experiment_id", "frequency"),
@@ -2262,7 +2265,7 @@ test_that("EsgResultFile$to_data_table() / EsgResultFile$print() active fields o
 })
 # }}}
 # EsgResultAggregation$to_data_table() / EsgResultAggregation$print() {{{
-test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() active fields offline contract", {
+test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() offline contract", {
     params <- query_result_test_params(
         "Aggregation",
         fields = "id",
