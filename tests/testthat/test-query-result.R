@@ -2001,8 +2001,136 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
 })
 # }}}
-# EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() {{{
-test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() offline contract", {
+# EsgResultDataset$to_data_table() {{{
+test_that("EsgResultDataset$to_data_table() supports offline fixtures", {
+    params <- query_result_test_params(
+        "Dataset",
+        activity_id = "ScenarioMIP",
+        source_id = "AWI-CM-1-1-MR",
+        frequency = "day",
+        variable_id = "tas",
+        variant_label = "r1i1p1f1",
+        fields = c("source_id", "experiment_id", "frequency"),
+        limit = 2L
+    )
+    datasets <- expect_s3_class(
+        query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
+        "EsgResultDataset"
+    )
+
+    expect_s3_class(datasets$to_data_table(), "data.table")
+    expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
+    expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
+    expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
+})
+# }}}
+# EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url / EsgResultDataset$size / EsgResultDataset$index_node / EsgResultDataset$access / EsgResultDataset$number_of_files / EsgResultDataset$has_opendap() / EsgResultDataset$has_download() / EsgResultDataset$count() {{{
+test_that("EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url / EsgResultDataset$size / EsgResultDataset$index_node / EsgResultDataset$access / EsgResultDataset$number_of_files / EsgResultDataset$has_opendap() / EsgResultDataset$has_download() / EsgResultDataset$count() expose offline fixture fields", {
+    params <- query_result_test_params(
+        "Dataset",
+        activity_id = "ScenarioMIP",
+        source_id = "AWI-CM-1-1-MR",
+        frequency = "day",
+        variable_id = "tas",
+        variant_label = "r1i1p1f1",
+        fields = c("source_id", "experiment_id", "frequency"),
+        limit = 2L
+    )
+    datasets <- expect_s3_class(
+        query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
+        "EsgResultDataset"
+    )
+
+    expect_type(datasets$has_opendap(), "logical")
+    expect_length(datasets$has_opendap(), 2L)
+
+    expect_type(datasets$has_download(), "logical")
+    expect_length(datasets$has_download(), 2L)
+
+    expect_equal(datasets$count(), 2L)
+
+    expect_equal(
+        sort(datasets$fields),
+        c(
+            "access",
+            "activity_id",
+            "data_node",
+            "experiment_id",
+            "frequency",
+            "id",
+            "index_node",
+            "instance_id",
+            "latest",
+            "master_id",
+            "number_of_files",
+            "project",
+            "replica",
+            "size",
+            "source_id",
+            "variable_id",
+            "variant_label",
+            "version"
+        )
+    )
+
+    expect_type(datasets$id, "character")
+    expect_length(datasets$id, 2L)
+
+    expect_null(datasets$url)
+
+    expect_s3_class(datasets$size, "units")
+    expect_length(datasets$size, 2L)
+
+    expect_type(datasets$index_node, "character")
+    expect_length(datasets$index_node, 2L)
+
+    expect_type(datasets$access, "list")
+    expect_length(datasets$access, 2L)
+    expect_type(datasets$access[[1]], "character")
+
+    expect_type(datasets$number_of_files, "integer")
+    expect_length(datasets$number_of_files, 2L)
+})
+# }}}
+# EsgResultDataset$save() / EsgResultDataset$load() {{{
+test_that("EsgResultDataset$save() / EsgResultDataset$load() round-trip offline fixtures", {
+    params <- query_result_test_params(
+        "Dataset",
+        activity_id = "ScenarioMIP",
+        source_id = "AWI-CM-1-1-MR",
+        frequency = "day",
+        variable_id = "tas",
+        variant_label = "r1i1p1f1",
+        fields = c("source_id", "experiment_id", "frequency"),
+        limit = 2L
+    )
+    datasets <- expect_s3_class(
+        query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
+        "EsgResultDataset"
+    )
+
+    file <- tempfile(fileext = ".json")
+    expect_type(datasets$save(file), "character")
+    expect_true(file.exists(file))
+    file_copied <- tempfile(fileext = ".json")
+    expect_true(file.copy(file, file_copied))
+    expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
+
+    de <- expect_s3_class(query_result__new(EsgResultDataset)$load(file), "EsgResultDataset")
+    expect_equal(priv(de)$index_node, priv(datasets)$index_node)
+    expect_equal(priv(de)$parameter, priv(datasets)$parameter)
+    # manually add the cache key since '$save()' will exclude it
+    priv(de)$response$cache <- priv(datasets)$response$cache
+    # keep the column order the same since '$save()' then '$load()' may change
+    # the order
+    priv(de)$response$response$docs <- priv(de)$response$response$docs[,
+        names(priv(datasets)$response$response$docs)
+    ]
+    expect_equal(priv(de)$response, priv(datasets)$response, ignore_attr = TRUE)
+})
+# }}}
+# EsgResultDataset$collect() {{{
+test_that("EsgResultDataset$collect() uses offline child fixtures", {
     params <- query_result_test_params(
         "Dataset",
         activity_id = "ScenarioMIP",
@@ -2055,142 +2183,60 @@ test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgRe
         .package = "epwshiftr"
     )
 
-    # $to_data_table(): can extract the data into a data.table
-    expect_s3_class(datasets$to_data_table(), "data.table")
-    # $to_data_table(): can only keep selected fields
-    expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
-    expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
-    # $to_data_table(): can keep the special format of certain fields
-    expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
-
-    # $has_opendap(): can test accessibility
-    expect_type(datasets$has_opendap(), "logical")
-    expect_length(datasets$has_opendap(), 2L)
-
-    # $has_download(): can test accessibility
-    expect_type(datasets$has_download(), "logical")
-    expect_length(datasets$has_download(), 2L)
-
-    # $count(): can get length
-    expect_equal(datasets$count(), 2L)
-
-    # $field: can add active bindings for all fields
-    expect_equal(
-        sort(datasets$fields),
-        c(
-            "access",
-            "activity_id",
-            "data_node",
-            "experiment_id",
-            "frequency",
-            "id",
-            "index_node",
-            "instance_id",
-            "latest",
-            "master_id",
-            "number_of_files",
-            "project",
-            "replica",
-            "size",
-            "source_id",
-            "variable_id",
-            "variant_label",
-            "version"
-        )
-    )
-
-    # $id
-    expect_type(datasets$id, "character")
-    expect_length(datasets$id, 2L)
-
-    # $url
-    expect_null(datasets$url)
-
-    # $size
-    expect_s3_class(datasets$size, "units")
-    expect_length(datasets$size, 2L)
-
-    # $index_node
-    expect_type(datasets$index_node, "character")
-    expect_length(datasets$index_node, 2L)
-
-    # $access
-    expect_type(datasets$access, "list")
-    expect_length(datasets$access, 2L)
-    expect_type(datasets$access[[1]], "character")
-
-    # $number_of_files
-    expect_type(datasets$number_of_files, "integer")
-    expect_length(datasets$number_of_files, 2L)
-
-    # $save() empty datasets
-    file <- tempfile(fileext = ".json")
-    expect_type(datasets$save(file), "character")
-    expect_true(file.exists(file))
-    file_copied <- tempfile(fileext = ".json")
-    expect_true(file.copy(file, file_copied))
-    expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
-
-    # $load() empty datasets
-    de <- expect_s3_class(query_result__new(EsgResultDataset)$load(file), "EsgResultDataset")
-    expect_equal(priv(de)$index_node, priv(datasets)$index_node)
-    expect_equal(priv(de)$parameter, priv(datasets)$parameter)
-    # manually add the cache key since '$save()' will exclude it
-    priv(de)$response$cache <- priv(datasets)$response$cache
-    # keep the column order the same since '$save()' then '$load()' may change
-    # the order
-    priv(de)$response$response$docs <- priv(de)$response$response$docs[,
-        names(priv(datasets)$response$response$docs)
-    ]
-    expect_equal(priv(de)$response, priv(datasets)$response, ignore_attr = TRUE)
-
-    # $collect():
-    ## $collect(): can specify dataset index
     expect_s3_class(files_by_index <- datasets$collect(1, limit = 2, fields = "id"), "EsgResultFile")
     expect_equal(files_by_index$count(), 2L)
 
-    ## $collect(): can specify dataset id
     expect_s3_class(files_by_id <- datasets$collect(datasets$id[1], fields = "id"), "EsgResultFile")
     expect_equal(files_by_id$count(), 2L)
 
-    ## $collect(): can limit fields and record number
     expect_s3_class(files <- datasets$collect(fields = "id", limit = 1), "EsgResultFile")
     expect_true(
         all(c(EsgResultFile$private_fields$required_fields, "filename", "url_opendap", "url_download") %in% files$fields)
     )
 
-    ## $collect(): can collect all fields
     expect_s3_class(files <- datasets$collect(fields = "id", all = TRUE), "EsgResultFile")
     expect_equal(files$count(), sum(datasets$number_of_files))
     expect_true(calls[[4L]]$all)
 
-    ## $collect(): can specify specific parameters
     expect_s3_class(datasets$collect(fields = "id", limit = 1, replica = FALSE), "EsgResultFile")
 
-    ## $collect(): can collect all possible fields
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgResultFile")
     expect_true(all(EsgResultFile$private_fields$required_fields %in% files$fields))
 
-    ## $collect(): can specify data node scope
     dataset_data_node <- datasets$data_node[[1]]
     expect_s3_class(datasets$collect(fields = "id", limit = 1, data_node = dataset_data_node), "EsgResultFile")
 
-    ## $collect(): can stop if controlled query parameters are supplied through dots
     expect_error(datasets$collect(bbox = "0,0,1,1"), "unsupported parameter")
     expect_error(datasets$collect(start = "2050"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
 
-    ## $collect(): can collect aggregation
     expect_s3_class(aggs <- datasets$collect(fields = "id", limit = 2, type = "Aggregation"), "EsgResultAggregation")
     expect_equal(aggs$count(), 2L)
     expect_true(all(EsgResultAggregation$private_fields$required_fields %in% aggs$fields))
+})
+# }}}
+# EsgResultDataset$print() {{{
+test_that("EsgResultDataset$print() snapshots offline fixtures", {
+    params <- query_result_test_params(
+        "Dataset",
+        activity_id = "ScenarioMIP",
+        source_id = "AWI-CM-1-1-MR",
+        frequency = "day",
+        variable_id = "tas",
+        variant_label = "r1i1p1f1",
+        fields = c("source_id", "experiment_id", "frequency"),
+        limit = 2L
+    )
+    datasets <- expect_s3_class(
+        query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
+        "EsgResultDataset"
+    )
 
-    # $print()
     expect_snapshot(datasets$print(), transform = transform_print)
 })
 # }}}
-# EsgResultFile$to_data_table() / EsgResultFile$print() {{{
-test_that("EsgResultFile$to_data_table() / EsgResultFile$print() offline contract", {
+# EsgResultFile$to_data_table() {{{
+test_that("EsgResultFile$to_data_table() supports offline fixtures", {
     params <- query_result_test_params(
         "File",
         fields = c("source_id", "experiment_id", "frequency"),
@@ -2202,70 +2248,83 @@ test_that("EsgResultFile$to_data_table() / EsgResultFile$print() offline contrac
         "EsgResultFile"
     )
 
-    # $to_data_table(): can extract the data into a data.table
     expect_s3_class(files$to_data_table(), "data.table")
-    # $to_data_table(): can only keep selected fields
     expect_s3_class(files$to_data_table(c("checksum", "checksum_type")), "data.table")
     expect_equal(names(files$to_data_table(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
-    # $to_data_table(): can keep the special format of certain fields
     expect_s3_class(files$to_data_table(formatted = TRUE)$size, "units")
     expect_s3_class(files$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
+})
+# }}}
+# EsgResultFile$fields / EsgResultFile$id / EsgResultFile$url / EsgResultFile$size / EsgResultFile$dataset_id / EsgResultFile$checksum / EsgResultFile$checksum_type / EsgResultFile$data_node / EsgResultFile$filename / EsgResultFile$tracking_id / EsgResultFile$url_opendap / EsgResultFile$url_download {{{
+test_that("EsgResultFile$fields / EsgResultFile$id / EsgResultFile$url / EsgResultFile$size / EsgResultFile$dataset_id / EsgResultFile$checksum / EsgResultFile$checksum_type / EsgResultFile$data_node / EsgResultFile$filename / EsgResultFile$tracking_id / EsgResultFile$url_opendap / EsgResultFile$url_download expose offline fixture fields", {
+    params <- query_result_test_params(
+        "File",
+        fields = c("source_id", "experiment_id", "frequency"),
+        dataset_id = query_result_test_contract_dataset_docs()$id[[1L]],
+        limit = 1L
+    )
+    files <- expect_s3_class(
+        query_result_test_object("File", query_result_test_contract_file_docs()[1L, , drop = FALSE], params),
+        "EsgResultFile"
+    )
 
-    # $id
     expect_type(files$id, "character")
     expect_length(files$id, 1L)
 
-    # $url
     expect_type(files$url, "list")
     expect_length(files$url, 1L)
     expect_s3_class(files$url[[1L]], "data.table")
 
-    # $size
     expect_s3_class(files$size, "units")
     expect_length(files$size, 1L)
 
-    # $dataset_id
     expect_type(files$dataset_id, "character")
     expect_length(files$dataset_id, 1L)
 
-    # $checksum
     expect_type(files$checksum, "character")
     expect_length(files$checksum, 1L)
 
-    # $checksum_type
     expect_type(files$checksum_type, "character")
     expect_length(files$checksum_type, 1L)
 
-    # $data_node
     expect_type(files$data_node, "character")
     expect_length(files$data_node, 1L)
 
-    # $filename
     expect_type(files$filename, "character")
     expect_length(files$filename, 1L)
 
-    # $tracking_id
     expect_type(files$tracking_id, "character")
     expect_length(files$tracking_id, 1L)
 
-    # $url_opendap: can extract opendap url
     expect_type(files$url_opendap, "character")
     expect_length(files$url_opendap, 1L)
 
-    # $url_download: can extract download url
     expect_type(files$url_download, "character")
     expect_length(files$url_download, 1L)
 
     expect_true(
         all(EsgResultFile$private_fields$required_fields %in% files$fields)
     )
+})
+# }}}
+# EsgResultFile$print() {{{
+test_that("EsgResultFile$print() snapshots offline fixtures", {
+    params <- query_result_test_params(
+        "File",
+        fields = c("source_id", "experiment_id", "frequency"),
+        dataset_id = query_result_test_contract_dataset_docs()$id[[1L]],
+        limit = 1L
+    )
+    files <- expect_s3_class(
+        query_result_test_object("File", query_result_test_contract_file_docs()[1L, , drop = FALSE], params),
+        "EsgResultFile"
+    )
 
-    # $print()
     expect_snapshot(files$print(), transform = transform_print)
 })
 # }}}
-# EsgResultAggregation$to_data_table() / EsgResultAggregation$print() {{{
-test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() offline contract", {
+# EsgResultAggregation$to_data_table() {{{
+test_that("EsgResultAggregation$to_data_table() supports offline fixtures", {
     params <- query_result_test_params(
         "Aggregation",
         fields = "id",
@@ -2277,49 +2336,66 @@ test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() o
         "EsgResultAggregation"
     )
 
-    # $to_data_table(): can extract the data into a data.table
     expect_s3_class(aggs$to_data_table(), "data.table")
-    # $to_data_table(): can only keep selected fields
     expect_s3_class(aggs$to_data_table(c("url", "size")), "data.table")
     expect_equal(names(aggs$to_data_table(c("url", "size"))), c("url", "size"))
-    # $to_data_table(): can keep the special format of certain fields
     expect_s3_class(aggs$to_data_table(formatted = TRUE)$size, "units")
     expect_s3_class(aggs$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
+})
+# }}}
+# EsgResultAggregation$fields / EsgResultAggregation$id / EsgResultAggregation$url / EsgResultAggregation$size / EsgResultAggregation$dataset_id / EsgResultAggregation$data_node / EsgResultAggregation$url_opendap / EsgResultAggregation$url_download {{{
+test_that("EsgResultAggregation$fields / EsgResultAggregation$id / EsgResultAggregation$url / EsgResultAggregation$size / EsgResultAggregation$dataset_id / EsgResultAggregation$data_node / EsgResultAggregation$url_opendap / EsgResultAggregation$url_download expose offline fixture fields", {
+    params <- query_result_test_params(
+        "Aggregation",
+        fields = "id",
+        dataset_id = query_result_test_contract_dataset_docs()$id,
+        limit = 2L
+    )
+    aggs <- expect_s3_class(
+        query_result_test_object("Aggregation", query_result_test_contract_aggregation_docs(), params),
+        "EsgResultAggregation"
+    )
 
-    # $id
     expect_type(aggs$id, "character")
     expect_length(aggs$id, 2L)
 
-    # $url
     expect_type(aggs$url, "list")
     expect_length(aggs$url, 2L)
     expect_s3_class(aggs$url[[1L]], "data.table")
 
-    # $size
     expect_s3_class(aggs$size, "units")
     expect_length(aggs$size, 2L)
 
-    # $dataset_id
     expect_type(aggs$dataset_id, "character")
     expect_length(aggs$dataset_id, 2L)
 
-    # $data_node
     expect_type(aggs$data_node, "character")
     expect_length(aggs$data_node, 2L)
 
-    # $url_opendap: can extract opendap url
     expect_type(aggs$url_opendap, "character")
     expect_length(aggs$url_opendap, 2L)
 
-    # $url_download: can extract download url
     expect_type(aggs$url_download, "character")
     expect_length(aggs$url_download, 2L)
 
     expect_true(
         all(c("data_node", "dataset_id", "id", "size", "title", "url", "url_opendap", "url_download") %in% aggs$fields)
     )
+})
+# }}}
+# EsgResultAggregation$print() {{{
+test_that("EsgResultAggregation$print() snapshots offline fixtures", {
+    params <- query_result_test_params(
+        "Aggregation",
+        fields = "id",
+        dataset_id = query_result_test_contract_dataset_docs()$id,
+        limit = 2L
+    )
+    aggs <- expect_s3_class(
+        query_result_test_object("Aggregation", query_result_test_contract_aggregation_docs(), params),
+        "EsgResultAggregation"
+    )
 
-    # $print()
     expect_snapshot(aggs$print(), transform = transform_print)
 })
 # }}}
