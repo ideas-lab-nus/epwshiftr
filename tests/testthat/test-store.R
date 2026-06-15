@@ -929,8 +929,8 @@ test_that("EsgStore$retry_downloads()", {
     })
 })
 # }}}
-# EsgStore$remove_query() / EsgStore$prune_orphans() {{{
-test_that("EsgStore$remove_query() / EsgStore$prune_orphans()", {
+# EsgStore$remove_query() {{{
+test_that("EsgStore$remove_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -956,6 +956,29 @@ test_that("EsgStore$remove_query() / EsgStore$prune_orphans()", {
 
     links <- ddb_read_table(priv(store)$conn, "esg_query_file")
     expect_equal(nrow(links), 0L)
+})
+# }}}
+# EsgStore$prune_orphans() {{{
+test_that("EsgStore$prune_orphans()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    docs <- store_test__file_docs(path = "remove-query.nc")
+    docs$master_id <- "CMIP6.mock.remove-query"
+    files <- store_test__result(docs = docs)
+    priv(store)$update_query_files(query_id, files)
+    file_key <- store$query_files(query_id)$file_key[[1L]]
+    store$remove_query(query_id, delete = "none")
+
     orphans <- store$prune_orphans(delete_local = FALSE)
     expect_equal(orphans$file_key, file_key)
 })
@@ -1008,8 +1031,8 @@ test_that("EsgStore$remove_files()", {
     expect_equal(nrow(ddb_read_table(conn, "artifact")), 1L)
 })
 # }}}
-# EsgStore$storage_report() / EsgStore$cleanup_downloads() {{{
-test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
+# EsgStore$storage_report() {{{
+test_that("EsgStore$storage_report()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -1030,6 +1053,22 @@ test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     expect_equal(report$summary$registered_file_count, 0L)
     expect_true(store_rel_path(untracked_file, store$path) %in% report$untracked_files$relative_path)
     expect_true(store_rel_path(tmp_file, store$path) %in% report$tmp$relative_path)
+})
+# }}}
+# EsgStore$cleanup_downloads() {{{
+test_that("EsgStore$cleanup_downloads()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    untracked_file <- file.path(store$path, "downloads", "untracked.nc")
+    tmp_file <- file.path(store$path, "tmp", "downloads", "task.part")
+    dir.create(dirname(untracked_file), recursive = TRUE, showWarnings = FALSE)
+    dir.create(dirname(tmp_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines("untracked netcdf placeholder", untracked_file)
+    writeLines("partial download placeholder", tmp_file)
 
     dry <- store$cleanup_downloads(scope = c("tmp", "untracked_files"), dry_run = TRUE)
     expect_equal(sort(dry$scope), c("tmp", "untracked_files"))
