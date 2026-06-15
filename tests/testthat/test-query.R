@@ -411,58 +411,89 @@ test_that("query_listing_cached() treats expired offline entries as misses", {
     )
 })
 # }}}
-# EsgQuery$project() / EsgQuery$activity_id() / EsgQuery$experiment_id() / EsgQuery$source_id() / EsgQuery$variable_id() / EsgQuery$frequency() / EsgQuery$variant_label() / EsgQuery$nominal_resolution() / EsgQuery$data_node() {{{
-test_that("EsgQuery$project() / EsgQuery$activity_id() / EsgQuery$experiment_id() / EsgQuery$source_id() / EsgQuery$variable_id() / EsgQuery$frequency() / EsgQuery$variant_label() / EsgQuery$nominal_resolution() / EsgQuery$data_node()", {
+# EsgQuery$project() {{{
+test_that("EsgQuery$project()", {
     q <- esg_query()
 
-    # project
     expect_equal(query_param__value(q$project()), "CMIP6")
     expect_equal(query_param__value(q$project("CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(-"CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(!"CMIP5")$project()), "CMIP5")
+})
+# }}}
+# EsgQuery$activity_id() {{{
+test_that("EsgQuery$activity_id()", {
+    q <- esg_query()
 
-    # activity id
     expect_null(q$activity_id())
     expect_equal(query_param__value(q$activity_id(!c("CFMIP", "ScenarioMIP"))$activity_id()), c("CFMIP", "ScenarioMIP"))
     expect_null(q$activity_id(NULL)$activity_id())
+})
+# }}}
+# EsgQuery$experiment_id() {{{
+test_that("EsgQuery$experiment_id()", {
+    q <- esg_query()
 
-    # experiment_id
     expect_null(q$experiment_id())
     expect_equal(query_param__value(q$experiment_id(!c("ssp126", "ssp585"))$experiment_id()), c("ssp126", "ssp585"))
     expect_null(q$experiment_id(NULL)$experiment_id())
+})
+# }}}
+# EsgQuery$source_id() {{{
+test_that("EsgQuery$source_id()", {
+    q <- esg_query()
 
-    # source_id
     expect_null(q$source_id())
     expect_equal(query_param__value(q$source_id(!c("BCC-CSM2-MR", "CESM2"))$source_id()), c("BCC-CSM2-MR", "CESM2"))
     expect_null(q$source_id(NULL)$source_id())
+})
+# }}}
+# EsgQuery$variable_id() {{{
+test_that("EsgQuery$variable_id()", {
+    q <- esg_query()
 
-    # variable_id
     expect_null(q$variable_id())
     expect_equal(query_param__value(q$variable_id(!c("tas", "pr"))$variable_id()), c("tas", "pr"))
     expect_null(q$variable_id(NULL)$variable_id())
+})
+# }}}
+# EsgQuery$frequency() {{{
+test_that("EsgQuery$frequency()", {
+    q <- esg_query()
 
-    # frequency
     expect_null(q$frequency())
     expect_equal(query_param__value(q$frequency(!c("1hr", "day"))$frequency()), c("1hr", "day"))
     expect_null(q$frequency(NULL)$frequency())
+})
+# }}}
+# EsgQuery$variant_label() {{{
+test_that("EsgQuery$variant_label()", {
+    q <- esg_query()
 
-    # variant_label
     expect_null(q$variant_label())
     expect_equal(
         query_param__value(q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))$variant_label()),
         c("r1i1p1f1", "r1i2p1f1")
     )
     expect_null(q$variant_label(NULL)$variant_label())
+})
+# }}}
+# EsgQuery$nominal_resolution() {{{
+test_that("EsgQuery$nominal_resolution()", {
+    q <- esg_query()
 
-    # nominal_resolution
     expect_null(q$nominal_resolution())
     expect_equal(query_param__value(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()), {
         c("100+km", "1x1+degree", "100km")
     })
     expect_true(q$nominal_resolution()@encoded)
     expect_null(q$nominal_resolution(NULL)$nominal_resolution())
+})
+# }}}
+# EsgQuery$data_node() {{{
+test_that("EsgQuery$data_node()", {
+    q <- esg_query()
 
-    # data_node
     expect_null(q$data_node())
     expect_equal(query_param__value(q$data_node("esgf-node.ornl.gov")$data_node()), "esgf-node.ornl.gov")
     expect_null(q$data_node(NULL)$data_node())
@@ -859,8 +890,17 @@ test_that("EsgQuery$params()", {
     expect_equal(q$params(NULL)$params(), list())
 })
 # }}}
-# EsgQuery$url() / EsgQuery$count() {{{
-test_that("EsgQuery$url() / EsgQuery$count()", {
+# EsgQuery$url() {{{
+test_that("EsgQuery$url()", {
+    index_node <- "https://example.org"
+
+    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(EsgQuery$new(index_node)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+})
+# }}}
+# EsgQuery$count() {{{
+test_that("EsgQuery$count()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
@@ -876,12 +916,6 @@ test_that("EsgQuery$url() / EsgQuery$count()", {
         .package = "epwshiftr"
     )
 
-    # can get url
-    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgQuery$new(index_node)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
-
-    # can get count
     expect_identical(EsgQuery$new(index_node)$frequency("1hr")$count(FALSE), 3L)
     expect_identical(EsgQuery$new(index_node)$frequency("1hr")$count(TRUE), 3L)
     cnt <- expect_type(EsgQuery$new(index_node)$frequency("1hr")$count("activity_id"), "list")
@@ -889,7 +923,7 @@ test_that("EsgQuery$url() / EsgQuery$count()", {
     expect_identical(cnt$activity_id, c(CMIP = 2L, ScenarioMIP = 1L))
 })
 # }}}
-# EsgQuery$collect(type = "file") {{{
+# EsgQuery$collect() {{{
 test_that("EsgQuery$collect(type=) collects child results through Dataset workflow", {
     q <- esg_query("https://example.org")$project("CMIP6")$datetime_range(
         start = "2050-01-01T00:00:00Z",
