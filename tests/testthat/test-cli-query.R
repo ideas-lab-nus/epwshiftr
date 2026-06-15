@@ -1,5 +1,5 @@
 # epwshiftr_cli_query() {{{
-test_that("epwshiftr_cli_query() manages stored query metadata", {
+test_that("epwshiftr_cli_query() dispatches stored query commands", {
     skip_if_not_installed("duckdb")
 
     fixture <- cli_test_store()
@@ -180,7 +180,7 @@ test_that("epwshiftr_cli_query() manages stored query metadata", {
 })
 # }}}
 # epwshiftr_cli_query() {{{
-test_that("epwshiftr_cli_query() searches, previews, and updates mocked ESGF results", {
+test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
