@@ -12,7 +12,7 @@ test_that("epwshiftr_cli_parse_command() separates flags, options, and positiona
     expect_equal(parsed$positionals, "project=CMIP6")
 })
 
-test_that("epwshiftr_cli parse coercion helpers validate scalar inputs", {
+test_that("epwshiftr_cli_csv() / epwshiftr_cli_count() / epwshiftr_cli_count_or_default() / epwshiftr_cli_bool() / epwshiftr_cli_empty_to_null() validate scalar inputs", {
     expect_equal(epwshiftr_cli_csv("tas, pr"), c("tas", "pr"))
     expect_equal(epwshiftr_cli_count("2", "limit"), 2L)
     expect_equal(epwshiftr_cli_count_or_default(NULL, "limit", 5L), 5L)

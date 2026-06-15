@@ -1,4 +1,4 @@
-test_that("epwshiftr_cli renders stable boxed tables", {
+test_that("epwshiftr_cli_render_table() renders stable boxed tables", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 96L)
 
@@ -24,7 +24,7 @@ test_that("epwshiftr_cli renders stable boxed tables", {
     expect_snapshot(cat(text, sep = "\n"))
 })
 
-test_that("epwshiftr_cli snapshots narrow table adaptation", {
+test_that("epwshiftr_cli_render_table() snapshots narrow table adaptation", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 54L)
 
@@ -53,7 +53,7 @@ test_that("epwshiftr_cli snapshots narrow table adaptation", {
     expect_snapshot(cat(text, sep = "\n"))
 })
 
-test_that("epwshiftr_cli renders selected query search columns", {
+test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected query search columns", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 96L)
 
@@ -91,8 +91,8 @@ test_that("epwshiftr_cli renders selected query search columns", {
         "Unknown display column"
     )
 })
-# CLI table rendering behavior {{{
-test_that("epwshiftr_cli table output adapts to console width", {
+# epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() {{{
+test_that("epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() adapt table output to console width", {
     withr::local_options(width = 54L)
 
     rows <- data.frame(
@@ -124,7 +124,7 @@ test_that("epwshiftr_cli table output adapts to console width", {
     expect_true(any(grepl("Status", text)))
 })
 
-test_that("epwshiftr_cli table output highlights status and progress", {
+test_that("epwshiftr_cli_color_status() / epwshiftr_cli_render_table() highlight status and progress", {
     withr::local_options(cli.num_colors = 256L, width = 120L)
 
     danger <- epwshiftr:::epwshiftr_cli_color_status("error")
