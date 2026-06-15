@@ -246,7 +246,7 @@ query_result_test_file_time_docs <- function(type = "File") {
     docs
 }
 # EsgResult$load() / EsgResult$save() {{{
-test_that("loaded ESGF query results restore dynamic fields", {
+test_that("EsgResult$load() restores dynamic fields", {
     state <- query_result_test_state("Dataset", query_result_test_dataset_docs())
     testthat::local_mocked_bindings(
         query__load = function(file, schema = NULL) state,
@@ -265,7 +265,7 @@ test_that("loaded ESGF query results restore dynamic fields", {
     expect_identical(loaded_in_place$source_id, c("source-a", "source-b"))
 })
 
-test_that("loaded ESGF query results validate result type", {
+test_that("EsgResult$load() validates result type", {
     state <- query_result_test_state("File", query_result_test_file_docs(), query_result_test_params("File"))
     testthat::local_mocked_bindings(
         query__load = function(file, schema = NULL) state,
@@ -276,7 +276,7 @@ test_that("loaded ESGF query results validate result type", {
     expect_s3_class(esg_result("file")$load("file.json"), "EsgResultFile")
 })
 
-test_that("base ESGF query results cannot choose a saved-result schema", {
+test_that("EsgResult$save() / EsgResult$load() reject untyped base results", {
     result <- query_result__new(
         EsgResult,
         index_node = "https://example.org",
@@ -289,7 +289,7 @@ test_that("base ESGF query results cannot choose a saved-result schema", {
     expect_error(result$load(file), "untyped ESGF result")
 })
 
-test_that("ESGF query results save/load through real JSON files", {
+test_that("EsgResult$save() / EsgResult$load() round-trip through JSON files", {
     cases <- list(
         dataset = list(
             type = "Dataset",
@@ -333,7 +333,7 @@ test_that("ESGF query results save/load through real JSON files", {
     }
 })
 
-test_that("ESGF query results preserve ESGF doc timestamp fields on save", {
+test_that("EsgResult$save() / EsgResult$load() preserve ESGF doc timestamp fields", {
     docs <- query_result_test_file_docs()
     docs$timestamp <- "2026-06-09T00:00:00Z"
     docs$`_timestamp` <- "2026-06-10T01:14:40.946Z"
@@ -357,7 +357,7 @@ test_that("ESGF query results preserve ESGF doc timestamp fields on save", {
 })
 # }}}
 # EsgResult$query_url() {{{
-test_that("ESGF query results expose recorded query URLs", {
+test_that("EsgResult$query_url() exposes recorded query URLs", {
     params <- query_result_test_params("Dataset")
     result <- query_result_test_object("Dataset", query_result_test_dataset_docs(), params)
     expect_identical(
@@ -378,7 +378,7 @@ test_that("ESGF query results expose recorded query URLs", {
     expect_error(result$query_url("last"), "'arg' should be one of")
 })
 
-test_that("result query URL context persists through save/load", {
+test_that("EsgResult$query_url() context persists through save/load", {
     urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
     result <- query_result_test_object(
         "File",
@@ -397,7 +397,7 @@ test_that("result query URL context persists through save/load", {
 })
 # }}}
 # EsgResult$slice() / EsgResult$selection() {{{
-test_that("ESGF query results support local selection", {
+test_that("EsgResult$slice() / EsgResult$selection() support local selection", {
     urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
     time_filter <- list(
         start = "2050-01-01T00:00:00Z",
@@ -461,7 +461,7 @@ test_that("ESGF query results support local selection", {
 })
 # }}}
 # EsgResult$filter() {{{
-test_that("ESGF query results filter with predicates", {
+test_that("EsgResult$filter() filters with predicates", {
     result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
 
     filtered <- result$filter(function(dt) grepl("2050", dt$title))
@@ -478,7 +478,7 @@ test_that("ESGF query results filter with predicates", {
 })
 # }}}
 # EsgResult$slice() / EsgResult$selection() error handling {{{
-test_that("ESGF query result local selection rejects invalid selectors", {
+test_that("EsgResult$slice() / EsgResult$selection() reject invalid selectors", {
     result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
 
     expect_error(result[c(1L, 1L)], "duplicate indices")
@@ -492,7 +492,7 @@ test_that("ESGF query result local selection rejects invalid selectors", {
     expect_error(result[1L, drop = TRUE], "one-dimensional")
 })
 
-test_that("result selection context persists through save/load", {
+test_that("EsgResult$slice() / EsgResult$selection() context persists through save/load", {
     result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
     priv(result)$response$response$numFound <- 10L
     selected <- result[c(3L, 1L)]
@@ -517,7 +517,7 @@ test_that("result selection context persists through save/load", {
 })
 # }}}
 # EsgResult$reachable() {{{
-test_that("result reachable() returns per-record service probe diagnostics", {
+test_that("EsgResult$reachable() returns per-record service probe diagnostics", {
     docs <- data.frame(
         id = c("file-ok", "file-dup", "file-missing", "file-fail"),
         dataset_id = "dataset-1",
@@ -612,7 +612,7 @@ test_that("result reachable() returns per-record service probe diagnostics", {
     expect_equal(nrow(empty_diag), 0L)
 })
 
-test_that("result reachable() probes data node root URLs by default", {
+test_that("EsgResult$reachable() probes data node root URLs by default", {
     docs <- data.frame(
         id = c("file-a", "file-b", "file-missing", "file-fallback"),
         dataset_id = "dataset-1",
@@ -677,7 +677,7 @@ test_that("result reachable() probes data node root URLs by default", {
 })
 # }}}
 # EsgResult$repair_urls() / EsgResult$expand_replicas() {{{
-test_that("File results repair unreachable OPeNDAP URLs using reachable replicas", {
+test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reachable replicas", {
     docs <- query_result_test_file_docs()
     docs <- docs[rep(1L, 2L), , drop = FALSE]
     row.names(docs) <- NULL
@@ -792,7 +792,7 @@ test_that("File results repair unreachable OPeNDAP URLs using reachable replicas
     ))
 })
 
-test_that("repair_urls prefers reachable replicas already present in the current result", {
+test_that("EsgResult$repair_urls() prefers reachable replicas already present in the current result", {
     docs <- query_result_test_file_docs()
     docs <- docs[rep(1L, 2L), , drop = FALSE]
     row.names(docs) <- NULL
@@ -834,7 +834,7 @@ test_that("repair_urls prefers reachable replicas already present in the current
     expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
 })
 
-test_that("expand_replicas falls back to master and version without crossing versions", {
+test_that("EsgResult$expand_replicas() falls back to master and version without crossing versions", {
     docs <- query_result_test_file_docs()
     docs$instance_id <- NA_character_
     docs$master_id <- "master-file-fallback"
@@ -867,7 +867,7 @@ test_that("expand_replicas falls back to master and version without crossing ver
     expect_identical(expanded$version, 20260101L)
 })
 
-test_that("File results repair HTTPServer URLs independently", {
+test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
     docs <- query_result_test_file_docs(c(
         "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
         "https://bad-http.example.org/file.nc|application/netcdf|HTTPServer"
@@ -926,7 +926,7 @@ test_that("File results repair HTTPServer URLs independently", {
     expect_true(any(grepl("http-replica", probed)))
 })
 
-test_that("Aggregation results repair URLs with Aggregation replica queries", {
+test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries", {
     docs <- query_result_test_file_docs("https://bad.example.org/dods/agg.nc|application/netcdf|OPENDAP")
     docs$id <- "aggregation-bad"
     docs$dataset_id <- "dataset-agg|bad.example.org"
@@ -977,7 +977,7 @@ test_that("Aggregation results repair URLs with Aggregation replica queries", {
     expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/aggregation-replicas")
 })
 
-test_that("repair_urls keeps original records when repair is impossible", {
+test_that("EsgResult$repair_urls() keeps original records when repair is impossible", {
     docs <- query_result_test_file_docs("https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP")
     docs <- docs[rep(1L, 2L), , drop = FALSE]
     row.names(docs) <- NULL
@@ -1043,7 +1043,7 @@ test_that("repair_urls keeps original records when repair is impossible", {
 })
 # }}}
 # EsgResult$filter_time() {{{
-test_that("File and Aggregation results filter time using DRS filename ranges", {
+test_that("EsgResult$filter_time() filters File and Aggregation results using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))
 
@@ -1076,7 +1076,7 @@ test_that("File and Aggregation results filter time using DRS filename ranges", 
     }
 })
 
-test_that("result time filter context persists through save/load", {
+test_that("EsgResult$filter_time() context persists through save/load", {
     result <- query_result_test_object("File", query_result_test_file_time_docs(), query_result_test_params("File"))
     filtered <- suppressWarnings(result$filter_time("2050-06-01", "2050-06-30", method = "drs"))
     file <- tempfile(fileext = ".json")
@@ -1092,7 +1092,7 @@ test_that("result time filter context persists through save/load", {
     expect_identical(loaded$id, filtered$id)
 })
 
-test_that("File results filter time using OPeNDAP time axes", {
+test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes", {
     FakeEsgDataset <- R6::R6Class(
         "FakeEsgDataset",
         public = list(
@@ -1146,7 +1146,7 @@ test_that("File results filter time using OPeNDAP time axes", {
 })
 # }}}
 # EsgResult$fields / EsgResult$to_data_table() active fields {{{
-test_that("empty query result fields are stable character vectors", {
+test_that("EsgResult$fields returns stable character vectors for empty results", {
     empty_dataset <- query_result_test_object(
         "Dataset",
         data.frame(check.names = FALSE),
@@ -1185,7 +1185,7 @@ test_that("empty query result fields are stable character vectors", {
     expect_identical(empty_aggregation_without_fields$fields, character())
 })
 
-test_that("to_data_table accepts all advertised fields", {
+test_that("EsgResult$to_data_table() accepts all advertised fields", {
     docs <- query_result_test_file_docs(c(
         "https://example.org/dods/file.nc.html|application/netcdf|OPENDAP",
         "https://example.org/file.nc|application/netcdf|HTTPServer"
