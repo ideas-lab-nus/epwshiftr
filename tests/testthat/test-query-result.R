@@ -2321,7 +2321,7 @@ test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() a
 })
 # }}}
 # esg_result() and helpers {{{
-test_that("esg_result() works", {
+test_that("esg_result() constructs typed empty query results", {
     expect_s3_class(esg_result(), "EsgResultDataset")
     expect_s3_class(esg_result("file"), "EsgResultFile")
     expect_s3_class(esg_result(), "EsgResultDataset")
