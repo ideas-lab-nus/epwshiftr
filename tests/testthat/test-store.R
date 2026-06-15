@@ -789,8 +789,8 @@ test_that("EsgStore$download_preflight()", {
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
 })
 # }}}
-# EsgStore$download_layout() / EsgStore$set_download_layout() {{{
-test_that("EsgStore$download_layout() / EsgStore$set_download_layout()", {
+# EsgStore$download_layout() {{{
+test_that("EsgStore$download_layout()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -800,6 +800,17 @@ test_that("EsgStore$download_layout() / EsgStore$set_download_layout()", {
     expect_equal(store$download_layout()$layout, "flat")
     store$set_download_layout(layout = "drs")
     expect_equal(store$download_layout()$layout, "drs")
+})
+# }}}
+# EsgStore$set_download_layout() {{{
+test_that("EsgStore$set_download_layout()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    store$set_download_layout(layout = "drs")
 
     query <- esg_query("https://example.org")$
         experiment_id("ssp585")$
