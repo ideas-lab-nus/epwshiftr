@@ -54,8 +54,17 @@ test_that("epwshiftr_cli_render_table() snapshots narrow table adaptation", {
     expect_snapshot(cat(text, sep = "\n"))
 })
 # }}}
-# epwshiftr_cli_context() / epwshiftr_cli_render() {{{
-test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected query search columns", {
+# epwshiftr_cli_context() {{{
+test_that("epwshiftr_cli_context() captures selected query search columns", {
+    context <- epwshiftr:::epwshiftr_cli_context(list(
+        help = FALSE,
+        args = c("query", "search", "--columns", "source_id,variable_id", "project=CMIP6")
+    ))
+    expect_equal(context$columns, c("source_id", "variable_id"))
+})
+# }}}
+# epwshiftr_cli_render() {{{
+test_that("epwshiftr_cli_render() renders selected query search columns", {
     testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
     withr::local_options(cli.num_colors = 1L, width = 96L)
 
@@ -71,7 +80,6 @@ test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected quer
         help = FALSE,
         args = c("query", "search", "--columns", "source_id,variable_id", "project=CMIP6")
     ))
-    expect_equal(context$columns, c("source_id", "variable_id"))
 
     text <- capture.output(
         epwshiftr:::epwshiftr_cli_render(
@@ -94,8 +102,8 @@ test_that("epwshiftr_cli_context() / epwshiftr_cli_render() render selected quer
     )
 })
 # }}}
-# epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() {{{
-test_that("epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() adapt table output to console width", {
+# epwshiftr_cli_render_table() {{{
+test_that("epwshiftr_cli_render_table() adapts table output to console width", {
     withr::local_options(width = 54L)
 
     rows <- data.frame(
@@ -127,8 +135,8 @@ test_that("epwshiftr_cli_render_table() / epwshiftr_cli_adapt_table_columns() ad
     expect_true(any(grepl("Status", text)))
 })
 # }}}
-# epwshiftr_cli_color_status() / epwshiftr_cli_render_table() {{{
-test_that("epwshiftr_cli_color_status() / epwshiftr_cli_render_table() highlight status and progress", {
+# epwshiftr_cli_color_status() {{{
+test_that("epwshiftr_cli_color_status() highlights statuses", {
     withr::local_options(cli.num_colors = 256L, width = 120L)
 
     danger <- epwshiftr:::epwshiftr_cli_color_status("error")
@@ -137,6 +145,11 @@ test_that("epwshiftr_cli_color_status() / epwshiftr_cli_render_table() highlight
     expect_false(identical(success, "done"))
     expect_equal(cli::ansi_nchar(danger, type = "width"), 5L)
     expect_equal(cli::ansi_nchar(success, type = "width"), 4L)
+})
+# }}}
+# epwshiftr_cli_render_table() {{{
+test_that("epwshiftr_cli_render_table() renders progress", {
+    withr::local_options(cli.num_colors = 256L, width = 120L)
 
     rows <- data.frame(
         status = c("error", "done"),
