@@ -117,6 +117,62 @@ store_test__completed_store <- function() {
 
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
+
+store_test__with_downloaded_query <- function(code) {
+    src <- tempfile(fileext = ".nc")
+    writeLines("tracked query netcdf placeholder", src)
+    on.exit(unlink(src), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(1L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 1,
+        access = I(list(c("HTTPServer"))),
+        check.names = FALSE
+    )
+    file_docs <- store_test__file_docs(
+        path = "tracked-download.nc",
+        download_url = paste0("file://", normalizePath(src, winslash = "/"))
+    )
+    file_docs$checksum <- as.character(tools::md5sum(src))
+    file_docs$checksum_type <- "MD5"
+    file_docs$master_id <- "CMIP6.mock.tracked-download"
+    file_docs$tracking_id <- "hdl:21.14100/tracked-download"
+    file_docs$latest <- TRUE
+    file_docs$retracted <- FALSE
+
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+            response <- store_test__response(docs)
+            params$fields(c(query_param__value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    dl <- store$downloader(n_workers = 0L, retries = 1L)
+    session_id <- store$download_query(
+        query_id,
+        downloader = dl,
+        replica = "current",
+        probe = FALSE,
+        progress = FALSE
+    )
+
+    code(store, dl, query_id, session_id)
+}
 # }}}
 # EsgStore$new() {{{
 test_that("EsgStore$new()", {
@@ -790,98 +846,87 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     expect_true(all(startsWith(preflight$candidates$subdir, "datasets/")))
 })
 # }}}
-# EsgStore$download_query() / EsgStore$download_status() / EsgStore$query_status() / EsgStore$workflow_status() / EsgStore$workflow_report() / EsgStore$retry_downloads() {{{
-test_that("EsgStore$download_query() / EsgStore$download_status() / EsgStore$query_status() / EsgStore$workflow_status() / EsgStore$workflow_report() / EsgStore$retry_downloads()", {
+# EsgStore$download_query() {{{
+test_that("EsgStore$download_query()", {
     skip_if_not_installed("duckdb")
 
-    src <- tempfile(fileext = ".nc")
-    writeLines("tracked query netcdf placeholder", src)
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        tasks <- dl$tasks(session_id = session_id)
+        expect_equal(tasks$status, "done")
+        qfiles <- store$query_files(query_id, status = "current")
+        expect_equal(nrow(qfiles), 1L)
+        expect_false(is.na(qfiles$local_path[[1L]]))
+        expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
+        expect_false(is.na(qfiles$local_artifact_id[[1L]]))
+    })
+})
+# }}}
+# EsgStore$download_status() {{{
+test_that("EsgStore$download_status()", {
+    skip_if_not_installed("duckdb")
 
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    on.exit(store$close(), add = TRUE)
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        status <- store$download_status(query_id, downloader = dl)
+        expect_equal(status$status, "done")
+        expect_equal(status$query_file_status, "current")
+    })
+})
+# }}}
+# EsgStore$query_status() {{{
+test_that("EsgStore$query_status()", {
+    skip_if_not_installed("duckdb")
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
-    query_id <- store$add_query(query, track = TRUE)
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        query_status <- store$query_status(query_id, downloader = dl)
+        expect_equal(query_status$file_total, 1L)
+        expect_equal(query_status$file_current, 1L)
+        expect_equal(query_status$download_done, 1L)
+        expect_equal(query_status$local_available, 1L)
+        expect_true(query_status$complete)
+    })
+})
+# }}}
+# EsgStore$workflow_status() {{{
+test_that("EsgStore$workflow_status()", {
+    skip_if_not_installed("duckdb")
 
-    dataset_docs <- data.frame(
-        id = "dataset-1",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        size = 1,
-        access = I(list(c("HTTPServer"))),
-        check.names = FALSE
-    )
-    file_docs <- store_test__file_docs(
-        path = "tracked-download.nc",
-        download_url = paste0("file://", normalizePath(src, winslash = "/"))
-    )
-    file_docs$checksum <- as.character(tools::md5sum(src))
-    file_docs$checksum_type <- "MD5"
-    file_docs$master_id <- "CMIP6.mock.tracked-download"
-    file_docs$tracking_id <- "hdl:21.14100/tracked-download"
-    file_docs$latest <- TRUE
-    file_docs$retracted <- FALSE
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        workflow <- store$workflow_status(query_id, downloader = dl)
+        expect_equal(workflow$query_id, query_id)
+        expect_equal(workflow$download_done, 1L)
+        expect_equal(workflow$local_available, 1L)
+        expect_equal(workflow$download_session_id, session_id)
+        expect_equal(workflow$last_download_session_id, session_id)
+        expect_equal(workflow$download_retryable, 0)
+        expect_false(workflow$download_incomplete)
+        expect_equal(workflow$new_count, 1L)
+        expect_true("bytes_missing" %in% names(workflow))
+    })
+})
+# }}}
+# EsgStore$workflow_report() {{{
+test_that("EsgStore$workflow_report()", {
+    skip_if_not_installed("duckdb")
 
-    testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
-            response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
-        },
-        .package = "epwshiftr"
-    )
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        report <- store$workflow_report(query_id, downloader = dl)
+        expect_named(report, c("summary", "updates", "changes", "downloads", "nodes"))
+        expect_equal(report$summary$query_id, query_id)
+        expect_equal(report$summary$last_download_session_id, session_id)
+        expect_equal(report$summary$download_retryable, 0)
+        expect_equal(report$changes$change_type, "new")
+        expect_equal(report$downloads$status, "done")
+        expect_equal(report$downloads$query_file_status, "current")
+    })
+})
+# }}}
+# EsgStore$retry_downloads() {{{
+test_that("EsgStore$retry_downloads()", {
+    skip_if_not_installed("duckdb")
 
-    dl <- store$downloader(n_workers = 0L, retries = 1L)
-    session_id <- store$download_query(
-        query_id,
-        downloader = dl,
-        replica = "current",
-        probe = FALSE,
-        progress = FALSE
-    )
-
-    tasks <- dl$tasks(session_id = session_id)
-    expect_equal(tasks$status, "done")
-    status <- store$download_status(query_id, downloader = dl)
-    expect_equal(status$status, "done")
-    expect_equal(status$query_file_status, "current")
-
-    qfiles <- store$query_files(query_id, status = "current")
-    expect_equal(nrow(qfiles), 1L)
-    expect_false(is.na(qfiles$local_path[[1L]]))
-    expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
-    expect_false(is.na(qfiles$local_artifact_id[[1L]]))
-    query_status <- store$query_status(query_id, downloader = dl)
-    expect_equal(query_status$file_total, 1L)
-    expect_equal(query_status$file_current, 1L)
-    expect_equal(query_status$download_done, 1L)
-    expect_equal(query_status$local_available, 1L)
-    expect_true(query_status$complete)
-    workflow <- store$workflow_status(query_id, downloader = dl)
-    expect_equal(workflow$query_id, query_id)
-    expect_equal(workflow$download_done, 1L)
-    expect_equal(workflow$local_available, 1L)
-    expect_equal(workflow$download_session_id, session_id)
-    expect_equal(workflow$last_download_session_id, session_id)
-    expect_equal(workflow$download_retryable, 0)
-    expect_false(workflow$download_incomplete)
-    expect_equal(workflow$new_count, 1L)
-    expect_true("bytes_missing" %in% names(workflow))
-
-    report <- store$workflow_report(query_id, downloader = dl)
-    expect_named(report, c("summary", "updates", "changes", "downloads", "nodes"))
-    expect_equal(report$summary$query_id, query_id)
-    expect_equal(report$summary$last_download_session_id, session_id)
-    expect_equal(report$summary$download_retryable, 0)
-    expect_equal(report$changes$change_type, "new")
-    expect_equal(report$downloads$status, "done")
-    expect_equal(report$downloads$query_file_status, "current")
-    expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
+    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+        expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
+    })
 })
 # }}}
 # EsgStore$remove_query() / EsgStore$prune_orphans() {{{
