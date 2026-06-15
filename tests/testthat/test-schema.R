@@ -1,4 +1,4 @@
-# schema__load_lazy() schema constants {{{
+# schema__load_lazy() {{{
 test_that("schema__load_lazy() exposes standalone SchemaDoc constants", {
     expect_true(S7::S7_inherits(SCHEMA_QUERY, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESPONSE, SchemaDoc))

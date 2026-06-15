@@ -477,7 +477,7 @@ test_that("EsgResult$filter() filters with predicates", {
     expect_error(result$filter(function(dt) seq_len(nrow(dt))), "predicate result")
 })
 # }}}
-# EsgResult$slice() / EsgResult$selection() error handling {{{
+# EsgResult$slice() / EsgResult$selection() {{{
 test_that("EsgResult$slice() / EsgResult$selection() reject invalid selectors", {
     result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
 
@@ -1145,7 +1145,7 @@ test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes"
     expect_identical(filtered$time_filter$unknown_count, 1L)
 })
 # }}}
-# EsgResult$fields / EsgResult$to_data_table() active fields {{{
+# EsgResult$fields / EsgResult$to_data_table() {{{
 test_that("EsgResult$fields returns stable character vectors for empty results", {
     empty_dataset <- query_result_test_object(
         "Dataset",
@@ -1222,7 +1222,7 @@ test_that("EsgResult$to_data_table() accepts all advertised fields", {
 # }}}
 # }}}
 # EsgResultDataset {{{
-# EsgResult$save() / EsgResult$load() empty child results {{{
+# EsgResult$save() / EsgResult$load() {{{
 test_that("EsgResult$save() / EsgResult$load() preserve empty child results", {
     empty_file_docs <- query_result_test_file_docs(character())[0L, ]
 
@@ -1998,7 +1998,7 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
 })
 # }}}
-# EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() offline contract {{{
+# EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() {{{
 test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgResultDataset$save() / EsgResultDataset$load() / EsgResultDataset$print() offline contract", {
     params <- query_result_test_params(
         "Dataset",
@@ -2186,7 +2186,7 @@ test_that("EsgResultDataset$to_data_table() / EsgResultDataset$collect() / EsgRe
     expect_snapshot(datasets$print(), transform = transform_print)
 })
 # }}}
-# EsgResultFile$to_data_table() / EsgResultFile$print() active fields offline contract {{{
+# EsgResultFile$to_data_table() / EsgResultFile$print() {{{
 test_that("EsgResultFile$to_data_table() / EsgResultFile$print() active fields offline contract", {
     params <- query_result_test_params(
         "File",
@@ -2261,7 +2261,7 @@ test_that("EsgResultFile$to_data_table() / EsgResultFile$print() active fields o
     expect_snapshot(files$print(), transform = transform_print)
 })
 # }}}
-# EsgResultAggregation$to_data_table() / EsgResultAggregation$print() active fields offline contract {{{
+# EsgResultAggregation$to_data_table() / EsgResultAggregation$print() {{{
 test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() active fields offline contract", {
     params <- query_result_test_params(
         "Aggregation",
@@ -2320,7 +2320,7 @@ test_that("EsgResultAggregation$to_data_table() / EsgResultAggregation$print() a
     expect_snapshot(aggs$print(), transform = transform_print)
 })
 # }}}
-# esg_result() and helpers {{{
+# esg_result() {{{
 test_that("esg_result() constructs typed empty query results", {
     expect_s3_class(esg_result(), "EsgResultDataset")
     expect_s3_class(esg_result("file"), "EsgResultFile")

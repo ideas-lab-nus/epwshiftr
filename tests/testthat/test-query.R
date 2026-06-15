@@ -1118,7 +1118,7 @@ test_that("query__collect() records actual page query URLs", {
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
 })
 # }}}
-# EsgQuery$collect() dictionary validation / Dataset results {{{
+# EsgQuery$collect() {{{
 test_that("EsgQuery$collect() validates local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(

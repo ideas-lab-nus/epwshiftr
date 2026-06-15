@@ -1,4 +1,4 @@
-# dict__fetch_cv() / dict__fetch_dreq() / EsgDict$build() source/cache policy {{{
+# dict__fetch_cv() / dict__fetch_dreq() / EsgDict$build() {{{
 test_that("dict__fetch_cv() / dict__fetch_dreq() rebuild parsed data from source files", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 

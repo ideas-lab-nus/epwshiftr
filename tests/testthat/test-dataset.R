@@ -1078,7 +1078,7 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
     expect_null(private$async_task)
 })
 # }}}
-# EsgDataset error handling / EsgDataset$print() {{{
+# EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() {{{
 test_that("EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() reject closed datasets", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 
@@ -1086,7 +1086,8 @@ test_that("EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() r
     expect_error(ds$var_inq("tas"), "not open")
     expect_error(ds$var_get("tas"), "not open")
 })
-
+# }}}
+# EsgDataset$print() {{{
 test_that("EsgDataset$print()", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 

@@ -1,4 +1,4 @@
-# install_cli() and uninstall_cli() {{{
+# install_cli() / uninstall_cli() {{{
 test_that("install_cli() / uninstall_cli() manage generated launchers", {
     bin_dir <- tempfile("epwshiftr-bin-")
     name <- "epwshiftr-test"

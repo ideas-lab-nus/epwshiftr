@@ -208,7 +208,7 @@ test_that("DiskCache$reset()", {
     cache$destroy()
 })
 # }}}
-# DiskCache$get() / DiskCache$set() key validation {{{
+# DiskCache$get() / DiskCache$set() {{{
 test_that("DiskCache$get() / DiskCache$set() reject invalid keys", {
     cache_dir <- tempfile("cache-key-validation-")
     cache <- DiskCache$new(cache_dir)
@@ -460,7 +460,7 @@ test_that("DiskCache$get() / DiskCache$set() / DiskCache$exists() / DiskCache$re
     expect_error(cache$prune(), "Cache .* has been destroyed")
 })
 # }}}
-# DiskCache$new() / DiskCache$prune() configuration policy {{{
+# DiskCache$new() / DiskCache$prune() {{{
 test_that("DiskCache$new() detects configuration changes", {
     skip_on_cran()
 
@@ -510,7 +510,7 @@ test_that("DiskCache$new(prune_on_init = TRUE)", {
     cache$destroy()
 })
 # }}}
-# DiskCache$get() / DiskCache$set() storage behavior {{{
+# DiskCache$get() / DiskCache$set() {{{
 test_that("DiskCache$get() / DiskCache$set() store different data types", {
     cache_dir <- tempfile("cache-types-")
     cache <- DiskCache$new(cache_dir, prune_rate = 100)
@@ -582,7 +582,7 @@ test_that("DiskCache$set() uses atomic writes", {
     cache$destroy()
 })
 # }}}
-# DiskCache$get() / DiskCache$set() / DiskCache$keys() / DiskCache$size() edge cases {{{
+# DiskCache$get() / DiskCache$set() / DiskCache$keys() / DiskCache$size() {{{
 test_that("DiskCache$reset() / DiskCache$prune() / DiskCache$info() handle empty caches", {
     cache_dir <- tempfile("cache-empty-")
     cache <- DiskCache$new(cache_dir)
@@ -665,7 +665,7 @@ test_that("cache__missing()", {
     cache$destroy()
 })
 # }}}
-# DiskCache$get() / DiskCache$set() special values {{{
+# DiskCache$get() / DiskCache$set() {{{
 test_that("DiskCache$get() / DiskCache$set() preserve special values", {
     cache_dir <- tempfile("cache-special-")
     cache <- DiskCache$new(cache_dir)
@@ -685,7 +685,7 @@ test_that("DiskCache$get() / DiskCache$set() preserve special values", {
     cache$destroy()
 })
 # }}}
-# DiskCache$new() / DiskCache$set() metadata persistence {{{
+# DiskCache$new() / DiskCache$set() {{{
 test_that("DiskCache$new() loads persisted metadata", {
     skip_on_cran()
 

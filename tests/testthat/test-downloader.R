@@ -353,7 +353,7 @@ test_that("downloader__range_probe_url() probes HTTP range metadata", {
     expect_match(missing$range_probe_error, "206 Content-Range")
 })
 # }}}
-# Downloader$enqueue() / Downloader$run() segmented range downloads {{{
+# Downloader$enqueue() / Downloader$run() {{{
 test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
@@ -546,7 +546,7 @@ test_that("Downloader$preflight()", {
     )
 })
 # }}}
-# Downloader$new() manifest compatibility {{{
+# Downloader$new() {{{
 test_that("Downloader$new() migrates older manifests", {
     skip_if_not_installed("duckdb")
 
@@ -854,7 +854,7 @@ test_that("Downloader$cancel(task_id =)", {
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
 # }}}
-# Downloader$run() candidate fallback / retry {{{
+# Downloader$run() {{{
 test_that("Downloader$run() falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
@@ -1103,7 +1103,7 @@ test_that("Downloader$events() / Downloader$on() / Downloader$off()", {
     expect_true(dl$off(session_token))
 })
 # }}}
-# Downloader$run() worker scheduling {{{
+# Downloader$run() {{{
 test_that("Downloader$run() uses worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
@@ -1502,7 +1502,7 @@ test_that("Downloader$print()", {
     )
 })
 # }}}
-# Downloader$download() offline mode {{{
+# Downloader$download() {{{
 test_that("Downloader$download() offline mode blocks new downloads", {
     local_cache_mode("offline")
     dl <- Downloader$new(dest = tempdir(), n_workers = 0L)

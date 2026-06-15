@@ -1,4 +1,4 @@
-# epwshiftr_cli_storage() and epwshiftr_cli_esgf() {{{
+# epwshiftr_cli_storage() / epwshiftr_cli_esgf() {{{
 test_that("epwshiftr_cli_storage() and epwshiftr_cli_esgf() dispatch store commands", {
     skip_if_not_installed("duckdb")
 
