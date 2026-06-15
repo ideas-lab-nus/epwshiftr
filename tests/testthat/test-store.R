@@ -1809,8 +1809,8 @@ test_that("EsgStore$extract() records failed plans", {
     expect_match(plans$last_error, "None of the requested variable")
 })
 # }}}
-# EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() / EsgStore$query() {{{
-test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() / EsgStore$query()", {
+# EsgStore$summarise() {{{
+test_that("EsgStore$summarise()", {
     skip_if_not_installed("duckdb")
 
     fixture <- store_test__completed_store()
@@ -1827,16 +1827,22 @@ test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete
     expect_equal(summary$year, 2060L)
     expect_equal(summary$row_count, 2)
     expect_equal(summary$unique_time_count, 2)
+})
+# }}}
+# EsgStore$coverage() {{{
+test_that("EsgStore$coverage()", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__completed_store()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
 
     cov <- store$coverage()
     expect_s3_class(cov, "data.table")
     expect_true(cov$complete)
     expect_equal(cov$output_time_count, 2)
     expect_equal(cov$output_rows, 2)
-    expect_silent(store$assert_complete())
-
-    sql <- store$query("SELECT COUNT(*) AS n FROM extraction_result")
-    expect_equal(sql$n, 1)
 })
 
 test_that("EsgStore$coverage() detects incomplete outputs", {
@@ -1855,5 +1861,30 @@ test_that("EsgStore$coverage() detects incomplete outputs", {
     validation <- store$validate()
     expect_true(any(!validation$exists))
     expect_error(store$assert_complete(), "incomplete")
+})
+# }}}
+# EsgStore$assert_complete() {{{
+test_that("EsgStore$assert_complete()", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__completed_store()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+
+    expect_silent(store$assert_complete())
+})
+# }}}
+# EsgStore$query() {{{
+test_that("EsgStore$query()", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__completed_store()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+
+    sql <- store$query("SELECT COUNT(*) AS n FROM extraction_result")
+    expect_equal(sql$n, 1)
 })
 # }}}
