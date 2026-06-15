@@ -139,20 +139,47 @@ test_that("EsgDataset$new()", {
     expect_s3_class(ds, "EsgDataset")
 })
 # }}}
-# EsgDataset$url / EsgDataset$is_open / EsgDataset$is_aggregated / EsgDataset$file_count {{{
-test_that("EsgDataset$url / EsgDataset$is_open / EsgDataset$is_aggregated / EsgDataset$file_count", {
+# EsgDataset$url {{{
+test_that("EsgDataset$url", {
     paths <- local_dataset_cmip6_files(c(2060L, 2061L))
 
     single <- EsgDataset$new(paths[[1L]])
     expect_identical(single$url, paths[[1L]])
-    expect_equal(single$file_count, 1L)
-    expect_false(single$is_aggregated)
-    expect_false(single$is_open)
 
     multi <- EsgDataset$new(paths)
     expect_identical(multi$url, paths)
+})
+# }}}
+# EsgDataset$file_count {{{
+test_that("EsgDataset$file_count", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+
+    single <- EsgDataset$new(paths[[1L]])
+    expect_equal(single$file_count, 1L)
+
+    multi <- EsgDataset$new(paths)
     expect_equal(multi$file_count, 2L)
+})
+# }}}
+# EsgDataset$is_aggregated {{{
+test_that("EsgDataset$is_aggregated", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+
+    single <- EsgDataset$new(paths[[1L]])
+    expect_false(single$is_aggregated)
+
+    multi <- EsgDataset$new(paths)
     expect_true(multi$is_aggregated)
+})
+# }}}
+# EsgDataset$is_open {{{
+test_that("EsgDataset$is_open", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+
+    single <- EsgDataset$new(paths[[1L]])
+    expect_false(single$is_open)
+
+    multi <- EsgDataset$new(paths)
     expect_false(multi$is_open)
 })
 # }}}
@@ -545,7 +572,7 @@ test_that("EsgDataset$read_region() reuses recorded result time filters by defau
     expect_identical(unique(dt_outside$file_index), 2L)
 })
 # }}}
-# EsgDataset$slice() / EsgDataset$selection() {{{
+# EsgDataset$slice() {{{
 test_that("EsgDataset$slice() selects files and preserves runtime context", {
     paths <- c(
         local_dataset_table_file(
@@ -598,8 +625,25 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
     negative_slice <- ds$slice(-2L)
     expect_identical(negative_slice$url, paths[c(1L, 3L)])
     expect_identical(negative_slice$selection()$source_indices, c(2L, 5L))
+})
+# }}}
+# EsgDataset$selection() {{{
+test_that("EsgDataset$selection()", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
 
-    identity <- EsgDataset$new(paths[1:2])$selection()
+    identity <- EsgDataset$new(paths)$selection()
     expect_identical(identity, list(
         source_count = 2L,
         source_num_found = 2L,
@@ -809,8 +853,8 @@ test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return",
     )
 })
 # }}}
-# EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() {{{
-test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) match sync results and keep open-state checks", {
+# EsgDataset$var_get() {{{
+test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-state checks", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -824,7 +868,6 @@ test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds_closed <- EsgDataset$new(path1)
-    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = 2), "not open")
     expect_error(ds_closed$var_get("tas", timeout = 2), "only supported")
 
     ds <- EsgDataset$new(c(path1, path2))
@@ -839,10 +882,61 @@ test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE
         ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE)
     )
 
+    expect_true(ds$is_open)
+})
+# }}}
+# EsgDataset$read_array() {{{
+test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps open-state checks", {
+    path1 <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    path2 <- local_dataset_table_file(
+        time_vals = c(3, 4, 5),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(21, 22, 23)
+    )
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds_closed <- EsgDataset$new(path1)
+    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = 2), "not open")
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    start <- c(1L, 1L, 1L)
+    count <- c(2L, 1L, 1L)
+
     expect_equal(
         ds$read_array("tas", start = start, count = count, collapse = FALSE, async = TRUE, timeout = 2),
         ds$read_array("tas", start = start, count = count, collapse = FALSE)
     )
+
+    expect_true(ds$is_open)
+})
+# }}}
+# EsgDataset$read_data_table() {{{
+test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and keeps open-state checks", {
+    path1 <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    path2 <- local_dataset_table_file(
+        time_vals = c(3, 4, 5),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(21, 22, 23)
+    )
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    start <- c(1L, 1L, 1L)
+    count <- c(2L, 1L, 1L)
 
     expect_equal(
         ds$read_data_table("tas", start = start, count = count, rbind = TRUE, async = TRUE, timeout = 2),
