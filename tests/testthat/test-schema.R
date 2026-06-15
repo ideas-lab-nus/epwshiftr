@@ -125,7 +125,7 @@ test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
     expect_error(esg_query()$load(bad_file))
 })
 # }}}
-# schema_test_response() / schema_test_result_json() / schema_test_dataset_docs() / schema_test_file_docs() {{{
+# schema_test_response() {{{
 schema_test_response <- function(docs) {
     list(
         responseHeader = list(
@@ -154,7 +154,8 @@ schema_test_response <- function(docs) {
         )
     )
 }
-
+# }}}
+# schema_test_result_json() {{{
 schema_test_result_json <- function(type, docs, context = NULL) {
     result <- list(
         index_node = "https://example.org",
@@ -167,7 +168,8 @@ schema_test_result_json <- function(type, docs, context = NULL) {
 
     result
 }
-
+# }}}
+# schema_test_dataset_docs() {{{
 schema_test_dataset_docs <- function() {
     data.frame(
         id = "dataset-1",
@@ -176,7 +178,8 @@ schema_test_dataset_docs <- function() {
         check.names = FALSE
     )
 }
-
+# }}}
+# schema_test_file_docs() {{{
 schema_test_file_docs <- function() {
     docs <- data.frame(
         id = "file-1",
@@ -290,7 +293,8 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     jsonlite::write_json(dataset_json, bad_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_result()$load(bad_file))
 })
-
+# }}}
+# SCHEMA_RESULT_DATASET {{{
 test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
     result_json <- schema_test_result_json("Dataset", schema_test_dataset_docs())
 
