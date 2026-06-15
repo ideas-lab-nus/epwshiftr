@@ -1,4 +1,4 @@
-# local_dataset_table_file() / mirai_dataset_symbols / start_mirai_dataset_runtime() / stop_mirai_dataset_runtime() / mirai_dataset_lapply() {{{
+# local_dataset_table_file() / local_dataset_cmip6_files() / mirai_dataset_symbols / start_mirai_dataset_runtime() / stop_mirai_dataset_runtime() / mirai_dataset_lapply() {{{
 local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along(time_vals), calendar = "standard") {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
@@ -25,6 +25,16 @@ local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along
     RNetCDF::close.nc(nc)
 
     path
+}
+
+local_dataset_cmip6_files <- function(years) {
+    paths <- vapply(years, function(year) {
+        path <- tempfile(fileext = ".nc")
+        write_local_cmip6_netcdf_fixture(path, year)
+        path
+    }, character(1L))
+    withr::defer(unlink(paths), envir = parent.frame())
+    paths
 }
 
 mirai_dataset_symbols <- c(
@@ -121,64 +131,164 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     lapply(tasks, mirai::collect_mirai)
 }
 # }}}
-# EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() {{{
-test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() work with a single file", {
-    path <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(path, 2060L)
-    on.exit(unlink(path), add = TRUE)
+# EsgDataset$new() {{{
+test_that("EsgDataset$new()", {
+    path <- local_dataset_cmip6_files(2060L)
 
     ds <- EsgDataset$new(path)
     expect_s3_class(ds, "EsgDataset")
-    expect_equal(ds$file_count, 1L)
-    expect_false(ds$is_aggregated)
-    expect_false(ds$is_open)
+})
+# }}}
+# EsgDataset$url / EsgDataset$is_open / EsgDataset$is_aggregated / EsgDataset$file_count {{{
+test_that("EsgDataset$url / EsgDataset$is_open / EsgDataset$is_aggregated / EsgDataset$file_count", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
 
-    ds$open()
+    single <- EsgDataset$new(paths[[1L]])
+    expect_identical(single$url, paths[[1L]])
+    expect_equal(single$file_count, 1L)
+    expect_false(single$is_aggregated)
+    expect_false(single$is_open)
+
+    multi <- EsgDataset$new(paths)
+    expect_identical(multi$url, paths)
+    expect_equal(multi$file_count, 2L)
+    expect_true(multi$is_aggregated)
+    expect_false(multi$is_open)
+})
+# }}}
+# EsgDataset$open() {{{
+test_that("EsgDataset$open()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+
+    returned <- ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_identical(returned, ds)
     expect_true(ds$is_open)
+})
+# }}}
+# EsgDataset$close() {{{
+test_that("EsgDataset$close()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
 
-    ds$close()
+    returned <- ds$close()
+
+    expect_identical(returned, ds)
     expect_false(ds$is_open)
-
+})
+# }}}
+# EsgDataset$file_inq() {{{
+test_that("EsgDataset$file_inq()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
     ds$open()
     on.exit(ds$close(), add = TRUE)
+
     info <- ds$file_inq()
     expect_type(info, "list")
     expect_true("nvars" %in% names(info))
     expect_true("ndims" %in% names(info))
+})
+# }}}
+# EsgDataset$var_inq() {{{
+test_that("EsgDataset$var_inq()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     var_info <- ds$var_inq("tas")
     expect_type(var_info, "list")
     expect_equal(var_info$name, "tas")
+})
+# }}}
+# EsgDataset$dim_inq() {{{
+test_that("EsgDataset$dim_inq()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     dim_info <- ds$dim_inq("time")
     expect_type(dim_info, "list")
     expect_equal(dim_info$name, "time")
+})
+# }}}
+# EsgDataset$att_get() {{{
+test_that("EsgDataset$att_get()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     units <- ds$att_get("tas", "units")
     expect_identical(units, "K")
+})
+# }}}
+# EsgDataset$get_variables() {{{
+test_that("EsgDataset$get_variables()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     vars <- ds$get_variables()
     expect_type(vars, "character")
     expect_true(length(vars) > 0)
     expect_true("tas" %in% vars)
+})
+# }}}
+# EsgDataset$get_dimensions() {{{
+test_that("EsgDataset$get_dimensions()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     dims <- ds$get_dimensions()
     expect_type(dims, "character")
     expect_true("time" %in% dims)
     expect_true("lat" %in% dims)
     expect_true("lon" %in% dims)
+})
+# }}}
+# EsgDataset$get_time_axis() {{{
+test_that("EsgDataset$get_time_axis()", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    ds <- EsgDataset$new(paths)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
-    time_info <- ds$get_time_axis()
+    time_info <- ds$get_time_axis(2)
     expect_type(time_info, "list")
     expect_true("values" %in% names(time_info))
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
     expect_s3_class(time_info$values, "POSIXct")
+})
+# }}}
+# EsgDataset$get_spatial_grid() {{{
+test_that("EsgDataset$get_spatial_grid()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     grid <- ds$get_spatial_grid()
     expect_type(grid, "list")
     expect_true("lat" %in% names(grid))
     expect_true("lon" %in% names(grid))
+})
+# }}}
+# EsgDataset$var_get() {{{
+test_that("EsgDataset$var_get()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     data <- ds$var_get("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = TRUE)
     expect_type(data, "double")
@@ -186,6 +296,14 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDatase
     data <- ds$var_get("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = FALSE)
     expect_type(data, "double")
     expect_equal(dim(data), c(2, 2, 2))
+})
+# }}}
+# EsgDataset$read_array() {{{
+test_that("EsgDataset$read_array()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     arr_list <- ds$read_array("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = TRUE)
     expect_type(arr_list, "list")
@@ -200,6 +318,14 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDatase
     arr <- arr_list[[1L]]
     expect_type(arr, "double")
     expect_equal(dim(arr), c(2, 2, 2))
+})
+# }}}
+# EsgDataset$read_data_table() {{{
+test_that("EsgDataset$read_data_table()", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
 
     start <- c(1, 1, 1)
     count <- c(2, 2, 2)
@@ -226,32 +352,13 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDatase
             expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
         }
     }
-
-    ds$close()
-    expect_false(ds$is_open)
 })
 
-test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$var_get() / EsgDataset$read_data_table() work with multiple files", {
-    paths <- c(tempfile(fileext = ".nc"), tempfile(fileext = ".nc"))
-    write_local_cmip6_netcdf_fixture(paths[[1L]], 2060L)
-    write_local_cmip6_netcdf_fixture(paths[[2L]], 2061L)
-    on.exit(unlink(paths), add = TRUE)
-
+test_that("EsgDataset$read_data_table() handles multiple files", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
     ds <- EsgDataset$new(paths)
-    expect_s3_class(ds, "EsgDataset")
-    expect_equal(ds$file_count, 2L)
-    expect_true(ds$is_aggregated)
-    expect_false(ds$is_open)
-
     ds$open()
     on.exit(ds$close(), add = TRUE)
-
-    time_info <- ds$get_time_axis(2)
-    expect_type(time_info, "list")
-    expect_true("values" %in% names(time_info))
-    expect_true("units" %in% names(time_info))
-    expect_true("calendar" %in% names(time_info))
-    expect_s3_class(time_info$values, "POSIXct")
 
     start <- c(1, 1, 1)
     count <- c(2, 2, 2)
@@ -261,7 +368,6 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / E
     expect_length(dt_list, 2L)
     expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
 
-    # Coordinate values should be interpreted within each file's context
     vinfo <- ds$var_inq("tas")
     dim_names <- vapply(vinfo$dimids, function(id) ds$dim_inq(id)$name, character(1L))
     for (i in 1:2) {
@@ -280,14 +386,13 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / E
         }
     }
 
-    # Optionally row-bind with file_index
     dt_all <- ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
     expect_s3_class(dt_all, "data.table")
     expect_true("file_index" %in% names(dt_all))
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
 })
 # }}}
-# EsgDataset$read_data_table() / EsgDataset$read_region() {{{
+# EsgDataset$read_data_table() {{{
 test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -330,7 +435,8 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
     expect_equal(as.numeric(dt_all[file_index == 1L, time]), as.numeric(expected[[1L]]))
     expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
-
+# }}}
+# EsgDataset$read_region() {{{
 test_that("EsgDataset$read_region() reads nearest grid cells and time windows", {
     path1 <- tempfile(fileext = ".nc")
     path2 <- tempfile(fileext = ".nc")
@@ -439,7 +545,7 @@ test_that("EsgDataset$read_region() reuses recorded result time filters by defau
     expect_identical(unique(dt_outside$file_index), 2L)
 })
 # }}}
-# EsgDataset$slice() / EsgDataset$selection() / EsgDataset$reachable() {{{
+# EsgDataset$slice() / EsgDataset$selection() {{{
 test_that("EsgDataset$slice() selects files and preserves runtime context", {
     paths <- c(
         local_dataset_table_file(
@@ -500,7 +606,8 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
         source_indices = 1:2
     ))
 })
-
+# }}}
+# EsgDataset$slice() {{{
 test_that("EsgDataset$slice() validates selectors", {
     paths <- c(
         local_dataset_table_file(
@@ -567,7 +674,8 @@ test_that("EsgDataset$slice() reopens selected files only when requested", {
         21
     )
 })
-
+# }}}
+# EsgDataset$reachable() {{{
 test_that("EsgDataset$reachable() checks current local files and selection source indices", {
     paths <- c(
         local_dataset_table_file(
@@ -676,7 +784,7 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
     expect_false(any(diag$probe_cached))
 })
 # }}}
-# EsgDataset$open(async = TRUE) / EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) {{{
+# EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -700,7 +808,8 @@ test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return",
         c(11, 12)
     )
 })
-
+# }}}
+# EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() {{{
 test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) match sync results and keep open-state checks", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -742,7 +851,8 @@ test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE
 
     expect_true(ds$is_open)
 })
-
+# }}}
+# EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
 
@@ -784,7 +894,8 @@ test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
         list(c(11, 12, 13), c(21, 22, 23))
     )
 })
-
+# }}}
+# EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
 
@@ -846,7 +957,8 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
         lapply(results, `[[`, "sync_values")
     )
 })
-
+# }}}
+# EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and clean", {
     path <- tempfile(fileext = ".nc")
     if (file.exists(path)) {
@@ -864,7 +976,7 @@ test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and c
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
 # }}}
-# dataset__detach_handles() / dataset__adopt_handles() / private$start_async_operation() / private$collect_async_task() / private$cancel_async_task() {{{
+# dataset__detach_handles() / dataset__adopt_handles() {{{
 test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partially opened handles", {
     path_opened <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -927,7 +1039,8 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
     expect_false(failing$is_open)
     expect_true(all(vapply(failing_private$nc_handles, is.null, logical(1L))))
 })
-
+# }}}
+# EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -951,7 +1064,8 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
     expect_null(private$async_task)
     expect_equal(as.numeric(ds$var_get("tas", collapse = TRUE)), c(11, 12, 13))
 })
-
+# }}}
+# private$start_async_operation() / private$collect_async_task() {{{
 test_that("private$start_async_operation() / private$collect_async_task() keep sync handle state separate", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
@@ -1013,7 +1127,8 @@ test_that("private$collect_async_task() surfaces timeout errors and clears lifec
     expect_null(private$async_task)
     expect_true(task$backend_released)
 })
-
+# }}}
+# EsgDataset$close() {{{
 test_that("EsgDataset$close() best-effort cancels pending internal async work", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -1042,7 +1157,8 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
     expect_identical(private$async_state, "cancelled")
     expect_null(private$async_task)
 })
-
+# }}}
+# private$cancel_async_task() {{{
 test_that("private$cancel_async_task() keeps cancelled terminal state", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -1078,12 +1194,24 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
     expect_null(private$async_task)
 })
 # }}}
-# EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() {{{
-test_that("EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() reject closed datasets", {
+# EsgDataset$file_inq() {{{
+test_that("EsgDataset$file_inq() rejects closed datasets", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 
     expect_error(ds$file_inq(), "not open")
+})
+# }}}
+# EsgDataset$var_inq() {{{
+test_that("EsgDataset$var_inq() rejects closed datasets", {
+    ds <- EsgDataset$new("https://example.org/data.nc")
+
     expect_error(ds$var_inq("tas"), "not open")
+})
+# }}}
+# EsgDataset$var_get() {{{
+test_that("EsgDataset$var_get() rejects closed datasets", {
+    ds <- EsgDataset$new("https://example.org/data.nc")
+
     expect_error(ds$var_get("tas"), "not open")
 })
 # }}}
