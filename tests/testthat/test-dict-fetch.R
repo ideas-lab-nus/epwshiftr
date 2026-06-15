@@ -1,4 +1,4 @@
-# dict__fetch_cv() / dict__fetch_dreq() / EsgDict$build() {{{
+# dict__fetch_cv() / dict__fetch_dreq() {{{
 test_that("dict__fetch_cv() / dict__fetch_dreq() rebuild parsed data from source files", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
@@ -10,7 +10,8 @@ test_that("dict__fetch_cv() / dict__fetch_dreq() rebuild parsed data from source
     expect_s3_class(dreq, "data.table")
     expect_true(all(c("tas", "sftlf") %in% dreq$variable))
 })
-
+# }}}
+# EsgDict$build() {{{
 test_that("EsgDict$build() uses source files in offline mode", {
     local_esgdict_disk_cache()
     local_cache_mode_for_test("offline")
