@@ -91,7 +91,7 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_identical(get_cache_epw(), path)
 })
 
-test_that("EpwMorpher creates relaxed future EPW outputs from store extracts", {
+test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
@@ -180,7 +180,7 @@ test_that("EpwMorpher creates relaxed future EPW outputs from store extracts", {
     expect_equal(nrow(morpher$outputs(relaxed$morph_id)), 1L)
 })
 
-test_that("EpwMorpher completes strict outputs with recommended variables", {
+test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

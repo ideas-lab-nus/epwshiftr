@@ -1,5 +1,5 @@
 # print.Cmip6CV() / print.Cmip6DReq() {{{
-test_that("print.Cmip6CV() and print.Cmip6DReq()", {
+test_that("print.Cmip6CV() / print.Cmip6DReq()", {
     dict <- local_test_esgdict()
     normalize_dreq_indent <- function(x) {
         gsub(
