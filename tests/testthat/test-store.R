@@ -173,6 +173,83 @@ store_test__with_downloaded_query <- function(code) {
 
     code(store, dl, query_id, session_id)
 }
+
+store_test__with_updated_query <- function(code) {
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, track = TRUE)
+
+    dataset_docs <- data.frame(
+        id = "dataset-1",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        size = 2,
+        access = I(list(c("OPENDAP", "HTTPServer"))),
+        check.names = FALSE
+    )
+    file_one <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
+    file_one$tracking_id <- "hdl:21.14100/mock-file-1"
+    file_one$master_id <- "CMIP6.mock.master.file-1"
+    file_one$latest <- TRUE
+    file_one$retracted <- FALSE
+    file_two <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r2i1p1f1_gr_20600101-20601231.nc")
+    file_two$tracking_id <- "hdl:21.14100/mock-file-2"
+    file_two$master_id <- "CMIP6.mock.master.file-2"
+    file_two$latest <- TRUE
+    file_two$retracted <- TRUE
+
+    first_files <- data.table::rbindlist(list(file_one, file_two), fill = TRUE)
+    second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
+    file_calls <- 0L
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            type <- query_param__value(params$type())
+            docs <- if (identical(type, "Dataset")) {
+                dataset_docs
+            } else {
+                file_calls <<- file_calls + 1L
+                if (identical(file_calls, 1L)) first_files else second_files
+            }
+            response <- store_test__response(docs)
+            params$fields(c(query_param__value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    first_links <- store$update_queries()
+    first_current <- store$query_files(query_id, status = "current")
+    first_retracted <- store$query_files(query_id, status = "retracted")
+    files <- ddb_read_table(priv(store)$conn, "esg_file")
+    links_db <- ddb_read_table(priv(store)$conn, "esg_query_file")
+    catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
+
+    second_links <- store$update_queries(query_id = query_id)
+    updates <- store$query_updates(query_id)
+    latest <- store$query_updates(query_id, latest = TRUE)
+    stale_changes <- store$query_changes(update_id = latest$update_id, change_type = "stale")
+
+    code(
+        store = store,
+        query_id = query_id,
+        first_links = first_links,
+        first_current = first_current,
+        first_retracted = first_retracted,
+        files = files,
+        links_db = links_db,
+        catalog = catalog,
+        second_links = second_links,
+        updates = updates,
+        latest = latest,
+        stale_changes = stale_changes
+    )
+}
 # }}}
 # EsgStore$new() {{{
 test_that("EsgStore$new()", {
@@ -580,87 +657,57 @@ test_that("EsgStore$preview_update_queries()", {
     expect_equal(nrow(updated), 1L)
 })
 # }}}
-# EsgStore$update_queries() / EsgStore$query_updates() / EsgStore$query_changes() / EsgStore$query_files() {{{
+# EsgStore$update_queries() {{{
 test_that("EsgStore$update_queries()", {
     skip_if_not_installed("duckdb")
 
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    on.exit(store$close(), add = TRUE)
+    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+        expect_equal(nrow(first_links), 2L)
+        expect_true("update_id" %in% names(first_links))
+        expect_setequal(first_links$change_type, "new")
+        expect_equal(nrow(files), 2L)
+        expect_setequal(files$file_key, c("master:CMIP6.mock.master.file-1", "master:CMIP6.mock.master.file-2"))
+        expect_equal(nrow(links_db), 2L)
+        expect_equal(nrow(catalog), 1L)
+        expect_identical(catalog$file_key[[1L]], "master:CMIP6.mock.master.file-1")
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
-    query_id <- store$add_query(query, track = TRUE)
+        status_by_file <- stats::setNames(second_links$status, second_links$file_key)
+        expect_identical(status_by_file[["master:CMIP6.mock.master.file-1"]], "current")
+        expect_identical(status_by_file[["master:CMIP6.mock.master.file-2"]], "missing")
+        change_by_file <- stats::setNames(second_links$change_type, second_links$file_key)
+        expect_identical(change_by_file[["master:CMIP6.mock.master.file-1"]], "current")
+        expect_identical(change_by_file[["master:CMIP6.mock.master.file-2"]], "stale")
+        expect_false(is.na(store$queries()$last_checked_at[[1L]]))
+    })
+})
+# }}}
+# EsgStore$query_files() {{{
+test_that("EsgStore$query_files()", {
+    skip_if_not_installed("duckdb")
 
-    dataset_docs <- data.frame(
-        id = "dataset-1",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        size = 2,
-        access = I(list(c("OPENDAP", "HTTPServer"))),
-        check.names = FALSE
-    )
-    file_one <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
-    file_one$tracking_id <- "hdl:21.14100/mock-file-1"
-    file_one$master_id <- "CMIP6.mock.master.file-1"
-    file_one$latest <- TRUE
-    file_one$retracted <- FALSE
-    file_two <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r2i1p1f1_gr_20600101-20601231.nc")
-    file_two$tracking_id <- "hdl:21.14100/mock-file-2"
-    file_two$master_id <- "CMIP6.mock.master.file-2"
-    file_two$latest <- TRUE
-    file_two$retracted <- TRUE
+    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+        expect_equal(nrow(first_current), 1L)
+        expect_equal(nrow(first_retracted), 1L)
+    })
+})
+# }}}
+# EsgStore$query_updates() {{{
+test_that("EsgStore$query_updates()", {
+    skip_if_not_installed("duckdb")
 
-    first_files <- data.table::rbindlist(list(file_one, file_two), fill = TRUE)
-    second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
-    file_calls <- 0L
-    testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            type <- query_param__value(params$type())
-            docs <- if (identical(type, "Dataset")) {
-                dataset_docs
-            } else {
-                file_calls <<- file_calls + 1L
-                if (identical(file_calls, 1L)) first_files else second_files
-            }
-            response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
-        },
-        .package = "epwshiftr"
-    )
+    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+        expect_equal(nrow(updates), 2L)
+        expect_equal(latest$stale_count, 1L)
+    })
+})
+# }}}
+# EsgStore$query_changes() {{{
+test_that("EsgStore$query_changes()", {
+    skip_if_not_installed("duckdb")
 
-    links <- store$update_queries()
-    expect_equal(nrow(links), 2L)
-    expect_true("update_id" %in% names(links))
-    expect_setequal(links$change_type, "new")
-    expect_equal(nrow(store$query_files(query_id, status = "current")), 1L)
-    expect_equal(nrow(store$query_files(query_id, status = "retracted")), 1L)
-
-    files <- ddb_read_table(priv(store)$conn, "esg_file")
-    expect_equal(nrow(files), 2L)
-    expect_setequal(files$file_key, c("master:CMIP6.mock.master.file-1", "master:CMIP6.mock.master.file-2"))
-    links_db <- ddb_read_table(priv(store)$conn, "esg_query_file")
-    expect_equal(nrow(links_db), 2L)
-    catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
-    expect_equal(nrow(catalog), 1L)
-    expect_identical(catalog$file_key[[1L]], "master:CMIP6.mock.master.file-1")
-
-    links <- store$update_queries(query_id = query_id)
-    status_by_file <- stats::setNames(links$status, links$file_key)
-    expect_identical(status_by_file[["master:CMIP6.mock.master.file-1"]], "current")
-    expect_identical(status_by_file[["master:CMIP6.mock.master.file-2"]], "missing")
-    change_by_file <- stats::setNames(links$change_type, links$file_key)
-    expect_identical(change_by_file[["master:CMIP6.mock.master.file-1"]], "current")
-    expect_identical(change_by_file[["master:CMIP6.mock.master.file-2"]], "stale")
-    updates <- store$query_updates(query_id)
-    expect_equal(nrow(updates), 2L)
-    latest <- store$query_updates(query_id, latest = TRUE)
-    expect_equal(latest$stale_count, 1L)
-    expect_equal(nrow(store$query_changes(update_id = latest$update_id, change_type = "stale")), 1L)
-    expect_false(is.na(store$queries()$last_checked_at[[1L]]))
+    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+        expect_equal(nrow(stale_changes), 1L)
+    })
 })
 # }}}
 # EsgStore$download_preflight() {{{
