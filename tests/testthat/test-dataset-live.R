@@ -1,7 +1,7 @@
 live_dataset_url_nc <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc"
 live_dataset_url_nc2 <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc"
 
-test_that("EsgDataset live OPeNDAP single-file smoke", {
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() live OPeNDAP single-file smoke", {
     skip_live_esgf()
 
     ds <- EsgDataset$new(live_dataset_url_nc)
@@ -62,7 +62,7 @@ test_that("EsgDataset live OPeNDAP single-file smoke", {
     expect_equal(nrow(dt), 25L)
 })
 
-test_that("EsgDataset live OPeNDAP multi-file smoke", {
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / EsgDataset$read_data_table() live OPeNDAP multi-file smoke", {
     skip_live_esgf()
 
     ds <- EsgDataset$new(c(live_dataset_url_nc, live_dataset_url_nc2))

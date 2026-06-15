@@ -1,4 +1,4 @@
-test_that("live ESGF query smoke covers Dataset and File contracts", {
+test_that("esg_query() live smoke covers Dataset and File contracts", {
     skip_live_esgf()
 
     q <- esg_query(INDEX_NODES[["DKRZ"]])$
@@ -31,7 +31,7 @@ test_that("live ESGF query smoke covers Dataset and File contracts", {
     expect_true(all(c("id", "dataset_id", "url", "tracking_id") %in% names(files)))
 })
 
-test_that("live ESGF query smoke keeps empty result behavior stable", {
+test_that("esg_query() live smoke keeps empty result behavior stable", {
     skip_live_esgf()
 
     empty <- tryCatch(

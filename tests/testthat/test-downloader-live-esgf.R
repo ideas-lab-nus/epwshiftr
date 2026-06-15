@@ -79,7 +79,7 @@ skip_live_download_error <- function(expr) {
     )
 }
 
-test_that("Downloader live ESGF workflow covers persistent methods and resume", {
+test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify() live ESGF workflow covers persistent methods and resume", {
     skip_live_esgf()
 
     live <- tryCatch(live_esgf_files(), error = function(e) skip(conditionMessage(e)))
