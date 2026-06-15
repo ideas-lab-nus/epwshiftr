@@ -45,22 +45,39 @@ test_that("EsgDict$status()", {
     expect_equal(dict$status(), "built")
 })
 # }}}
-# EsgDict$has_data() / EsgDict$is_empty() {{{
-test_that("EsgDict$has_data() / EsgDict$is_empty()", {
+# EsgDict$has_data() {{{
+test_that("EsgDict$has_data()", {
     empty <- EsgDict$new()
     expect_false(empty$has_data())
-    expect_true(empty$is_empty())
 
     dict <- local_test_esgdict()
     expect_true(dict$has_data())
+})
+# }}}
+# EsgDict$is_empty() {{{
+test_that("EsgDict$is_empty()", {
+    empty <- EsgDict$new()
+    expect_true(empty$is_empty())
+
+    dict <- local_test_esgdict()
     expect_false(dict$is_empty())
 })
 # }}}
-# EsgDict$built_time() / EsgDict$timestamp() / EsgDict$sources() {{{
-test_that("EsgDict$built_time() / EsgDict$timestamp() / EsgDict$sources()", {
+# EsgDict$built_time() {{{
+test_that("EsgDict$built_time()", {
     dict <- local_test_esgdict()
     expect_s3_class(dict$built_time(), "POSIXct")
+})
+# }}}
+# EsgDict$timestamp() {{{
+test_that("EsgDict$timestamp()", {
+    dict <- local_test_esgdict()
     expect_named(dict$timestamp(), c("vocab", tolower(CV_TYPES)))
+})
+# }}}
+# EsgDict$sources() {{{
+test_that("EsgDict$sources()", {
+    dict <- local_test_esgdict()
     expect_named(dict$sources(), c("vocab", "request"))
 })
 # }}}
@@ -95,7 +112,7 @@ test_that("EsgDict$print()", {
     expect_snapshot(dict$print())
 })
 # }}}
-# EsgDict$build() / EsgDict$save() / EsgDict$load() {{{
+# EsgDict$build() {{{
 test_that("EsgDict$build() supports CV-only ESG projects", {
     projects <- c("CMIP6PLUS", "INPUT4MIP", "OBS4REF", "CORDEX-CMIP6", "CMIP7", "EMD")
     for (project in projects) {
@@ -124,6 +141,17 @@ test_that("EsgDict$build() supports CV-only ESG projects", {
     unchecked <- esgdict_check(variable_id = "tas", table_id = "day", dict = dict)
     expect_false(any(!is.na(unchecked$valid) & !unchecked$valid))
     expect_true(any(is.na(unchecked$valid) & unchecked$type == "not_checked" & unchecked$rule == "variable"))
+})
+# }}}
+# EsgDict$save() / EsgDict$load() {{{
+test_that("EsgDict$save() / EsgDict$load() round-trip CV-only ESG projects", {
+    local_esgdict_disk_cache()
+    source_root <- local_esgvoc_source_store(withr::local_tempdir())
+    dict <- EsgDict$new("CMIP6PLUS")
+    expect_s3_class(
+        dict$build(cv_tag = "test-vocab", source_dir = source_root),
+        "EsgDict"
+    )
 
     dir <- withr::local_tempdir()
     path <- file.path(dir, "CMIP6PLUSDICT.json")

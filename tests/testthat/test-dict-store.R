@@ -1,4 +1,4 @@
-# EsgDict$save() / EsgDict$load() / dict__validate() {{{
+# EsgDict$save() / dict__validate() {{{
 test_that("EsgDict$save() writes typed schema-validated JSON", {
     dict <- local_test_esgdict()
     dir <- withr::local_tempdir()
@@ -24,6 +24,14 @@ test_that("EsgDict$save() writes typed schema-validated JSON", {
     withr::defer(store$close())
     artifacts <- data.table::as.data.table(ddb_read_table(priv(store)$conn, "artifact"))
     expect_equal(nrow(artifacts[kind == "dict" & project == "CMIP6" & status == "available"]), 1L)
+})
+# }}}
+# EsgDict$load() {{{
+test_that("EsgDict$load() reads stored dictionary entries", {
+    dict <- local_test_esgdict()
+    dir <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_store = dir))
+    dict$save()
 
     loaded <- EsgDict$new()
     expect_s3_class(loaded$load(), "EsgDict")
