@@ -1,4 +1,5 @@
-test_that("schema constants are standalone SchemaDoc objects", {
+# schema__load_lazy() schema constants {{{
+test_that("schema__load_lazy() exposes standalone SchemaDoc constants", {
     expect_true(S7::S7_inherits(SCHEMA_QUERY, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESPONSE, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_RESULT_DATASET, SchemaDoc))
@@ -8,7 +9,7 @@ test_that("schema constants are standalone SchemaDoc objects", {
     expect_true(S7::S7_inherits(SCHEMA_DOWNLOADER_CONFIG, SchemaDoc))
 })
 
-test_that("schema constants expose expected logical paths", {
+test_that("schema_paths() exposes expected logical paths for package schemas", {
     expect_true("$parameter" %in% schema_paths(SCHEMA_QUERY))
 
     response_paths <- schema_paths(SCHEMA_RESPONSE)
@@ -40,8 +41,9 @@ test_that("schema constants expose expected logical paths", {
     expect_true("$connect_timeout" %in% downloader_paths)
     expect_true("$node_policy$cooldown_after_failures" %in% downloader_paths)
 })
-
-test_that("downloader config schema validates persistent downloader config", {
+# }}}
+# SCHEMA_DOWNLOADER_CONFIG {{{
+test_that("SCHEMA_DOWNLOADER_CONFIG validates persistent downloader config", {
     config <- list(
         schema_version = "1.0.0",
         dest = tempdir(),
@@ -73,8 +75,9 @@ test_that("downloader config schema validates persistent downloader config", {
     bad$connect_timeout <- 0L
     expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
 })
-
-test_that("result schema JSON files use local reusable definitions", {
+# }}}
+# SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
+test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION use local reusable definitions", {
     required_defs <- c(
         "index_node",
         "parameter",
@@ -105,8 +108,9 @@ test_that("result schema JSON files use local reusable definitions", {
         expect_false(any(c("parameter_facet", "parameter_query", "parameter_control", "parameter_others") %in% names(json[["$defs"]])))
     }
 })
-
-test_that("schema validates saved query JSON fixtures", {
+# }}}
+# SCHEMA_QUERY {{{
+test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
     query_file <- test_path("_snaps", "query", "query_empty.json")
     query_json <- jsonlite::fromJSON(query_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
@@ -119,7 +123,7 @@ test_that("schema validates saved query JSON fixtures", {
     jsonlite::write_json(query_json, bad_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_query()$load(bad_file))
 })
-
+# }}}
 schema_test_response <- function(docs) {
     list(
         responseHeader = list(
@@ -193,8 +197,8 @@ schema_test_file_docs <- function() {
     )))
     docs
 }
-
-test_that("schema validates saved query result JSON fixtures", {
+# SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
+test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION validate saved query result JSON fixtures", {
     result_file <- test_path("_snaps", "query-result", "dataset.json")
     dataset_json <- jsonlite::fromJSON(result_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
     file_json <- schema_test_result_json("File", schema_test_file_docs())
@@ -284,7 +288,7 @@ test_that("schema validates saved query result JSON fixtures", {
     expect_error(esg_result()$load(bad_file))
 })
 
-test_that("dataset result schema validates local minimal results", {
+test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
     result_json <- schema_test_result_json("Dataset", schema_test_dataset_docs())
 
     expect_true(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = "local-dataset-result"))
@@ -294,3 +298,4 @@ test_that("dataset result schema validates local minimal results", {
     jsonlite::write_json(result_json, bad_file, null = "null", auto_unbox = TRUE)
     expect_error(esg_result()$load(bad_file))
 })
+# }}}
