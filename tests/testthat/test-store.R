@@ -118,8 +118,8 @@ store_test__completed_store <- function() {
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
 # }}}
-# EsgStore$new() / EsgStore$close() / EsgStore$downloader() {{{
-test_that("EsgStore$new() / EsgStore$close() / EsgStore$downloader()", {
+# EsgStore$new() {{{
+test_that("EsgStore$new()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -139,19 +139,6 @@ test_that("EsgStore$new() / EsgStore$close() / EsgStore$downloader()", {
     expect_true(file.exists(store$manifest))
     expect_true(store$is_open)
 
-    dl <- store$downloader(n_workers = 0L)
-    expect_s3_class(dl, "Downloader")
-    expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
-    expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
-    expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
-    expect_true(file.exists(dl$manifest))
-    dl_conn <- ddb_connect(dl$manifest, read_only = TRUE)
-    on.exit(ddb_disconnect(dl_conn, shutdown = TRUE), add = TRUE)
-    expect_true("download_config" %in% ddb_list_tables(dl_conn))
-    dl_config <- ddb_read_table(dl_conn, "download_config")
-    expect_equal(nrow(dl_config), 1L)
-    expect_equal(dl_config$config_id, "default")
-
     tables <- ddb_list_tables(priv(store)$conn)
     expect_setequal(
         tables,
@@ -166,13 +153,6 @@ test_that("EsgStore$new() / EsgStore$close() / EsgStore$downloader()", {
             "epw_output"
         )
     )
-    expect_null(store$get_meta("active_cmip6_index_artifact_id"))
-    expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
-    expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
-    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
-
-    store$close()
-    expect_false(store$is_open)
 })
 
 test_that("EsgStore$new(create = FALSE)", {
@@ -212,8 +192,56 @@ test_that("EsgStore$new() migrates older manifests", {
     expect_true(all(c("download_session_id", "last_error") %in% cols))
 })
 # }}}
-# EsgStore$add_query() / EsgStore$track_query() {{{
-test_that("EsgStore$add_query() / EsgStore$track_query()", {
+# EsgStore$close() {{{
+test_that("EsgStore$close()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    expect_true(store$is_open)
+
+    store$close()
+    expect_false(store$is_open)
+})
+# }}}
+# EsgStore$downloader() {{{
+test_that("EsgStore$downloader()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    dl <- store$downloader(n_workers = 0L)
+    expect_s3_class(dl, "Downloader")
+    expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
+    expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
+    expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
+    expect_true(file.exists(dl$manifest))
+    dl_conn <- ddb_connect(dl$manifest, read_only = TRUE)
+    on.exit(ddb_disconnect(dl_conn, shutdown = TRUE), add = TRUE)
+    expect_true("download_config" %in% ddb_list_tables(dl_conn))
+    dl_config <- ddb_read_table(dl_conn, "download_config")
+    expect_equal(nrow(dl_config), 1L)
+    expect_equal(dl_config$config_id, "default")
+})
+# }}}
+# EsgStore$get_meta() / EsgStore$set_meta() {{{
+test_that("EsgStore$get_meta() / EsgStore$set_meta()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    expect_null(store$get_meta("active_cmip6_index_artifact_id"))
+    expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
+    expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+})
+# }}}
+# EsgStore$add_query() {{{
+test_that("EsgStore$add_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -229,6 +257,24 @@ test_that("EsgStore$add_query() / EsgStore$track_query()", {
     expect_type(query_id, "character")
     expect_identical(store$add_query(query), query_id)
 
+    artifacts <- ddb_read_table(priv(store)$conn, "artifact")
+    expect_equal(nrow(artifacts[artifacts$query_id == query_id & artifacts$kind == "query", ]), 1L)
+})
+# }}}
+# EsgStore$queries() {{{
+test_that("EsgStore$queries()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     queries <- store$queries()
     expect_equal(nrow(queries), 1L)
     expect_identical(queries$query_id[[1L]], query_id)
@@ -236,11 +282,23 @@ test_that("EsgStore$add_query() / EsgStore$track_query()", {
     expect_true(queries$tracked[[1L]])
     expect_true(file.exists(file.path(dir, queries$query_file[[1L]])))
     expect_true(grepl("ssp585", queries$parameter_json[[1L]], fixed = TRUE))
-
-    artifacts <- ddb_read_table(priv(store)$conn, "artifact")
-    expect_equal(nrow(artifacts[artifacts$query_id == query_id & artifacts$kind == "query", ]), 1L)
     expect_equal(nrow(store$queries(tracked = TRUE)), 1L)
     expect_equal(nrow(store$queries(tracked = FALSE)), 0L)
+})
+# }}}
+# EsgStore$track_query() / EsgStore$untrack_query() {{{
+test_that("EsgStore$track_query() / EsgStore$untrack_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
     expect_invisible(store$untrack_query(query_id))
     expect_false(store$queries()$tracked[[1L]])
@@ -249,11 +307,41 @@ test_that("EsgStore$add_query() / EsgStore$track_query()", {
     expect_invisible(store$track_query(query_id))
     expect_true(store$queries()$tracked[[1L]])
     expect_error(store$track_query("missing-query"), "was not found")
+})
+# }}}
+# EsgStore$tag_query() / EsgStore$query_tags() / EsgStore$untag_query() {{{
+test_that("EsgStore$tag_query() / EsgStore$query_tags() / EsgStore$untag_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
     tags <- store$tag_query(query_id, c("ssp585", "tas"))
     expect_setequal(tags$tag, c("ssp585", "tas"))
     expect_identical(store$query_tags(query_id)$query_id[[1L]], query_id)
     expect_equal(nrow(store$untag_query(query_id, "tas")), 1L)
+})
+# }}}
+# EsgStore$require_query() / EsgStore$query_graph() / EsgStore$unrequire_query() {{{
+test_that("EsgStore$require_query() / EsgStore$query_graph() / EsgStore$unrequire_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
     child_query <- esg_query("https://example.org")$
         experiment_id("ssp585")$
@@ -266,7 +354,7 @@ test_that("EsgStore$add_query() / EsgStore$track_query()", {
     expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
 # }}}
-# EsgStore$preview_update_queries() / EsgStore$update_queries() {{{
+# EsgStore$preview_update_queries() {{{
 test_that("EsgStore$preview_update_queries()", {
     skip_if_not_installed("duckdb")
 
@@ -330,7 +418,8 @@ test_that("EsgStore$preview_update_queries()", {
     expect_equal(preview$changed_count, update$changed_count)
     expect_equal(nrow(updated), 1L)
 })
-
+# }}}
+# EsgStore$update_queries() / EsgStore$query_updates() / EsgStore$query_changes() / EsgStore$query_files() {{{
 test_that("EsgStore$update_queries()", {
     skip_if_not_installed("duckdb")
 
@@ -413,7 +502,7 @@ test_that("EsgStore$update_queries()", {
     expect_false(is.na(store$queries()$last_checked_at[[1L]]))
 })
 # }}}
-# EsgStore$download_preflight() / EsgStore$download_layout() / EsgStore$set_download_layout() / EsgStore$download_query() {{{
+# EsgStore$download_preflight() {{{
 test_that("EsgStore$download_preflight()", {
     skip_if_not_installed("duckdb")
 
@@ -491,7 +580,8 @@ test_that("EsgStore$download_preflight()", {
     expect_equal(nrow(dl$sessions()), 0L)
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
 })
-
+# }}}
+# EsgStore$download_layout() / EsgStore$set_download_layout() {{{
 test_that("EsgStore$download_layout() / EsgStore$set_download_layout()", {
     skip_if_not_installed("duckdb")
 
@@ -552,7 +642,8 @@ test_that("EsgStore$download_layout() / EsgStore$set_download_layout()", {
     ))
     expect_match(tasks$target_path, "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$")
 })
-
+# }}}
+# EsgStore$download_preflight() {{{
 test_that("EsgStore$download_preflight() reports layout issues", {
     skip_if_not_installed("duckdb")
 
@@ -604,8 +695,9 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     expect_equal(preflight$summary$missing_layout_field_count, 2L)
     expect_true(all(startsWith(preflight$candidates$subdir, "datasets/")))
 })
-
-test_that("EsgStore$download_query()", {
+# }}}
+# EsgStore$download_query() / EsgStore$download_status() / EsgStore$query_status() / EsgStore$workflow_status() / EsgStore$workflow_report() / EsgStore$retry_downloads() {{{
+test_that("EsgStore$download_query() / EsgStore$download_status() / EsgStore$query_status() / EsgStore$workflow_status() / EsgStore$workflow_report() / EsgStore$retry_downloads()", {
     skip_if_not_installed("duckdb")
 
     src <- tempfile(fileext = ".nc")
@@ -698,8 +790,8 @@ test_that("EsgStore$download_query()", {
     expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
 })
 # }}}
-# EsgStore$remove_query() / EsgStore$remove_files() {{{
-test_that("EsgStore$remove_query()", {
+# EsgStore$remove_query() / EsgStore$prune_orphans() {{{
+test_that("EsgStore$remove_query() / EsgStore$prune_orphans()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -728,7 +820,8 @@ test_that("EsgStore$remove_query()", {
     orphans <- store$prune_orphans(delete_local = FALSE)
     expect_equal(orphans$file_key, file_key)
 })
-
+# }}}
+# EsgStore$remove_files() {{{
 test_that("EsgStore$remove_files()", {
     skip_if_not_installed("duckdb")
 
@@ -816,7 +909,7 @@ test_that("EsgStore$storage_report() / EsgStore$cleanup_downloads()", {
     expect_equal(summary$tmp_file_count, 0L)
 })
 # }}}
-# EsgStore$validate_files() / EsgStore$repair_files() / EsgStore$cleanup_downloads() {{{
+# EsgStore$validate_files() {{{
 test_that("EsgStore$validate_files()", {
     skip_if_not_installed("duckdb")
 
@@ -885,7 +978,8 @@ test_that("EsgStore$validate_files()", {
     expect_true(file.exists(artifact_file))
     expect_true(file.exists(untracked_file))
 })
-
+# }}}
+# EsgStore$validate_files() {{{
 test_that("EsgStore$validate_files(layout = TRUE)", {
     skip_if_not_installed("duckdb")
 
@@ -934,7 +1028,8 @@ test_that("EsgStore$validate_files(layout = TRUE)", {
     expect_true(all(c("clear_missing_local_ref", "remove_missing_artifact") %in% missing$actions$action))
     expect_false(file.exists(wrong_file))
 })
-
+# }}}
+# EsgStore$repair_files() {{{
 test_that("EsgStore$repair_files() clears missing records", {
     skip_if_not_installed("duckdb")
 
@@ -991,7 +1086,8 @@ test_that("EsgStore$repair_files() clears missing records", {
     expect_true(is.na(esg_file$local_artifact_id[[1L]]))
     expect_false(artifact_id %in% artifacts$artifact_id)
 })
-
+# }}}
+# EsgStore$repair_files() {{{
 test_that("EsgStore$repair_files() moves layout mismatches", {
     skip_if_not_installed("duckdb")
 
@@ -1054,7 +1150,8 @@ test_that("EsgStore$repair_files() moves layout mismatches", {
     expect_equal(esg_file$local_path[[1L]], target_rel)
     expect_equal(artifact$relative_path[artifact$artifact_id == artifact_id], target_rel)
 })
-
+# }}}
+# EsgStore$cleanup_downloads() {{{
 test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     skip_if_not_installed("duckdb")
 
@@ -1534,8 +1631,8 @@ test_that("EsgStore$extract() records failed plans", {
     expect_match(plans$last_error, "None of the requested variable")
 })
 # }}}
-# EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() {{{
-test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete()", {
+# EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() / EsgStore$query() {{{
+test_that("EsgStore$summarise() / EsgStore$coverage() / EsgStore$assert_complete() / EsgStore$query()", {
     skip_if_not_installed("duckdb")
 
     fixture <- store_test__completed_store()
