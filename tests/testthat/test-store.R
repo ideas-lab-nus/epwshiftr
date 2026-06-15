@@ -287,7 +287,7 @@ test_that("EsgStore$queries()", {
 })
 # }}}
 # EsgStore$track_query() / EsgStore$untrack_query() {{{
-test_that("EsgStore$track_query() / EsgStore$untrack_query()", {
+test_that("EsgStore$untrack_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -303,14 +303,28 @@ test_that("EsgStore$track_query() / EsgStore$untrack_query()", {
     expect_invisible(store$untrack_query(query_id))
     expect_false(store$queries()$tracked[[1L]])
     expect_equal(nrow(store$queries(tracked = FALSE)), 1L)
+})
+
+test_that("EsgStore$track_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = FALSE)
 
     expect_invisible(store$track_query(query_id))
     expect_true(store$queries()$tracked[[1L]])
     expect_error(store$track_query("missing-query"), "was not found")
 })
 # }}}
-# EsgStore$tag_query() / EsgStore$query_tags() / EsgStore$untag_query() {{{
-test_that("EsgStore$tag_query() / EsgStore$query_tags() / EsgStore$untag_query()", {
+# EsgStore$tag_query() {{{
+test_that("EsgStore$tag_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -325,12 +339,46 @@ test_that("EsgStore$tag_query() / EsgStore$query_tags() / EsgStore$untag_query()
 
     tags <- store$tag_query(query_id, c("ssp585", "tas"))
     expect_setequal(tags$tag, c("ssp585", "tas"))
+})
+# }}}
+# EsgStore$query_tags() {{{
+test_that("EsgStore$query_tags()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
+    store$tag_query(query_id, c("ssp585", "tas"))
+
     expect_identical(store$query_tags(query_id)$query_id[[1L]], query_id)
+})
+# }}}
+# EsgStore$untag_query() {{{
+test_that("EsgStore$untag_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
+    store$tag_query(query_id, c("ssp585", "tas"))
+
     expect_equal(nrow(store$untag_query(query_id, "tas")), 1L)
 })
 # }}}
-# EsgStore$require_query() / EsgStore$query_graph() / EsgStore$unrequire_query() {{{
-test_that("EsgStore$require_query() / EsgStore$query_graph() / EsgStore$unrequire_query()", {
+# EsgStore$require_query() {{{
+test_that("EsgStore$require_query()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -350,7 +398,53 @@ test_that("EsgStore$require_query() / EsgStore$query_graph() / EsgStore$unrequir
     child_id <- store$add_query(child_query, label = "child", track = TRUE)
     edges <- store$require_query(child_id, query_id)
     expect_equal(edges$query_id[[1L]], child_id)
+})
+# }}}
+# EsgStore$query_graph() {{{
+test_that("EsgStore$query_graph()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
+
+    child_query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("pr")$
+        limit(1L)
+    child_id <- store$add_query(child_query, label = "child", track = TRUE)
+    store$require_query(child_id, query_id)
+
     expect_true(child_id %in% store$query_graph(query_id, direction = "children")$query_id)
+})
+# }}}
+# EsgStore$unrequire_query() {{{
+test_that("EsgStore$unrequire_query()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2L)
+    query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
+
+    child_query <- esg_query("https://example.org")$
+        experiment_id("ssp585")$
+        variable_id("pr")$
+        limit(1L)
+    child_id <- store$add_query(child_query, label = "child", track = TRUE)
+    store$require_query(child_id, query_id)
+
     expect_equal(nrow(store$unrequire_query(child_id, query_id)), 0L)
 })
 # }}}
