@@ -8,7 +8,8 @@ test_that("schema__load_lazy() exposes standalone SchemaDoc constants", {
     expect_true(S7::S7_inherits(SCHEMA_ESG_DICT, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_DOWNLOADER_CONFIG, SchemaDoc))
 })
-
+# }}}
+# schema_paths() {{{
 test_that("schema_paths() exposes expected logical paths for package schemas", {
     expect_true("$parameter" %in% schema_paths(SCHEMA_QUERY))
 
@@ -124,6 +125,7 @@ test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
     expect_error(esg_query()$load(bad_file))
 })
 # }}}
+# schema_test_response() / schema_test_result_json() / schema_test_dataset_docs() / schema_test_file_docs() {{{
 schema_test_response <- function(docs) {
     list(
         responseHeader = list(
@@ -197,6 +199,7 @@ schema_test_file_docs <- function() {
     )))
     docs
 }
+# }}}
 # SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
 test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION validate saved query result JSON fixtures", {
     result_file <- test_path("_snaps", "query-result", "dataset.json")
