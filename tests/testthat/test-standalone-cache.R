@@ -979,7 +979,7 @@ test_that("cache__download() works in offline mode", {
     )
 })
 # }}}
-# cache__set() / cache__get() / cache__reset() {{{
+# cache__set() {{{
 test_that("cache__set() sets and returns old cache", {
     original <- cache__set(NULL)
     on.exit(cache__set(original), add = TRUE)
@@ -1001,7 +1001,8 @@ test_that("cache__set() sets and returns old cache", {
     expect_identical(old2, cache1)
     expect_identical(cache__get(), cache2)
 })
-
+# }}}
+# cache__get() {{{
 test_that("cache__get() uses epwshiftr.dir_cache", {
     original <- cache__set(NULL)
     cache_dir <- tempfile("epwshiftr-dir-cache-")
@@ -1023,7 +1024,8 @@ test_that("cache__get() uses epwshiftr.dir_cache", {
     cache$set("dir-cache-option", list(value = 1L))
     expect_equal(cache$get("dir-cache-option"), list(value = 1L))
 })
-
+# }}}
+# cache__reset() {{{
 test_that("cache__reset() sets cache to NULL", {
     original <- cache__set(NULL)
     on.exit(cache__set(original), add = TRUE)
