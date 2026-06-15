@@ -122,7 +122,7 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
 }
 # }}}
 # EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() {{{
-test_that("EsgDataset can work with a single file", {
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$close() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() work with a single file", {
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
     on.exit(unlink(path), add = TRUE)
@@ -231,7 +231,7 @@ test_that("EsgDataset can work with a single file", {
     expect_false(ds$is_open)
 })
 
-test_that("EsgDataset can work with multiple files", {
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$var_get() / EsgDataset$read_data_table() work with multiple files", {
     paths <- c(tempfile(fileext = ".nc"), tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[[1L]], 2060L)
     write_local_cmip6_netcdf_fixture(paths[[2L]], 2061L)
@@ -288,7 +288,7 @@ test_that("EsgDataset can work with multiple files", {
 })
 # }}}
 # EsgDataset$read_data_table() / EsgDataset$read_region() {{{
-test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
+test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 1850-01-01 00:00:00",
@@ -331,7 +331,7 @@ test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like 
     expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
 
-test_that("EsgDataset read_region() reads nearest grid cells and time windows", {
+test_that("EsgDataset$read_region() reads nearest grid cells and time windows", {
     path1 <- tempfile(fileext = ".nc")
     path2 <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path1, 2060L)
@@ -396,7 +396,7 @@ test_that("EsgDataset read_region() reads nearest grid cells and time windows", 
     )
 })
 
-test_that("EsgDataset read_region() reuses recorded result time filters by default", {
+test_that("EsgDataset$read_region() reuses recorded result time filters by default", {
     path1 <- tempfile(fileext = ".nc")
     path2 <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path1, 2060L)
@@ -440,7 +440,7 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
 })
 # }}}
 # EsgDataset$slice() / EsgDataset$selection() / EsgDataset$reachable() {{{
-test_that("EsgDataset slice() selects files and preserves runtime context", {
+test_that("EsgDataset$slice() selects files and preserves runtime context", {
     paths <- c(
         local_dataset_table_file(
             time_vals = c(0, 1),
@@ -501,7 +501,7 @@ test_that("EsgDataset slice() selects files and preserves runtime context", {
     ))
 })
 
-test_that("EsgDataset slice() validates selectors", {
+test_that("EsgDataset$slice() validates selectors", {
     paths <- c(
         local_dataset_table_file(
             time_vals = c(0, 1),
@@ -530,7 +530,7 @@ test_that("EsgDataset slice() validates selectors", {
     expect_error(ds$slice("1"), "integer")
 })
 
-test_that("EsgDataset slice() reopens selected files only when requested", {
+test_that("EsgDataset$slice() reopens selected files only when requested", {
     paths <- c(
         local_dataset_table_file(
             time_vals = c(0, 1),
@@ -568,7 +568,7 @@ test_that("EsgDataset slice() reopens selected files only when requested", {
     )
 })
 
-test_that("EsgDataset reachable() checks current local files and selection source indices", {
+test_that("EsgDataset$reachable() checks current local files and selection source indices", {
     paths <- c(
         local_dataset_table_file(
             time_vals = c(0, 1),
@@ -612,7 +612,7 @@ test_that("EsgDataset reachable() checks current local files and selection sourc
     expect_equal(file_url$latency_ms, 0)
 })
 
-test_that("EsgDataset reachable() probes current remote data nodes without cached result context", {
+test_that("EsgDataset$reachable() probes current remote data nodes without cached result context", {
     urls <- c("https://ok.example.org/data.nc", "https://bad.example.org/data.nc")
     ds <- EsgDataset$new(urls)
     dataset__set_context(ds, list(
@@ -677,7 +677,7 @@ test_that("EsgDataset reachable() probes current remote data nodes without cache
 })
 # }}}
 # EsgDataset$open(async = TRUE) / EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) {{{
-test_that("EsgDataset public async open keeps the dataset opened after return", {
+test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -701,7 +701,7 @@ test_that("EsgDataset public async open keeps the dataset opened after return", 
     )
 })
 
-test_that("EsgDataset public async reads match sync results and keep open-state checks", {
+test_that("EsgDataset$var_get(async = TRUE) / EsgDataset$read_array(async = TRUE) / EsgDataset$read_data_table(async = TRUE) match sync results and keep open-state checks", {
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -743,7 +743,7 @@ test_that("EsgDataset public async reads match sync results and keep open-state 
     expect_true(ds$is_open)
 })
 
-test_that("EsgDataset public async open supports concurrent local datasets", {
+test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
 
     paths <- c(
@@ -785,7 +785,7 @@ test_that("EsgDataset public async open supports concurrent local datasets", {
     )
 })
 
-test_that("EsgDataset public async reads support concurrent local datasets", {
+test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
 
     paths <- c(
@@ -847,7 +847,7 @@ test_that("EsgDataset public async reads support concurrent local datasets", {
     )
 })
 
-test_that("EsgDataset public async open failures leave the dataset closed and clean", {
+test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and clean", {
     path <- tempfile(fileext = ".nc")
     if (file.exists(path)) {
         unlink(path)
@@ -865,7 +865,7 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
 })
 # }}}
 # dataset__detach_handles() / dataset__adopt_handles() / private$start_async_operation() / private$collect_async_task() / private$cancel_async_task() {{{
-test_that("EsgDataset internal helpers transfer partially opened handles", {
+test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partially opened handles", {
     path_opened <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00",
@@ -928,7 +928,7 @@ test_that("EsgDataset internal helpers transfer partially opened handles", {
     expect_true(all(vapply(failing_private$nc_handles, is.null, logical(1L))))
 })
 
-test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {
+test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -952,7 +952,7 @@ test_that("EsgDataset public async read failures clear task state and keep sync 
     expect_equal(as.numeric(ds$var_get("tas", collapse = TRUE)), c(11, 12, 13))
 })
 
-test_that("EsgDataset internal async tasks keep sync handle state separate", {
+test_that("private$start_async_operation() / private$collect_async_task() keep sync handle state separate", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -989,7 +989,7 @@ test_that("EsgDataset internal async tasks keep sync handle state separate", {
     expect_equal(as.numeric(result), c(101, 102))
 })
 
-test_that("EsgDataset internal async tasks surface timeout errors and clear lifecycle state", {
+test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1014,7 +1014,7 @@ test_that("EsgDataset internal async tasks surface timeout errors and clear life
     expect_true(task$backend_released)
 })
 
-test_that("EsgDataset close() best-effort cancels pending internal async work", {
+test_that("EsgDataset$close() best-effort cancels pending internal async work", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1043,7 +1043,7 @@ test_that("EsgDataset close() best-effort cancels pending internal async work", 
     expect_null(private$async_task)
 })
 
-test_that("EsgDataset internal async cancel race keeps cancelled terminal state", {
+test_that("private$cancel_async_task() keeps cancelled terminal state", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1079,7 +1079,7 @@ test_that("EsgDataset internal async cancel race keeps cancelled terminal state"
 })
 # }}}
 # EsgDataset error handling / EsgDataset$print() {{{
-test_that("EsgDataset handles errors gracefully", {
+test_that("EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$var_get() reject closed datasets", {
     ds <- EsgDataset$new("https://example.org/data.nc")
 
     expect_error(ds$file_inq(), "not open")
