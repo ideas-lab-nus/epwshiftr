@@ -1223,7 +1223,7 @@ test_that("EsgResult$to_data_table() accepts all advertised fields", {
 # }}}
 # EsgResultDataset {{{
 # EsgResult$save() / EsgResult$load() empty child results {{{
-test_that("empty child query results save/load through real JSON files", {
+test_that("EsgResult$save() / EsgResult$load() preserve empty child results", {
     empty_file_docs <- query_result_test_file_docs(character())[0L, ]
 
     for (case_name in c("file", "aggregation")) {
@@ -1264,7 +1264,7 @@ test_that("empty child query results save/load through real JSON files", {
 })
 # }}}
 # EsgResultDataset$collect() {{{
-test_that("empty dataset results collect empty child results without querying", {
+test_that("EsgResultDataset$collect() handles empty child results without querying", {
     docs <- data.frame(id = character(), size = numeric(), check.names = FALSE)
     datasets <- query_result_test_object("Dataset", docs)
 
@@ -1287,7 +1287,7 @@ test_that("empty dataset results collect empty child results without querying", 
     expect_identical(query_param__value(priv(aggs)$parameter$type()), "Aggregation")
 })
 
-test_that("dataset result collect inherits controls and normalizes limit", {
+test_that("EsgResultDataset$collect() inherits controls and normalizes limit", {
     params <- query_result_test_params("Dataset", latest = FALSE, distrib = FALSE, replica = FALSE)
     params$source_id("AWI-CM-1-1-MR")
     datasets <- query_result_test_object(
@@ -1350,7 +1350,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
     expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param__value(priv(aggs)$parameter$fields())))
 })
 
-test_that("dataset result collect accepts data node scope and clears datetime constraints", {
+test_that("EsgResultDataset$collect() accepts data node scope and clears datetime constraints", {
     params <- query_result_test_params("Dataset")
     params$datetime_range(
         start = "2050-01-01T00:00:00Z",
@@ -1387,7 +1387,7 @@ test_that("dataset result collect accepts data node scope and clears datetime co
     expect_error(datasets$collect(time = "all"), "controlled")
 })
 
-test_that("dataset result collect can target child queries by record index node", {
+test_that("EsgResultDataset$collect() targets child queries by record index node", {
     datasets <- query_result_test_object(
         "Dataset",
         data.frame(
@@ -1437,7 +1437,7 @@ test_that("dataset result collect can target child queries by record index node"
 })
 # }}}
 # EsgResultDataset$expand_replicas() {{{
-test_that("dataset result expand_replicas queries dataset replicas by identity", {
+test_that("EsgResultDataset$expand_replicas() queries dataset replicas by identity", {
     docs <- data.frame(
         id = "dataset-1|node-a.example.org",
         instance_id = "dataset-instance-1",
@@ -1490,7 +1490,7 @@ test_that("dataset result expand_replicas queries dataset replicas by identity",
 })
 # }}}
 # EsgResultDataset$has_opendap() / EsgResultDataset$has_download() {{{
-test_that("dataset access helpers tolerate missing access fields", {
+test_that("EsgResultDataset$has_opendap() / EsgResultDataset$has_download() tolerate missing access fields", {
     datasets <- query_result_test_object("Dataset", query_result_test_dataset_docs(access = FALSE))
     expect_identical(datasets$has_opendap(), c(FALSE, FALSE))
     expect_identical(datasets$has_download(), c(FALSE, FALSE))
@@ -1499,7 +1499,7 @@ test_that("dataset access helpers tolerate missing access fields", {
 # }}}
 # EsgResultFile {{{
 # EsgResultFile$url_opendap / EsgResultFile$url_download {{{
-test_that("URL helpers preserve result length for missing and malformed URLs", {
+test_that("EsgResultFile$url_opendap / EsgResultFile$url_download preserve result length for missing and malformed URLs", {
     docs <- data.frame(
         id = paste0("file-", 1:4),
         dataset_id = "dataset-1",
@@ -1542,7 +1542,7 @@ test_that("URL helpers preserve result length for missing and malformed URLs", {
     expect_identical(aggs_opendap, opendap)
 })
 
-test_that("URL warning context is robust for nested or missing field values", {
+test_that("EsgResultFile$url_opendap warns with robust nested or missing field context", {
     docs <- query_result_test_file_docs(c(
         "https://example.org/dods/file-1.html|application/netcdf|OPENDAP",
         "https://example.org/dods/file-1-replica.html|application/netcdf|OPENDAP"
@@ -1560,7 +1560,7 @@ test_that("URL warning context is robust for nested or missing field values", {
 })
 # }}}
 # EsgResultFile$download_plan() {{{
-test_that("download_plan builds current HTTPServer plans with logical file identity", {
+test_that("EsgResultFile$download_plan() builds current HTTPServer plans with logical file identity", {
     files <- query_result_test_object(
         "File",
         query_result_test_file_docs(c(
@@ -1601,7 +1601,7 @@ test_that("download_plan builds current HTTPServer plans with logical file ident
     expect_error(files$download(run = FALSE), "explicit `store` or persistent `downloader`")
 })
 
-test_that("download_plan deduplicates URL probes", {
+test_that("EsgResultFile$download_plan() deduplicates URL probes", {
     docs <- data.table::rbindlist(list(
         query_result_test_file_docs("https://same.example.org/file.nc|application/netcdf|HTTPServer"),
         query_result_test_file_docs("https://same.example.org/file.nc|application/netcdf|HTTPServer")
@@ -1632,7 +1632,7 @@ test_that("download_plan deduplicates URL probes", {
     expect_false(any(plan$probe_cached))
 })
 
-test_that("download_plan reuses fresh data node probe cache", {
+test_that("EsgResultFile$download_plan() reuses fresh data node probe cache", {
     docs <- query_result_test_file_docs("https://cache.example.org/file.nc|application/netcdf|HTTPServer")
     docs$data_node <- "cache.example.org"
     files <- query_result_test_object("File", docs, query_result_test_params("File"))
@@ -1664,7 +1664,7 @@ test_that("download_plan reuses fresh data node probe cache", {
     expect_true(plan$probe_cached)
 })
 
-test_that("download_plan uses data node history to rank replica candidates", {
+test_that("EsgResultFile$download_plan() uses data node history to rank replica candidates", {
     docs <- data.table::rbindlist(list(
         query_result_test_file_docs("https://slow.example.org/file.nc|application/netcdf|HTTPServer"),
         query_result_test_file_docs("https://fast.example.org/file.nc|application/netcdf|HTTPServer")
@@ -1694,7 +1694,7 @@ test_that("download_plan uses data node history to rank replica candidates", {
     expect_equal(plan$node_success_rate, c(1, 0.1))
 })
 
-test_that("download_plan ranks cooling data nodes after available candidates", {
+test_that("EsgResultFile$download_plan() ranks cooling data nodes after available candidates", {
     docs <- data.table::rbindlist(list(
         query_result_test_file_docs("https://cooling.example.org/file.nc|application/netcdf|HTTPServer"),
         query_result_test_file_docs("https://ready.example.org/file.nc|application/netcdf|HTTPServer")
@@ -1739,7 +1739,7 @@ test_that("download_plan ranks cooling data nodes after available candidates", {
 # }}}
 # }}}
 # EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() {{{
-test_that("open_dataset fallback behavior is explicit before side effects", {
+test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() validates fallback before side effects", {
     http_only <- query_result_test_object(
         "File",
         query_result_test_file_docs("https://example.org/file.nc|application/netcdf|HTTPServer"),
@@ -1767,7 +1767,7 @@ test_that("open_dataset fallback behavior is explicit before side effects", {
     )
 })
 
-test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
+test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() falls back to HTTP after OPeNDAP open failures", {
     calls <- new.env(parent = emptyenv())
     calls$opened <- list()
     calls$downloads <- character()
