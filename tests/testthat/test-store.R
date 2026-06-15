@@ -282,8 +282,8 @@ test_that("EsgStore$downloader()", {
     expect_equal(dl_config$config_id, "default")
 })
 # }}}
-# EsgStore$get_meta() / EsgStore$set_meta() {{{
-test_that("EsgStore$get_meta() / EsgStore$set_meta()", {
+# EsgStore$get_meta() {{{
+test_that("EsgStore$get_meta()", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -291,9 +291,19 @@ test_that("EsgStore$get_meta() / EsgStore$set_meta()", {
     on.exit(store$close(), add = TRUE)
 
     expect_null(store$get_meta("active_cmip6_index_artifact_id"))
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+})
+# }}}
+# EsgStore$set_meta() {{{
+test_that("EsgStore$set_meta()", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
     expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
     expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
-    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
 })
 # }}}
 # EsgStore$add_query() {{{
@@ -342,7 +352,7 @@ test_that("EsgStore$queries()", {
     expect_equal(nrow(store$queries(tracked = FALSE)), 0L)
 })
 # }}}
-# EsgStore$track_query() / EsgStore$untrack_query() {{{
+# EsgStore$untrack_query() {{{
 test_that("EsgStore$untrack_query()", {
     skip_if_not_installed("duckdb")
 
@@ -360,7 +370,8 @@ test_that("EsgStore$untrack_query()", {
     expect_false(store$queries()$tracked[[1L]])
     expect_equal(nrow(store$queries(tracked = FALSE)), 1L)
 })
-
+# }}}
+# EsgStore$track_query() {{{
 test_that("EsgStore$track_query()", {
     skip_if_not_installed("duckdb")
 
