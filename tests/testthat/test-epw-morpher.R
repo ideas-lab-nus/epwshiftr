@@ -130,12 +130,33 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     expect_setequal(morpher$required_variables(), epw_morph_variables("recommended"))
 
     periods <- epw_morph_periods(`2060s` = 2060L)
-    climate <- morpher$summarise_climate(plan$plan_id, periods, strict = TRUE)
+    strict_preflight <- morpher$preflight(plan$plan_id, periods, strict = TRUE)
+    expect_named(strict_preflight, epw_morph_diagnostic_columns())
+    expect_true(all(c("missing_required_variable", "missing_month") %in% strict_preflight$code))
+    expect_true(any(strict_preflight$severity == "error"))
+    expect_error(
+        morpher$summarise_climate(plan$plan_id, periods, strict = TRUE),
+        "blocking issues"
+    )
+
+    relaxed_preflight <- morpher$preflight(plan$plan_id, periods, strict = FALSE)
+    expect_true(any(relaxed_preflight$severity == "warning"))
+
+    climate <- morpher$summarise_climate(plan$plan_id, periods, strict = FALSE)
     expect_equal(unique(climate$variable_id), "tas")
     expect_equal(unique(climate$units), "K")
 
     baseline <- morpher$summarise_baseline()
     expect_true(all(c("dry_bulb_temperature", "relative_humidity") %in% baseline$epw_field))
+
+    preview <- morpher$preview_plan(
+        summary_id = unique(climate$summary_id),
+        baseline_id = unique(baseline$baseline_id),
+        strict = TRUE
+    )
+    expect_equal(preview$plan$status, "blocked")
+    expect_equal(nrow(morpher$status(preview$plan$morph_id)), 0L)
+    expect_true(any(preview$diagnostics$severity == "error"))
 
     blocked <- morpher$plan(
         summary_id = unique(climate$summary_id),
@@ -163,6 +184,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     result_data <- read_test_parquet(result_path)
     expect_true(all(c("source_id", "experiment_id", "variant_label", "period") %in% names(result_data)))
     expect_equal(unique(result_data$period), "2060s")
+    expect_equal(morpher$status(relaxed$morph_id)$status, "result_done")
 
     outputs <- morpher$write_epw(
         morph_id = relaxed$morph_id,
@@ -176,7 +198,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     expect_gt(file.size(output_path), 0)
     expect_true(inherits(eplusr::read_epw(output_path), "Epw"))
 
-    expect_equal(morpher$status(relaxed$morph_id)$status, "done")
+    expect_equal(morpher$status(relaxed$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(relaxed$morph_id)), 1L)
 })
 
@@ -230,10 +252,42 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         label = "singapore"
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
+    preflight <- morpher$preflight(plan$plan_id, periods, strict = TRUE)
+    expect_equal(nrow(preflight), 0L)
+
     climate <- morpher$summarise_climate(plan$plan_id, periods, strict = TRUE)
     expect_setequal(unique(climate$variable_id), variables)
 
     baseline <- morpher$summarise_baseline()
+    preview <- morpher$preview_plan(
+        summary_id = unique(climate$summary_id),
+        baseline_id = unique(baseline$baseline_id),
+        strict = TRUE
+    )
+    expect_equal(preview$plan$status, "planned")
+    expect_equal(nrow(preview$diagnostics), 0L)
+    expect_equal(nrow(morpher$status(preview$plan$morph_id)), 0L)
+
+    bad_climate <- data.table::copy(climate)
+    bad_climate[, summary_id := paste0(summary_id, "-bad-units")]
+    bad_climate[variable_id == "tas", units := "bad_unit"]
+    bad_climate[, summary_row_id := epw_morph_hash_rows(summary_id, plan_id, variable_id, period, month, stat)]
+    epw_morph_replace_rows(store, "epw_climate_summary", bad_climate, "summary_row_id")
+    bad_strict <- morpher$preview_plan(
+        summary_id = unique(bad_climate$summary_id),
+        baseline_id = unique(baseline$baseline_id),
+        strict = TRUE
+    )
+    expect_equal(bad_strict$plan$status, "blocked")
+    expect_true(any(bad_strict$diagnostics$code == "unit_conversion_failed"))
+    bad_relaxed <- morpher$preview_plan(
+        summary_id = unique(bad_climate$summary_id),
+        baseline_id = unique(baseline$baseline_id),
+        strict = FALSE
+    )
+    expect_equal(bad_relaxed$plan$status, "planned")
+    expect_true(any(bad_relaxed$diagnostics$severity == "warning"))
+
     strict <- morpher$plan(
         summary_id = unique(climate$summary_id),
         baseline_id = unique(baseline$baseline_id),
@@ -248,6 +302,10 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(results$row_count, 8760L)
     result_path <- store_abs_path(results$output_path, root = store$path)
     expect_true(file.exists(result_path))
+    expect_equal(morpher$status(strict$morph_id)$status, "result_done")
+
+    resumed_results <- morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE)
+    expect_equal(resumed_results$result_id, results$result_id)
 
     outputs <- morpher$write_epw(
         morph_id = strict$morph_id,
@@ -261,6 +319,49 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_gt(file.size(output_path), 0)
     expect_true(inherits(eplusr::read_epw(output_path), "Epw"))
 
-    expect_equal(morpher$status(strict$morph_id)$status, "done")
+    expect_equal(morpher$status(strict$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(strict$morph_id)), 1L)
+
+    resumed_outputs <- morpher$write_epw(
+        morph_id = strict$morph_id,
+        dir = "outputs/future-epw-strict",
+        separate = FALSE,
+        overwrite = FALSE,
+        resume = TRUE
+    )
+    expect_equal(resumed_outputs$output_id, outputs$output_id)
+
+    workflow_dir <- tempfile("esg-store-workflow-")
+    workflow_store <- EsgStore$new(workflow_dir)
+    on.exit(workflow_store$close(), add = TRUE)
+    workflow_query_id <- workflow_store$add_files(epw_morpher_test_result(as.data.frame(docs)))
+    workflow_plan <- workflow_store$plan_region(
+        query_id = workflow_query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+        site_id = "SIN",
+        variable_id = variables,
+        nearest = 1L
+    )
+    workflow_processed <- workflow_store$extract(plan_id = workflow_plan$plan_id)
+    expect_true(all(workflow_processed$status == "done"))
+    workflow_morpher <- epw_morpher(
+        store = workflow_store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        label = "singapore"
+    )
+    workflow <- workflow_morpher$workflow(
+        plan_id = workflow_plan$plan_id,
+        periods = periods,
+        strict = TRUE,
+        dir = "outputs/workflow-epw",
+        separate = FALSE,
+        overwrite = TRUE
+    )
+    expect_named(workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
+    expect_equal(workflow$plan$status, "planned")
+    expect_equal(workflow_morpher$status(workflow$plan$morph_id)$status, "epw_written")
+    expect_equal(nrow(workflow$outputs), 1L)
 })

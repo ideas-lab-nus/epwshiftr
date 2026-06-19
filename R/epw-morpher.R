@@ -197,25 +197,42 @@ epw_morph_unit_alias <- function(x) {
         "pascal" = "Pa",
         "W/m2" = "W/m^2",
         "W m-2" = "W/m^2",
+        "W h m-2" = "W/m^2",
+        "Wh/m2" = "W/m^2",
+        "Wh/m^2" = "W/m^2",
+        "m s-1" = "m/s",
+        "m/s" = "m/s",
         x
     )
 }
 
 epw_morph_convert_value <- function(value, from, to) {
+    epw_morph_convert_value_checked(value, from, to)$value
+}
+
+epw_morph_convert_value_checked <- function(value, from, to) {
     from <- epw_morph_unit_alias(from)
     to <- epw_morph_unit_alias(to)
     if (is.na(value) || is.na(from) || is.na(to) || !nzchar(from) || !nzchar(to) || identical(from, to)) {
-        return(as.numeric(value))
+        return(list(value = as.numeric(value), ok = TRUE, message = NA_character_))
     }
     if (identical(from, "K") && identical(to, "degC")) {
-        return(as.numeric(value) - 273.15)
+        return(list(value = as.numeric(value) - 273.15, ok = TRUE, message = NA_character_))
     }
     if (identical(from, "degC") && identical(to, "K")) {
-        return(as.numeric(value) + 273.15)
+        return(list(value = as.numeric(value) + 273.15, ok = TRUE, message = NA_character_))
     }
     tryCatch(
-        as.numeric(units::drop_units(units::set_units(units::set_units(value, from, mode = "standard"), to, mode = "standard"))),
-        error = function(e) as.numeric(value)
+        list(
+            value = as.numeric(units::drop_units(units::set_units(units::set_units(value, from, mode = "standard"), to, mode = "standard"))),
+            ok = TRUE,
+            message = NA_character_
+        ),
+        error = function(e) list(
+            value = as.numeric(value),
+            ok = FALSE,
+            message = conditionMessage(e)
+        )
     )
 }
 
@@ -311,6 +328,92 @@ epw_morph_get_epw_path <- function(epw) {
     }
     path[[1L]]
 }
+
+epw_morph_diagnostic_columns <- function() {
+    c(
+        "stage", "severity", "code", "message", "plan_id", "summary_id",
+        "baseline_id", "morph_id", "case_id", "variable_id", "epw_field",
+        "period", "month", "action"
+    )
+}
+
+epw_morph_empty_diagnostics <- function() {
+    out <- data.table::data.table(
+        stage = character(),
+        severity = character(),
+        code = character(),
+        message = character(),
+        plan_id = character(),
+        summary_id = character(),
+        baseline_id = character(),
+        morph_id = character(),
+        case_id = character(),
+        variable_id = character(),
+        epw_field = character(),
+        period = character(),
+        month = integer(),
+        action = character()
+    )
+    out[, epw_morph_diagnostic_columns(), with = FALSE]
+}
+
+epw_morph_diagnostic <- function(stage, severity, code, message, plan_id = NA_character_,
+                                 summary_id = NA_character_, baseline_id = NA_character_,
+                                 morph_id = NA_character_, case_id = NA_character_,
+                                 variable_id = NA_character_, epw_field = NA_character_,
+                                 period = NA_character_, month = NA_integer_,
+                                 action = NA_character_) {
+    out <- data.table::data.table(
+        stage = stage,
+        severity = severity,
+        code = code,
+        message = message,
+        plan_id = store__chr1(plan_id),
+        summary_id = store__chr1(summary_id),
+        baseline_id = store__chr1(baseline_id),
+        morph_id = store__chr1(morph_id),
+        case_id = store__chr1(case_id),
+        variable_id = store__chr1(variable_id),
+        epw_field = store__chr1(epw_field),
+        period = store__chr1(period),
+        month = as.integer(month),
+        action = store__chr1(action)
+    )
+    out[, epw_morph_diagnostic_columns(), with = FALSE]
+}
+
+epw_morph_bind_diagnostics <- function(...) {
+    args <- list(...)
+    parts <- list()
+    for (arg in args) {
+        if (is.data.frame(arg)) {
+            parts[[length(parts) + 1L]] <- arg
+        } else if (is.list(arg)) {
+            for (part in arg) {
+                if (is.data.frame(part)) {
+                    parts[[length(parts) + 1L]] <- part
+                }
+            }
+        }
+    }
+    parts <- parts[vapply(parts, nrow, integer(1L)) > 0L]
+    if (!length(parts)) {
+        return(epw_morph_empty_diagnostics())
+    }
+    out <- data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
+    out[, epw_morph_diagnostic_columns(), with = FALSE]
+}
+
+epw_morph_abort_diagnostics <- function(diagnostics, message = "EPW morphing preflight has blocking issues.") {
+    errors <- diagnostics[diagnostics$severity == "error"]
+    if (!nrow(errors)) {
+        return(invisible(NULL))
+    }
+    cli::cli_abort(c(
+        message,
+        "x" = "{errors$message[[1L]]}"
+    ))
+}
 # }}}
 
 # EpwMorpher {{{
@@ -357,6 +460,41 @@ EpwMorpher <- R6::R6Class(
         },
 
         #' @description
+        #' Preflight EPW morphing inputs without writing store state.
+        #'
+        #' @param plan_id Optional extraction plan IDs.
+        #' @param periods Optional period table from [epw_morph_periods()].
+        #' @param summary_id Optional climate summary ID.
+        #' @param baseline_id Optional baseline summary ID.
+        #' @param by Climate grouping columns.
+        #' @param strict Whether required-data issues are errors.
+        preflight = function(plan_id = NULL, periods = NULL, summary_id = NULL, baseline_id = NULL,
+                             by = c("source_id", "experiment_id", "variant_label", "period"), strict = TRUE) {
+            checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            if (!is.null(periods)) {
+                checkmate::assert_data_frame(periods)
+                checkmate::assert_names(names(periods), must.include = c("period", "year"))
+            }
+            checkmate::assert_string(summary_id, null.ok = TRUE)
+            checkmate::assert_string(baseline_id, null.ok = TRUE)
+            checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
+            checkmate::assert_flag(strict)
+            if (is.null(plan_id) && is.null(summary_id)) {
+                cli::cli_abort("Either `plan_id` or `summary_id` must be supplied.")
+            }
+            if (!is.null(plan_id) && is.null(periods)) {
+                cli::cli_abort("`periods` must be supplied when `plan_id` is supplied.")
+            }
+
+            epw_morph_bind_diagnostics(
+                if (!is.null(plan_id)) private$preflight_extraction(plan_id, periods, strict = strict) else epw_morph_empty_diagnostics(),
+                if (!is.null(summary_id)) private$preflight_summary(summary_id, by, strict = strict) else epw_morph_empty_diagnostics(),
+                private$preflight_baseline(baseline_id, strict = strict)
+            )
+        },
+
+        #' @description
         #' Summarise extracted climate data by period and month.
         #'
         #' @param plan_id Extraction plan IDs.
@@ -370,9 +508,12 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_flag(strict)
             checkmate::assert_flag(overwrite)
 
-            coverage <- private$store$coverage(plan_id = plan_id)
-            if (isTRUE(strict) && (!nrow(coverage) || any(!coverage$complete))) {
-                cli::cli_abort("Cannot summarise climate data because selected extraction plans are incomplete.")
+            diagnostics <- self$preflight(plan_id = plan_id, periods = periods, strict = strict)
+            if (isTRUE(strict)) {
+                epw_morph_abort_diagnostics(
+                    diagnostics,
+                    "Cannot summarise climate data because selected extraction plans have blocking issues."
+                )
             }
 
             summary_id <- private$summary_id(plan_id, periods)
@@ -481,16 +622,38 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
             checkmate::assert_flag(strict)
             checkmate::assert_flag(overwrite)
-            if (is.null(baseline_id)) {
-                baseline_id <- unique(self$summarise_baseline()$baseline_id)[[1L]]
-            }
 
-            morph_id <- private$morph_id(summary_id, baseline_id, by, strict)
+            preview <- self$preview_plan(summary_id = summary_id, baseline_id = baseline_id, by = by, strict = strict)
+            morph_id <- preview$plan$morph_id[[1L]]
             current <- epw_morph_read_table(private$store, "epw_morph_plan")
             target_morph_id <- morph_id
             current_plan <- current[current[["morph_id"]] == target_morph_id]
             if (!isTRUE(overwrite) && nrow(current_plan)) {
                 return(current_plan)
+            }
+
+            epw_morph_delete_by_key(private$store, "epw_morph_factor", "morph_id", morph_id)
+            epw_morph_replace_rows(private$store, "epw_morph_plan", preview$plan, "morph_id")
+            epw_morph_replace_rows(private$store, "epw_morph_factor", preview$factors, "factor_id")
+            data.table::as.data.table(preview$plan)
+        },
+
+        #' @description
+        #' Preview a morphing plan and monthly factors without writing store state.
+        #'
+        #' @param summary_id Climate summary ID.
+        #' @param baseline_id Baseline summary ID. If `NULL`, baseline summary is created.
+        #' @param by Climate grouping columns.
+        #' @param strict Whether missing required variables are blocking errors.
+        preview_plan = function(summary_id, baseline_id = NULL, by = c("source_id", "experiment_id", "variant_label", "period"),
+                                strict = TRUE) {
+            checkmate::assert_string(summary_id, min.chars = 1L)
+            checkmate::assert_string(baseline_id, null.ok = TRUE)
+            checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
+            checkmate::assert_flag(strict)
+            if (is.null(baseline_id)) {
+                baseline_id <- unique(self$summarise_baseline()$baseline_id)[[1L]]
             }
 
             climate <- epw_morph_read_table(private$store, "epw_climate_summary")
@@ -506,10 +669,16 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("No baseline summary rows were found for baseline ID {.val {baseline_id}}.")
             }
 
+            morph_id <- private$morph_id(summary_id, baseline_id, by, strict)
             factors <- private$factor_rows(morph_id, climate, baseline, by, strict = strict)
-            status <- if (any(factors$status != "ok") && isTRUE(strict)) "blocked" else "planned"
+            diagnostics <- epw_morph_bind_diagnostics(
+                private$preflight_summary(summary_id, by, strict = strict),
+                private$preflight_baseline(baseline_id, strict = strict),
+                private$factor_diagnostics(factors, strict = strict, morph_id = morph_id)
+            )
+            status <- if (any(diagnostics$severity == "error") && isTRUE(strict)) "blocked" else "planned"
             now <- epw_morph_now()
-            plan <- data.frame(
+            plan <- data.table::data.table(
                 morph_id = morph_id,
                 epw_id = private$epw_id,
                 summary_id = summary_id,
@@ -521,13 +690,9 @@ EpwMorpher <- R6::R6Class(
                 status = status,
                 created_at = now,
                 updated_at = now,
-                last_error = NA_character_,
-                stringsAsFactors = FALSE
+                last_error = NA_character_
             )
-            epw_morph_delete_by_key(private$store, "epw_morph_factor", "morph_id", morph_id)
-            epw_morph_replace_rows(private$store, "epw_morph_plan", plan, "morph_id")
-            epw_morph_replace_rows(private$store, "epw_morph_factor", factors, "factor_id")
-            data.table::as.data.table(plan)
+            list(plan = plan, factors = factors, diagnostics = diagnostics)
         },
 
         #' @description
@@ -541,35 +706,16 @@ EpwMorpher <- R6::R6Class(
             target_morph_id <- morph_id
             factors <- factors[factors[["morph_id"]] == target_morph_id]
             if (!nrow(factors)) {
-                return(data.table::data.table(
+                return(epw_morph_diagnostic(
+                    stage = "plan",
                     severity = "error",
                     code = "no_factors",
                     message = "No morphing factors were found.",
-                    case_id = NA_character_,
-                    epw_field = NA_character_,
-                    variable_id = NA_character_
+                    morph_id = morph_id,
+                    action = "Run EpwMorpher$plan() again."
                 ))
             }
-            bad <- factors[factors[["status"]] != "ok"]
-            if (!nrow(bad)) {
-                return(data.table::data.table(
-                    severity = character(),
-                    code = character(),
-                    message = character(),
-                    case_id = character(),
-                    epw_field = character(),
-                    variable_id = character()
-                ))
-            }
-            severity <- if (isTRUE(plan$strict[[1L]])) "error" else "warning"
-            bad[, .(
-                severity = severity,
-                code = status,
-                message = sprintf("Morphing factor is not available for %s from %s.", epw_field, variable_id),
-                case_id = case_id,
-                epw_field = epw_field,
-                variable_id = variable_id
-            )]
+            private$factor_diagnostics(factors, strict = isTRUE(plan$strict[[1L]]), morph_id = morph_id)
         },
 
         #' @description
@@ -593,9 +739,11 @@ EpwMorpher <- R6::R6Class(
         #'
         #' @param morph_id Morphing plan ID.
         #' @param overwrite Whether to overwrite existing result files.
-        run = function(morph_id, overwrite = FALSE) {
+        #' @param resume Whether to reuse complete existing results.
+        run = function(morph_id, overwrite = FALSE, resume = TRUE) {
             checkmate::assert_string(morph_id, min.chars = 1L)
             checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
             plan <- private$get_plan(morph_id)
             if (isTRUE(plan$strict[[1L]])) {
                 self$check(morph_id)
@@ -609,47 +757,78 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("No morphing cases were found for morph ID {.val {morph_id}}.")
             }
 
-            base_epw <- private$epw$clone()
-            suppressMessages(base_epw$drop_unit())
-            base_data <- data.table::as.data.table(base_epw$data())
-            result_rows <- vector("list", length(cases))
-            for (i in seq_along(cases)) {
-                case_id <- cases[[i]]
-                target_case_id <- case_id
-                case_factors <- factors[factors[["case_id"]] == target_case_id & factors[["status"]] == "ok"]
-                case_data <- private$apply_case_factors(base_data, case_factors)
-                case_meta <- private$case_metadata(factors[factors[["case_id"]] == target_case_id])
-                for (name in names(case_meta)) {
-                    case_data[, (name) := case_meta[[name]]]
-                }
-                path <- private$morph_result_path(morph_id, case_id)
-                if (file.exists(path) && !isTRUE(overwrite)) {
-                    cli::cli_abort("Morph result already exists: {.path {path}}.")
-                }
-                write_parquet_file(case_data, path)
-                artifact_id <- private$store$register_artifact(
-                    kind = "output",
-                    path = path,
-                    role = "derived",
-                    project = "CMIP6",
-                    metadata = list(morph_id = morph_id, case_id = case_id)
-                )
-                result_rows[[i]] <- data.frame(
-                    result_id = epw_morph_hash(morph_id, case_id, path),
-                    morph_id = morph_id,
-                    case_id = case_id,
-                    artifact_id = artifact_id,
-                    output_path = store_rel_path(path, root = private$store$path),
-                    row_count = nrow(case_data),
-                    created_at = epw_morph_now(),
-                    stringsAsFactors = FALSE
-                )
+            existing <- epw_morph_read_table(private$store, "epw_morph_result")
+            target_morph_id <- morph_id
+            existing <- existing[existing[["morph_id"]] == target_morph_id]
+            existing_paths <- if (nrow(existing)) {
+                vapply(existing[["output_path"]], store_abs_path, character(1L), root = private$store$path)
+            } else {
+                character()
             }
-            results <- data.table::rbindlist(result_rows, use.names = TRUE, fill = TRUE)
-            epw_morph_delete_by_key(private$store, "epw_morph_result", "morph_id", morph_id)
-            epw_morph_replace_rows(private$store, "epw_morph_result", results, "result_id")
-            private$set_plan_status(morph_id, "done")
-            results[]
+            complete_existing <- existing[
+                existing[["case_id"]] %in% cases &
+                    vapply(existing_paths, file.exists, logical(1L))
+            ]
+            if (!isTRUE(overwrite) && isTRUE(resume) && length(unique(complete_existing$case_id)) == length(cases)) {
+                private$set_plan_status(morph_id, "result_done")
+                return(complete_existing[match(cases, complete_existing$case_id)])
+            }
+
+            private$set_plan_status(morph_id, "running")
+            tryCatch(
+                {
+                    base_epw <- private$epw$clone()
+                    suppressMessages(base_epw$drop_unit())
+                    base_data <- data.table::as.data.table(base_epw$data())
+                    result_rows <- list()
+                    for (case_id in cases) {
+                        path <- private$morph_result_path(morph_id, case_id)
+                        target_case_id <- case_id
+                        existing_case <- complete_existing[complete_existing[["case_id"]] == target_case_id]
+                        if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_case)) {
+                            result_rows[[length(result_rows) + 1L]] <- existing_case[1L]
+                            next
+                        }
+                        if (file.exists(path) && !isTRUE(overwrite)) {
+                            cli::cli_abort("Morph result already exists without a complete manifest row: {.path {path}}.")
+                        }
+                        allowed_status <- if (isTRUE(plan$strict[[1L]])) "ok" else c("ok", "unit_conversion_failed")
+                        case_factors <- factors[factors[["case_id"]] == target_case_id & factors[["status"]] %in% allowed_status]
+                        case_data <- private$apply_case_factors(base_data, case_factors)
+                        case_meta <- private$case_metadata(factors[factors[["case_id"]] == target_case_id])
+                        for (name in names(case_meta)) {
+                            case_data[, (name) := case_meta[[name]]]
+                        }
+                        write_parquet_file(case_data, path)
+                        artifact_id <- private$store$register_artifact(
+                            kind = "output",
+                            path = path,
+                            role = "derived",
+                            project = "CMIP6",
+                            metadata = list(morph_id = morph_id, case_id = case_id)
+                        )
+                        result_rows[[length(result_rows) + 1L]] <- data.frame(
+                            result_id = epw_morph_hash(morph_id, case_id, path),
+                            morph_id = morph_id,
+                            case_id = case_id,
+                            artifact_id = artifact_id,
+                            output_path = store_rel_path(path, root = private$store$path),
+                            row_count = nrow(case_data),
+                            created_at = epw_morph_now(),
+                            stringsAsFactors = FALSE
+                        )
+                    }
+                    results <- data.table::rbindlist(result_rows, use.names = TRUE, fill = TRUE)
+                    epw_morph_delete_by_key(private$store, "epw_morph_result", "morph_id", morph_id)
+                    epw_morph_replace_rows(private$store, "epw_morph_result", results, "result_id")
+                    private$set_plan_status(morph_id, "result_done")
+                    results[]
+                },
+                error = function(e) {
+                    private$set_plan_status(morph_id, "failed", conditionMessage(e))
+                    stop(e)
+                }
+            )
         },
 
         #' @description
@@ -659,11 +838,13 @@ EpwMorpher <- R6::R6Class(
         #' @param dir Output directory. Relative paths are resolved under the store root.
         #' @param separate Whether to create case subdirectories.
         #' @param overwrite Whether to overwrite existing EPW files.
-        write_epw = function(morph_id, dir, separate = TRUE, overwrite = FALSE) {
+        #' @param resume Whether to reuse complete existing EPW outputs.
+        write_epw = function(morph_id, dir, separate = TRUE, overwrite = FALSE, resume = TRUE) {
             checkmate::assert_string(morph_id, min.chars = 1L)
             checkmate::assert_string(dir, min.chars = 1L)
             checkmate::assert_flag(separate)
             checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
             private$get_plan(morph_id)
             results <- epw_morph_read_table(private$store, "epw_morph_result")
             target_morph_id <- morph_id
@@ -672,61 +853,145 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("No morphing results were found. Run {.code EpwMorpher$run()} first.")
             }
 
-            root <- store_abs_path(dir, root = private$store$path)
-            dir.create(root, recursive = TRUE, showWarnings = FALSE)
-            base_epw <- private$epw$clone()
-            suppressMessages(base_epw$drop_unit())
-            base_cols <- names(base_epw$data())
-            output_rows <- vector("list", nrow(results))
-            for (i in seq_len(nrow(results))) {
-                result <- results[i]
-                result_path <- store_abs_path(result$output_path[[1L]], root = private$store$path)
-                dt <- epw_morph_parquet_read(private$store, result_path)
-                meta <- private$case_metadata_from_result(dt)
-                label <- paste(epw_morph_safe_path(unlist(meta, use.names = FALSE)), collapse = ".")
-                filename <- paste(tools::file_path_sans_ext(basename(epw_morph_get_epw_path(private$epw))), label, "epw", sep = ".")
-                output_path <- if (isTRUE(separate)) {
-                    file.path(root, do.call(file.path, as.list(epw_morph_safe_path(unlist(meta, use.names = FALSE)))), filename)
-                } else {
-                    file.path(root, filename)
+            tryCatch(
+                {
+                    root <- store_abs_path(dir, root = private$store$path)
+                    dir.create(root, recursive = TRUE, showWarnings = FALSE)
+                    base_epw <- private$epw$clone()
+                    suppressMessages(base_epw$drop_unit())
+                    base_cols <- names(base_epw$data())
+                    current_outputs <- epw_morph_read_table(private$store, "epw_output")
+                    target_morph_id <- morph_id
+                    current_outputs <- current_outputs[current_outputs[["morph_id"]] == target_morph_id]
+                    output_rows <- vector("list", nrow(results))
+                    for (i in seq_len(nrow(results))) {
+                        result <- results[i]
+                        result_path <- store_abs_path(result$output_path[[1L]], root = private$store$path)
+                        dt <- epw_morph_parquet_read(private$store, result_path)
+                        meta <- private$case_metadata_from_result(dt)
+                        label <- paste(epw_morph_safe_path(unlist(meta, use.names = FALSE)), collapse = ".")
+                        filename <- paste(tools::file_path_sans_ext(basename(epw_morph_get_epw_path(private$epw))), label, "epw", sep = ".")
+                        output_path <- if (isTRUE(separate)) {
+                            file.path(root, do.call(file.path, as.list(epw_morph_safe_path(unlist(meta, use.names = FALSE)))), filename)
+                        } else {
+                            file.path(root, filename)
+                        }
+                        output_rel <- store_rel_path(output_path, root = private$store$path)
+                        existing_output <- current_outputs[
+                            current_outputs[["case_id"]] == result$case_id[[1L]] &
+                                current_outputs[["path"]] == output_rel
+                        ]
+                        if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_output) && file.exists(output_path)) {
+                            output_rows[[i]] <- existing_output[1L]
+                            next
+                        }
+                        if (file.exists(output_path) && !isTRUE(overwrite)) {
+                            cli::cli_abort("EPW output already exists without a complete manifest row: {.path {output_path}}.")
+                        }
+                        new_epw <- private$epw$clone()
+                        set_data <- data.table::copy(dt[, intersect(base_cols, names(dt)), with = FALSE])
+                        data.table::setcolorder(set_data, base_cols)
+                        suppressMessages(new_epw$drop_unit())
+                        suppressMessages(new_epw$set(set_data))
+                        case_label <- paste(unlist(meta, use.names = FALSE), collapse = "-")
+                        new_epw$comment1(disclaimer_comment(case_label))
+                        new_epw$fill_abnormal(missing = TRUE, out_of_range = TRUE, special = TRUE)
+                        dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+                        new_epw$save(output_path, overwrite = overwrite)
+                        artifact_id <- private$store$register_artifact(
+                            kind = "output",
+                            path = output_path,
+                            role = "output",
+                            project = "CMIP6",
+                            metadata = c(list(morph_id = morph_id, case_id = result$case_id[[1L]]), meta)
+                        )
+                        output_rows[[i]] <- data.frame(
+                            output_id = epw_morph_hash(morph_id, result$case_id[[1L]], output_path),
+                            morph_id = morph_id,
+                            case_id = result$case_id[[1L]],
+                            artifact_id = artifact_id,
+                            path = output_rel,
+                            source_id = store__chr1(meta$source_id),
+                            experiment_id = store__chr1(meta$experiment_id),
+                            variant_label = store__chr1(meta$variant_label),
+                            period = store__chr1(meta$period),
+                            created_at = epw_morph_now(),
+                            stringsAsFactors = FALSE
+                        )
+                    }
+                    outputs <- data.table::rbindlist(output_rows, use.names = TRUE, fill = TRUE)
+                    epw_morph_delete_by_key(private$store, "epw_output", "morph_id", morph_id)
+                    epw_morph_replace_rows(private$store, "epw_output", outputs, "output_id")
+                    private$set_plan_status(morph_id, "epw_written")
+                    outputs[]
+                },
+                error = function(e) {
+                    private$set_plan_status(morph_id, "failed", conditionMessage(e))
+                    stop(e)
                 }
-                if (file.exists(output_path) && !isTRUE(overwrite)) {
-                    cli::cli_abort("EPW output already exists: {.path {output_path}}.")
-                }
-                new_epw <- private$epw$clone()
-                set_data <- data.table::copy(dt[, intersect(base_cols, names(dt)), with = FALSE])
-                data.table::setcolorder(set_data, base_cols)
-                suppressMessages(new_epw$drop_unit())
-                suppressMessages(new_epw$set(set_data))
-                case_label <- paste(unlist(meta, use.names = FALSE), collapse = "-")
-                new_epw$comment1(disclaimer_comment(case_label))
-                new_epw$fill_abnormal(missing = TRUE, out_of_range = TRUE, special = TRUE)
-                dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
-                new_epw$save(output_path, overwrite = overwrite)
-                artifact_id <- private$store$register_artifact(
-                    kind = "output",
-                    path = output_path,
-                    role = "output",
-                    project = "CMIP6",
-                    metadata = c(list(morph_id = morph_id, case_id = result$case_id[[1L]]), meta)
-                )
-                output_rows[[i]] <- data.frame(
-                    output_id = epw_morph_hash(morph_id, result$case_id[[1L]], output_path),
-                    morph_id = morph_id,
-                    case_id = result$case_id[[1L]],
-                    artifact_id = artifact_id,
-                    path = store_rel_path(output_path, root = private$store$path),
-                    source_id = store__chr1(meta$source_id),
-                    experiment_id = store__chr1(meta$experiment_id),
-                    variant_label = store__chr1(meta$variant_label),
-                    period = store__chr1(meta$period),
-                    created_at = epw_morph_now(),
-                    stringsAsFactors = FALSE
-                )
+            )
+        },
+
+        #' @description
+        #' Run the store-native EPW morphing workflow.
+        #'
+        #' @param plan_id Extraction plan IDs.
+        #' @param periods Period table from [epw_morph_periods()].
+        #' @param by Climate grouping columns.
+        #' @param strict Whether blocking diagnostics should abort the workflow.
+        #' @param dir Output directory. Relative paths are resolved under the store root.
+        #' @param separate Whether to create case subdirectories.
+        #' @param overwrite Whether to overwrite existing plan, result, and EPW outputs.
+        #' @param resume Whether to reuse complete existing result and EPW outputs.
+        workflow = function(plan_id, periods, by = c("source_id", "experiment_id", "variant_label", "period"),
+                            strict = TRUE, dir = "outputs/future-epw", separate = TRUE,
+                            overwrite = FALSE, resume = TRUE) {
+            checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_data_frame(periods)
+            checkmate::assert_names(names(periods), must.include = c("period", "year"))
+            checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
+            checkmate::assert_flag(strict)
+            checkmate::assert_string(dir, min.chars = 1L)
+            checkmate::assert_flag(separate)
+            checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
+
+            preflight <- self$preflight(plan_id = plan_id, periods = periods, by = by, strict = strict)
+            if (isTRUE(strict)) {
+                epw_morph_abort_diagnostics(preflight)
             }
-            outputs <- data.table::rbindlist(output_rows, use.names = TRUE, fill = TRUE)
-            epw_morph_replace_rows(private$store, "epw_output", outputs, "output_id")
-            outputs[]
+            climate <- self$summarise_climate(plan_id = plan_id, periods = periods, strict = strict, overwrite = overwrite)
+            baseline <- self$summarise_baseline(overwrite = overwrite)
+            preview <- self$preview_plan(
+                summary_id = unique(climate$summary_id)[[1L]],
+                baseline_id = unique(baseline$baseline_id)[[1L]],
+                by = by,
+                strict = strict
+            )
+            plan <- self$plan(
+                summary_id = unique(climate$summary_id)[[1L]],
+                baseline_id = unique(baseline$baseline_id)[[1L]],
+                by = by,
+                strict = strict,
+                overwrite = overwrite
+            )
+            diagnostics <- epw_morph_bind_diagnostics(preflight, preview$diagnostics)
+            if (isTRUE(strict)) {
+                self$check(plan$morph_id[[1L]])
+            }
+            results <- self$run(plan$morph_id[[1L]], overwrite = overwrite, resume = resume)
+            outputs <- self$write_epw(plan$morph_id[[1L]], dir = dir, separate = separate, overwrite = overwrite, resume = resume)
+            list(
+                preflight = preflight,
+                climate = climate,
+                baseline = baseline,
+                preview = preview,
+                plan = plan,
+                diagnostics = diagnostics,
+                results = results,
+                outputs = outputs
+            )
         },
 
         #' @description
@@ -842,6 +1107,313 @@ EpwMorpher <- R6::R6Class(
             data.table::as.data.table(ddb_query(conn, sql))
         },
 
+        preflight_extraction = function(plan_id, periods, strict = TRUE) {
+            severity <- if (isTRUE(strict)) "error" else "warning"
+            diagnostics <- list()
+            coverage <- private$store$coverage(plan_id = plan_id)
+            if (!nrow(coverage)) {
+                return(epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = "error",
+                    code = "no_extraction_plan",
+                    message = "No extraction plans were found for the selected plan IDs.",
+                    plan_id = paste(plan_id, collapse = ", "),
+                    action = "Run EsgStore$plan_region() and EsgStore$extract() first."
+                ))
+            }
+            missing_plan <- setdiff(plan_id, coverage$plan_id)
+            for (id in missing_plan) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = "error",
+                    code = "missing_extraction_plan",
+                    message = sprintf("Extraction plan %s was not found.", id),
+                    plan_id = id,
+                    action = "Check the supplied plan IDs."
+                )
+            }
+            incomplete <- coverage[!coverage$complete]
+            for (i in seq_len(nrow(incomplete))) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = "error",
+                    code = "incomplete_extraction",
+                    message = sprintf("Extraction plan %s is incomplete.", incomplete$plan_id[[i]]),
+                    plan_id = incomplete$plan_id[[i]],
+                    variable_id = store__chr1(incomplete$variable_id[[i]]),
+                    action = "Complete extraction before morphing."
+                )
+            }
+            missing_variables <- setdiff(self$required_variables(), unique(coverage$variable_id))
+            for (variable_id in missing_variables) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = severity,
+                    code = "missing_required_variable",
+                    message = sprintf("Required CMIP variable %s is missing from selected extraction plans.", variable_id),
+                    variable_id = variable_id,
+                    action = "Add and extract the required variable, or run in relaxed mode."
+                )
+            }
+
+            result <- private$extraction_rows(plan_id)
+            if (!nrow(result)) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = "error",
+                    code = "no_extraction_result",
+                    message = "No extraction result files were found for selected plan IDs.",
+                    plan_id = paste(plan_id, collapse = ", "),
+                    action = "Run EsgStore$extract() first."
+                )
+                return(epw_morph_bind_diagnostics(diagnostics))
+            }
+
+            pieces <- list()
+            for (i in seq_len(nrow(result))) {
+                path <- store_abs_path(result$output_path[[i]], root = private$store$path)
+                dt <- tryCatch(epw_morph_parquet_read(private$store, path), error = function(e) e)
+                if (inherits(dt, "error")) {
+                    diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                        stage = "extraction",
+                        severity = "error",
+                        code = "parquet_unreadable",
+                        message = sprintf("Extraction result cannot be read: %s.", conditionMessage(dt)),
+                        plan_id = result$plan_id[[i]],
+                        action = "Re-run extraction for this plan."
+                    )
+                    next
+                }
+                if (!all(c("time", "variable_id", "value") %in% names(dt))) {
+                    diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                        stage = "extraction",
+                        severity = "error",
+                        code = "invalid_extraction_schema",
+                        message = "Extraction result is missing required columns.",
+                        plan_id = result$plan_id[[i]],
+                        action = "Re-run extraction with the current package version."
+                    )
+                    next
+                }
+                dt[, plan_id := result$plan_id[[i]]]
+                pieces[[length(pieces) + 1L]] <- dt
+            }
+            if (!length(pieces)) {
+                return(epw_morph_bind_diagnostics(diagnostics))
+            }
+
+            climate <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+            climate[, year := as.integer(format(time, "%Y", tz = "UTC"))]
+            climate[, month := as.integer(format(time, "%m", tz = "UTC"))]
+            periods <- data.table::as.data.table(periods)
+            periods[, year := as.integer(year)]
+            climate <- climate[periods, on = "year", nomatch = 0L]
+            if (!nrow(climate)) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = "error",
+                    code = "no_period_rows",
+                    message = "No extracted climate rows matched the supplied EPW morphing periods.",
+                    action = "Check the supplied periods against extracted years."
+                )
+                return(epw_morph_bind_diagnostics(diagnostics))
+            }
+            present <- unique(climate[, .(variable_id, period, month)])
+            expected <- data.table::CJ(
+                variable_id = self$required_variables(),
+                period = unique(periods$period),
+                month = 1:12,
+                unique = TRUE
+            )
+            missing <- expected[!present, on = c("variable_id", "period", "month")]
+            for (i in seq_len(nrow(missing))) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "extraction",
+                    severity = severity,
+                    code = "missing_month",
+                    message = sprintf(
+                        "Required CMIP variable %s has no rows for period %s month %s.",
+                        missing$variable_id[[i]], missing$period[[i]], missing$month[[i]]
+                    ),
+                    variable_id = missing$variable_id[[i]],
+                    period = missing$period[[i]],
+                    month = missing$month[[i]],
+                    action = "Extract a complete morphing period, or run in relaxed mode."
+                )
+            }
+            epw_morph_bind_diagnostics(diagnostics)
+        },
+
+        preflight_summary = function(summary_id, by, strict = TRUE) {
+            severity <- if (isTRUE(strict)) "error" else "warning"
+            diagnostics <- list()
+            climate <- epw_morph_read_table(private$store, "epw_climate_summary")
+            target_summary_id <- summary_id
+            climate <- climate[climate[["summary_id"]] == target_summary_id & climate[["stat"]] == "mean"]
+            if (!nrow(climate)) {
+                return(epw_morph_diagnostic(
+                    stage = "climate_summary",
+                    severity = "error",
+                    code = "missing_climate_summary",
+                    message = sprintf("No climate summary rows were found for summary ID %s.", summary_id),
+                    summary_id = summary_id,
+                    action = "Run EpwMorpher$summarise_climate() first."
+                ))
+            }
+            missing_by <- setdiff(by, names(climate))
+            for (name in missing_by) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "climate_summary",
+                    severity = "error",
+                    code = "missing_group_column",
+                    message = sprintf("Climate summary is missing grouping column %s.", name),
+                    summary_id = summary_id,
+                    action = "Use grouping columns available in the climate summary."
+                )
+            }
+            if (length(missing_by)) {
+                return(epw_morph_bind_diagnostics(diagnostics))
+            }
+            missing_variables <- setdiff(self$required_variables(), unique(climate$variable_id))
+            for (variable_id in missing_variables) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "climate_summary",
+                    severity = severity,
+                    code = "missing_required_variable",
+                    message = sprintf("Required CMIP variable %s is missing from climate summary.", variable_id),
+                    summary_id = summary_id,
+                    variable_id = variable_id,
+                    action = "Summarise climate data with all required variables, or run in relaxed mode."
+                )
+            }
+            cases <- unique(climate[, by, with = FALSE])
+            for (i in seq_len(nrow(cases))) {
+                case <- cases[i]
+                case_filter <- rep(TRUE, nrow(climate))
+                for (name in by) {
+                    case_filter <- case_filter & identical_match(climate[[name]], case[[name]][[1L]])
+                }
+                case_climate <- climate[case_filter]
+                case_id <- epw_morph_hash(summary_id, epw_morph_json(as.list(case)))
+                present <- unique(case_climate[, .(variable_id, period, month)])
+                expected <- data.table::CJ(
+                    variable_id = self$required_variables(),
+                    period = unique(case_climate$period),
+                    month = 1:12,
+                    unique = TRUE
+                )
+                missing <- expected[!present, on = c("variable_id", "period", "month")]
+                for (j in seq_len(nrow(missing))) {
+                    diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                        stage = "climate_summary",
+                        severity = severity,
+                        code = "missing_month",
+                        message = sprintf(
+                            "Climate summary lacks %s for period %s month %s.",
+                            missing$variable_id[[j]], missing$period[[j]], missing$month[[j]]
+                        ),
+                        summary_id = summary_id,
+                        case_id = case_id,
+                        variable_id = missing$variable_id[[j]],
+                        period = missing$period[[j]],
+                        month = missing$month[[j]],
+                        action = "Rebuild climate summary from complete extraction results."
+                    )
+                }
+            }
+            epw_morph_bind_diagnostics(diagnostics)
+        },
+
+        preflight_baseline = function(baseline_id = NULL, strict = TRUE) {
+            severity <- if (isTRUE(strict)) "error" else "warning"
+            fields <- unique(epw_morph_recipe_rules(private$recipe)$epw_field)
+            diagnostics <- list()
+            if (!is.null(baseline_id)) {
+                baseline <- epw_morph_read_table(private$store, "epw_baseline_summary")
+                target_baseline_id <- baseline_id
+                baseline <- baseline[baseline[["baseline_id"]] == target_baseline_id & baseline[["stat"]] == "mean"]
+                if (!nrow(baseline)) {
+                    return(epw_morph_diagnostic(
+                        stage = "baseline",
+                        severity = "error",
+                        code = "missing_baseline_summary",
+                        message = sprintf("No baseline summary rows were found for baseline ID %s.", baseline_id),
+                        baseline_id = baseline_id,
+                        action = "Run EpwMorpher$summarise_baseline() first."
+                    ))
+                }
+                missing_fields <- setdiff(fields, unique(baseline$epw_field))
+                for (field in missing_fields) {
+                    diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                        stage = "baseline",
+                        severity = severity,
+                        code = "missing_epw_field",
+                        message = sprintf("Baseline summary is missing EPW field %s.", field),
+                        baseline_id = baseline_id,
+                        epw_field = field,
+                        action = "Use a baseline EPW containing recipe fields, or run in relaxed mode."
+                    )
+                }
+                present <- unique(baseline[, .(epw_field, month)])
+                expected <- data.table::CJ(epw_field = fields, month = 1:12, unique = TRUE)
+                missing <- expected[!present, on = c("epw_field", "month")]
+                for (i in seq_len(nrow(missing))) {
+                    diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                        stage = "baseline",
+                        severity = severity,
+                        code = "missing_baseline_month",
+                        message = sprintf("Baseline summary lacks %s for month %s.", missing$epw_field[[i]], missing$month[[i]]),
+                        baseline_id = baseline_id,
+                        epw_field = missing$epw_field[[i]],
+                        month = missing$month[[i]],
+                        action = "Rebuild the baseline summary from a complete EPW."
+                    )
+                }
+                return(epw_morph_bind_diagnostics(diagnostics))
+            }
+
+            epw <- private$epw$clone()
+            suppressMessages(epw$add_unit())
+            data <- data.table::as.data.table(epw$data())
+            missing_fields <- setdiff(fields, names(data))
+            for (field in missing_fields) {
+                diagnostics[[length(diagnostics) + 1L]] <- epw_morph_diagnostic(
+                    stage = "baseline",
+                    severity = severity,
+                    code = "missing_epw_field",
+                    message = sprintf("Baseline EPW is missing recipe field %s.", field),
+                    epw_field = field,
+                    action = "Use a baseline EPW containing recipe fields, or run in relaxed mode."
+                )
+            }
+            epw_morph_bind_diagnostics(diagnostics)
+        },
+
+        factor_diagnostics = function(factors, strict = TRUE, morph_id = NA_character_) {
+            bad <- factors[factors[["status"]] != "ok"]
+            if (!nrow(bad)) {
+                return(epw_morph_empty_diagnostics())
+            }
+            severity <- if (isTRUE(strict)) "error" else "warning"
+            rows <- vector("list", nrow(bad))
+            for (i in seq_len(nrow(bad))) {
+                rows[[i]] <- epw_morph_diagnostic(
+                    stage = "plan",
+                    severity = severity,
+                    code = bad$status[[i]],
+                    message = sprintf("Morphing factor is not available for %s from %s.", bad$epw_field[[i]], bad$variable_id[[i]]),
+                    morph_id = morph_id,
+                    case_id = bad$case_id[[i]],
+                    variable_id = bad$variable_id[[i]],
+                    epw_field = bad$epw_field[[i]],
+                    period = bad$period[[i]],
+                    month = bad$month[[i]],
+                    action = "Provide the missing climate or baseline input, or run in relaxed mode."
+                )
+            }
+            epw_morph_bind_diagnostics(rows)
+        },
+
         factor_rows = function(morph_id, climate, baseline, by, strict = TRUE) {
             rules <- epw_morph_recipe_rules(private$recipe)
             cases <- unique(climate[, by, with = FALSE])
@@ -876,10 +1448,14 @@ EpwMorpher <- R6::R6Class(
                             base_units <- epw_morph_default_epw_units(rule$epw_field[[1L]])
                         }
                         if (identical(status, "ok")) {
-                            future_value <- epw_morph_convert_value(future_value, future_units, base_units)
+                            converted <- epw_morph_convert_value_checked(future_value, future_units, base_units)
+                            future_value <- converted$value
+                            if (!isTRUE(converted$ok)) {
+                                status <- "unit_conversion_failed"
+                            }
                         }
-                        delta <- if (identical(status, "ok")) future_value - base_value else NA_real_
-                        alpha <- if (identical(status, "ok") && !is.na(base_value) && !isTRUE(all.equal(base_value, 0))) {
+                        delta <- if (status %in% c("ok", "unit_conversion_failed")) future_value - base_value else NA_real_
+                        alpha <- if (status %in% c("ok", "unit_conversion_failed") && !is.na(base_value) && !isTRUE(all.equal(base_value, 0))) {
                             future_value / base_value
                         } else {
                             NA_real_
