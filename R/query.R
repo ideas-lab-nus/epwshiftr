@@ -67,7 +67,19 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
         }
     }
 
-    res <- tryCatch(jsonlite::fromJSON(url, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    json_source <- url
+    con <- NULL
+    if (is.character(url) && length(url) == 1L && grepl("^https?://", url, useBytes = TRUE)) {
+        con <- base::url(url, headers = c(Accept = "application/json, text/*, */*"))
+        json_source <- con
+    }
+    on.exit({
+        if (!is.null(con) && isTRUE(tryCatch(isOpen(con), error = function(e) FALSE))) {
+            close(con)
+        }
+    }, add = TRUE)
+
+    res <- tryCatch(jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
     timestamp <- Sys.time()
 
     if (inherits(res, "warning") || inherits(res, "error")) {
