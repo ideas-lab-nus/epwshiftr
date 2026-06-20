@@ -7,10 +7,13 @@
       * Index Node: https://example.org
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
+      * Dataset files: 3
+      * Dataset aggregations: 2
       * Total size: XX [GiB]
-      * Fields: 18 | [ id, version, activity_id, data_node, experiment_id, frequency,
+      * Fields: 19 | [ id, version, activity_id, data_node, experiment_id, frequency,
         index_node, instance_id, latest, master_id, number_of_files, project,
-        replica, size, source_id, variable_id, variant_label, and access ]
+        replica, size, source_id, variable_id, variant_label, access, and
+        number_of_aggregations ]
       
       -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6
@@ -31,10 +34,10 @@
       -- <Dataset> (From 1 Data Nodes) -----------------------------------------------
     Output
       [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp126.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 2 Files, 1 GiB | No Aggregations ]
+          [ 2 Files, 1 GiB | 2 Aggregations ]
           [ Access: <...> ]
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp245.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 1 Files, 2 GiB | No Aggregations ]
+          [ 1 Files, 2 GiB | 0 Aggregations ]
           [ Access: <...> ]
 
 # EsgResultFile workflow: offline contract

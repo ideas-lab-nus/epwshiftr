@@ -2232,6 +2232,7 @@ test_that("EsgResultDataset$print() snapshots offline fixtures", {
         query_result_test_object("Dataset", query_result_test_contract_dataset_docs(), params),
         "EsgResultDataset"
     )
+    priv(datasets)$response$response$docs$number_of_aggregations <- c(2L, 0L)
 
     expect_snapshot(datasets$print(), transform = transform_print)
 })

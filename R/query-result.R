@@ -988,6 +988,27 @@ EsgResult <- R6::R6Class(
             cli::cli_bullets(c("*" = "Index Node: {private$index_node}"))
             cli::cli_bullets(c("*" = "Collected at: {ts}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
+            if (identical(type, "Dataset")) {
+                n_files <- private$get_field("number_of_files")
+                if (!is.null(n_files)) {
+                    n_files <- suppressWarnings(as.numeric(n_files))
+                    n_files <- n_files[!is.na(n_files)]
+                    if (length(n_files)) {
+                        n_files <- format(sum(n_files), big.mark = ",", scientific = FALSE)
+                        cli::cli_bullets(c("*" = "Dataset files: {n_files}"))
+                    }
+                }
+
+                n_aggs <- private$get_field("number_of_aggregations")
+                if (!is.null(n_aggs)) {
+                    n_aggs <- suppressWarnings(as.numeric(n_aggs))
+                    n_aggs <- n_aggs[!is.na(n_aggs)]
+                    if (length(n_aggs)) {
+                        n_aggs <- format(sum(n_aggs), big.mark = ",", scientific = FALSE)
+                        cli::cli_bullets(c("*" = "Dataset aggregations: {n_aggs}"))
+                    }
+                }
+            }
             if (type == "Aggregation") {
                 cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
             } else {
