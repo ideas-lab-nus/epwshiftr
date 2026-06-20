@@ -1390,12 +1390,12 @@ test_that("EsgResultDataset$collect() accepts data node scope and clears datetim
     expect_error(datasets$collect(time = "all"), "controlled")
 })
 
-test_that("EsgResultDataset$collect() targets child queries by record index node", {
+test_that("EsgResultDataset$collect() ignores record index node metadata", {
     datasets <- query_result_test_object(
         "Dataset",
         data.frame(
             id = c("dataset-1", "dataset-2", "dataset-3"),
-            index_node = c("idx-a.example.org", NA, "https://idx-b.example.org"),
+            index_node = c("us-index", NA, "https://idx-b.example.org"),
             size = c(1, 1, 1),
             check.names = FALSE
         ),
@@ -1420,23 +1420,24 @@ test_that("EsgResultDataset$collect() targets child queries by record index node
                 response = response,
                 docs = response$response$docs,
                 parameter = params,
-                context = list(query_url = paste0(index_node, "/search?", dataset_id))
+                context = list(query_url = paste0(index_node, "/search?", paste(dataset_id, collapse = ",")))
             )
         },
         .package = "epwshiftr"
     )
 
     files <- expect_s3_class(
-        datasets$collect(fields = "id", limit = 1L, index_node = "fallback.example.org", use_record_index_node = TRUE),
+        datasets$collect(fields = "id", limit = 1L, index_node = "fallback.example.org"),
         "EsgResultFile"
     )
     expect_identical(
         vapply(calls, `[[`, character(1L), "index_node"),
-        c("https://fallback.example.org", "https://idx-a.example.org", "https://idx-b.example.org")
+        "https://fallback.example.org"
     )
-    expect_identical(unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE), datasets$id[c(2L, 1L, 3L)])
+    expect_length(calls, 1L)
+    expect_identical(unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE), datasets$id)
     expect_identical(files$count(), 3L)
-    expect_length(priv(files)$context$query_url, 3L)
+    expect_length(priv(files)$context$query_url, 1L)
 })
 # }}}
 # EsgResultDataset$expand_replicas() {{{

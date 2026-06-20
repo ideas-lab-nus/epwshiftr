@@ -1144,10 +1144,10 @@ EsgQuery <- R6::R6Class(
         #'
         #' @param ... Arguments passed to [EsgResultDataset] child collection
         #'        when `type` is `"File"` or `"Aggregation"`, including the
-        #'        `data_node` scope filter, child-query controls, and
-        #'        `use_record_index_node`. File/Aggregation collection does not
-        #'        use ESGF datetime search parameters; use `$filter_time()` on the
-        #'        returned result for time filtering.
+        #'        `data_node` scope filter and child-query controls.
+        #'        File/Aggregation collection does not use ESGF datetime search
+        #'        parameters; use `$filter_time()` on the returned result for
+        #'        time filtering.
         #'
         #' @return An [EsgResultDataset], [EsgResultFile], or
         #' [EsgResultAggregation] object.

@@ -1270,10 +1270,10 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 
 \item{\code{...}}{Arguments passed to \link{EsgResultDataset} child collection
 when \code{type} is \code{"File"} or \code{"Aggregation"}, including the
-\code{data_node} scope filter, child-query controls, and
-\code{use_record_index_node}. File/Aggregation collection does not
-use ESGF datetime search parameters; use \verb{$filter_time()} on the
-returned result for time filtering.}
+\code{data_node} scope filter and child-query controls.
+File/Aggregation collection does not use ESGF datetime search
+parameters; use \verb{$filter_time()} on the returned result for
+time filtering.}
 }
 \if{html}{\out{</div>}}
 }

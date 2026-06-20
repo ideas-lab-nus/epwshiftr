@@ -3197,12 +3197,6 @@ EsgResultDataset <- R6::R6Class(
         #'        If `NULL`, the index node that created the Dataset result is
         #'        used. Default: `NULL`.
         #'
-        #' @param use_record_index_node Whether to group selected Dataset records
-        #'        by their `index_node` metadata and send child queries to those
-        #'        record-level index nodes. Records without `index_node` fall back
-        #'        to the `index_node` argument or the index node that created this
-        #'        result. Default: `FALSE`.
-        #'
         #' @param ... Optional child-result scope filter `data_node`, plus the
         #'        control parameters `replica`, `distrib`, `latest`, and `shards`.
         #'        Query-level parameters such as `datetime_start` and
@@ -3228,10 +3222,8 @@ EsgResultDataset <- R6::R6Class(
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
-        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", index_node = NULL,
-                           use_record_index_node = FALSE, ...) {
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", index_node = NULL, ...) {
             type <- query_result__type(type, choices = c("File", "Aggregation"))
-            checkmate::assert_flag(use_record_index_node)
             child_index_node <- if (is.null(index_node)) {
                 private$index_node
             } else {
@@ -3257,7 +3249,6 @@ EsgResultDataset <- R6::R6Class(
                 which <- if (is.character(which)) match(which, self$id) else as.integer(which)
             }
 
-            selected <- if (is.null(which)) seq_len(self$count()) else which
             dots_env <- parent.frame()
 
             built <- private$build_params(
@@ -3279,36 +3270,6 @@ EsgResultDataset <- R6::R6Class(
 
             if (self$count() == 0L) {
                 result <- query_result__empty_response(params)
-            } else if (use_record_index_node) {
-                docs <- private$get_docs()
-                record_index_node <- query_result__col(docs[selected, , drop = FALSE], "index_node")
-                record_index_node <- vapply(record_index_node, function(node) {
-                    if (is.na(node) || !nzchar(node)) {
-                        return(child_index_node)
-                    }
-                    query__normalize_node(node)
-                }, character(1L))
-                groups <- split(selected, record_index_node)
-                results <- lapply(names(groups), function(group_index_node) {
-                    group_built <- private$build_params(
-                        fields = fields,
-                        limit = limit,
-                        type = type,
-                        index = groups[[group_index_node]],
-                        dots_env = dots_env,
-                        ...
-                    )
-                    query__collect(
-                        group_index_node,
-                        group_built$params,
-                        required_fields = req_fld,
-                        all = all,
-                        limit = group_built$limit,
-                        constraints = FALSE,
-                        dict_check = TRUE
-                    )
-                })
-                result <- query_result__merge_collects(results, params)
             } else {
                 result <- query__collect(
                     child_index_node,
