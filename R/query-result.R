@@ -1057,36 +1057,42 @@ EsgResult <- R6::R6Class(
             spc <- strrep(" ", nchar(pre[1L], "width"))
 
             if (type == "Dataset") {
+                number_of_files <- private$get_field("number_of_files")
+                number_of_aggregations <- private$get_field("number_of_aggregations")
+                access <- private$get_field("access")
+
                 size <- sprintf(
                     "%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
                     spc,
-                    private$get_field("number_of_files")[ind],
+                    number_of_files[ind],
                     round(self$size[ind], 2),
                     units(self$size)$numerator,
-                    if (is.null(private$get_field("number_of_aggregations"))) {
+                    if (is.null(number_of_aggregations)) {
                         "No Aggregations"
                     } else {
-                        agg <- private$get_field("number_of_aggregations")[ind]
+                        agg <- number_of_aggregations[ind]
                         agg[is.na(agg)] <- 0L
                         paste(agg, vapply(agg, ngettext, "", "Aggregation", "Aggregations"))
                     },
                     spc,
-                    if (is.null(private$get_field("access"))) {
+                    if (is.null(access)) {
                         "NONE"
                     } else {
-                        vapply(private$get_field("access")[ind], paste0, "", collapse = ", ")
+                        vapply(access[ind], paste0, "", collapse = ", ")
                     }
                 )
             } else {
+                url <- self$url
+
                 size <- sprintf(
                     "%s   [ %s %s | Access: <%s> ]",
                     spc,
                     if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
                     units(self$size)$numerator,
-                    if (is.null(self$url)) {
+                    if (is.null(url)) {
                         "NONE"
                     } else {
-                        vapply(self$url[ind], FUN.VALUE = character(1), function(url) {
+                        vapply(url[ind], FUN.VALUE = character(1), function(url) {
                             if (is.null(url)) {
                                 return("NONE")
                             }
@@ -1096,10 +1102,7 @@ EsgResult <- R6::R6Class(
                 )
             }
 
-            for (i in ind) {
-                cli::cat_line(.subset2(brief, i))
-                cli::cat_line(.subset2(size, i))
-            }
+            cli::cat_line(c(rbind(brief, size)))
 
             query_result__trunc(self$id, n)
         }

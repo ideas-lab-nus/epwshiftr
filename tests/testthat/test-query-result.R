@@ -2236,6 +2236,39 @@ test_that("EsgResultDataset$print() snapshots offline fixtures", {
 
     expect_snapshot(datasets$print(), transform = transform_print)
 })
+
+test_that("EsgResult$print_contents() batches content output", {
+    docs <- query_result_test_contract_dataset_docs()
+    docs$number_of_aggregations <- c(2L, 0L)
+    datasets <- query_result_test_object(
+        "Dataset",
+        docs,
+        query_result_test_params("Dataset", limit = 2L)
+    )
+
+    cat_lines <- list()
+    testthat::local_mocked_bindings(
+        cli_rule = function(...) NULL,
+        cat_line = function(...) {
+            cat_lines[[length(cat_lines) + 1L]] <<- list(...)
+        },
+        .package = "cli"
+    )
+
+    priv(datasets)$print_contents("Dataset", 2L)
+
+    expect_length(cat_lines, 1L)
+    lines <- cat_lines[[1L]][[1L]]
+    expect_length(lines, 4L)
+    expect_identical(
+        lines[c(1L, 3L)],
+        sprintf("[%s] %s", lpad(seq_len(2L), "0"), docs$id)
+    )
+    expect_match(lines[[2L]], "2 Files", fixed = TRUE)
+    expect_match(lines[[2L]], "2 Aggregations", fixed = TRUE)
+    expect_match(lines[[4L]], "1 Files", fixed = TRUE)
+    expect_match(lines[[4L]], "0 Aggregations", fixed = TRUE)
+})
 # }}}
 # EsgResultFile$to_data_table() {{{
 test_that("EsgResultFile$to_data_table() supports offline fixtures", {
