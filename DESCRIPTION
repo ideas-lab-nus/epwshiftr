@@ -27,6 +27,8 @@ Imports:
     CFtime,
     curl,
     data.table (>= 1.12.4),
+    DBI,
+    duckdb,
     eplusr (>= 0.15.2),
     fst,
     future.apply,
@@ -38,7 +40,6 @@ Imports:
     psychrolib,
     qs2,
     R6,
-    rappdirs,
     RNetCDF,
     units,
     S7
@@ -69,6 +70,7 @@ Collate:
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
+    'extract-store.R'
     'gh.R'
     'import-standalone-schema.R'
     'morph.R'

@@ -1,66 +1,60 @@
 {
   "index_node": ["..."],
   "parameter": {
-    "project": {
-      "value": ["CMIP6"],
-      "negate": [false]
+    "facet": {
+      "project": {
+        "value": ["CMIP6"],
+        "negate": [false]
+      },
+      "activity_id": {
+        "value": ["ScenarioMIP"],
+        "negate": [false]
+      },
+      "experiment_id": {
+        "value": ["ssp585"],
+        "negate": [false]
+      },
+      "variable_id": {
+        "value": ["tas"],
+        "negate": [false]
+      },
+      "fields": {
+        "value": ["*"],
+        "negate": [false]
+      }
     },
-    "activity_id": {
-      "value": ["ScenarioMIP"],
-      "negate": [false]
+    "query": [],
+    "control": {
+      "latest": {
+        "value": [true],
+        "negate": [false]
+      },
+      "type": {
+        "value": ["Dataset"],
+        "negate": [false]
+      },
+      "offset": {
+        "value": [0],
+        "negate": [false]
+      },
+      "distrib": {
+        "value": [true],
+        "negate": [false]
+      },
+      "limit": {
+        "value": [2],
+        "negate": [false]
+      },
+      "format": {
+        "value": ["application/solr+json"],
+        "negate": [false]
+      }
     },
-    "experiment_id": {
-      "value": ["ssp585"],
-      "negate": [false]
-    },
-    "source_id": null,
-    "variable_id": {
-      "value": ["tas"],
-      "negate": [false]
-    },
-    "frequency": null,
-    "variant_label": null,
-    "nominal_resolution": null,
-    "data_node": null,
-    "facets": null,
-    "fields": {
-      "value": ["*"],
-      "negate": [false]
-    },
-    "shards": null,
-    "replica": null,
-    "latest": {
-      "value": [true],
-      "negate": [false]
-    },
-    "type": {
-      "value": ["Dataset"],
-      "negate": [false]
-    },
-    "offset": {
-      "value": [0],
-      "negate": [false]
-    },
-    "distrib": {
-      "value": [true],
-      "negate": [false]
-    },
-    "limit": {
-      "value": [2],
-      "negate": [false]
-    },
-    "format": {
-      "value": ["application/solr+json"],
-      "negate": [false]
-    },
-    "datetime_start": null,
-    "datetime_stop": null,
-    "_timestamp": null,
-    "version_min": null,
-    "version_max": null,
-    "table_id": {
-      "value": ["Amon", "day"],
-      "negate": [false]
+    "others": {
+      "table_id": {
+        "value": ["Amon", "day"],
+        "negate": [false]
+      }
     }
   }
 }

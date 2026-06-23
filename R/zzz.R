@@ -9,6 +9,7 @@
         "epwshiftr.threshold_alpha" = 3,
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = TRUE,
+        "epwshiftr.dir_store" = tools::R_user_dir("epwshiftr", "data"),
         "epwshiftr.cache_dir" = tools::R_user_dir("epwshiftr", "cache")
     )
     missing <- setdiff(names(.opts), names(options()))

@@ -142,7 +142,8 @@ Default to \code{NULL}, which means all possible data nodes.}
 the data file. All other years will be excluded. If \code{NULL}, no
 subsetting on years will be performed. Default: \code{NULL}.}
 
-\item{save}{If \code{TRUE}, the results will be saved into user data directory.
+\item{save}{If \code{TRUE}, the results will be saved as an active CMIP6 index
+artifact in the persistent store.
 Default: \code{FALSE}.}
 
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
@@ -187,10 +188,7 @@ lookups through the legacy-compatible \code{\link[=esgf_query]{esgf_query()}} wr
 host-based workflows keep working. For new direct ESGF searches, start with
 \code{\link[=esg_query]{esg_query()}} / \link{EsgQuery}. It returns a
 \code{\link[data.table:data.table]{data.table::data.table()}} containing the actual NetCDF file url to
-download, and stores it into user data directory for future use.
-}
-\details{
-For details on where the file index is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.
+download, and can store it in the persistent epwshiftr store for future use.
 }
 \note{
 Argument \code{limit} will only apply to \code{Dataset} query. \code{init_cmip6_index()} will

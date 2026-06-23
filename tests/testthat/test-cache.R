@@ -1,7 +1,7 @@
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
     cache <- DiskCache$new(dir = dir, ...)
-    priv(cache)$set_count <- max(as.integer(cache$info()$prune_rate) - 1L, 0L)
+    priv(cache)$set_count <- 0L
     cache
 }
 
@@ -39,7 +39,11 @@ test_that("DiskCache: initialization with invalid parameters", {
     )
     expect_error(
         DiskCache$new(cache_dir, prune_rate = 0),
-        "'prune_rate' must be a positive number"
+        "'prune_rate' must be a positive integer"
+    )
+    expect_error(
+        DiskCache$new(cache_dir, prune_rate = 1.5),
+        "'prune_rate' must be a positive integer"
     )
     expect_error(
         DiskCache$new(cache_dir, prune_limit = -1),
@@ -747,8 +751,54 @@ test_that("with_cache_mode() scopes correctly and restores original", {
     })
     expect_equal(cache_mode(), "normal")
 
+    with_cache_mode(FALSE, {
+        expect_equal(cache_mode(), "off")
+    })
+    expect_equal(cache_mode(), "normal")
+
+    with_cache_mode(TRUE, {
+        expect_equal(cache_mode(), "normal")
+    })
+    expect_equal(cache_mode(), "normal")
+
     # Invalid mode
     expect_error(with_cache_mode("invalid", NULL), "Unknown cache mode")
+})
+
+test_that("read_json_response() honors explicit cache mode", {
+    cache <- local_test_cache()
+    local_cache_mode("off")
+
+    path <- tempfile(fileext = ".json")
+    jsonlite::write_json(
+        list(response = list(numFound = 1L, docs = list())),
+        path,
+        auto_unbox = TRUE
+    )
+
+    res <- read_json_response(path, cache = TRUE, simplifyVector = FALSE)
+    expect_equal(res$response$numFound, 1L)
+    expect_equal(cache$size(), 1L)
+
+    offline <- read_json_response(path, cache = "offline", simplifyVector = FALSE)
+    expect_equal(offline$response$numFound, 1L)
+
+    expect_error(
+        read_json_response(tempfile(fileext = ".json"), cache = "offline"),
+        "Cache miss in offline mode"
+    )
+})
+
+test_that("read_json_response() does not cache failed non-strict reads", {
+    cache <- local_test_cache()
+    local_cache_mode("normal")
+
+    expect_warning(
+        res <- read_json_response("not valid json", strict = FALSE, cache = TRUE),
+        "Failed to read the JSON response"
+    )
+    expect_null(res)
+    expect_equal(cache$size(), 0L)
 })
 
 test_that("make_cache_key() is deterministic", {

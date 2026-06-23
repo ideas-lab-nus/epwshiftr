@@ -26,6 +26,8 @@ schema__load_lazy <- function(name, file, env = parent.frame()) {
 schema__load_lazy("SCHEMA_QUERY", "query.json")
 schema__load_lazy("SCHEMA_RESPONSE", "response.json")
 schema__load_lazy("SCHEMA_RESULT_DATASET", "result-dataset.json")
+schema__load_lazy("SCHEMA_RESULT_FILE", "result-file.json")
+schema__load_lazy("SCHEMA_RESULT_AGGREGATION", "result-aggregation.json")
 schema__load_lazy("SCHEMA_ESG_DICT", "esg-dict.json")
 
 # vim: fdm=marker :
