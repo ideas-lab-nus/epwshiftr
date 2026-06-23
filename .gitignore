@@ -4,3 +4,14 @@
 *.pdf
 docs/
 inst/doc
+
+# Local workflow artifacts
+cache/
+outputs/
+*.nc
+*.nc4
+*.parquet
+*.duckdb
+*.duckdb.lock
+*.part
+*.epw

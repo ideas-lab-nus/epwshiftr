@@ -1,4 +1,4 @@
-# print.Cmip6CV() and print.Cmip6DReq()
+# print.Cmip6CV() / print.Cmip6DReq()
 
     Code
       print(dict$get("activity_id"))

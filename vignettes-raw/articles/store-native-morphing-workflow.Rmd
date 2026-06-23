@@ -1,0 +1,650 @@
+---
+title: "Store-Native EPW Morphing Workflow"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Store-Native EPW Morphing Workflow}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Create future EPW files from a store-backed shift workflow.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{r setup}
+library(epwshiftr)
+
+if (!exists("shift_request", mode = "function")) {
+    stop(
+        "This raw article must be rendered from the package source with ",
+        "`tools/render-raw-vignettes.R`.",
+        call. = FALSE
+    )
+}
+```
+
+<style type="text/css">
+.shift-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.45rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.shift-node {
+  flex: 1 1 10.5rem;
+  min-width: 10.5rem;
+  border: 1px solid #d6dbe3;
+  border-radius: 6px;
+  padding: 0.7rem 0.75rem;
+  background: #f8fafc;
+}
+
+.shift-node strong,
+.shift-node span,
+.shift-node code {
+  display: block;
+}
+
+.shift-node strong {
+  margin-bottom: 0.25rem;
+}
+
+.shift-node span {
+  color: #3f4a5a;
+  font-size: 0.9rem;
+  line-height: 1.25;
+  margin-bottom: 0.35rem;
+}
+
+.shift-node code {
+  width: fit-content;
+  padding: 0.12rem 0.32rem;
+  border-radius: 4px;
+  background: #edf2f7;
+}
+
+.shift-arrow {
+  align-self: center;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.shift-side-note {
+  margin: 0.75rem 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid #5b7cfa;
+  background: #f7f9ff;
+}
+
+@media (max-width: 720px) {
+  .shift-flow {
+    display: block;
+  }
+
+  .shift-node {
+    margin-bottom: 0.6rem;
+  }
+
+  .shift-arrow {
+    display: none;
+  }
+}
+</style>
+
+This article runs a real store-native shift workflow from ESGF File records to
+generated EPW files. It uses monthly `Amon` data so the live remote reads are
+much smaller than an equivalent daily workflow.
+
+Use a temporary store for this article run. For a real project, replace this
+with a persistent project cache path.
+
+```{r local-workspace}
+workflow_root <- file.path(tempdir(), "epwshiftr-store-native-morphing")
+if (dir.exists(workflow_root)) {
+    unlink(workflow_root, recursive = TRUE)
+}
+dir.create(workflow_root, recursive = TRUE, showWarnings = FALSE)
+
+options(
+    epwshiftr.dir_cache = file.path(workflow_root, "cache")
+)
+```
+
+# Site and Request
+
+`shift_site()` describes the location that will be extracted from climate
+projection data. The `id` is the stable site key used in extraction plans,
+manifest rows, and output naming, so use a short value that will still make
+sense when you process several sites.
+
+You can provide the site metadata directly:
+
+```{r site}
+epw <- system.file(
+    "extdata", "vignettes", "future-weather", "SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr"
+)
+
+site <- shift_site(
+    id = "SIN",
+    lon = 103.98,
+    lat = 1.37,
+    label = "Singapore"
+)
+
+site
+```
+
+Or you can read the same information from an `eplusr::Epw` object:
+
+```{r site-from-epw}
+epw_site <- shift_site(eplusr::read_epw(epw))
+epw_site
+```
+
+This article keeps using the explicit `site` object so the site ID is short and
+predictable, while the EPW file itself is passed later as the morphing baseline.
+
+`epw_morph_variables()` returns the CMIP variable IDs needed by the morphing
+recipe. The result is a plain character vector because the same variable IDs are
+used at several workflow stages: first as the ESGF `variable_id` filter in
+`shift_request()`, then as the extraction variable list in `shift_extract()`,
+and finally as the coverage check used by `shift_morph()`.
+
+The helper provides three named variable sets:
+
+- `"minimal"`: air temperature and relative humidity, useful for relaxed
+  demonstrations.
+- `"recommended"`: the current strict Belcher recipe set.
+- `"extended"`: the recommended set plus related max/min variables for future
+  recipes.
+
+This article uses `"recommended"` because `strict = TRUE` requires every recipe
+variable.
+
+```{r variables}
+variables <- epw_morph_variables("recommended")
+variables
+```
+
+`shift_request()` describes the remote climate data you want. Here it targets
+one ESGF ScenarioMIP model, scenario, member, and monthly table.
+
+The values inside `filters` are ESGF search fields. `options` is not a search
+filter. `options$index_node` chooses the ESGF search node; if omitted,
+`epwshiftr` uses its default ESGF index. The other request option currently
+recognized by the ESGF adapter is `time_filter_method`, which controls how File
+records are filtered by `time` after Dataset collection; the default is `"drs"`
+filename parsing. The `time` argument narrows File records after Dataset
+collection; it does not mean the whole period is downloaded. A numeric year such
+as `2060L` is expanded to that whole calendar year.
+
+```{r request}
+request <- shift_request(
+    project = "CMIP6",
+    time = 2060L,
+    filters = list(
+        activity_id = "ScenarioMIP",
+        source_id = "MPI-ESM1-2-LR",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        frequency = "mon",
+        variable_id = variables,
+        data_node = "esgf.ceda.ac.uk",
+        table_id = "Amon"
+    ),
+    options = list(index_node = "https://esgf-data.dkrz.de")
+)
+
+request
+```
+
+# Run the Workflow
+
+The diagram below is the map for the rest of the article. Each `shift_*()` call
+returns a stage object that can be printed, checked, and passed to the next
+step.
+
+<div class="shift-flow" role="img" aria-label="Store-native shift workflow from request to EPW outputs">
+<div class="shift-node"><strong>shift_request()</strong><span>Describe ESGF data</span><code>ShiftRequest</code></div>
+  <div class="shift-arrow">&rarr;</div>
+<div class="shift-node"><strong>shift_datasets()</strong><span>Inspect Dataset matches</span><code>EsgResultDataset</code></div>
+  <div class="shift-arrow">&rarr;</div>
+<div class="shift-node"><strong>shift_collect()</strong><span>Collect concrete File records</span><code>ShiftFiles</code></div>
+  <div class="shift-arrow">&rarr;</div>
+<div class="shift-node"><strong>shift_extract()</strong><span>OPeNDAP-first extraction to store Parquet</span><code>ShiftClimate</code></div>
+  <div class="shift-arrow">&rarr;</div>
+<div class="shift-node"><strong>shift_morph()</strong><span>Hourly future weather Parquet</span><code>ShiftMorphed</code></div>
+  <div class="shift-arrow">&rarr;</div>
+<div class="shift-node"><strong>shift_epw()</strong><span>Write EnergyPlus Weather files</span><code>ShiftOutputs</code></div>
+</div>
+
+<div class="shift-side-note">
+  <code>shift_download()</code> is optional. Use it when you want to prefetch
+  full NetCDF files for offline work, repeated extraction, or unstable OPeNDAP
+  access.
+</div>
+
+The ordinary path goes directly from collected File records to extraction. Full
+NetCDF downloads are not required unless you intentionally want a local
+source-file cache.
+
+## Inspect Dataset Matches
+
+Before collecting File records, inspect the Dataset matches. If this table is
+broader or narrower than intended, change the request filters before continuing.
+`shift_datasets()` runs the Dataset-level ESGF search described by
+`shift_request()`. The returned `EsgResultDataset` object is not the data to
+download yet; it is the list of Dataset records that will later be expanded into
+File records.
+
+```{r datasets}
+datasets <- shift_datasets(request)
+datasets
+```
+
+Use `$to_data_table()` when you want row-level details for decisions such as
+whether the request matched the expected variables, model, variant, and data
+node.
+
+```{r dataset-table}
+dataset_table <- datasets$to_data_table(fields = c(
+    "id", "source_id", "experiment_id", "variant_label",
+    "variable_id", "data_node", "number_of_files"
+), formatted = TRUE)
+
+dataset_table
+```
+
+Summarise the table before moving on. In this request, each variable should have
+one matching Dataset record on the selected data node.
+
+```{r dataset-summary}
+dataset_table[, .(
+    datasets = .N,
+    files = sum(number_of_files, na.rm = TRUE),
+    variables = paste(sort(unique(variable_id)), collapse = ", ")
+), by = .(source_id, experiment_id, variant_label, data_node)]
+```
+
+The Dataset result can also be filtered locally before collecting child File
+records. This is useful when a broad request intentionally returns several
+models, variants, data nodes, or variables and you want to inspect or keep only
+part of the match. The example below keeps only two variables so the effect is
+easy to see.
+
+```{r dataset-filter}
+selected_datasets <- datasets$filter(function(x) {
+    x$variable_id %in% c("tas", "hurs")
+})
+
+selected_datasets$to_data_table(fields = c(
+    "id", "variable_id", "data_node", "number_of_files"
+))
+```
+
+For a lower-level workflow, you can collect File records from that subset
+directly. The staged `shift_collect()` call below performs the same
+Dataset-to-File expansion for the original request and stores the result in an
+`EsgStore`, so the main workflow continues with `shift_collect()`.
+
+```{r dataset-collect-preview, eval=FALSE}
+selected_files <- selected_datasets$collect(
+    type = "File",
+    fields = "*",
+    all = TRUE,
+    limit = NULL
+)
+```
+
+## Collect File Records
+
+`store` is the local directory where `epwshiftr` records ESGF File metadata,
+download tasks, extraction outputs, morphing factors, and generated EPWs.
+`shift_collect()` first collects Dataset records, then uses
+`Dataset$collect(type = "File")` to collect the concrete files needed by the
+rest of the workflow. The returned `ShiftFiles` object is the workflow stage:
+it remembers the store path and internal query ID so later steps do not need the
+user to pass file paths or manifest IDs.
+
+```{r collect}
+files <- shift_collect(
+    request,
+    store = file.path(workflow_root, "singapore-store")
+)
+
+files
+```
+
+Use `shift_files()` when you want to inspect the underlying `EsgResultFile`
+object that was saved into the store. Printing it gives the same high-level
+summary as a direct ESGF File query result.
+
+```{r file-result}
+file_result <- shift_files(files)
+file_result
+```
+
+Convert the File result to a table when you want to inspect exactly which files
+were found. The URL columns are long, so this view shows whether each file has
+OPeNDAP and HTTPServer access instead of printing the full URLs.
+
+```{r file-table}
+file_table <- file_result$to_data_table(fields = c(
+    "filename", "variable_id", "data_node", "size",
+    "url_opendap", "url_download"
+), formatted = TRUE)
+
+file_table[, .(
+    filename,
+    variable_id,
+    data_node,
+    size,
+    opendap = !is.na(url_opendap) & nzchar(url_opendap),
+    http = !is.na(url_download) & nzchar(url_download)
+)]
+```
+
+## Optional: Prefetch NetCDF Files
+
+For the normal single-site workflow, you can skip `shift_download()` and go
+directly to `shift_extract()`. Extraction opens the OPeNDAP URL first and reads
+only the requested site, variables, and time range before storing the extracted
+result as Parquet.
+
+`shift_download()` is useful when you deliberately want a complete local copy of
+the original ESGF NetCDF files before extraction. It downloads full source files
+through selected `HTTPServer` URLs into the store's `downloads/` directory. This
+is different from OPeNDAP, which lets `shift_extract()` read only the requested
+site, variables, and time range.
+
+Use this optional prefetch step when you plan to reuse the same source files for
+many sites or periods, need offline extraction later, or expect OPeNDAP to be
+unavailable or unstable.
+
+By default, `shift_download()` runs in the foreground (`run = TRUE`,
+`background = FALSE`). In an interactive session, keep `progress = TRUE` to see
+per-file progress bars. This article sets `progress = FALSE` only to keep the
+precompiled output compact.
+
+If the network drops, the downloader keeps partial `.part` files and
+`resume = TRUE` lets the next run continue where possible. If the final file is
+already present and complete, it is reused. Use `overwrite = TRUE` only when you
+want to discard an existing completed file and download it again.
+
+If a data node becomes unstable, rerun `shift_download()` with the same stage.
+The store keeps the File records and download session metadata, while the
+downloader records task status and data-node history. If you run the optional
+chunk below, inspect the result with `shift_status(downloads)`,
+`shift_check(downloads)`, and `data.table::as.data.table(downloads)`.
+
+```{r download, eval=FALSE}
+downloads <- shift_download(
+    files,
+    replica = "current",
+    service = "HTTPServer",
+    strategy = "stable",
+    probe = FALSE,
+    progress = FALSE
+)
+
+downloads
+```
+
+## Extract Site Climate
+
+This is where the remote climate data are actually read in the default workflow.
+`shift_extract()` opens OPeNDAP when possible, extracts only the requested site
+and period, and stores the extracted rows as Parquet artifacts in the store. In
+the code below the result is named `extracted` because it is the extracted
+site-level climate stage. Its class is `ShiftClimate`, because that stage is the
+climate data that `shift_morph()` will summarise and compare with the baseline
+EPW.
+
+`epw_morph_periods()` maps user-facing period labels to one or more years. The
+name, such as `2060s`, becomes the period label in summaries, morphing cases,
+and output paths. The numeric value is the year or years used to calculate that
+period. This article uses one year so the remote extraction stays small:
+
+```r
+epw_morph_periods(`2060s` = 2060L)
+```
+
+A wider period is also valid, for example:
+
+```r
+epw_morph_periods(`2060s` = 2055:2064)
+```
+
+The collected files must cover every year used by the period.
+
+`fallback = "auto"` means extraction tries OPeNDAP first and may fall back to
+HTTP file downloads when remote OPeNDAP access is unavailable. Use `"error"`
+when you want remote access failures to stop the extraction instead.
+
+```{r extract}
+periods <- epw_morph_periods(`2060s` = 2060L)
+
+extracted <- shift_extract(
+    files,
+    site = site,
+    periods = periods,
+    variables = variables,
+    fallback = "auto"
+)
+
+extracted
+```
+
+`shift_coverage()` checks whether every requested variable has extracted rows
+for the selected site and period. This is the main sanity check before morphing.
+
+```{r coverage-after-extract}
+coverage <- shift_coverage(extracted)
+coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
+```
+
+The extracted values are not stored inside the small stage object. They are
+written as partitioned Parquet files under the store and registered in the store
+manifest. `shift_artifacts()` shows those registered files:
+
+```{r extract-artifacts}
+extract_artifacts <- shift_artifacts(extracted)
+extract_artifacts[kind == "extract", .(kind, role, relative_path)]
+```
+
+Use `shift_data()` when you want to inspect the actual extracted table without
+manually finding or reading those Parquet files. By default it returns a preview
+instead of loading everything into memory.
+
+```{r extract-data}
+extracted_data <- shift_data(
+    extracted,
+    n = 20L,
+    columns = c("site_id", "variable_id", "time", "lon", "lat", "value", "units")
+)
+
+extracted_data
+```
+
+## Morph Hourly Weather
+
+`shift_morph()` summarises the extracted monthly climate, compares it with the
+baseline EPW, creates morphing factors, and writes morphed hourly results back
+to the store. With `strict = TRUE`, missing required variables or incomplete
+coverage are blocking errors instead of warnings.
+
+```{r morph}
+morphed <- shift_morph(
+    extracted,
+    baseline = epw,
+    strict = TRUE
+)
+
+morphed
+```
+
+The `morphed` stage is still store-native. It contains hourly future weather
+data as Parquet artifacts, not EPW text files yet. Inspect the artifact rows when
+you want to see where those intermediate results live:
+
+```{r morph-artifacts}
+morph_artifacts <- shift_artifacts(morphed)
+morph_artifacts[, .(kind, role, relative_path)]
+```
+
+Use the same `shift_data()` helper to preview the hourly morphed weather table.
+The metadata columns identify the morphing case; the weather columns are the
+hourly EPW-style values that will be written to the final EPW. The preview below
+omits long IDs to keep the table readable; include `case_id` in `columns` when
+you need to join rows back to a specific morphing case.
+
+```{r morph-data}
+morphed_data <- shift_data(
+    morphed,
+    n = 24L,
+    columns = c(
+        "period", "year", "month", "day", "hour",
+        "dry_bulb_temperature", "relative_humidity", "wind_speed"
+    )
+)
+
+morphed_data
+```
+
+## Write EPW Files
+
+`shift_epw()` writes EnergyPlus Weather files from the morphed hourly results.
+It returns a `ShiftOutputs` stage. The first chunk assigns the result while
+hiding verbose writer output; the second prints the stage object.
+
+```{r epw-run, results = "hide"}
+epws <- shift_epw(morphed)
+```
+
+```{r epw}
+epws
+```
+
+`shift_outputs()` lists the EPW files written by `shift_epw()`. These are the
+files you can pass to EnergyPlus or open with `eplusr::read_epw()`.
+
+```{r epw-output-rows}
+outputs <- shift_outputs(epws)
+outputs[, .(path, source_id, experiment_id, variant_label, period)]
+```
+
+`shift_data(epws)` reads the written EPW file back and returns its hourly weather
+data with output metadata attached. This is useful for confirming that the final
+file contains the same kind of hourly weather values you inspected in the
+store-native morphed Parquet step. Output metadata such as `output_id`, `case_id`,
+and `path` are available in `shift_data(epws)`; they are omitted here so the
+weather values stay visible.
+
+```{r epw-data}
+epw_data <- shift_data(
+    epws,
+    n = 24L,
+    columns = c(
+        "period", "year", "month", "day", "hour",
+        "dry_bulb_temperature", "relative_humidity", "wind_speed"
+    )
+)
+
+epw_data
+```
+
+# Validate and Reuse the Result
+
+At this point the workflow has produced EPW files, but there are still a few
+checks worth doing before using them in EnergyPlus or passing them to someone
+else. These checks answer three practical questions:
+
+- Did every stage finish?
+- If something failed or looks incomplete, where should you look first?
+- Where are the reusable files and store artifacts?
+
+## Check Stage Health
+
+Use `shift_status()` when you want a compact stage-level check. It returns a
+single status string so it can be used in scripts, reports, or simple guards.
+For a successful run, the sequence should end with an EPW stage marked
+`written`.
+
+```{r status}
+data.table::data.table(
+    stage = c("request", "collect", "extract", "morph", "epw"),
+    status = c(
+        shift_status(request),
+        shift_status(files),
+        shift_status(extracted),
+        shift_status(morphed),
+        shift_status(epws)
+    )
+)
+```
+
+## Read Diagnostics When Something Looks Wrong
+
+Diagnostics are the first place to look when a stage is blocked, failed, or
+returns fewer outputs than expected. An empty diagnostics table is the normal
+successful result. Non-empty rows are intended to explain the stage, severity,
+and action rather than expose internal manifest IDs first.
+
+```{r diagnostics}
+shift_diagnostics(epws)
+```
+
+## Confirm Extraction Coverage
+
+The final EPW depends on the extracted climate table. Even after the EPW file is
+written, it is useful to confirm that each morphing variable has complete monthly
+coverage for the requested period. Missing or incomplete rows here usually mean
+the original ESGF query, Dataset selection, or extraction period needs to be
+adjusted.
+
+```{r coverage}
+coverage <- shift_coverage(epws)
+coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
+```
+
+## Locate Reusable Files
+
+`shift_outputs()` lists the written EPW files and their case metadata. These are
+the files to pass to EnergyPlus, archive with a simulation run, or reopen with
+`eplusr::read_epw()`. The store also keeps the intermediate Parquet artifacts so
+the workflow can be inspected or reused without repeating the remote query.
+
+```{r outputs}
+outputs <- shift_outputs(epws)
+outputs[, .(
+    file = basename(path),
+    source_id,
+    experiment_id,
+    variant_label,
+    period
+)]
+```
+
+## Advanced: Manifest IDs
+
+Ordinary workflows do not need manifest IDs. They are kept available for advanced
+users who want to inspect the lower-level `EsgStore`, `EpwMorpher`, or manifest
+tables directly.
+
+```{r advanced-ids}
+names(shift_ids(epws))
+```

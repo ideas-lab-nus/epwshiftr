@@ -43,7 +43,10 @@ mirai_dataset_symbols <- c(
     "EsgDataset",
     "DatasetAsyncTask",
     "dataset__async_condition",
-    "dataset__async_error"
+    "dataset__async_error",
+    "dataset__progress_bar",
+    "dataset__progress_update",
+    "dataset__progress_done"
 )
 
 start_mirai_dataset_runtime <- function(workers) {
@@ -202,6 +205,107 @@ test_that("EsgDataset$open()", {
 
     expect_identical(returned, ds)
     expect_true(ds$is_open)
+})
+
+test_that("EsgDataset$open() reports progress while opening handles", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    bars <- list()
+    updates <- list()
+    dones <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
+            "progress-id"
+        },
+        cli_progress_update = function(id = NULL, set = NULL, ...) {
+            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
+        },
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
+        },
+        .package = "cli"
+    )
+
+    ds <- EsgDataset$new(paths)
+    on.exit(ds$close(), add = TRUE)
+
+    expect_identical(ds$open(progress = TRUE), ds)
+    expect_true(ds$is_open)
+    expect_equal(bars, list(list(name = "Opening dataset files", total = 2L)))
+    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_equal(dones, list(list(id = "progress-id", result = "done")))
+})
+
+test_that("EsgDataset$open() updates progress for already adopted handles", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    source <- EsgDataset$new(paths[[1L]])
+    source$open()
+    handles <- dataset__detach_handles(source)
+
+    bars <- list()
+    updates <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
+            "progress-id"
+        },
+        cli_progress_update = function(id = NULL, set = NULL, ...) {
+            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
+        },
+        cli_progress_done = function(...) NULL,
+        .package = "cli"
+    )
+
+    ds <- EsgDataset$new(paths)
+    dataset__adopt_handles(ds, list(handles[[1L]], NULL))
+    on.exit(ds$close(), add = TRUE)
+
+    ds$open(progress = TRUE)
+    expect_equal(bars, list(list(name = "Opening dataset files", total = 2L)))
+    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_true(ds$is_open)
+})
+
+test_that("EsgDataset$open(progress = FALSE) does not report progress", {
+    path <- local_dataset_cmip6_files(2060L)
+    bars <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(...) {
+            bars[[length(bars) + 1L]] <<- list(...)
+            "progress-id"
+        },
+        cli_progress_update = function(...) NULL,
+        cli_progress_done = function(...) NULL,
+        .package = "cli"
+    )
+
+    ds <- EsgDataset$new(path)
+    on.exit(ds$close(), add = TRUE)
+
+    ds$open(progress = FALSE)
+    expect_length(bars, 0L)
+})
+
+test_that("EsgDataset$open() closes progress on failures", {
+    path <- tempfile(fileext = ".nc")
+    if (file.exists(path)) {
+        unlink(path)
+    }
+
+    dones <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(...) "progress-id",
+        cli_progress_update = function(...) NULL,
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
+        },
+        .package = "cli"
+    )
+
+    ds <- EsgDataset$new(path)
+    expect_error(ds$open(progress = TRUE), "Failed to open OPeNDAP connection")
+    expect_false(ds$is_open)
+    expect_equal(dones, list(list(id = "progress-id", result = "failed")))
 })
 # }}}
 # EsgDataset$close() {{{
@@ -877,6 +981,34 @@ test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return",
         as.numeric(ds$var_get("tas", start = c(1L, 1L, 1L), count = c(2L, 1L, 1L), collapse = TRUE)),
         c(11, 12)
     )
+})
+
+test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned reopen", {
+    skip_dataset_async_on_covr()
+
+    path <- local_dataset_table_file(
+        time_vals = c(0, 1, 2),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12, 13)
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    updates <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(...) "progress-id",
+        cli_progress_update = function(id = NULL, set = NULL, ...) {
+            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
+        },
+        cli_progress_done = function(...) NULL,
+        .package = "cli"
+    )
+
+    ds <- EsgDataset$new(path)
+    on.exit(ds$close(), add = TRUE)
+
+    ds$open(async = TRUE, timeout = dataset_async_timeout, progress = TRUE)
+    expect_true(ds$is_open)
+    expect_equal(updates, list(list(id = "progress-id", set = 1L)))
 })
 # }}}
 # EsgDataset$var_get() {{{

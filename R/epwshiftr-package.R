@@ -10,6 +10,8 @@
 #'
 #' * `epwshiftr.verbose`: If `TRUE`, more detailed message will be printed.
 #'   Default: `FALSE`.
+#' * `epwshiftr.progress`: If `TRUE`, progress bars are shown for long-running
+#'   operations that support them. Default: [interactive()].
 #' * `epwshiftr.threshold_alpha`: the threshold of the absolute value for alpha,
 #'   i.e. monthly-mean fractional change, when performing morphing operations.
 #'   The default value is set to `3`. If the morphing methods are set

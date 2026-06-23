@@ -386,7 +386,8 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
   which = NULL,
   fallback = c("ask", "auto", "error"),
   store = NULL,
-  downloader = NULL
+  downloader = NULL,
+  progress = getOption("epwshiftr.progress", interactive())
 )}\if{html}{\out{</div>}}
 }
 
@@ -408,6 +409,11 @@ non-interactive session this raises an error.
 
 \item{\code{downloader}}{Optional persistent \link{Downloader} used for
 recoverable HTTP fallback.}
+
+\item{\code{progress}}{Whether to show progress bars while opening
+OPeNDAP records and any HTTP fallback downloads. By default
+the package option \code{epwshiftr.progress} is used, falling back
+to \code{\link[=interactive]{interactive()}}.}
 }
 \if{html}{\out{</div>}}
 }
