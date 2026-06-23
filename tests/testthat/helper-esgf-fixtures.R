@@ -27,15 +27,3 @@ esgf_fixture_collect <- function(params,
     }
     list(response = response, docs = response$response$docs, parameter = params)
 }
-
-skip_live_esgf <- function() {
-    run <- tolower(Sys.getenv("EPWSHIFTR_RUN_LIVE_ESGF", "false"))
-    testthat::skip_if_not(
-        run %in% c("1", "true", "yes"),
-        "Set EPWSHIFTR_RUN_LIVE_ESGF=true to run live ESGF tests."
-    )
-    skip_on_cran()
-    skip_if_offline()
-    skip_if_not_installed("curl")
-    skip_if_not_installed("duckdb")
-}
