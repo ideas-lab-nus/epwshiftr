@@ -1669,36 +1669,8 @@ Downloader <- R6::R6Class("Downloader",
                 private$write_manifest_config()
             }
 
-            # Start daemon pool if needed
             if (n_workers > 0) {
-                mirai::daemons(n_workers)
-
-                # If in development mode, source this file on all daemons to avoid devtools dependency
-                if (in_dev) {
-                    cli::cli_alert_info(
-                        "Development mode detected. Sourcing downloader.R on all daemons..."
-                    )
-                    # Try to locate R/downloader.R relative to current working directory
-                    candidates <- c(
-                        file.path(getwd(), "R", "downloader.R"),
-                        file.path(getwd(), "..", "R", "downloader.R"),
-                        file.path(getwd(), "../..", "R", "downloader.R")
-                    )
-                    src_path <- NULL
-                    for (p in candidates) {
-                        if (file.exists(p)) {
-                            src_path <- normalizePath(p, mustWork = FALSE)
-                            break
-                        }
-                    }
-                    if (!is.null(src_path)) {
-                        mirai::everywhere(source(src_path, chdir = TRUE), .compute = "default")
-                    } else {
-                        cli::cli_alert_warning(
-                            "Could not locate R/downloader.R for dev-mode sourcing; async workers may lack Downloader."
-                        )
-                    }
-                }
+                private$ensure_mirai_daemons()
             }
 
             self
@@ -3142,6 +3114,61 @@ Downloader <- R6::R6Class("Downloader",
                 transfer_policy = private$transfer_policy_config,
                 resource_policy = private$resource_policy_config
             )
+        },
+        # }}}
+
+        # mirai daemon helpers {{{
+        ensure_mirai_daemons = function() {
+            if (is.null(private$worker_count) || private$worker_count <= 0L) {
+                return(invisible(FALSE))
+            }
+            if (!requireNamespace("mirai", quietly = TRUE)) {
+                stop("mirai package required for async downloads", call. = FALSE)
+            }
+
+            is_set <- tryCatch(isTRUE(mirai::daemons_set()), error = function(e) FALSE)
+            status <- tryCatch(mirai::status(), error = function(e) NULL)
+            daemon_count <- if (is.list(status) && !is.null(status$daemons)) {
+                suppressWarnings(as.integer(status$daemons[[1L]]))
+            } else {
+                NA_integer_
+            }
+            needs_start <- !is_set || is.na(daemon_count) || daemon_count < private$worker_count
+
+            if (isTRUE(needs_start)) {
+                mirai::daemons(private$worker_count)
+            }
+            if (isTRUE(private$in_dev) && isTRUE(needs_start)) {
+                private$source_mirai_workers()
+            }
+
+            invisible(TRUE)
+        },
+
+        source_mirai_workers = function() {
+            cli::cli_alert_info(
+                "Development mode detected. Sourcing downloader.R on all daemons..."
+            )
+            candidates <- c(
+                file.path(getwd(), "R", "downloader.R"),
+                file.path(getwd(), "..", "R", "downloader.R"),
+                file.path(getwd(), "../..", "R", "downloader.R")
+            )
+            src_path <- NULL
+            for (p in candidates) {
+                if (file.exists(p)) {
+                    src_path <- normalizePath(p, mustWork = FALSE)
+                    break
+                }
+            }
+            if (!is.null(src_path)) {
+                mirai::everywhere(source(src_path, chdir = TRUE), .compute = "default")
+            } else {
+                cli::cli_alert_warning(
+                    "Could not locate R/downloader.R for dev-mode sourcing; async workers may lack Downloader."
+                )
+            }
+            invisible(src_path)
         },
         # }}}
 
@@ -5182,6 +5209,7 @@ Downloader <- R6::R6Class("Downloader",
         },
 
         run_tasks_concurrent = function(tasks, progress = TRUE, overwrite = FALSE, resume = TRUE) {
+            private$ensure_mirai_daemons()
             tasks <- downloader__as_df(tasks)
             pending <- tasks
             pending$tried_candidate_id <- I(rep(list(character()), nrow(pending)))
@@ -5786,7 +5814,8 @@ Downloader <- R6::R6Class("Downloader",
                 resource_policy = private$resource_policy_config
             )
 
-            # Launch async download (no need to check daemons, already started)
+            private$ensure_mirai_daemons()
+
             task$mirai_obj <- mirai::mirai(
                 {
                     # Prefer using Downloader from the current environment.
