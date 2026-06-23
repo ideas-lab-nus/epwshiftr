@@ -22,7 +22,7 @@ jobs:
       NOT_CRAN: true
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -40,7 +40,10 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::pkgdown, local::.
+          extra-packages: |
+            any::pkgdown
+            local::.
+            url::https://cran.r-project.org/src/contrib/Archive/PCICt/PCICt_0.5-4.4.tar.gz
           needs: website
 
       - name: Deploy package
