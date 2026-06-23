@@ -1,4 +1,4 @@
-# QueryParam helpers {{{
+# local_query_test_response() / local_query_listing_response() / local_query_test_esgdict() / local_esgdict_default() {{{
 local_test_cache(scope = "persist")
 
 local_query_test_response <- function(docs = NULL) {
@@ -165,52 +165,9 @@ local_esgdict_default <- function(dict = NULL, project = "CMIP6", env = parent.f
         esgdict_set_default(dict)
     }
 }
-
-test_that("QueryParam helpers use typed objects", {
-    param <- expect_s3_class(
-        query_param__as("x", list(value = LETTERS[1:3], negate = TRUE)),
-        "S7_object"
-    )
-    expect_true(S7::S7_inherits(param, QueryParamFacet))
-    expect_identical(query_param__value(param), LETTERS[1:3])
-    expect_true(query_param__negate(param))
-
-    query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
-    expect_true(S7::S7_inherits(query_param, QueryParamDate))
-    expect_true(is.solr_date(query_param__value(query_param)))
-
-    expect_identical(
-        query_param__names("date"),
-        c(
-            "datetime_start",
-            "datetime_stop",
-            "timestamp_from",
-            "timestamp_to",
-            "version_min",
-            "version_max"
-        )
-    )
-
-    flat_params <- query_param__as_store(list(
-        datetime_start = solr_date("2017"),
-        project = "CMIP6",
-        variable_id = "tas"
-    ))$state()
-    expect_s7_class(flat_params$datetime_start, QueryParamDate)
-    expect_s7_class(flat_params$project, QueryParamFacet)
-    expect_s7_class(flat_params$variable_id, QueryParamFacet)
-
-    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE)), "x"), "x=false")
-    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE)), "x"), "x!=1")
-    expect_identical(
-        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE)), "x"),
-        "x!=solr%2Bjson"
-    )
-
-    expect_identical(query_param__render(query_param__as("x", TRUE), "x", space = TRUE), "x = true")
-    expect_identical(query_param__render(query_param__as("x", 1.0), "x", space = TRUE), "x = 1")
-    expect_identical(query_param__render(query_param__as("x", "solr+json"), "x", space = TRUE), "x = solr%2Bjson")
-
+# }}}
+# esg_query() {{{
+test_that("esg_query()", {
     # can build query url
     index_node <- "https://example.org"
     without_project <- query__build(index_node, list(project = NULL))
@@ -275,11 +232,7 @@ test_that("QueryParam helpers use typed objects", {
         query__build("https://esgf-data.dkrz.de", list(type = "Aggregation")),
         fixed = TRUE
     ))
-})
-# }}}
 
-# esg_query() {{{
-test_that("esg_query()", {
     expect_s3_class(EsgQuery$new(), "EsgQuery")
     expect_s3_class(esg_query(), "EsgQuery")
 
@@ -311,7 +264,6 @@ test_that("esg_query()", {
     q <- expect_s3_class(esg_query("https://example.org"), "EsgQuery")
 })
 # }}}
-
 # EsgQuery$list_facets() {{{
 test_that("EsgQuery$list_facets()", {
     index_node_normal <- "https://example.org"
@@ -337,7 +289,6 @@ test_that("EsgQuery$list_facets()", {
     expect_length(calls, 1L)
 })
 # }}}
-
 # EsgQuery$list_fields() {{{
 test_that("EsgQuery$list_fields()", {
     index_node_normal <- "https://example.org"
@@ -357,7 +308,6 @@ test_that("EsgQuery$list_fields()", {
     expect_identical(q$list_fields(force = TRUE), fields)
 })
 # }}}
-
 # EsgQuery$list_shards() {{{
 test_that("EsgQuery$list_shards()", {
     index_node_normal <- "https://example.org"
@@ -383,7 +333,6 @@ test_that("EsgQuery$list_shards()", {
     )
 })
 # }}}
-
 # EsgQuery$list_values() {{{
 test_that("EsgQuery$list_values()", {
     index_node_normal <- "https://example.org"
@@ -408,9 +357,8 @@ test_that("EsgQuery$list_values()", {
     expect_identical(values$experiment_id, c(historical = 3L, ssp585 = 4L))
 })
 # }}}
-
-# EsgQuery listing cache {{{
-test_that("EsgQuery listing cache respects max_age", {
+# query_listing_cached() {{{
+test_that("query_listing_cached() respects max_age", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
     old_cache <- cache__set(cache)
@@ -441,7 +389,7 @@ test_that("EsgQuery listing cache respects max_age", {
     expect_equal(calls, 1L)
 })
 
-test_that("EsgQuery listing cache treats expired offline entries as misses", {
+test_that("query_listing_cached() treats expired offline entries as misses", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
     old_cache <- cache__set(cache)
@@ -463,65 +411,94 @@ test_that("EsgQuery listing cache treats expired offline entries as misses", {
     )
 })
 # }}}
-
-# EsgQuery$project() and other facet methods {{{
-test_that("EsgQuery$project() and other facet methods", {
+# EsgQuery$project() {{{
+test_that("EsgQuery$project()", {
     q <- esg_query()
 
-    # project
     expect_equal(query_param__value(q$project()), "CMIP6")
     expect_equal(query_param__value(q$project("CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(-"CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(!"CMIP5")$project()), "CMIP5")
+})
+# }}}
+# EsgQuery$activity_id() {{{
+test_that("EsgQuery$activity_id()", {
+    q <- esg_query()
 
-    # activity id
     expect_null(q$activity_id())
     expect_equal(query_param__value(q$activity_id(!c("CFMIP", "ScenarioMIP"))$activity_id()), c("CFMIP", "ScenarioMIP"))
     expect_null(q$activity_id(NULL)$activity_id())
+})
+# }}}
+# EsgQuery$experiment_id() {{{
+test_that("EsgQuery$experiment_id()", {
+    q <- esg_query()
 
-    # experiment_id
     expect_null(q$experiment_id())
     expect_equal(query_param__value(q$experiment_id(!c("ssp126", "ssp585"))$experiment_id()), c("ssp126", "ssp585"))
     expect_null(q$experiment_id(NULL)$experiment_id())
+})
+# }}}
+# EsgQuery$source_id() {{{
+test_that("EsgQuery$source_id()", {
+    q <- esg_query()
 
-    # source_id
     expect_null(q$source_id())
     expect_equal(query_param__value(q$source_id(!c("BCC-CSM2-MR", "CESM2"))$source_id()), c("BCC-CSM2-MR", "CESM2"))
     expect_null(q$source_id(NULL)$source_id())
+})
+# }}}
+# EsgQuery$variable_id() {{{
+test_that("EsgQuery$variable_id()", {
+    q <- esg_query()
 
-    # variable_id
     expect_null(q$variable_id())
     expect_equal(query_param__value(q$variable_id(!c("tas", "pr"))$variable_id()), c("tas", "pr"))
     expect_null(q$variable_id(NULL)$variable_id())
+})
+# }}}
+# EsgQuery$frequency() {{{
+test_that("EsgQuery$frequency()", {
+    q <- esg_query()
 
-    # frequency
     expect_null(q$frequency())
     expect_equal(query_param__value(q$frequency(!c("1hr", "day"))$frequency()), c("1hr", "day"))
     expect_null(q$frequency(NULL)$frequency())
+})
+# }}}
+# EsgQuery$variant_label() {{{
+test_that("EsgQuery$variant_label()", {
+    q <- esg_query()
 
-    # variant_label
     expect_null(q$variant_label())
     expect_equal(
         query_param__value(q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))$variant_label()),
         c("r1i1p1f1", "r1i2p1f1")
     )
     expect_null(q$variant_label(NULL)$variant_label())
+})
+# }}}
+# EsgQuery$nominal_resolution() {{{
+test_that("EsgQuery$nominal_resolution()", {
+    q <- esg_query()
 
-    # nominal_resolution
     expect_null(q$nominal_resolution())
     expect_equal(query_param__value(q$nominal_resolution(c("100 km", "1x1 degree"))$nominal_resolution()), {
         c("100+km", "1x1+degree", "100km")
     })
     expect_true(q$nominal_resolution()@encoded)
     expect_null(q$nominal_resolution(NULL)$nominal_resolution())
+})
+# }}}
+# EsgQuery$data_node() {{{
+test_that("EsgQuery$data_node()", {
+    q <- esg_query()
 
-    # data_node
     expect_null(q$data_node())
     expect_equal(query_param__value(q$data_node("esgf-node.ornl.gov")$data_node()), "esgf-node.ornl.gov")
     expect_null(q$data_node(NULL)$data_node())
 })
 # }}}
-
 # EsgQuery$facets() {{{
 test_that("EsgQuery$facets()", {
     expect_null(esg_query()$facets())
@@ -532,7 +509,6 @@ test_that("EsgQuery$facets()", {
     expect_null(esg_query()$facets(NULL)$facets())
 })
 # }}}
-
 # EsgQuery$fields() {{{
 test_that("EsgQuery$fields()", {
     expect_equal(query_param__value(esg_query()$fields()), "*")
@@ -544,7 +520,6 @@ test_that("EsgQuery$fields()", {
     expect_null(esg_query()$fields(NULL)$fields())
 })
 # }}}
-
 # EsgQuery$shards() {{{
 test_that("EsgQuery$shards()", {
     q <- expect_s3_class(esg_query(), "EsgQuery")
@@ -561,7 +536,6 @@ test_that("EsgQuery$shards()", {
     expect_null(q$shards(NULL)$shards())
 })
 # }}}
-
 # EsgQuery$replica() {{{
 test_that("EsgQuery$replica()", {
     expect_null(esg_query()$replica())
@@ -570,8 +544,7 @@ test_that("EsgQuery$replica()", {
     expect_null(esg_query()$replica(NULL)$replica())
 })
 # }}}
-
-# helper: decode a query URL and return the query= value as plain text
+# decode_query() {{{
 decode_query <- function(url) {
     m <- regmatches(url, regexpr("(?<=query=)[^&]*", url, perl = TRUE))
     if (!length(m)) {
@@ -579,7 +552,7 @@ decode_query <- function(url) {
     }
     URLdecode(m)
 }
-
+# }}}
 # EsgQuery$datetime_range() {{{
 test_that("EsgQuery$datetime_range()", {
     withr::local_options(epwshiftr.solr_date_math_now = as.POSIXct("2025-06-13 12:34:56", tz = "UTC"))
@@ -591,8 +564,7 @@ test_that("EsgQuery$datetime_range()", {
     expect_null(result$start)
     expect_null(result$stop)
 
-    # --- normal inputs ---
-
+    # normal inputs
     # full ISO 8601: start -> datetime_start:[* TO ...]
     q$datetime_range(start = "2017-01-01T00:00:00Z")
     expect_match(decode_query(q$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
@@ -701,7 +673,6 @@ test_that("EsgQuery$datetime_range()", {
     expect_error(esg_query()$datetime_range(start = "not-a-date"))
 })
 # }}}
-
 # EsgQuery$timestamp_range() {{{
 test_that("EsgQuery$timestamp_range()", {
     withr::local_options(epwshiftr.solr_date_math_now = as.POSIXct("2025-06-13 12:34:56", tz = "UTC"))
@@ -815,7 +786,6 @@ test_that("EsgQuery$timestamp_range()", {
     expect_error(esg_query()$timestamp_range(from = "not-a-date"))
 })
 # }}}
-
 # EsgQuery$version_range() {{{
 test_that("EsgQuery$version_range()", {
     q <- esg_query()
@@ -862,7 +832,6 @@ test_that("EsgQuery$version_range()", {
     expect_error(esg_query()$version_range(min = "not-a-date"))
 })
 # }}}
-
 # EsgQuery$latest() {{{
 test_that("EsgQuery$latest()", {
     expect_null(esg_query()$latest())
@@ -871,7 +840,6 @@ test_that("EsgQuery$latest()", {
     expect_null(esg_query()$latest(TRUE)$latest(NULL)$latest())
 })
 # }}}
-
 # EsgQuery$limit() {{{
 test_that("EsgQuery$limit()", {
     expect_equal(query_param__value(esg_query()$limit()), 10L)
@@ -880,14 +848,12 @@ test_that("EsgQuery$limit()", {
     expect_equal(query_param__value(esg_query()$limit(10L)$limit()), 10L)
 })
 # }}}
-
 # EsgQuery$offset() {{{
 test_that("EsgQuery$offset()", {
     expect_equal(query_param__value(esg_query()$offset()), 0L)
     expect_equal(query_param__value(esg_query()$offset(0)$offset()), 0L)
 })
 # }}}
-
 # EsgQuery$params() {{{
 test_that("EsgQuery$params()", {
     q <- expect_s3_class(esg_query(), "EsgQuery")
@@ -924,9 +890,17 @@ test_that("EsgQuery$params()", {
     expect_equal(q$params(NULL)$params(), list())
 })
 # }}}
+# EsgQuery$url() {{{
+test_that("EsgQuery$url()", {
+    index_node <- "https://example.org"
 
-# EsgQuery$url(), EsgQuery$count() {{{
-test_that("EsgQuery$url(), EsgQuery$count()", {
+    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(EsgQuery$new(index_node)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+})
+# }}}
+# EsgQuery$count() {{{
+test_that("EsgQuery$count()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
@@ -942,12 +916,6 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
         .package = "epwshiftr"
     )
 
-    # can get url
-    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgQuery$new(index_node)$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgQuery$new(index_node)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
-
-    # can get count
     expect_identical(EsgQuery$new(index_node)$frequency("1hr")$count(FALSE), 3L)
     expect_identical(EsgQuery$new(index_node)$frequency("1hr")$count(TRUE), 3L)
     cnt <- expect_type(EsgQuery$new(index_node)$frequency("1hr")$count("activity_id"), "list")
@@ -955,7 +923,6 @@ test_that("EsgQuery$url(), EsgQuery$count()", {
     expect_identical(cnt$activity_id, c(CMIP = 2L, ScenarioMIP = 1L))
 })
 # }}}
-
 # EsgQuery$collect() {{{
 test_that("EsgQuery$collect(type=) collects child results through Dataset workflow", {
     q <- esg_query("https://example.org")$project("CMIP6")$datetime_range(
@@ -1056,8 +1023,9 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_error(q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"), "Additional query filters")
     expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
 })
-
-test_that("query__collect includes only result-field constraints in fields", {
+# }}}
+# query__collect() {{{
+test_that("query__collect() includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1119,7 +1087,7 @@ test_that("query__collect includes only result-field constraints in fields", {
     )
 })
 
-test_that("query__collect returns normalized effective parameters", {
+test_that("query__collect() returns normalized effective parameters", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1156,7 +1124,7 @@ test_that("query__collect returns normalized effective parameters", {
     expect_null(bridge$parameter$fields())
 })
 
-test_that("query__collect records actual page query URLs", {
+test_that("query__collect() records actual page query URLs", {
     captured_url <- character()
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) {
@@ -1183,8 +1151,9 @@ test_that("query__collect records actual page query URLs", {
     expect_true(grepl("offset=0", utils::URLdecode(captured_url[[1L]]), fixed = TRUE))
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
 })
-
-test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
+# }}}
+# EsgQuery$collect() {{{
+test_that("EsgQuery$collect() validates local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) local_query_test_response(),
@@ -1200,7 +1169,7 @@ test_that("EsgQuery$collect() warns for invalid local dictionary constraints", {
     expect_s3_class(res, "EsgResultDataset")
 })
 
-test_that("EsgQuery$collect() skips dictionary check when no local dictionary is available", {
+test_that("EsgQuery$collect() skips dictionary validation without a local dictionary", {
     local_esgdict_default(NULL)
     withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
     testthat::local_mocked_bindings(
@@ -1214,11 +1183,19 @@ test_that("EsgQuery$collect() skips dictionary check when no local dictionary is
     expect_s3_class(res, "EsgResultDataset")
 })
 
-test_that("EsgQuery$collect()", {
+test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE
+        ) {
             esgf_fixture_collect(params)
         },
         .package = "epwshiftr"
@@ -1246,9 +1223,8 @@ test_that("EsgQuery$collect()", {
     expect_s3_class(q$collect(all = TRUE, limit = 30), "EsgResultDataset")
 })
 # }}}
-
-# EsgQuery local save/load round-trip {{{
-test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
+# EsgQuery$save() / EsgQuery$load() {{{
+test_that("EsgQuery$save() / EsgQuery$load() round-trip without network", {
     q <- EsgQuery$new("https://example.org")$activity_id("ScenarioMIP")$experiment_id("ssp585")$variable_id(
         "tas"
     )$limit(
@@ -1296,10 +1272,7 @@ test_that("EsgQuery$save() & EsgQuery$load() round-trip without network", {
 
     unlink(c(file, invalid_type_file, invalid_format_file, bucketed_parameter_file))
 })
-# }}}
-
-# EsgQuery$save() & EsgQuery$load() {{{
-test_that("EsgQuery$save() & EsgQuery$load()", {
+test_that("EsgQuery$save() / EsgQuery$load()", {
     index_node <- INDEX_NODES[["CEDA"]]
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) esgf_fixture_response("dataset-success.json"),
@@ -1368,7 +1341,6 @@ test_that("EsgQuery$save() & EsgQuery$load()", {
     unlink(c(file_query, file_invalid_type, file_invalid_format, file_collected, file_collected_copied))
 })
 # }}}
-
 # EsgQuery$print() {{{
 test_that("EsgQuery$print()", {
     expect_snapshot(
@@ -1376,5 +1348,4 @@ test_that("EsgQuery$print()", {
     )
 })
 # }}}
-
 # vim: fdm=marker :
