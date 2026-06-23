@@ -41,7 +41,7 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr query list",
-            "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--columns COLS] [--dry-run] key=value|key!=value ...",
+            "  epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--columns COLS] [--no-progress] [--dry-run] key=value|key!=value ...",
             "  epwshiftr query add [--index-node URL] [--label LABEL] [--tag TAG]... [--track] [--dry-run] key=value|key!=value ...",
             "  epwshiftr query add --query-file PATH [--label LABEL] [--tag TAG]... [--track] [--dry-run]",
             "  epwshiftr query show <query_id> [--files] [--updates] [--changes]",
@@ -64,10 +64,11 @@ epwshiftr_cli_help_registry <- function() {
             "List stored ESGF queries in the selected store."
         ),
         "query search" = c(
-            "Usage: epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--columns COLS] [--limit N] [--all] [--dry-run] key=value|key!=value ...",
+            "Usage: epwshiftr query search [--index-node URL] [--type Dataset|File|Aggregation] [--fields FIELDS] [--columns COLS] [--limit N] [--all] [--no-progress] [--dry-run] key=value|key!=value ...",
             "",
             "Run an ESGF search from command-line key=value constraints.",
             "--fields controls fields requested from ESGF; --columns controls human-readable table columns.",
+            "--no-progress disables interactive progress bars.",
             "Use comma-separated values for multi-value query parameters.",
             "Use key!=value to negate a facet constraint.",
             "Use datetime_start=VALUE and datetime_stop=VALUE to constrain data coverage."

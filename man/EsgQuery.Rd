@@ -1236,6 +1236,7 @@ Missing local dictionaries are ignored and never downloaded.
   params = TRUE,
   type = "Dataset",
   fields = NULL,
+  progress = getOption("epwshiftr.progress", interactive()),
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -1267,6 +1268,10 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 \item{\code{fields}}{Optional fields used only when \code{type} is \code{"File"} or
 \code{"Aggregation"}. Dataset fields should be configured with
 \verb{$fields()} before collecting.}
+
+\item{\code{progress}}{Whether to show a progress bar while collecting ESGF
+JSON search pages. By default, the value of option
+\code{epwshiftr.progress} is used, falling back to \code{\link[=interactive]{interactive()}}.}
 
 \item{\code{...}}{Arguments passed to \link{EsgResultDataset} child collection
 when \code{type} is \code{"File"} or \code{"Aggregation"}, including the

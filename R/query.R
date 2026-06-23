@@ -1154,6 +1154,10 @@ EsgQuery <- R6::R6Class(
         #'        `"Aggregation"`. Dataset fields should be configured with
         #'        `$fields()` before collecting.
         #'
+        #' @param progress Whether to show a progress bar while collecting ESGF
+        #'        JSON search pages. By default, the value of option
+        #'        `epwshiftr.progress` is used, falling back to [interactive()].
+        #'
         #' @param ... Arguments passed to [EsgResultDataset] child collection
         #'        when `type` is `"File"` or `"Aggregation"`, including the
         #'        `data_node` scope filter and child-query controls.
@@ -1188,12 +1192,21 @@ EsgQuery <- R6::R6Class(
         #' res4 <- query$collect(all = TRUE, limit = 30)
         #' identical(res2$count(), res4$count())
         #' }
-        collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL, ...) {
+        collect = function(
+            all = FALSE,
+            limit = TRUE,
+            params = TRUE,
+            type = "Dataset",
+            fields = NULL,
+            progress = getOption("epwshiftr.progress", interactive()),
+            ...
+        ) {
             type <- query_result__type(type)
+            checkmate::assert_flag(progress)
             dots <- eval(substitute(alist(...)))
 
-            collect_dataset <- function(all, limit, dict_check = TRUE) {
-                result <- query__collect(
+            collect_dataset <- function(all, limit, dict_check = TRUE, progress_label = "Collecting Dataset records") {
+                collect_args <- list(
                     private$index_node_url,
                     private$parameter,
                     required_fields = EsgResultDataset$private_fields$required_fields,
@@ -1202,6 +1215,11 @@ EsgQuery <- R6::R6Class(
                     constraints = params,
                     dict_check = dict_check
                 )
+                if (isTRUE(progress)) {
+                    collect_args$progress <- TRUE
+                    collect_args$progress_label <- progress_label
+                }
+                result <- do.call(query__collect, collect_args)
 
                 # replace docs in the last response
                 result$response$response$docs <- result$docs
@@ -1240,6 +1258,7 @@ EsgQuery <- R6::R6Class(
                 all = all,
                 limit = child_limit,
                 type = type,
+                progress = progress,
                 ...
             )
         },
@@ -1752,14 +1771,18 @@ query__dict_args <- function(store, dict) {
 
 query__dict_warning <- function(invalid, n = 5L) {
     n <- min(n, nrow(invalid))
-    lines <- vapply(seq_len(n), function(i) {
-        msg <- invalid$message[[i]]
-        suggestions <- invalid$suggestions[[i]]
-        if (length(suggestions)) {
-            msg <- sprintf("%s Suggestions: %s.", msg, paste(utils::head(suggestions, 3L), collapse = ", "))
-        }
-        sprintf("- %s", msg)
-    }, character(1L))
+    lines <- vapply(
+        seq_len(n),
+        function(i) {
+            msg <- invalid$message[[i]]
+            suggestions <- invalid$suggestions[[i]]
+            if (length(suggestions)) {
+                msg <- sprintf("%s Suggestions: %s.", msg, paste(utils::head(suggestions, 3L), collapse = ", "))
+            }
+            sprintf("- %s", msg)
+        },
+        character(1L)
+    )
 
     extra <- nrow(invalid) - n
     if (extra > 0L) {
@@ -1807,10 +1830,35 @@ query__warn_dict <- function(params) {
 # }}}
 
 # query__collect {{{
-query__collect <- function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+query__collect_nrow <- function(docs) {
+    if (is.null(docs)) {
+        return(0L)
+    }
+    if (is.data.frame(docs)) {
+        return(nrow(docs))
+    }
+    if (length(docs)) {
+        return(length(docs[[1L]]))
+    }
+    0L
+}
+
+query__collect <- function(
+    index_node,
+    params,
+    required_fields = NULL,
+    all = FALSE,
+    limit = TRUE,
+    constraints = TRUE,
+    dict_check = FALSE,
+    progress = FALSE,
+    progress_label = NULL
+) {
     checkmate::assert_flag(all)
     checkmate::assert_flag(constraints)
     checkmate::assert_flag(dict_check)
+    checkmate::assert_flag(progress)
+    checkmate::assert_string(progress_label, null.ok = TRUE)
     checkmate::assert(
         checkmate::check_flag(limit),
         checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
@@ -1818,6 +1866,25 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
 
     store <- query_param__clone(params)
     params <- store$state()
+
+    progress_id <- NULL
+    progress_ok <- FALSE
+    if (isTRUE(progress)) {
+        progress_initial_total <- 1L
+        progress_id <- cli::cli_progress_bar(
+            if (is.null(progress_label)) "Collecting ESGF records" else progress_label,
+            total = progress_initial_total,
+            .auto_close = FALSE
+        )
+        on.exit(
+            cli::cli_progress_done(
+                id = progress_id,
+                result = if (isTRUE(progress_ok)) "done" else "failed"
+            ),
+            add = TRUE
+        )
+        cli::cli_progress_update(id = progress_id, total = progress_initial_total, set = 0L, force = TRUE)
+    }
 
     # include necessary fields
     if (!is.null(params$fields)) {
@@ -1858,6 +1925,7 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
 
     effective_store <- store$copy()
     query_urls <- character()
+
     url <- query__build(index_node, store)
     query_urls <- c(query_urls, url)
     response <- cache__read_json(url)
@@ -1865,8 +1933,11 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
 
     # check if the total number is less that the limit
     total <- response$response$numFound
+    current <- query__collect_nrow(docs)
+    if (!is.null(progress_id)) {
+        cli::cli_progress_update(id = progress_id, total = total, set = current)
+    }
     if (total > 0L && all) {
-        current <- length(response$response$docs[[1]])
         left <- total - current
 
         while (left > 0L) {
@@ -1877,8 +1948,11 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
             response <- cache__read_json(url)
 
             # combine results
-            docs <- rbind(docs, response$response$docs)
+            docs <- data.table::rbindlist(list(docs, response$response$docs), fill = TRUE)
             current <- nrow(docs)
+            if (!is.null(progress_id)) {
+                cli::cli_progress_update(id = progress_id, total = total, set = current)
+            }
 
             left <- total - current
         }
@@ -1894,6 +1968,7 @@ query__collect <- function(index_node, params, required_fields = NULL, all = FAL
         }
     }
 
+    progress_ok <- TRUE
     list(
         response = response,
         docs = docs,

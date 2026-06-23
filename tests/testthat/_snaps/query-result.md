@@ -1,4 +1,4 @@
-# EsgResultDataset workflow: offline contract
+# EsgResultDataset$print() snapshots offline fixtures
 
     Code
       datasets$print()
@@ -40,7 +40,7 @@
           [ 1 Files, 2 GiB | 0 Aggregations ]
           [ Access: <...> ]
 
-# EsgResultFile workflow: offline contract
+# EsgResultFile$print() snapshots offline fixtures
 
     Code
       files$print()
@@ -72,7 +72,7 @@
       [1] tas_day_AWI-CM-1-1-MR_ssp126_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
           [ 1 MiB | Access: <OPENDAP, HTTPServer> ]
 
-# EsgResultAggregation workflow: offline contract
+# EsgResultAggregation$print() snapshots offline fixtures
 
     Code
       aggs$print()
@@ -107,7 +107,7 @@
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp245.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
           [ <Unknown> Byte | Access: <...> ]
 
-# esg_result() works
+# esg_result() constructs typed empty query results
 
     Code
       esg_result("file")$print()

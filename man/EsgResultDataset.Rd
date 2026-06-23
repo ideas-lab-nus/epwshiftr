@@ -122,6 +122,7 @@ The following fields are always included in the results:
   limit = 100L,
   type = "File",
   index_node = NULL,
+  progress = getOption("epwshiftr.progress", interactive()),
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -153,6 +154,10 @@ used. Default: \code{100L}.}
 \item{\code{index_node}}{Optional ESGF index node used for the child query.
 If \code{NULL}, the index node that created the Dataset result is
 used. Default: \code{NULL}.}
+
+\item{\code{progress}}{Whether to show a progress bar while collecting ESGF
+child search pages. By default, the value of option
+\code{epwshiftr.progress} is used, falling back to \code{\link[=interactive]{interactive()}}.}
 
 \item{\code{...}}{Optional child-result scope filter \code{data_node}, plus the
 control parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.

@@ -228,6 +228,9 @@ EsgDataset <- R6::R6Class(
         #'        worker pre-open phase. Only supported when `async = TRUE`.
         #'        It does not limit the final caller-owned reopen that makes the
         #'        returned dataset stay opened.
+        #' @param progress Whether to show a progress bar while opening
+        #'        NetCDF/OPeNDAP handles. By default the package option
+        #'        `epwshiftr.progress` is used, falling back to [interactive()].
         #'
         #' @return The `EsgDataset` object itself, invisibly.
         #'
@@ -237,8 +240,9 @@ EsgDataset <- R6::R6Class(
         #' # Returns the opened dataset directly; no Mirai/Future to collect.
         #' ds$open(async = TRUE, timeout = 10)
         #' }
-        open = function(async = FALSE, timeout = NULL) {
+        open = function(async = FALSE, timeout = NULL, progress = getOption("epwshiftr.progress", interactive())) {
             private$validate_async_request(async, timeout)
+            checkmate::assert_flag(progress)
 
             if (private$opened) {
                 warning("Dataset is already open.")
@@ -246,7 +250,7 @@ EsgDataset <- R6::R6Class(
             }
 
             if (!isTRUE(async)) {
-                private$open_handles()
+                private$open_handles(progress = progress)
                 return(invisible(self))
             }
 
@@ -262,7 +266,7 @@ EsgDataset <- R6::R6Class(
             # handoff reopen to preserve the public `open()` post-condition.
             # The async timeout only applies to the worker probe above; the
             # caller-owned reopen below intentionally runs outside that timeout.
-            private$open_handles()
+            private$open_handles(progress = progress)
 
             invisible(self)
         },
@@ -1147,16 +1151,28 @@ EsgDataset <- R6::R6Class(
         # }}}
 
         # open_handles {{{
-        open_handles = function() {
+        open_handles = function(progress = FALSE, progress_label = "Opening dataset files") {
+            checkmate::assert_flag(progress)
+
+            progress_id <- dataset__progress_bar(progress, progress_label, length(private$urls))
+            progress_ok <- FALSE
+            on.exit(
+                dataset__progress_done(progress_id, progress_ok),
+                add = TRUE
+            )
+
             tryCatch(
                 {
                     for (i in seq_along(private$urls)) {
                         if (!is.null(private$nc_handles[[i]])) {
+                            dataset__progress_update(progress_id, i)
                             next
                         }
                         private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
+                        dataset__progress_update(progress_id, i)
                     }
                     private$opened <- TRUE
+                    progress_ok <- TRUE
                 },
                 error = function(e) {
                     private$close_handles()
@@ -1628,6 +1644,35 @@ EsgDataset <- R6::R6Class(
         # }}}
     )
 )
+# }}}
+
+# dataset__progress_bar {{{
+dataset__progress_bar <- function(progress, label, total) {
+    checkmate::assert_flag(progress)
+    if (!isTRUE(progress)) {
+        return(NULL)
+    }
+
+    cli::cli_progress_bar(label, total = total, .auto_close = FALSE)
+}
+# }}}
+
+# dataset__progress_update {{{
+dataset__progress_update <- function(id, current) {
+    if (!is.null(id)) {
+        cli::cli_progress_update(id = id, set = current)
+    }
+    invisible(NULL)
+}
+# }}}
+
+# dataset__progress_done {{{
+dataset__progress_done <- function(id, ok = TRUE) {
+    if (!is.null(id)) {
+        cli::cli_progress_done(id = id, result = if (isTRUE(ok)) "done" else "failed")
+    }
+    invisible(NULL)
+}
 # }}}
 
 # dataset__private {{{

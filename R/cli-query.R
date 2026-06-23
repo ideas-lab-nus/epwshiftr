@@ -1,4 +1,4 @@
-epwshiftr_cli_query <- function(store, command, args) {
+epwshiftr_cli_query <- function(store, command, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
     if (identical(command, "list")) {
         parsed <- epwshiftr_cli_parse_command(args)
         epwshiftr_cli_assert_no_positionals(parsed)
@@ -7,12 +7,13 @@ epwshiftr_cli_query <- function(store, command, args) {
     if (identical(command, "search")) {
         parsed <- epwshiftr_cli_parse_command(
             args,
-            flags = c("--all", "--dry-run"),
+            flags = c("--all", "--dry-run", "--no-progress"),
             options = c("--index-node", "--type", "--fields", "--columns", "--limit")
         )
         query <- epwshiftr_cli_search_query(parsed)
         type <- if (is.null(parsed$options[["--type"]])) "Dataset" else parsed$options[["--type"]]
         fields <- epwshiftr_cli_csv(parsed$options[["--fields"]])
+        progress <- !isTRUE(quiet) && !isTRUE(json) && !isTRUE(jsonl) && !isTRUE(parsed$flags[["--no-progress"]])
         limit <- if (isTRUE(parsed$flags[["--all"]])) {
             FALSE
         } else if (is.null(parsed$options[["--limit"]])) {
@@ -30,7 +31,7 @@ epwshiftr_cli_query <- function(store, command, args) {
                 query = query$state(null = TRUE)
             ))
         }
-        result <- query$collect(type = type, fields = fields, all = parsed$flags[["--all"]], limit = limit)
+        result <- query$collect(type = type, fields = fields, all = parsed$flags[["--all"]], limit = limit, progress = progress)
         return(result$to_data_table(fields = fields))
     }
     if (identical(command, "add")) {

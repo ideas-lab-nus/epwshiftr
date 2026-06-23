@@ -1,5 +1,6 @@
 # EsgResult {{{
 local_test_cache(scope = "persist")
+withr::local_options(list(epwshiftr.progress = FALSE))
 
 query_result_test_response <- function(docs) {
     list(
@@ -354,6 +355,22 @@ test_that("EsgResult$save() / EsgResult$load() preserve ESGF doc timestamp field
     expect_identical(loaded$timestamp, "2026-06-09T00:00:00Z")
     expect_identical(loaded$`_timestamp`, "2026-06-10T01:14:40.946Z")
     expect_identical(loaded$version, "v20240509")
+})
+
+test_that("EsgResult$save() / EsgResult$load() preserve File publish_path", {
+    docs <- query_result_test_file_docs()
+    docs$publish_path <- "/css03_data/CMIP6/ScenarioMIP/mock/file.nc"
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+    file <- tempfile(fileext = ".json")
+
+    expect_type(result$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_true("publish_path" %in% names(json$response$response$docs))
+    expect_identical(json$response$response$docs$publish_path, docs$publish_path)
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_true("publish_path" %in% loaded$fields)
+    expect_identical(loaded$publish_path, docs$publish_path)
 })
 # }}}
 # EsgResult$query_url() {{{
@@ -1439,6 +1456,56 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
     expect_identical(files$count(), 3L)
     expect_length(priv(files)$context$query_url, 1L)
 })
+
+test_that("EsgResultDataset$collect() passes progress to child query only for non-empty results", {
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = c("dataset-1", "dataset-2"), size = c(1, 1), check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+    empty <- query_result_test_object(
+        "Dataset",
+        data.frame(id = character(), size = numeric(), check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress = FALSE,
+            progress_label = NULL
+        ) {
+            calls[[length(calls) + 1L]] <<- list(
+                progress = progress,
+                progress_label = progress_label
+            )
+            response <- query_result_test_response(query_result_test_file_docs())
+            params$fields(c(query_param__value(params$fields()), required_fields))
+            list(response = response, docs = response$response$docs, parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_s3_class(datasets$collect(fields = "id", progress = TRUE), "EsgResultFile")
+    expect_length(calls, 1L)
+    expect_true(calls[[1L]]$progress)
+    expect_identical(calls[[1L]]$progress_label, "Collecting File records")
+
+    expect_s3_class(datasets$collect(fields = "id", type = "Aggregation", progress = TRUE), "EsgResultAggregation")
+    expect_length(calls, 2L)
+    expect_true(calls[[2L]]$progress)
+    expect_identical(calls[[2L]]$progress_label, "Collecting Aggregation records")
+
+    expect_s3_class(empty$collect(fields = "id", progress = TRUE), "EsgResultFile")
+    expect_length(calls, 2L)
+})
 # }}}
 # EsgResultDataset$expand_replicas() {{{
 test_that("EsgResultDataset$expand_replicas() queries dataset replicas by identity", {
@@ -1744,13 +1811,18 @@ test_that("EsgResultFile$download_plan() ranks cooling data nodes after availabl
 # }}}
 # EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() {{{
 test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() validates fallback before side effects", {
+    testthat::local_mocked_bindings(
+        menu = function(...) 2L,
+        .package = "utils"
+    )
+
     http_only <- query_result_test_object(
         "File",
         query_result_test_file_docs("https://example.org/file.nc|application/netcdf|HTTPServer"),
         query_result_test_params("File")
     )
     expect_error(http_only$open_dataset(fallback = "error"), "OPeNDAP is not available")
-    expect_error(http_only$open_dataset(fallback = "ask"), "non-interactive")
+    expect_error(http_only$open_dataset(fallback = "ask"), "non-interactive|Operation cancelled")
     expect_error(http_only$open_dataset(fallback = "auto"), "explicit `store` or `downloader`")
 
     no_urls <- query_result_test_object(
@@ -1772,6 +1844,11 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() va
 })
 
 test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() falls back to HTTP after OPeNDAP open failures", {
+    testthat::local_mocked_bindings(
+        menu = function(...) 2L,
+        .package = "utils"
+    )
+
     calls <- new.env(parent = emptyenv())
     calls$opened <- list()
     calls$downloads <- character()
@@ -1787,7 +1864,7 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
                 private$nc_handles <- vector("list", length(target))
                 private$opened <- FALSE
             },
-            open = function() {
+            open = function(progress = getOption("epwshiftr.progress", interactive())) {
                 missing <- vapply(private$nc_handles, is.null, logical(1L))
                 calls$opened[[length(calls$opened) + 1L]] <- self$target[missing]
                 if (any(grepl("fail-opendap", self$target[missing]))) {
@@ -1861,7 +1938,7 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     expect_s3_class(err, "error")
     expect_match(conditionMessage(err), "OPeNDAP is not available")
     expect_match(conditionMessage(err$parent), "remote boom")
-    expect_error(file_result$open_dataset(fallback = "ask"), "non-interactive")
+    expect_error(file_result$open_dataset(fallback = "ask"), "non-interactive|Operation cancelled")
 
     ds <- expect_s3_class(
         file_result$open_dataset(fallback = "auto", downloader = FakeDownloader$new()),
@@ -2000,6 +2077,122 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     expect_identical(agg_fail_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_fail_ds$target[[2L]]))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
+})
+
+test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() report open progress", {
+    calls <- new.env(parent = emptyenv())
+    calls$open_progress <- logical()
+    calls$fallback_progress <- list()
+
+    FakeEsgDataset <- R6::R6Class(
+        "FakeEsgDataset",
+        lock_objects = FALSE,
+        public = list(
+            target = NULL,
+            initialize = function(target) {
+                self$target <- target
+                private$nc_handles <- vector("list", length(target))
+                private$opened <- FALSE
+            },
+            open = function(progress = getOption("epwshiftr.progress", interactive())) {
+                calls$open_progress <- c(calls$open_progress, progress)
+                missing <- vapply(private$nc_handles, is.null, logical(1L))
+                private$nc_handles[missing] <- as.list(sprintf("handle:%s", self$target[missing]))
+                private$opened <- TRUE
+                invisible(self)
+            },
+            close = function() {
+                private$nc_handles <- vector("list", length(self$target))
+                private$opened <- FALSE
+                invisible(self)
+            }
+        ),
+        active = list(
+            is_open = function() {
+                private$opened
+            }
+        ),
+        private = list(
+            nc_handles = NULL,
+            opened = FALSE,
+            context = list()
+        )
+    )
+
+    bars <- list()
+    updates <- list()
+    dones <- list()
+    testthat::local_mocked_bindings(
+        EsgDataset = FakeEsgDataset,
+        query_result__http_fallback = function(result, indices, downloader, session_label = NULL, progress = TRUE) {
+            calls$fallback_progress[[length(calls$fallback_progress) + 1L]] <<- progress
+            sprintf("/tmp/fallback-%d.nc", indices)
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
+            paste0("progress-", length(bars))
+        },
+        cli_progress_update = function(id = NULL, set = NULL, ...) {
+            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
+        },
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
+        },
+        .package = "cli"
+    )
+
+    file_docs <- data.frame(
+        id = c("file-1", "file-2"),
+        dataset_id = "dataset-1",
+        size = c(1, 2),
+        checksum = c("abc", "def"),
+        checksum_type = "SHA256",
+        instance_id = c("file-instance-1", "file-instance-2"),
+        master_id = c("master-file-1", "master-file-2"),
+        replica = FALSE,
+        tracking_id = c("hdl:21.14100/mock-file-1", "hdl:21.14100/mock-file-2"),
+        title = c("file-1.nc", "file-2.nc"),
+        version = 20260101L,
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    file_docs$url <- I(list(
+        "https://example.org/dods/file-1.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/file-2.nc|application/netcdf|HTTPServer"
+    ))
+    file_result <- query_result_test_object("File", file_docs, query_result_test_params("File"))
+
+    ds <- expect_s3_class(
+        file_result$open_dataset(fallback = "auto", downloader = list(), progress = TRUE),
+        "FakeEsgDataset"
+    )
+    expect_identical(ds$target, c("https://example.org/dods/file-1.nc", "/tmp/fallback-2.nc"))
+    expect_equal(bars[[1L]], list(name = "Opening File records", total = 2L))
+    expect_equal(vapply(updates[1:2], `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_equal(dones[[1L]], list(id = "progress-1", result = "done"))
+    expect_true(calls$fallback_progress[[1L]])
+    expect_true(all(!calls$open_progress))
+
+    bars_before <- length(bars)
+    fallback_before <- length(calls$fallback_progress)
+    file_result$open_dataset(fallback = "auto", downloader = list(), progress = FALSE)
+    expect_equal(length(bars), bars_before)
+    expect_false(calls$fallback_progress[[fallback_before + 1L]])
+
+    agg_docs <- file_docs
+    agg_docs$url <- I(list(
+        "https://example.org/dods/file-1.nc.html|application/netcdf|OPENDAP",
+        "https://example.org/dods/file-2.nc.html|application/netcdf|OPENDAP"
+    ))
+    agg_result <- query_result_test_object("Aggregation", agg_docs, query_result_test_params("Aggregation"))
+    agg_result$open_dataset(fallback = "auto", progress = TRUE)
+
+    expect_equal(tail(bars, 1L)[[1L]], list(name = "Opening Aggregation records", total = 2L))
+    expect_equal(vapply(tail(updates, 2L), `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_equal(tail(dones, 1L)[[1L]]$result, "done")
 })
 # }}}
 # EsgResultDataset$to_data_table() {{{
