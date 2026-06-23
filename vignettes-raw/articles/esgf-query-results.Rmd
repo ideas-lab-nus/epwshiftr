@@ -1,0 +1,434 @@
+---
+title: "Work with ESGF Query Results"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Work with ESGF Query Results}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Use live EsgQuery and ESGF result objects to inspect Dataset, File, and
+    Aggregation records before running the future EPW workflow.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{r setup}
+library(epwshiftr)
+
+workflow_root <- file.path(tempdir(), "epwshiftr-esgf-query-results")
+if (dir.exists(workflow_root)) {
+    unlink(workflow_root, recursive = TRUE)
+}
+dir.create(workflow_root, recursive = TRUE, showWarnings = FALSE)
+
+options(
+    epwshiftr.dir_cache = file.path(workflow_root, "cache")
+)
+
+select_cols <- function(x, cols, n = 10L) {
+    x <- data.table::as.data.table(x)
+    keep <- intersect(cols, names(x))
+    if (length(keep)) {
+        x <- x[, keep, with = FALSE]
+    }
+    utils::head(x, n)
+}
+
+result_table <- function(x, cols, n = 10L, formatted = TRUE) {
+    if (!x$count()) {
+        return(data.frame(note = "No records returned by this live query."))
+    }
+    select_cols(x$to_data_table(formatted = formatted), cols, n = n)
+}
+```
+
+This article explains the live ESGF query layer used by
+[Create Future EPW Files](future-epw-workflow.html). The main workflow starts
+with `shift_request()`, but that request is translated into lower-level
+`EsgQuery`, `EsgResultDataset`, `EsgResultFile`, and
+`EsgResultAggregation` objects.
+
+Use this layer when you need to audit the exact ESGF URL, inspect an index
+node, compare Dataset matches, decide whether File or Aggregation records are
+available, or debug why a `shift_*()` request is too broad or empty.
+
+# Build a Query
+
+`esg_query()` creates an `EsgQuery` object. It stores the index node and query
+parameters; it does not contact ESGF until you call a method such as `$count()`,
+`$collect()`, or one of the listing helpers.
+
+The query below uses the same light CMIP6 selection as the main future EPW
+article: one ScenarioMIP source, one scenario, one member, monthly `Amon`
+data, the CEDA data node, and the current recommended morphing variables.
+
+```{r build-query}
+index_node <- "https://esgf-data.dkrz.de"
+variables <- epw_morph_variables("recommended")
+dataset_fields <- c(
+    "id", "source_id", "experiment_id", "variant_label",
+    "frequency", "table_id", "variable_id", "data_node",
+    "number_of_files", "number_of_aggregations", "access"
+)
+
+new_dataset_query <- function() {
+    esg_query(index_node)$
+        activity_id("ScenarioMIP")$
+        experiment_id("ssp585")$
+        source_id("MPI-ESM1-2-LR")$
+        variant_label("r1i1p1f1")$
+        frequency("mon")$
+        variable_id(variables)$
+        data_node("esgf.ceda.ac.uk")$
+        params(table_id = "Amon")$
+        fields(dataset_fields)$
+        limit(20L)
+}
+
+query <- new_dataset_query()
+
+query$state(null = FALSE)
+query$url()
+```
+
+The small `new_dataset_query()` factory is deliberate. `EsgQuery` methods mutate
+the query object, so the range examples below each start from a fresh Dataset
+query. That keeps `datetime_range()`, `timestamp_range()`, and `version_range()`
+from leaking into the later Dataset/File/Aggregation examples, while keeping the
+shared base request in one place.
+
+Use `state()` to inspect the request as epwshiftr understands it. Use `url()`
+when you need the exact Solr request sent to the index node.
+
+`count()` is the first live request in this article. It asks the index node how
+many Dataset records match the query.
+
+```{r query-count}
+query$count()
+```
+
+# Constrain Dataset Search Ranges
+
+`EsgQuery` has three range helpers that add Solr `query=` constraints to the
+Dataset search.
+
+- `datetime_range(start, stop)` filters by dataset temporal coverage overlap.
+  It maps to ESGF `datetime_start` and `datetime_stop` constraints.
+- `timestamp_range(from, to)` filters by the Solr index timestamp, which is
+  useful when auditing recently indexed or recently changed records.
+- `version_range(min, max)` filters the numeric ESGF `version` field. CMIP-style
+  versions usually look like `YYYYMMDD`, such as `20190710`.
+
+For the future EPW workflow, use `datetime_range()` only to narrow Dataset
+matches. After collecting File or Aggregation records, use `filter_time()` for
+file-level coverage. CMIP files often cover multi-year ranges, and File-layer
+filtering is easier to audit.
+
+All three helpers use epwshiftr's Solr date parser internally. You can inspect
+the parser directly with `solr_date()` when you want to see exactly how a value
+will be normalized before it is placed into a query.
+
+```{r solr-date-support}
+solr_inputs <- c(
+    "2060",
+    "2060-06",
+    "20600615",
+    "2060-06-15T12:30:45Z",
+    "2060-06-15T20:30:45+08:00",
+    "NOW/DAY-1YEAR+6MONTHS",
+    "2060-01-01T00:00:00Z+1MONTH",
+    "[2055 TO 2075]",
+    "{2055 TO 2075]",
+    "[* TO 2060]"
+)
+solr_parsed <- lapply(solr_inputs, solr_date)
+
+data.frame(
+    input = solr_inputs,
+    iso = vapply(solr_parsed, format, character(1)),
+    num = suppressWarnings(vapply(
+        solr_parsed,
+        function(x) format(x, as = "num"),
+        character(1)
+    )),
+    is_solr_date = vapply(solr_parsed, is.solr_date, logical(1))
+)
+```
+
+The parser accepts `Date` and UTC `POSIXct` inputs too. `POSIXct` values must
+already be UTC so that the query does not silently depend on the local timezone.
+
+```{r solr-date-typed-inputs}
+typed_inputs <- list(
+    date = as.Date("2060-06-15"),
+    posixct_utc = as.POSIXct("2060-06-15 12:30:45", tz = "UTC")
+)
+
+data.frame(
+    input_type = names(typed_inputs),
+    iso = vapply(
+        typed_inputs,
+        function(x) format(solr_date(x)),
+        character(1)
+    )
+)
+```
+
+```{r datetime-range}
+coverage_query <- new_dataset_query()$
+    datetime_range(
+        start = "2060",
+        stop = "2060-12-31T23:59:59Z"
+    )
+
+coverage_query$datetime_range()
+coverage_query$url()
+coverage_query$count()
+```
+
+`datetime_range()` accepts complete ISO datetimes, simplified dates such as
+`"2060"` or `"2060-06"`, Solr Date Math such as `"NOW-10YEARS"`, and complete
+Solr range expressions. The `start` boundary keeps datasets whose coverage
+starts no later than the requested boundary; the `stop` boundary keeps datasets
+whose coverage ends no earlier than the requested boundary.
+
+```{r datetime-range-expression}
+custom_coverage_query <- new_dataset_query()$
+    datetime_range(
+        start = "[2055 TO 2075]",
+        stop = "NOW+100YEARS"
+    )
+
+custom_coverage_query$datetime_range()
+custom_coverage_query$url()
+```
+
+Use full range expressions only when you intentionally need raw Solr range
+control. For ordinary workflow windows, separate `start` and `stop` boundaries
+are easier to read.
+
+```{r timestamp-range}
+timestamp_query <- new_dataset_query()$
+    timestamp_range(
+        from = "NOW/YEAR-10YEARS",
+        to = "NOW"
+    )
+
+timestamp_query$timestamp_range()
+timestamp_query$url()
+timestamp_query$count()
+```
+
+Use `timestamp_range()` when the question is about index freshness, not climate
+time coverage. It accepts point-like dates and Solr Date Math boundaries. Unlike
+`datetime_range()`, it does not accept a full `[... TO ...]` range expression as
+one argument; pass `from` and `to` separately.
+
+```{r version-range}
+version_query <- new_dataset_query()$
+    version_range(
+        min = "2019-07",
+        max = "20190831"
+    )
+
+version_query$version_range()
+version_query$url()
+version_query$count()
+```
+
+Use `version_range()` when you need to select ESGF publication versions. It is a
+numeric comparison, so use version-like boundaries such as `"20190701"` or
+simplified dates such as `"2019-07"`. It does not support Solr Date Math.
+
+Pass `NULL` to clear an existing range boundary, for example
+`query$datetime_range(start = NULL, stop = NULL)`.
+
+# Inspect Index Metadata
+
+Before collecting results from an unfamiliar index node, inspect what the node
+can answer.
+
+```{r index-metadata}
+facets <- query$list_facets()
+fields <- query$list_fields()
+shards <- query$list_shards()
+values <- query$list_values(c("activity_id", "experiment_id", "table_id"))
+
+utils::head(facets, 20)
+utils::head(fields, 20)
+utils::head(shards, 8)
+lapply(values, utils::head, 8)
+```
+
+`list_shards()` is about distributed search indexes. It is not the same thing
+as `data_node`: a shard answers search requests, while a data node hosts files
+and service URLs.
+
+The dictionary article explains local value validation before a query is sent.
+The listing helpers here explain what the live index node currently exposes.
+Use both when you need to understand whether an empty result is a local request
+problem or an index-node/data-node problem.
+
+# Collect Dataset Records
+
+Dataset records answer "which logical ESGF datasets match this request?" They
+are not NetCDF files yet. A Dataset record is the parent identity used to
+collect File or Aggregation child records.
+
+```{r collect-datasets}
+datasets <- query$collect(type = "Dataset", all = FALSE, limit = TRUE)
+
+datasets$count()
+result_table(datasets, c(
+    "id", "source_id", "experiment_id", "variant_label",
+    "table_id", "variable_id", "data_node", "number_of_files",
+    "number_of_aggregations", "access"
+))
+```
+
+Use Dataset inspection before asking for all child files. If the table is too
+broad, tighten request facets such as `source_id`, `variant_label`, `table_id`,
+or `data_node`. If the table is empty, use the metadata helpers above and the
+troubleshooting article.
+
+Result objects are local containers after collection. `$slice()` and
+`$filter()` operate on the records already in memory and keep selection
+provenance.
+
+```{r dataset-selection}
+first_datasets <- datasets$slice(seq_len(min(3L, datasets$count())))
+result_table(first_datasets, c("id", "variable_id", "data_node", "access"))
+
+tas_datasets <- datasets$filter(function(x) x$variable_id == "tas")
+result_table(tas_datasets, c("id", "variable_id", "number_of_files", "access"))
+
+tas_datasets$selection()
+```
+
+# Collect File Records
+
+File records identify concrete NetCDF files and service URLs. They are the
+dependable route for store-backed downloads and OPeNDAP-first extraction.
+
+```{r collect-files}
+files <- datasets$collect(
+    type = "File",
+    fields = "*",
+    all = TRUE,
+    limit = NULL
+)
+
+files$count()
+result_table(files, c(
+    "filename", "variable_id", "data_node", "datetime_start",
+    "datetime_end", "size", "url_opendap", "url_download"
+), n = 12L)
+```
+
+`filter_time(method = "drs")` parses CMIP-style filename and DRS time ranges.
+It is a fast planning filter and is the right default for raw articles and
+store workflows.
+
+```{r file-time-filter}
+files_2060 <- files$filter_time(
+    "2060-01-01T00:00:00Z",
+    "2060-12-31T23:59:59Z",
+    method = "drs"
+)
+
+files_2060$count()
+result_table(files_2060, c(
+    "filename", "variable_id", "datetime_start", "datetime_end",
+    "data_node", "url_opendap", "url_download"
+), n = 12L)
+```
+
+Use `filter_time(method = "opendap")` only when filename-derived time coverage
+is not enough and you are willing to open remote datasets to read their time
+axes. That is more precise for irregular data, but it is slower and more
+sensitive to remote OPeNDAP availability.
+
+# Collect Aggregation Records
+
+Aggregation records are optional. Some Dataset records and index nodes expose
+them, and some do not. They can be useful for service access, but File records
+remain the robust path for the main future EPW workflow.
+
+```{r collect-aggregations}
+aggregations <- datasets$collect(
+    type = "Aggregation",
+    fields = "*",
+    all = TRUE,
+    limit = NULL
+)
+
+aggregations$count()
+if (aggregations$count()) {
+    result_table(aggregations, c(
+        "title", "variable_id", "data_node", "datetime_start",
+        "datetime_end", "url_opendap", "url_download"
+    ), n = 12L)
+} else {
+    data.frame(
+        note = "This live query did not return Aggregation records; continue with File records."
+    )
+}
+```
+
+When Aggregation records are present, the same time-filtering and table
+inspection pattern applies.
+
+```{r aggregation-time-filter}
+if (aggregations$count()) {
+    aggregations_2060 <- aggregations$filter_time(
+        "2060-01-01T00:00:00Z",
+        "2060-12-31T23:59:59Z",
+        method = "drs"
+    )
+
+    aggregations_2060$count()
+    result_table(aggregations_2060, c(
+        "title", "variable_id", "datetime_start", "datetime_end",
+        "url_opendap", "url_download"
+    ), n = 12L)
+} else {
+    data.frame(
+        note = "This live query did not return Aggregation records; continue with File records."
+    )
+}
+```
+
+# Save and Reuse Query Objects
+
+Query and result objects can be saved as JSON. This is useful for debugging a
+selection or sharing a small reproducible query state. For durable project
+work, use an `EsgStore` instead of managing JSON paths manually.
+
+```{r save-load}
+query_path <- file.path(workflow_root, "query.json")
+files_path <- file.path(workflow_root, "files-2060.json")
+
+query$save(query_path)
+files_2060$save(files_path)
+
+query_copy <- esg_query()$load(query_path)
+files_copy <- esg_result("file")$load(files_path)
+
+query_copy$state(null = FALSE)
+files_copy$count()
+```
+
+The next layer is [ESG stores](esg-store.html), where these query and file
+objects become durable manifest records connected to downloads, extraction
+plans, and generated EPW artifacts.
