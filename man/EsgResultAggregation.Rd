@@ -38,6 +38,8 @@ available.}
 \itemize{
 \item \href{#method-EsgResultAggregation-to_data_table}{\code{EsgResultAggregation$to_data_table()}}
 \item \href{#method-EsgResultAggregation-filter_time}{\code{EsgResultAggregation$filter_time()}}
+\item \href{#method-EsgResultAggregation-download_plan}{\code{EsgResultAggregation$download_plan()}}
+\item \href{#method-EsgResultAggregation-download}{\code{EsgResultAggregation$download()}}
 \item \href{#method-EsgResultAggregation-print}{\code{EsgResultAggregation$print()}}
 \item \href{#method-EsgResultAggregation-open_dataset}{\code{EsgResultAggregation$open_dataset()}}
 \item \href{#method-EsgResultAggregation-clone}{\code{EsgResultAggregation$clone()}}
@@ -106,6 +108,119 @@ A new \code{EsgResultAggregation} object.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultAggregation-download_plan"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultAggregation-download_plan}{}}}
+\subsection{Method \code{download_plan()}}{
+Build a persistent downloader plan for aggregation records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$download_plan(
+  replica = c("current", "auto"),
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  all = TRUE,
+  node_stats = NULL,
+  network_policy = NULL,
+  node_policy = NULL,
+  probe_concurrency = 1L,
+  probe_cache_seconds = 3600L
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{replica}}{Replica policy. Aggregation records currently use the
+current records.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{all}}{Reserved for API symmetry with \code{EsgResultFile}.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
+
+\item{\code{node_policy}}{Optional data-node cooldown policy from
+\code{FileDownloader$node_policy}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table download plan.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultAggregation-download"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultAggregation-download}{}}}
+\subsection{Method \code{download()}}{
+Enqueue and run aggregation downloads using a FileDownloader.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$download(
+  downloader = NULL,
+  store = NULL,
+  replica = c("current", "auto"),
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  session_label = NULL,
+  run = TRUE,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{downloader}}{Optional persistent \link{FileDownloader}. If \code{NULL},
+\code{store$downloader()} is used when \code{store} is supplied.}
+
+\item{\code{store}}{Optional \link{EsgStore} providing a bound downloader.}
+
+\item{\code{replica}}{Replica policy. Aggregation records currently use the
+current records.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{run}}{Whether to run the queued session immediately. Default:
+\code{TRUE}.}
+
+\item{\code{...}}{Additional arguments passed to \code{FileDownloader$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created downloader session ID.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultAggregation-print"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultAggregation-print}{}}}
 \subsection{Method \code{print()}}{
@@ -134,7 +249,9 @@ Open aggregation files as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$open_dataset(
   aggregate = TRUE,
-  fallback = c("ask", "auto", "error")
+  fallback = c("ask", "auto", "error"),
+  store = NULL,
+  downloader = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -151,6 +268,11 @@ non-interactive session this raises an error.
 \item \code{"auto"}: Automatically download files via HTTPServer.
 \item \code{"error"}: Raise an error.
 }}
+
+\item{\code{store}}{Optional \link{EsgStore} used for recoverable HTTP fallback.}
+
+\item{\code{downloader}}{Optional persistent \link{FileDownloader} used for
+recoverable HTTP fallback.}
 }
 \if{html}{\out{</div>}}
 }

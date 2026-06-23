@@ -678,7 +678,7 @@ test_that("DiskCache: metadata persistence", {
     cache$set("a", 1)
 
     # Check metadata file exists
-    metadata_file <- file.path(cache_dir, ".metadata.qs")
+    metadata_file <- file.path(cache_dir, ".metadata.rds")
     expect_true(file.exists(metadata_file))
 
     # Destroy and recreate
@@ -1037,6 +1037,28 @@ test_that("set_cache() sets and returns old cache", {
     old2 <- set_cache(cache2)
     expect_identical(old2, cache1)
     expect_identical(get_cache(), cache2)
+})
+
+test_that("get_cache() uses epwshiftr.dir_cache", {
+    original <- set_cache(NULL)
+    cache_dir <- tempfile("epwshiftr-dir-cache-")
+    expected_dir <- normalizePath(cache_dir, winslash = "/", mustWork = FALSE)
+    withr::local_options(list(epwshiftr.dir_cache = cache_dir))
+    withr::defer({
+        reset_cache()
+        unlink(cache_dir, recursive = TRUE)
+        set_cache(original)
+    })
+
+    expect_false(dir.exists(cache_dir))
+    cache <- get_cache()
+
+    expect_s3_class(cache, "DiskCache")
+    expect_true(dir.exists(cache_dir))
+    expect_identical(cache$info()$dir, expected_dir)
+
+    cache$set("dir-cache-option", list(value = 1L))
+    expect_equal(cache$get("dir-cache-option"), list(value = 1L))
 })
 
 test_that("reset_cache() sets cache to NULL", {

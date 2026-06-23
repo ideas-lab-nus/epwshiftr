@@ -294,6 +294,21 @@ test_that("data_node_status()", {
     expect_named(node, c("data_node", "status"))
     expect_identical(node$data_node, "example.org")
     expect_identical(node$status, "UP")
+
+    testthat::local_mocked_bindings(
+        curl_fetch_memory = function(url, handle) {
+            expect_identical(url, "https://example.org/")
+            list(status_code = 200L)
+        },
+        .package = "curl"
+    )
+
+    node <- expect_s3_class(data_node_status(speed_test = TRUE), "data.table")
+    expect_named(node, c("data_node", "status", "probe_ms"))
+    expect_identical(node$data_node, "example.org")
+    expect_identical(node$status, "UP")
+    expect_type(node$probe_ms, "double")
+    expect_false(is.na(node$probe_ms))
 })
 
 test_that("data_node_status() live query", {
@@ -302,7 +317,7 @@ test_that("data_node_status() live query", {
     node <- expect_s3_class(data_node_status(), "data.table")
     expect_named(node, c("data_node", "status"))
 
-    # can test speed using pingr
+    # can test speed using HTTP probes
     node <- expect_s3_class(data_node_status(TRUE, 1), "data.table")
-    expect_named(node, c("data_node", "status", "ping"))
+    expect_named(node, c("data_node", "status", "probe_ms"))
 })
