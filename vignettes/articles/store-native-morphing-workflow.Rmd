@@ -1,0 +1,380 @@
+---
+title: "Store-Native EPW Morphing Workflow"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Store-Native EPW Morphing Workflow}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Create future EPW files from store-backed ESGF downloads, extraction
+    outputs, and the EpwMorpher workflow.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+vignette_truthy <- function(x) {
+    tolower(x) %in% c("1", "true", "yes", "y", "on")
+}
+
+use_live_query <- !vignette_truthy(Sys.getenv("EPWSHIFTR_VIGNETTE_OFFLINE", "false"))
+
+cache_dir <- Sys.getenv("EPWSHIFTR_VIGNETTE_CACHE", "")
+if (!nzchar(cache_dir)) {
+    cache_dir <- file.path(tempdir(), "epwshiftr-vignette-cache")
+}
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+options(
+    epwshiftr.dir_cache = file.path(cache_dir, "cache"),
+    epwshiftr.dir_store = file.path(cache_dir, "store")
+)
+options(epwshiftr.verbose = FALSE)
+
+future_weather_cache_dir <- file.path(cache_dir, "future-weather")
+dir.create(future_weather_cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+vignette_cache_json <- function(filename) {
+    file.path(future_weather_cache_dir, filename)
+}
+
+vignette_fixture_json <- function(filename) {
+    fixture_dir <- system.file(
+        "extdata", "vignettes", "future-weather",
+        package = "epwshiftr",
+        mustWork = FALSE
+    )
+    if (!nzchar(fixture_dir) || !dir.exists(fixture_dir)) {
+        candidates <- c(
+            file.path("..", "..", "inst", "extdata", "vignettes", "future-weather"),
+            file.path("..", "inst", "extdata", "vignettes", "future-weather"),
+            file.path("inst", "extdata", "vignettes", "future-weather")
+        )
+        fixture_dir <- candidates[dir.exists(candidates)][1L]
+    }
+    fixture_dir <- normalizePath(fixture_dir, winslash = "/", mustWork = TRUE)
+    text <- readLines(file.path(fixture_dir, filename), warn = FALSE)
+    text <- gsub("__FUTURE_WEATHER_FIXTURE_DIR__", fixture_dir, text, fixed = TRUE)
+    path <- tempfile(fileext = ".json")
+    writeLines(text, path, useBytes = TRUE)
+    path
+}
+
+vignette_write_epw <- function(path) {
+    datetime <- seq.POSIXt(
+        as.POSIXct("2001-01-01 00:00:00", tz = "UTC"),
+        as.POSIXct("2001-12-31 23:00:00", tz = "UTC"),
+        by = "hour"
+    )
+
+    hour0 <- as.integer(format(datetime, "%H"))
+    yday <- as.integer(format(datetime, "%j"))
+    daylight <- pmax(0, sin(pi * (hour0 - 6) / 12))
+
+    weather <- data.frame(
+        year = as.integer(format(datetime, "%Y")),
+        month = as.integer(format(datetime, "%m")),
+        day = as.integer(format(datetime, "%d")),
+        hour = hour0 + 1L,
+        minute = 60L,
+        data_source = "A7A7A7A7*0?0?0?0",
+        dry_bulb = sprintf("%.1f", round(27 + 2 * sin(2 * pi * (yday - 81) / 365) + 1.5 * sin(2 * pi * (hour0 - 8) / 24), 1)),
+        dew_point = sprintf("%.1f", round(25 + 2 * sin(2 * pi * (yday - 81) / 365) + 1.5 * sin(2 * pi * (hour0 - 8) / 24), 1)),
+        relative_humidity = as.integer(round(pmin(pmax(78 - 12 * sin(2 * pi * (hour0 - 8) / 24), 45), 95))),
+        atmospheric_pressure = 101325L,
+        extraterrestrial_horizontal_radiation = as.integer(round(1000 * daylight)),
+        extraterrestrial_direct_normal_radiation = as.integer(round(900 * daylight)),
+        horizontal_infrared_radiation_intensity_from_sky = 350L,
+        global_horizontal_radiation = as.integer(round(800 * daylight)),
+        direct_normal_radiation = as.integer(round(600 * daylight)),
+        diffuse_horizontal_radiation = as.integer(round(200 * daylight)),
+        global_horizontal_illuminance = as.integer(round(800 * daylight * 120)),
+        direct_normal_illuminance = as.integer(round(600 * daylight * 120)),
+        diffuse_horizontal_illuminance = as.integer(round(200 * daylight * 120)),
+        zenith_luminance = as.integer(round(pmin(9999, 800 * daylight * 12))),
+        wind_direction = 180L,
+        wind_speed = sprintf("%.1f", round(2.5 + 0.8 * sin(2 * pi * hour0 / 24), 1)),
+        total_sky_cover = 5L,
+        opaque_sky_cover = 5L,
+        visibility = sprintf("%.1f", 20.0),
+        ceiling_height = 77777L,
+        present_weather_observation = 0L,
+        present_weather_codes = "999999999",
+        precipitable_water = 35L,
+        aerosol_optical_depth = sprintf("%.1f", 0.1),
+        snow_depth = 0L,
+        days_since_last_snowfall = 88L,
+        albedo = sprintf("%.2f", 0.12),
+        liquid_precipitation_depth = sprintf("%.1f", 0.0),
+        liquid_precipitation_quantity = sprintf("%.1f", 0.0),
+        stringsAsFactors = FALSE
+    )
+
+    header <- c(
+        "LOCATION,Singapore,NA,Singapore,TEST,486980,1.37,103.98,8.0,15.0",
+        "DESIGN CONDITIONS,0",
+        "TYPICAL/EXTREME PERIODS,0",
+        "GROUND TEMPERATURES,0",
+        "HOLIDAYS/DAYLIGHT SAVINGS,No,0,0,0",
+        "COMMENTS 1,Generated local smoke EPW fixture",
+        "COMMENTS 2,Deterministic synthetic data for vignette rendering",
+        "DATA PERIODS,1,1,Data,Monday,1/1,12/31"
+    )
+
+    writeLines(c(header, do.call(paste, c(weather, sep = ","))), path)
+    normalizePath(path, winslash = "/", mustWork = TRUE)
+}
+
+vignette_epw <- function() {
+    epw <- system.file(
+        "extdata", "vignettes", "future-weather", "SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr"
+    )
+    if (nzchar(epw)) {
+        return(epw)
+    }
+
+    epw <- file.path(future_weather_cache_dir, "SGP_Singapore.486980_IWEC.epw")
+    if (!file.exists(epw)) {
+        vignette_write_epw(epw)
+    }
+    normalizePath(epw, winslash = "/", mustWork = TRUE)
+}
+```
+
+```{r setup, message = FALSE}
+library(epwshiftr)
+```
+
+This article runs the full store-native EPW morphing workflow. It starts from
+ESGF File records, localises and extracts monthly CMIP6 variables into an
+`EsgStore`, then uses `EpwMorpher` to create future EPW files.
+
+The example uses monthly `Amon` data so the live ESGF download is smaller than
+an equivalent daily workflow. Set `EPWSHIFTR_VIGNETTE_OFFLINE=true` before
+rendering to use the bundled deterministic fixtures.
+
+# Define the Site and Variables
+
+The EPW file supplies the baseline hourly weather and the site metadata.
+
+```{r site}
+epw <- vignette_epw()
+
+basename(epw)
+```
+
+The morphing recipe uses the recommended CMIP variable set.
+
+```{r variables}
+variables <- epw_morph_variables("recommended")
+variables
+```
+
+# Query ESGF File Records
+
+Start with Dataset records for one ScenarioMIP model, scenario, member, and
+monthly variable set. The example keeps the query on one data node to make the
+download plan predictable.
+
+```{r query}
+query <- esg_query("https://esgf-data.dkrz.de")$
+    activity_id("ScenarioMIP")$
+    experiment_id("ssp585")$
+    source_id("EC-Earth3")$
+    variant_label("r1i1p1f1")$
+    frequency("mon")$
+    variable_id(variables)$
+    data_node("esgf.ceda.ac.uk")$
+    params(table_id = "Amon")$
+    fields(c(
+        "source_id", "experiment_id", "variant_label", "frequency",
+        "variable_id", "number_of_files", "number_of_aggregations", "access"
+    ))$
+    limit(50L)
+
+query$state(null = FALSE)
+```
+
+```{r datasets}
+if (use_live_query) {
+    datasets <- query$collect(all = FALSE, limit = TRUE)
+    datasets$save(vignette_cache_json("dataset-result.json"))
+} else {
+    datasets <- esg_result("dataset")$load(vignette_fixture_json("dataset-result.json"))
+}
+
+datasets$to_data_table(fields = c(
+    "id", "variable_id", "number_of_files", "access"
+), formatted = TRUE)
+```
+
+Move from Dataset records to concrete File records, then keep files covering
+the 2060 morphing period.
+
+```{r files}
+if (use_live_query) {
+    files <- datasets$collect(type = "File", fields = "*", all = TRUE, limit = 200L)
+    files$save(vignette_cache_json("file-result.json"))
+} else {
+    files <- esg_result("file")$load(vignette_fixture_json("file-result.json"))
+}
+
+files_2060 <- files$filter_time("2060-01-01", "2060-12-31", method = "drs")
+
+files_2060$to_data_table(fields = c(
+    "title", "variable_id", "checksum_type", "size", "url_download"
+), formatted = TRUE)
+```
+
+# Download and Extract into a Store
+
+`EsgStore` keeps the File records, downloads, extraction plans, extracted
+Parquet outputs, morphing plans, and generated EPW files connected by IDs.
+
+```{r store}
+store_path <- file.path(future_weather_cache_dir, "store-native-morphing-store")
+store <- EsgStore$new(store_path)
+
+query_id <- store$add_files(files_2060, label = "singapore-ssp585-amon-2060")
+store$query("SELECT filename, variable_id, local_path FROM file_catalog")
+```
+
+Download the cataloged File records through the store-bound downloader.
+
+```{r download}
+downloader <- store$downloader(n_workers = 0L, retries = 1L)
+
+session_id <- store$download_files(
+    downloader = downloader,
+    replica = "current",
+    run = TRUE,
+    session_label = "store-native-morphing-2060",
+    service = "HTTPServer",
+    probe = FALSE,
+    progress = FALSE
+)
+
+store$download_status(session_id = session_id, downloader = downloader)[
+    , c("filename", "status", "target_path")
+]
+```
+
+Plan and execute the site-scale extraction for the full 2060 period.
+
+```{r plan-region}
+region <- store$plan_region(
+    query_id = query_id,
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    site_id = "SIN",
+    variable_id = variables,
+    nearest = 1L
+)
+
+region[, c("site_id", "variable_id", "status", "time_start", "time_stop")]
+```
+
+```{r extract}
+processed <- store$extract(plan_id = region$plan_id, fallback = "auto")
+processed[, c("variable_id", "status", "available_time_count")]
+```
+
+```{r coverage}
+store$coverage(plan_id = region$plan_id)[, c(
+    "variable_id", "complete", "status", "output_rows", "output_file_count"
+)]
+```
+
+# Morph the Baseline EPW
+
+Create an `EpwMorpher` from the same store and baseline EPW. The morpher reads
+the extracted Parquet outputs and writes its own plans, factors, result
+Parquet, and EPW outputs back into the store.
+
+```{r morpher}
+morpher <- epw_morpher(
+    store = store,
+    epw = epw,
+    site_id = "SIN",
+    label = "singapore"
+)
+
+morpher$required_variables()
+```
+
+Summarise the extracted climate data by morphing period and month.
+
+```{r summarise-climate}
+periods <- epw_morph_periods(`2060s` = 2060L)
+
+climate <- morpher$summarise_climate(
+    plan_id = region$plan_id,
+    periods = periods,
+    strict = TRUE
+)
+
+climate[, .N, by = .(variable_id, period)][order(variable_id)]
+```
+
+Summarise the baseline EPW by month using the fields required by the recipe.
+
+```{r summarise-baseline}
+baseline <- morpher$summarise_baseline()
+baseline[, .N, by = epw_field][order(epw_field)]
+```
+
+Create the morphing plan. This monthly example uses a relaxed plan so fields
+without a direct monthly morphing factor are carried through with diagnostics
+rather than blocking the tutorial render.
+
+```{r morph-plan}
+morph_plan <- morpher$plan(
+    summary_id = unique(climate$summary_id),
+    baseline_id = unique(baseline$baseline_id),
+    strict = FALSE
+)
+
+diagnostics <- morpher$diagnose(morph_plan$morph_id)
+diagnostic_fields <- intersect(c("severity", "epw_field", "variable_id", "message"), names(diagnostics))
+diagnostics[, ..diagnostic_fields]
+morpher$status(morph_plan$morph_id)[, c("morph_id", "status", "label", "strict")]
+```
+
+Run the plan. This writes hourly morphed weather data as Parquet.
+
+```{r run}
+results <- morpher$run(morph_plan$morph_id, overwrite = TRUE)
+results[, c("case_id", "row_count", "output_path")]
+```
+
+Write future EPW files from the morphing results.
+
+```{r write-epw}
+outputs <- morpher$write_epw(
+    morph_id = morph_plan$morph_id,
+    dir = "outputs/future-epw",
+    separate = FALSE,
+    overwrite = TRUE
+)
+
+output_fields <- intersect(c("case_id", "path", "artifact_id", "created_at"), names(outputs))
+outputs[, ..output_fields]
+```
+
+The store now records both the morphing result Parquet and the generated EPW
+files.
+
+```{r outputs}
+recorded_outputs <- morpher$outputs(morph_plan$morph_id)
+recorded_fields <- intersect(c("case_id", "path", "artifact_id", "created_at"), names(recorded_outputs))
+recorded_outputs[, ..recorded_fields]
+store$close()
+```

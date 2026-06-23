@@ -14,7 +14,7 @@ epwshiftr_cli_help <- function(topic = character()) {
 
 epwshiftr_cli_help_root <- function() {
     c(
-        "Usage: epwshiftr [--store PATH] [--json] [--quiet] <group> <command> [options]",
+        "Usage: epwshiftr [--store PATH] [--json|--jsonl] [--quiet] <group> <command> [options]",
         "",
         "Command groups:",
         "  epwshiftr doctor",
@@ -151,13 +151,16 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr download preflight <query_id> [--replica POLICY] [--strategy STRATEGY] [--no-probe]",
-            "  epwshiftr download run <query_id> [--session-label LABEL] [--overwrite] [--no-resume] [--no-progress]",
+            "  epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress]",
             "  epwshiftr download status [--query QUERY_ID] [--session SESSION_ID]",
             "  epwshiftr download sessions",
-            "  epwshiftr download tasks [--session SESSION_ID] [--status STATUS]",
-            "  epwshiftr download events [--session SESSION_ID] [--task TASK_ID]",
-            "  epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--events N]",
-            "  epwshiftr download logs [--session SESSION_ID] [--task TASK_ID] [--tail N]",
+            "  epwshiftr download tasks [--session SESSION_ID] [--job JOB_ID] [--status STATUS]",
+            "  epwshiftr download events [--session SESSION_ID] [--job JOB_ID] [--task TASK_ID]",
+            "  epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--job JOB_ID] [--follow] [--interval SECONDS] [--events N]",
+            "  epwshiftr download jobs [--status STATUS]",
+            "  epwshiftr download stop --job JOB_ID [--force]",
+            "  epwshiftr download logs [--session SESSION_ID] [--job JOB_ID] [--task TASK_ID] [--tail N]",
+            "  epwshiftr download daemon start|status|stop",
             "  epwshiftr download resume [--session SESSION_ID] [--task TASK_ID] [--overwrite] [--no-progress]",
             "  epwshiftr download verify [--session SESSION_ID] [--task TASK_ID]",
             "  epwshiftr download cancel [--session SESSION_ID] [--task TASK_ID]",
@@ -173,9 +176,10 @@ epwshiftr_cli_help_registry <- function() {
             "Build a replica-aware download plan without enqueuing tasks."
         ),
         "download run" = c(
-            "Usage: epwshiftr download run <query_id> [--session-label LABEL] [--overwrite] [--no-resume] [--no-progress]",
+            "Usage: epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress]",
             "",
-            "Refresh, plan, enqueue, and run downloads for a stored query."
+            "Refresh, plan, enqueue, and run downloads for a stored query.",
+            "Use --background to create a persistent downloader job instead of blocking the current R session."
         ),
         "download status" = c(
             "Usage: epwshiftr download status [--query QUERY_ID] [--session SESSION_ID]",
@@ -188,24 +192,55 @@ epwshiftr_cli_help_registry <- function() {
             "List persistent download sessions."
         ),
         "download tasks" = c(
-            "Usage: epwshiftr download tasks [--session SESSION_ID] [--status STATUS]",
+            "Usage: epwshiftr download tasks [--session SESSION_ID] [--job JOB_ID] [--status STATUS]",
             "",
             "List persistent download tasks."
         ),
         "download events" = c(
-            "Usage: epwshiftr download events [--session SESSION_ID] [--task TASK_ID]",
+            "Usage: epwshiftr download events [--session SESSION_ID] [--job JOB_ID] [--task TASK_ID]",
             "",
             "List persistent downloader event records."
         ),
         "download watch" = c(
-            "Usage: epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--events N]",
+            "Usage: epwshiftr download watch [--query QUERY_ID] [--session SESSION_ID] [--job JOB_ID] [--follow] [--interval SECONDS] [--events N]",
             "",
-            "Return a one-shot download activity snapshot with summary, tasks, nodes, and recent events."
+            "Return a one-shot download activity snapshot with summary, tasks, nodes, and recent events.",
+            "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming."
+        ),
+        "download jobs" = c(
+            "Usage: epwshiftr download jobs [--status STATUS]",
+            "",
+            "List background downloader jobs."
+        ),
+        "download stop" = c(
+            "Usage: epwshiftr download stop --job JOB_ID [--force]",
+            "",
+            "Request cancellation of a background downloader job."
         ),
         "download logs" = c(
-            "Usage: epwshiftr download logs [--session SESSION_ID] [--task TASK_ID] [--tail N]",
+            "Usage: epwshiftr download logs [--session SESSION_ID] [--job JOB_ID] [--task TASK_ID] [--tail N]",
             "",
-            "Return the latest persistent downloader event records."
+            "Return the latest persistent downloader event records or background job log lines."
+        ),
+        "download daemon" = c(
+            "Usage: epwshiftr download daemon <start|status|stop> [options]",
+            "",
+            "Manage the persistent downloader daemon."
+        ),
+        "download daemon start" = c(
+            "Usage: epwshiftr download daemon start [--port PORT] [--heartbeat-interval SECONDS]",
+            "",
+            "Start a persistent downloader daemon for queued background jobs."
+        ),
+        "download daemon status" = c(
+            "Usage: epwshiftr download daemon status",
+            "",
+            "Show downloader daemon status records."
+        ),
+        "download daemon stop" = c(
+            "Usage: epwshiftr download daemon stop [--force]",
+            "",
+            "Request the active downloader daemon to stop."
         ),
         "download resume" = c(
             "Usage: epwshiftr download resume [--session SESSION_ID] [--task TASK_ID] [--overwrite] [--no-progress]",

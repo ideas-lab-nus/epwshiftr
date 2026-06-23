@@ -78,10 +78,8 @@ test_that("result schema JSON files use local reusable definitions", {
     required_defs <- c(
         "index_node",
         "parameter",
-        "parameter_facet",
-        "parameter_query",
-        "parameter_control",
-        "parameter_others",
+        "parameter_type",
+        "parameter_entry",
         "response",
         "response_header",
         "response_body",
@@ -89,11 +87,13 @@ test_that("result schema JSON files use local reusable definitions", {
         "facet_counts",
         "timestamp",
         "context",
+        "context_query_url",
+        "context_selection",
         "context_time_filter"
     )
 
     for (filename in c("result-dataset.json", "result-file.json", "result-aggregation.json")) {
-        schema_file <- system.file("extdata", "schema", filename, package = "epwshiftr")
+        schema_file <- system.file("extdata", "schema", filename, package = "epwshiftr", mustWork = TRUE)
         json <- jsonlite::fromJSON(schema_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
 
         expect_named(json$fields, c("index_node", "parameter", "response", "context"))
@@ -102,6 +102,7 @@ test_that("result schema JSON files use local reusable definitions", {
         expect_identical(json$fields$response$`$ref`, "#/$defs/response")
         expect_identical(json$fields$context$`$ref`, "#/$defs/context")
         expect_true(all(required_defs %in% names(json[["$defs"]])))
+        expect_false(any(c("parameter_facet", "parameter_query", "parameter_control", "parameter_others") %in% names(json[["$defs"]])))
     }
 })
 
@@ -151,7 +152,7 @@ schema_test_response <- function(docs) {
 schema_test_result_json <- function(type, docs, context = NULL) {
     result <- list(
         index_node = "https://example.org",
-        parameter = query_param_as_store(list(type = type, format = FORMAT_JSON))$serialize(null = TRUE),
+        parameter = query_param__as_store(list(type = type, format = QUERY_PARAM__FORMAT_JSON))$serialize(null = TRUE),
         response = schema_test_response(docs)
     )
     if (!is.null(context)) {
@@ -239,6 +240,40 @@ test_that("schema validates saved query result JSON fixtures", {
     expect_true(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "file-result-context"))
     file_with_context$context$time_filter$method <- "metadata"
     expect_false(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "bad-result-context"))
+
+    query_url_context <- list(query_url = c("https://example.org/search?page=1", "https://example.org/search?page=2"))
+    dataset_with_context <- schema_test_result_json("Dataset", schema_test_dataset_docs(), context = query_url_context)
+    expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "dataset-result-query-url-context"))
+    dataset_with_context$context$query_url[[1L]] <- NA_character_
+    expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "bad-result-query-url-context"))
+
+    selection_context <- list(selection = list(
+        source_count = 3L,
+        source_num_found = 10L,
+        source_indices = c(3L, 1L)
+    ))
+    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+    expect_true(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "aggregation-result-selection-context"
+    ))
+    aggregation_with_context$context$selection$source_indices[[1L]] <- NA_integer_
+    expect_false(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "bad-result-selection-context-missing"
+    ))
+    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+    aggregation_with_context$context$selection$source_count <- NULL
+    expect_false(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_with_context,
+        mode = "test",
+        name = "bad-result-selection-context-fields"
+    ))
 
     bad_file <- tempfile(fileext = ".json")
     jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)

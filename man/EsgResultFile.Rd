@@ -43,6 +43,7 @@ and \code{url_download} when their source fields are available.}
 \item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
 \item \href{#method-EsgResultFile-download_plan}{\code{EsgResultFile$download_plan()}}
 \item \href{#method-EsgResultFile-expand_replicas}{\code{EsgResultFile$expand_replicas()}}
+\item \href{#method-EsgResultFile-repair_urls}{\code{EsgResultFile$repair_urls()}}
 \item \href{#method-EsgResultFile-select_replica}{\code{EsgResultFile$select_replica()}}
 \item \href{#method-EsgResultFile-download}{\code{EsgResultFile$download()}}
 \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
@@ -51,12 +52,17 @@ and \code{url_download} when their source fields are available.}
 }
 }
 \if{html}{\out{
-<details open><summary>Inherited methods</summary>
+<details><summary>Inherited methods</summary>
 <ul>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-count'><code>epwshiftr::EsgResult$count()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-filter'><code>epwshiftr::EsgResult$filter()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-query_url'><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-reachable'><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-selection'><code>epwshiftr::EsgResult$selection()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-slice'><code>epwshiftr::EsgResult$slice()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
@@ -181,7 +187,7 @@ A data.table download plan.
 \if{html}{\out{<a id="method-EsgResultFile-expand_replicas"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-expand_replicas}{}}}
 \subsection{Method \code{expand_replicas()}}{
-Query ESGF for master and replica records for known \code{master_id}s.
+Query ESGF for same-version master and replica records.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$expand_replicas(service = "HTTPServer", all = TRUE)}\if{html}{\out{</div>}}
 }
@@ -199,7 +205,48 @@ Default: \code{"HTTPServer"}.}
 }
 \subsection{Returns}{
 A new \code{EsgResultFile} object with expanded replica records
-when \code{master_id} is available; otherwise \code{self}.
+when \code{instance_id}, or \code{master_id} plus \code{version}, is available;
+otherwise \code{self}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-repair_urls"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-repair_urls}{}}}
+\subsection{Method \code{repair_urls()}}{
+Replace unreachable service URLs with reachable replica records.
+
+\verb{$repair_urls()} probes the current records for the selected service,
+queries ESGF replicas by \code{master_id} for records whose URL is missing or
+unreachable, probes candidate replica URLs, and returns a new result with
+repaired records in the original row order. The original result is not
+modified. The returned result records the original query URL plus the
+replica lookup query URL in \verb{$query_url("all")}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$repair_urls(
+  service = c("OPENDAP", "HTTPServer"),
+  index_node = NULL,
+  probe = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{Service URL to repair. One of \code{"OPENDAP"} or
+\code{"HTTPServer"}. Default: \code{"OPENDAP"}.}
+
+\item{\code{index_node}}{Optional ESGF search index node used to look up
+replicas. If \code{NULL}, the current result index node is used.}
+
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{level}, \code{timeout}, \code{concurrency}, \code{network_policy},
+\code{cache_seconds}, and \code{cache_failures_seconds}. Default
+\code{level} is \code{"data_node"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultFile} object.
 }
 }
 \if{html}{\out{<hr>}}
@@ -337,7 +384,6 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(
   which = NULL,
-  aggregate = TRUE,
   fallback = c("ask", "auto", "error"),
   store = NULL,
   downloader = NULL
@@ -348,13 +394,7 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{which}}{File records to open. Use integer indices or file IDs.
-If \code{NULL}, all file records are opened when \code{aggregate = TRUE}
-and the first record is opened when \code{aggregate = FALSE}.
-Default: \code{NULL}.}
-
-\item{\code{aggregate}}{Whether to open multiple selected files as one
-aggregated \link{EsgDataset}. If \code{FALSE}, exactly one file record
-must be selected. Default: \code{TRUE}.}
+If \code{NULL}, all file records are opened. Default: \code{NULL}.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{

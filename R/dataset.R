@@ -1,16 +1,16 @@
 # EsgDataset {{{
 # DatasetAsyncTask {{{
-dataset_async_error_condition <- function(class, message) {
+dataset__async_condition <- function(class, message) {
     structure(list(message = message, call = NULL), class = c(class, "error", "condition"))
 }
 
-dataset_async_result_error <- function(operation, result, timeout_ms = NULL) {
+dataset__async_error <- function(operation, result, timeout_ms = NULL) {
     if (inherits(result, "miraiError")) {
         message <- attr(result, "message", exact = TRUE)
         if (is.null(message) || !nzchar(message)) {
             message <- as.character(result)
         }
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_failure",
             sprintf("Failed to %s: %s", operation, message)
         ))
@@ -23,20 +23,20 @@ dataset_async_result_error <- function(operation, result, timeout_ms = NULL) {
     code <- unclass(result)[[1L]]
     if (identical(code, 5L)) {
         suffix <- if (is.null(timeout_ms)) "" else sprintf(" after %d ms", timeout_ms)
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_timeout",
             sprintf("Failed to %s: async operation timed out%s.", operation, suffix)
         ))
     }
 
     if (identical(code, 20L)) {
-        return(dataset_async_error_condition(
+        return(dataset__async_condition(
             "epwshiftr_async_cancelled",
             sprintf("Failed to %s: async operation was cancelled (best-effort).", operation)
         ))
     }
 
-    dataset_async_error_condition(
+    dataset__async_condition(
         "epwshiftr_async_failure",
         sprintf("Failed to %s: async operation failed with mirai error code %s.", operation, code)
     )
@@ -93,7 +93,7 @@ DatasetAsyncTask <- R6::R6Class(
             }
 
             result <- mirai::collect_mirai(self$mirai_obj)
-            error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+            error <- dataset__async_error(self$operation, result, self$timeout_ms)
             if (!is.null(error)) {
                 status <- if (inherits(error, "epwshiftr_async_timeout")) {
                     "timed_out"
@@ -118,7 +118,7 @@ DatasetAsyncTask <- R6::R6Class(
             if (is.null(self$mirai_obj)) {
                 self$mark_terminal(
                     "cancelled",
-                    error = dataset_async_error_condition(
+                    error = dataset__async_condition(
                         "epwshiftr_async_cancelled",
                         sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
                     )
@@ -129,7 +129,7 @@ DatasetAsyncTask <- R6::R6Class(
 
             if (!mirai::unresolved(self$mirai_obj)) {
                 result <- self$mirai_obj$data
-                error <- dataset_async_result_error(self$operation, result, self$timeout_ms)
+                error <- dataset__async_error(self$operation, result, self$timeout_ms)
                 if (is.null(error)) {
                     self$mark_terminal("completed", result = result)
                 } else {
@@ -149,7 +149,7 @@ DatasetAsyncTask <- R6::R6Class(
             requested <- isTRUE(mirai::stop_mirai(self$mirai_obj))
             self$mark_terminal(
                 "cancelled",
-                error = dataset_async_error_condition(
+                error = dataset__async_condition(
                     "epwshiftr_async_cancelled",
                     sprintf("Failed to %s: async operation was cancelled (best-effort).", self$operation)
                 )
@@ -282,6 +282,108 @@ EsgDataset <- R6::R6Class(
             private$cancel_async_task()
             private$close_handles()
             invisible(self)
+        },
+        # }}}
+
+        # slice {{{
+        #' @description
+        #' Select files from this dataset by file position.
+        #'
+        #' `$slice()` creates a new `EsgDataset` with a subset of the current
+        #' dataset URLs. This is a file/URL-level operation; NetCDF variable,
+        #' dimension, time, and spatial slicing is still performed by
+        #' `$var_get()`, `$read_array()`, `$read_data_table()`, and
+        #' `$read_region()`.
+        #'
+        #' @param i A positive or negative integer vector, or a logical vector
+        #'        with one value per file.
+        #' @param reopen Whether to open the returned dataset when the current
+        #'        dataset is already open. If `FALSE` (default), slicing an
+        #'        open dataset raises an error because RNetCDF handles cannot
+        #'        be safely shared between dataset objects.
+        #'
+        #' @return A new `EsgDataset` object.
+        slice = function(i, reopen = FALSE) {
+            if (missing(i)) {
+                cli::cli_abort("`i` must be supplied.")
+            }
+            checkmate::assert_flag(reopen)
+            index <- private$normalize_slice_index(i)
+            if (!length(index)) {
+                cli::cli_abort("`i` must select at least one file.")
+            }
+            if (private$opened && !isTRUE(reopen)) {
+                cli::cli_abort("Cannot slice an open dataset unless `reopen = TRUE`.")
+            }
+
+            out <- EsgDataset$new(private$urls[index])
+            dataset__set_context(out, private$update_selection_context(index))
+            if (private$opened) {
+                out$open()
+            }
+
+            out
+        },
+        # }}}
+
+        # reachable {{{
+        #' @description
+        #' Probe whether this dataset's current files or URLs are reachable.
+        #'
+        #' `$reachable()` checks the actual URLs or local paths stored in the
+        #' dataset. It does not reuse reachability checks from an `EsgResult`;
+        #' opened datasets, fallback downloads, and manually created datasets
+        #' are always evaluated from their current `url` values.
+        #'
+        #' @param level Probe level. `"data_node"` probes the root URL of each
+        #'        remote data node; `"url"` probes the actual dataset URL.
+        #'        Default: `"data_node"`.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`.
+        #'
+        #' @return A [data.table][data.table::data.table()] with columns
+        #'        `file_index`, `source_index`, `data_node`, `service`, `url`,
+        #'        `reachable`, `latency_ms`, `error`, `probe_level`,
+        #'        `probe_url`, and `probe_cached`.
+        reachable = function(level = c("data_node", "url"), probe = NULL) {
+            level <- match.arg(level)
+            probe <- query_result__reach_config(probe)
+            urls <- private$urls
+            data_node <- query_result__url_host(urls)
+            probes <- query_result__reach_targets(
+                urls,
+                data_node = data_node,
+                level = level,
+                timeout = probe$timeout,
+                network_policy = probe$network_policy,
+                probe_concurrency = probe$concurrency,
+                cache_seconds = probe$cache_seconds,
+                cache_failures_seconds = probe$cache_failures_seconds
+            )
+            selection <- private$get_selection_context()
+            source_index <- rep(NA_integer_, length(urls))
+            if (length(selection$source_indices) == length(urls)) {
+                source_index <- selection$source_indices
+            }
+
+            data.table::data.table(
+                file_index = seq_along(urls),
+                source_index = source_index,
+                data_node = data_node,
+                service = data.table::fifelse(
+                    query_result__url_local(urls),
+                    "local",
+                    NA_character_
+                ),
+                url = urls,
+                reachable = probes$reachable,
+                latency_ms = probes$latency_ms,
+                error = probes$error,
+                probe_level = probes$probe_level,
+                probe_url = probes$probe_url,
+                probe_cached = probes$probe_cached
+            )
         },
         # }}}
 
@@ -768,6 +870,21 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # selection {{{
+        #' @description
+        #' Return file selection provenance for this dataset.
+        #'
+        #' `$selection()` maps the current dataset file positions back to the
+        #' result rows that produced the dataset when that information is
+        #' available. It does not record intermediate filter steps.
+        #'
+        #' @return A list with `source_count`, `source_num_found`, and
+        #'        `source_indices`.
+        selection = function() {
+            private$get_selection_context()
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print dataset summary
@@ -849,12 +966,83 @@ EsgDataset <- R6::R6Class(
         async_state = "idle",
         async_sequence = 0L,
 
+        # get_selection_context {{{
+        get_selection_context = function() {
+            ctx <- private$context$selection
+            if (!is.null(ctx) && length(ctx)) {
+                return(query_result__selection(ctx))
+            }
+
+            n <- length(private$urls)
+            list(
+                source_count = as.integer(n),
+                source_num_found = as.integer(n),
+                source_indices = seq_len(n)
+            )
+        },
+        # }}}
+
+        # update_selection_context {{{
+        update_selection_context = function(index, context = private$context) {
+            selection <- private$get_selection_context()
+            context$selection <- list(
+                source_count = selection$source_count,
+                source_num_found = selection$source_num_found,
+                source_indices = selection$source_indices[index]
+            )
+
+            context
+        },
+        # }}}
+
+        # normalize_slice_index {{{
+        normalize_slice_index = function(i) {
+            n <- length(private$urls)
+            if (is.null(i)) {
+                cli::cli_abort("`i` must not be `NULL`.")
+            }
+            if (is.logical(i)) {
+                checkmate::assert_logical(i, len = n, any.missing = FALSE, .var.name = "i")
+                return(which(i))
+            }
+
+            checkmate::assert_integerish(i, any.missing = FALSE, .var.name = "i")
+            i <- as.integer(i)
+            if (!length(i)) {
+                return(integer())
+            }
+            if (any(i == 0L)) {
+                cli::cli_abort("`i` cannot contain zero.")
+            }
+
+            has_positive <- any(i > 0L)
+            has_negative <- any(i < 0L)
+            if (has_positive && has_negative) {
+                cli::cli_abort("`i` cannot mix positive and negative positions.")
+            }
+
+            abs_i <- abs(i)
+            if (anyDuplicated(abs_i)) {
+                cli::cli_abort("`i` cannot contain duplicate file positions.")
+            }
+            if (any(abs_i > n)) {
+                cli::cli_abort("`i` contains file positions outside the dataset.")
+            }
+
+            if (has_negative) {
+                setdiff(seq_len(n), abs_i)
+            } else {
+                i
+            }
+        },
+        # }}}
+
         # normalize_region_time {{
         normalize_region_time = function(time) {
             context <- private$context$time_filter
             context_range <- NULL
             if (!is.null(context) && length(context$start) && length(context$stop)) {
-                context_range <- parse_datetime(c(context$start, context$stop), tz = "UTC")
+                context_range <- solrdate__parse(c(context$start, context$stop), tz = "UTC")
                 if (any(is.na(context_range)) || context_range[[2L]] < context_range[[1L]]) {
                     context_range <- NULL
                 }
@@ -873,7 +1061,7 @@ EsgDataset <- R6::R6Class(
             if (length(time) != 2L) {
                 stop("`time` must be 'auto', `NULL`, or a length-2 range.", call. = FALSE)
             }
-            time <- parse_datetime(time, tz = "UTC")
+            time <- solrdate__parse(time, tz = "UTC")
             if (any(is.na(time))) {
                 stop("`time` contains values that cannot be parsed as datetimes.", call. = FALSE)
             }
@@ -1442,8 +1630,8 @@ EsgDataset <- R6::R6Class(
 )
 # }}}
 
-# esg_dataset_private {{{
-esg_dataset_private <- function(dataset) {
+# dataset__private {{{
+dataset__private <- function(dataset) {
     private <- tryCatch(dataset$.__enclos_env__$private, error = function(e) NULL)
     if (is.null(private) || !is.environment(private)) {
         stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
@@ -1463,9 +1651,9 @@ esg_dataset_private <- function(dataset) {
 }
 # }}}
 
-# esg_dataset_detach_handles {{{
-esg_dataset_detach_handles <- function(dataset) {
-    private <- esg_dataset_private(dataset)
+# dataset__detach_handles {{{
+dataset__detach_handles <- function(dataset) {
+    private <- dataset__private(dataset)
     handles <- private$nc_handles
     private$nc_handles <- vector("list", length(handles))
     private$opened <- FALSE
@@ -1473,11 +1661,11 @@ esg_dataset_detach_handles <- function(dataset) {
 }
 # }}}
 
-# esg_dataset_adopt_handles {{{
-esg_dataset_adopt_handles <- function(dataset, handles) {
+# dataset__adopt_handles {{{
+dataset__adopt_handles <- function(dataset, handles) {
     checkmate::assert_list(handles)
 
-    private <- esg_dataset_private(dataset)
+    private <- dataset__private(dataset)
     if (length(handles) != length(private$nc_handles)) {
         stop("`handles` must have the same length as the target dataset.", call. = FALSE)
     }
@@ -1489,9 +1677,9 @@ esg_dataset_adopt_handles <- function(dataset, handles) {
 }
 # }}}
 
-# esg_dataset_set_context {{{
-esg_dataset_set_context <- function(dataset, context = NULL) {
-    private <- esg_dataset_private(dataset)
+# dataset__set_context {{{
+dataset__set_context <- function(dataset, context = NULL) {
+    private <- dataset__private(dataset)
     if (!"context" %in% names(private)) {
         return(invisible(dataset))
     }
@@ -1507,19 +1695,8 @@ esg_dataset_set_context <- function(dataset, context = NULL) {
 }
 # }}}
 
-# esg_dataset_get_context {{{
-esg_dataset_get_context <- function(dataset) {
-    private <- esg_dataset_private(dataset)
-    if (!"context" %in% names(private)) {
-        return(list())
-    }
-
-    private$context
-}
-# }}}
-
-# esg_dataset_close_handles {{{
-esg_dataset_close_handles <- function(urls, handles) {
+# dataset__close_handles {{{
+dataset__close_handles <- function(urls, handles) {
     checkmate::assert_character(urls, any.missing = FALSE)
     checkmate::assert_list(handles)
     if (length(urls) != length(handles)) {
@@ -1530,7 +1707,7 @@ esg_dataset_close_handles <- function(urls, handles) {
     }
 
     holder <- EsgDataset$new(urls)
-    esg_dataset_adopt_handles(holder, handles)
+    dataset__adopt_handles(holder, handles)
     holder$close()
     invisible(NULL)
 }

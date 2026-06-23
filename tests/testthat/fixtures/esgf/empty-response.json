@@ -1,0 +1,25 @@
+{
+  "responseHeader": {
+    "status": 0,
+    "QTime": 1,
+    "params": {
+      "fq": [
+        "type:Dataset",
+        "project:\"CMIP6\""
+      ]
+    }
+  },
+  "response": {
+    "numFound": 0,
+    "start": 0,
+    "maxScore": 0,
+    "docs": []
+  },
+  "facet_counts": {
+    "facet_queries": {},
+    "facet_fields": {},
+    "facet_ranges": {},
+    "facet_intervals": {},
+    "facet_heatmaps": {}
+  }
+}

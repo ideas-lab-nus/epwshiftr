@@ -184,14 +184,28 @@ epwshiftr_cli_render_download <- function(result, command, action = NULL) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Download events",
-            columns = c("created_at", "event", "status", "error", "data_node", "session_id", "task_id", "file_key")
+            columns = c("line", "message", "created_at", "event", "status", "error", "data_node", "job_id", "session_id", "task_id", "file_key")
+        ))
+    }
+    if (identical(command, "jobs") || identical(command, "stop")) {
+        return(epwshiftr_cli_render_table(
+            result,
+            title = "Download jobs",
+            columns = c("status", "mode", "bytes_done", "bytes_total", "speed_bps", "active_task_count", "job_id", "pid", "error", "created_at", "updated_at")
+        ))
+    }
+    if (identical(command, "daemon")) {
+        return(epwshiftr_cli_render_table(
+            result,
+            title = "Download daemon",
+            columns = c("status", "daemon_id", "pid", "port", "heartbeat_at", "error", "started_at", "stopped_at")
         ))
     }
     if (identical(command, "status") || identical(command, "tasks")) {
         return(epwshiftr_cli_render_table(
             result,
             title = "Download tasks",
-            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
+            columns = c("status", "filename", "bytes_done", "size", "speed_bps", "eta_seconds", "attempts", "last_error", "job_id", "session_id", "task_id", "file_key")
         ))
     }
     if (identical(command, "sessions")) {
@@ -249,10 +263,17 @@ epwshiftr_cli_render_download_preflight <- function(result) {
 epwshiftr_cli_render_download_watch <- function(result) {
     cli::cli_h1("Download activity")
     epwshiftr_cli_render_summary(result$summary, "Summary")
+    if (!is.null(result$jobs)) {
+        epwshiftr_cli_render_table(
+            result$jobs,
+            title = "Jobs",
+            columns = c("status", "mode", "bytes_done", "bytes_total", "speed_bps", "active_task_count", "job_id", "pid", "error")
+        )
+    }
     epwshiftr_cli_render_table(
         result$tasks,
         title = "Tasks",
-        columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
+        columns = c("status", "filename", "bytes_done", "size", "speed_bps", "eta_seconds", "attempts", "last_error", "job_id", "session_id", "task_id", "file_key")
     )
     epwshiftr_cli_render_table(
         result$nodes,
@@ -262,7 +283,7 @@ epwshiftr_cli_render_download_watch <- function(result) {
     epwshiftr_cli_render_table(
         result$events,
         title = "Recent events",
-        columns = c("created_at", "event", "status", "error", "session_id", "task_id", "file_key")
+        columns = c("created_at", "event", "status", "error", "job_id", "session_id", "task_id", "file_key")
     )
     invisible(NULL)
 }

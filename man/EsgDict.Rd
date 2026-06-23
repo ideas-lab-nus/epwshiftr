@@ -558,7 +558,7 @@ returned unchanged.
   request_tag = NULL,
   dreq_tag = NULL,
   use_cache = TRUE,
-  source_dir = esgdict__source_dir(project = private$m_project)
+  source_dir = dict__source_dir(project = private$m_project)
 )}\if{html}{\out{</div>}}
 }
 

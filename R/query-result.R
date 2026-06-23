@@ -47,9 +47,9 @@ EsgResult <- R6::R6Class(
         #'
         initialize = function(index_node, params, response, context = NULL) {
             private$index_node <- index_node
-            private$parameter <- query_param_clone(params)
-            private$response <- query_result_normalize_response(response)
-            private$context <- query_result_normalize_context(context)
+            private$parameter <- query_param__clone(params)
+            private$response <- query_result__response(response)
+            private$context <- query_result__context(context)
             private$register_dynamic_fields()
             self
         },
@@ -145,7 +145,7 @@ EsgResult <- R6::R6Class(
                 args$context <- private$context
             }
 
-            do.call(query_save, args)
+            do.call(query__save, args)
         },
         # }}}
 
@@ -165,16 +165,163 @@ EsgResult <- R6::R6Class(
         #' @return The modified `EsgResult` object itself.
         #'
         load = function(file) {
-            q <- query_load(file, private$result_schema())
+            q <- query__load(file, private$result_schema())
             private$validate_loaded_result(q)
 
             private$index_node <- q$index_node
             private$parameter <- q$parameter
             private$response <- q$response
-            private$context <- query_result_normalize_context(q$context)
+            private$context <- query_result__context(q$context)
             private$register_dynamic_fields()
 
             self
+        },
+        # }}}
+
+        # query_url {{{
+        #' @description
+        #' Return the ESGF search query URL used to create this result.
+        #'
+        #' @param pages Which recorded query URLs to return. `"first"` returns
+        #'        the first request URL. `"all"` returns every recorded request
+        #'        URL, including pagination requests. Default: `"first"`.
+        #'
+        #' @return A named character vector of query URLs.
+        #'
+        query_url = function(pages = c("first", "all")) {
+            pages <- match.arg(pages)
+            urls <- private$get_query_url_context()
+            if (identical(pages, "first")) {
+                return(utils::head(urls, 1L))
+            }
+
+            urls
+        },
+        # }}}
+
+        # reachable {{{
+        #' @description
+        #' Probe whether result records are reachable through a service URL.
+        #'
+        #' `$reachable()` performs a lightweight probe of the selected service
+        #' URL for each record already held in the result. It returns diagnostic
+        #' rows and does not modify result context or saved-result metadata.
+        #'
+        #' @param service ESGF URL service to probe. Default: `"OPENDAP"`.
+        #' @param level Probe level. `"data_node"` probes the root URL of each
+        #'        data node; `"url"` probes the actual service URL for each
+        #'        record. Default: `"data_node"`.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`.
+        #'
+        #' @return A [data.table][data.table::data.table()] with columns
+        #'        `record_index`, `id`, `data_node`, `service`, `url`,
+        #'        `reachable`, `latency_ms`, `error`, `probe_level`,
+        #'        `probe_url`, and `probe_cached`.
+        reachable = function(service = "OPENDAP", level = c("data_node", "url"),
+                             probe = NULL) {
+            checkmate::assert_string(service)
+            level <- match.arg(level)
+            probe <- query_result__reach_config(probe)
+
+            docs <- private$get_docs()
+            n <- nrow(docs)
+            urls <- private$get_url(service, service)
+            data_node <- as.character(query_result__col(docs, "data_node"))
+            probes <- query_result__reach_targets(
+                urls,
+                data_node = data_node,
+                level = level,
+                timeout = probe$timeout,
+                network_policy = probe$network_policy,
+                probe_concurrency = probe$concurrency,
+                cache_seconds = probe$cache_seconds,
+                cache_failures_seconds = probe$cache_failures_seconds
+            )
+
+            data.table::data.table(
+                record_index = seq_len(n),
+                id = as.character(query_result__col(docs, "id")),
+                data_node = data_node,
+                service = rep(service, n),
+                url = urls,
+                reachable = probes$reachable,
+                latency_ms = probes$latency_ms,
+                error = probes$error,
+                probe_level = probes$probe_level,
+                probe_url = probes$probe_url,
+                probe_cached = probes$probe_cached
+            )
+        },
+        # }}}
+
+        # slice {{{
+        #' @description
+        #' Subset result records by row, logical selector, or record ID.
+        #'
+        #' `$slice()` filters the records already held in memory. It does not
+        #' change the original ESGF query parameters or query URL provenance.
+        #'
+        #' @param i A positive or negative integer vector, logical vector,
+        #'        character vector of record IDs, or `NULL`. `NULL` returns an
+        #'        empty result.
+        #'
+        #' @return A new result object of the same type.
+        slice = function(i = NULL) {
+            index <- private$normalize_slice_index(i)
+            docs <- private$get_docs()
+            out <- docs[index, , drop = FALSE]
+            private$result_with_docs(
+                out,
+                context = private$update_selection_context(index)
+            )
+        },
+        # }}}
+
+        # filter {{{
+        #' @description
+        #' Subset result records with a predicate function.
+        #'
+        #' @param predicate A function that accepts `self$to_data_table()` and
+        #'        returns a logical vector with one value per current record.
+        #' @param formatted Whether to use formatted values when creating the
+        #'        predicate input data table. Default: `FALSE`.
+        #'
+        #' @return A new result object of the same type.
+        filter = function(predicate, formatted = FALSE) {
+            checkmate::assert_function(predicate)
+            checkmate::assert_flag(formatted)
+
+            dt <- if (isTRUE(formatted)) {
+                self$to_data_table(formatted = TRUE)
+            } else {
+                self$to_data_table()
+            }
+            keep <- predicate(dt)
+            checkmate::assert_logical(
+                keep,
+                len = nrow(dt),
+                any.missing = FALSE,
+                .var.name = "predicate result"
+            )
+
+            self$slice(keep)
+        },
+        # }}}
+
+        # selection {{{
+        #' @description
+        #' Return local selection provenance for this result.
+        #'
+        #' `$selection()` maps current rows back to the result object that first
+        #' recorded selection provenance. It does not record intermediate filter
+        #' steps.
+        #'
+        #' @return A list with `source_count`, `source_num_found`, and
+        #'        `source_indices`.
+        selection = function() {
+            private$get_selection_context()
         }
         # }}}
     ),
@@ -291,9 +438,13 @@ EsgResult <- R6::R6Class(
         # }}}
 
         get_docs = function() {
+            if (is.null(private$response)) {
+                return(data.frame(check.names = FALSE))
+            }
+
             docs <- private$response$response$docs
             if (is.null(docs)) {
-                data.frame()
+                data.frame(check.names = FALSE)
             } else {
                 docs
             }
@@ -319,17 +470,69 @@ EsgResult <- R6::R6Class(
         },
         # }}}
 
+        # get_query_url_context {{{
+        get_query_url_context = function() {
+            urls <- private$context$query_url
+            if (is.null(urls)) {
+                if (is.null(private$index_node) || is.null(private$parameter)) {
+                    return(character())
+                }
+                urls <- query__build(private$index_node, private$parameter)
+            }
+
+            query_result__query_urls(urls)
+        },
+        # }}}
+
+        # get_selection_context {{{
+        get_selection_context = function() {
+            ctx <- private$context$selection
+            if (!is.null(ctx) && length(ctx)) {
+                return(query_result__selection(ctx))
+            }
+
+            n <- nrow(private$get_docs())
+            source_num_found <- if (is.null(private$response)) {
+                n
+            } else {
+                private$response$response$numFound
+            }
+            if (is.null(source_num_found) || !length(source_num_found) || is.na(source_num_found[[1L]])) {
+                source_num_found <- n
+            }
+
+            list(
+                source_count = as.integer(n),
+                source_num_found = as.integer(source_num_found[[1L]]),
+                source_indices = seq_len(n)
+            )
+        },
+        # }}}
+
         # update_time_filter_context {{{
         update_time_filter_context = function(start, stop, method, total, selected, unknown) {
             context <- private$context
             context$time_filter <- list(
-                start = query_result_format_iso_datetime(start),
-                stop = query_result_format_iso_datetime(stop),
+                start = query_result__time_iso(start),
+                stop = query_result__time_iso(stop),
                 method = method,
                 unknown = "kept",
                 total = as.integer(total),
                 selected = as.integer(selected),
                 unknown_count = as.integer(unknown)
+            )
+
+            context
+        },
+        # }}}
+
+        # update_selection_context {{{
+        update_selection_context = function(index, context = private$context) {
+            selection <- private$get_selection_context()
+            context$selection <- list(
+                source_count = selection$source_count,
+                source_num_found = selection$source_num_found,
+                source_indices = selection$source_indices[index]
             )
 
             context
@@ -353,7 +556,7 @@ EsgResult <- R6::R6Class(
                 cli::cli_abort("Cannot create a filtered result for an untyped ESGF result.")
             }
 
-            new_query_result(
+            query_result__new(
                 generator,
                 private$index_node,
                 private$parameter,
@@ -366,7 +569,7 @@ EsgResult <- R6::R6Class(
         # filter_time_result {{{
         filter_time_result = function(start, stop, method = c("drs", "opendap"), result_label = "file") {
             method <- match.arg(method)
-            window <- query_result_parse_time_window(start, stop)
+            window <- query_result__time_window(start, stop)
             docs <- private$get_docs()
             if (!nrow(docs)) {
                 context <- private$update_time_filter_context(
@@ -377,7 +580,10 @@ EsgResult <- R6::R6Class(
                     selected = 0L,
                     unknown = 0L
                 )
-                return(private$result_with_docs(docs, context = context))
+                return(private$result_with_docs(
+                    docs,
+                    context = private$update_selection_context(integer(), context = context)
+                ))
             }
 
             ranges <- switch(
@@ -390,7 +596,8 @@ EsgResult <- R6::R6Class(
             keep[is.na(keep)] <- TRUE
 
             docs <- private$add_time_range_fields(docs, ranges)
-            out <- docs[keep, , drop = FALSE]
+            index <- which(keep)
+            out <- docs[index, , drop = FALSE]
             context <- private$update_time_filter_context(
                 window$start,
                 window$stop,
@@ -399,8 +606,74 @@ EsgResult <- R6::R6Class(
                 selected = nrow(out),
                 unknown = sum(!known)
             )
+            context <- private$update_selection_context(index, context = context)
 
             private$result_with_docs(out, context = context)
+        },
+        # }}}
+
+        # normalize_slice_index {{{
+        normalize_slice_index = function(i) {
+            n <- nrow(private$get_docs())
+            if (is.null(i)) {
+                return(integer())
+            }
+
+            if (is.logical(i)) {
+                checkmate::assert_logical(i, len = n, any.missing = FALSE, .var.name = "i")
+                return(which(i))
+            }
+
+            if (is.character(i)) {
+                checkmate::assert_character(i, any.missing = FALSE, .var.name = "i")
+                ids <- self$id
+                if (!length(i)) {
+                    return(integer())
+                }
+                if (anyDuplicated(i)) {
+                    stop("`i` must not contain duplicate record IDs.", call. = FALSE)
+                }
+                index <- match(i, ids)
+                if (anyNA(index)) {
+                    missing <- i[is.na(index)]
+                    stop(sprintf(
+                        "Unknown record ID(s): [%s].",
+                        paste(sprintf("'%s'", missing), collapse = ", ")
+                    ), call. = FALSE)
+                }
+                return(index)
+            }
+
+            if (!checkmate::test_integerish(i, any.missing = FALSE)) {
+                stop("`i` must be an integer, logical, character, or NULL selector.", call. = FALSE)
+            }
+
+            i <- as.integer(i)
+            if (!length(i)) {
+                return(integer())
+            }
+            if (any(i == 0L)) {
+                stop("`i` must not contain zero.", call. = FALSE)
+            }
+            if (any(i > 0L) && any(i < 0L)) {
+                stop("`i` must not mix positive and negative indices.", call. = FALSE)
+            }
+            if (anyDuplicated(i)) {
+                stop("`i` must not contain duplicate indices.", call. = FALSE)
+            }
+
+            if (all(i < 0L)) {
+                if (any(abs(i) > n)) {
+                    stop(sprintf("Negative indices must be between -%d and -1.", n), call. = FALSE)
+                }
+                return(setdiff(seq_len(n), abs(i)))
+            }
+
+            if (any(i > n)) {
+                stop(sprintf("Positive indices must be between 1 and %d.", n), call. = FALSE)
+            }
+
+            i
         },
         # }}}
 
@@ -414,8 +687,8 @@ EsgResult <- R6::R6Class(
                 call. = FALSE
             )
 
-            labels <- query_result_drs_labels(docs)
-            ranges <- query_result_parse_drs_ranges(labels$value)
+            labels <- query_result__drs_labels(docs)
+            ranges <- query_result__drs_ranges(labels$value)
             unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)
             if (any(unknown)) {
                 warning(
@@ -491,8 +764,8 @@ EsgResult <- R6::R6Class(
 
         # add_time_range_fields {{{
         add_time_range_fields = function(docs, ranges) {
-            docs$datetime_start <- query_result_format_iso_datetime(ranges$datetime_start)
-            docs$datetime_end <- query_result_format_iso_datetime(ranges$datetime_end)
+            docs$datetime_start <- query_result__time_iso(ranges$datetime_start)
+            docs$datetime_end <- query_result__time_iso(ranges$datetime_end)
             docs
         },
         # }}}
@@ -500,7 +773,7 @@ EsgResult <- R6::R6Class(
         # validate_loaded_result {{{
         validate_loaded_result = function(q) {
             expected <- private$result_type
-            actual <- query_param_value(q$parameter$type())
+            actual <- query_param__value(q$parameter$type())
             if (!identical(actual, expected)) {
                 stop(sprintf(
                     "Cannot load %s result into %s object. Use esg_result('%s')$load() instead.",
@@ -741,7 +1014,7 @@ EsgResult <- R6::R6Class(
         # print_parameters {{{
         print_parameters = function() {
             cli::cli_h1("<Query Parameter>")
-            print_query_params(private$parameter)
+            query_param__print(private$parameter)
         },
         # }}}
 
@@ -817,7 +1090,7 @@ EsgResult <- R6::R6Class(
                 cli::cat_line(.subset2(size, i))
             }
 
-            print_trunc(self$id, n)
+            query_result__trunc(self$id, n)
         }
         # }}}
     )
@@ -825,18 +1098,88 @@ EsgResult <- R6::R6Class(
 # }}}
 
 # result collection helpers {{{
-query_result_normalize_context <- function(context = NULL) {
+query_result__trunc <- function(x, n, newline_before = is.data.frame(x)) {
+    d <- cli::cli_div(theme = list(body = list(`padding-left` = 0L, `margin-left` = 0L)))
+    total <- if (is.data.frame(x)) nrow(x) else length(x)
+    if (n < total) {
+        if (newline_before) cli::cli_text()
+        cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
+    }
+    cli::cli_end(d)
+}
+
+query_result__context <- function(context = NULL) {
     if (is.null(context) || !length(context)) {
         return(list())
     }
     if (!is.list(context)) {
         stop("Saved result context must be a list.", call. = FALSE)
     }
+    if (!is.null(context$query_url)) {
+        context$query_url <- query_result__query_urls(context$query_url, named = FALSE)
+    }
+    if (!is.null(context$selection)) {
+        context$selection <- query_result__selection(context$selection)
+    }
 
     context
 }
 
-query_result_format_iso_datetime <- function(x) {
+query_result__selection <- function(selection) {
+    if (is.null(selection) || !length(selection)) {
+        return(NULL)
+    }
+    if (!is.list(selection)) {
+        stop("Saved result selection context must be a list.", call. = FALSE)
+    }
+
+    required <- c("source_count", "source_num_found", "source_indices")
+    missing <- setdiff(required, names(selection))
+    if (length(missing)) {
+        stop(sprintf(
+            "Saved result selection context is missing required field(s): [%s].",
+            paste(sprintf("'%s'", missing), collapse = ", ")
+        ), call. = FALSE)
+    }
+
+    source_indices <- selection$source_indices
+    if (is.list(source_indices) && !length(source_indices)) {
+        source_indices <- integer()
+    }
+
+    checkmate::assert_integerish(selection$source_count, lower = 0L, len = 1L, any.missing = FALSE)
+    checkmate::assert_integerish(selection$source_num_found, lower = 0L, len = 1L, any.missing = FALSE)
+    checkmate::assert_integerish(source_indices, lower = 1L, any.missing = FALSE)
+
+    source_count <- as.integer(selection$source_count[[1L]])
+    source_num_found <- as.integer(selection$source_num_found[[1L]])
+    source_indices <- as.integer(source_indices)
+    if (length(source_indices) && any(source_indices > source_count)) {
+        stop("Saved result selection source indices must not exceed `source_count`.", call. = FALSE)
+    }
+
+    list(
+        source_count = source_count,
+        source_num_found = source_num_found,
+        source_indices = source_indices
+    )
+}
+
+query_result__query_urls <- function(urls, named = TRUE) {
+    if (is.null(urls) || !length(urls)) {
+        return(stats::setNames(character(), character()))
+    }
+
+    checkmate::assert_character(urls, any.missing = FALSE)
+    urls <- unname(as.character(urls))
+    if (isTRUE(named)) {
+        stats::setNames(urls, paste0("page", seq_along(urls)))
+    } else {
+        urls
+    }
+}
+
+query_result__time_iso <- function(x) {
     if (is.null(x)) {
         return(character())
     }
@@ -848,11 +1191,11 @@ query_result_format_iso_datetime <- function(x) {
     out
 }
 
-query_result_parse_time_window <- function(start, stop) {
+query_result__time_window <- function(start, stop) {
     checkmate::assert_scalar(start)
     checkmate::assert_scalar(stop)
 
-    time <- parse_datetime(c(start, stop), tz = "UTC")
+    time <- solrdate__parse(c(start, stop), tz = "UTC")
     if (any(is.na(time))) {
         stop("`start` and `stop` must be parseable datetimes.", call. = FALSE)
     }
@@ -863,7 +1206,7 @@ query_result_parse_time_window <- function(start, stop) {
     list(start = time[[1L]], stop = time[[2L]])
 }
 
-query_result_drs_label_from_url <- function(url) {
+query_result__drs_url <- function(url) {
     if (is.null(url) || !length(url)) {
         return(NA_character_)
     }
@@ -887,7 +1230,7 @@ query_result_drs_label_from_url <- function(url) {
     parsed[[1L]]
 }
 
-query_result_drs_label_from_id <- function(id) {
+query_result__drs_id <- function(id) {
     if (is.null(id) || !length(id) || is.na(id[[1L]])) {
         return(NA_character_)
     }
@@ -901,7 +1244,7 @@ query_result_drs_label_from_id <- function(id) {
     hit
 }
 
-query_result_drs_labels <- function(docs) {
+query_result__drs_labels <- function(docs) {
     n <- nrow(docs)
     labels <- rep(NA_character_, n)
     source <- rep(NA_character_, n)
@@ -932,7 +1275,7 @@ query_result_drs_labels <- function(docs) {
         }
 
         url <- if (!is.null(docs$url) && length(docs$url) >= i) {
-            query_result_drs_label_from_url(docs$url[[i]])
+            query_result__drs_url(docs$url[[i]])
         } else {
             NA_character_
         }
@@ -943,7 +1286,7 @@ query_result_drs_labels <- function(docs) {
         }
 
         id <- scalar_field("id", i)
-        id_label <- query_result_drs_label_from_id(id)
+        id_label <- query_result__drs_id(id)
         if (!is.na(id_label)) {
             labels[[i]] <- id_label
             source[[i]] <- "id"
@@ -953,20 +1296,20 @@ query_result_drs_labels <- function(docs) {
     data.frame(value = labels, source = source, check.names = FALSE)
 }
 
-query_result_column <- function(dt, name, default = NA_character_) {
+query_result__col <- function(dt, name, default = NA_character_) {
     if (name %in% names(dt)) {
         return(dt[[name]])
     }
     rep(default, nrow(dt))
 }
 
-query_result_logical_file_id <- function(dt) {
-    master_id <- query_result_column(dt, "master_id")
-    tracking_id <- query_result_column(dt, "tracking_id")
-    checksum <- query_result_column(dt, "checksum")
-    size <- as.character(query_result_column(dt, "size"))
-    filename <- query_result_column(dt, "filename")
-    id <- query_result_column(dt, "id")
+query_result__file_key <- function(dt) {
+    master_id <- query_result__col(dt, "master_id")
+    tracking_id <- query_result__col(dt, "tracking_id")
+    checksum <- query_result__col(dt, "checksum")
+    size <- as.character(query_result__col(dt, "size"))
+    filename <- query_result__col(dt, "filename")
+    id <- query_result__col(dt, "id")
 
     out <- rep(NA_character_, nrow(dt))
     use <- !is.na(master_id) & nzchar(master_id)
@@ -983,7 +1326,856 @@ query_result_logical_file_id <- function(dt) {
     out
 }
 
-query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
+query_result__url_scheme <- function(url) {
+    url <- as.character(url)
+    out <- rep(NA_character_, length(url))
+    ok <- !is.na(url) & nzchar(url)
+    windows_drive_path <- ok & grepl("^[A-Za-z]:[/\\\\]", url)
+    has_scheme <- ok & !windows_drive_path & grepl("^[A-Za-z][A-Za-z0-9+.-]*:", url)
+    out[has_scheme] <- tolower(sub("^([A-Za-z][A-Za-z0-9+.-]*):.*$", "\\1", url[has_scheme]))
+    out
+}
+
+query_result__url_http <- function(url) {
+    query_result__url_scheme(url) %in% c("http", "https")
+}
+
+query_result__url_local <- function(url) {
+    scheme <- query_result__url_scheme(url)
+    missing <- is.na(url) | !nzchar(url)
+    !missing & (is.na(scheme) | scheme == "file")
+}
+
+query_result__url_path <- function(url) {
+    url <- as.character(url[[1L]])
+    scheme <- query_result__url_scheme(url)
+    if (identical(scheme, "file")) {
+        path <- sub("^file://", "", url, ignore.case = TRUE)
+        path <- sub("^localhost(?=/)", "", path, perl = TRUE)
+        return(utils::URLdecode(path))
+    }
+
+    url
+}
+
+query_result__url_host <- function(url) {
+    url <- as.character(url)
+    out <- rep(NA_character_, length(url))
+    use <- query_result__url_http(url)
+    out[use] <- sub("^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+).*$", "\\1", url[use])
+    out
+}
+
+query_result__reach_missing <- function(error) {
+    list(reachable = NA, latency_ms = NA_real_, error = error)
+}
+
+query_result__reach_local <- function(url) {
+    path <- query_result__url_path(url)
+    ok <- file.exists(path)
+    list(
+        reachable = ok,
+        latency_ms = 0,
+        error = if (ok) NA_character_ else "File does not exist."
+    )
+}
+
+query_result__reach_config <- function(probe = NULL, include_level = FALSE,
+                                                   default_level = "data_node") {
+    defaults <- list(
+        timeout = 5,
+        concurrency = 1L,
+        network_policy = NULL,
+        cache_seconds = 3600L,
+        cache_failures_seconds = 0L
+    )
+    if (isTRUE(include_level)) {
+        defaults$level <- default_level
+    }
+    if (!is.null(probe)) {
+        if (!is.list(probe) || is.data.frame(probe)) {
+            cli::cli_abort("`probe` must be `NULL` or a named list.")
+        }
+        if (length(probe)) {
+            names <- names(probe)
+            if (is.null(names) || any(!nzchar(names))) {
+                cli::cli_abort("`probe` must be a named list.")
+            }
+            unknown <- setdiff(names, names(defaults))
+            if (length(unknown)) {
+                cli::cli_abort("Unknown `probe` field{?s}: {.field {unknown}}.")
+            }
+            defaults[names] <- probe
+        }
+    }
+
+    query_result__reach_check(
+        timeout = defaults$timeout,
+        network_policy = defaults$network_policy,
+        probe_concurrency = defaults$concurrency
+    )
+    checkmate::assert_count(defaults$cache_seconds, positive = FALSE)
+    checkmate::assert_count(defaults$cache_failures_seconds, positive = FALSE)
+    defaults$concurrency <- as.integer(defaults$concurrency)
+    defaults$cache_seconds <- as.integer(defaults$cache_seconds)
+    defaults$cache_failures_seconds <- as.integer(defaults$cache_failures_seconds)
+    if (isTRUE(include_level)) {
+        defaults$level <- match.arg(defaults$level, c("data_node", "url"))
+    }
+
+    defaults
+}
+
+query_result__reach_check <- function(timeout = 5, network_policy = NULL,
+                                                       probe_concurrency = NULL) {
+    checkmate::assert_number(timeout, lower = 0, finite = TRUE)
+    if (timeout <= 0) {
+        cli::cli_abort("`timeout` must be greater than zero.")
+    }
+    if (!is.null(network_policy)) {
+        checkmate::assert_list(network_policy, names = "unique")
+    }
+    if (!is.null(probe_concurrency)) {
+        checkmate::assert_count(probe_concurrency, positive = TRUE)
+    }
+
+    invisible(NULL)
+}
+
+query_result__node_urls <- function(node) {
+    node <- as.character(node[[1L]])
+    if (is.na(node) || !nzchar(node)) {
+        return(character())
+    }
+    if (grepl("^https?://", node, ignore.case = TRUE)) {
+        return(node)
+    }
+
+    c(sprintf("https://%s/", node), sprintf("http://%s/", node))
+}
+
+query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
+    }
+
+    start <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            handle <- downloader__curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = TRUE
+            )
+            curl::handle_setopt(handle, failonerror = FALSE)
+            curl::curl_fetch_memory(url, handle = handle)
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                error = NA_character_,
+                probe_url = url
+            )
+        },
+        error = function(e) {
+            list(
+                reachable = FALSE,
+                latency_ms = NA_real_,
+                error = conditionMessage(e),
+                probe_url = url
+            )
+        }
+    )
+}
+
+query_result__reach_node_url <- function(url, timeout = 5, network_policy = NULL) {
+    query_result__reach_check(timeout, network_policy)
+    if (is.na(url) || !nzchar(url)) {
+        probe <- query_result__reach_missing("Missing URL.")
+        probe$probe_url <- NA_character_
+        return(probe)
+    }
+    if (!query_result__url_http(url)) {
+        probe <- query_result__reach_missing("Unsupported URL scheme.")
+        probe$probe_url <- url
+        return(probe)
+    }
+
+    query_result__node_try(url, timeout = timeout, network_policy = network_policy)
+}
+
+query_result__reach_node_urls <- function(urls, timeout = 5,
+                                                                network_policy = NULL,
+                                                                probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result__url_http(urls)]
+    if (!length(urls)) {
+        return(stats::setNames(list(), character()))
+    }
+    if (probe_concurrency <= 1L || length(urls) <= 1L) {
+        return(stats::setNames(
+            lapply(urls, query_result__reach_node_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    out <- vector("list", length(urls))
+    names(out) <- urls
+    failed <- rep(FALSE, length(urls))
+    ok <- tryCatch({
+        if (is.null(network_policy)) {
+            network_policy <- list()
+        }
+        connect_timeout <- network_policy$connect_timeout
+        if (is.null(connect_timeout)) {
+            connect_timeout <- min(timeout, 3)
+        }
+        ssl_verifypeer <- network_policy$ssl_verifypeer
+        if (is.null(ssl_verifypeer)) {
+            ssl_verifypeer <- TRUE
+        }
+        pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+        for (i in seq_along(urls)) {
+            local({
+                j <- i
+                start <- proc.time()[["elapsed"]]
+                handle <- downloader__curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent,
+                    nobody = TRUE
+                )
+                curl::handle_setopt(handle, failonerror = FALSE)
+                curl::handle_setopt(handle, url = urls[[j]])
+                curl::multi_add(
+                    handle,
+                    done = function(response) {
+                        out[[j]] <<- list(
+                            reachable = TRUE,
+                            latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                            error = NA_character_,
+                            probe_url = urls[[j]]
+                        )
+                    },
+                    fail = function(error) {
+                        failed[[j]] <<- TRUE
+                    },
+                    pool = pool
+                )
+            })
+        }
+        curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+        TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(ok)) {
+        return(stats::setNames(
+            lapply(urls, query_result__reach_node_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    missing <- vapply(out, is.null, logical(1L)) | failed
+    if (any(missing)) {
+        out[missing] <- lapply(
+            urls[missing],
+            query_result__reach_node_url,
+            timeout = timeout,
+            network_policy = network_policy
+        )
+    }
+
+    out
+}
+
+query_result__net_key <- function(network_policy = NULL) {
+    if (is.null(network_policy) || !length(network_policy)) {
+        return(NULL)
+    }
+    network_policy[sort(names(network_policy))]
+}
+
+query_result__reach_cache_key <- function(level, target, timeout = 5, network_policy = NULL) {
+    cache__key(
+        "reach",
+        list(
+            level = level,
+            target = target,
+            timeout = timeout,
+            network_policy = query_result__net_key(network_policy)
+        )
+    )
+}
+
+query_result__reach_cache_get <- function(level, target, timeout = 5, network_policy = NULL,
+                                             cache_seconds = 3600L, cache_failures_seconds = 0L) {
+    if (cache__mode() == "off") {
+        return(NULL)
+    }
+    key <- query_result__reach_cache_key(level, target, timeout, network_policy)
+    cached <- cache__get()$get(key)
+    if (cache__missing(cached)) {
+        if (cache__mode() == "offline") {
+            cli::cli_abort("Cache miss in offline mode for reachability probe target {.val {target}}.")
+        }
+        return(NULL)
+    }
+    if (is.null(cached$timestamp) || !inherits(cached$timestamp, "POSIXt")) {
+        return(NULL)
+    }
+
+    age <- as.numeric(difftime(Sys.time(), cached$timestamp, units = "secs"))
+    ttl <- if (isTRUE(cached$result$reachable)) cache_seconds else cache_failures_seconds
+    if (is.na(age) || is.na(ttl) || ttl <= 0L || age > ttl) {
+        return(NULL)
+    }
+
+    result <- cached$result
+    result$probe_cached <- TRUE
+    result
+}
+
+query_result__reach_cache_set <- function(level, target, timeout = 5, network_policy = NULL,
+                                             result, cache_seconds = 3600L,
+                                             cache_failures_seconds = 0L) {
+    if (cache__mode() == "off" || is.na(target) || !nzchar(target)) {
+        return(invisible(NULL))
+    }
+    ok <- isTRUE(result$reachable)
+    if ((!ok && cache_failures_seconds <= 0L) || (ok && cache_seconds <= 0L)) {
+        return(invisible(NULL))
+    }
+
+    key <- query_result__reach_cache_key(level, target, timeout, network_policy)
+    value <- list(
+        timestamp = Sys.time(),
+        result = list(
+            reachable = as.logical(result$reachable),
+            latency_ms = as.numeric(result$latency_ms),
+            error = as.character(result$error),
+            probe_url = as.character(result$probe_url)
+        )
+    )
+    cache__get()$set(key, value)
+    invisible(NULL)
+}
+
+query_result__url_try <- function(url, timeout = 5, network_policy = NULL,
+                                                nobody = TRUE, range = FALSE) {
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
+    }
+
+    start <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            handle <- downloader__curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = nobody
+            )
+            curl::handle_setopt(handle, failonerror = TRUE)
+            if (isTRUE(range)) {
+                curl::handle_setheaders(handle, Range = "bytes=0-0")
+            }
+            curl::curl_fetch_memory(url, handle = handle)
+            list(
+                ok = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                error = NA_character_
+            )
+        },
+        error = function(e) {
+            list(ok = FALSE, latency_ms = NA_real_, error = conditionMessage(e))
+        }
+    )
+}
+
+query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
+    query_result__reach_check(timeout, network_policy)
+
+    if (is.na(url) || !nzchar(url)) {
+        return(query_result__reach_missing("Missing URL."))
+    }
+    if (query_result__url_local(url)) {
+        return(query_result__reach_local(url))
+    }
+    if (!query_result__url_http(url)) {
+        return(query_result__reach_missing("Unsupported URL scheme."))
+    }
+
+    head <- query_result__url_try(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = TRUE
+    )
+    if (isTRUE(head$ok)) {
+        return(list(reachable = TRUE, latency_ms = head$latency_ms, error = NA_character_))
+    }
+
+    body <- query_result__url_try(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = FALSE,
+        range = TRUE
+    )
+    if (isTRUE(body$ok)) {
+        return(list(reachable = TRUE, latency_ms = body$latency_ms, error = NA_character_))
+    }
+
+    error <- body$error
+    if (is.null(error) || !length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+        error <- head$error
+    }
+    if (is.null(error) || !length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+        error <- "URL probe failed."
+    }
+    list(
+        reachable = FALSE,
+        latency_ms = NA_real_,
+        error = error
+    )
+}
+
+query_result__reach_http_urls <- function(urls, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result__url_http(urls)]
+    if (!length(urls)) {
+        return(stats::setNames(list(), character()))
+    }
+    if (probe_concurrency <= 1L || length(urls) <= 1L) {
+        return(stats::setNames(
+            lapply(urls, query_result__reach_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    out <- vector("list", length(urls))
+    names(out) <- urls
+    failed <- rep(FALSE, length(urls))
+    ok <- tryCatch({
+        if (is.null(network_policy)) {
+            network_policy <- list()
+        }
+        connect_timeout <- network_policy$connect_timeout
+        if (is.null(connect_timeout)) {
+            connect_timeout <- min(timeout, 3)
+        }
+        ssl_verifypeer <- network_policy$ssl_verifypeer
+        if (is.null(ssl_verifypeer)) {
+            ssl_verifypeer <- TRUE
+        }
+        pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+        for (i in seq_along(urls)) {
+            local({
+                j <- i
+                start <- proc.time()[["elapsed"]]
+                handle <- downloader__curl_handle(
+                    timeout = timeout,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = network_policy$proxy,
+                    useragent = network_policy$useragent,
+                    nobody = TRUE
+                )
+                curl::handle_setopt(handle, failonerror = TRUE)
+                curl::handle_setopt(handle, url = urls[[j]])
+                curl::multi_add(
+                    handle,
+                    done = function(response) {
+                        out[[j]] <<- list(
+                            reachable = TRUE,
+                            latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
+                            error = NA_character_
+                        )
+                    },
+                    fail = function(error) {
+                        failed[[j]] <<- TRUE
+                    },
+                    pool = pool
+                )
+            })
+        }
+        curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+        TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(ok)) {
+        return(stats::setNames(
+            lapply(urls, query_result__reach_url, timeout = timeout, network_policy = network_policy),
+            urls
+        ))
+    }
+
+    missing <- vapply(out, is.null, logical(1L)) | failed
+    if (any(missing)) {
+        out[missing] <- lapply(
+            urls[missing],
+            query_result__reach_url,
+            timeout = timeout,
+            network_policy = network_policy
+        )
+    }
+
+    out
+}
+
+query_result__reach_urls <- function(urls, timeout = 5, network_policy = NULL,
+                                              probe_concurrency = 1L) {
+    checkmate::assert_character(urls, any.missing = TRUE)
+    query_result__reach_check(timeout, network_policy, probe_concurrency)
+
+    out <- data.table::data.table(
+        url = urls,
+        reachable = rep(NA, length(urls)),
+        latency_ms = rep(NA_real_, length(urls)),
+        error = rep(NA_character_, length(urls))
+    )
+    if (!length(urls)) {
+        return(out)
+    }
+
+    unique_urls <- unique(urls)
+    use_http <- !is.na(unique_urls) & nzchar(unique_urls) & query_result__url_http(unique_urls)
+    probes <- query_result__reach_http_urls(
+        unique_urls[use_http],
+        timeout = timeout,
+        network_policy = network_policy,
+        probe_concurrency = probe_concurrency
+    )
+
+    for (url in unique_urls[!use_http]) {
+        probe <- query_result__reach_url(url, timeout = timeout, network_policy = network_policy)
+        if (is.na(url)) {
+            idx <- is.na(out$url)
+        } else {
+            idx <- !is.na(out$url) & out$url == url
+        }
+        out[idx, `:=`(
+            reachable = as.logical(probe$reachable),
+            latency_ms = as.numeric(probe$latency_ms),
+            error = as.character(probe$error)
+        )]
+    }
+    if (length(probes)) {
+        for (url in names(probes)) {
+            probe <- probes[[url]]
+            target_url <- url
+            out[!is.na(out[["url"]]) & out[["url"]] == target_url, `:=`(
+                reachable = as.logical(probe$reachable),
+                latency_ms = as.numeric(probe$latency_ms),
+                error = as.character(probe$error)
+            )]
+        }
+    }
+
+    out[]
+}
+
+query_result__reach_nodes <- function(data_node, timeout = 5, network_policy = NULL,
+                                                    probe_concurrency = 1L,
+                                                    cache_seconds = 3600L,
+                                                    cache_failures_seconds = 0L) {
+    checkmate::assert_character(data_node, any.missing = TRUE)
+    query_result__reach_check(timeout, network_policy, probe_concurrency)
+    checkmate::assert_count(cache_seconds, positive = FALSE)
+    checkmate::assert_count(cache_failures_seconds, positive = FALSE)
+
+    out <- data.table::data.table(
+        data_node = data_node,
+        reachable = rep(NA, length(data_node)),
+        latency_ms = rep(NA_real_, length(data_node)),
+        error = rep(NA_character_, length(data_node)),
+        probe_url = rep(NA_character_, length(data_node)),
+        probe_cached = rep(FALSE, length(data_node))
+    )
+    if (!length(data_node)) {
+        return(out)
+    }
+
+    unique_nodes <- unique(data_node)
+    probes <- vector("list", length(unique_nodes))
+    network_pos <- integer()
+    for (k in seq_along(unique_nodes)) {
+        node <- unique_nodes[[k]]
+        if (is.na(node) || !nzchar(node)) {
+            probe <- query_result__reach_missing("Missing data node.")
+            probe$probe_url <- NA_character_
+            probe$probe_cached <- FALSE
+            probes[[k]] <- probe
+            next
+        }
+        cached <- query_result__reach_cache_get(
+            "data_node",
+            node,
+            timeout = timeout,
+            network_policy = network_policy,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
+        )
+        if (!is.null(cached)) {
+            probes[[k]] <- cached
+            next
+        }
+
+        network_pos <- c(network_pos, k)
+    }
+
+    if (length(network_pos)) {
+        node_values <- unique_nodes[network_pos]
+        node_urls <- lapply(node_values, query_result__node_urls)
+        first_urls <- vapply(node_urls, function(urls) {
+            if (length(urls)) urls[[1L]] else NA_character_
+        }, character(1L))
+        first_probes <- query_result__reach_node_urls(
+            first_urls,
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency
+        )
+
+        second_pos <- integer()
+        first_errors <- rep(NA_character_, length(network_pos))
+        for (j in seq_along(network_pos)) {
+            k <- network_pos[[j]]
+            urls <- node_urls[[j]]
+            if (!length(urls)) {
+                probe <- query_result__reach_missing("Missing data node.")
+                probe$probe_url <- NA_character_
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+                next
+            }
+
+            probe <- first_probes[[first_urls[[j]]]]
+            if (is.null(probe)) {
+                probe <- query_result__reach_missing("Unsupported data node URL scheme.")
+                probe$probe_url <- first_urls[[j]]
+            }
+            if (isTRUE(probe$reachable)) {
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+                next
+            }
+
+            error <- as.character(probe$error)
+            if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+                error <- "Data node probe failed."
+            }
+            first_errors[[j]] <- sprintf("%s: %s", first_urls[[j]], error[[1L]])
+            if (length(urls) > 1L) {
+                second_pos <- c(second_pos, j)
+            } else {
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+            }
+        }
+
+        if (length(second_pos)) {
+            second_urls <- vapply(node_urls[second_pos], `[[`, character(1L), 2L)
+            second_probes <- query_result__reach_node_urls(
+                second_urls,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency
+            )
+            for (j in second_pos) {
+                k <- network_pos[[j]]
+                probe <- second_probes[[node_urls[[j]][[2L]]]]
+                if (is.null(probe)) {
+                    probe <- query_result__reach_missing("Unsupported data node URL scheme.")
+                    probe$probe_url <- node_urls[[j]][[2L]]
+                }
+                if (!isTRUE(probe$reachable)) {
+                    error <- as.character(probe$error)
+                    if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
+                        error <- "Data node probe failed."
+                    }
+                    probe$error <- paste(c(first_errors[[j]], sprintf("%s: %s", node_urls[[j]][[2L]], error[[1L]])), collapse = " | ")
+                    probe$probe_url <- node_urls[[j]][[1L]]
+                }
+                probe$probe_cached <- FALSE
+                probes[[k]] <- probe
+            }
+        }
+
+        for (k in network_pos) {
+            probe <- probes[[k]]
+            query_result__reach_cache_set(
+                "data_node",
+                unique_nodes[[k]],
+                timeout = timeout,
+                network_policy = network_policy,
+                result = probe,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
+            )
+        }
+    }
+
+    for (k in seq_along(unique_nodes)) {
+        node <- unique_nodes[[k]]
+        probe <- probes[[k]]
+        if (is.na(node)) {
+            idx <- is.na(out$data_node)
+        } else {
+            idx <- !is.na(out$data_node) & out$data_node == node
+        }
+        out[idx, `:=`(
+            reachable = as.logical(probe$reachable),
+            latency_ms = as.numeric(probe$latency_ms),
+            error = as.character(probe$error),
+            probe_url = as.character(probe$probe_url),
+            probe_cached = isTRUE(probe$probe_cached)
+        )]
+    }
+
+    out[]
+}
+
+query_result__reach_url_table <- function(probes, urls) {
+    if (!"probe_level" %in% names(probes)) {
+        probes[, probe_level := data.table::fifelse(
+            !is.na(url) & nzchar(url) & query_result__url_local(url),
+            "local",
+            "url"
+        )]
+    }
+    if (!"probe_url" %in% names(probes)) {
+        probes[, probe_url := url]
+    }
+    if (!"probe_cached" %in% names(probes)) {
+        probes[, probe_cached := FALSE]
+    }
+    probes[]
+}
+
+query_result__reach_targets <- function(urls, data_node = NULL,
+                                                 level = c("data_node", "url"),
+                                                 timeout = 5,
+                                                 network_policy = NULL,
+                                                 probe_concurrency = 1L,
+                                                 cache_seconds = 3600L,
+                                                 cache_failures_seconds = 0L) {
+    level <- match.arg(level)
+    checkmate::assert_character(urls, any.missing = TRUE)
+    query_result__reach_check(timeout, network_policy, probe_concurrency)
+    n <- length(urls)
+    if (is.null(data_node)) {
+        data_node <- rep(NA_character_, n)
+    }
+    checkmate::assert_character(data_node, any.missing = TRUE, len = n)
+
+    if (identical(level, "url")) {
+        probes <- query_result__reach_urls(
+            urls,
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency
+        )
+        return(query_result__reach_url_table(probes, urls))
+    }
+
+    out <- data.table::data.table(
+        url = urls,
+        reachable = rep(NA, n),
+        latency_ms = rep(NA_real_, n),
+        error = rep(NA_character_, n),
+        probe_level = rep("data_node", n),
+        probe_url = rep(NA_character_, n),
+        probe_cached = rep(FALSE, n)
+    )
+    if (!n) {
+        return(out)
+    }
+
+    missing <- is.na(urls) | !nzchar(urls)
+    if (any(missing)) {
+        out[missing, `:=`(
+            reachable = NA,
+            latency_ms = NA_real_,
+            error = "Missing URL."
+        )]
+    }
+
+    local <- !missing & query_result__url_local(urls)
+    if (any(local)) {
+        for (i in which(local)) {
+            probe <- query_result__reach_local(urls[[i]])
+            out[i, `:=`(
+                reachable = as.logical(probe$reachable),
+                latency_ms = as.numeric(probe$latency_ms),
+                error = as.character(probe$error),
+                probe_level = "local",
+                probe_url = urls[[i]],
+                probe_cached = FALSE
+            )]
+        }
+    }
+
+    remote <- !missing & !local & query_result__url_http(urls)
+    unsupported <- !missing & !local & !remote
+    if (any(unsupported)) {
+        out[unsupported, `:=`(
+            reachable = NA,
+            latency_ms = NA_real_,
+            error = "Unsupported URL scheme.",
+            probe_url = urls[unsupported]
+        )]
+    }
+
+    if (any(remote)) {
+        nodes <- data_node
+        fallback <- is.na(nodes) | !nzchar(nodes)
+        nodes[fallback] <- query_result__url_host(urls[fallback])
+        node_probes <- query_result__reach_nodes(
+            nodes[remote],
+            timeout = timeout,
+            network_policy = network_policy,
+            probe_concurrency = probe_concurrency,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
+        )
+        idx <- which(remote)
+        out[idx, `:=`(
+            reachable = node_probes$reachable,
+            latency_ms = node_probes$latency_ms,
+            error = node_probes$error,
+            probe_url = node_probes$probe_url,
+            probe_cached = node_probes$probe_cached
+        )]
+    }
+
+    out[]
+}
+
+query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
     if (is.na(url) || !nzchar(url) || startsWith(url, "file://")) {
         return(list(latency = NA_real_, throughput = NA_real_))
     }
@@ -1038,14 +2230,14 @@ query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
     list(latency = as.numeric(difftime(Sys.time(), start, units = "secs")), throughput = NA_real_)
 }
 
-query_result_probe_urls_network <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
+query_result__latency_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
     urls <- unique(urls[!is.na(urls) & nzchar(urls)])
     urls <- urls[!startsWith(urls, "file://")]
     if (!length(urls)) {
         return(stats::setNames(list(), character()))
     }
     if (probe_concurrency <= 1L || length(urls) <= 1L) {
-        return(stats::setNames(lapply(urls, query_result_probe_url, timeout = timeout, network_policy = network_policy), urls))
+        return(stats::setNames(lapply(urls, query_result__latency_url, timeout = timeout, network_policy = network_policy), urls))
     }
 
     out <- vector("list", length(urls))
@@ -1097,19 +2289,19 @@ query_result_probe_urls_network <- function(urls, timeout = 5, network_policy = 
     }, error = function(e) FALSE)
 
     if (!isTRUE(ok)) {
-        return(stats::setNames(lapply(urls, query_result_probe_url, timeout = timeout, network_policy = network_policy), urls))
+        return(stats::setNames(lapply(urls, query_result__latency_url, timeout = timeout, network_policy = network_policy), urls))
     }
     missing <- vapply(out, is.null, logical(1L)) | failed
     if (any(missing)) {
-        fallback <- lapply(urls[missing], query_result_probe_url, timeout = timeout, network_policy = network_policy)
+        fallback <- lapply(urls[missing], query_result__latency_url, timeout = timeout, network_policy = network_policy)
         out[missing] <- fallback
     }
     out
 }
 
-query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServer", timeout = 5,
-                                    network_policy = NULL, node_stats = NULL, node_policy = NULL,
-                                    probe_concurrency = 1L, probe_cache_seconds = 3600L) {
+query_result__latency_table <- function(urls, data_node = NULL, service = "HTTPServer", timeout = 5,
+                                        network_policy = NULL, node_stats = NULL, node_policy = NULL,
+                                        probe_concurrency = 1L, probe_cache_seconds = 3600L) {
     checkmate::assert_character(urls, any.missing = TRUE)
     checkmate::assert_count(probe_concurrency, positive = TRUE)
     if (!is.null(probe_cache_seconds)) {
@@ -1127,7 +2319,7 @@ query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServe
     }
 
     if (!is.null(data_node) && !is.null(node_stats) && !is.null(probe_cache_seconds) && probe_cache_seconds > 0L) {
-        stats <- query_result_normalize_node_stats(node_stats, service = service, node_policy = node_policy)
+        stats <- query_result__node_stats(node_stats, service = service, node_policy = node_policy)
         if (!is.null(stats) && nrow(stats)) {
             data_node <- as.character(data_node)
             stats <- stats[!duplicated(data_node)]
@@ -1158,7 +2350,7 @@ query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServe
     }
 
     probe_urls <- unique(out[!probe_cached & !is.na(url) & nzchar(url), url])
-    probes <- query_result_probe_urls_network(
+    probes <- query_result__latency_urls(
         probe_urls,
         timeout = timeout,
         network_policy = network_policy,
@@ -1177,7 +2369,7 @@ query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServe
     out[]
 }
 
-query_result_normalize_node_policy <- function(node_policy = NULL) {
+query_result__node_policy <- function(node_policy = NULL) {
     if (exists("downloader__node_policy_defaults", mode = "function")) {
         return(downloader__node_policy_defaults(node_policy))
     }
@@ -1187,11 +2379,11 @@ query_result_normalize_node_policy <- function(node_policy = NULL) {
     node_policy
 }
 
-query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer", node_policy = NULL) {
+query_result__node_stats <- function(node_stats, service = "HTTPServer", node_policy = NULL) {
     if (is.null(node_stats)) {
         return(NULL)
     }
-    node_policy <- query_result_normalize_node_policy(node_policy)
+    node_policy <- query_result__node_policy(node_policy)
     stats <- data.table::as.data.table(node_stats)
     required <- c("data_node", "service", "success_count", "failure_count", "avg_latency")
     if (!all(required %in% names(stats))) {
@@ -1267,8 +2459,8 @@ query_result_normalize_node_stats <- function(node_stats, service = "HTTPServer"
     )]
 }
 
-query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServer", node_policy = NULL) {
-    stats <- query_result_normalize_node_stats(node_stats, service = service, node_policy = node_policy)
+query_result__apply_nodes <- function(plan, node_stats, service = "HTTPServer", node_policy = NULL) {
+    stats <- query_result__node_stats(node_stats, service = service, node_policy = node_policy)
     if (is.null(stats) || !nrow(plan)) {
         plan[, `:=`(
             node_success_count = NA_integer_,
@@ -1295,7 +2487,7 @@ query_result_apply_node_stats <- function(plan, node_stats, service = "HTTPServe
     out[]
 }
 
-query_result_download_plan <- function(result, service = "HTTPServer", probe = FALSE,
+query_result__download_plan <- function(result, service = "HTTPServer", probe = FALSE,
                                        strategy = c("fastest", "first", "stable"),
                                        node_stats = NULL, network_policy = NULL,
                                        node_policy = NULL, probe_concurrency = 1L,
@@ -1312,21 +2504,21 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         return(data.table::data.table())
     }
     urls <- priv(result)$get_url(service, service)
-    filename <- if ("filename" %in% result$fields) result$filename else query_result_column(dt, "title")
+    filename <- if ("filename" %in% result$fields) result$filename else query_result__col(dt, "title")
     plan <- data.table::data.table(
-        logical_file_id = query_result_logical_file_id(dt),
+        logical_file_id = query_result__file_key(dt),
         record_index = seq_len(n),
-        file_key = query_result_column(dt, "file_key"),
-        esgf_id = query_result_column(dt, "id"),
-        dataset_id = query_result_column(dt, "dataset_id"),
+        file_key = query_result__col(dt, "file_key"),
+        esgf_id = query_result__col(dt, "id"),
+        dataset_id = query_result__col(dt, "dataset_id"),
         filename = filename,
         subdir = NA_character_,
-        checksum = query_result_column(dt, "checksum"),
-        checksum_type = tolower(query_result_column(dt, "checksum_type", "sha256")),
-        size = suppressWarnings(as.numeric(query_result_column(dt, "size", NA_real_))),
+        checksum = query_result__col(dt, "checksum"),
+        checksum_type = tolower(query_result__col(dt, "checksum_type", "sha256")),
+        size = suppressWarnings(as.numeric(query_result__col(dt, "size", NA_real_))),
         url = urls,
         service = service,
-        data_node = query_result_column(dt, "data_node"),
+        data_node = query_result__col(dt, "data_node"),
         priority = seq_len(n),
         probe_latency = NA_real_,
         probe_throughput = NA_real_,
@@ -1337,7 +2529,7 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         return(plan)
     }
     if (probe) {
-        probes <- query_result_probe_urls(
+        probes <- query_result__latency_table(
             plan$url,
             data_node = plan$data_node,
             service = service,
@@ -1351,7 +2543,7 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
         plan[, probe_throughput := probes$probe_throughput]
         plan[, probe_cached := probes$probe_cached]
     }
-    plan <- query_result_apply_node_stats(plan, node_stats = node_stats, service = service, node_policy = node_policy)
+    plan <- query_result__apply_nodes(plan, node_stats = node_stats, service = service, node_policy = node_policy)
     if (identical(strategy, "fastest")) {
         plan[, probe_missing := is.na(probe_latency)]
         plan[, node_missing := is.na(node_success_rate)]
@@ -1376,37 +2568,390 @@ query_result_download_plan <- function(result, service = "HTTPServer", probe = F
     plan[]
 }
 
-query_result_expand_replicas <- function(result, service = "HTTPServer", all = TRUE) {
-    dt <- result$to_data_table()
-    master_id <- query_result_column(dt, "master_id")
-    master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
-    if (!length(master_id)) {
-        return(result)
+query_result__generator <- function(type) {
+    type <- query_result__type(type)
+    switch(
+        type,
+        Dataset = EsgResultDataset,
+        File = EsgResultFile,
+        Aggregation = EsgResultAggregation
+    )
+}
+
+query_result__required <- function(type) {
+    type <- query_result__type(type)
+    switch(
+        type,
+        Dataset = EsgResultDataset$private_fields$required_fields,
+        File = EsgResultFile$private_fields$required_fields,
+        Aggregation = EsgResultAggregation$private_fields$required_fields
+    )
+}
+
+query_result__identity <- function(docs) {
+    instance_id <- as.character(query_result__col(docs, "instance_id"))
+    master_id <- as.character(query_result__col(docs, "master_id"))
+    version <- as.character(query_result__col(docs, "version"))
+    has_instance <- !is.na(instance_id) & nzchar(instance_id)
+    has_master_version <- !has_instance & !is.na(master_id) & nzchar(master_id) & !is.na(version) & nzchar(version)
+
+    key <- rep(NA_character_, nrow(docs))
+    key[has_instance] <- paste("instance_id", instance_id[has_instance], sep = "\r")
+    key[has_master_version] <- paste("master_version", master_id[has_master_version], version[has_master_version], sep = "\r")
+
+    data.frame(
+        key = key,
+        instance_id = instance_id,
+        master_id = master_id,
+        version = version,
+        has_instance = has_instance,
+        has_master_version = has_master_version,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+    )
+}
+
+query_result__identity_match <- function(target, candidates) {
+    if (isTRUE(target$has_instance)) {
+        return(which(candidates$has_instance & candidates$instance_id == target$instance_id))
+    }
+    if (isTRUE(target$has_master_version)) {
+        return(which(
+            !is.na(candidates$master_id) &
+                !is.na(candidates$version) &
+                candidates$master_id == target$master_id &
+                candidates$version == target$version
+        ))
     }
 
+    integer()
+}
+
+query_result__identity_in <- function(candidates, targets) {
+    keep <- rep(FALSE, nrow(candidates))
+    for (i in seq_len(nrow(targets))) {
+        keep[query_result__identity_match(targets[i, , drop = FALSE], candidates)] <- TRUE
+    }
+
+    keep
+}
+
+query_result__replica_store <- function(type, params) {
     store <- QueryParamStore$new()
-    store$params(master_id = master_id)
+    store$project(NULL)
+    suppressWarnings(do.call(store$params, params))
     store$replica(NULL)
-    store$latest(TRUE)
+    store$latest(NULL)
     store$distrib(TRUE)
-    store$type("File")
-    store$format(FORMAT_JSON)
+    store$type(type)
+    store$format(QUERY_PARAM__FORMAT_JSON)
     store$fields("*")
     store$limit(this$data_max_limit)
     store$offset(0L)
+    store
+}
 
-    collected <- query_collect(
-        priv(result)$index_node,
+query_result__collect_identity <- function(result, identity, type, index_node = NULL,
+                                                      all = TRUE) {
+    type <- query_result__type(type)
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- query__normalize_node(index_node)
+    }
+
+    instance_id <- unique(identity$instance_id[identity$has_instance])
+    instance_id <- instance_id[!is.na(instance_id) & nzchar(instance_id)]
+    master_id <- unique(identity$master_id[identity$has_master_version])
+    master_id <- master_id[!is.na(master_id) & nzchar(master_id)]
+
+    stores <- list()
+    if (length(instance_id)) {
+        stores[[length(stores) + 1L]] <- query_result__replica_store(type, list(instance_id = instance_id))
+    }
+    if (length(master_id)) {
+        stores[[length(stores) + 1L]] <- query_result__replica_store(type, list(master_id = master_id))
+    }
+    if (!length(stores)) {
+        stores[[1L]] <- query_result__replica_store(type, list())
+    }
+
+    collected_parts <- lapply(stores, function(store) {
+        query__collect(
+            index_node,
+            store,
+            required_fields = query_result__required(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    response <- collected$response
+    response$response$docs <- collected$docs
+
+    query_result__new(
+        query_result__generator(type),
+        index_node,
+        collected$parameter,
+        response,
+        context = collected$context
+    )
+}
+
+query_result__collect_master <- function(result, master_id, type, index_node = NULL,
+                                                       all = TRUE) {
+    type <- query_result__type(type)
+    checkmate::assert_character(master_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- query__normalize_node(index_node)
+    }
+
+    store <- query_result__replica_store(type, list(master_id = master_id))
+    collected <- query__collect(
+        index_node,
         store,
-        required_fields = EsgResultFile$private_fields$required_fields,
+        required_fields = query_result__required(type),
         all = all,
         limit = this$data_max_limit,
         constraints = FALSE
     )
-    new_query_result(EsgResultFile, priv(result)$index_node, collected$parameter, collected$response)
+    response <- collected$response
+    response$response$docs <- collected$docs
+
+    query_result__new(
+        query_result__generator(type),
+        index_node,
+        collected$parameter,
+        response,
+        context = collected$context
+    )
 }
 
-query_result_run_http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
+query_result__expand_files <- function(result, service = "HTTPServer", all = TRUE) {
+    dt <- result$to_data_table()
+    identity <- query_result__identity(dt)
+    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
+    if (!length(keys)) {
+        return(result)
+    }
+
+    expanded <- query_result__collect_identity(
+        result,
+        identity,
+        type = "File",
+        all = all
+    )
+    expanded_docs <- priv(expanded)$get_docs()
+    expanded_identity <- query_result__identity(expanded_docs)
+    keep <- query_result__identity_in(expanded_identity, identity)
+    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
+}
+
+query_result__expand_datasets <- function(result, by = c("instance_id", "master_id"),
+                                                 all = TRUE, index_node = NULL) {
+    by <- match.arg(by)
+    docs <- priv(result)$get_docs()
+    if (!nrow(docs)) {
+        return(result)
+    }
+
+    if (identical(by, "master_id")) {
+        master_id <- as.character(query_result__col(docs, "master_id"))
+        master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
+        if (!length(master_id)) {
+            return(result)
+        }
+        return(query_result__collect_master(
+            result,
+            master_id,
+            type = "Dataset",
+            index_node = index_node,
+            all = all
+        ))
+    }
+
+    identity <- query_result__identity(docs)
+    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
+    if (!length(keys)) {
+        return(result)
+    }
+    expanded <- query_result__collect_identity(
+        result,
+        identity,
+        type = "Dataset",
+        index_node = index_node,
+        all = all
+    )
+    expanded_docs <- priv(expanded)$get_docs()
+    expanded_identity <- query_result__identity(expanded_docs)
+    keep <- query_result__identity_in(expanded_identity, identity)
+    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
+}
+
+query_result__repair_config <- function(probe = NULL) {
+    query_result__reach_config(probe, include_level = TRUE, default_level = "data_node")
+}
+
+query_result__merge_urls <- function(result, extra_context = NULL) {
+    context <- query_result__context(priv(result)$context)
+    urls <- unname(priv(result)$get_query_url_context())
+    extra <- query_result__context(extra_context)
+    if (!is.null(extra$query_url)) {
+        urls <- c(urls, unname(extra$query_url))
+    }
+    context$query_url <- query_result__query_urls(urls, named = FALSE)
+    context
+}
+
+query_result__align_docs <- function(docs, fields, template = NULL) {
+    docs <- as.data.frame(docs, stringsAsFactors = FALSE)
+    n <- nrow(docs)
+    for (field in setdiff(fields, names(docs))) {
+        is_list <- !is.null(template) && field %in% names(template) && is.list(template[[field]])
+        docs[[field]] <- if (is_list) I(rep(list(NA), n)) else rep(NA, n)
+    }
+
+    docs[, fields, drop = FALSE]
+}
+
+query_result__merge_collects <- function(results, params) {
+    if (length(results) == 1L) {
+        return(results[[1L]])
+    }
+
+    docs_list <- lapply(results, .subset2, "docs")
+    fields <- unique(unlist(lapply(docs_list, names), use.names = FALSE))
+    docs_list <- lapply(docs_list, query_result__align_docs, fields = fields)
+    docs <- data.table::rbindlist(lapply(docs_list, data.table::as.data.table), fill = TRUE)
+    docs <- as.data.frame(docs, stringsAsFactors = FALSE)
+
+    response <- results[[length(results)]]$response
+    response$response$docs <- docs
+    response$response$numFound <- nrow(docs)
+    response$response$start <- 0L
+
+    contexts <- lapply(results, function(result) query_result__context(result$context))
+    urls <- unlist(lapply(contexts, .subset2, "query_url"), use.names = FALSE)
+
+    list(
+        response = response,
+        docs = docs,
+        parameter = query_param__clone(params),
+        context = list(query_url = query_result__query_urls(urls, named = FALSE))
+    )
+}
+
+query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer"),
+                                     index_node = NULL, probe = NULL) {
+    service <- match.arg(service)
+    probe <- query_result__repair_config(probe)
+    type <- query_result__type(priv(result)$result_type, choices = c("File", "Aggregation"))
+
+    docs <- priv(result)$get_docs()
+    n <- nrow(docs)
+    if (!n) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    reach <- result$reachable(
+        service = service,
+        level = probe$level,
+        probe = probe[names(probe) != "level"]
+    )
+    needs_repair <- !(reach$reachable %in% TRUE)
+    if (!any(needs_repair)) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    identity <- query_result__identity(docs)
+    targets <- which(needs_repair)
+    has_identity <- !is.na(identity$key[targets]) & nzchar(identity$key[targets])
+    missing_identity <- targets[!has_identity]
+    repair_targets <- targets[has_identity]
+
+    if (length(missing_identity)) {
+        cli::cli_warn(
+            "Cannot repair {length(missing_identity)} {service} URL{?s} because `instance_id` or `master_id` + `version` is missing."
+        )
+    }
+    if (!length(repair_targets)) {
+        return(priv(result)$result_with_docs(docs))
+    }
+
+    out <- data.table::as.data.table(docs)
+
+    repaired <- rep(FALSE, n)
+    for (i in repair_targets) {
+        rows <- setdiff(query_result__identity_match(identity[i, , drop = FALSE], identity), i)
+        rows <- rows[reach$reachable[rows] %in% TRUE]
+        if (!length(rows)) {
+            next
+        }
+
+        latency <- reach$latency_ms[rows]
+        latency[is.na(latency)] <- Inf
+        chosen <- rows[order(latency, rows)[[1L]]]
+        out[i, ] <- out[chosen, ]
+        repaired[[i]] <- TRUE
+    }
+
+    external_targets <- repair_targets[!repaired[repair_targets]]
+    context <- query_result__context(priv(result)$context)
+    if (length(external_targets)) {
+        candidates <- query_result__collect_identity(
+            result,
+            identity[external_targets, , drop = FALSE],
+            type = type,
+            index_node = index_node,
+            all = TRUE
+        )
+        candidate_docs <- priv(candidates)$get_docs()
+        context <- query_result__merge_urls(result, priv(candidates)$context)
+        if (nrow(candidate_docs)) {
+            candidate_reach <- candidates$reachable(
+                service = service,
+                level = probe$level,
+                probe = probe[names(probe) != "level"]
+            )
+            candidate_identity <- query_result__identity(candidate_docs)
+            fields <- unique(c(names(out), names(candidate_docs)))
+            out <- query_result__align_docs(out, fields, template = candidate_docs)
+            candidate_docs <- query_result__align_docs(candidate_docs, fields, template = out)
+            out <- data.table::as.data.table(out)
+            candidate_docs <- data.table::as.data.table(candidate_docs)
+
+            for (i in external_targets) {
+                rows <- query_result__identity_match(identity[i, , drop = FALSE], candidate_identity)
+                rows <- rows[candidate_reach$reachable[rows] %in% TRUE]
+                if (!length(rows)) {
+                    next
+                }
+
+                latency <- candidate_reach$latency_ms[rows]
+                latency[is.na(latency)] <- Inf
+                chosen <- rows[order(latency, rows)[[1L]]]
+                out[i, ] <- candidate_docs[chosen, ]
+                repaired[[i]] <- TRUE
+            }
+        }
+    }
+
+    unrepaired <- repair_targets[!repaired[repair_targets]]
+    if (length(unrepaired)) {
+        cli::cli_warn(
+            "No reachable {service} replica found for {length(unrepaired)} record{?s}; keeping original record{?s}."
+        )
+    }
+
+    priv(result)$result_with_docs(as.data.frame(out, stringsAsFactors = FALSE), context = context)
+}
+
+query_result__http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
     checkmate::assert_integerish(indices, lower = 1L, any.missing = FALSE, min.len = 1L)
     if (is.null(downloader)) {
         cli::cli_abort("HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable.")
@@ -1442,7 +2987,7 @@ query_result_run_http_fallback <- function(result, indices, downloader, session_
     unname(paths)
 }
 
-query_result_parse_drs_bound <- function(value, end = FALSE) {
+query_result__drs_bound <- function(value, end = FALSE) {
     if (is.na(value) || !nzchar(value)) {
         return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
     }
@@ -1494,7 +3039,7 @@ query_result_parse_drs_bound <- function(value, end = FALSE) {
     seq(parsed, by = increment, length.out = 2L)[[2L]] - 1
 }
 
-query_result_parse_drs_ranges <- function(labels) {
+query_result__drs_ranges <- function(labels) {
     start <- as.POSIXct(rep(NA_real_, length(labels)), origin = "1970-01-01", tz = "UTC")
     end <- start
 
@@ -1517,14 +3062,14 @@ query_result_parse_drs_ranges <- function(labels) {
             next
         }
 
-        start[[i]] <- query_result_parse_drs_bound(parts[[1L]], end = FALSE)
-        end[[i]] <- query_result_parse_drs_bound(parts[[2L]], end = TRUE)
+        start[[i]] <- query_result__drs_bound(parts[[1L]], end = FALSE)
+        end[[i]] <- query_result__drs_bound(parts[[2L]], end = TRUE)
     }
 
     data.frame(datetime_start = start, datetime_end = end, check.names = FALSE)
 }
 
-query_result_normalize_type <- function(type, choices = c("Dataset", "File", "Aggregation")) {
+query_result__type <- function(type, choices = c("Dataset", "File", "Aggregation")) {
     checkmate::assert_string(type)
     type <- tolower(type)
     map <- c(dataset = "Dataset", file = "File", aggregation = "Aggregation")
@@ -1540,16 +3085,21 @@ query_result_normalize_type <- function(type, choices = c("Dataset", "File", "Ag
     type
 }
 
-query_result_merge_params <- function(store, params) {
+query_result__merge_params <- function(store, params) {
     if (!length(params)) {
         return(store)
     }
 
-    extra <- query_param_as_store(params)$state(null = FALSE)
-    state <- store$state(null = TRUE)
-    for (bucket in names(extra)) {
-        state[[bucket]][names(extra[[bucket]])] <- extra[[bucket]]
+    checkmate::assert_list(params, names = "named")
+    if (any(!nzchar(names(params)))) {
+        stop("All query parameters to merge must be named.", call. = FALSE)
     }
+
+    extra_store <- query_param__as_store(params)
+    extra_names <- intersect(names(params), names(extra_store$state(null = TRUE)))
+    extra <- extra_store$state(extra_names, null = TRUE)
+    state <- store$state(null = TRUE)
+    state[names(extra)] <- extra
 
     store$restore(state)
 }
@@ -1654,16 +3204,31 @@ EsgResultDataset <- R6::R6Class(
         #' @param type A string indicating the query type. Should be one of
         #'        `File` or `Aggregation`. Default: `"File"`.
         #'
-        #' @param ... Additional child-result facet filters, plus the control
-        #'        parameters `replica`, `distrib`, `latest`, and `shards`.
+        #' @param index_node Optional ESGF index node used for the child query.
+        #'        If `NULL`, the index node that created the Dataset result is
+        #'        used. Default: `NULL`.
+        #'
+        #' @param use_record_index_node Whether to group selected Dataset records
+        #'        by their `index_node` metadata and send child queries to those
+        #'        record-level index nodes. Records without `index_node` fall back
+        #'        to the `index_node` argument or the index node that created this
+        #'        result. Default: `FALSE`.
+        #'
+        #' @param ... Optional child-result scope filter `data_node`, plus the
+        #'        control parameters `replica`, `distrib`, `latest`, and `shards`.
         #'        Query-level parameters such as `datetime_start` and
         #'        `datetime_stop` cannot be passed through `...`.
         #'        File/Aggregation collection does not use ESGF datetime search
         #'        parameters; call `$filter_time()` on the returned result for
         #'        time filtering. If control parameters are omitted, they are
         #'        inherited from the dataset query when available, with
-        #'        `distrib = TRUE` and `latest = TRUE` as fallbacks. For details
+        #'        `distrib = TRUE` as fallback. If `latest` is omitted and was not
+        #'        set on the dataset query, no `latest` constraint is sent. For details
         #'        on possible parameters, please see [esg_query()].
+        #'        When a local [EsgDict] is available for the query project, child
+        #'        collection performs a warning-only dictionary check before sending
+        #'        the query. Missing local dictionaries are ignored and never
+        #'        downloaded.
         #'        `Aggregation` collection uses `dataset_id` plus explicit child filters
         #'        in `...`; parent Dataset facet filters are not inherited because
         #'        Aggregation records on standard ESGF search nodes do not necessarily
@@ -1674,8 +3239,16 @@ EsgResultDataset <- R6::R6Class(
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
-        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
-            type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+        collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", index_node = NULL,
+                           use_record_index_node = FALSE, ...) {
+            type <- query_result__type(type, choices = c("File", "Aggregation"))
+            checkmate::assert_flag(use_record_index_node)
+            child_index_node <- if (is.null(index_node)) {
+                private$index_node
+            } else {
+                checkmate::assert_string(index_node)
+                query__normalize_node(index_node)
+            }
             if (!is.null(which)) {
                 if (!self$count()) {
                     stop("Cannot select records from an empty Dataset result.", call. = FALSE)
@@ -1695,11 +3268,15 @@ EsgResultDataset <- R6::R6Class(
                 which <- if (is.character(which)) match(which, self$id) else as.integer(which)
             }
 
+            selected <- if (is.null(which)) seq_len(self$count()) else which
+            dots_env <- parent.frame()
+
             built <- private$build_params(
                 fields = fields,
                 limit = limit,
                 type = type,
                 index = which,
+                dots_env = dots_env,
                 ...
             )
             params <- built$params
@@ -1712,15 +3289,46 @@ EsgResultDataset <- R6::R6Class(
             }
 
             if (self$count() == 0L) {
-                result <- query_result_empty_response(params)
+                result <- query_result__empty_response(params)
+            } else if (use_record_index_node) {
+                docs <- private$get_docs()
+                record_index_node <- query_result__col(docs[selected, , drop = FALSE], "index_node")
+                record_index_node <- vapply(record_index_node, function(node) {
+                    if (is.na(node) || !nzchar(node)) {
+                        return(child_index_node)
+                    }
+                    query__normalize_node(node)
+                }, character(1L))
+                groups <- split(selected, record_index_node)
+                results <- lapply(names(groups), function(group_index_node) {
+                    group_built <- private$build_params(
+                        fields = fields,
+                        limit = limit,
+                        type = type,
+                        index = groups[[group_index_node]],
+                        dots_env = dots_env,
+                        ...
+                    )
+                    query__collect(
+                        group_index_node,
+                        group_built$params,
+                        required_fields = req_fld,
+                        all = all,
+                        limit = group_built$limit,
+                        constraints = FALSE,
+                        dict_check = TRUE
+                    )
+                })
+                result <- query_result__merge_collects(results, params)
             } else {
-                result <- query_collect(
-                    private$index_node,
+                result <- query__collect(
+                    child_index_node,
                     params,
                     required_fields = req_fld,
                     all = all,
                     limit = limit,
-                    constraints = FALSE
+                    constraints = FALSE,
+                    dict_check = TRUE
                 )
             }
 
@@ -1730,20 +3338,43 @@ EsgResultDataset <- R6::R6Class(
 
             # create new results
             if (type == "File") {
-                new_query_result(
+                query_result__new(
                     EsgResultFile,
-                    private$index_node,
+                    child_index_node,
                     result_params,
-                    result$response
+                    result$response,
+                    context = result$context
                 )
             } else if (type == "Aggregation") {
-                new_query_result(
+                query_result__new(
                     EsgResultAggregation,
-                    private$index_node,
+                    child_index_node,
                     result_params,
-                    result$response
+                    result$response,
+                    context = result$context
                 )
             }
+        },
+        # }}}
+
+        # expand_replicas {{{
+        #' @description
+        #' Query ESGF for Dataset master and replica records.
+        #'
+        #' @param by Replica identity key. Use `"instance_id"` to retrieve
+        #'        same-version Dataset replicas, or `"master_id"` to retrieve all
+        #'        versions and replicas for the logical Dataset. Default:
+        #'        `"instance_id"`.
+        #' @param all Whether to retrieve all matching records. Default:
+        #'        `TRUE`.
+        #' @param index_node Optional ESGF index node used for the replica query.
+        #'        If `NULL`, the index node that created this result is used.
+        #'        Default: `NULL`.
+        #'
+        #' @return A new `EsgResultDataset` object with expanded Dataset records
+        #'        when the requested identity key is available; otherwise `self`.
+        expand_replicas = function(by = c("instance_id", "master_id"), all = TRUE, index_node = NULL) {
+            query_result__expand_datasets(self, by = by, all = all, index_node = index_node)
         },
         # }}}
 
@@ -1771,15 +3402,21 @@ EsgResultDataset <- R6::R6Class(
 
         required_fields = sort(unique(c(
             EsgResult$private_fields$required_fields,
+            "data_node",
             "index_node",
+            "instance_id",
+            "latest",
+            "master_id",
             "number_of_files",
             "number_of_aggregations",
+            "replica",
+            "version",
             "access"
         ))),
 
         # build_params {{{
-        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ...) {
-            type <- query_result_normalize_type(type, choices = c("File", "Aggregation"))
+        build_params = function(fields = NULL, limit = 100L, type = "File", index = NULL, ..., dots_env = parent.frame()) {
+            type <- query_result__type(type, choices = c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
             if (is.null(limit)) {
@@ -1792,9 +3429,9 @@ EsgResultDataset <- R6::R6Class(
                 names_reserved <- c(
                     "dataset_id", "fields", "facets", "type", "format",
                     "limit", "offset", "query", "_timestamp", "time",
-                    query_param_names("query")
+                    query_param__names("date")
                 )
-                overrides <- eval_with_bang(...)
+                overrides <- eval_with_bang(..., .env = dots_env)
 
                 # stop if unsupported parameter found
                 names_params <- names(overrides)
@@ -1813,15 +3450,13 @@ EsgResultDataset <- R6::R6Class(
                 extra_params <- overrides[!names_params %in% names_ctrl]
                 names_extra <- names(extra_params)
                 if (length(names_extra)) {
-                    not_found <- setdiff(names_extra, FIELDS_FACETS_ALL)
-                    if (length(not_found)) {
-                        warning(
-                            sprintf(
-                                "The following facet(s) are not listed in the built-in ESGF facet dictionary and will be sent as-is: [%s].",
-                                paste(sprintf("'%s'", not_found), collapse = ", ")
-                            ),
-                            call. = FALSE
-                        )
+                    allowed_child_filters <- "data_node"
+                    unsupported <- setdiff(names_extra, allowed_child_filters)
+                    if (length(unsupported)) {
+                        stop(sprintf(
+                            "Only `data_node` and control parameters (`replica`, `distrib`, `latest`, `shards`) can be passed through `...` for child File/Aggregation collection; unsupported parameter(s): [%s].",
+                            paste(sprintf("'%s'", unsupported), collapse = ", ")
+                        ), call. = FALSE)
                     }
                 }
                 extra_params <- stats::setNames(
@@ -1830,14 +3465,10 @@ EsgResultDataset <- R6::R6Class(
                         if (is.null(param$value)) {
                             return(NULL)
                         }
-                        query_param_meta(
-                            QueryParamFacet(
-                                param$value,
-                                negate = isTRUE(param$negate),
-                                encoded = FALSE
-                            ),
-                            name = names(extra_params)[[i]],
-                            kind = "facet"
+                        QueryParamFacet(
+                            param$value,
+                            negate = isTRUE(param$negate),
+                            encoded = FALSE
                         )
                     }),
                     names(extra_params)
@@ -1855,7 +3486,7 @@ EsgResultDataset <- R6::R6Class(
                     return(NULL)
                 }
                 if (S7::S7_inherits(param, QueryParam)) {
-                    return(query_param_value(param))
+                    return(query_param__value(param))
                 }
                 param$value
             }
@@ -1872,9 +3503,6 @@ EsgResultDataset <- R6::R6Class(
                 latest = inherited_value("latest"),
                 distrib = inherited_value("distrib")
             )
-            if (is.null(controls$latest)) {
-                controls$latest <- TRUE
-            }
             if (is.null(controls$distrib)) {
                 controls$distrib <- TRUE
             }
@@ -1888,24 +3516,18 @@ EsgResultDataset <- R6::R6Class(
             query <- esg_query(private$index_node)
             query$distrib(controls$distrib)
 
-            store <- if (type == "Aggregation") {
-                QueryParamStore$new()
-            } else {
-                private$parameter$copy()
-            }
-            if (type == "Aggregation") {
-                store$project(NULL)
-            }
-            query_result_merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
-            store$fields(query_param_value(query$fields(fields)$fields()))
-            store$shards(query_param_value(query$shards(controls$shards)$shards()))
-            store$replica(query_param_value(query$replica(controls$replica)$replica()))
-            store$latest(query_param_value(query$latest(controls$latest)$latest()))
-            store$distrib(query_param_value(query$distrib()))
+            store <- QueryParamStore$new()
+            store$project(NULL)
+            query_result__merge_params(store, c(extra_params, list(dataset_id = dataset_id)))
+            store$fields(query_param__value(query$fields(fields)$fields()))
+            store$shards(query_param__value(query$shards(controls$shards)$shards()))
+            store$replica(query_param__value(query$replica(controls$replica)$replica()))
+            store$latest(query_param__value(query$latest(controls$latest)$latest()))
+            store$distrib(query_param__value(query$distrib()))
             store$limit(limit)
             store$offset(0L)
             store$type(type)
-            store$format(FORMAT_JSON)
+            store$format(QUERY_PARAM__FORMAT_JSON)
             store$facets(NULL)
             store$datetime_range(start = NULL, stop = NULL)
 
@@ -2017,7 +3639,7 @@ EsgResultFile <- R6::R6Class(
             } else {
                 self
             }
-            query_result_download_plan(
+            query_result__download_plan(
                 target,
                 service = service,
                 probe = probe,
@@ -2033,7 +3655,7 @@ EsgResultFile <- R6::R6Class(
 
         # expand_replicas {{{
         #' @description
-        #' Query ESGF for master and replica records for known `master_id`s.
+        #' Query ESGF for same-version master and replica records.
         #'
         #' @param service ESGF URL service to keep in the method contract.
         #'        Default: `"HTTPServer"`.
@@ -2041,9 +3663,37 @@ EsgResultFile <- R6::R6Class(
         #'        `TRUE`.
         #'
         #' @return A new `EsgResultFile` object with expanded replica records
-        #'        when `master_id` is available; otherwise `self`.
+        #'        when `instance_id`, or `master_id` plus `version`, is available;
+        #'        otherwise `self`.
         expand_replicas = function(service = "HTTPServer", all = TRUE) {
-            query_result_expand_replicas(self, service = service, all = all)
+            query_result__expand_files(self, service = service, all = all)
+        },
+        # }}}
+
+        # repair_urls {{{
+        #' @description
+        #' Replace unreachable service URLs with reachable replica records.
+        #'
+        #' `$repair_urls()` probes the current records for the selected service,
+        #' queries ESGF replicas by `master_id` for records whose URL is missing or
+        #' unreachable, probes candidate replica URLs, and returns a new result with
+        #' repaired records in the original row order. The original result is not
+        #' modified. The returned result records the original query URL plus the
+        #' replica lookup query URL in `$query_url("all")`.
+        #'
+        #' @param service Service URL to repair. One of `"OPENDAP"` or
+        #'        `"HTTPServer"`. Default: `"OPENDAP"`.
+        #' @param index_node Optional ESGF search index node used to look up
+        #'        replicas. If `NULL`, the current result index node is used.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `level`, `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`. Default
+        #'        `level` is `"data_node"`.
+        #'
+        #' @return A new `EsgResultFile` object.
+        repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,
+                               probe = NULL) {
+            query_result__repair_urls(self, service = service, index_node = index_node, probe = probe)
         },
         # }}}
 
@@ -2174,12 +3824,7 @@ EsgResultFile <- R6::R6Class(
         #' Open a file as an EsgDataset for remote data access via OPeNDAP
         #'
         #' @param which File records to open. Use integer indices or file IDs.
-        #'        If `NULL`, all file records are opened when `aggregate = TRUE`
-        #'        and the first record is opened when `aggregate = FALSE`.
-        #'        Default: `NULL`.
-        #' @param aggregate Whether to open multiple selected files as one
-        #'        aggregated [EsgDataset]. If `FALSE`, exactly one file record
-        #'        must be selected. Default: `TRUE`.
+        #'        If `NULL`, all file records are opened. Default: `NULL`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default). In a
         #'     non-interactive session this raises an error.
@@ -2191,9 +3836,8 @@ EsgResultFile <- R6::R6Class(
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(which = NULL, aggregate = TRUE, fallback = c("ask", "auto", "error"),
+        open_dataset = function(which = NULL, fallback = c("ask", "auto", "error"),
                                 store = NULL, downloader = NULL) {
-            checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
             if (!self$count()) {
@@ -2201,7 +3845,7 @@ EsgResultFile <- R6::R6Class(
             }
 
             if (is.null(which)) {
-                indices <- if (isTRUE(aggregate)) seq_len(self$count()) else 1L
+                indices <- seq_len(self$count())
             } else if (is.character(which)) {
                 checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
                 checkmate::assert_subset(which, self$id, empty.ok = FALSE)
@@ -2218,10 +3862,6 @@ EsgResultFile <- R6::R6Class(
                 indices <- as.integer(which)
             }
 
-            if (!isTRUE(aggregate) && length(indices) != 1L) {
-                cli::cli_abort("`aggregate = FALSE` can only open one file record.")
-            }
-
             urls <- self$url_opendap[indices]
             targets <- urls
             nc_handles <- vector("list", length(urls))
@@ -2235,7 +3875,7 @@ EsgResultFile <- R6::R6Class(
                     return(invisible(NULL))
                 }
 
-                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
                 nc_handles[open_pos] <<- vector("list", length(open_pos))
                 invisible(NULL)
             }
@@ -2253,7 +3893,7 @@ EsgResultFile <- R6::R6Class(
                     {
                         d <- EsgDataset$new(urls[[j]])
                         d$open()
-                        handles <- esg_dataset_detach_handles(d)
+                        handles <- dataset__detach_handles(d)
                         if (!length(handles) || is.null(handles[[1L]])) {
                             stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                         }
@@ -2336,15 +3976,15 @@ EsgResultFile <- R6::R6Class(
                     }
                 }
                 cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                targets[fallback_pos] <- query_result_run_http_fallback(self, indices[fallback_pos], downloader)
+                targets[fallback_pos] <- query_result__http_fallback(self, indices[fallback_pos], downloader)
             }
 
             ds <- EsgDataset$new(targets)
-            esg_dataset_adopt_handles(ds, nc_handles)
+            dataset__adopt_handles(ds, nc_handles)
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$context)
+            dataset__set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }
@@ -2506,7 +4146,7 @@ EsgResultAggregation <- R6::R6Class(
                                  probe_cache_seconds = 3600L) {
             replica <- match.arg(replica)
             strategy <- match.arg(strategy)
-            query_result_download_plan(
+            query_result__download_plan(
                 self,
                 service = service,
                 probe = probe,
@@ -2517,6 +4157,35 @@ EsgResultAggregation <- R6::R6Class(
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds
             )
+        },
+        # }}}
+
+        # repair_urls {{{
+        #' @description
+        #' Replace unreachable service URLs with reachable replica records.
+        #'
+        #' `$repair_urls()` probes the current records for the selected service,
+        #' queries ESGF replicas by `master_id` for records whose URL is missing or
+        #' unreachable, probes candidate replica URLs, and returns a new result with
+        #' repaired records in the original row order. The original result is not
+        #' modified. Aggregation results are not downloadable as files; repaired
+        #' aggregation URLs are intended for service access such as OPeNDAP.
+        #' The returned result records the original query URL plus the replica
+        #' lookup query URL in `$query_url("all")`.
+        #'
+        #' @param service Service URL to repair. One of `"OPENDAP"` or
+        #'        `"HTTPServer"`. Default: `"OPENDAP"`.
+        #' @param index_node Optional ESGF search index node used to look up
+        #'        replicas. If `NULL`, the current result index node is used.
+        #' @param probe Optional named list of probe settings. Supported fields
+        #'        are `level`, `timeout`, `concurrency`, `network_policy`,
+        #'        `cache_seconds`, and `cache_failures_seconds`. Default
+        #'        `level` is `"data_node"`.
+        #'
+        #' @return A new `EsgResultAggregation` object.
+        repair_urls = function(service = c("OPENDAP", "HTTPServer"), index_node = NULL,
+                               probe = NULL) {
+            query_result__repair_urls(self, service = service, index_node = index_node, probe = probe)
         },
         # }}}
 
@@ -2604,8 +4273,9 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
         #'
-        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
-        #'   If `FALSE`, open only the first file.
+        #' @param which Aggregation records to open. Use integer indices or
+        #'        aggregation record IDs. If `NULL`, all aggregation records
+        #'        are opened. Default: `NULL`.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default). In a
         #'     non-interactive session this raises an error.
@@ -2617,22 +4287,33 @@ EsgResultAggregation <- R6::R6Class(
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
-        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error"),
+        open_dataset = function(which = NULL, fallback = c("ask", "auto", "error"),
                                 store = NULL, downloader = NULL) {
-            checkmate::assert_flag(aggregate)
             fallback <- match.arg(fallback)
 
-            urls <- self$url_opendap
-            indices <- seq_along(urls)
-
-            if (!aggregate) {
-                urls <- urls[1L]
-                indices <- 1L
-            }
-            if (!length(urls)) {
+            if (!self$count()) {
                 cli::cli_abort("No aggregation records are available to open.")
             }
 
+            if (is.null(which)) {
+                indices <- seq_len(self$count())
+            } else if (is.character(which)) {
+                checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
+                checkmate::assert_subset(which, self$id, empty.ok = FALSE)
+                indices <- match(which, self$id)
+            } else {
+                checkmate::assert_integerish(
+                    which,
+                    lower = 1L,
+                    upper = self$count(),
+                    any.missing = FALSE,
+                    min.len = 1L,
+                    unique = TRUE
+                )
+                indices <- as.integer(which)
+            }
+
+            urls <- self$url_opendap[indices]
             targets <- urls
             nc_handles <- vector("list", length(urls))
             opendap_errors <- vector("list", length(urls))
@@ -2645,7 +4326,7 @@ EsgResultAggregation <- R6::R6Class(
                     return(invisible(NULL))
                 }
 
-                esg_dataset_close_handles(targets[open_pos], nc_handles[open_pos])
+                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
                 nc_handles[open_pos] <<- vector("list", length(open_pos))
                 invisible(NULL)
             }
@@ -2664,7 +4345,7 @@ EsgResultAggregation <- R6::R6Class(
                         {
                             d <- EsgDataset$new(urls[[j]])
                             d$open()
-                            handles <- esg_dataset_detach_handles(d)
+                            handles <- dataset__detach_handles(d)
                             if (!length(handles) || is.null(handles[[1L]])) {
                                 stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
                             }
@@ -2748,15 +4429,15 @@ EsgResultAggregation <- R6::R6Class(
                     }
                 }
                 cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                targets[fallback_pos] <- query_result_run_http_fallback(self, indices[fallback_pos], downloader)
+                targets[fallback_pos] <- query_result__http_fallback(self, indices[fallback_pos], downloader)
             }
 
             ds <- EsgDataset$new(targets)
-            esg_dataset_adopt_handles(ds, nc_handles)
+            dataset__adopt_handles(ds, nc_handles)
             if (!isTRUE(ds$is_open)) {
                 ds$open()
             }
-            esg_dataset_set_context(ds, private$context)
+            dataset__set_context(ds, private$update_selection_context(indices))
             cleanup_preopened <- FALSE
             ds
         }
@@ -2819,8 +4500,8 @@ EsgResultAggregation <- R6::R6Class(
 )
 # }}}
 
-# query_result_normalize_response {{{
-query_result_normalize_response <- function(response) {
+# query_result__response {{{
+query_result__response <- function(response) {
     if (is.null(response)) {
         return(response)
     }
@@ -2834,8 +4515,8 @@ query_result_normalize_response <- function(response) {
 }
 # }}}
 
-# query_result_empty_response {{{
-query_result_empty_response <- function(params) {
+# query_result__empty_response {{{
+query_result__empty_response <- function(params) {
     force(params)
 
     response <- list(
@@ -2860,13 +4541,42 @@ query_result_empty_response <- function(params) {
         timestamp = Sys.time()
     )
 
-    list(response = response, docs = response$response$docs, parameter = query_param_clone(params))
+    list(
+        response = response,
+        docs = response$response$docs,
+        parameter = query_param__clone(params),
+        context = list(query_url = character())
+    )
 }
 # }}}
 
-# new_query_result {{{
-new_query_result <- function(generator, index_node = NULL, params = NULL, result = NULL, ...) {
+# query_result__new {{{
+query_result__new <- function(generator, index_node = NULL, params = NULL, result = NULL, ...) {
     generator$new(index_node, params, result, ...)
+}
+# }}}
+
+# result subset method {{{
+#' Subset an ESGF query result
+#'
+#' `[` is a one-dimensional shortcut for `x$slice(i)`.
+#'
+#' @param x An [EsgResult] object.
+#' @param i A row selector accepted by `x$slice(i)`.
+#' @param j,...,drop Unsupported.
+#'
+#' @return A new result object of the same type, or `x` for `x[]`.
+#'
+#' @export
+`[.EsgResult` <- function(x, i, j, ..., drop = FALSE) {
+    if (nargs() > 2L || !missing(j) || length(list(...)) || !identical(drop, FALSE)) {
+        stop("EsgResult subsetting only supports one-dimensional `result[i]`.", call. = FALSE)
+    }
+    if (missing(i)) {
+        return(x)
+    }
+
+    x$slice(i)
 }
 # }}}
 
@@ -2887,7 +4597,7 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
 esg_result <- function(type = c("dataset", "file", "aggregation")) {
     type <- match.arg(type)
 
-    new_query_result(
+    query_result__new(
         switch(type, "dataset" = EsgResultDataset, "file" = EsgResultFile, "aggregation" = EsgResultAggregation),
         index_node = NULL,
         params = NULL,

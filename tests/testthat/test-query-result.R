@@ -29,15 +29,15 @@ query_result_test_params <- function(type = "Dataset", ...) {
     values <- list(...)
     params <- list(
         project = "CMIP6",
-        latest = TRUE,
+        latest = NULL,
         distrib = TRUE,
         limit = 1L,
         type = type,
-        format = FORMAT_JSON
+        format = QUERY_PARAM__FORMAT_JSON
     )
     params[names(values)] <- values
 
-    query_param_as_store(params)
+    query_param__as_store(params)
 }
 
 query_result_test_object <- function(type = "Dataset", docs, params = query_result_test_params(type), context = NULL) {
@@ -47,7 +47,7 @@ query_result_test_object <- function(type = "Dataset", docs, params = query_resu
         File = EsgResultFile,
         Aggregation = EsgResultAggregation
     )
-    new_query_result(
+    query_result__new(
         generator,
         index_node = "https://example.org",
         params = params,
@@ -145,7 +145,7 @@ query_result_test_file_time_docs <- function(type = "File") {
 test_that("loaded ESGF query results restore dynamic fields", {
     state <- query_result_test_state("Dataset", query_result_test_dataset_docs())
     testthat::local_mocked_bindings(
-        query_load = function(file, schema = NULL) state,
+        query__load = function(file, schema = NULL) state,
         .package = "epwshiftr"
     )
 
@@ -164,7 +164,7 @@ test_that("loaded ESGF query results restore dynamic fields", {
 test_that("loaded ESGF query results validate result type", {
     state <- query_result_test_state("File", query_result_test_file_docs(), query_result_test_params("File"))
     testthat::local_mocked_bindings(
-        query_load = function(file, schema = NULL) state,
+        query__load = function(file, schema = NULL) state,
         .package = "epwshiftr"
     )
 
@@ -173,7 +173,7 @@ test_that("loaded ESGF query results validate result type", {
 })
 
 test_that("base ESGF query results cannot choose a saved-result schema", {
-    result <- new_query_result(
+    result <- query_result__new(
         EsgResult,
         index_node = "https://example.org",
         params = query_result_test_params("Dataset"),
@@ -214,7 +214,7 @@ test_that("ESGF query results save/load through real JSON files", {
 
         expect_type(result$save(file), "character")
         json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-        expect_named(json$parameter, c("facet", "query", "control", "others"))
+        expect_true(all(c("project", "fields", "type", "limit", "format") %in% names(json$parameter)))
 
         loaded <- expect_s3_class(esg_result(case_name)$load(file), class(result)[[1L]])
         expect_identical(loaded$id, result$id)
@@ -252,6 +252,686 @@ test_that("ESGF query results preserve ESGF doc timestamp fields on save", {
     expect_identical(loaded$version, "v20240509")
 })
 
+test_that("ESGF query results expose recorded query URLs", {
+    params <- query_result_test_params("Dataset")
+    result <- query_result_test_object("Dataset", query_result_test_dataset_docs(), params)
+    expect_identical(
+        result$query_url(),
+        stats::setNames(query__build("https://example.org", params), "page1")
+    )
+    expect_identical(result$query_url("all"), result$query_url())
+
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File"),
+        context = list(query_url = urls)
+    )
+    expect_identical(result$query_url(), stats::setNames(urls[[1L]], "page1"))
+    expect_identical(result$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+    expect_error(result$query_url("last"), "'arg' should be one of")
+})
+
+test_that("result query URL context persists through save/load", {
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File"),
+        context = list(query_url = urls)
+    )
+    file <- tempfile(fileext = ".json")
+
+    expect_type(result$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_identical(json$context$query_url, urls)
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_identical(loaded$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+})
+
+test_that("ESGF query results support local selection", {
+    urls <- c("https://example.org/search?page=1", "https://example.org/search?page=2")
+    time_filter <- list(
+        start = "2050-01-01T00:00:00Z",
+        stop = "2050-12-31T23:59:59Z",
+        method = "drs"
+    )
+    cases <- list(
+        Dataset = query_result_test_dataset_docs(),
+        File = query_result_test_file_time_docs("File"),
+        Aggregation = query_result_test_file_time_docs("Aggregation")
+    )
+
+    for (type in names(cases)) {
+        result <- query_result_test_object(
+            type,
+            cases[[type]],
+            query_result_test_params(type),
+            context = list(query_url = urls, time_filter = time_filter)
+        )
+        priv(result)$response$response$numFound <- 10L
+
+        expect_identical(result[], result)
+        expect_identical(result$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = seq_len(nrow(cases[[type]]))
+        ))
+
+        selected <- result[c(nrow(cases[[type]]), 1L)]
+        expect_s3_class(selected, class(result)[[1L]])
+        expect_identical(selected$id, result$id[c(nrow(cases[[type]]), 1L)])
+        expect_identical(selected$query_url("all"), stats::setNames(urls, c("page1", "page2")))
+        expect_identical(selected$time_filter, time_filter)
+        expect_identical(selected$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = as.integer(c(nrow(cases[[type]]), 1L))
+        ))
+
+        chained <- selected[2L]
+        expect_identical(chained$id, result$id[1L])
+        expect_identical(chained$selection()$source_indices, 1L)
+
+        logical_selected <- result[seq_len(nrow(cases[[type]])) %% 2L == 1L]
+        expect_identical(logical_selected$id, result$id[seq_len(nrow(cases[[type]])) %% 2L == 1L])
+
+        character_selected <- result[result$id[1L]]
+        expect_identical(character_selected$id, result$id[1L])
+
+        empty <- result$slice(NULL)
+        expect_s3_class(empty, class(result)[[1L]])
+        expect_identical(empty$id, character())
+        expect_identical(empty$selection(), list(
+            source_count = as.integer(nrow(cases[[type]])),
+            source_num_found = 10L,
+            source_indices = integer()
+        ))
+
+        expect_identical(result[-1L]$id, result$id[-1L])
+    }
+})
+
+test_that("ESGF query results filter with predicates", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+
+    filtered <- result$filter(function(dt) grepl("2050", dt$title))
+    expect_s3_class(filtered, "EsgResultFile")
+    expect_identical(filtered$id, result$id[1L])
+    expect_identical(filtered$selection()$source_indices, 1L)
+
+    formatted <- result$filter(function(dt) rep(TRUE, nrow(dt)), formatted = TRUE)
+    expect_identical(formatted$id, result$id)
+
+    expect_error(result$filter(function(dt) TRUE), "predicate result")
+    expect_error(result$filter(function(dt) c(TRUE, NA, FALSE)), "predicate result")
+    expect_error(result$filter(function(dt) seq_len(nrow(dt))), "predicate result")
+})
+
+test_that("ESGF query result local selection rejects invalid selectors", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+
+    expect_error(result[c(1L, 1L)], "duplicate indices")
+    expect_error(result[c(result$id[1L], result$id[1L])], "duplicate record IDs")
+    expect_error(result[4L], "between 1 and 3")
+    expect_error(result[c(1L, -2L)], "must not mix")
+    expect_error(result[0L], "must not contain zero")
+    expect_error(result[c(TRUE, FALSE)], "length")
+    expect_error(result["missing-id"], "Unknown record ID")
+    expect_error(result[1L, ], "one-dimensional")
+    expect_error(result[1L, drop = TRUE], "one-dimensional")
+})
+
+test_that("result selection context persists through save/load", {
+    result <- query_result_test_object("File", query_result_test_file_time_docs("File"), query_result_test_params("File"))
+    priv(result)$response$response$numFound <- 10L
+    selected <- result[c(3L, 1L)]
+    file <- tempfile(fileext = ".json")
+
+    expect_type(selected$save(file), "character")
+    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    expect_named(json$context, "selection")
+    expect_identical(json$context$selection$source_count, 3L)
+    expect_identical(json$context$selection$source_num_found, 10L)
+    expect_identical(json$context$selection$source_indices, c(3L, 1L))
+
+    loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
+    expect_identical(loaded$id, selected$id)
+    expect_identical(loaded$selection(), selected$selection())
+
+    empty <- result$slice(integer())
+    empty_file <- tempfile(fileext = ".json")
+    expect_type(empty$save(empty_file), "character")
+    loaded_empty <- expect_s3_class(esg_result("file")$load(empty_file), "EsgResultFile")
+    expect_identical(loaded_empty$selection(), empty$selection())
+})
+
+test_that("result reachable() returns per-record service probe diagnostics", {
+    docs <- data.frame(
+        id = c("file-ok", "file-dup", "file-missing", "file-fail"),
+        dataset_id = "dataset-1",
+        size = c(1, 2, 3, 4),
+        checksum = c("abc", "def", "ghi", "jkl"),
+        checksum_type = "SHA256",
+        instance_id = paste0("file-instance-", 1:4),
+        master_id = paste0("master-file-", 1:4),
+        replica = FALSE,
+        tracking_id = paste0("hdl:21.14100/mock-file-", 1:4),
+        title = paste0("file-", 1:4, ".nc"),
+        version = 20260101L,
+        data_node = c("same.example.org", "same.example.org", "missing.example.org", "bad.example.org"),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        c(
+            "https://same.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://same.example.org/file.nc|application/netcdf|HTTPServer"
+        ),
+        "https://same.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        character(),
+        "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    calls <- character()
+    timeouts <- numeric()
+    agents <- character()
+    testthat::local_mocked_bindings(
+        query_result__reach_url = function(url, timeout = 5, network_policy = NULL) {
+            calls <<- c(calls, url)
+            timeouts <<- c(timeouts, timeout)
+            useragent <- if (is.null(network_policy$useragent)) NA_character_ else network_policy$useragent
+            agents <<- c(agents, useragent)
+            if (is.na(url) || !nzchar(url)) {
+                return(list(reachable = NA, latency_ms = NA_real_, error = "Missing URL."))
+            }
+            if (grepl("bad", url)) {
+                return(list(reachable = FALSE, latency_ms = NA_real_, error = "boom"))
+            }
+
+            list(reachable = TRUE, latency_ms = 125, error = NA_character_)
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- result$reachable(
+        level = "url",
+        probe = list(timeout = 9, network_policy = list(useragent = "test-agent"))
+    )
+
+    expect_named(diag, c(
+        "record_index", "id", "data_node", "service", "url",
+        "reachable", "latency_ms", "error", "probe_level",
+        "probe_url", "probe_cached"
+    ))
+    expect_s3_class(diag, "data.table")
+    expect_identical(diag$record_index, 1:4)
+    expect_identical(diag$id, docs$id)
+    expect_identical(diag$data_node, docs$data_node)
+    expect_identical(diag$service, rep("OPENDAP", 4L))
+    expect_identical(diag$url, c(
+        "https://same.example.org/dods/file.nc",
+        "https://same.example.org/dods/file.nc",
+        NA_character_,
+        "https://bad.example.org/dods/file.nc"
+    ))
+    expect_identical(diag$reachable, c(TRUE, TRUE, NA, FALSE))
+    expect_equal(diag$latency_ms, c(125, 125, NA, NA))
+    expect_identical(diag$error, c(NA_character_, NA_character_, "Missing URL.", "boom"))
+    expect_identical(diag$probe_level, rep("url", 4L))
+    expect_identical(diag$probe_url, diag$url)
+    expect_false(any(diag$probe_cached))
+    expect_equal(sum(calls == "https://same.example.org/dods/file.nc", na.rm = TRUE), 1L)
+    expect_equal(sum(calls == "https://bad.example.org/dods/file.nc", na.rm = TRUE), 1L)
+    expect_true(any(is.na(calls)))
+    expect_true(all(timeouts == 9))
+    expect_true(all(agents == "test-agent"))
+
+    selected <- result$slice(diag$reachable %in% TRUE)
+    expect_identical(selected$id, c("file-ok", "file-dup"))
+
+    http <- result$reachable(service = "HTTPServer", level = "url")
+    expect_identical(http$service, rep("HTTPServer", 4L))
+    expect_identical(http$url, c("https://same.example.org/file.nc", rep(NA_character_, 3L)))
+    expect_identical(http$reachable, c(TRUE, NA, NA, NA))
+
+    empty <- query_result_test_object("File", docs[0L, , drop = FALSE], query_result_test_params("File"))
+    empty_diag <- empty$reachable()
+    expect_named(empty_diag, names(diag))
+    expect_equal(nrow(empty_diag), 0L)
+})
+
+test_that("result reachable() probes data node root URLs by default", {
+    docs <- data.frame(
+        id = c("file-a", "file-b", "file-missing", "file-fallback"),
+        dataset_id = "dataset-1",
+        size = c(1, 2, 3, 4),
+        checksum = c("abc", "def", "ghi", "jkl"),
+        checksum_type = "SHA256",
+        instance_id = paste0("file-instance-", 1:4),
+        master_id = paste0("master-file-", 1:4),
+        replica = FALSE,
+        tracking_id = paste0("hdl:21.14100/mock-file-", 1:4),
+        title = paste0("file-", 1:4, ".nc"),
+        version = 20260101L,
+        data_node = c("same.example.org", "same.example.org", "missing.example.org", NA_character_),
+        check.names = FALSE
+    )
+    docs$url <- I(list(
+        "https://same.example.org/dods/a.nc|application/netcdf|OPENDAP",
+        "https://same.example.org/dods/b.nc|application/netcdf|OPENDAP",
+        character(),
+        "https://fallback.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    calls <- character()
+    testthat::local_mocked_bindings(
+        query_result__reach_node_urls = function(urls, timeout = 5,
+                                                                       network_policy = NULL,
+                                                                       probe_concurrency = 1L) {
+            calls <<- c(calls, urls)
+            stats::setNames(lapply(urls, function(url) {
+                list(
+                    reachable = grepl("same|fallback", url),
+                    latency_ms = if (grepl("fallback", url)) 44 else 22,
+                    error = if (grepl("same|fallback", url)) NA_character_ else "node boom",
+                    probe_url = url
+                )
+            }), urls)
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- result$reachable(probe = list(cache_seconds = 0L, cache_failures_seconds = 0L))
+
+    expect_identical(diag$url, c(
+        "https://same.example.org/dods/a.nc",
+        "https://same.example.org/dods/b.nc",
+        NA_character_,
+        "https://fallback.example.org/dods/file.nc"
+    ))
+    expect_identical(diag$reachable, c(TRUE, TRUE, NA, TRUE))
+    expect_identical(diag$error, c(NA_character_, NA_character_, "Missing URL.", NA_character_))
+    expect_identical(diag$probe_level, rep("data_node", 4L))
+    expect_identical(diag$probe_url, c(
+        "https://same.example.org/",
+        "https://same.example.org/",
+        NA_character_,
+        "https://fallback.example.org/"
+    ))
+    expect_equal(sum(calls == "https://same.example.org/"), 1L)
+    expect_false(any(grepl("/dods/", calls, fixed = TRUE)))
+    expect_false(any(grepl("missing.example.org", calls, fixed = TRUE)))
+})
+
+test_that("File results repair unreachable OPeNDAP URLs using reachable replicas", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-bad", "file-ok")
+    docs$dataset_id <- c("dataset-bad|bad.example.org", "dataset-ok|ok.example.org")
+    docs$master_id <- c("master-file-bad", "master-file-ok")
+    docs$instance_id <- c("instance-bad", "instance-ok")
+    docs$data_node <- c("bad.example.org", "ok.example.org")
+    docs$url <- I(list(
+        c(
+            "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://bad.example.org/file.nc|application/netcdf|HTTPServer"
+        ),
+        c(
+            "https://ok.example.org/dods/file.nc|application/netcdf|OPENDAP",
+            "https://ok.example.org/file.nc|application/netcdf|HTTPServer"
+        )
+    ))
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File"),
+        context = list(query_url = "https://origin.example.org/search")
+    )
+
+    candidate_docs <- query_result_test_file_docs(c(
+        "https://replica.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://replica.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    candidate_docs$id <- "file-repaired"
+    candidate_docs$dataset_id <- "dataset-bad|replica.example.org"
+    candidate_docs$master_id <- "master-file-bad"
+    candidate_docs$instance_id <- "instance-bad"
+    candidate_docs$data_node <- "replica.example.org"
+    candidate_docs$replica <- TRUE
+
+    probe_calls <- list()
+    collect_calls <- list()
+    testthat::local_mocked_bindings(
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            probe_calls[[length(probe_calls) + 1L]] <<- list(
+                data_node = data_node,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = probe_concurrency,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
+            )
+            data.table::data.table(
+                data_node = data_node,
+                reachable = grepl("ok|replica", data_node),
+                latency_ms = ifelse(grepl("replica", data_node), 10, ifelse(grepl("ok", data_node), 50, NA_real_)),
+                error = ifelse(grepl("ok|replica", data_node), NA_character_, "boom"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            collect_calls[[length(collect_calls) + 1L]] <<- list(
+                index_node = index_node,
+                params = params,
+                required_fields = required_fields,
+                all = all,
+                limit = limit,
+                constraints = constraints
+            )
+            expect_identical(index_node, "https://replica-index.example.org")
+            expect_identical(query_param__value(params$type()), "File")
+            expect_null(params$project())
+            expect_identical(query_param__value(params$params()$instance_id), "instance-bad")
+            expect_true(all(EsgResultFile$private_fields$required_fields %in% required_fields))
+            expect_true(all)
+            expect_false(constraints)
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://replica-index.example.org/replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(
+        result$repair_urls(
+            index_node = "replica-index.example.org",
+            probe = list(timeout = 11, concurrency = 2L, network_policy = list(useragent = "repair-test"))
+        ),
+        "EsgResultFile"
+    )
+
+    expect_identical(result$id, c("file-bad", "file-ok"))
+    expect_identical(repaired$id, c("file-repaired", "file-ok"))
+    expect_identical(repaired$data_node, c("replica.example.org", "ok.example.org"))
+    expect_identical(repaired$dataset_id, c("dataset-bad|replica.example.org", "dataset-ok|ok.example.org"))
+    expect_equal(repaired$count(), 2L)
+    expect_identical(repaired$selection(), result$selection())
+    expect_equal(length(collect_calls), 1L)
+    expect_equal(length(probe_calls), 2L)
+    expect_true(all(vapply(probe_calls, function(x) x$timeout, numeric(1L)) == 11))
+    expect_true(all(vapply(probe_calls, function(x) x$probe_concurrency, integer(1L)) == 2L))
+    expect_true(all(vapply(probe_calls, function(x) x$network_policy$useragent, character(1L)) == "repair-test"))
+    expect_true(all(vapply(probe_calls, function(x) x$cache_seconds, integer(1L)) == 3600L))
+    expect_true(all(vapply(probe_calls, function(x) x$cache_failures_seconds, integer(1L)) == 0L))
+    expect_identical(unname(repaired$query_url("all")), c(
+        "https://origin.example.org/search",
+        "https://replica-index.example.org/replicas"
+    ))
+})
+
+test_that("repair_urls prefers reachable replicas already present in the current result", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-bad", "file-current-replica")
+    docs$dataset_id <- c("dataset-1|bad.example.org", "dataset-1|good.example.org")
+    docs$master_id <- c("master-file-current", "master-file-current")
+    docs$instance_id <- c("instance-current", "instance-current")
+    docs$data_node <- c("bad.example.org", "good.example.org")
+    docs$replica <- c(FALSE, TRUE)
+    docs$url <- I(list(
+        "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://good.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    testthat::local_mocked_bindings(
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            data.table::data.table(
+                data_node = data_node,
+                reachable = data_node == "good.example.org",
+                latency_ms = ifelse(data_node == "good.example.org", 7, NA_real_),
+                error = ifelse(data_node == "good.example.org", NA_character_, "bad node"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        query__collect = function(...) {
+            stop("current result replica should avoid an external query")
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(result$repair_urls(), "EsgResultFile")
+
+    expect_identical(repaired$id, c("file-current-replica", "file-current-replica"))
+    expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
+})
+
+test_that("expand_replicas falls back to master and version without crossing versions", {
+    docs <- query_result_test_file_docs()
+    docs$instance_id <- NA_character_
+    docs$master_id <- "master-file-fallback"
+    docs$version <- 20260101L
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    candidate_docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(candidate_docs) <- NULL
+    candidate_docs$id <- c("file-same-version", "file-other-version")
+    candidate_docs$data_node <- c("same.example.org", "other.example.org")
+    candidate_docs$version <- c(20260101L, 20270101L)
+
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_null(params$project())
+            expect_identical(query_param__value(params$params()$master_id), "master-file-fallback")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://example.org/master-version")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    expanded <- expect_s3_class(result$expand_replicas(), "EsgResultFile")
+    expect_identical(expanded$id, "file-same-version")
+    expect_identical(expanded$version, 20260101L)
+})
+
+test_that("File results repair HTTPServer URLs independently", {
+    docs <- query_result_test_file_docs(c(
+        "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://bad-http.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    docs$id <- "file-http-bad"
+    docs$dataset_id <- "dataset-http|bad-http.example.org"
+    docs$master_id <- "master-file-http"
+    docs$data_node <- "bad-http.example.org"
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+
+    candidate_docs <- query_result_test_file_docs(c(
+        "https://opendap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://http-replica.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    candidate_docs$id <- "file-http-repaired"
+    candidate_docs$dataset_id <- "dataset-http|http-replica.example.org"
+    candidate_docs$master_id <- "master-file-http"
+    candidate_docs$data_node <- "http-replica.example.org"
+
+    probed <- character()
+    testthat::local_mocked_bindings(
+        query_result__reach_urls = function(urls, timeout = 5, network_policy = NULL,
+                                                     probe_concurrency = 1L) {
+            probed <<- c(probed, urls)
+            data.table::data.table(
+                url = urls,
+                reachable = grepl("http-replica", urls),
+                latency_ms = ifelse(grepl("http-replica", urls), 8, NA_real_),
+                error = ifelse(grepl("http-replica", urls), NA_character_, "bad http")
+            )
+        },
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_identical(index_node, "https://example.org")
+            expect_identical(query_param__value(params$type()), "File")
+            expect_null(params$project())
+            expect_identical(query_param__value(params$params()$instance_id), "file-instance-1")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://example.org/http-replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(
+        result$repair_urls(service = "HTTPServer", probe = list(level = "url")),
+        "EsgResultFile"
+    )
+
+    expect_identical(repaired$id, "file-http-repaired")
+    expect_identical(repaired$data_node, "http-replica.example.org")
+    expect_true(any(grepl("bad-http", probed)))
+    expect_true(any(grepl("http-replica", probed)))
+})
+
+test_that("Aggregation results repair URLs with Aggregation replica queries", {
+    docs <- query_result_test_file_docs("https://bad.example.org/dods/agg.nc|application/netcdf|OPENDAP")
+    docs$id <- "aggregation-bad"
+    docs$dataset_id <- "dataset-agg|bad.example.org"
+    docs$master_id <- "master-aggregation"
+    docs$data_node <- "bad.example.org"
+    result <- query_result_test_object("Aggregation", docs, query_result_test_params("Aggregation"))
+
+    candidate_docs <- query_result_test_file_docs("https://agg-replica.example.org/dods/agg.nc|application/netcdf|OPENDAP")
+    candidate_docs$id <- "aggregation-repaired"
+    candidate_docs$dataset_id <- "dataset-agg|agg-replica.example.org"
+    candidate_docs$master_id <- "master-aggregation"
+    candidate_docs$data_node <- "agg-replica.example.org"
+
+    testthat::local_mocked_bindings(
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            data.table::data.table(
+                data_node = data_node,
+                reachable = grepl("agg-replica", data_node),
+                latency_ms = ifelse(grepl("agg-replica", data_node), 12, NA_real_),
+                error = ifelse(grepl("agg-replica", data_node), NA_character_, "bad agg"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_identical(query_param__value(params$type()), "Aggregation")
+            expect_null(params$project())
+            expect_identical(query_param__value(params$params()$instance_id), "file-instance-1")
+            expect_true(all(EsgResultAggregation$private_fields$required_fields %in% required_fields))
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://example.org/aggregation-replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    repaired <- expect_s3_class(result$repair_urls(), "EsgResultAggregation")
+
+    expect_identical(repaired$id, "aggregation-repaired")
+    expect_identical(repaired$data_node, "agg-replica.example.org")
+    expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/aggregation-replicas")
+})
+
+test_that("repair_urls keeps original records when repair is impossible", {
+    docs <- query_result_test_file_docs("https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP")
+    docs <- docs[rep(1L, 2L), , drop = FALSE]
+    row.names(docs) <- NULL
+    docs$id <- c("file-missing-master", "file-no-replica")
+    docs$master_id <- c(NA_character_, "master-no-replica")
+    docs$instance_id <- c(NA_character_, NA_character_)
+    docs$data_node <- c("missing-master.example.org", "no-replica.example.org")
+    docs$url <- I(list(
+        "https://missing-master.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://no-replica.example.org/dods/file.nc|application/netcdf|OPENDAP"
+    ))
+    result <- query_result_test_object("File", docs, query_result_test_params("File"))
+    candidate_docs <- query_result_test_file_docs("https://still-bad.example.org/dods/file.nc|application/netcdf|OPENDAP")
+    candidate_docs$id <- "file-still-bad"
+    candidate_docs$master_id <- "master-no-replica"
+    candidate_docs$instance_id <- NA_character_
+    candidate_docs$data_node <- "still-bad.example.org"
+
+    testthat::local_mocked_bindings(
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            data.table::data.table(
+                data_node = data_node,
+                reachable = rep(FALSE, length(data_node)),
+                latency_ms = rep(NA_real_, length(data_node)),
+                error = rep("unreachable", length(data_node)),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                 limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            expect_null(params$project())
+            expect_identical(query_param__value(params$params()$master_id), "master-no-replica")
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://example.org/no-replica")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    warnings <- character()
+    repaired <- withCallingHandlers(
+        result$repair_urls(),
+        warning = function(w) {
+            warnings <<- c(warnings, conditionMessage(w))
+            invokeRestart("muffleWarning")
+        }
+    )
+
+    expect_true(any(grepl("instance_id", warnings)))
+    expect_true(any(grepl("No reachable OPENDAP replica", warnings)))
+    expect_identical(repaired$id, result$id)
+    expect_identical(repaired$data_node, result$data_node)
+    expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/no-replica")
+
+    expect_error(result$repair_urls(probe = list(foo = 1)), "Unknown `probe` field")
+})
+
 test_that("File and Aggregation results filter time using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))
@@ -275,6 +955,7 @@ test_that("File and Aggregation results filter time using DRS filename ranges", 
         expect_identical(filtered$time_filter$total, 3L)
         expect_identical(filtered$time_filter$selected, 2L)
         expect_identical(filtered$time_filter$unknown_count, 1L)
+        expect_identical(filtered$selection()$source_indices, c(1L, 3L))
 
         dt <- filtered$to_data_table(c("id", "datetime_start", "datetime_end"))
         expect_identical(dt$datetime_start[[1L]], "2050-01-01T00:00:00Z")
@@ -291,11 +972,12 @@ test_that("result time filter context persists through save/load", {
 
     expect_type(filtered$save(file), "character")
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
-    expect_named(json$context, "time_filter")
+    expect_true(all(c("time_filter", "selection") %in% names(json$context)))
     expect_identical(json$context$time_filter$method, "drs")
 
     loaded <- expect_s3_class(esg_result("file")$load(file), "EsgResultFile")
     expect_identical(loaded$time_filter, filtered$time_filter)
+    expect_identical(loaded$selection(), filtered$selection())
     expect_identical(loaded$id, filtered$id)
 })
 
@@ -448,7 +1130,7 @@ test_that("empty child query results save/load through real JSON files", {
         generator <- switch(case_name, file = EsgResultFile, aggregation = EsgResultAggregation)
         response <- query_result_test_response(empty_file_docs)
         response$response$docs <- list()
-        result <- new_query_result(
+        result <- query_result__new(
             generator,
             "https://example.org",
             query_result_test_params(type),
@@ -471,7 +1153,7 @@ test_that("empty dataset results collect empty child results without querying", 
     datasets <- query_result_test_object("Dataset", docs)
 
     testthat::local_mocked_bindings(
-        query_collect = function(...) stop("query_collect should not be called"),
+        query__collect = function(...) stop("query__collect should not be called"),
         .package = "epwshiftr"
     )
 
@@ -481,12 +1163,12 @@ test_that("empty dataset results collect empty child results without querying", 
     files <- expect_s3_class(datasets$collect(type = "File"), "EsgResultFile")
     expect_equal(files$count(), 0L)
     expect_identical(files$fields, character())
-    expect_identical(query_param_value(priv(files)$parameter$type()), "File")
+    expect_identical(query_param__value(priv(files)$parameter$type()), "File")
 
     aggs <- expect_s3_class(datasets$collect(type = "Aggregation"), "EsgResultAggregation")
     expect_equal(aggs$count(), 0L)
     expect_identical(aggs$fields, character())
-    expect_identical(query_param_value(priv(aggs)$parameter$type()), "Aggregation")
+    expect_identical(query_param__value(priv(aggs)$parameter$type()), "Aggregation")
 })
 
 test_that("dataset result collect inherits controls and normalizes limit", {
@@ -500,7 +1182,7 @@ test_that("dataset result collect inherits controls and normalizes limit", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(
                 index_node = index_node,
                 params = params,
@@ -510,44 +1192,49 @@ test_that("dataset result collect inherits controls and normalizes limit", {
                 constraints = constraints
             )
             response <- query_result_test_response(query_result_test_file_docs())
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
     )
 
     files <- expect_s3_class(datasets$collect(fields = "id", limit = NULL), "EsgResultFile")
+    expect_identical(calls[[1L]]$index_node, "https://example.org")
     expect_equal(calls[[1L]]$limit, this$data_max_limit)
-    expect_false(query_param_value(calls[[1L]]$params$latest()))
-    expect_false(query_param_value(calls[[1L]]$params$distrib()))
-    expect_false(query_param_value(calls[[1L]]$params$replica()))
-    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
-    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param_value(priv(files)$parameter$fields())))
+    expect_false(query_param__value(calls[[1L]]$params$latest()))
+    expect_false(query_param__value(calls[[1L]]$params$distrib()))
+    expect_false(query_param__value(calls[[1L]]$params$replica()))
+    expect_null(calls[[1L]]$params$project())
+    expect_null(calls[[1L]]$params$source_id())
+    expect_identical(query_param__value(calls[[1L]]$params$state()$dataset_id), "dataset-1")
+    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param__value(priv(files)$parameter$fields())))
 
     expect_s3_class(
         datasets$collect(fields = "id", limit = 1L, latest = TRUE, distrib = TRUE, replica = TRUE),
         "EsgResultFile"
     )
     expect_equal(calls[[2L]]$limit, 1L)
-    expect_true(query_param_value(calls[[2L]]$params$latest()))
-    expect_true(query_param_value(calls[[2L]]$params$distrib()))
-    expect_true(query_param_value(calls[[2L]]$params$replica()))
+    expect_true(query_param__value(calls[[2L]]$params$latest()))
+    expect_true(query_param__value(calls[[2L]]$params$distrib()))
+    expect_true(query_param__value(calls[[2L]]$params$replica()))
 
     aggs <- expect_s3_class(
-        datasets$collect(fields = "id", limit = 1L, type = "Aggregation"),
+        datasets$collect(fields = "id", limit = 1L, type = "Aggregation", index_node = "esg-dn1.nsc.liu.se"),
         "EsgResultAggregation"
     )
+    expect_identical(calls[[3L]]$index_node, "https://esg-dn1.nsc.liu.se")
+    expect_identical(priv(aggs)$index_node, "https://esg-dn1.nsc.liu.se")
     expect_equal(calls[[3L]]$limit, 1L)
-    expect_false(query_param_value(calls[[3L]]$params$latest()))
-    expect_false(query_param_value(calls[[3L]]$params$distrib()))
-    expect_false(query_param_value(calls[[3L]]$params$replica()))
+    expect_false(query_param__value(calls[[3L]]$params$latest()))
+    expect_false(query_param__value(calls[[3L]]$params$distrib()))
+    expect_false(query_param__value(calls[[3L]]$params$replica()))
     expect_null(calls[[3L]]$params$project())
     expect_null(calls[[3L]]$params$source_id())
-    expect_identical(query_param_value(calls[[3L]]$params$flat()$dataset_id), "dataset-1")
-    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param_value(priv(aggs)$parameter$fields())))
+    expect_identical(query_param__value(calls[[3L]]$params$state()$dataset_id), "dataset-1")
+    expect_true(all(EsgResultAggregation$private_fields$required_fields %in% query_param__value(priv(aggs)$parameter$fields())))
 })
 
-test_that("dataset result collect accepts child facets and clears datetime constraints", {
+test_that("dataset result collect accepts data node scope and clears datetime constraints", {
     params <- query_result_test_params("Dataset")
     params$datetime_range(
         start = "2050-01-01T00:00:00Z",
@@ -561,24 +1248,128 @@ test_that("dataset result collect accepts child facets and clears datetime const
 
     calls <- list()
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             calls[[length(calls) + 1L]] <<- list(params = params, limit = limit)
             response <- query_result_test_response(query_result_test_file_docs())
-            params$fields(c(query_param_value(params$fields()), required_fields))
+            params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
         },
         .package = "epwshiftr"
     )
 
     expect_s3_class(
-        datasets$collect(fields = "id", limit = 1L, source_id = "AWI-CM-1-1-MR"),
+        datasets$collect(fields = "id", limit = 1L, data_node = "example.org"),
         "EsgResultFile"
     )
-    expect_identical(query_param_value(calls[[1L]]$params$source_id()), "AWI-CM-1-1-MR")
+    expect_identical(query_param__value(calls[[1L]]$params$data_node()), "example.org")
     expect_identical(calls[[1L]]$params$render(c("datetime_start", "datetime_stop")), character())
 
+    expect_error(datasets$collect(source_id = "AWI-CM-1-1-MR"), "unsupported parameter")
+    expect_error(datasets$collect(bbox = "0,0,1,1"), "unsupported parameter")
+    expect_error(datasets$collect(start = "2050"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
     expect_error(datasets$collect(time = "all"), "controlled")
+})
+
+test_that("dataset result collect can target child queries by record index node", {
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(
+            id = c("dataset-1", "dataset-2", "dataset-3"),
+            index_node = c("idx-a.example.org", NA, "https://idx-b.example.org"),
+            size = c(1, 1, 1),
+            check.names = FALSE
+        ),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            dataset_id <- query_param__value(params$state()$dataset_id)
+            calls[[length(calls) + 1L]] <<- list(index_node = index_node, dataset_id = dataset_id)
+            docs <- data.frame(
+                id = paste0("file-", dataset_id),
+                dataset_id = dataset_id,
+                size = seq_along(dataset_id),
+                url = I(rep(list("https://example.org/file.nc|application/netcdf|HTTPServer"), length(dataset_id))),
+                check.names = FALSE
+            )
+            response <- query_result_test_response(docs)
+            params$fields(c(query_param__value(params$fields()), required_fields))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params,
+                context = list(query_url = paste0(index_node, "/search?", dataset_id))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(
+        datasets$collect(fields = "id", limit = 1L, index_node = "fallback.example.org", use_record_index_node = TRUE),
+        "EsgResultFile"
+    )
+    expect_identical(
+        vapply(calls, `[[`, character(1L), "index_node"),
+        c("https://fallback.example.org", "https://idx-a.example.org", "https://idx-b.example.org")
+    )
+    expect_identical(unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE), datasets$id[c(2L, 1L, 3L)])
+    expect_identical(files$count(), 3L)
+    expect_length(priv(files)$context$query_url, 3L)
+})
+
+test_that("dataset result expand_replicas queries dataset replicas by identity", {
+    docs <- data.frame(
+        id = "dataset-1|node-a.example.org",
+        instance_id = "dataset-instance-1",
+        master_id = "dataset-master-1",
+        version = 20260101L,
+        data_node = "node-a.example.org",
+        size = 1,
+        check.names = FALSE
+    )
+    datasets <- query_result_test_object("Dataset", docs, query_result_test_params("Dataset"))
+
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            calls[[length(calls) + 1L]] <<- list(index_node = index_node, params = params, required_fields = required_fields)
+            if (!is.null(params$params()$instance_id)) {
+                expect_identical(query_param__value(params$params()$instance_id), "dataset-instance-1")
+                out <- docs[rep(1L, 2L), , drop = FALSE]
+                out$id <- c("dataset-1|node-a.example.org", "dataset-1|node-b.example.org")
+                out$data_node <- c("node-a.example.org", "node-b.example.org")
+            } else {
+                expect_identical(query_param__value(params$params()$master_id), "dataset-master-1")
+                out <- docs[rep(1L, 2L), , drop = FALSE]
+                out$id <- c("dataset-1.v20260101|node-a.example.org", "dataset-1.v20270101|node-a.example.org")
+                out$version <- c(20260101L, 20270101L)
+            }
+            expect_identical(index_node, "https://replica-index.example.org")
+            expect_null(params$project())
+            expect_identical(query_param__value(params$type()), "Dataset")
+            expect_true(all(EsgResultDataset$private_fields$required_fields %in% required_fields))
+            list(
+                response = query_result_test_response(out),
+                docs = out,
+                parameter = query_param__clone(params),
+                context = list(query_url = paste0(index_node, "/dataset-replicas"))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    same_version <- expect_s3_class(datasets$expand_replicas(index_node = "replica-index.example.org"), "EsgResultDataset")
+    expect_identical(same_version$data_node, c("node-a.example.org", "node-b.example.org"))
+
+    logical_dataset <- expect_s3_class(
+        datasets$expand_replicas(by = "master_id", index_node = "replica-index.example.org"),
+        "EsgResultDataset"
+    )
+    expect_identical(logical_dataset$version, c(20260101L, 20270101L))
+    expect_length(calls, 2L)
 })
 
 test_that("dataset access helpers tolerate missing access fields", {
@@ -700,7 +1491,7 @@ test_that("download_plan deduplicates URL probes", {
     files <- query_result_test_object("File", docs, query_result_test_params("File"))
     calls <- 0L
     testthat::local_mocked_bindings(
-        query_result_probe_url = function(url, timeout = 5, network_policy = NULL) {
+        query_result__latency_url = function(url, timeout = 5, network_policy = NULL) {
             calls <<- calls + 1L
             list(latency = 0.5, throughput = NA_real_)
         },
@@ -735,7 +1526,7 @@ test_that("download_plan reuses fresh data node probe cache", {
         updated_at = Sys.time()
     )
     testthat::local_mocked_bindings(
-        query_result_probe_url = function(...) {
+        query_result__latency_url = function(...) {
             stop("cached probe should not hit the network")
         },
         .package = "epwshiftr"
@@ -892,7 +1683,8 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         ),
         private = list(
             nc_handles = NULL,
-            opened = FALSE
+            opened = FALSE,
+            context = list()
         )
     )
     FakeDownloader <- R6::R6Class(
@@ -973,14 +1765,26 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
         "https://example.org/dods/file-1.nc",
         "https://example.org/dods/file-2.nc"
     ))
+    expect_identical(ds_all$.__enclos_env__$private$context$selection$source_indices, c(1L, 2L))
     expect_equal(length(calls$opened) - opened_before, 2L)
 
     ds_one <- expect_s3_class(
-        multi_files$open_dataset(which = "file-2", aggregate = FALSE, fallback = "auto"),
+        multi_files$open_dataset(which = "file-2", fallback = "auto"),
         "FakeEsgDataset"
     )
     expect_identical(ds_one$target, "https://example.org/dods/file-2.nc")
-    expect_error(multi_files$open_dataset(which = 1:2, aggregate = FALSE), "aggregate = FALSE")
+    expect_identical(ds_one$.__enclos_env__$private$context$selection$source_indices, 2L)
+
+    ds_selected <- expect_s3_class(
+        multi_files$open_dataset(which = 1:2, fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(ds_selected$target, c(
+        "https://example.org/dods/file-1.nc",
+        "https://example.org/dods/file-2.nc"
+    ))
+    expect_identical(ds_selected$.__enclos_env__$private$context$selection$source_indices, c(1L, 2L))
+    expect_error(multi_files$open_dataset(aggregate = FALSE), "unused argument")
 
     agg_docs <- data.frame(
         id = c("file-1", "file-2"),
@@ -1014,10 +1818,26 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_length(agg_ds$target, 2L)
     expect_identical(agg_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_ds$target[[2L]]))
+    expect_identical(agg_ds$.__enclos_env__$private$context$selection$source_indices, c(1L, 2L))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
     new_open_calls <- calls$opened[(opened_before + 1L):length(calls$opened)]
     expect_identical(new_open_calls[[1L]], "https://example.org/dods/file-1.nc")
     expect_identical(new_open_calls[[2L]], agg_ds$target[[2L]])
+
+    agg_one_index <- expect_s3_class(
+        agg_result$open_dataset(which = 1L, fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(agg_one_index$target, "https://example.org/dods/file-1.nc")
+    expect_identical(agg_one_index$.__enclos_env__$private$context$selection$source_indices, 1L)
+
+    agg_one_id <- expect_s3_class(
+        agg_result$open_dataset(which = "file-1", fallback = "auto"),
+        "FakeEsgDataset"
+    )
+    expect_identical(agg_one_id$target, "https://example.org/dods/file-1.nc")
+    expect_identical(agg_one_id$.__enclos_env__$private$context$selection$source_indices, 1L)
+    expect_error(agg_result$open_dataset(aggregate = FALSE), "unused argument")
 
     agg_fail_docs <- agg_docs
     agg_fail_docs$url <- I(list(
@@ -1090,16 +1910,22 @@ test_that("ESGF Query Result Dataset works", {
         c(
             "access",
             "activity_id",
+            "data_node",
             "experiment_id",
             "frequency",
             "id",
             "index_node",
+            "instance_id",
+            "latest",
+            "master_id",
             "number_of_files",
             "project",
+            "replica",
             "size",
             "source_id",
             "variable_id",
-            "variant_label"
+            "variant_label",
+            "version"
         )
     )
 
@@ -1136,7 +1962,7 @@ test_that("ESGF Query Result Dataset works", {
     expect_snapshot_file(file_copied, "dataset.json", transform = transform_json)
 
     # $load() empty datasets
-    de <- expect_s3_class(new_query_result(EsgResultDataset)$load(file), "EsgResultDataset")
+    de <- expect_s3_class(query_result__new(EsgResultDataset)$load(file), "EsgResultDataset")
     expect_equal(priv(de)$index_node, priv(datasets)$index_node)
     expect_equal(priv(de)$parameter, priv(datasets)$parameter)
     # manually add the cache key since '$save()' will exclude it
@@ -1157,7 +1983,9 @@ test_that("ESGF Query Result Dataset works", {
 
     ## $collect(): can limit fields and record number
     expect_s3_class(files <- datasets$collect(fields = "id", limit = 1), "EsgResultFile")
-    expect_true(all(EsgResultFile$private_fields$required_fields %in% files$fields))
+    expect_true(
+        all(c(EsgResultFile$private_fields$required_fields, "filename", "url_opendap", "url_download") %in% files$fields)
+    )
 
     ## $collect(): can collect all fields
     expect_s3_class(files <- datasets$collect(fields = "id", all = TRUE), "EsgResultFile")
@@ -1170,10 +1998,13 @@ test_that("ESGF Query Result Dataset works", {
     expect_s3_class(files <- datasets$collect(limit = 1), "EsgResultFile")
     expect_length(files$fields, 56L)
 
-    ## $collect(): can specify additional child-result facet filters
-    expect_s3_class(datasets$collect(fields = "id", limit = 1, experiment_id = "ssp585"), "EsgResultFile")
+    ## $collect(): can specify data node scope
+    dataset_data_node <- datasets$data_node[[1]]
+    expect_s3_class(datasets$collect(fields = "id", limit = 1, data_node = dataset_data_node), "EsgResultFile")
 
     ## $collect(): can stop if controlled query parameters are supplied through dots
+    expect_error(datasets$collect(bbox = "0,0,1,1"), "unsupported parameter")
+    expect_error(datasets$collect(start = "2050"), "unsupported parameter")
     expect_error(datasets$collect(datetime_start = "2050"), "controlled")
 
     ## $collect(): can collect aggregation
@@ -1307,7 +2138,9 @@ test_that("ESGF Query Result Aggregation works", {
     expect_type(aggs$url_download, "character")
     expect_length(aggs$url_download, 2L)
 
-    expect_true(all(c("id", "data_node", "dataset_id", "size", "url") %in% aggs$fields))
+    expect_true(
+        all(c("data_node", "dataset_id", "id", "size", "title", "url", "url_opendap", "url_download") %in% aggs$fields)
+    )
 
     # $print()
     expect_snapshot(aggs$print(), transform = transform_print)
