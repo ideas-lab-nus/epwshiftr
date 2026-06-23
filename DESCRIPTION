@@ -31,6 +31,7 @@ Imports:
     PCICt,
     progressr,
     psychrolib,
+    qs2,
     R6,
     rappdirs,
     RNetCDF,
@@ -48,8 +49,9 @@ Encoding: UTF-8
 URL: https://github.com/ideas-lab-nus/epwshiftr
 BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
 Collate:
+    'cache.R'
     'coord.R'
     'dict.R'
     'utils.R'
@@ -58,7 +60,10 @@ Collate:
     'gh.R'
     'morph.R'
     'netcdf.R'
+    'query-result.R'
     'query.R'
+    'schema.R'
+    'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
 Config/testthat/edition: 3

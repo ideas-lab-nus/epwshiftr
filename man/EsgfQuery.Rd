@@ -5,14 +5,28 @@
 \alias{query_esgf}
 \title{Query CMIP6 data using ESGF search RESTful API}
 \usage{
-query_esgf(host = "https://esgf-node.llnl.gov/esg-search")
+query_esgf(index_node = "https://esgf-node.ornl.gov")
 }
 \arguments{
-\item{host}{The URL to the ESGF Search API service. This should be the URL of
-the ESGF search service excluding the final endpoint name. Usually
-this is \verb{http://<hostname>/esg-search}. Default is set to the
-\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
-which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+\item{index_node}{The URL to the ESGF Index Node. Default is to use the
+\href{https://esgf-node.ornl.gov}{ORNL (Oak Ridge National Laboratory) Index Node}.
+Current possible values could be:
+\itemize{
+\item ORNL (Oak Ridge National Laboratory), USA:
+\verb{https://esgf-node.ornl.gov}. The default value.
+\item LLNL (Lawrence Livermore National Laboratory), USA:
+\verb{https://esgf-node.llnl.gov}
+\item NCI (National Computational Infrastructure), Australia:
+\verb{https://esgf.nci.org.au}
+\item IPSL (Institut Pierre-Simon Laplace), France:
+\verb{https://esgf-node.ipsl.upmc.fr}
+\item DKRZ (Deutsches Klimarechenzentrum), Germany:
+\verb{https://esgf-data.dkrz.de}
+\item LIU (National Academic Infrastructure for Supercomputing), Sweden:
+\verb{https://esg-dn1.nsc.liu.se}
+\item CEDA (Centre for Environmental Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk}
+}}
 }
 \description{
 The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -22,35 +36,44 @@ assessments by the Intergovernmental Panel on Climate Change (IPCC).
 The ESGF search service exposes RESTful APIs that can be used by clients to
 query the contents of the underlying search index, and return results
 matching the given constraints. The documentation of the APIs can be found
-using this \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}
+using this
+\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}.
 
 \code{EsgfQuery} is the workhorse for dealing with ESGF search services.
+}
+\note{
+For bridge index nodes, only predefined common facets are returned.
+\verb{$list_fields()} can be used to get all available fields,
+including facets.
 }
 \section{\code{EsgfQuery} object}{
 \code{query_esgf()} returns an \code{EsgfQuery} object, which is an \link[R6:R6Class]{R6}
 object with quite a few methods that can be classified into 3 categories:
 \itemize{
-\item \strong{Value listing}: methods to list all possible values of facets, shards,
-etc.
+\item \strong{Value listing}: methods to list all possible values of facets, fields,
+shards, and values.
 \item \strong{Parameter getter & setter}: methods to get the query parameter values or
 set them before sending the actual query to the ESGF search services.
 \item \strong{Query responses}: methods to collect results for the query response.
 }
 \subsection{Value listing}{
 
-When creating an \code{EsgfQuery} object, a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-is sent to the index node to get all available facets and shards for the
-default project (CMIP6).
-\code{EsgfQuery} object provides three value-listing methods to extract data from
-the response of the facet listing query:
+\code{EsgfQuery} object provides the following value-listing methods to query
+available facets, fields, shards, and values from the ESGF index node:
 \itemize{
-\item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}:
-List all available facet names.
-\item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}:
-List all available shards.
-\item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}:
-List all available values of a specific facet.
+\item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
+List all available facet names. When called, a
+\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
+is sent to the index node to get all available facets for the current
+project (default: CMIP6).
+\item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
+List all available field names. This is useful for bridge index nodes
+where facet listing is not available.
+\item \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}:
+List all available shards (ESGF index nodes) that can be queried in
+distributed searches.
+\item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
+List all available values of specific facets.
 }
 }
 
@@ -129,33 +152,51 @@ number of records that match the query.
 \code{EsgfQuery$count(facets = c("source_id", "activity_id"))}
 }
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
-query results and format it into a \link[data.table:data.table]{data.table}
+query results and format it into an \link{EsgfQueryResultDataset} object.
+}
+}
+
+\subsection{Bridge Index Nodes}{
+
+Some ESGF index nodes are "bridge" nodes that have certain limitations
+compared to standard index nodes. When using a bridge index node (e.g.,
+\verb{https://esgf-node.ornl.gov/esgf-1-5-bridge}), the following restrictions
+apply:
+\itemize{
+\item The \code{fields} parameter is not supported. All available fields are always
+returned.
+\item The \code{retracted} parameter is not supported and will be ignored.
+\item Wget script generation is not supported. Calling \verb{$url(wget = TRUE)} will
+result in an error.
+\item Facet listing is not available. \verb{$list_facets()} will return a predefined
+set of common facets instead. Use \verb{$list_fields()} to get all available
+fields.
 }
 }
 
 \subsection{Other helpers}{
 
-\code{EsgfQuery} object also provide several other helper functions:
+\code{EsgfQuery} object also provides several other helper functions:
 \itemize{
-\item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}:
-By default, \code{EsgfQuery$build_cache()} is called when initialize a new
-\code{EsgfQuery} object. So in general, there is no need to call this
-separately. Basically, \code{EsgfQuery$build_cahce()} sends a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-to the index node and stores the response internally. The response contains
-all available facets and shards and is used as a source for validating user
-input for parameter setters.
+\item \strong{Query URL generation}:
+\itemize{
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
 query URL or the wget script URL which can be used to download all files
-matching the given constraints..
-\item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}: Returns the
-actual response of
-\href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}} and
-\href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}. It is a named
-list generated from the JSON response using \code{\link[jsonlite:fromJSON]{jsonlite::fromJSON()}}.
-\item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a summary
-of the current \code{EsgfQuery} object including the host URL, the built time of
-facet cache and all query parameters.
+matching the given constraints.
+}
+\item \strong{State persistence}:
+\itemize{
+\item \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}: Save the query
+state to a JSON file for later use.
+\item \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}: Restore the
+query state from a JSON file created by \verb{$save()}.
+}
+\item \strong{Display}:
+\itemize{
+\item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a
+summary of the current \code{EsgfQuery} object including the index node URL,
+the last query timestamp, and all query parameters.
+}
 }
 }
 }
@@ -167,40 +208,40 @@ facet cache and all query parameters.
 ## ------------------------------------------------
 
 \dontrun{
-q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
+q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$build_cache`
+## Method `EsgfQuery$list_facets`
 ## ------------------------------------------------
 
 \dontrun{
-q$build_cache()
+q$list_facets()
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$list_all_facets`
+## Method `EsgfQuery$list_fields`
 ## ------------------------------------------------
 
 \dontrun{
-q$list_all_facets()
+q$list_fields()
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$list_all_shards`
+## Method `EsgfQuery$list_shards`
 ## ------------------------------------------------
 
 \dontrun{
-q$list_all_shards()
+q$list_shards()
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$list_all_values`
+## Method `EsgfQuery$list_values`
 ## ------------------------------------------------
 
 \dontrun{
-q$list_all_values()
+q$list_values(c("activity_id", "experiment_id"))
 }
 
 ## ------------------------------------------------
@@ -213,9 +254,6 @@ q$project()
 
 # set the parameter
 q$project("CMIP6")
-
-# negate the project constraints
-q$project(!"CMIP6")
 
 # remove the parameter
 q$project(NULL)
@@ -449,18 +487,6 @@ q$latest(TRUE)
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$type`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$type()
-
-# set the parameter
-q$type("Dataset")
-}
-
-## ------------------------------------------------
 ## Method `EsgfQuery$limit`
 ## ------------------------------------------------
 
@@ -471,8 +497,8 @@ q$limit()
 # set the parameter
 q$limit(10L)
 
-# `limit` is reset to 10,000 if input is greater than that
-q$limit(10000L) # warning
+# `limit` is reset to the allowed maximum query limit if input is greater than that
+q$limit(12000L) # warning
 }
 
 ## ------------------------------------------------
@@ -561,16 +587,47 @@ q$count(facets = c("activity_id", "source_id"))
 ## ------------------------------------------------
 
 \dontrun{
-q$fields("source_id")
-q$collect()
+# by default, all fields with constrains are included in the results
+query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+res1 <- query$collect()
+res1$fields
+
+# set `params` to `FALSE` to exclude them
+query$collect(params = FALSE)$fields
+
+# collect all matched records with `query$limit()` records per query
+res2 <- query$collect(all = TRUE, limit = TRUE)
+identical(query$count(), res2$count())
+
+# same as above, but collect all matched records with max allowed
+# record limit per query
+res3 <- query$collect(all = TRUE, limit = FALSE)
+identical(res2$count(), res3$count())
+
+# same as above, but collect all matched records with specified limit
+# per query
+res4 <- query$collect(all = TRUE, limit = 30)
+identical(res2$count(), res4$count())
 }
 
 ## ------------------------------------------------
-## Method `EsgfQuery$response`
+## Method `EsgfQuery$save`
 ## ------------------------------------------------
 
 \dontrun{
-q$response()
+q$save(tempfile(fileext = ".json"))
+}
+
+## ------------------------------------------------
+## Method `EsgfQuery$load`
+## ------------------------------------------------
+
+\dontrun{
+f <- tempfile(fileext = "json")
+
+q <- query_esgf()
+json <- q$save(f)
+q$load(f)
 }
 
 ## ------------------------------------------------
@@ -588,10 +645,10 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgfQuery-new}{\code{EsgfQuery$new()}}
-\item \href{#method-EsgfQuery-build_cache}{\code{EsgfQuery$build_cache()}}
-\item \href{#method-EsgfQuery-list_all_facets}{\code{EsgfQuery$list_all_facets()}}
-\item \href{#method-EsgfQuery-list_all_shards}{\code{EsgfQuery$list_all_shards()}}
-\item \href{#method-EsgfQuery-list_all_values}{\code{EsgfQuery$list_all_values()}}
+\item \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}
+\item \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}
+\item \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}
+\item \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}
 \item \href{#method-EsgfQuery-project}{\code{EsgfQuery$project()}}
 \item \href{#method-EsgfQuery-activity_id}{\code{EsgfQuery$activity_id()}}
 \item \href{#method-EsgfQuery-experiment_id}{\code{EsgfQuery$experiment_id()}}
@@ -606,7 +663,6 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-shards}{\code{EsgfQuery$shards()}}
 \item \href{#method-EsgfQuery-replica}{\code{EsgfQuery$replica()}}
 \item \href{#method-EsgfQuery-latest}{\code{EsgfQuery$latest()}}
-\item \href{#method-EsgfQuery-type}{\code{EsgfQuery$type()}}
 \item \href{#method-EsgfQuery-limit}{\code{EsgfQuery$limit()}}
 \item \href{#method-EsgfQuery-offset}{\code{EsgfQuery$offset()}}
 \item \href{#method-EsgfQuery-distrib}{\code{EsgfQuery$distrib()}}
@@ -614,8 +670,10 @@ Hongyuan Jia
 \item \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}
 \item \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}}
 \item \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}
-\item \href{#method-EsgfQuery-response}{\code{EsgfQuery$response()}}
+\item \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}
+\item \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}
 \item \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}
+\item \href{#method-EsgfQuery-clone}{\code{EsgfQuery$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
@@ -623,24 +681,32 @@ Hongyuan Jia
 \if{latex}{\out{\hypertarget{method-EsgfQuery-new}{}}}
 \subsection{Method \code{new()}}{
 Create a new EsgfQuery object
-
-When initialization, a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-is sent to the index node to get all available facets and shards.
-This information will be used to validate inputs for \code{activity_id},
-\code{scource_id} facets and etc.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{host}}{The URL to the ESGF Search API service. This should be
-the URL of the ESGF search service excluding the final
-endpoint name. Usually this is \verb{http://<hostname>/esg-search}.
-Default is to ses the \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory)} Index Node, which is
-\code{"https://esgf-node.llnl.gov/esg-search"}.}
+\item{\code{index_node}}{The URL to the ESGF Index Node. Default is to use the
+\href{https://esgf-node.ornl.gov}{ORNL (Oak Ridge National Laboratory)}
+Index Node. Current possible values could be:
+\itemize{
+\item ORNL (Oak Ridge National Laboratory), USA:
+\verb{https://esgf-node.ornl.gov}. The default value.
+\item LLNL (Lawrence Livermore National Laboratory), USA:
+\verb{https://esgf-node.llnl.gov}
+\item NCI (National Computational Infrastructure), Australia:
+\verb{https://esgf.nci.org.au}
+\item IPSL (Institut Pierre-Simon Laplace), France:
+\verb{https://esgf-node.ipsl.upmc.fr}
+\item DKRZ (Deutsches Klimarechenzentrum), Germany:
+\verb{https://esgf-data.dkrz.de}
+\item LIU (National Academic Infrastructure for Supercomputing), Sweden:
+\verb{https://esg-dn1.nsc.liu.se}
+\item CEDA (Centre for Environmental Data Analysis), UK:
+\verb{https://esgf.ceda.ac.uk}
+}}
 }
 \if{html}{\out{</div>}}
 }
@@ -650,7 +716,7 @@ An \code{EsgfQuery} object.
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q <- EsgfQuery$new(host = "https://esgf-node.llnl.gov/esg-search")
+q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
 }
 }
@@ -660,108 +726,134 @@ q
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-build_cache"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-build_cache}{}}}
-\subsection{Method \code{build_cache()}}{
-Build facet cache used for input validation
-
-A facet cache is data that is fetched using a
-\href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings}{facet listing query}
-to the index node. It contains all available facets and shards that
-can be used as parameter values within a specific project.
-
-By default, \verb{$build_cache()} is called when initialize a new
-\code{EsgfQuery} object for the default project (CMIP6). So in general,
-there is no need to call this method, unless that you want to
-rebuild the cache again with different projects after calling
-\href{#method-EsgfQuery-project}{\code{$project()}}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$build_cache()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-The modified \code{EsgfQuery} object.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$build_cache()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_facets"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_facets}{}}}
-\subsection{Method \code{list_all_facets()}}{
+\if{html}{\out{<a id="method-EsgfQuery-list_facets"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_facets}{}}}
+\subsection{Method \code{list_facets()}}{
 List all available facet names
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_facets()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-A character vector.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$list_all_facets()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_shards"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_shards}{}}}
-\subsection{Method \code{list_all_shards()}}{
-List all available shards
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_shards()}\if{html}{\out{</div>}}
-}
-
-\subsection{Returns}{
-A character vector.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-q$list_all_shards()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-list_all_values"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-list_all_values}{}}}
-\subsection{Method \code{list_all_values()}}{
-List all available values of a specific facet
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_all_values(facet)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_facets(force = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{facet}}{A single string giving the facet name.}
+\item{\code{force}}{By default, every facet listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A named character vector.
+A character vector.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$list_all_values()
+q$list_facets()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_fields"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_fields}{}}}
+\subsection{Method \code{list_fields()}}{
+List all available field names
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_fields(force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{force}}{By default, every field listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector or \code{NULL} if no facet listing is found.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_fields()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_shards"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_shards}{}}}
+\subsection{Method \code{list_shards()}}{
+List all available shards.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_shards(force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{force}}{By default, every shard listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector or \code{NULL} if no shard listing is found.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_shards()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-list_values"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-list_values}{}}}
+\subsection{Method \code{list_values()}}{
+List all available values of specific facets.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$list_values(facets, force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{facets}}{A character vector giving the facet names.}
+
+\item{\code{force}}{By default, every value listing query is cached and
+reused when possible. If \code{TRUE}, the previous cache is
+abandoned and a new query is re-sent and cached. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{length(facets) == 1}, a named character vector giving
+the facet value counts. Otherwise, a list of named character
+vectors of the same length as \code{facets}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$list_values(c("activity_id", "experiment_id"))
 }
 }
 \if{html}{\out{</div>}}
@@ -785,13 +877,13 @@ Get or set the \code{project} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$project(!c("CMIP5", "CMIP6"))} searches for all \code{project}s except for \code{CMIP5} and \code{CMIP6}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$project(!c("CMIP6"))} and \code{$project(-c("CMIP6"))} search for all \code{project}s except for \code{CMIP6}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -801,9 +893,6 @@ q$project()
 
 # set the parameter
 q$project("CMIP6")
-
-# negate the project constraints
-q$project(!"CMIP6")
 
 # remove the parameter
 q$project(NULL)
@@ -830,13 +919,13 @@ Get or set the \code{activity_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} searches for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} and \code{$activity_id(-c("C4MIP", "GeoMIP"))} search for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -875,13 +964,13 @@ Get or set the \code{experiment_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} searches for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} and \code{$experiment_id(-c("ssp126", "ssp245"))} search for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -920,13 +1009,13 @@ Get or set the \code{source_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} searches for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} and \code{$source_id(-c("CESM2", "CESM2-FV2"))} search for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -965,13 +1054,13 @@ Get or set the \code{variable_id} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} searches for all \code{variable_id}s except for \code{tas} and \code{pr}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} and \code{$variable_id(-c("tas", "pr"))} search for all \code{variable_id}s except for \code{tas} and \code{pr}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1010,13 +1099,13 @@ Get or set the \code{frequency} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} searches for all \code{frequency}s except for \code{day} and \code{mon}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} and \code{$frequency(-c("day", "mon"))} search for all \code{frequency}s except for \code{day} and \code{mon}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1055,13 +1144,13 @@ Get or set the \code{variant_label} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} searches for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} and \code{$variant_label(-c("r1i1p1f1", "r2i1p1f1"))} search for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1084,6 +1173,7 @@ q$variant_label(NULL)
 }
 
 }
+}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQuery-nominal_resolution"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQuery-nominal_resolution}{}}}
@@ -1100,13 +1190,13 @@ Get or set the \code{nominal_resolution} facet parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} searches for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} and \code{$nominal_resolution(-c("50 km", "1x1 degree"))} search for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1145,13 +1235,13 @@ Get or set the \code{data_node} parameter.
 There are two options:
 \itemize{
 \item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} searches for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
+\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} and \code{$data_node(-c("cmip.bcc.cma.cn", "esg.camscma.cn"))} search for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
 }}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1200,7 +1290,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1227,8 +1317,10 @@ q$facets("*")
 Get or set the \code{fields} parameter.
 
 By default, all available metadata fields are returned for each
-query. \verb{$facets()} can be used to limit the number of fields returned
-in the query response.
+query. \verb{$fields()} can be used to limit the number of fields returned
+in the query response. However, the following fields are always
+included in the results:
+\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$fields(value = "*")}\if{html}{\out{</div>}}
 }
@@ -1246,7 +1338,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1280,10 +1372,6 @@ Get or set the \code{shards} parameter.
 By default, a distributed query targets all ESGF Nodes. \verb{$shards()}
 can be used to execute a distributed search that targets only one or
 more specific nodes.
-
-All available shards can be retrieved using
-\href{#method-EsgfQuery-list_all_shards}{\code{$list_all_shards()}}
-method.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$shards(value)}\if{html}{\out{</div>}}
 }
@@ -1301,7 +1389,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1354,7 +1442,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1400,7 +1488,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1418,47 +1506,6 @@ q$latest(TRUE)
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-type"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-type}{}}}
-\subsection{Method \code{type()}}{
-Get or set the \code{type} parameter.
-
-There are three types in total: \code{Dataset}, \code{File} or \code{Aggregation}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$type(value = "Dataset")}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{value}}{The facet parameter value. Default: \code{"Dataset"}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A string.
-}}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$type()
-
-# set the parameter
-q$type("Dataset")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgfQuery-limit"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgfQuery-limit}{}}}
 \subsection{Method \code{limit()}}{
@@ -1466,8 +1513,9 @@ Get or set the \code{limit} parameter.
 
 \verb{$limit()} can be used to limit the number of records to return.
 Note that the maximum number of records to return per query for ESGF
-search services is 10,000. A warning is issued if input value is
-greater than that. In this case, \code{limit} will be reset to 10,000.
+search services is 10,000.
+A warning is issued if input value is greater than that. In this
+case, \code{limit} will be reset to 10,000.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$limit(value = 10L)}\if{html}{\out{</div>}}
 }
@@ -1485,7 +1533,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1496,8 +1544,8 @@ q$limit()
 # set the parameter
 q$limit(10L)
 
-# `limit` is reset to 10,000 if input is greater than that
-q$limit(10000L) # warning
+# `limit` is reset to the allowed maximum query limit if input is greater than that
+q$limit(12000L) # warning
 }
 }
 \if{html}{\out{</div>}}
@@ -1531,7 +1579,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1575,7 +1623,7 @@ There are two options:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!}. \item \code{name}: Parameter name. } }
+\itemize{ \item If \code{value} is given, the modified \code{EsgfQuery} object. \item Otherwise, an \code{EsgfQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -1626,8 +1674,7 @@ except for \verb{3hr} and \code{day}.
 }
 \subsection{Returns}{
 \itemize{
-\item If parameters are specified, the modified \code{EsgfQuery} object,
-invisibly.
+\item If parameters are specified, the modified \code{EsgfQuery} object.
 \item Otherwise, an empty list for \verb{$params(NULL)} or a list of
 \code{EsgfQueryParam} objects.
 }
@@ -1665,6 +1712,11 @@ q$params(NULL)$params()
 \if{latex}{\out{\hypertarget{method-EsgfQuery-url}{}}}
 \subsection{Method \code{url()}}{
 Get the URL of actual query or wget script
+
+The wget script URL can be used to download a bash script that
+contains wget commands for downloading all files matching the query
+constraints. This is useful for batch downloading large amounts of
+data.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$url(wget = FALSE)}\if{html}{\out{</div>}}
 }
@@ -1719,7 +1771,8 @@ options:
 \item If \code{NULL} or \code{FALSE}, only the total number of matched records is
 returned.
 \item If \code{TRUE}, the value of \href{#method-EsgfQuery-facets}{\code{$facets()}}
-is used to limit the facets. This is the default value.
+is used to limit the facets. If \verb{$facets()} returns \code{NULL}, only the
+total count is returned. This is the default value.
 \item If a character vector, it is used to limit the facets.
 }}
 }
@@ -1758,21 +1811,65 @@ q$count(facets = c("activity_id", "source_id"))
 \subsection{Method \code{collect()}}{
 Send the actual query and fetch the results
 
-\verb{$collect()} sends the actual query to the ESGF search services and
-returns the results in a \link[data.table:data.table]{data.table::data.table}. The columns depend
-on the value of query type and \code{fields} parameter.
+\verb{$collect()} sends the actual query with \strong{\code{type=Dataset}} to the
+ESGF search services and returns the results as an
+\link{EsgfQueryResultDataset} object.
+The fields included depend on \code{fields} parameter.
+However, the following fields are always included in the results:
+\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$collect(all = FALSE, limit = TRUE, params = TRUE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{all}}{Whether to collect all results despite of the value of
+\code{offset}. Default: \code{FALSE}.}
+
+\item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
+respect the current value of \code{limit} when collecting all
+matched records. If \code{FALSE}, the allowed maximum limit number
+10000 is used. It can also be a positive
+integer which will be used as a temporary limit per query.
+Default: \code{FALSE}.}
+
+\item{\code{params}}{Whether to include facet fields that have parameter
+constraints explicitly set using \code{EsgfQuery$project()},
+\code{EsgfQuery$activity_id()}, \code{EsgfQuery$params()} and etc. in the
+returned fields. For example, if you set \verb{$experiment_id("ssp585")},
+the \code{experiment_id} field will be included in the results when
+\code{params = TRUE}. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
-A \link[data.table:data.table]{data.table}.
+An \link{EsgfQueryResultDataset} object.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$fields("source_id")
-q$collect()
+# by default, all fields with constrains are included in the results
+query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+res1 <- query$collect()
+res1$fields
+
+# set `params` to `FALSE` to exclude them
+query$collect(params = FALSE)$fields
+
+# collect all matched records with `query$limit()` records per query
+res2 <- query$collect(all = TRUE, limit = TRUE)
+identical(query$count(), res2$count())
+
+# same as above, but collect all matched records with max allowed
+# record limit per query
+res3 <- query$collect(all = TRUE, limit = FALSE)
+identical(res2$count(), res3$count())
+
+# same as above, but collect all matched records with specified limit
+# per query
+res4 <- query$collect(all = TRUE, limit = 30)
+identical(res2$count(), res4$count())
 }
 }
 \if{html}{\out{</div>}}
@@ -1781,25 +1878,75 @@ q$collect()
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgfQuery-response"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgfQuery-response}{}}}
-\subsection{Method \code{response()}}{
-Get the response of last sent query
+\if{html}{\out{<a id="method-EsgfQuery-save"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-save}{}}}
+\subsection{Method \code{save()}}{
+Save the query into a JSON file
 
-The response of the last sent query is always stored internally and
-can be retrieved using \verb{$response()}. It is a named list generated
-from the JSON response using \code{\link[jsonlite:fromJSON]{jsonlite::fromJSON()}}.
+\verb{$save()} puts main data of an \code{EsgfQuery} object into a JSON file
+which can be loaded to restore the current state of query using
+\href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$response()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$save(file = "query.json", pretty = TRUE)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to save the data
+to.}
+
+\item{\code{pretty}}{Whether to add indentation whitespace to JSON output.
+For details, please see \code{\link[jsonlite:fromJSON]{jsonlite::toJSON()}}. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
 \subsection{Returns}{
-A named list.
+The full path of the output JSON file.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
 \preformatted{\dontrun{
-q$response()
+q$save(tempfile(fileext = ".json"))
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-load"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-load}{}}}
+\subsection{Method \code{load()}}{
+Restore the query state from an JSON file
+
+\verb{$load()} reads data of an \code{EsgfQuery} object from a JSON file
+created using
+\href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$load(file)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file}}{A string indicating the JSON file path to read the data
+from.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The modified \code{EsgfQuery} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+f <- tempfile(fileext = "json")
+
+q <- query_esgf()
+json <- q$save(f)
+q$load(f)
 }
 }
 \if{html}{\out{</div>}}
@@ -1814,7 +1961,7 @@ q$response()
 Print a summary of the current \code{EsgfQuery} object
 
 \verb{$print()} gives the summary of current \code{EsgfQuery} object including
-the host URL, the built time of facet cache and all query parameters.
+the index node URL, the last query timestamp, and all query parameters.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$print()}\if{html}{\out{</div>}}
 }
@@ -1832,5 +1979,22 @@ q$print()
 
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgfQuery-clone"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgfQuery-clone}{}}}
+\subsection{Method \code{clone()}}{
+The objects of this class are cloneable with this method.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgfQuery$clone(deep = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{deep}}{Whether to make a deep clone.}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

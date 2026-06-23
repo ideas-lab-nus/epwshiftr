@@ -1,3 +1,9 @@
+lpad <- function(x, pad = " ", width = NULL) {
+    wid <- nchar(x, "width")
+    if (is.null(width)) width <- max(wid)
+    paste0(strrep(pad, pmax(width - wid, 0)), x)
+}
+
 # a little bit faster
 unlst <- function(x) unlist(x, FALSE, FALSE)
 
@@ -7,35 +13,93 @@ to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
 }
 
-verbose <- function (..., sep = "") {
-    if (getOption("epwshiftr.verbose", FALSE)) {
-        cat(..., "\n", sep = sep)
-    }
+priv <- function(x) {
+    checkmate::assert_r6(x)
+    x$.__enclos_env__[["private"]]
 }
 
-vb <- function(expr) {
+`priv<-` <- function(x, value) {
+    checkmate::assert_r6(x)
+    x$.__enclos_env__[["private"]] <- value
+    invisible(x)
+}
+
+verbose <- function(expr) {
     if (!getOption("epwshiftr.verbose", FALSE)) return()
     force(expr)
 }
 
+with_silent <- function(expr) {
+    old <- options("epwshiftr.verbose" = FALSE)
+    on.exit(options(old), add = TRUE)
+    force(expr)
+}
+
+with_timeout <- function(secs = 300, expr) {
+    old <- options(timeout = secs)
+    on.exit(options(old), add = TRUE)
+    force(expr)
+}
+
+fast_hash <- function(x) {
+    # FNV-1a hash algorithm
+    FNV_PRIME <- 16777619      # 0x01000193
+    # have to use double here since integer overflow
+    FNV_OFFSET <- 2166136261   # 0x811c9dc5
+
+    # Convert to bytes
+    if (is.character(x) && length(x) == 1L) {
+        bytes <- as.integer(charToRaw(x))
+    } else {
+        bytes <- as.integer(serialize(x, connection = NULL, ascii = FALSE))
+    }
+
+    # FNV-1a algorithm
+    hash <- FNV_OFFSET
+    for (byte in bytes) {
+        # Split into 16-bit parts for XOR operation
+        hash_hi <- hash %/% 65536
+        hash_lo <- hash %% 65536
+
+        # XOR with byte (only affects low 16 bits since byte < 256)
+        hash_lo <- bitwXor(as.integer(hash_lo), byte)
+
+        # Rebuild and multiply by FNV_PRIME
+        hash <- (hash_hi * 65536 + hash_lo) * FNV_PRIME
+        hash <- hash %% (2^32)
+    }
+
+    # Format as 8-character hex string
+    if (hash <= .Machine$integer.max) {
+        sprintf("%08x", as.integer(hash))
+    } else {
+        hash_hi <- as.integer(hash %/% 65536)
+        hash_lo <- as.integer(hash %% 65536)
+        sprintf("%04x%04x", hash_hi, hash_lo)
+    }
+}
+
 eval_with_bang <- function(..., .env = parent.frame()) {
-    l <- eval(substitute(alist(...)))
-    assert_list(l, .var.name = "Input", min.len = 1L)
-    lapply(l, function(elem) {
-        if (!is.symbol(elem) && !is.null(elem) && elem[[1L]] == "!") {
-            negate <- TRUE
-            elem[[1L]] <- as.name("c")
-        } else {
-            negate <- FALSE
+    dots <- eval(substitute(alist(...)))
+
+    if (length(dots) == 0L) {
+        stop("At least one argument is required.")
+    }
+    checkmate::assert_list(dots, .var.name = "Input", min.len = 1L)
+
+    lapply(dots, function(expr) {
+        negate <- !is.symbol(expr) && !is.null(expr) && is.call(expr) && as.character(expr[[1L]]) %in% c("!", "-")
+        if (negate) {
+            expr[[1L]] <- as.name("c")
         }
 
-        list(value = eval(elem, .env), negate = negate)
+        list(value = eval(expr, .env), negate = negate)
     })
 }
 
-now <- function() {
+now <- function(tz = "UTC") {
     t <- Sys.time()
-    attr(t, "tzone") <- Sys.timezone()
+    attr(t, "tzone") <- tz
     t
 }
 
@@ -72,10 +136,11 @@ rd_query_method_param <- function(method, type, negate, default, nullable = TRUE
         if (!missing(negate)) {
             sprintf(
                 paste(
-                    "Note that you can put a preceding \\code{!} to negate the facet constraints.",
-                    "For example, \\code{$%s(!c(%s))} searches for all \\code{%s}s except for",
+                    "Note that you can put a preceding \\code{!} or \\code{-} to negate the facet constraints.",
+                    "For example, \\code{$%s(!c(%s))} and \\code{$%s(-c(%s))} search for all \\code{%s}s except for",
                     "%s."
                 ),
+                method, paste0(val_quote, negate, val_quote, collapse = ", "),
                 method, paste0(val_quote, negate, val_quote, collapse = ", "),
                 method, paste0("\\code{", negate, "}", collapse = " and ")
             )
@@ -94,7 +159,7 @@ rd_query_method_return <- function() {
             "\\item Otherwise, an \\code{EsgfQueryParam} object which is essentially a list of three elements:",
             "\\itemize{",
                 "\\item \\code{value}: input values.",
-                "\\item \\code{negate}: Whether there is a preceding \\code{!}.",
+                "\\item \\code{negate}: Whether there is a preceding \\code{!} or \\code{-}.",
                 "\\item \\code{name}: Parameter name.",
             "}"
         ),
@@ -102,6 +167,27 @@ rd_query_method_return <- function() {
     )
 }
 # nocov end
+
+set_size_units <- function(x) {
+    if (!length(x)) return(NULL)
+    base <- 1024L
+    iec <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
+    if (!inherits(x, "units")) {
+        x <- units::set_units(x, iec[[1L]], mode = "standard")
+    } else {
+        bytes <- try(units::set_units(x, iec[[1L]], mode = "standard"), silent = TRUE)
+        if (inherits(bytes, "try-error")) {
+            warning("Failed to set input units to 'Byte'. Conversion skipped.")
+            return(x)
+        }
+        x <- bytes
+    }
+
+    power <- log(units::drop_units(x), base = base)
+    power[is.infinite(power)] <- 0
+    power <- min(as.integer(power), length(iec))
+    units::set_units(x, iec[power + 1L], mode = "standard")
+}
 
 #' Get the package data storage directory
 #'
@@ -113,8 +199,6 @@ rd_query_method_return <- function() {
 #'
 #' @return A single string indicating the directory location.
 #'
-#' @importFrom rappdirs user_data_dir
-#' @importFrom checkmate test_directory_exists
 #' @noRd
 .data_dir <- function (init = FALSE, force = TRUE) {
     checkmate::assert_flag(init)
@@ -141,7 +225,7 @@ rd_query_method_return <- function() {
         force <- TRUE
     }
 
-    if ((init || force) && !test_directory_exists(d, "rw")) {
+    if ((init || force) && !checkmate::test_directory_exists(d, "rw")) {
         stop(sprintf("%s package data storage directory '%s' does not exists or is not writable.",
             "epwshiftr", d
         ))

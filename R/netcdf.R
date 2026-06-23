@@ -1,5 +1,4 @@
 # get_nc_meta {{{
-#' @importFrom data.table setDT setattr
 get_nc_meta <- function (file) {
     # to avoid No visible binding for global variable check NOTE
     J <- value <- name <- NULL
@@ -19,7 +18,7 @@ get_nc_meta <- function (file) {
     # get variable long name and units
     meta <- c(
         meta,
-        setattr(
+        data.table::setattr(
             atts[J(meta$variable_id, c("standard_name", "units")), on = c("variable", "attribute"), value],
             "names", c("standard_name", "units")
         )
@@ -28,7 +27,7 @@ get_nc_meta <- function (file) {
     # get time origin and unit
     c(
         meta,
-        setattr(
+        data.table::setattr(
             atts[J("time", c("units", "calendar")), on = c("variable", "attribute"), value],
             "names", c("time_units", "time_calendar")
         )
@@ -139,8 +138,6 @@ get_nc_meta <- function (file) {
 #' summary_database(by = "experiment")
 #' }
 #'
-#' @importFrom future.apply future_lapply
-#' @importFrom progressr with_progress
 #' @export
 # TODO: should all not_matched and not_found merged int one?
 summary_database <- function (
@@ -154,8 +151,8 @@ summary_database <- function (
               table_id = "frequency", variable_id = "variable", source_id = "source",
               nominal_resolution = "resolution")
 
-    assert_directory_exists(dir, "w")
-    assert_subset(by, choices = dict)
+    checkmate::assert_directory_exists(dir, "w")
+    checkmate::assert_subset(by, choices = dict)
 
     mult <- match.arg(mult)
     miss <- match.arg(miss)
@@ -185,8 +182,8 @@ summary_database <- function (
             }
         }
 
-        left <- data.table()
-        miss <- data.table()
+        left <- data.table::data.table()
+        miss <- data.table::data.table()
     } else {
         progressr::with_progress({
             p <- progressr::progressor(along = ncfiles)
@@ -426,20 +423,18 @@ summary_database <- function (
         dl_size = round(units::set_units(units::set_units(sum(file_realsize, na.rm = TRUE), "bytes"), "Mbytes"))
     ), by = c(by_cols)][order(-dl_percent)]
 
-    setattr(sm, "not_matched", left)
-    setattr(sm, "not_found", miss)
+    data.table::setattr(sm, "not_matched", left)
+    data.table::setattr(sm, "not_found", miss)
 
     sm
 }
 # }}}
 
 # get_nc_data {{{
-#' @importFrom data.table as.data.table set setattr setcolorder
-#' @importFrom RNetCDF utcal.nc
-#' @importFrom units set_units
+#' @importFrom data.table set setcolorder
 get_nc_data <- function (x, coord, years, unit = TRUE) {
-    assert_flag(unit)
-    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_flag(unit)
+    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
 
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -496,7 +491,7 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 
     dt <- rbindlist(use.names = TRUE, lapply(seq_along(which_time), function (i) {
         if (!length(which_time[[i]])) {
-            return(data.table(
+            return(data.table::data.table(
                 index = integer(),
                 lon = double(), lat = double(), dist = double(),
                 datetime = Sys.time()[0], value = double()
@@ -509,7 +504,7 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
         # Thus, the order of the dimensions according to the CDL conventions
         # (e.g., time, latitude, longitude) is reversed in the R array (e.g.,
         # longitude, latitude, time).
-        dt <- as.data.table(RNetCDF::var.get.nc(nc, var,
+        dt <- data.table::as.data.table(RNetCDF::var.get.nc(nc, var,
             c(min(dims$value[[1L]]), min(dims$value[[2L]]), min(dims$value[[3L]])),
             c(length(unique(dims$value[[1L]])), length(unique(dims$value[[2L]])), length(dims$value[[3L]])),
             collapse = FALSE)
@@ -629,10 +624,6 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #'     | 13   | `units`          | Character | Units of variable                                                      |
 #'     | 14   | `value`          | Double    | The actual predicted value                                             |
 #'
-#' @importFrom checkmate assert_class
-#' @importFrom units set_units
-#' @importFrom future.apply future_Map
-#' @importFrom fst write_fst
 #' @examples
 #' \dontrun{
 #' coord <- match_coord("path_to_an_EPW")
@@ -641,7 +632,7 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' @export
 extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
                           by = NULL, keep = is.null(out_dir), compress = 100) {
-    assert_class(coord, "epw_cmip6_coord")
+    checkmate::assert_class(coord, "epw_cmip6_coord")
 
     # column names
     dict <- c(activity_drs = "activity", experiment_id = "experiment", member_id = "variant",
@@ -654,8 +645,8 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     if (is.null(out_dir)) {
         m_coord <- list(m_coord)
     } else {
-        assert_directory_exists(out_dir, "w")
-        assert_subset(by, choices = dict)
+        checkmate::assert_directory_exists(out_dir, "w")
+        checkmate::assert_subset(by, choices = dict)
         by_cols <- names(dict)[match(by, dict, 0L)]
         if (length(by_cols)) {
             m_coord <- split(m_coord[, .SD, .SDcols = c("file_path", "coord", by_cols)], by = by_cols)
@@ -669,7 +660,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     # initial progress bar
     verbose("Start to extract CMIP6 data according to matched coordinates...")
 
-    data <- data.table()
+    data <- data.table::data.table()
 
     for (i in seq_along(m_coord)) {
         co <- m_coord[[i]]
@@ -807,7 +798,6 @@ get_nc_axes <- function (x) {
 # }}}
 
 # get_nc_time {{{
-#' @importFrom PCICt as.PCICt
 get_nc_time <- function (x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -874,7 +864,7 @@ get_nc_time <- function (x, range = FALSE) {
 
 # match_nc_time {{{
 match_nc_time <- function (x, years = NULL) {
-    assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+    checkmate::assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
 
     time <- get_nc_time(x)
 

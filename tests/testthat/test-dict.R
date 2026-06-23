@@ -3,7 +3,7 @@ test_that("cmip6_dict()", {
     expect_s3_class(this$dict, "Cmip6Dict")
 })
 
-test_that("$build() and $save()", {
+test_that("Cmip6Dict$build() and Cmip6Dict$save()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -17,7 +17,7 @@ test_that("$build() and $save()", {
     expect_true(file.exists(dict$save(file.path(tempdir(), "abc"))))
 })
 
-test_that("$load()", {
+test_that("Cmip6Dict$load()", {
     dict <- cmip6_dict()
     expect_message(dict$load(file.path(tempdir(), "not_exists")))
 
@@ -28,7 +28,7 @@ test_that("$load()", {
     expect_error(dict$load(dirname(empty)))
 })
 
-test_that("$version()", {
+test_that("Cmip6Dict$version()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -41,7 +41,7 @@ test_that("$version()", {
     expect_s3_class(dict$version()$dreq, "numeric_version")
 })
 
-test_that("$is_empty()", {
+test_that("Cmip6Dict$is_empty()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -52,7 +52,7 @@ test_that("$is_empty()", {
     expect_s3_class(dict$version()$dreq, "numeric_version")
 })
 
-test_that("$timestamp()", {
+test_that("Cmip6Dict$timestamp()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -71,7 +71,7 @@ test_that("$timestamp()", {
     )
 })
 
-test_that("$built_time()", {
+test_that("Cmip6Dict$built_time()", {
     skip_on_cran()
 
     dict <- cmip6_dict()
@@ -82,8 +82,12 @@ test_that("$built_time()", {
     expect_length(dict$built_time(), 1L)
 })
 
-test_that("$get()", {
+test_that("Cmip6Dict$get()", {
     skip_on_cran()
+
+    trans <- function(out) {
+        gsub("^\\* (.+) Modified:.+$", "* \\1 Modified: yyyy-mm-dd HH:MM:SS UTC", out)
+    }
 
     dict <- cmip6_dict()
 
@@ -96,66 +100,66 @@ test_that("$get()", {
         unique(vapply(dict$get("drs"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("drs")))
+    expect_snapshot(print(dict$get("drs")), transform = trans)
 
     expect_s3_class(dict$get("activity_id"), "list")
     expect_identical(
         unique(vapply(dict$get("activity_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("activity_id")))
+    expect_snapshot(print(dict$get("activity_id")), transform = trans)
 
     expect_s3_class(dict$get("experiment_id"), "data.table")
     expect_identical(
         vapply(dict$get("experiment_id"), typeof, ""),
         c(
-            experiment_id = "character", experiment = "character", description = "character", 
-            tier = "integer", start_year = "integer", end_year = "integer", 
-            min_number_yrs_per_sim = "integer", required_model_components = "list", 
+            experiment_id = "character", experiment = "character", description = "character",
+            tier = "integer", start_year = "integer", end_year = "integer",
+            min_number_yrs_per_sim = "integer", required_model_components = "list",
             parent_experiment_id = "list", sub_experiment_id = "list",
             activity_id = "list", parent_activity_id = "list",
             additional_allowed_model_components = "list"
         )
     )
-    expect_message(print(dict$get("experiment_id")))
+    expect_snapshot(print(dict$get("experiment_id")), transform = trans)
 
     expect_s3_class(dict$get("frequency"), "list")
     expect_identical(
         unique(vapply(dict$get("frequency"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("frequency")))
+    expect_snapshot(print(dict$get("frequency")), transform = trans)
 
     expect_s3_class(dict$get("grid_label"), "list")
     expect_identical(
         unique(vapply(dict$get("grid_label"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("grid_label")))
+    expect_snapshot(print(dict$get("grid_label")), transform = trans)
 
     expect_s3_class(dict$get("institution_id"), "list")
     expect_identical(
         unique(vapply(dict$get("institution_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("institution_id")))
+    expect_snapshot(print(dict$get("institution_id")), transform = trans)
 
     expect_s3_class(dict$get("nominal_resolution"), "character")
     expect_identical(
         unique(vapply(dict$get("nominal_resolution"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("nominal_resolution")))
+    expect_snapshot(print(dict$get("nominal_resolution")), transform = trans)
 
     expect_s3_class(dict$get("realm"), "list")
     expect_identical(
         unique(vapply(dict$get("realm"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("realm")))
+    expect_snapshot(print(dict$get("realm")), transform = trans)
 
     expect_s3_class(dict$get("required_global_attributes"), "character")
-    expect_message(print(dict$get("required_global_attributes")))
+    expect_snapshot(print(dict$get("required_global_attributes")), transform = trans)
 
     expect_s3_class(dict$get("source_id"), "data.table")
     expect_identical(
@@ -166,35 +170,42 @@ test_that("$get()", {
             activity_participation = "list", model_component = "list", license_info = "list"
         )
     )
-    expect_message(print(dict$get("source_id")))
+    expect_snapshot(print(dict$get("source_id")), transform = trans)
 
     expect_s3_class(dict$get("source_type"), "list")
     expect_identical(
         unique(vapply(dict$get("realm"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("source_type")))
+    expect_snapshot(print(dict$get("source_type")), transform = trans)
 
     expect_s3_class(dict$get("sub_experiment_id"), "list")
     expect_identical(
         unique(vapply(dict$get("sub_experiment_id"), typeof, "", USE.NAMES = FALSE)),
         "character"
     )
-    expect_message(print(dict$get("sub_experiment_id")))
+    expect_snapshot(print(dict$get("sub_experiment_id")), transform = trans)
 
     expect_s3_class(dict$get("table_id"), "character")
-    expect_message(print(dict$get("table_id")))
+    expect_snapshot(print(dict$get("table_id")), transform = trans)
 
     expect_s3_class(dict$get("dreq"), "data.table")
-    expect_message(print(dict$get("dreq")))
+    expect_snapshot(print(dict$get("dreq")), transform = trans)
 })
 
-test_that("$print()", {
+test_that("Cmip6Dict$print()", {
     dict <- cmip6_dict()
-    expect_message(dict$print())
+    expect_snapshot(dict$print())
 
     expect_s3_class(dict$load(test_path()), "Cmip6Dict")
-    expect_message(dict$print())
+    expect_snapshot(dict$print(), transform = function(out) {
+        out <- gsub("^\\* Built at: .+$", "* Built at: [yyyy-mm-dd HH:MM:SS]", out)
+        out <- gsub("\\d+ items", "XX items", out)
+        out <- gsub("DReq Contents: \\d+ Variables from \\d+ Tables and \\d+ Realms",
+            "DReq Contents: XX Variables from XX Tables and XX Realms", out
+        )
+        out
+    })
 })
 
 unlink(test_path("CMIP6DICT"))

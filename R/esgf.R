@@ -147,6 +147,12 @@ RES_FILE <- c(
 #' @param data_node A character vector indicating data nodes to be queried.
 #'        Default to `NULL`, which means all possible data nodes.
 #'
+#' @param host The URL to the ESGF Search API service. This should be the URL of
+#'        the ESGF search service excluding the final endpoint name. Usually
+#'        this is `http://<hostname>/esg-search`. Default is set to the
+#'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'
 #' @return A [data.table::data.table] with an attribute named `response` which
 #' is a list converted from json response. If no matched data is found, an empty
 #' data.table is returned. Otherwise, the columns of returned data varies based
@@ -211,9 +217,6 @@ RES_FILE <- c(
 #' esgf_query(variable = "rss", experiment = "ssp126", type = "File", limit = 1)
 #' }
 #'
-#' @importFrom jsonlite read_json
-#' @importFrom checkmate assert_character assert_choice assert_count assert_flag assert_subset
-#' @importFrom data.table data.table setattr
 #' @export
 esgf_query <- function(activity = "ScenarioMIP",
                        variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
@@ -230,29 +233,30 @@ esgf_query <- function(activity = "ScenarioMIP",
                        resolution = c("100 km", "50 km"),
                        type = "Dataset",
                        limit = 10000L,
-                       data_node = NULL) {
-    assert_subset(activity, empty.ok = FALSE, choices = c(
+                       data_node = NULL,
+                       host = "http://esgf-node.llnl.gov/esg-search") {
+    checkmate::assert_subset(activity, empty.ok = FALSE, choices = c(
         "AerChemMIP", "C4MIP", "CDRMIP", "CFMIP", "CMIP", "CORDEX", "DAMIP",
         "DCPP", "DynVarMIP", "FAFMIP", "GMMIP", "GeoMIP", "HighResMIP",
         "ISMIP6", "LS3MIP", "LUMIP", "OMIP", "PAMIP", "PMIP", "RFMIP", "SIMIP",
         "ScenarioMIP", "VIACSAB", "VolMIP"
     ))
-    assert_character(variable, any.missing = FALSE, null.ok = TRUE)
-    assert_subset(frequency, empty.ok = TRUE, choices = c(
+    checkmate::assert_character(variable, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_subset(frequency, empty.ok = TRUE, choices = c(
         "1hr", "1hrCM", "1hrPt", "3hr", "3hrPt", "6hr", "6hrPt", "day", "dec",
         "fx", "mon", "monC", "monPt", "subhrPt", "yr", "yrPt"
     ))
-    assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
-    assert_character(source, any.missing = FALSE, null.ok = TRUE)
-    assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
-    assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(replica, null.ok = TRUE)
-    assert_flag(latest)
-    assert_count(limit, positive = TRUE)
-    assert_choice(type, choices = c("Dataset", "File"))
-    assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(source, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
+    checkmate::assert_character(resolution, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_flag(replica, null.ok = TRUE)
+    checkmate::assert_flag(latest)
+    checkmate::assert_count(limit, positive = TRUE)
+    checkmate::assert_choice(type, choices = c("Dataset", "File"))
+    checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
-    url_base <- "https://esgf-node.llnl.gov/esg-search/search?"
+    url_base <- file.path(host, "search/?")
 
     dict <- c(
         activity = "activity_id",
@@ -328,7 +332,7 @@ esgf_query <- function(activity = "ScenarioMIP",
         pair(fields) %and%
         pair(format)
 
-    q <- tryCatch(jsonlite::read_json(q), warning = function(w) w, error = function(e) e)
+    q <- tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
 
     # nocov start
     if (inherits(q, "warning") || inherits(q, "error")) {
@@ -353,9 +357,14 @@ esgf_query <- function(activity = "ScenarioMIP",
 # extract_query_dataset {{{
 #' @importFrom data.table rbindlist
 extract_query_dataset <- function(q) {
-    dt <- data.table::rbindlist(lapply(q$response$docs, lapply, unlist))
+    dt <- data.table::as.data.table(q$response$docs)
     data.table::set(dt, NULL, setdiff(names(dt), RES_DATASET), NULL)
     data.table::setcolorder(dt, RES_DATASET)
+    for (col in names(dt)) {
+        if (is.list(.subset2(dt, col))) {
+            data.table::set(dt, NULL, col, unlst(.subset2(dt, col)))
+        }
+    }
     data.table::setnames(dt, c("id", "pid"), c("dataset_id", "dataset_pid"))
 }
 # }}}
@@ -365,18 +374,31 @@ extract_query_dataset <- function(q) {
 extract_query_file <- function(q) {
     # to avoid No visible binding for global variable check NOTE
     id <- NULL
-    dt <- data.table::rbindlist(lapply(q$response$docs, function(l) {
-        l$url <- grep("HTTPServer", unlist(l$url), fixed = TRUE, value = TRUE)
-        # nocov start
-        if (!length(l$url)) {
-            warning("Dataset with id '", l$id, "' does not have a HTTPServer download method.")
-            l$url <- NA_character_
-        }
-        # nocov end
-        lapply(l, unlist)
-    }))
+
+    dt <- data.table::as.data.table(q$response$docs)
     data.table::set(dt, NULL, setdiff(names(dt), RES_FILE), NULL)
     data.table::setcolorder(dt, RES_FILE)
+
+    data.table::set(dt, NULL, "url",
+        vapply(seq_len(nrow(dt)), FUN.VALUE = "", function(i) {
+            url <- grep("HTTPServer", .subset2(dt, "url")[[i]], fixed = TRUE, value = TRUE)
+
+            # nocov start
+            if (!length(url)) {
+                warning("Dataset with id '", .subset2(dt, "id")[[i]], "' does not have a HTTPServer download method.")
+                url <- NA_character_
+            }
+            # nocov end
+
+            url
+        })
+    )
+
+    for (col in names(dt)) {
+        if (is.list(.subset2(dt, col))) {
+            data.table::set(dt, NULL, col, unlst(.subset2(dt, col)))
+        }
+    }
 
     dt[, c("datetime_start", "datetime_end") := parse_file_date(id, frequency)]
     dt[, url := gsub("\\|.+$", "", url)]
@@ -448,9 +470,7 @@ extract_query_file <- function(q) {
 #' init_cmip6_index()
 #' }
 #'
-#' @importFrom checkmate assert_directory_exists assert_integerish
 #' @importFrom data.table copy fwrite rbindlist set setcolorder
-#' @importFrom rappdirs user_data_dir
 #' @export
 init_cmip6_index <- function(activity = "ScenarioMIP",
                              variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
@@ -468,16 +488,17 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
                              limit = 10000L,
                              data_node = NULL,
                              years = NULL,
-                             save = FALSE) {
-    assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
-    assert_flag(save)
+                             save = FALSE,
+                             host = "http://esgf-node.llnl.gov/esg-search") {
+    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_flag(save)
 
     verbose("Querying CMIP6 Dataset Information")
     qd <- esgf_query(
         activity = activity, variable = variable, frequency = frequency,
         experiment = experiment, source = source, replica = replica, latest = latest,
         variant = variant, resolution = resolution, limit = limit, type = "Dataset",
-        data_node = data_node
+        data_node = data_node, host = host
     )
 
     if (!nrow(qd)) {
@@ -526,7 +547,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
             replica = replica,
             latest = latest,
             type = "File",
-            data_node = data_node
+            data_node = data_node,
+            host = host
         )
 
         # remove all common columns in file query except for "dataset_id"
@@ -650,7 +672,7 @@ load_cmip6_index <- function(force = FALSE) {
         if (is.character(idx$file_mtime)) {
             idx[J(""), on = "file_mtime", file_mtime := NA]
         }
-        idx[, file_mtime := setattr(as.POSIXct(file_mtime, origin = "1970-01-01"), "tzone", NULL)]
+        idx[, file_mtime := data.table::setattr(as.POSIXct(file_mtime, origin = "1970-01-01"), "tzone", NULL)]
     }
     if ("time_units" %in% names(idx)) {
         data.table::set(idx, NULL, "time_units", as.character(idx$time_units))
@@ -698,7 +720,6 @@ load_cmip6_index <- function(force = FALSE) {
 #'        directory will be also updated. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table()].
-#' @importFrom checkmate assert_data_table
 #' @export
 set_cmip6_index <- function(index, save = FALSE) {
     checkmate::assert_data_table(index)
@@ -774,14 +795,16 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # use the metagrid-backend to get the data node status
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
+    msg <- NULL
     res <- tryCatch(
         jsonlite::fromJSON("https://aims2.llnl.gov/metagrid-backend/proxy/status"),
-        error = function(e) NULL
+        warning = function(w) { msg <<- conditionMessage(w); NULL },
+        error   = function(e) { msg <<- conditionMessage(e); NULL }
     )
 
     # nocov start
     if (is.null(res) || res$status != "success") {
-        message("Failed to retrieve the data node status from aims2.llnl.gov.")
+        message("Failed to retrieve the data node status from aims2.llnl.gov. Reason:\n  ", msg)
         return(data.table::data.table())
     }
     # nocov end
@@ -810,7 +833,7 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # nocov end
 
     # nocov start
-    if (!length(nodes_up <- res[status == "UP", data_node])) {
+    if (!length(nodes_up <- res$data_node[res$status == "UP"])) {
         message("No working data nodes available now. Skip speed test")
         return(res)
     }
@@ -868,7 +891,7 @@ parse_file_date <- function(id, frequency) {
         )
     )
 
-    data.table(id, reg, suf, fmt)[
+    data.table::data.table(id, reg, suf, fmt)[
         !J(NA_character_),
         on = "reg", by = "reg",
         c("datetime_start", "datetime_end") := {
