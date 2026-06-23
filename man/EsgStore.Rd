@@ -792,8 +792,9 @@ history before probing a URL again. Default: \code{3600}.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-The created downloader session ID, or a one-row background
-job record when \code{run = TRUE} and \code{background = TRUE}.
+The created downloader session ID, \code{NA_character_} when there
+is no pending file to download, or a one-row background job
+record when \code{run = TRUE} and \code{background = TRUE}.
 }
 }
 \if{html}{\out{<hr>}}
@@ -1198,6 +1199,7 @@ Enqueue and optionally download ESGF file records through the store downloader.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_files(
   files = NULL,
+  query_id = NULL,
   replica = "auto",
   downloader = NULL,
   run = TRUE,
@@ -1221,6 +1223,10 @@ Enqueue and optionally download ESGF file records through the store downloader.
 \describe{
 \item{\code{files}}{Optional \link{EsgResultFile} or \link{EsgResultAggregation} object.
 If supplied, it is cataloged before the download plan is created.}
+
+\item{\code{query_id}}{Optional file collection query IDs to enqueue when
+\code{files} is \code{NULL}. If \code{NULL}, all cataloged files missing local
+paths are considered.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
 
@@ -1338,7 +1344,8 @@ Execute pending or failed regional extraction plans.
   plan_id = NULL,
   status = c("pending", "failed"),
   fallback = c("auto", "error"),
-  overwrite = FALSE
+  overwrite = FALSE,
+  resume = TRUE
 )}\if{html}{\out{</div>}}
 }
 
@@ -1356,6 +1363,9 @@ the plan failed without downloading. Default: \code{"auto"}.}
 
 \item{\code{overwrite}}{If \code{TRUE}, overwrite existing Parquet outputs.
 Default: \code{FALSE}.}
+
+\item{\code{resume}}{Whether to reuse complete existing extraction outputs.
+Default: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }

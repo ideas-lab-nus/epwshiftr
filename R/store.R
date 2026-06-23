@@ -1006,8 +1006,9 @@ EsgStore <- R6::R6Class(
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
-        #' @return The created downloader session ID, or a one-row background
-        #'         job record when `run = TRUE` and `background = TRUE`.
+        #' @return The created downloader session ID, `NA_character_` when there
+        #'         is no pending file to download, or a one-row background job
+        #'         record when `run = TRUE` and `background = TRUE`.
         download_query = function(
             query_id,
             downloader = NULL,
@@ -1701,6 +1702,9 @@ EsgStore <- R6::R6Class(
         #'
         #' @param files Optional [EsgResultFile] or [EsgResultAggregation] object.
         #'        If supplied, it is cataloged before the download plan is created.
+        #' @param query_id Optional file collection query IDs to enqueue when
+        #'        `files` is `NULL`. If `NULL`, all cataloged files missing local
+        #'        paths are considered.
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param run Whether to run the queued session immediately. Default: `TRUE`.
@@ -1728,6 +1732,7 @@ EsgStore <- R6::R6Class(
         #'         job record when `run = TRUE` and `background = TRUE`.
         download_files = function(
             files = NULL,
+            query_id = NULL,
             replica = "auto",
             downloader = NULL,
             run = TRUE,
@@ -1745,6 +1750,7 @@ EsgStore <- R6::R6Class(
             ...
         ) {
             private$check_open()
+            checkmate::assert_character(query_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             strategy <- match.arg(strategy)
             mode <- match.arg(mode)
             checkmate::assert_flag(run)
@@ -1779,7 +1785,10 @@ EsgStore <- R6::R6Class(
                 plan <- private$decorate_download_plan(plan, query_id = query_id)
                 plan
             } else {
-                private$catalog_download_plan()
+                private$catalog_download_plan(query_id = query_id)
+            }
+            if (!nrow(plan)) {
+                return(NA_character_)
             }
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
@@ -2013,17 +2022,21 @@ EsgStore <- R6::R6Class(
         #'        the plan failed without downloading. Default: `"auto"`.
         #' @param overwrite If `TRUE`, overwrite existing Parquet outputs.
         #'        Default: `FALSE`.
+        #' @param resume Whether to reuse complete existing extraction outputs.
+        #'        Default: `TRUE`.
         #'
         #' @return A data.table of processed extraction plan rows.
         extract = function(
             plan_id = NULL,
             status = c("pending", "failed"),
             fallback = c("auto", "error"),
-            overwrite = FALSE
+            overwrite = FALSE,
+            resume = TRUE
         ) {
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_subset(status, c("pending", "failed", "empty", "done"))
             checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
             fallback <- match.arg(fallback)
             private$check_open()
 
@@ -2041,6 +2054,11 @@ EsgStore <- R6::R6Class(
             processed <- vector("list", nrow(plans))
             for (i in seq_len(nrow(plans))) {
                 plan <- plans[i]
+                resumed <- if (!isTRUE(overwrite) && isTRUE(resume)) private$resume_extract_plan(plan) else NULL
+                if (!is.null(resumed)) {
+                    processed[[i]] <- resumed
+                    next
+                }
                 file <- catalog[catalog$file_key == plan$file_key[[1L]]]
                 if (!nrow(file)) {
                     processed[[i]] <- private$mark_plan_failed(plan, "The cataloged file record no longer exists.")
@@ -2049,7 +2067,12 @@ EsgStore <- R6::R6Class(
 
                 processed[[i]] <- tryCatch(
                     private$extract_one(plan, file[1L], fallback = fallback, overwrite = overwrite),
-                    error = function(e) private$mark_plan_failed(plan, conditionMessage(e))
+                    error = function(e) {
+                        if (inherits(e, "epwshiftr_store_extract_conflict")) {
+                            stop(e)
+                        }
+                        private$mark_plan_failed(plan, conditionMessage(e))
+                    }
                 )
             }
 
@@ -2359,6 +2382,17 @@ EsgStore <- R6::R6Class(
             if (!nrow(plan)) {
                 return(plan)
             }
+            plan <- private$layout_download_plan_candidates(plan, file_rows)
+            policy <- private$download_layout_policy()
+            private$resolve_download_plan_collisions(plan, policy)
+        },
+
+        layout_download_plan_candidates = function(plan, file_rows = NULL) {
+            plan <- data.table::copy(data.table::as.data.table(plan))
+            plan <- data.table::setalloccol(plan)
+            if (!nrow(plan)) {
+                return(plan)
+            }
             policy <- private$download_layout_policy()
             plan <- private$enrich_download_plan_layout_fields(plan, file_rows)
             plan[["layout_missing_fields"]] <- rep("", nrow(plan))
@@ -2375,7 +2409,7 @@ EsgStore <- R6::R6Class(
                 plan[["layout_missing_fields"]] <- missing
             }
             plan <- private$decorate_download_plan_targets(plan)
-            private$resolve_download_plan_collisions(plan, policy)
+            plan[]
         },
 
         enrich_download_plan_layout_fields = function(plan, file_rows = NULL) {
@@ -2598,10 +2632,17 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # download plan helpers {{{
-        catalog_download_plan = function() {
+        catalog_download_plan = function(query_id = NULL) {
             catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             if (!nrow(catalog)) {
                 return(data.table::data.table())
+            }
+            if (!is.null(query_id)) {
+                wanted_query_id <- query_id
+                catalog <- catalog[catalog[["query_id"]] %in% wanted_query_id]
+                if (!nrow(catalog)) {
+                    return(data.table::data.table())
+                }
             }
             catalog <- catalog[is.na(local_path) | !nzchar(local_path)]
             if (!nrow(catalog)) {
@@ -2637,7 +2678,115 @@ EsgStore <- R6::R6Class(
                 probe_throughput = NA_real_
             )
             plan <- plan[!is.na(url) & nzchar(url)]
+            if (!nrow(plan)) {
+                return(plan)
+            }
+            extra <- intersect(
+                c(
+                    "latest", "replica", "retracted", "deprecated",
+                    "version", "url_download", "local_path", "local_artifact_id"
+                ),
+                names(catalog)
+            )
+            if (length(extra)) {
+                idx <- match(plan$file_key, catalog$file_key)
+                for (name in extra) {
+                    plan[[name]] <- catalog[[name]][idx]
+                }
+            }
+            plan <- private$layout_download_plan_candidates(plan, catalog)
+            plan <- private$select_catalog_download_candidates(plan)
             private$apply_download_layout(plan, catalog)
+        },
+
+        rank_catalog_download_candidates = function(plan) {
+            plan <- data.table::copy(data.table::as.data.table(plan))
+            plan <- data.table::setalloccol(plan)
+            if (!nrow(plan)) {
+                plan[["candidate_rank"]] <- integer()
+                return(plan)
+            }
+            for (name in c("latest", "replica", "retracted", "deprecated")) {
+                if (!name %in% names(plan)) {
+                    data.table::set(plan, j = name, value = NA)
+                }
+            }
+            data.table::set(plan, j = "catalog_row_order", value = seq_len(nrow(plan)))
+            data.table::set(plan, j = "retracted_order", value = data.table::fifelse(store__lgl(plan$retracted) %in% TRUE, 1L, 0L))
+            data.table::set(plan, j = "deprecated_order", value = data.table::fifelse(store__lgl(plan$deprecated) %in% TRUE, 1L, 0L))
+            latest <- store__lgl(plan$latest)
+            data.table::set(plan, j = "latest_order", value = data.table::fifelse(
+                latest %in% TRUE,
+                0L,
+                data.table::fifelse(is.na(latest), 1L, 2L)
+            ))
+            data.table::set(plan, j = "version_rank", value = store__version_rank(plan$version))
+            data.table::set(plan, j = "version_missing", value = is.na(plan$version_rank))
+            data.table::set(plan, j = "replica_order", value = data.table::fifelse(store__lgl(plan$replica) %in% TRUE, 1L, 0L))
+            data.table::set(plan, j = "https_order", value = data.table::fifelse(grepl("^https://", plan$url), 0L, 1L))
+            data.table::setorderv(
+                plan,
+                c(
+                    "target_rel_path",
+                    "retracted_order",
+                    "deprecated_order",
+                    "latest_order",
+                    "version_missing",
+                    "version_rank",
+                    "replica_order",
+                    "https_order",
+                    "data_node",
+                    "url",
+                    "catalog_row_order"
+                ),
+                c(1L, 1L, 1L, 1L, 1L, -1L, 1L, 1L, 1L, 1L, 1L)
+            )
+            plan[, candidate_rank := seq_len(.N), by = "target_rel_path"]
+            plan[]
+        },
+
+        select_catalog_download_candidates = function(plan) {
+            plan <- private$rank_catalog_download_candidates(plan)
+            if (!nrow(plan)) {
+                return(plan)
+            }
+            ambiguous <- private$ambiguous_catalog_download_candidates(plan)
+            if (nrow(ambiguous)) {
+                cli::cli_abort(c(
+                    "Cataloged file candidates map to the same download target with different checksums.",
+                    "x" = "Cannot safely choose one candidate for {.path {ambiguous$target_rel_path[[1L]]}}.",
+                    "i" = "Use more specific file filters or a download layout that separates these files."
+                ))
+            }
+            plan[, candidate_count := .N, by = "target_rel_path"]
+            plan[, candidate_selection := data.table::fifelse(candidate_count > 1L, "ranked_by_catalog_metadata", "single")]
+            selected <- plan[candidate_rank == 1L]
+            data.table::set(selected, j = "selected_candidate", value = TRUE)
+            selected[]
+        },
+
+        ambiguous_catalog_download_candidates = function(plan) {
+            plan <- data.table::as.data.table(plan)
+            if (!nrow(plan)) {
+                return(data.table::data.table())
+            }
+            plan[, rank_signature := paste(
+                retracted_order,
+                deprecated_order,
+                latest_order,
+                version_missing,
+                version_rank,
+                replica_order,
+                https_order,
+                sep = "\r"
+            )]
+            groups <- plan[, .(
+                n = .N,
+                checksum_count = data.table::uniqueN(checksum[!is.na(checksum) & nzchar(checksum)]),
+                top_signature_count = data.table::uniqueN(rank_signature[candidate_rank %in% c(1L, 2L)])
+            ), by = "target_rel_path"]
+            plan[, rank_signature := NULL]
+            groups[n > 1L & checksum_count > 1L & top_signature_count == 1L]
         },
 
         decorate_download_plan = function(plan, query_id) {
@@ -3064,6 +3213,10 @@ EsgStore <- R6::R6Class(
                     checksum VARCHAR,
                     checksum_type VARCHAR,
                     size DOUBLE,
+                    latest BOOLEAN,
+                    replica BOOLEAN,
+                    retracted BOOLEAN,
+                    deprecated BOOLEAN,
                     data_node VARCHAR,
                     activity_id VARCHAR,
                     institution_id VARCHAR,
@@ -3086,6 +3239,10 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN")
             private$exec(
                 "
                 CREATE TABLE IF NOT EXISTS extraction_plan (
@@ -3196,6 +3353,10 @@ EsgStore <- R6::R6Class(
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS version VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN")
+            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN")
             invisible(NULL)
         },
 
@@ -4049,6 +4210,10 @@ EsgStore <- R6::R6Class(
                 checksum = active$checksum,
                 checksum_type = active$checksum_type,
                 size = suppressWarnings(as.numeric(active$size)),
+                latest = active$latest,
+                replica = active$replica,
+                retracted = active$retracted,
+                deprecated = active$deprecated,
                 data_node = active$data_node,
                 activity_id = active$activity_id,
                 institution_id = active$institution_id,
@@ -5230,6 +5395,23 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # extract_one {{{
+        resume_extract_plan = function(plan) {
+            if (!identical(plan$status[[1L]], "done")) {
+                return(NULL)
+            }
+            results <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_result"))
+            target_plan_id <- plan$plan_id[[1L]]
+            results <- results[results[["plan_id"]] == target_plan_id]
+            if (!nrow(results)) {
+                return(NULL)
+            }
+            paths <- vapply(results$output_path, store_abs_path, character(1L), root = private$store_path)
+            if (!all(file.exists(paths))) {
+                return(NULL)
+            }
+            plan
+        },
+
         extract_one = function(plan, file, fallback = "auto", overwrite = FALSE) {
             opened <- private$open_plan_dataset(file, fallback = fallback, overwrite = overwrite)
             ds <- opened$dataset
@@ -5500,7 +5682,10 @@ EsgStore <- R6::R6Class(
         # write_parquet {{{
         write_parquet = function(dt, path, overwrite = FALSE) {
             if (file.exists(path) && !isTRUE(overwrite)) {
-                stop(sprintf("Parquet output already exists: %s.", path), call. = FALSE)
+                cli::cli_abort(
+                    "Parquet output already exists without a complete reusable extraction manifest row: {.path {path}}.",
+                    class = "epwshiftr_store_extract_conflict"
+                )
             }
             dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
             tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
@@ -5747,6 +5932,17 @@ store__lgl <- function(x) {
     out[value %in% c("true", "t", "1", "yes", "y")] <- TRUE
     out[value %in% c("false", "f", "0", "no", "n")] <- FALSE
     out
+}
+
+store__version_rank <- function(x) {
+    if (is.null(x)) {
+        return(numeric())
+    }
+    value <- as.character(x)
+    value[is.na(value)] <- NA_character_
+    digits <- gsub("[^0-9]+", "", value)
+    digits[!nzchar(digits)] <- NA_character_
+    suppressWarnings(as.numeric(digits))
 }
 
 store__match_chr <- function(values, keys) {
