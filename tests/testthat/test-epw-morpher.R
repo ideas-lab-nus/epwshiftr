@@ -352,6 +352,17 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         site_id = "SIN",
         label = "singapore"
     )
+    workflow_no_epw <- workflow_morpher$workflow(
+        plan_id = workflow_plan$plan_id,
+        periods = periods,
+        strict = TRUE,
+        dir = NULL,
+        overwrite = TRUE
+    )
+    expect_named(workflow_no_epw, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
+    expect_null(workflow_no_epw$outputs)
+    expect_equal(workflow_morpher$status(workflow_no_epw$plan$morph_id)$status, "result_done")
+
     workflow <- workflow_morpher$workflow(
         plan_id = workflow_plan$plan_id,
         periods = periods,

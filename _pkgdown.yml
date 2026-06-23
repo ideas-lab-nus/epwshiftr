@@ -87,6 +87,25 @@ reference:
       - epw_morph_recipe
       - epw_morph_periods
 
+  - title: Store-native shift workflow
+    contents:
+      - shift_request
+      - shift_site
+      - shift_collect
+      - shift_download
+      - shift_extract
+      - shift_morph
+      - shift_epw
+      - shift_status
+      - shift_check
+      - shift_diagnostics
+      - shift_ids
+      - shift_store
+      - shift_target
+      - shift_coverage
+      - shift_outputs
+      - shift_artifacts
+
   - title: Local ESGF store and downloads
     contents:
       - EsgStore

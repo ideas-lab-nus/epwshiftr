@@ -78,6 +78,7 @@ Collate:
     'query-result.R'
     'query.R'
     'schema.R'
+    'shift-stage.R'
     'standalone-cache.R'
     'zzz.R'
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph

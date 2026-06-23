@@ -99,6 +99,62 @@ variables <- epw_morph_variables("recommended")
 variables
 ```
 
+# Recommended High-Level Workflow
+
+The `shift_*` API is the recommended user-facing path. It keeps each stage
+inspectable while carrying the internal store IDs forward automatically.
+
+```{r shift-workflow, eval = FALSE}
+site <- shift_site(
+    id = "SIN",
+    lon = 103.98,
+    lat = 1.37,
+    label = "singapore",
+    epw = epw
+)
+
+request <- shift_request(
+    provider = "esgf",
+    project = "CMIP6",
+    experiment = "ssp585",
+    source = "EC-Earth3",
+    variant = "r1i1p1f1",
+    frequency = "mon",
+    variables = variables,
+    filters = list(
+        activity_id = "ScenarioMIP",
+        data_node = "esgf.ceda.ac.uk",
+        table_id = "Amon"
+    ),
+    options = list(index_node = "https://esgf-data.dkrz.de")
+)
+
+epws <-
+    request |>
+    shift_collect(store = file.path(future_weather_cache_dir, "shift-store")) |>
+    shift_download(
+        replica = "current",
+        service = "HTTPServer",
+        probe = FALSE,
+        progress = FALSE
+    ) |>
+    shift_extract(
+        site = site,
+        periods = epw_morph_periods(`2060s` = 2060L),
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+    ) |>
+    shift_morph(baseline = site, strict = TRUE) |>
+    shift_epw(dir = "outputs/future-epw")
+
+shift_status(epws)
+shift_outputs(epws)
+```
+
+The rest of this article expands the same workflow through the lower-level
+`EsgQuery`, `EsgStore`, and `EpwMorpher` engines. Use those lower-level objects
+when you need to inspect or tune individual manifests, downloads, extraction
+plans, morphing factors, or output rows.
+
 # Query ESGF File Records
 
 Start with Dataset records for one ScenarioMIP model, scenario, member, and

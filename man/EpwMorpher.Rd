@@ -284,7 +284,9 @@ Write future EPW files from morphing results.
 \describe{
 \item{\code{morph_id}}{Morphing plan ID.}
 
-\item{\code{dir}}{Output directory. Relative paths are resolved under the store root.}
+\item{\code{dir}}{Output directory. Relative paths are resolved under the store
+root. If \code{NULL}, the workflow stops after writing morph result
+Parquet files and does not write EPW outputs.}
 
 \item{\code{separate}}{Whether to create case subdirectories.}
 
