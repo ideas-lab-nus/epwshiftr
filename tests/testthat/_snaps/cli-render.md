@@ -1,4 +1,4 @@
-# epwshiftr_cli renders stable boxed tables
+# epwshiftr_cli_render_table() renders stable boxed tables
 
     Code
       cat(text, sep = "\n")
@@ -15,7 +15,7 @@
       │ done   │ done.nc   │     1.0 KB │ 1.0 KB │ [########] 100% │        1 │                 - │
       └────────┴───────────┴────────────┴────────┴─────────────────┴──────────┴───────────────────┘
 
-# epwshiftr_cli snapshots narrow table adaptation
+# epwshiftr_cli_render_table() snapshots narrow table adaptation
 
     Code
       cat(text, sep = "\n")
