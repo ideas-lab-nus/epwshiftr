@@ -78,7 +78,7 @@ shift_stage_has_errors <- function(x) {
 
 shift_abort_diagnostics <- function(diagnostics) {
     diagnostics <- shift_diagnostics_normalize(diagnostics)
-    errors <- diagnostics[severity == "error"]
+    errors <- diagnostics[diagnostics[["severity"]] %in% "error"]
     if (!nrow(errors)) {
         return(invisible(diagnostics))
     }
@@ -371,9 +371,12 @@ shift_resolve_epw <- function(x) {
 #' @param provider Climate data provider. The first implementation supports
 #'   `"esgf"`.
 #' @param project Optional provider project, for example `"CMIP6"`.
-#' @param source,experiment,variant,variables,frequency,time Provider-neutral
-#'   request aliases.
-#' @param filters Provider-specific query filters.
+#' @param source,experiment,variant,frequency,time Provider-neutral request
+#'   aliases.
+#' @param variables Provider-neutral request alias in [shift_request()], or
+#'   optional extraction variables in [shift_extract()].
+#' @param filters Provider-specific query filters in [shift_request()], or
+#'   extraction filters in [shift_extract()].
 #' @param options Provider-specific request options. For ESGF, `index_node` and
 #'   `time_filter_method` are recognized.
 #' @param id Optional site identifier. If `id` is an EPW file path or
@@ -485,45 +488,81 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #' @param fields File fields collected from Dataset records. The default
 #'   requests all fields and lets the result/store layers preserve and validate
 #'   provider response metadata.
+#' @param all,limit Collection controls passed to [EsgQuery] / [EsgResultDataset].
+#' @param label Optional label recorded with collected File records.
 #' @export
-shift_collect <- S7::new_generic("shift_collect", "x", function(x, store = NULL, ...) {
+shift_collect <- S7::new_generic(
+    "shift_collect",
+    "x",
+    function(x, store = NULL, fields = "*", all = TRUE, limit = FALSE, label = NULL, ...) {
     S7::S7_dispatch()
-})
+    }
+)
 
 #' @rdname shift_api
+#' @param downloader Optional [Downloader] instance.
+#' @param run Whether to run queued downloads immediately.
+#' @param background Whether to run downloads in a background job.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
 #' @param overwrite Whether to overwrite existing downloads, extraction outputs,
 #'   morphing results, or EPW outputs.
+#' @param session_label Optional download session label.
 #' @export
-shift_download <- S7::new_generic("shift_download", "x", function(x, ...) {
+shift_download <- S7::new_generic(
+    "shift_download",
+    "x",
+    function(x, downloader = NULL, run = TRUE, background = FALSE,
+             resume = TRUE, overwrite = FALSE, session_label = NULL, ...) {
     S7::S7_dispatch()
-})
+    }
+)
 
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
+#' @param nearest Number of nearest grid points to extract.
+#' @param fallback Extraction fallback policy.
 #' @export
-shift_extract <- S7::new_generic("shift_extract", "x", function(x, site = NULL, periods = NULL, ...) {
+shift_extract <- S7::new_generic(
+    "shift_extract",
+    "x",
+    function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
+             filters = list(), nearest = 1L, fallback = c("auto", "error"),
+             overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
-})
+    }
+)
 
 #' @rdname shift_api
 #' @param baseline Optional baseline EPW path, [eplusr::Epw] object, or
 #'   `shift_site()` object containing `epw`.
+#' @param recipe Morphing recipe, usually from [epw_morph_recipe()].
+#' @param by Grouping columns used to create morphing cases.
 #' @export
-shift_morph <- S7::new_generic("shift_morph", "x", function(x, baseline = NULL, ...) {
+shift_morph <- S7::new_generic(
+    "shift_morph",
+    "x",
+    function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
+             strict = TRUE,
+             by = c("source_id", "experiment_id", "variant_label", "period"),
+             overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
-})
+    }
+)
 
 #' @rdname shift_api
 #' @param dir Store-relative output directory for generated EPW files. If `NULL`,
 #'   [shift_epw()] uses `"outputs/future-epw"`.
 #' @param separate Whether to create separate output directories per morphing case.
 #' @export
-shift_epw <- S7::new_generic("shift_epw", "x", function(x, dir = NULL, ...) {
+shift_epw <- S7::new_generic(
+    "shift_epw",
+    "x",
+    function(x, dir = NULL, separate = TRUE, overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
-})
+    }
+)
 
 #' @rdname shift_api
 #' @param strict If `TRUE`, abort when diagnostics contain errors.

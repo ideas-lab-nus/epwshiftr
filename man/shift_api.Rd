@@ -44,15 +44,51 @@ shift_site(
   metadata = list()
 )
 
-shift_collect(x, store = NULL, ...)
+shift_collect(
+  x,
+  store = NULL,
+  fields = "*",
+  all = TRUE,
+  limit = FALSE,
+  label = NULL,
+  ...
+)
 
-shift_download(x, ...)
+shift_download(
+  x,
+  downloader = NULL,
+  run = TRUE,
+  background = FALSE,
+  resume = TRUE,
+  overwrite = FALSE,
+  session_label = NULL,
+  ...
+)
 
-shift_extract(x, site = NULL, periods = NULL, ...)
+shift_extract(
+  x,
+  site = NULL,
+  periods = NULL,
+  variables = NULL,
+  time = NULL,
+  filters = list(),
+  nearest = 1L,
+  fallback = c("auto", "error"),
+  overwrite = FALSE,
+  resume = TRUE
+)
 
-shift_morph(x, baseline = NULL, ...)
+shift_morph(
+  x,
+  baseline = NULL,
+  recipe = epw_morph_recipe("belcher"),
+  strict = TRUE,
+  by = c("source_id", "experiment_id", "variant_label", "period"),
+  overwrite = FALSE,
+  resume = TRUE
+)
 
-shift_epw(x, dir = NULL, ...)
+shift_epw(x, dir = NULL, separate = TRUE, overwrite = FALSE, resume = TRUE)
 
 shift_check(x, strict = FALSE, ...)
 
@@ -80,10 +116,14 @@ shift_status(x)
 
 \item{project}{Optional provider project, for example \code{"CMIP6"}.}
 
-\item{source, experiment, variant, variables, frequency, time}{Provider-neutral
-request aliases.}
+\item{source, experiment, variant, frequency, time}{Provider-neutral request
+aliases.}
 
-\item{filters}{Provider-specific query filters.}
+\item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, or
+optional extraction variables in \code{\link[=shift_extract]{shift_extract()}}.}
+
+\item{filters}{Provider-specific query filters in \code{\link[=shift_request]{shift_request()}}, or
+extraction filters in \code{\link[=shift_extract]{shift_extract()}}.}
 
 \item{options}{Provider-specific request options. For ESGF, \code{index_node} and
 \code{time_filter_method} are recognized.}
@@ -96,7 +136,7 @@ request aliases.}
 \item{lon, lat}{Optional site longitude and latitude. Missing values are read
 from \code{epw$location()} when \code{epw} is supplied.}
 
-\item{label}{Optional human-readable label.}
+\item{label}{Optional label recorded with collected File records.}
 
 \item{epw}{Optional baseline EPW path or \link[eplusr:Epw]{eplusr::Epw} object.}
 
@@ -106,25 +146,17 @@ from \code{epw$location()} when \code{epw} is supplied.}
 
 \item{store}{An \link{EsgStore}, store path, or \code{NULL}.}
 
-\item{site}{A \code{shift_site()} object.}
-
-\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{baseline}{Optional baseline EPW path, \link[eplusr:Epw]{eplusr::Epw} object, or
-\code{shift_site()} object containing \code{epw}.}
-
-\item{dir}{Store-relative output directory for generated EPW files. If \code{NULL},
-\code{\link[=shift_epw]{shift_epw()}} uses \code{"outputs/future-epw"}.}
-
-\item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
-
-\item{severity}{Optional diagnostic severities to keep.}
-
-\item{create}{Whether to create a store when \code{x} is a path.}
-
 \item{fields}{File fields collected from Dataset records. The default
 requests all fields and lets the result/store layers preserve and validate
 provider response metadata.}
+
+\item{all, limit}{Collection controls passed to \link{EsgQuery} / \link{EsgResultDataset}.}
+
+\item{downloader}{Optional \link{Downloader} instance.}
+
+\item{run}{Whether to run queued downloads immediately.}
+
+\item{background}{Whether to run downloads in a background job.}
 
 \item{resume}{Whether to reuse complete existing downloads, extraction
 outputs, morphing results, or EPW outputs.}
@@ -132,7 +164,33 @@ outputs, morphing results, or EPW outputs.}
 \item{overwrite}{Whether to overwrite existing downloads, extraction outputs,
 morphing results, or EPW outputs.}
 
+\item{session_label}{Optional download session label.}
+
+\item{site}{A \code{shift_site()} object.}
+
+\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{nearest}{Number of nearest grid points to extract.}
+
+\item{fallback}{Extraction fallback policy.}
+
+\item{baseline}{Optional baseline EPW path, \link[eplusr:Epw]{eplusr::Epw} object, or
+\code{shift_site()} object containing \code{epw}.}
+
+\item{recipe}{Morphing recipe, usually from \code{\link[=epw_morph_recipe]{epw_morph_recipe()}}.}
+
+\item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
+
+\item{by}{Grouping columns used to create morphing cases.}
+
+\item{dir}{Store-relative output directory for generated EPW files. If \code{NULL},
+\code{\link[=shift_epw]{shift_epw()}} uses \code{"outputs/future-epw"}.}
+
 \item{separate}{Whether to create separate output directories per morphing case.}
+
+\item{severity}{Optional diagnostic severities to keep.}
+
+\item{create}{Whether to create a store when \code{x} is a path.}
 }
 \value{
 A shift stage object.
