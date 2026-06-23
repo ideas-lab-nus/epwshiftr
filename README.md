@@ -47,6 +47,8 @@ A BibTeX entry for LaTeX users is:
 
   - [Installation](#installation)
   - [Get started](#get-started)
+      - [Recommended store-native
+        workflow](#recommended-store-native-workflow)
       - [Build CMIP6 output file index](#build-cmip6-output-file-index)
       - [Manage CMIP6 output files](#download-cmip6-output-files)
       - [Extract CMIP6 output data](#extract-cmip6-output-data)
@@ -91,6 +93,54 @@ older `esgf_query()` remains available as a compatibility wrapper for
 legacy data.table workflows, emits a gentle deprecation warning, and
 keeps its legacy LLNL `host` semantics instead of `esg_query()`'s ORNL
 `index_node` default.
+
+### Recommended store-native workflow
+
+The recommended high-level API is the `shift_*` workflow. Each step
+returns an inspectable stage object and carries the store IDs needed by
+the next step.
+
+``` r
+epw <- system.file(
+    "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+site <- shift_site(
+    id = "SIN",
+    label = "singapore",
+    epw = epw
+)
+
+req <- shift_request(
+    provider = "esgf",
+    project = "CMIP6",
+    source = "EC-Earth3",
+    experiment = "ssp585",
+    variant = "r1i1p1f1",
+    variables = epw_morph_variables("recommended"),
+    frequency = "mon",
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    filters = list(activity_id = "ScenarioMIP", table_id = "Amon")
+)
+
+epws <-
+    req |>
+    shift_collect(store = "cache/singapore-store") |>
+    shift_download() |>
+    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
+    shift_morph(baseline = site, strict = TRUE) |>
+    shift_epw(dir = "outputs/future-epw")
+
+shift_status(epws)
+shift_outputs(epws)
+```
+
+Use `shift_diagnostics()`, `shift_coverage()`, and `shift_ids()` when
+you need to inspect or tune a stage before continuing. The lower-level
+`EsgQuery`, `EsgStore`, and `EpwMorpher` APIs remain available for
+advanced workflows.
 
 ### Build CMIP6 output file index
 

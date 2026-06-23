@@ -835,7 +835,9 @@ EpwMorpher <- R6::R6Class(
         #' Write future EPW files from morphing results.
         #'
         #' @param morph_id Morphing plan ID.
-        #' @param dir Output directory. Relative paths are resolved under the store root.
+        #' @param dir Output directory. Relative paths are resolved under the store
+        #'        root. If `NULL`, the workflow stops after writing morph result
+        #'        Parquet files and does not write EPW outputs.
         #' @param separate Whether to create case subdirectories.
         #' @param overwrite Whether to overwrite existing EPW files.
         #' @param resume Whether to reuse complete existing EPW outputs.
@@ -952,7 +954,7 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
             checkmate::assert_flag(strict)
-            checkmate::assert_string(dir, min.chars = 1L)
+            checkmate::assert_string(dir, min.chars = 1L, null.ok = TRUE)
             checkmate::assert_flag(separate)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
@@ -981,7 +983,11 @@ EpwMorpher <- R6::R6Class(
                 self$check(plan$morph_id[[1L]])
             }
             results <- self$run(plan$morph_id[[1L]], overwrite = overwrite, resume = resume)
-            outputs <- self$write_epw(plan$morph_id[[1L]], dir = dir, separate = separate, overwrite = overwrite, resume = resume)
+            outputs <- if (is.null(dir)) {
+                NULL
+            } else {
+                self$write_epw(plan$morph_id[[1L]], dir = dir, separate = separate, overwrite = overwrite, resume = resume)
+            }
             list(
                 preflight = preflight,
                 climate = climate,

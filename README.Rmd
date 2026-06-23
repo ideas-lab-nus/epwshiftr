@@ -6,27 +6,28 @@ output: github_document
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.path = "man/figures/README-",
-  out.width = "100%"
+    collapse = TRUE,
+    comment = "#>",
+    fig.path = "man/figures/README-",
+    out.width = "100%"
 )
 
 library(epwshiftr)
 
 # copy files in advance
-f <- c("tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc"
+f <- c(
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+    "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
+    "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc"
 )
 file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 ```
@@ -74,6 +75,7 @@ A BibTeX entry for LaTeX users is:
 
 * [Installation](#installation)
 * [Get started](#get-started)
+    * [Recommended store-native workflow](#recommended-store-native-workflow)
     * [Build CMIP6 output file index](#build-cmip6-output-file-index)
     * [Manage CMIP6 output files](#download-cmip6-output-files)
     * [Extract CMIP6 output data](#extract-cmip6-output-data)
@@ -102,10 +104,11 @@ install.packages("epwshiftr")
 Alternatively, you can install the development version from GitHub.
 
 ```{r gh-install, eval = FALSE}
-install.packages("epwshiftr",
+install.packages(
+    "epwshiftr",
     repos = c(
         ideaslab = "https://ideas-lab-nus.r-universe.dev",
-        cran     = "https://cran.r-project.org"
+        cran = "https://cran.r-project.org"
     )
 )
 ```
@@ -117,6 +120,52 @@ For direct ESGF API work, start with `esg_query()` / `EsgQuery`. The older
 data.table workflows, emits a gentle deprecation warning, and keeps its
 legacy LLNL `host` semantics instead of `esg_query()`'s ORNL `index_node`
 default.
+
+### Recommended store-native workflow
+
+The recommended high-level API is the `shift_*` workflow. Each step returns an
+inspectable stage object and carries the store IDs needed by the next step.
+
+```{r shift-workflow, eval = FALSE}
+epw <- system.file(
+    "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+site <- shift_site(
+    id = "SIN",
+    label = "singapore",
+    epw = epw
+)
+
+req <- shift_request(
+    provider = "esgf",
+    project = "CMIP6",
+    source = "EC-Earth3",
+    experiment = "ssp585",
+    variant = "r1i1p1f1",
+    variables = epw_morph_variables("recommended"),
+    frequency = "mon",
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    filters = list(activity_id = "ScenarioMIP", table_id = "Amon")
+)
+
+epws <-
+    req |>
+    shift_collect(store = "cache/singapore-store") |>
+    shift_download() |>
+    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
+    shift_morph(baseline = site, strict = TRUE) |>
+    shift_epw(dir = "outputs/future-epw")
+
+shift_status(epws)
+shift_outputs(epws)
+```
+
+Use `shift_diagnostics()`, `shift_coverage()`, and `shift_ids()` when you need
+to inspect or tune a stage before continuing. The lower-level `EsgQuery`,
+`EsgStore`, and `EpwMorpher` APIs remain available for advanced workflows.
 
 ### Build CMIP6 output file index
 
@@ -242,13 +291,17 @@ knitr::kable(head(morphed$rh))
 
 ```{r epw}
 # create future EPWs grouped by GCM, experiment ID, interval (year)
-epws <- future_epw(morphed, by = c("source", "experiment", "interval"),
-    dir = tempdir(), separate = TRUE, overwrite = TRUE
+epws <- future_epw(
+    morphed,
+    by = c("source", "experiment", "interval"),
+    dir = tempdir(),
+    separate = TRUE,
+    overwrite = TRUE
 )
 
 epws
 
-sapply(epws, function (epw) epw$path())
+sapply(epws, function(epw) epw$path())
 ```
 
 ## Author
