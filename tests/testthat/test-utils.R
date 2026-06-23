@@ -1,9 +1,12 @@
 test_that("Verbose message", {
-    expect_silent(verbose(""))
-    expect_output({options("epwshiftr.verbose" = TRUE); verbose("a")})
-    expect_equal({options("epwshiftr.verbose" = TRUE); vb("a")}, "a")
-    options("epwshiftr.verbose" = FALSE)
-    expect_null(vb("a"))
+    withr::with_options(
+        list("epwshiftr.verbose" = FALSE),
+        expect_silent(vmsg("a"))
+    )
+    withr::with_options(
+        list("epwshiftr.verbose" = TRUE),
+        expect_message(vmsg("a"), "a")
+    )
 })
 
 test_that("now()", {
@@ -41,6 +44,8 @@ test_that(".data_dir()", {
     # can create data dir if not exists in the user home
     skip_on_cran()
     options("epwshiftr.dir" = NULL)
-    if (dir.exists(.data_dir(force = FALSE))) unlink(.data_dir(force = FALSE), recursive = TRUE)
+    if (dir.exists(.data_dir(force = FALSE))) {
+        unlink(.data_dir(force = FALSE), recursive = TRUE)
+    }
     expect_true(dir.exists(.data_dir(init = TRUE, force = TRUE)))
 })
