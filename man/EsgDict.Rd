@@ -20,25 +20,227 @@ esgdict_get_default(project = "CMIP6")
 for its project.}
 }
 \value{
+\code{esgdict()} returns a new \link{EsgDict} object.
 \code{esgdict_set_default()} returns \code{dict}, invisibly.
 \code{esgdict_get_default()} returns the current package-level default
 dictionary for \code{project}, or \code{NULL}.
 }
 \description{
-\code{EsgDict} stores project-specific ESG controlled vocabulary data, query
-indices, and validation metadata for local option discovery and legality
-checks.
+\code{EsgDict} is an \link[R6:R6Class]{R6} class for project-specific ESG
+controlled vocabulary data. It stores vocabulary tables, optional request
+tables, normalized query indices, and source metadata used by local option
+discovery and legality checks.
+
+\code{esgdict()} is a small constructor around \code{EsgDict$new()}.
 }
+\section{Supported projects}{
+The dictionary currently supports \code{"CMIP6"}, \code{"CMIP6PLUS"}, \code{"INPUT4MIP"},
+\code{"OBS4REF"}, \code{"CORDEX-CMIP6"}, \code{"CMIP7"}, and \code{"EMD"}. CMIP6 dictionaries
+include both controlled vocabularies and CMOR request-table data. Other
+projects use vocabulary data only until a project-specific request source is
+registered.
+}
+
+\section{Source downloads in examples}{
+Building a dictionary may download upstream vocabulary/request sources when
+the parsed dictionary cache and raw source cache are missing. Most examples
+load a small installed CMIP6 example dictionary and run without network
+access. The example that calls \verb{$build()} is guarded so CRAN checks do not
+perform network downloads.
+}
+
 \examples{
-\dontrun{
+example_path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
 dict <- esgdict(project = "CMIP6")
-dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
-dict$save()
+suppressMessages(dict$load(example_path))
+dict$project()
 
 esgdict_set_default(dict)
+identical(esgdict_get_default("CMIP6"), dict)
 esgdict_option("experiment_id", activity_id = "CMIP")
 esgdict_check(activity = "CMIP", experiment = "historical")
+
+## ------------------------------------------------
+## Method `EsgDict$new`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$status()
+
+## ------------------------------------------------
+## Method `EsgDict$project`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6PLUS")
+dict$project()
+
+## ------------------------------------------------
+## Method `EsgDict$profile`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$profile()
+
+## ------------------------------------------------
+## Method `EsgDict$version`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$version()
+
+## ------------------------------------------------
+## Method `EsgDict$sources`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$sources()
+
+## ------------------------------------------------
+## Method `EsgDict$timestamp`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$timestamp()
+
+## ------------------------------------------------
+## Method `EsgDict$built_time`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$built_time()
+
+## ------------------------------------------------
+## Method `EsgDict$status`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$status()
+
+## ------------------------------------------------
+## Method `EsgDict$has_data`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$has_data()
+
+## ------------------------------------------------
+## Method `EsgDict$is_empty`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$is_empty()
+
+## ------------------------------------------------
+## Method `EsgDict$build`
+## ------------------------------------------------
+
+if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+    dict <- EsgDict$new(project = "CMIP6")
+    dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+    dict$has_data()
 }
+
+## ------------------------------------------------
+## Method `EsgDict$get`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$get("experiment_id")
+dict$get("request")
+
+## ------------------------------------------------
+## Method `EsgDict$capabilities`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$capabilities()
+
+## ------------------------------------------------
+## Method `EsgDict$relation_fields`
+## ------------------------------------------------
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$relation_fields()
+
+## ------------------------------------------------
+## Method `EsgDict$fields`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$fields()
+
+## ------------------------------------------------
+## Method `EsgDict$indices`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+names(dict$indices())
+dict$indices("values")
+
+## ------------------------------------------------
+## Method `EsgDict$options`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$options("experiment_id", activity_id = "CMIP")
+
+## ------------------------------------------------
+## Method `EsgDict$check`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$check(activity_id = "CMIP", experiment_id = "historical")
+dict$check(variable_id = "tas", table_id = "Amon")
+
+## ------------------------------------------------
+## Method `EsgDict$save`
+## ------------------------------------------------
+
+dict_path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(dict_path))
+
+path <- tempfile(fileext = ".json")
+dict$save(path)
+file.exists(path)
+
+## ------------------------------------------------
+## Method `EsgDict$load`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+restored <- EsgDict$new(project = "CMIP6")
+suppressMessages(restored$load(path))
+restored$has_data()
+
+## ------------------------------------------------
+## Method `EsgDict$print`
+## ------------------------------------------------
+
+path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$print()
 }
 \seealso{
 \code{\link[=esgdict_option]{esgdict_option()}} and \code{\link[=esgdict_check]{esgdict_check()}} for user-facing discovery
@@ -77,8 +279,34 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-new"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new ESG project dictionary.
+
+The new dictionary is empty. Use
+\href{#method-EsgDict-build}{\code{$build()}} to fetch and parse
+upstream sources, or \href{#method-EsgDict-load}{\code{$load()}} to
+restore a saved dictionary JSON file.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$new(project = "CMIP6")}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{project}}{ESG project identifier, such as \code{"CMIP6"} or
+\code{"CMIP6PLUS"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+An \code{EsgDict} object.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$status()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -86,8 +314,21 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-project"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-project}{}}}
 \subsection{Method \code{project()}}{
+Return the normalized ESG project identifier.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$project()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A single string.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6PLUS")
+dict$project()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -95,8 +336,24 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-profile"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-profile}{}}}
 \subsection{Method \code{profile()}}{
+Return the internal dictionary profile.
+
+The profile determines how project-specific vocabulary sources are
+parsed and normalized.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$profile()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A single string.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$profile()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -104,8 +361,25 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-version"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-version}{}}}
 \subsection{Method \code{version()}}{
+Return vocabulary and request-source versions.
+
+Empty or partially loaded dictionaries return \code{NULL}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$version()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list with \code{vocab} and \code{request} elements, or \code{NULL}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$version()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -113,8 +387,26 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-sources"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-sources}{}}}
 \subsection{Method \code{sources()}}{
+Return upstream source metadata.
+
+Source metadata records repository, tag/ref, commit, and local source
+directory information for the data used to build the dictionary.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$sources()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list, or \code{NULL} for an empty dictionary.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$sources()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -122,8 +414,26 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-timestamp"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-timestamp}{}}}
 \subsection{Method \code{timestamp()}}{
+Return source vocabulary timestamps.
+
+Timestamps are extracted from source vocabulary metadata when
+available.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$timestamp()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list of timestamps, or \code{NULL}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$timestamp()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -131,8 +441,23 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-built_time"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-built_time}{}}}
 \subsection{Method \code{built_time()}}{
+Return the time when this dictionary was built.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$built_time()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A \code{POSIXct} value, or \code{NULL}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$built_time()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -140,8 +465,29 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-status"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-status}{}}}
 \subsection{Method \code{status()}}{
+Return the dictionary lifecycle status.
+
+Status values are:
+\itemize{
+\item \code{"empty"}: no vocabulary/request payload is loaded.
+\item \code{"partial"}: some required payload is missing.
+\item \code{"built"}: the dictionary was built in this R session.
+\item \code{"loaded"}: the dictionary was restored from disk.
+}
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$status()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A single string.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$status()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -149,8 +495,25 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-has_data"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-has_data}{}}}
 \subsection{Method \code{has_data()}}{
+Check whether the dictionary contains usable data.
+
+A dictionary has usable data after a complete
+\href{#method-EsgDict-build}{\code{$build()}} or
+\href{#method-EsgDict-load}{\code{$load()}}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$has_data()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+\code{TRUE} or \code{FALSE}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$has_data()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -158,8 +521,21 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-is_empty"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-is_empty}{}}}
 \subsection{Method \code{is_empty()}}{
+Check whether the dictionary is empty.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$is_empty()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+\code{TRUE} or \code{FALSE}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$is_empty()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -167,6 +543,13 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-build"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-build}{}}}
 \subsection{Method \code{build()}}{
+Build the dictionary from upstream source data.
+
+\verb{$build()} resolves the configured project vocabulary source, downloads
+or reuses raw source files as needed, parses them into normalized
+tables, and builds query indices for option discovery and validation.
+If the dictionary already has data and \code{force = FALSE}, the object is
+returned unchanged.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$build(
   token = NULL,
@@ -179,13 +562,82 @@ Hongyuan Jia
 )}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{token}}{Optional GitHub token used for source resolution and
+downloads.}
+
+\item{\code{force}}{If \code{TRUE}, rebuild even when the dictionary already has
+data and bypass the parsed dictionary cache.}
+
+\item{\code{cv_tag}}{Optional vocabulary source tag or ref. When \code{NULL}, the
+project default ref or latest tagged source is used.}
+
+\item{\code{request_tag}}{Optional request-table source tag. Used by projects
+that define a request source, currently CMIP6.}
+
+\item{\code{dreq_tag}}{Deprecated alias for \code{request_tag}.}
+
+\item{\code{use_cache}}{If \code{TRUE}, use the parsed dictionary cache when
+available. Raw source files may still be reused from \code{source_dir}.}
+
+\item{\code{source_dir}}{Directory used to read and write raw source files.
+The default is the package store source directory for this project.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The modified \code{EsgDict} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+    dict <- EsgDict$new(project = "CMIP6")
+    dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+    dict$has_data()
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDict-get"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-get}{}}}
 \subsection{Method \code{get()}}{
+Return raw dictionary payload data.
+
+\verb{$get("vocab")} returns the full vocabulary payload list.
+\verb{$get("request")} and \verb{$get("dreq")} return the request table when
+available. Any other value is interpreted as a vocabulary field name,
+such as \code{"experiment_id"} or \code{"source_id"}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$get(type)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{type}}{Data type to retrieve. Use \code{"vocab"}, \code{"request"},
+\code{"dreq"}, or a project vocabulary field name.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A copy of the requested data.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$get("experiment_id")
+dict$get("request")
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -193,8 +645,26 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-capabilities"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-capabilities}{}}}
 \subsection{Method \code{capabilities()}}{
+Return available dictionary capabilities.
+
+Capabilities describe whether vocabulary data, request data, and
+relation indices are currently available.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$capabilities()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list with \code{vocab}, \code{request}, and \code{relations}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$capabilities()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -202,8 +672,24 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-relation_fields"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-relation_fields}{}}}
 \subsection{Method \code{relation_fields()}}{
+Return supported relation-index fields.
+
+Relation fields describe which field combinations can be used for
+constrained option discovery and cross-field legality checks.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$relation_fields()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list of character vectors.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict <- EsgDict$new(project = "CMIP6")
+dict$relation_fields()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -211,8 +697,25 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-fields"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-fields}{}}}
 \subsection{Method \code{fields()}}{
+Return normalized dictionary field names.
+
+Empty dictionaries return \code{character()}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$fields()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A character vector.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$fields()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -220,8 +723,36 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-indices"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-indices}{}}}
 \subsection{Method \code{indices()}}{
+Return normalized dictionary indices.
+
+\verb{$indices()} returns all available indices. \verb{$indices(type)} returns a
+single index table, such as \code{"values"}, \code{"variable"},
+\code{"activity_experiment"}, or \code{"activity_source"}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$indices(type = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{type}}{Optional index name.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named list of indices, or a \code{\link[data.table:data.table]{data.table::data.table()}} when
+\code{type} is supplied.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+names(dict$indices())
+dict$indices("values")
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -229,8 +760,38 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-options"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-options}{}}}
 \subsection{Method \code{options()}}{
+Discover valid values for a dictionary field.
+
+Constraints supplied through \code{...} are used when a matching relation
+index exists. For example, CMIP6 \code{experiment_id} options can be
+constrained by \code{activity_id}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$options(field, ...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{field}}{ESG dictionary field name or supported alias.}
+
+\item{\code{...}}{Optional field constraints.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \code{\link[data.table:data.table]{data.table::data.table()}} with available values and
+metadata. The \code{ignored_constraints} attribute records constraints
+that could not be applied.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$options("experiment_id", activity_id = "CMIP")
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -238,6 +799,11 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-check"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-check}{}}}
 \subsection{Method \code{check()}}{
+Check dictionary values and relationships.
+
+\verb{$check()} validates supplied values against dictionary value indices
+and, when possible, validates cross-field combinations using relation
+indices.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$check(
   ...,
@@ -248,13 +814,79 @@ Hongyuan Jia
 )}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{ESG dictionary field values.}
+
+\item{\code{error}}{If \code{TRUE}, throw an error when invalid values or
+relationships are found.}
+
+\item{\code{suggest}}{If \code{TRUE}, include near-match suggestions for invalid
+values.}
+
+\item{\code{n_suggestions}}{Maximum number of suggestions for each invalid
+value.}
+
+\item{\code{relationship}}{Relationship validation mode. \code{"any"} validates
+ESGF-query style OR semantics. \code{"all_pairs"} requires every supplied
+combination inside each relation index to exist.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+An \code{esgdict_check_result} \code{\link[data.table:data.table]{data.table::data.table()}}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$check(activity_id = "CMIP", experiment_id = "historical")
+dict$check(variable_id = "tas", table_id = "Amon")
+}
+\if{html}{\out{</div>}}
+
+}
+
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDict-save"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-save}{}}}
 \subsection{Method \code{save()}}{
+Save the dictionary to JSON.
+
+If \code{path = NULL}, the dictionary is saved in the package store and
+registered in the store manifest. If \code{path} is supplied, only that JSON
+file is written.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$save(path = NULL, allow_empty = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{path}}{Optional JSON file path. If \code{NULL}, use the package store.}
+
+\item{\code{allow_empty}}{If \code{TRUE}, allow saving an empty dictionary.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The normalized output path.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{dict_path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(dict_path))
+
+path <- tempfile(fileext = ".json")
+dict$save(path)
+file.exists(path)
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -262,8 +894,34 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-load"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-load}{}}}
 \subsection{Method \code{load()}}{
+Load a dictionary from JSON.
+
+If \code{path = NULL}, the latest stored dictionary for this project is
+located through the package store manifest.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$load(path = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{path}}{Optional JSON file path. If \code{NULL}, load the latest stored
+dictionary for this project.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The modified \code{EsgDict} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+restored <- EsgDict$new(project = "CMIP6")
+suppressMessages(restored$load(path))
+restored$has_data()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }
@@ -271,8 +929,23 @@ Hongyuan Jia
 \if{html}{\out{<a id="method-EsgDict-print"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDict-print}{}}}
 \subsection{Method \code{print()}}{
+Print a dictionary summary.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgDict$print()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+The \code{EsgDict} object itself, invisibly.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{path <- system.file("extdata", "examples", "cmip6-dict.json", package = "epwshiftr")
+dict <- EsgDict$new(project = "CMIP6")
+suppressMessages(dict$load(path))
+dict$print()
+}
+\if{html}{\out{</div>}}
+
 }
 
 }

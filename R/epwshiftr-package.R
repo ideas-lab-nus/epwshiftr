@@ -24,7 +24,7 @@
 #'   caching (default), `FALSE` disables caching entirely, and `"offline"`
 #'   enables offline mode where only cached data is used and no network
 #'   requests are made. Default: `TRUE`
-#' * `epwshiftr.cache_dir`: The directory for disposable cache entries. Deleting
+#' * `epwshiftr.dir_cache`: The directory for disposable cache entries. Deleting
 #'   this directory can require re-fetching or re-parsing data, but should not
 #'   invalidate a persistent store.
 #'
@@ -32,18 +32,13 @@
 #' @include utils.R
 #' @author Hongyuan Jia
 ## usethis namespace: start
-#' @importFrom abind abind
 #' @importFrom checkmate assert_count
 #' @importFrom cli cli_rule
 #' @importFrom data.table :=
 #' @importFrom data.table data.table
 #' @importFrom eplusr read_epw
-#' @importFrom fst write_fst
-#' @importFrom future.apply future_lapply
 #' @importFrom jsonlite fromJSON
 #' @importFrom mirai daemons mirai
-#' @importFrom PCICt as.PCICt
-#' @importFrom progressr with_progress
 #' @importFrom psychrolib GetTDewPointFromRelHum
 #' @importFrom psychrolib SetUnitSystem
 #' @importFrom R6 R6Class
@@ -71,7 +66,7 @@ this$data_max_limit <- 10000L
 get_cache <- function() {
     if (is.null(this$cache)) {
         cache_dir <- getOption(
-            "epwshiftr.cache_dir",
+            "epwshiftr.dir_cache",
             tools::R_user_dir("epwshiftr", "cache")
         )
         this$cache <- DiskCache$new(

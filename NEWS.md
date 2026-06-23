@@ -1,5 +1,12 @@
 # eplusr (development version)
 
+## Breaking changes
+
+* The development line and the next CRAN release intentionally drop compatibility
+  with the legacy `fst`, `future.apply`, `progressr`, and `pingr` workflows.
+  Users who need the old implementation should use the `legacy` branch on
+  GitHub or install epwshiftr `v0.1.4`.
+
 ## Bug fixes
 
 * `future_epw()` now correctly handles missing values when generating future

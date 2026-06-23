@@ -9,11 +9,13 @@
         "epwshiftr.threshold_alpha" = 3,
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = TRUE,
-        "epwshiftr.dir_store" = tools::R_user_dir("epwshiftr", "data"),
-        "epwshiftr.cache_dir" = tools::R_user_dir("epwshiftr", "cache")
+        "epwshiftr.dir_store" = store_normalize_path(tools::R_user_dir("epwshiftr", "data")),
+        "epwshiftr.dir_cache" = store_normalize_path(tools::R_user_dir("epwshiftr", "cache"))
     )
     missing <- setdiff(names(.opts), names(options()))
-    if (length(missing)) do.call(options, .opts[missing])
+    if (length(missing)) {
+        do.call(options, .opts[missing])
+    }
 
     # install IEC style Byte units
     IEC <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")

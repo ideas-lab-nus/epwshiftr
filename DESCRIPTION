@@ -21,34 +21,22 @@ Description:
     <https://energyplus.net> Weather ('EPW') files adjusted from climate changes
     using data from Global Climate Models ('GCM').
 Imports:
-    abind,
     checkmate (>= 2.0.0),
     cli (>= 3.4.0),
-    CFtime,
     curl,
     data.table (>= 1.12.4),
-    DBI,
     duckdb,
     eplusr (>= 0.15.2),
-    fst,
-    future.apply,
     jsonlite,
     mirai,
-    openssl,
-    PCICt,
-    progressr,
     psychrolib,
-    qs2,
     R6,
     RNetCDF,
     units,
     S7
 Suggests:
     testthat (>= 3.0.0),
-    withr,
-    pingr,
-    knitr,
-    rmarkdown
+    withr
 License: MIT + file LICENSE
 Encoding: UTF-8
 URL: https://github.com/ideas-lab-nus/epwshiftr
@@ -81,6 +69,5 @@ Collate:
     'query.R'
     'schema.R'
     'zzz.R'
-VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
 Config/testthat/edition: 3
