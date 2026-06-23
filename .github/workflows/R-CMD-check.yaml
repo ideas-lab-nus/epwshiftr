@@ -6,9 +6,6 @@ on:
       - main
       - master
   pull_request:
-    branches:
-      - main
-      - master
 
 name: R-CMD-check
 
@@ -48,7 +45,7 @@ jobs:
 
       - name: Cache NetCDF files
         if: runner.os != 'Windows'
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}

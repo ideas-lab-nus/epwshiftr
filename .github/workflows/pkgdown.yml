@@ -6,9 +6,6 @@ on:
       - main
       - master
   pull_request:
-    branches:
-      - main
-      - master
   release:
     types:
       - published
@@ -35,7 +32,7 @@ jobs:
 
 
       - name: Cache R packages
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ${{ env.R_LIBS_USER }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
