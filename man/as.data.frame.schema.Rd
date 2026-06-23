@@ -21,3 +21,4 @@ A data.frame with columns: path, type, constraints
 \description{
 Convert Schema to a data.frame
 }
+\keyword{internal}

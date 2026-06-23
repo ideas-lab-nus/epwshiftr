@@ -1,6 +1,8 @@
 # Helper function to create cache with low prune_rate for testing
 cache_disk_deterministic <- function(dir, ...) {
-    DiskCache$new(dir = dir, ...)
+    cache <- DiskCache$new(dir = dir, ...)
+    priv(cache)$set_count <- max(as.integer(cache$info()$prune_rate) - 1L, 0L)
+    cache
 }
 
 # Basic functionality tests

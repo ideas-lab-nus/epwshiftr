@@ -23,3 +23,4 @@ Invisibly returns the input schema object
 \description{
 Print a Schema object
 }
+\keyword{internal}

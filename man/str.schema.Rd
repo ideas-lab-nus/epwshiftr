@@ -19,3 +19,4 @@ Invisibly returns the input Schema object
 \description{
 Display the structure of a Schema object
 }
+\keyword{internal}

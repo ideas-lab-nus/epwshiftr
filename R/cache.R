@@ -496,6 +496,18 @@ DiskCache <- R6::R6Class(
     )
 )
 
+#' Convert a DiskCache object to its directory path
+#'
+#' @param x A DiskCache object.
+#' @param ... Additional arguments passed from [as.character()].
+#'
+#' @return A single string with the cache directory path.
+#' @keywords internal
+#' @export
+as.character.DiskCache <- function(x, ...) {
+    x$info()$dir
+}
+
 is.key_missing <- function(x) {
     inherits(x, "key_missing")
 }

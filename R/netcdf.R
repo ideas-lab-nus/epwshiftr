@@ -146,6 +146,8 @@ summary_database <- function (
     mult = c("skip", "latest"), append = FALSE, miss = c("keep", "overwrite"),
     recursive = FALSE, update = FALSE, warning = TRUE)
 {
+    dir <- as.character(dir)
+
     # column names
     dict <- c(activity_drs = "activity", experiment_id = "experiment", member_id = "variant",
               table_id = "frequency", variable_id = "variable", source_id = "source",
@@ -645,6 +647,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     if (is.null(out_dir)) {
         m_coord <- list(m_coord)
     } else {
+        out_dir <- as.character(out_dir)
         checkmate::assert_directory_exists(out_dir, "w")
         checkmate::assert_subset(by, choices = dict)
         by_cols <- names(dict)[match(by, dict, 0L)]

@@ -17,3 +17,4 @@ Invisibly returns a list with summary statistics
 \description{
 Summarize a Schema object
 }
+\keyword{internal}

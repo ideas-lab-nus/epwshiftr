@@ -792,6 +792,21 @@ get_data_dir <- function() {
 #'
 #' @export
 get_data_node <- function(speed_test = FALSE, timeout = 3) {
+    empty_nodes <- function() {
+        if (speed_test) {
+            data.table::data.table(
+                data_node = character(),
+                status = character(),
+                ping = numeric()
+            )
+        } else {
+            data.table::data.table(
+                data_node = character(),
+                status = character()
+            )
+        }
+    }
+
     # use the metagrid-backend to get the data node status
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
@@ -805,7 +820,7 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # nocov start
     if (is.null(res) || res$status != "success") {
         message("Failed to retrieve the data node status from aims2.llnl.gov. Reason:\n  ", msg)
-        return(data.table::data.table())
+        return(empty_nodes())
     }
     # nocov end
 
@@ -833,6 +848,8 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # nocov end
 
     # nocov start
+    res[, ping := NA_real_]
+
     if (!length(nodes_up <- res$data_node[res$status == "UP"])) {
         message("No working data nodes available now. Skip speed test")
         return(res)

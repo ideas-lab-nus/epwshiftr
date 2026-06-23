@@ -326,6 +326,7 @@ SCHEMA_RESULT_DATASET <- local({
 #' @param compact Whether to use compact mode (collapse long lists). Default is FALSE.
 #'
 #' @return Invisibly returns the input schema object
+#' @keywords internal
 #' @export
 print.Schema <- function(x, ..., max_depth = 3, show_constraints = TRUE, compact = FALSE) {
     cat("<Schema>\n\n")
@@ -547,6 +548,7 @@ print_field <- function(name, schema, depth, max_depth, is_last,
 #' @param ... Additional arguments (currently unused)
 #'
 #' @return Invisibly returns a list with summary statistics
+#' @keywords internal
 #' @export
 summary.Schema <- function(object, ...) {
     stats <- list(
@@ -585,6 +587,7 @@ summary.Schema <- function(object, ...) {
 #' @param max.level Maximum depth to display. Default is 99.
 #'
 #' @return Invisibly returns the input Schema object
+#' @keywords internal
 #' @export
 str.Schema <- function(object, ..., max.level = 99) {
     print.Schema(object, max_depth = max.level, show_constraints = TRUE, ...)
@@ -632,6 +635,7 @@ get_max_depth <- function(schema, current_depth = 0L) {
 #' @param ... Additional arguments (currently unused)
 #'
 #' @return A data.frame with columns: path, type, constraints
+#' @keywords internal
 #' @export
 as.data.frame.Schema <- function(x, row.names = NULL, optional = FALSE, ...) {
     paths <- character(0)

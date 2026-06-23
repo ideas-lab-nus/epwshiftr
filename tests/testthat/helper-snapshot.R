@@ -3,6 +3,10 @@ transform_json <- function(lines) {
 
     if (!is.null(json$index_node)) json$index_node <- "..."
 
+    if (!is.null(json$response)) {
+        json$response <- transform_json_response(json$response)
+    }
+
     if (!is.null(json$last_result)) {
         if (!is.null(json$last_result$index_node)) {
             json$last_result$index_node <- "..."

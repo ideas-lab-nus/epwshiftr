@@ -24,9 +24,27 @@ priv <- function(x) {
     invisible(x)
 }
 
-verbose <- function(expr) {
+verbose <- function(...) {
     if (!getOption("epwshiftr.verbose", FALSE)) return()
-    force(expr)
+
+    exprs <- as.list(substitute(list(...)))[-1L]
+    if (!length(exprs)) return(invisible(NULL))
+    if (length(exprs) == 1L) {
+        value <- eval(exprs[[1L]], parent.frame())
+        if (is.character(value) && any(nzchar(value))) cat(paste0(value, collapse = ""), "\n", sep = "")
+        return(value)
+    }
+
+    msg <- paste0(vapply(exprs, function(expr) {
+        as.character(eval(expr, parent.frame()))
+    }, character(1L)), collapse = "")
+    if (nzchar(msg)) cat(msg, "\n", sep = "")
+    invisible(msg)
+}
+
+vb <- function(...) {
+    if (!getOption("epwshiftr.verbose", FALSE)) return(NULL)
+    paste0(...)
 }
 
 with_silent <- function(expr) {

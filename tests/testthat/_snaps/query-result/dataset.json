@@ -1,5 +1,5 @@
 {
-  "index_node": ["https://esgf-data.dkrz.de"],
+  "index_node": ["..."],
   "parameter": {
     "project": {
       "value": ["CMIP6"],
@@ -66,7 +66,7 @@
   "response": {
     "responseHeader": {
       "status": [0],
-      "QTime": [7],
+      "QTime": [-1],
       "params": {
         "df": ["text"],
         "q.alt": ["*:*"],
@@ -77,7 +77,7 @@
         "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "experiment_id:\"ssp585\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
         "rows": ["2"],
         "q": ["*:*"],
-        "shards": ["solr-slave:8983/solr/datasets,solr-replica-ipsl:8983/solr/datasets,solr-replica-ceda:8983/solr/datasets,solr-replica-nci:8983/solr/datasets,solr-replica-gfdl:8983/solr/datasets"],
+        "shards": ["..."],
         "tie": ["0.01"],
         "facet.limit": ["-1"],
         "qf": ["text"],
@@ -89,40 +89,41 @@
       }
     },
     "response": {
-      "numFound": [2],
+      "numFound": [-1],
       "start": [0],
-      "maxScore": [1],
+      "maxScore": [0.5],
       "docs": [
         {
-          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf.ceda.ac.uk",
-          "access": ["HTTPServer", "OPENDAP"],
-          "activity_id": ["ScenarioMIP"],
-          "experiment_id": ["ssp585"],
-          "frequency": ["day"],
-          "index_node": "esgf.ceda.ac.uk",
-          "number_of_files": 86,
-          "project": ["CMIP6"],
-          "size": 7072872604,
-          "source_id": ["AWI-CM-1-1-MR"],
-          "variable_id": ["tas"],
-          "variant_label": ["r1i1p1f1"],
-          "url": null
+          "id": "...",
+          "access": ["...", "..."],
+          "activity_id": ["..."],
+          "experiment_id": ["..."],
+          "frequency": ["..."],
+          "index_node": "...",
+          "number_of_files": -1,
+          "project": ["..."],
+          "size": -1.5,
+          "source_id": ["..."],
+          "variable_id": ["..."],
+          "variant_label": ["..."],
+          "url": null,
+          "number_of_aggregations": -1
         },
         {
-          "id": "CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|esgf3.dkrz.de",
-          "access": ["HTTPServer", "GridFTP", "OPENDAP", "Globus", "LAS"],
-          "activity_id": ["ScenarioMIP"],
-          "experiment_id": ["ssp585"],
-          "frequency": ["day"],
-          "index_node": "esgf-data.dkrz.de",
-          "number_of_files": 86,
-          "project": ["CMIP6"],
-          "size": 7072872604,
-          "source_id": ["AWI-CM-1-1-MR"],
-          "variable_id": ["tas"],
-          "variant_label": ["r1i1p1f1"],
-          "number_of_aggregations": 2,
-          "url": ["http://esgf3.dkrz.de/thredds/catalog/esgcet/88/CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529.xml#CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|application/xml+thredds|THREDDS", "http://esgf3.dkrz.de/las/getUI.do?catid=649F6BBCDD98B0633CF0042D119CC69D_ns_CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.ssp585.r1i1p1f1.day.tas.gn.v20190529|application/las|LAS"]
+          "id": "...",
+          "access": ["...", "...", "...", "...", "..."],
+          "activity_id": ["..."],
+          "experiment_id": ["..."],
+          "frequency": ["..."],
+          "index_node": "...",
+          "number_of_files": -1,
+          "project": ["..."],
+          "size": -1.5,
+          "source_id": ["..."],
+          "variable_id": ["..."],
+          "variant_label": ["..."],
+          "url": ["...", "..."],
+          "number_of_aggregations": -1
         }
       ]
     },
@@ -133,6 +134,6 @@
       "facet_intervals": {},
       "facet_heatmaps": {}
     },
-    "timestamp": ["2025-10-09T04:57:23:23.897449Z"]
+    "timestamp": ["2020-02-02 22:22:22"]
   }
 }
