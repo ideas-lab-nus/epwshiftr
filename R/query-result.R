@@ -79,6 +79,7 @@ EsgResult <- R6::R6Class(
             )
 
             data.table::setDT(res)
+            res[]
         },
         # }}}
 

@@ -12,6 +12,9 @@
 \alias{shift_check}
 \alias{shift_refresh}
 \alias{shift_ids}
+\alias{shift_datasets}
+\alias{shift_files}
+\alias{shift_data}
 \alias{shift_diagnostics}
 \alias{shift_store}
 \alias{shift_target}
@@ -96,6 +99,12 @@ shift_refresh(x)
 
 shift_ids(x)
 
+shift_datasets(x, all = TRUE, limit = FALSE)
+
+shift_files(x)
+
+shift_data(x, n = 100L, variables = NULL, case_id = NULL, columns = NULL)
+
 shift_diagnostics(x, severity = NULL)
 
 shift_store(x, create = FALSE)
@@ -116,11 +125,15 @@ shift_status(x)
 
 \item{project}{Optional provider project, for example \code{"CMIP6"}.}
 
-\item{source, experiment, variant, frequency, time}{Provider-neutral request
-aliases.}
+\item{source, experiment, variant, frequency}{Provider-neutral request aliases.}
 
-\item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, or
-optional extraction variables in \code{\link[=shift_extract]{shift_extract()}}.}
+\item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, optional
+extraction variables in \code{\link[=shift_extract]{shift_extract()}}, or optional variables to read in
+\code{shift_data()}.}
+
+\item{time}{Optional request or extraction time filter. Numeric years such as
+\code{2060L} are expanded to the full UTC year; otherwise supply one or two
+date-time values accepted by the provider/store.}
 
 \item{filters}{Provider-specific query filters in \code{\link[=shift_request]{shift_request()}}, or
 extraction filters in \code{\link[=shift_extract]{shift_extract()}}.}
@@ -154,7 +167,9 @@ provider response metadata.}
 
 \item{downloader}{Optional \link{Downloader} instance.}
 
-\item{run}{Whether to run queued downloads immediately.}
+\item{run}{Whether to run queued downloads immediately. Downloading full
+NetCDF files is optional for the normal workflow because \code{\link[=shift_extract]{shift_extract()}}
+can use OPeNDAP first and only download as a fallback when requested.}
 
 \item{background}{Whether to run downloads in a background job.}
 
@@ -187,6 +202,13 @@ morphing results, or EPW outputs.}
 \code{\link[=shift_epw]{shift_epw()}} uses \code{"outputs/future-epw"}.}
 
 \item{separate}{Whether to create separate output directories per morphing case.}
+
+\item{n}{Maximum number of data rows to read. Use \code{Inf} to read all rows.}
+
+\item{case_id}{Optional morphing case IDs to read from morphed or EPW output
+stages.}
+
+\item{columns}{Optional data columns to keep.}
 
 \item{severity}{Optional diagnostic severities to keep.}
 

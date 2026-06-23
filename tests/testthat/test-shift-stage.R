@@ -30,7 +30,8 @@ shift_test_dataset_docs <- function() {
     )
 }
 
-shift_test_file_docs <- function(path, opendap_url = path, download_url = path, variable_id = "tas") {
+shift_test_file_docs <- function(path, opendap_url = path, download_url = path, variable_id = "tas",
+                                 include_opendap = TRUE, include_download = TRUE) {
     docs <- data.frame(
         id = sprintf("%s|dataset-1", basename(path)),
         dataset_id = "dataset-1",
@@ -55,10 +56,14 @@ shift_test_file_docs <- function(path, opendap_url = path, download_url = path, 
         grid_label = "gr",
         check.names = FALSE
     )
-    docs$url <- I(list(c(
-        sprintf("%s|application/netcdf|OPENDAP", opendap_url),
-        sprintf("%s|application/netcdf|HTTPServer", download_url)
-    )))
+    urls <- character()
+    if (isTRUE(include_opendap)) {
+        urls <- c(urls, sprintf("%s|application/netcdf|OPENDAP", opendap_url))
+    }
+    if (isTRUE(include_download)) {
+        urls <- c(urls, sprintf("%s|application/netcdf|HTTPServer", download_url))
+    }
+    docs$url <- I(list(urls))
     docs
 }
 
@@ -111,6 +116,7 @@ test_that("shift_request() and shift_site() create inspectable S7 stages", {
         experiment = "ssp585",
         variables = c("tas", "hurs"),
         frequency = "mon",
+        time = 2060L,
         filters = list(table_id = "Amon")
     )
     site <- shift_site("SIN", lon = 103.98, lat = 1.37, label = "singapore", epw = "baseline.epw")
@@ -123,6 +129,7 @@ test_that("shift_request() and shift_site() create inspectable S7 stages", {
     expect_true(S7::S7_inherits(site_from_path, ShiftSite))
     expect_equal(shift_status(req), "new")
     expect_equal(shift_status(site), "new")
+    expect_equal(req@meta$time, c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"))
     expect_equal(site_from_path@lon, 103.98)
     expect_equal(site_from_path@lat, 1.37)
     expect_equal(site_from_first_arg@id, "SGP_Singapore.486980_IWEC")
@@ -158,15 +165,25 @@ test_that("shift_collect() uses Dataset collection before File collection", {
         frequency = "day"
     )
     store_path <- tempfile("shift-store-")
+    datasets <- shift_datasets(req)
+    expect_equal(datasets$count(), 1L)
+    expect_equal(calls$values, "Dataset")
+
     files <- req |>
         shift_collect(store = store_path, label = "shift-test")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
-    expect_equal(calls$values, c("Dataset", "File"))
+    expect_equal(calls$values, c("Dataset", "Dataset", "File"))
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
     expect_true(length(shift_ids(files)$query_id) == 1L)
     expect_equal(nrow(data.table::as.data.table(files)), 1L)
+    expect_equal(shift_datasets(files)$count(), 1L)
+    file_result <- shift_files(files)
+    expect_s3_class(file_result, "EsgResultFile")
+    expect_equal(file_result$count(), 1L)
+    expect_equal(file_result$filename, "tas_day.nc")
+    expect_error(shift_files(req), "No File result")
     expect_named(shift_check(files, strict = TRUE), shift_diagnostic_columns())
     expect_equal(shift_status(shift_refresh(files)), "collected")
 
@@ -174,6 +191,8 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     store$add_files(shift_test_file_result(shift_test_file_docs("hurs_day.nc", variable_id = "hurs")))
     dl <- shift_download(files, run = FALSE, probe = FALSE)
     expect_equal(nrow(data.table::as.data.table(dl)), 1L)
+    expect_equal(shift_datasets(dl)$count(), 1L)
+    expect_equal(shift_files(dl)$filename, "tas_day.nc")
 
     rds <- tempfile(fileext = ".rds")
     saveRDS(files, rds)
@@ -204,14 +223,20 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     store_path <- tempfile("shift-store-")
 
     files <- shift_collect(req, store = store_path, label = "shift-full")
-    dl <- shift_download(files, run = FALSE, probe = FALSE)
     climate <- shift_extract(
-        dl,
+        files,
         site = site,
         periods = epw_morph_periods(`2060s` = 2060L),
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     )
     climate_resumed <- shift_extract(
+        files,
+        site = site,
+        periods = epw_morph_periods(`2060s` = 2060L),
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+    )
+    dl <- shift_download(files, run = FALSE, probe = FALSE)
+    climate_after_download <- shift_extract(
         dl,
         site = site,
         periods = epw_morph_periods(`2060s` = 2060L),
@@ -220,16 +245,140 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     morphed <- shift_morph(climate, strict = FALSE)
     epws <- shift_epw(morphed, dir = "shift-epw")
 
+    expect_true(S7::S7_inherits(files, ShiftFiles))
     expect_true(S7::S7_inherits(dl, ShiftDownload))
     expect_true(S7::S7_inherits(climate, ShiftClimate))
     expect_true(S7::S7_inherits(climate_resumed, ShiftClimate))
+    expect_true(S7::S7_inherits(climate_after_download, ShiftClimate))
+    expect_true(S7::S7_inherits(climate@meta$files, ShiftFiles))
+    expect_null(climate@meta$download)
+    expect_true(S7::S7_inherits(climate_after_download@meta$download, ShiftDownload))
     expect_true(S7::S7_inherits(morphed, ShiftMorphed))
     expect_true(S7::S7_inherits(epws, ShiftOutputs))
     expect_equal(shift_status(climate), "extracted")
     expect_equal(shift_status(climate_resumed), "extracted")
+    expect_equal(shift_status(climate_after_download), "extracted")
+    expect_true(length(shift_ids(climate)$plan_id) >= 1L)
+    expect_true(length(shift_ids(climate_after_download)$plan_id) >= 1L)
+    expect_true(nrow(shift_coverage(climate)) >= 1L)
+    preview <- shift_data(
+        climate,
+        n = 2L,
+        columns = c("site_id", "variable_id", "time", "lon", "lat", "value", "units")
+    )
+    expect_equal(nrow(preview), 2L)
+    expect_named(preview, c("site_id", "variable_id", "time", "lon", "lat", "value", "units"))
+    expect_equal(unique(preview$site_id), "SIN")
+    expect_equal(unique(preview$variable_id), "tas")
+    expect_equal(nrow(shift_data(climate, n = 0L)), 0L)
+    expect_equal(nrow(shift_data(climate, variables = "missing")), 0L)
+    expect_error(shift_data(climate, case_id = "missing"), "case_id")
+    expect_error(shift_data(files), "ShiftClimate")
     expect_equal(shift_status(morphed), "morphed")
     expect_equal(shift_status(epws), "written")
+    morphed_preview <- shift_data(
+        morphed,
+        n = 2L,
+        columns = c(
+            "case_id", "source_id", "experiment_id", "variant_label", "period",
+            "year", "month", "day", "hour", "dry_bulb_temperature", "relative_humidity"
+        )
+    )
+    expect_equal(nrow(morphed_preview), 2L)
+    expect_true(all(c("case_id", "period", "dry_bulb_temperature") %in% names(morphed_preview)))
+    expect_equal(unique(morphed_preview$period), "2060s")
+    expect_equal(nrow(shift_data(morphed, case_id = "missing")), 0L)
+    expect_error(shift_data(morphed, variables = "tas"), "variables")
+    expect_error(shift_data(morphed, n = 1L, columns = "missing_column"), "Unknown")
+
+    epw_preview <- shift_data(
+        epws,
+        n = 2L,
+        columns = c(
+            "output_id", "case_id", "path", "source_id", "experiment_id",
+            "variant_label", "period", "year", "month", "day", "hour",
+            "dry_bulb_temperature"
+        )
+    )
+    expect_equal(nrow(epw_preview), 2L)
+    expect_true(all(c("output_id", "case_id", "path", "dry_bulb_temperature") %in% names(epw_preview)))
+    expect_equal(unique(epw_preview$period), "2060s")
+    expect_equal(nrow(shift_data(epws, case_id = "missing")), 0L)
+    expect_error(shift_data(epws, variables = "tas"), "variables")
+
+    morph_artifacts <- shift_artifacts(morphed)
+    output_artifacts <- shift_artifacts(epws)
+    expect_true(nrow(morph_artifacts) >= 1L)
+    expect_true(nrow(output_artifacts) >= 1L)
+    expect_true(all(morph_artifacts$role %in% "derived"))
+    expect_true(all(output_artifacts$role %in% "output"))
     expect_named(morphed@meta$workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
+})
+
+test_that("shift_extract() fallback policy is available from collected files", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")
+    on.exit(unlink(nc), add = TRUE)
+
+    docs <- shift_test_file_docs(
+        basename(nc),
+        download_url = sprintf("https://example.org/%s", basename(nc)),
+        include_opendap = FALSE
+    )
+    docs$size <- file.info(nc)$size
+    docs$checksum <- NA_character_
+    docs$checksum_type <- NA_character_
+
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    shift_test_mock_collect(docs, calls)
+
+    req <- shift_request(
+        project = "CMIP6",
+        experiment = "ssp585",
+        variables = "tas",
+        frequency = "day"
+    )
+    site <- shift_site("SIN", lon = 103.98, lat = 1.37, label = "singapore", epw = get_cache_epw())
+    files <- shift_collect(req, store = tempfile("shift-store-"))
+    periods <- epw_morph_periods(`2060s` = 2060L)
+    time <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+
+    remote_only <- shift_extract(
+        files,
+        site = site,
+        periods = periods,
+        time = time,
+        fallback = "error"
+    )
+    expect_equal(shift_status(remote_only), "blocked")
+    expect_true(any(shift_coverage(remote_only)$status %in% "failed"))
+    expect_match(
+        paste(shift_diagnostics(remote_only)$message, collapse = "\n"),
+        "OPeNDAP is not available"
+    )
+
+    queued <- shift_download(files, run = FALSE, probe = FALSE)
+    task <- data.table::as.data.table(queued)[1L]
+    target <- task$target_path[[1L]]
+    if (!grepl("^/", target)) {
+        target <- file.path(shift_store(files)$path, target)
+    }
+    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    expect_true(file.copy(nc, target, overwrite = TRUE))
+
+    local_fallback <- shift_extract(
+        files,
+        site = site,
+        periods = periods,
+        time = time,
+        fallback = "auto"
+    )
+    expect_equal(shift_status(local_fallback), "extracted")
+    expect_true(all(shift_coverage(local_fallback)$complete))
 })

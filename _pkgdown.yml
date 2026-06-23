@@ -97,6 +97,7 @@ reference:
       - shift_morph
       - shift_epw
       - shift_status
+      - shift_datasets
       - shift_check
       - shift_diagnostics
       - shift_ids
