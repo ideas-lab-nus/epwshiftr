@@ -1236,6 +1236,7 @@ Missing local dictionaries are ignored and never downloaded.
   params = TRUE,
   type = "Dataset",
   fields = NULL,
+  progress = getOption("epwshiftr.progress", interactive()),
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -1268,12 +1269,16 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 \code{"Aggregation"}. Dataset fields should be configured with
 \verb{$fields()} before collecting.}
 
+\item{\code{progress}}{Whether to show a progress bar while collecting ESGF
+JSON search pages. By default, the value of option
+\code{epwshiftr.progress} is used, falling back to \code{\link[=interactive]{interactive()}}.}
+
 \item{\code{...}}{Arguments passed to \link{EsgResultDataset} child collection
 when \code{type} is \code{"File"} or \code{"Aggregation"}, including the
-\code{data_node} scope filter, child-query controls, and
-\code{use_record_index_node}. File/Aggregation collection does not
-use ESGF datetime search parameters; use \verb{$filter_time()} on the
-returned result for time filtering.}
+\code{data_node} scope filter and child-query controls.
+File/Aggregation collection does not use ESGF datetime search
+parameters; use \verb{$filter_time()} on the returned result for
+time filtering.}
 }
 \if{html}{\out{</div>}}
 }

@@ -6,29 +6,11 @@ output: github_document
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.path = "man/figures/README-",
-  out.width = "100%"
+    collapse = TRUE,
+    comment = "#>",
+    fig.path = "man/figures/README-",
+    out.width = "100%"
 )
-
-library(epwshiftr)
-
-# copy files in advance
-f <- c("tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20490101-20491231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20500101-20501231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20510101-20511231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
-       "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20790101-20791231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20800101-20801231.nc",
-       "hurs_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20810101-20811231.nc"
-)
-file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 ```
 
 # epwshiftr <img src="man/figures/logo.svg" align="right" />
@@ -40,7 +22,161 @@ file.copy(file.path("/mnt/d/ScenarioMIP", f), tempdir())
 [![CRAN Download Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
 <!-- badges: end -->
 
-> Create future EnergyPlus Weather files using CMIP6 data
+> Shift weather files with climate projection data and generate future EPW files.
+
+epwshiftr helps you request climate projection data, collect file records in a
+local store, extract site-level climate variables, morph a baseline EnergyPlus
+Weather (EPW) file, and write shifted future EPW files. The recommended
+user-facing path is the `shift_*` workflow.
+
+<!-- TOC GFM -->
+
+* [Installation](#installation)
+* [Quick start](#quick-start)
+* [Inspect a workflow](#inspect-a-workflow)
+* [Advanced workflows](#advanced-workflows)
+* [Legacy workflow](#legacy-workflow)
+* [How to cite](#how-to-cite)
+* [Author](#author)
+* [License](#license)
+* [Disclaimer](#disclaimer)
+* [Contribute](#contribute)
+
+<!-- /TOC -->
+
+## Installation
+
+You can install the latest stable release of epwshiftr from
+[CRAN](https://CRAN.R-project.org).
+
+```{r cran-install, eval = FALSE}
+install.packages("epwshiftr")
+```
+
+Alternatively, you can install the development version from R-universe.
+
+```{r gh-install, eval = FALSE}
+install.packages(
+    "epwshiftr",
+    repos = c(
+        ideaslab = "https://ideas-lab-nus.r-universe.dev",
+        cran = "https://cran.r-project.org"
+    )
+)
+```
+
+The current development line and the next CRAN release use the new
+store-native implementation. If you need the old data.table-oriented workflow,
+use the `legacy` branch on GitHub or install epwshiftr `v0.1.4`.
+
+## Quick start
+
+The `shift_*` workflow keeps the complete process readable: create a site,
+request climate data, collect file records, extract the needed site data, morph,
+and write EPW outputs. Each stage returns an inspectable object and carries the
+internal store IDs forward automatically.
+
+```{r shift-workflow, eval = FALSE}
+library(epwshiftr)
+
+epw <- system.file(
+    "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+site <- shift_site(
+    id = "SIN",
+    label = "singapore",
+    epw = epw
+)
+
+req <- shift_request(
+    provider = "esgf",
+    project = "CMIP6",
+    source = "EC-Earth3",
+    experiment = "ssp585",
+    variant = "r1i1p1f1",
+    variables = epw_morph_variables("recommended"),
+    frequency = "mon",
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    filters = list(activity_id = "ScenarioMIP", table_id = "Amon")
+)
+
+epws <-
+    req |>
+    shift_collect(store = "cache/singapore-store") |>
+    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
+    shift_morph(baseline = site, strict = TRUE) |>
+    shift_epw()
+
+shift_status(epws)
+shift_outputs(epws)
+```
+
+This example uses monthly CMIP6 `Amon` records and the recommended EPW morphing
+variable set. The code is not evaluated when building the README because it
+performs live ESGF queries and remote data reads.
+
+## Inspect a workflow
+
+Use these helpers when you want to inspect a stage before continuing or diagnose
+why a stage is blocked.
+
+```{r inspect-workflow, eval = FALSE}
+shift_status(epws)
+shift_diagnostics(epws)
+shift_outputs(epws)
+
+extracted <- req |>
+    shift_collect(store = "cache/singapore-store") |>
+    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L))
+
+shift_coverage(extracted)
+shift_data(extracted)
+shift_ids(extracted)
+
+morphed <- shift_morph(extracted, baseline = site, strict = TRUE)
+shift_data(morphed)
+
+epws <- shift_epw(morphed)
+shift_outputs(epws)
+shift_data(epws)
+```
+
+`shift_ids()` exposes underlying manifest IDs for advanced debugging, but normal
+workflows should not require users to pass `query_id`, `plan_id`, `summary_id`,
+or `morph_id` by hand.
+
+To keep a complete local copy of the source NetCDF files, insert
+`shift_download()` after `shift_collect()`. This is optional for the normal
+single-site workflow because `shift_extract()` reads through OPeNDAP first and
+only falls back to HTTP downloads when `fallback = "auto"` and remote access is
+unavailable.
+
+## Advanced workflows
+
+The `shift_*` functions are a thin user-facing facade over lower-level engines:
+
+* `EsgQuery` builds and collects ESGF queries.
+* `EsgStore` manages file records, downloads, extraction plans, and artifacts.
+* `EpwMorpher` summarises climate data, builds morphing plans, runs morphing,
+  and writes EPW files.
+
+Use those lower-level objects when you need to inspect or tune manifests,
+download candidate selection, extraction coverage, morphing factors, or output
+registration. See the
+[store-native morphing workflow article](vignettes/articles/store-native-morphing-workflow.Rmd)
+for the expanded query/download/extract/morph/write path.
+
+## Legacy workflow
+
+The older workflow based on `init_cmip6_index()`, `summary_database()`,
+`extract_data()`, `morphing_epw()`, and `future_epw()` belongs to the legacy
+implementation. It is no longer the recommended README path.
+
+Use the `legacy` branch on GitHub or epwshiftr `v0.1.4` if you need that
+workflow unchanged while migrating to the store-native API.
 
 ## How to cite
 
@@ -49,7 +185,7 @@ To cite epwshiftr in publications use:
     Jia, Hongyuan, Chong, Adrian, Ning, Baisong, 2023.
     Epwshiftr: incorporating open data of climate change prediction into building performance simulation for future adaptation and mitigation,
     in: Proceedings of Building Simulation 2023: 18th Conference of IBPSA, Building Simulation.
-    Presented at the Building Simulation 2023, IBPSA, Shanghai, China, pp. 3201–3207.
+    Presented at the Building Simulation 2023, IBPSA, Shanghai, China, pp. 3201-3207.
     https://doi.org/10.26868/25222708.2023.1612
 
 A BibTeX entry for LaTeX users is:
@@ -70,176 +206,6 @@ A BibTeX entry for LaTeX users is:
 }
 ```
 
-<!-- TOC GFM -->
-
-* [Installation](#installation)
-* [Get started](#get-started)
-    * [Build CMIP6 output file index](#build-cmip6-output-file-index)
-    * [Manage CMIP6 output files](#download-cmip6-output-files)
-    * [Extract CMIP6 output data](#extract-cmip6-output-data)
-    * [Morphing EPW weather variables](#morphing-epw-weather-variables)
-    * [Create future EPW files](#create-future-epw-files)
-* [Author](#author)
-* [License](#license)
-* [Contribute](#contribute)
-
-<!-- /TOC -->
-
-## Installation
-
-You can install the latest stable release of epwshiftr from
-[CRAN](https://CRAN.R-project.org).
-
-```{r cran-install, eval = FALSE}
-install.packages("epwshiftr")
-```
-
-Alternatively, you can install the development version from GitHub.
-
-```{r gh-install, eval = FALSE}
-install.packages("epwshiftr",
-    repos = c(
-        ideaslab = "https://ideas-lab-nus.r-universe.dev",
-        cran     = "https://cran.r-project.org"
-    )
-)
-```
-
-## Get started
-
-### Build CMIP6 output file index
-
-* The first step is to build CMIP6 experiment output file index based on queries
-  using ESGF search RESTful API
-
-```{r index}
-# set directory to store files
-options(epwshiftr.dir = tempdir())
-options(epwshiftr.verbose = TRUE)
-
-# get CMIP6 data nodes
-(nodes <- get_data_node())
-
-# create a CMIP6 output file index
-idx <- init_cmip6_index(
-    # only consider ScenarioMIP activity
-    activity = "ScenarioMIP",
-
-    # specify dry-bulb temperature and relative humidity
-    variable = c("tas", "hurs"),
-
-    # specify report frequent
-    frequency = "day",
-
-    # specify experiment name
-    experiment = c("ssp585"),
-
-    # specify GCM name
-    source = "AWI-CM-1-1-MR",
-
-    # specify variant,
-    variant = "r1i1p1f1",
-
-    # specify years of interest
-    years = c(2050, 2080),
-
-    # save to data dictionary
-    save = TRUE
-)
-
-# the index has been automatically saved into directory specified using
-# `epwshiftr.dir` option and can be reloaded
-idx <- load_cmip6_index()
-
-str(head(idx))
-```
-
-### Manage CMIP6 output files
-
-* You have to download CMIP6 output file by yourself using your preferable
-  methods or tools. The download url can be found in the `file_url` column in
-  the index.
-
-* After you have downloaded CMIP6 output files of interest, you can use
-  `suumary_database()` to get a summary on files downloaded against the CMIP6
-  output file index.
-
-* This step is necessary as it map the loaded files against index so that
-  epwshiftr knows which case is complete and can be used for the next step.
-
-```{r database}
-# Summary downloaded file by GCM and variable, use the latest downloaded file if
-# multiple matches are detected and save matched information into the index file
-sm <- summary_database(tempdir(), by = c("source", "variable"), mult = "latest", update = TRUE)
-
-knitr::kable(sm)
-```
-
-### Extract CMIP6 output data
-
-* With previous step, now we can match coordinates of an EPW in the CMIP6 output
-  file
-
-```{r coord}
-epw <- file.path(eplusr::eplus_config(8.8)$dir, "WeatherData/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw")
-# match any coordinates with absolute distance less than 1 degree
-coord <- match_coord(epw, threshold = list(lon = 1, lat = 1), max_num = 1)
-
-class(coord)
-
-names(coord)
-
-coord$meta
-
-coord$coord[, .(file_path, coord)]
-
-str(coord$coord$coord[[1]])
-```
-
-* Once we get the matched coordinates, we can extract corresponding data related
-  to input EPW file using `extract_data()`
-
-```{r data}
-data <- extract_data(coord, years = c(2050, 2080))
-
-class(data)
-names(data)
-knitr::kable(head(data$data))
-```
-
-### Morphing EPW weather variables
-
-* With all necessary information extracted above, now we can perform morphing on
-  out EPW
-
-```{r morph}
-morphed <- morphing_epw(data)
-
-class(morphed)
-
-names(morphed)
-
-knitr::kable(head(morphed$tdb))
-
-knitr::kable(head(morphed$rh))
-```
-
-### Create future EPW files
-
-* Once we get the morphed data using `morphing_epw()`, we can now create future
-  EPW files using `future_epw()`
-
-```{r epw}
-# create future EPWs grouped by GCM, experiment ID, interval (year)
-epws <- future_epw(morphed, by = c("source", "experiment", "interval"),
-    dir = tempdir(), separate = TRUE, overwrite = TRUE
-)
-
-epws
-
-sapply(epws, function (epw) epw$path())
-```
-
 ## Author
 
 Hongyuan Jia and Adrian Chong
@@ -250,7 +216,7 @@ Hongyuan Jia and Adrian Chong
 
   epwshiftr is released under the terms of MIT License.
 
-  Copyright © 2019-2024 Hongyuan Jia and Adrian Chong
+  Copyright (c) 2019-2024 Hongyuan Jia and Adrian Chong
 
 * **CMIP6 data**
 
@@ -258,7 +224,7 @@ Hongyuan Jia and Adrian Chong
   > impact (and secure ongoing funding), you are required to cite and
   > acknowledge those who have made CMIP6 possible. You also must abide by any
   > licensing restrictions, which are recorded in each file as a global
-  > attribute (named “license”).
+  > attribute (named "license").
   >
   > Please carefully read and adhere to the [CMIP6 Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/).
 
@@ -269,19 +235,19 @@ CMIP6 model data is licensed under a [Creative Commons Attribution-ShareAlike
 Consult [Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/) for terms of use
 governing CMIP6 output, including citation requirements and proper
 acknowledgment. Further information about each GCM output data, including some
-limitations, can be found via the `further_info_url` (recorded as a **global
-attribute** in the NetCDF file) and at [EC-Earth](https://ec-earth.org/). The
-data producers and data providers make no warranty, either express or implied,
-including, but not limited to, warranties of merchantability and fitness for a
-particular purpose. All liabilities arising from the supply of the information
-(including any liability arising in negligence) are excluded to the fullest
-extent permitted by law.
+limitations, can be found via the `further_info_url` recorded as a global
+attribute in the NetCDF file. The data producers and data providers make no
+warranty, either express or implied, including, but not limited to, warranties
+of merchantability and fitness for a particular purpose. All liabilities arising
+from the supply of the information, including any liability arising in
+negligence, are excluded to the fullest extent permitted by law.
 
 ## Contribute
 
 If you encounter a clear bug or have questions about the usage, please file an
 issue with a minimal reproducible example on
-[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
+[GitHub](https://github.com/ideas-lab-nus/epwshiftr/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc).
+
 If you have a solution for an existing bug or an implementation for a missing
 feature, please send a pull request and let us review.
 
