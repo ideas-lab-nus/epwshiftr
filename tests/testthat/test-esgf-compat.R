@@ -64,7 +64,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     )
 
     testthat::local_mocked_bindings(
-        query_collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE) {
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             expect_false(all)
             expect_false(constraints)
 
@@ -75,7 +75,7 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
                 limit = limit
             )
 
-            type <- query_param_value(params$flat()$type)
+            type <- query_param__value(params$state()$type)
             response <- if (identical(type, "Dataset")) dataset_response else file_response
             list(response = response, docs = response$response$docs)
         },
@@ -95,10 +95,12 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     expect_named(attr(qd, "response")$response$docs, RES_DATASET)
     expect_match(calls[[1L]]$index_node, "esgf-node\\.ornl\\.gov/esgf-1-5-bridge$")
     expect_type(qd$version, "character")
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qd, "response")$responseHeader$params$fq)))
+    fq_qd <- unlist(attr(qd, "response")$responseHeader$params$fq)
+    expect_true("replica:false" %in% fq_qd)
+    expect_false(any(grepl("^latest:", fq_qd)))
 
     resolution_param <- calls[[1L]]$params$nominal_resolution()
-    resolution_value <- query_param_value(resolution_param)
+    resolution_value <- query_param__value(resolution_param)
     expect_identical(resolution_value, c("100km", "50km", "100+km", "50+km"))
     expect_true(resolution_param@encoded)
 
@@ -115,12 +117,17 @@ test_that("esgf_query() compatibility wrapper preserves legacy shapes", {
     ))
     expect_named(attr(qf, "response")$response$docs, RES_FILE)
     expect_identical(calls[[2L]]$index_node, "https://esgf.ceda.ac.uk")
-    expect_identical(query_param_value(calls[[2L]]$params$type()), "Dataset")
+    expect_identical(query_param__value(calls[[2L]]$params$type()), "Dataset")
     expect_identical(calls[[3L]]$index_node, "https://esgf.ceda.ac.uk")
-    expect_identical(query_param_value(calls[[3L]]$params$type()), "File")
+    expect_identical(query_param__value(calls[[3L]]$params$type()), "File")
+    expect_null(calls[[3L]]$params$project())
+    expect_null(calls[[3L]]$params$source_id())
+    expect_identical(query_param__value(calls[[3L]]$params$state()$dataset_id), "dataset-id")
     expect_setequal(calls[[3L]]$required_fields, EsgResultFile$private_fields$required_fields)
     expect_type(qf$version, "character")
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(qf, "response")$responseHeader$params$fq)))
+    fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
+    expect_true("replica:false" %in% fq_qf)
+    expect_false(any(grepl("^latest:", fq_qf)))
 })
 
 test_that("esgf_query() keeps legacy empty-result behavior", {
@@ -134,7 +141,7 @@ test_that("esgf_query() keeps legacy empty-result behavior", {
     )
 
     testthat::local_mocked_bindings(
-        query_collect = function(...) list(response = empty_response, docs = empty_response$response$docs),
+        query__collect = function(...) list(response = empty_response, docs = empty_response$response$docs),
         .package = "epwshiftr"
     )
 
@@ -143,8 +150,9 @@ test_that("esgf_query() keeps legacy empty-result behavior", {
         "No matched data\\. Please examine the actual response"
     )
     expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
-    expect_true(all(c("replica:false", "latest:true") %in% unlist(attr(q, "response")$responseHeader$params$fq)))
-    empty_response$responseHeader$params$fq <- c("type:Dataset", "replica:false", "latest:true")
+    expect_true("replica:false" %in% unlist(attr(q, "response")$responseHeader$params$fq))
+    expect_false(any(grepl("^latest:", unlist(attr(q, "response")$responseHeader$params$fq))))
+    empty_response$responseHeader$params$fq <- c("type:Dataset", "replica:false")
     expect_identical(attr(q, "response"), empty_response)
 })
 

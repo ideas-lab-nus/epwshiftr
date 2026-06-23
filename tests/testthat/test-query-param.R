@@ -6,6 +6,7 @@ test_that("QueryParamFacet", {
         list(value = c("CMIP6", "CMIP5"), negate = FALSE, encoded = FALSE)
     )
     expect_equal(render(facet, "project"), "project=CMIP6,CMIP5")
+    expect_equal(render(facet, "project", space = TRUE), "project = CMIP6, CMIP5")
 
     facet_negate <- QueryParamFacet(c("100km", "100 km"), negate = TRUE)
     expect_equal(
@@ -15,6 +16,10 @@ test_that("QueryParamFacet", {
     expect_equal(
         render(facet_negate, "nominal_resolution", encode = TRUE),
         "nominal_resolution!=100km&nominal_resolution!=100%20km"
+    )
+    expect_equal(
+        render(facet_negate, "nominal_resolution", encode = TRUE, space = TRUE),
+        "nominal_resolution != 100km & nominal_resolution != 100%20km"
     )
 
     facet_encoded <- QueryParamFacet(c("100km", "100 km"), encoded = TRUE)
@@ -26,6 +31,12 @@ test_that("QueryParamFacet", {
         render(facet_encoded, "nominal_resolution", encode = TRUE),
         "nominal_resolution=100km,100 km"
     )
+
+    facet_double <- QueryParamFacet(c(90, 180))
+    expect_equal(
+        S7::props(facet_double),
+        list(value = c(90, 180), negate = FALSE, encoded = FALSE)
+    )
 })
 
 test_that("QueryParamCtrl", {
@@ -36,10 +47,19 @@ test_that("QueryParamCtrl", {
         list(value = TRUE)
     )
     expect_equal(render(ctrl, "latest"), "latest=true")
+    expect_equal(render(QueryParamCtrl(0), "offset"), "offset=0")
     expect_equal(render(QueryParamCtrl(1L), "limit"), "limit=1")
     expect_equal(
-        render(QueryParamCtrl(FORMAT_JSON), "format"),
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format"),
         "format=application%2Fsolr%2Bjson"
+    )
+    expect_equal(
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE),
+        "format=application/solr+json"
+    )
+    expect_equal(
+        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE, space = TRUE),
+        "format = application/solr+json"
     )
 })
 
@@ -52,6 +72,10 @@ test_that("QueryParamDate", {
     )
     expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
     expect_equal(
+        render(date, "datetime_start", space = TRUE),
+        "datetime_start: [2017-02-03T05:06:07Z+2MONTHS TO *]"
+    )
+    expect_equal(
         render(date, "datetime_start", quote_date = TRUE),
         'datetime_start:["2017-02-03T05:06:07Z+2MONTHS" TO *]'
     )
@@ -61,46 +85,118 @@ test_that("QueryParamStore", {
     store <- QueryParamStore$new()
 
     expect_s3_class(store, "QueryParamStore")
-    expect_identical(query_param_spec("project")$role, "result_field")
-    expect_identical(query_param_spec("fields")$role, "facet")
-    expect_identical(query_param_spec("datetime_start")$role, "query")
-    expect_identical(query_param_spec("limit")$role, "control")
-    expect_identical(query_param_spec("bbox")$role, "facet")
-    expect_true(all(vapply(
-        QUERY_PARAM_NON_RESULT_FIELDS,
-        function(name) query_param_spec(name)$role != "result_field",
-        logical(1L)
-    )))
+    expect_true(query_param__field("project"))
+    expect_false(query_param__field("fields"))
+    expect_false(query_param__field("bbox"))
+    expect_false(any(query_param__field(c(
+        "datetime_start",
+        "datetime_stop",
+        "timestamp_from",
+        "timestamp_to",
+        "version_min",
+        "version_max",
+        "type",
+        "format",
+        "facets",
+        "shards",
+        "start",
+        "end",
+        "from",
+        "to"
+    ))))
+    expect_true(all(QUERY_PARAM__REST_KEYS %in% query_param__names("all")))
 
     state_all <- store$state(null = TRUE)
-    expect_named(state_all, c("facet", "query", "control", "others"))
-    expect_s3_class(state_all$facet$project, "S7_object")
-    expect_identical(state_all$facet$project@value, "CMIP6")
+    expect_named(state_all, names(QUERY_PARAM__DEF))
+    expect_s3_class(state_all$project, "S7_object")
+    expect_identical(state_all$project@value, "CMIP6")
     expect_s3_class(store$fields(), "S7_object")
     expect_identical(store$fields()@value, "*")
-    expect_s3_class(store$latest(), "S7_object")
-    expect_true(store$latest()@value)
+    expect_null(store$latest())
     expect_identical(store$offset()@value, 0L)
     expect_identical(store$distrib()@value, TRUE)
-    expect_identical(store$format()@value, FORMAT_JSON)
+    expect_identical(store$format()@value, QUERY_PARAM__FORMAT_JSON)
     expect_error(QueryParamStore$new()$format("application/xml"), "Only JSON")
     expect_null(QueryParamStore$new()$format(NULL)$format())
     expect_identical(QueryParamStore$new()$type("File")$type()@value, "File")
     expect_identical(QueryParamStore$new()$type("Aggregation")$type()@value, "Aggregation")
     expect_error(QueryParamStore$new()$params(format = "application/xml"), "Only JSON")
+    expect_warning(
+        QueryParamStore$new()$params(
+            id = "record-id",
+            dataset_id = "dataset-id",
+            master_id = "master-id",
+            instance_id = "instance-id",
+            checksum = "abc",
+            checksum_type = "SHA256",
+            tracking_id = "hdl:21.14100/mock",
+            retracted = FALSE,
+            number_of_files = 1L,
+            number_of_aggregations = 1L,
+            variable_units = "K",
+            north_degrees = 90,
+            east_degrees = 180,
+            south_degrees = -90,
+            west_degrees = -180,
+            height_bottom = 100000,
+            height_top = 1000,
+            height_units = "Pa"
+        ),
+        NA
+    )
+    expect_warning(
+        raw_store <- QueryParamStore$new()$params(
+            bbox = "0,0,1,1",
+            start = "2020",
+            end = "2021",
+            from = "2020",
+            to = "2021"
+        ),
+        NA
+    )
+    expect_setequal(names(raw_store$params()), c("bbox", "start", "end", "from", "to"))
+
+    helper_first <- QueryParamStore$new()$datetime_range(start = "2020")
+    expect_warning(
+        helper_first$params(bbox = "0,0,1,1", start = "2019", end = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_setequal(names(helper_first$params()), "bbox")
+    expect_s3_class(helper_first$datetime_range()$start, "S7_object")
+
+    raw_first <- QueryParamStore$new()$params(start = "2019", end = "2021")
+    expect_warning(
+        raw_first$datetime_range(stop = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(raw_first$params(), 0L)
+
+    timestamp_helper_first <- QueryParamStore$new()$timestamp_range(from = "2020")
+    expect_warning(
+        timestamp_helper_first$params(from = "2019", to = "2021"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(timestamp_helper_first$params(), 0L)
+
+    timestamp_raw_first <- QueryParamStore$new()$params(from = "2019", to = "2021")
+    expect_warning(
+        timestamp_raw_first$timestamp_range(to = "2020"),
+        "structured helper .* takes precedence over raw REST keyword"
+    )
+    expect_length(timestamp_raw_first$params(), 0L)
     expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
-    expect_null(state_all$query$datetime_start)
+    expect_null(state_all$datetime_start)
 
     store$project(NULL)$fields(NULL)
     state_after_null <- store$state(null = TRUE)
-    expect_null(state_after_null$facet$project)
-    expect_null(state_after_null$facet$fields)
+    expect_null(state_after_null$project)
+    expect_null(state_after_null$fields)
 
     store$project("CMIP6")$fields("*")
     store$params(table_id = "Amon")
     state <- store$state()
-    expect_s3_class(state$others$table_id, "S7_object")
-    expect_identical(state$others$table_id@value, "Amon")
+    expect_s3_class(state$table_id, "S7_object")
+    expect_identical(state$table_id@value, "Amon")
     expect_identical(store$params()$table_id@value, "Amon")
 
     vals <- c("CFMIP", "ScenarioMIP")
@@ -134,6 +230,33 @@ test_that("QueryParamStore", {
     expect_true(nr$nominal_resolution()@encoded)
     expect_true(any(grepl("^nominal_resolution=100\\+km,100km$", nr$render())))
     expect_null(nr$nominal_resolution(NULL)$nominal_resolution())
+
+    display_store <- QueryParamStore$new()$params(table_id = c("A mon", "B+C"))
+    expect_true(any(grepl("format=application%2Fsolr%2Bjson", display_store$render(), fixed = TRUE)))
+    expect_true(any(grepl("table_id=A%20mon,B%2BC", display_store$render(), fixed = TRUE)))
+    expect_equal(
+        query_param__render(query_param__as("table_id", "B+C"), "table_id", encode = FALSE),
+        "table_id=B+C"
+    )
+    expect_equal(
+        query_param__display(display_store)[c("format", "table_id")],
+        c(
+            format = "{.strong format =} application/solr+json",
+            table_id = "{.strong table_id =} A mon, B+C"
+        )
+    )
+
+    store_print <- paste(capture.output(display_store$print(), type = "message"), collapse = "\n")
+    expect_true(grepl("format = application/solr+json", store_print, fixed = TRUE))
+    expect_true(grepl("table_id = A mon, B+C", store_print, fixed = TRUE))
+    expect_false(grepl("application%2Fsolr%2Bjson", store_print, fixed = TRUE))
+    expect_false(grepl("A%20mon", store_print, fixed = TRUE))
+    expect_false(grepl("B%2BC", store_print, fixed = TRUE))
+
+    helper_print <- paste(capture.output(query_param__print(display_store), type = "message"), collapse = "\n")
+    expect_true(grepl("format = application/solr+json", helper_print, fixed = TRUE))
+    expect_true(grepl("table_id = A mon, B+C", helper_print, fixed = TRUE))
+    expect_false(grepl("application%2Fsolr%2Bjson", helper_print, fixed = TRUE))
 
     expect_error(
         QueryParamStore$new()$timestamp_range(from = "[2020 TO 2021]"),
@@ -195,17 +318,10 @@ test_that("QueryParamStore", {
     restored <- QueryParamStore$new()$restore(serialized)
 
     subset_state <- q$state(name = c("activity_id", "version_max", "table_id", "limit"), null = TRUE)
-    expect_named(subset_state, c("facet", "query", "others", "control"))
-    expect_named(subset_state$facet, "activity_id")
-    expect_named(subset_state$query, "version_max")
-    expect_named(subset_state$control, "limit")
-    expect_named(subset_state$others, "table_id")
+    expect_named(subset_state, c("activity_id", "version_max", "table_id", "limit"))
 
     subset_serialized <- q$serialize(name = c("activity_id", "version_max"))
-    expect_named(subset_serialized$facet, "activity_id")
-    expect_named(subset_serialized$query, "version_max")
-    expect_identical(subset_serialized$control, list())
-    expect_identical(subset_serialized$others, list())
+    expect_named(subset_serialized, c("activity_id", "version_max"))
 
     expect_equal(
         q$render(name = c("limit", "project")),
@@ -213,13 +329,27 @@ test_that("QueryParamStore", {
     )
     expect_true(any(grepl("^_timestamp:", q$render(name = "_timestamp"))))
     expect_true(any(grepl("^version:", q$render(name = "version"))))
+    expect_identical(
+        unname(q$render(name = "version")),
+        c("version:[20200101 TO *]", "version:[* TO 20210101]")
+    )
 
-    expect_named(serialized, c("facet", "query", "control", "others"))
-    expect_true(serialized$facet$activity_id$negate)
-    expect_identical(serialized$others$table_id$value, "Amon")
-    expect_true("datetime_start" %in% names(serialized$query))
-    expect_identical(serialized$query$version_min$value, "[20200101 TO *]")
-    expect_identical(serialized$query$version_max$value, "[* TO 20210101]")
+    displayed <- query_param__display(q)
+    expect_identical(
+        unname(displayed["activity_id"]),
+        "{.strong activity_id !=} CFMIP & {.strong activity_id !=} ScenarioMIP"
+    )
+    expect_true(any(startsWith(displayed, "{.strong _timestamp:} ")))
+    expect_identical(
+        unname(displayed[names(displayed) == "version"]),
+        c("{.strong version:} [20200101 TO *]", "{.strong version:} [* TO 20210101]")
+    )
+
+    expect_true(serialized$activity_id$negate)
+    expect_identical(serialized$table_id$value, "Amon")
+    expect_true("datetime_start" %in% names(serialized))
+    expect_identical(serialized$version_min$value, "[20200101 TO *]")
+    expect_identical(serialized$version_max$value, "[* TO 20210101]")
 
     expect_s3_class(restored$activity_id(), "S7_object")
     expect_true(restored$activity_id()@negate)
@@ -227,28 +357,30 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
-    expect_error(QueryParamStore$new()$restore(list(project = serialized$facet$project)), "subset")
+    expect_error(QueryParamStore$new()$restore(list(facet = list(project = serialized$project))), "Bucketed")
+
+    q_fields <- names(q$state())[query_param__field(names(q$state()))]
     expect_setequal(
-        q$param_names(role = "result_field"),
+        q_fields,
         c("project", "activity_id", "table_id")
     )
-    expect_setequal(
-        q$param_names(role = "query"),
-        c("datetime_start", "datetime_stop", "timestamp_from", "timestamp_to", "version_min", "version_max")
-    )
 
-    role_store <- suppressWarnings(
-        QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards("node")$params(
+    expect_warning(
+        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards(
+            "node"
+        )$params(
             table_id = "Amon",
             bbox = "0,0,1,1",
             start = "2020",
             end = "2021",
             from = "2020",
             to = "2021"
-        )
+        ),
+        NA
     )
+    role_fields <- names(role_store$state())[query_param__field(names(role_store$state()))]
     expect_setequal(
-        role_store$param_names(role = "result_field"),
+        role_fields,
         c("project", "activity_id", "table_id")
     )
 

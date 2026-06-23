@@ -105,7 +105,7 @@ test_that("DiskCache: handling missing values", {
     cache_dir <- tempfile("cache-missing-")
     cache <- DiskCache$new(cache_dir)
 
-    expect_true(is.key_missing(cache$get("abcd")))
+    expect_true(cache__missing(cache$get("abcd")))
     cache$set("a", 100)
     expect_identical(cache$get("a"), 100)
 
@@ -350,7 +350,7 @@ test_that("DiskCache: max_age affects get()", {
     Sys.sleep(0.6)
 
     # Should return missing
-    expect_true(is.key_missing(cache$get("key1")))
+    expect_true(cache__missing(cache$get("key1")))
     expect_false(cache$exists("key1"))
 
     cache$destroy()
@@ -633,17 +633,17 @@ test_that("DiskCache: concurrent access simulation", {
     cache1$destroy()
 })
 
-test_that("DiskCache: is.key_missing() helper", {
+test_that("DiskCache: cache__missing() helper", {
     cache_dir <- tempfile("cache-key-missing-")
     cache <- DiskCache$new(cache_dir)
 
     result <- cache$get("nonexistent")
-    expect_true(is.key_missing(result))
+    expect_true(cache__missing(result))
     expect_s3_class(result, "key_missing")
 
     cache$set("exists", 123)
     result <- cache$get("exists")
-    expect_false(is.key_missing(result))
+    expect_false(cache__missing(result))
 
     cache$destroy()
 })
@@ -691,81 +691,34 @@ test_that("DiskCache: metadata persistence", {
 })
 
 
-# ============================================================================
-# Cache infrastructure tests (cache_mode, with_url_cache, etc.)
-# ============================================================================
-
-test_that("cache_mode() returns correct mode", {
+test_that("cache__mode() returns correct mode", {
     local_cache_mode("normal")
-    expect_equal(cache_mode(), "normal")
+    expect_equal(cache__mode(), "normal")
 
     local_cache_mode("off")
-    expect_equal(cache_mode(), "off")
+    expect_equal(cache__mode(), "off")
 
     local_cache_mode("offline")
-    expect_equal(cache_mode(), "offline")
+    expect_equal(cache__mode(), "offline")
 
     # unknown value warns and falls back to "normal"
     withr::local_options(epwshiftr.cache = "bogus")
-    expect_warning(result <- cache_mode(), "Unknown")
+    expect_warning(result <- cache__mode(), "Unknown")
     expect_equal(result, "normal")
 })
 
-test_that("is_cache_enabled() returns correct values", {
+test_that("cache__offline() returns correct values", {
     local_cache_mode("normal")
-    expect_true(is_cache_enabled())
+    expect_false(cache__offline())
 
     local_cache_mode("off")
-    expect_false(is_cache_enabled())
+    expect_false(cache__offline())
 
     local_cache_mode("offline")
-    expect_true(is_cache_enabled())
+    expect_true(cache__offline())
 })
 
-test_that("is_cache_offline() returns correct values", {
-    local_cache_mode("normal")
-    expect_false(is_cache_offline())
-
-    local_cache_mode("off")
-    expect_false(is_cache_offline())
-
-    local_cache_mode("offline")
-    expect_true(is_cache_offline())
-})
-
-test_that("with_cache_mode() scopes correctly and restores original", {
-    local_cache_mode("normal")
-    expect_equal(cache_mode(), "normal")
-
-    # Temporarily switch to off
-    result <- with_cache_mode("off", {
-        expect_equal(cache_mode(), "off")
-        "return_value"
-    })
-    expect_equal(result, "return_value")
-    expect_equal(cache_mode(), "normal")
-
-    # Temporarily switch to offline
-    with_cache_mode("offline", {
-        expect_equal(cache_mode(), "offline")
-    })
-    expect_equal(cache_mode(), "normal")
-
-    with_cache_mode(FALSE, {
-        expect_equal(cache_mode(), "off")
-    })
-    expect_equal(cache_mode(), "normal")
-
-    with_cache_mode(TRUE, {
-        expect_equal(cache_mode(), "normal")
-    })
-    expect_equal(cache_mode(), "normal")
-
-    # Invalid mode
-    expect_error(with_cache_mode("invalid", NULL), "Unknown cache mode")
-})
-
-test_that("read_json_response() honors explicit cache mode", {
+test_that("cache__read_json() honors explicit cache mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
 
@@ -776,70 +729,70 @@ test_that("read_json_response() honors explicit cache mode", {
         auto_unbox = TRUE
     )
 
-    res <- read_json_response(path, cache = TRUE, simplifyVector = FALSE)
+    res <- cache__read_json(path, cache = TRUE, simplifyVector = FALSE)
     expect_equal(res$response$numFound, 1L)
     expect_equal(cache$size(), 1L)
 
-    offline <- read_json_response(path, cache = "offline", simplifyVector = FALSE)
+    offline <- cache__read_json(path, cache = "offline", simplifyVector = FALSE)
     expect_equal(offline$response$numFound, 1L)
 
     expect_error(
-        read_json_response(tempfile(fileext = ".json"), cache = "offline"),
+        cache__read_json(tempfile(fileext = ".json"), cache = "offline"),
         "Cache miss in offline mode"
     )
 })
 
-test_that("read_json_response() does not cache failed non-strict reads", {
+test_that("cache__read_json() does not cache failed non-strict reads", {
     cache <- local_test_cache()
     local_cache_mode("normal")
 
     expect_warning(
-        res <- read_json_response("not valid json", strict = FALSE, cache = TRUE),
+        res <- cache__read_json("not valid json", strict = FALSE, cache = TRUE),
         "Failed to read the JSON response"
     )
     expect_null(res)
     expect_equal(cache$size(), 0L)
 })
 
-test_that("make_cache_key() is deterministic", {
-    key1 <- make_cache_key("test", "a", "b")
-    key2 <- make_cache_key("test", "a", "b")
+test_that("cache__key() is deterministic", {
+    key1 <- cache__key("test", "a", "b")
+    key2 <- cache__key("test", "a", "b")
     expect_equal(key1, key2)
 })
 
-test_that("make_cache_key() produces different keys for different inputs", {
-    key1 <- make_cache_key("test", "a", "b")
-    key2 <- make_cache_key("test", "a", "c")
+test_that("cache__key() produces different keys for different inputs", {
+    key1 <- cache__key("test", "a", "b")
+    key2 <- cache__key("test", "a", "c")
     expect_false(key1 == key2)
 
     # Different prefix
-    key3 <- make_cache_key("other", "a", "b")
+    key3 <- cache__key("other", "a", "b")
     expect_false(key1 == key3)
 })
 
-test_that("make_cache_key() has correct format", {
-    key <- make_cache_key("myprefix", "data")
+test_that("cache__key() has correct format", {
+    key <- cache__key("myprefix", "data")
     expect_match(key, "^myprefix-[0-9a-f]{8}$")
 })
 
-test_that("with_url_cache() bypasses cache in off mode", {
+test_that("cache__url() bypasses cache in off mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
 
     call_count <- 0L
     fn <- function() { call_count <<- call_count + 1L; list(data = 42) }
 
-    result <- with_url_cache("test", "key1", fn)
+    result <- cache__url("test", "key1", fn)
     expect_equal(result$data, 42)
     expect_equal(call_count, 1L)
 
     # Second call: fn is called again (no caching)
-    result2 <- with_url_cache("test", "key1", fn)
+    result2 <- cache__url("test", "key1", fn)
     expect_equal(result2$data, 42)
     expect_equal(call_count, 2L)
 })
 
-test_that("with_url_cache() works in normal mode", {
+test_that("cache__url() works in normal mode", {
     cache <- local_test_cache()
     local_cache_mode("normal")
 
@@ -847,43 +800,43 @@ test_that("with_url_cache() works in normal mode", {
     fn <- function() { call_count <<- call_count + 1L; list(data = 42) }
 
     # First call: fn is executed
-    result1 <- with_url_cache("test", "key1", fn)
+    result1 <- cache__url("test", "key1", fn)
     expect_equal(result1$data, 42)
     expect_equal(call_count, 1L)
 
     # Second call: fn is NOT executed (cached)
-    result2 <- with_url_cache("test", "key1", fn)
+    result2 <- cache__url("test", "key1", fn)
     expect_equal(result2$data, 42)
     expect_equal(call_count, 1L) # still 1
 
     # Different key: fn IS executed
-    result3 <- with_url_cache("test", "key2", fn)
+    result3 <- cache__url("test", "key2", fn)
     expect_equal(result3$data, 42)
     expect_equal(call_count, 2L)
 })
 
-test_that("with_url_cache() works in offline mode", {
+test_that("cache__url() works in offline mode", {
     cache <- local_test_cache()
 
     # Pre-populate cache in normal mode
     local_cache_mode("normal")
-    with_url_cache("test", "existing_key", function() "cached_value")
+    cache__url("test", "existing_key", function() "cached_value")
 
     # Switch to offline
     local_cache_mode("offline")
 
     # Cache hit works
-    result <- with_url_cache("test", "existing_key", function() stop("should not be called"))
+    result <- cache__url("test", "existing_key", function() stop("should not be called"))
     expect_equal(result, "cached_value")
 
     # Cache miss throws error
     expect_error(
-        with_url_cache("test", "missing_key", function() stop("should not be called")),
+        cache__url("test", "missing_key", function() stop("should not be called")),
         "offline"
     )
 })
 
-test_that("with_url_cache() validate parameter controls caching", {
+test_that("cache__url() validate parameter controls caching", {
     cache <- local_test_cache()
     local_cache_mode("normal")
 
@@ -891,17 +844,17 @@ test_that("with_url_cache() validate parameter controls caching", {
     fn <- function() { call_count <<- call_count + 1L; NULL }
 
     # With validate that rejects NULL: result returned but NOT cached
-    result1 <- with_url_cache("test", "validate_key", fn, validate = function(x) !is.null(x))
+    result1 <- cache__url("test", "validate_key", fn, validate = function(x) !is.null(x))
     expect_null(result1)
     expect_equal(call_count, 1L)
 
     # Second call: fn IS called again (not cached)
-    result2 <- with_url_cache("test", "validate_key", fn, validate = function(x) !is.null(x))
+    result2 <- cache__url("test", "validate_key", fn, validate = function(x) !is.null(x))
     expect_null(result2)
     expect_equal(call_count, 2L)
 })
 
-test_that("with_url_cache() validate=NULL caches everything (default)", {
+test_that("cache__url() validate=NULL caches everything (default)", {
     cache <- local_test_cache()
     local_cache_mode("normal")
 
@@ -909,18 +862,18 @@ test_that("with_url_cache() validate=NULL caches everything (default)", {
     fn <- function() { call_count <<- call_count + 1L; NULL }
 
     # Without validate: NULL IS cached
-    result1 <- with_url_cache("test", "null_key", fn)
+    result1 <- cache__url("test", "null_key", fn)
     expect_null(result1)
     expect_equal(call_count, 1L)
 
     # Second call: fn NOT called (cached)
-    result2 <- with_url_cache("test", "null_key", fn)
+    result2 <- cache__url("test", "null_key", fn)
     expect_null(result2)
     expect_equal(call_count, 1L)
 })
 
 
-test_that("with_download_cache() bypasses cache in off mode", {
+test_that("cache__download() bypasses cache in off mode", {
     cache <- local_test_cache()
     local_cache_mode("off")
 
@@ -934,13 +887,13 @@ test_that("with_download_cache() bypasses cache in off mode", {
         destfile
     }
 
-    result <- with_download_cache("http://example.com/file.txt", destfile, fn)
+    result <- cache__download("http://example.com/file.txt", destfile, fn)
     expect_equal(result, destfile)
     expect_equal(call_count, 1L)
     expect_equal(readLines(destfile, warn = FALSE), "file content")
 })
 
-test_that("with_download_cache() works in normal mode", {
+test_that("cache__download() works in normal mode", {
     cache <- local_test_cache()
     local_cache_mode("normal")
 
@@ -956,7 +909,7 @@ test_that("with_download_cache() works in normal mode", {
     }
 
     # First call: fn is executed, file is downloaded and cached
-    result1 <- with_download_cache("http://example.com/data.bin", destfile1, fn)
+    result1 <- cache__download("http://example.com/data.bin", destfile1, fn)
     expect_equal(result1, destfile1)
     expect_equal(call_count, 1L)
     expect_equal(readBin(destfile1, "raw", 100), charToRaw("downloaded data"))
@@ -965,7 +918,7 @@ test_that("with_download_cache() works in normal mode", {
     unlink(destfile1)
 
     # Second call: fn is NOT executed, file is written from cache
-    result2 <- with_download_cache("http://example.com/data.bin", destfile2, function() {
+    result2 <- cache__download("http://example.com/data.bin", destfile2, function() {
         stop("should not be called")
     })
     expect_equal(result2, destfile2)
@@ -973,7 +926,7 @@ test_that("with_download_cache() works in normal mode", {
     expect_equal(readBin(destfile2, "raw", 100), charToRaw("downloaded data"))
 })
 
-test_that("with_download_cache() works in offline mode", {
+test_that("cache__download() works in offline mode", {
     cache <- local_test_cache()
 
     destfile <- tempfile("dl-offline-")
@@ -985,7 +938,7 @@ test_that("with_download_cache() works in offline mode", {
         writeBin(charToRaw("cached file"), destfile)
         destfile
     }
-    with_download_cache("http://example.com/cached.bin", destfile, fn_populate)
+    cache__download("http://example.com/cached.bin", destfile, fn_populate)
 
     # Remove the file
     unlink(destfile)
@@ -996,7 +949,7 @@ test_that("with_download_cache() works in offline mode", {
     # Cache hit: writes file from cache
     destfile2 <- tempfile("dl-offline2-")
     on.exit(unlink(destfile2), add = TRUE)
-    result <- with_download_cache("http://example.com/cached.bin", destfile2, function() {
+    result <- cache__download("http://example.com/cached.bin", destfile2, function() {
         stop("should not be called")
     })
     expect_equal(result, destfile2)
@@ -1004,52 +957,52 @@ test_that("with_download_cache() works in offline mode", {
 
     # Cache miss: throws error
     expect_error(
-        with_download_cache("http://example.com/missing.bin", tempfile(), function() {
+        cache__download("http://example.com/missing.bin", tempfile(), function() {
             stop("should not be called")
         }),
         "offline"
     )
 })
 
-test_that("set_cache() sets and returns old cache", {
+test_that("cache__set() sets and returns old cache", {
     # Save original cache
-    original <- set_cache(NULL)
-    on.exit(set_cache(original), add = TRUE)
+    original <- cache__set(NULL)
+    on.exit(cache__set(original), add = TRUE)
 
     dir1 <- tempfile("cache-set1-")
     cache1 <- DiskCache$new(dir = dir1, max_size = "100 MB", max_age = Inf, max_n = Inf)
     on.exit(cache1$destroy(), add = TRUE)
 
-    # set_cache returns old (NULL)
-    old <- set_cache(cache1)
+    # cache__set returns old (NULL)
+    old <- cache__set(cache1)
     expect_null(old)
 
-    # get_cache returns the one we set
-    expect_identical(get_cache(), cache1)
+    # cache__get returns the one we set
+    expect_identical(cache__get(), cache1)
 
     dir2 <- tempfile("cache-set2-")
     cache2 <- DiskCache$new(dir = dir2, max_size = "100 MB", max_age = Inf, max_n = Inf)
     on.exit(cache2$destroy(), add = TRUE)
 
-    # set_cache returns old (cache1)
-    old2 <- set_cache(cache2)
+    # cache__set returns old (cache1)
+    old2 <- cache__set(cache2)
     expect_identical(old2, cache1)
-    expect_identical(get_cache(), cache2)
+    expect_identical(cache__get(), cache2)
 })
 
-test_that("get_cache() uses epwshiftr.dir_cache", {
-    original <- set_cache(NULL)
+test_that("cache__get() uses epwshiftr.dir_cache", {
+    original <- cache__set(NULL)
     cache_dir <- tempfile("epwshiftr-dir-cache-")
     expected_dir <- normalizePath(cache_dir, winslash = "/", mustWork = FALSE)
     withr::local_options(list(epwshiftr.dir_cache = cache_dir))
     withr::defer({
-        reset_cache()
+        cache__reset()
         unlink(cache_dir, recursive = TRUE)
-        set_cache(original)
+        cache__set(original)
     })
 
     expect_false(dir.exists(cache_dir))
-    cache <- get_cache()
+    cache <- cache__get()
 
     expect_s3_class(cache, "DiskCache")
     expect_true(dir.exists(cache_dir))
@@ -1059,10 +1012,10 @@ test_that("get_cache() uses epwshiftr.dir_cache", {
     expect_equal(cache$get("dir-cache-option"), list(value = 1L))
 })
 
-test_that("reset_cache() sets cache to NULL", {
+test_that("cache__reset() sets cache to NULL", {
     # Save original cache
-    original <- set_cache(NULL)
-    on.exit(set_cache(original), add = TRUE)
+    original <- cache__set(NULL)
+    on.exit(cache__set(original), add = TRUE)
 
     dir <- tempfile("cache-reset-test-")
     cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
@@ -1070,16 +1023,16 @@ test_that("reset_cache() sets cache to NULL", {
         unlink(dir, recursive = TRUE)
     }, add = TRUE)
 
-    set_cache(cache)
-    expect_identical(get_cache(), cache)
+    cache__set(cache)
+    expect_identical(cache__get(), cache)
 
-    reset_cache()
+    cache__reset()
 
-    # After reset, get_cache() creates a new cache (not the same instance)
-    new_cache <- get_cache()
+    # After reset, cache__get() creates a new cache (not the same instance)
+    new_cache <- cache__get()
     expect_false(identical(new_cache, cache))
     expect_s3_class(new_cache, "DiskCache")
 
     # Clean up the auto-created cache
-    reset_cache()
+    cache__reset()
 })

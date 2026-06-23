@@ -148,7 +148,18 @@
       },
       "keys": {
         "type": "named",
-        "must.include": ["chunk_size", "bandwidth_limit", "low_speed_limit", "low_speed_time"]
+        "must.include": [
+          "chunk_size",
+          "bandwidth_limit",
+          "low_speed_limit",
+          "low_speed_time",
+          "range_mode",
+          "piece_size",
+          "piece_concurrency",
+          "max_sources",
+          "require_checksum_for_multisource",
+          "range_probe_timeout"
+        ]
       },
       "fields": {
         "chunk_size": {
@@ -210,6 +221,41 @@
               }
             }
           ]
+        },
+        "range_mode": {
+          "check": {
+            "kind": "choice",
+            "choices": ["off", "single", "multi", "auto"]
+          }
+        },
+        "piece_size": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "piece_concurrency": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "max_sources": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "require_checksum_for_multisource": {
+          "check": {
+            "kind": "flag"
+          }
+        },
+        "range_probe_timeout": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
         }
       }
     },

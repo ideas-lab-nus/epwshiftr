@@ -129,8 +129,8 @@ directly calling \code{EsgQuery$project()} returns the current value of the
 \code{project} parameter. The returned value can be two types:
 \itemize{
 \item \code{NULL}, i.e. there is no constraint on the corresponding parameter
-\item A \code{QueryParam} object. Use \code{query_param_value()}, \code{query_param_negate()},
-\code{query_param_name()} and \code{query_param_kind()} to inspect it.
+\item A \code{QueryParam} object. Use \code{query_param__value()} and
+\code{query_param__negate()} to inspect it.
 }
 }
 
@@ -913,7 +913,9 @@ Get or set temporal coverage overlap constraints.
 \describe{
 \item{\code{start, stop}}{Temporal boundary strings accepted by \code{solr_date()},
 complete Solr range expressions, \code{"*"}, or \code{NULL}. If both are
-omitted, the current range state is returned.}
+omitted, the current range state is returned. The helper renders
+Solr constraints for the ESGF REST \code{start}/\code{end} temporal
+coverage keyword semantics.}
 }
 \if{html}{\out{</div>}}
 }
@@ -958,10 +960,12 @@ Get or set version range constraints.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{min, max}}{Version boundary strings such as \code{"20200101"},
-simplified dates, \code{"*"}, or \code{NULL}. Solr Date Math and complete
-range expressions are not accepted here. If both are omitted,
-the current range state is returned.}
+\item{\code{min, max}}{Version boundaries such as \code{20200101}, \code{"20200101"},
+simplified dates, \code{"*"}, or \code{NULL}. ESGF \code{version} is queried
+as a numeric field; simplified date inputs are normalized to
+comparable \code{YYYYMMDD} integer boundaries before rendering.
+Solr Date Math and complete range expressions are not accepted
+here. If both are omitted, the current range state is returned.}
 }
 \if{html}{\out{</div>}}
 }
@@ -998,14 +1002,14 @@ Otherwise, a \code{QueryParam} object or \code{NULL}.
 \subsection{Method \code{latest()}}{
 Get or set the \code{latest} parameter.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$latest(value = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$latest(value = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{A flag. If omitted, the current value is returned.
-Default when setting without an explicit value: \code{TRUE}.}
+\item{\code{value}}{A flag, or \code{NULL} to remove the \code{latest} constraint. If
+omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1221,7 +1225,10 @@ By default it collects \strong{\code{type=Dataset}} results and returns an
 collects child File or Aggregation results for those datasets.
 The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
-\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
+\verb{access}, \verb{data_node}, \verb{id}, \verb{index_node}, \verb{instance_id}, \verb{latest}, \verb{master_id}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{replica}, \verb{size}, \verb{url}, \verb{version}.
+When a local \link{EsgDict} is available for the query project, \verb{$collect()}
+also performs a warning-only dictionary check before sending the query.
+Missing local dictionaries are ignored and never downloaded.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$collect(
   all = FALSE,
@@ -1261,10 +1268,12 @@ or \code{"Aggregation"}. Default: \code{"Dataset"}.}
 \code{"Aggregation"}. Dataset fields should be configured with
 \verb{$fields()} before collecting.}
 
-\item{\code{...}}{Additional File/Aggregation facet filters used only when
-\code{type} is \code{"File"} or \code{"Aggregation"}. File/Aggregation
-collection does not use ESGF datetime search parameters; use
-\verb{$filter_time()} on the returned result for time filtering.}
+\item{\code{...}}{Arguments passed to \link{EsgResultDataset} child collection
+when \code{type} is \code{"File"} or \code{"Aggregation"}, including the
+\code{data_node} scope filter, child-query controls, and
+\code{use_record_index_node}. File/Aggregation collection does not
+use ESGF datetime search parameters; use \verb{$filter_time()} on the
+returned result for time filtering.}
 }
 \if{html}{\out{</div>}}
 }

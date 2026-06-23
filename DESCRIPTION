@@ -36,6 +36,7 @@ Imports:
     S7
 Suggests:
     testthat (>= 3.0.0),
+    webfakes,
     withr
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -44,7 +45,6 @@ BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Collate:
-    'cache.R'
     'cli-doctor.R'
     'cli-download.R'
     'cli-help.R'
@@ -65,18 +65,20 @@ Collate:
     'dict.R'
     'downloader.R'
     'utils.R'
+    'morph.R'
+    'store.R'
+    'epw-morpher.R'
     'epwshiftr-package.R'
     'esgf.R'
-    'extract-store.R'
     'gh.R'
     'import-standalone-schema.R'
-    'morph.R'
     'netcdf.R'
-    'solr_date.R'
+    'solr-date.R'
     'query-param.R'
     'query-result.R'
     'query.R'
     'schema.R'
+    'standalone-cache.R'
     'zzz.R'
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
 Config/testthat/edition: 3

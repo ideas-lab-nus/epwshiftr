@@ -139,15 +139,52 @@ checkmate_any <- function(...) {
     )
 }
 
+checkmate_base_type <- function(value) {
+    switch(
+        typeof(value),
+        closure = ,
+        builtin = ,
+        special = "function",
+        language = "call",
+        symbol = "name",
+        typeof(value)
+    )
+}
+
+checkmate_class_match <- function(value, class) {
+    if (is.null(class)) {
+        return(is.null(value))
+    }
+    if (inherits(class, "S7_any")) {
+        return(TRUE)
+    }
+    if (inherits(class, "S7_missing")) {
+        return(missing(value))
+    }
+    if (inherits(class, "S7_base_class")) {
+        return(identical(checkmate_base_type(value), class$class))
+    }
+    if (inherits(class, "S7_union")) {
+        return(any(vapply(class$classes, checkmate_class_match, logical(1L), value = value)))
+    }
+    if (inherits(class, "S7_S3_class")) {
+        return(!isS4(value) && all(class$class %in% class(value)))
+    }
+    if (inherits(class, "S7_class")) {
+        return(S7::S7_inherits(value, class))
+    }
+    if (isS4(class)) {
+        return(isS4(value) && inherits(value, class@className))
+    }
+
+    inherits(value, class)
+}
+
 checkmate_match_rule <- function(value, rules) {
     for (i in seq_along(rules)) {
         rule_class <- rules[[i]]$class
 
-        if (is.null(rule_class)) {
-            if (is.null(value)) {
-                return(i)
-            }
-        } else if (inherits(value, rule_class)) {
+        if (checkmate_class_match(value, rule_class)) {
             return(i)
         }
     }
@@ -353,9 +390,8 @@ rd_query_method_return <- function() {
         paste(
             "\\item Otherwise, a \\code{QueryParam} object:",
             "\\itemize{",
-            "\\item Use \\code{query_param_value()} to read the stored value.",
-            "\\item Use \\code{query_param_negate()} to read whether the facet is negated.",
-            "\\item Use \\code{query_param_name()} and \\code{query_param_kind()} to inspect metadata.",
+            "\\item Use \\code{query_param__value()} to read the stored value.",
+            "\\item Use \\code{query_param__negate()} to read whether the facet is negated.",
             "}"
         ),
         "}"
@@ -635,19 +671,25 @@ write_parquet_file <- function(dt, path) {
 
     tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
     tmp_table <- sprintf("tmp_parquet_%s", fast_hash(list(path, Sys.time(), stats::runif(1L))))
-    on.exit({
-        try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
-        if (file.exists(tmp_file)) {
-            unlink(tmp_file)
-        }
-    }, add = TRUE)
+    on.exit(
+        {
+            try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
+            if (file.exists(tmp_file)) {
+                unlink(tmp_file)
+            }
+        },
+        add = TRUE
+    )
 
     ddb_write_table(conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
-    ddb_exec(conn, sprintf(
-        "COPY %s TO %s (FORMAT PARQUET)",
-        ddb_ident(conn, tmp_table),
-        ddb_literal(conn, tmp_file)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "COPY %s TO %s (FORMAT PARQUET)",
+            ddb_ident(conn, tmp_table),
+            ddb_literal(conn, tmp_file)
+        )
+    )
 
     if (file.exists(path)) {
         unlink(path)
@@ -733,7 +775,11 @@ mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), lab
         return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
     }
 
-    compute_profile <- sprintf("epwshiftr-%s-%s", gsub("[^A-Za-z0-9]+", "-", label), fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L))))
+    compute_profile <- sprintf(
+        "epwshiftr-%s-%s",
+        gsub("[^A-Za-z0-9]+", "-", label),
+        fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
+    )
     mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
@@ -768,12 +814,15 @@ mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), lab
     errors <- vapply(results, mirai_error_message, character(1L))
     failed <- nzchar(errors)
     if (any(failed)) {
-        stop(sprintf(
-            "Failed to complete %s for %d task(s). First error: %s",
-            label,
-            sum(failed),
-            errors[failed][[1L]]
-        ), call. = FALSE)
+        stop(
+            sprintf(
+                "Failed to complete %s for %d task(s). First error: %s",
+                label,
+                sum(failed),
+                errors[failed][[1L]]
+            ),
+            call. = FALSE
+        )
     }
 
     results
@@ -943,13 +992,13 @@ store_cmip6_index_active_path <- function() {
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
+    ".",
     ".BY",
+    ".GRP",
     ".I",
     ".N",
     ".SD",
-    ".",
     "J",
-    ".GRP",
     "activity_drs",
     "all_candidates_cooling",
     "alpha",
@@ -967,24 +1016,29 @@ utils::globalVariables(c(
     "dew_point_temperature",
     "diffuse_horizontal_radiation",
     "direct_normal_radiation",
-    "dry_run",
     "dl_percent",
+    "dist",
+    "dry_run",
     "dry_bulb_temperature",
     "epw_max",
     "epw_mean",
     "epw_min",
     "experiment_id",
+    "failure_count",
     "file_id",
+    "file_mtime",
     "file_path",
     "file_realsize",
     "file_size",
-    "failure_count",
+    "frequency",
     "global_horizontal_radiation",
     "horizontal_infrared_radiation_intensity_from_sky",
     "hour",
     "i.datetime_end",
     "i.datetime_start",
     "i.diffuse_horizontal_radiation",
+    "i.file_path",
+    "i.interval",
     "i.opaque_sky_cover",
     "i.relative_humidity",
     "i.val_max",
@@ -992,9 +1046,12 @@ utils::globalVariables(c(
     "i.val_min",
     "i.value",
     "id",
+    "ind_lat",
+    "ind_lon",
     "index",
     "index_case",
     "institution_id",
+    "interval",
     "kind",
     "last_probe_at",
     "lat",
@@ -1003,6 +1060,7 @@ utils::globalVariables(c(
     "lon",
     "longitude",
     "member_id",
+    "month",
     "name",
     "natts",
     "node_attempt_count",
@@ -1018,26 +1076,41 @@ utils::globalVariables(c(
     "node_success_count",
     "node_success_rate",
     "node_updated_at",
+    "num_years",
     "opaque_sky_cover",
+    "ord_lat",
+    "ord_lon",
+    "overlap",
+    "period",
     "ping",
+    "plan_id",
     "priority",
     "probe_cached",
     "probe_failure_count",
     "probe_latency",
+    "probe_level",
     "probe_missing",
     "probe_ms",
     "probe_success_count",
     "probe_throughput",
+    "probe_url",
     "properties",
     "record_index",
     "relative_humidity",
+    "site_id",
     "source_id",
     "source_type",
+    "stat",
+    "status",
     "state_province",
     "success_count",
     "table_id",
     "title",
+    "time_calendar",
+    "time_units",
     "total_sky_cover",
+    "type",
+    "units",
     "updated_at",
     "val_max",
     "val_mean",
@@ -1046,22 +1119,8 @@ utils::globalVariables(c(
     "value_max",
     "value_min",
     "variable",
+    "variable_id",
+    "variant_label",
     "wmo_number",
-    "file_mtime",
-    "i.file_path",
-    "i.interval",
-    "interval",
-    "time_calendar",
-    "time_units",
-    "overlap",
-    "frequency",
-    "ind_lon",
-    "ind_lat",
-    "ord_lon",
-    "ord_lat",
-    "dist",
-    "num_years",
-    "type",
-    "year",
-    "status"
+    "year"
 ))
