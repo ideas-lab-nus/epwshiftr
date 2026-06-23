@@ -1,0 +1,375 @@
+---
+title: "Run Persistent Downloads"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Run Persistent Downloads}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Use Downloader as a general persistent downloader and as the ESGF transfer
+    engine behind EsgStore.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{r setup}
+library(epwshiftr)
+
+workflow_root <- file.path(tempdir(), "epwshiftr-downloader")
+if (dir.exists(workflow_root)) {
+    unlink(workflow_root, recursive = TRUE)
+}
+dir.create(workflow_root, recursive = TRUE, showWarnings = FALSE)
+
+options(
+    epwshiftr.dir_cache = file.path(workflow_root, "cache")
+)
+
+select_cols <- function(x, cols, n = 10L) {
+    x <- data.table::as.data.table(x)
+    keep <- intersect(cols, names(x))
+    if (length(keep)) {
+        x <- x[, keep, with = FALSE]
+    }
+    utils::head(x, n)
+}
+```
+
+`Downloader` is the transfer engine used by `shift_download()`,
+`EsgStore$download_files()`, and the command line interface. It is also a
+general downloader: a plan only needs `logical_file_id`, `filename`, and `url`
+columns. ESGF-specific columns such as `file_key`, `dataset_id`, `service`, or
+`data_node` enrich the manifest but are not required for ordinary HTTPS files.
+
+The main [future EPW workflow](future-epw-workflow.html) usually avoids full
+NetCDF downloads because `shift_extract()` reads through OPeNDAP first. Use
+the downloader when you intentionally need local files, offline work, repeated
+extraction, resumable transfers, background jobs, or operational visibility.
+
+# Create a Persistent Downloader
+
+Use a persistent manifest when you want resumable sessions, task status, event
+logs, background jobs, node history, and typed transfer configuration.
+
+```{r create-downloader}
+download_root <- file.path(workflow_root, "general-downloads")
+
+downloader <- Downloader$new(
+    dest = file.path(download_root, "files"),
+    temp = file.path(download_root, "tmp"),
+    manifest = file.path(download_root, "manifest.duckdb"),
+    retries = 2L,
+    timeout = 120L,
+    connect_timeout = 30L,
+    n_workers = 2L,
+    resource_policy = list(
+        disk_preflight = TRUE,
+        min_free_space = 0
+    )
+)
+
+downloader
+downloader$manifest
+```
+
+The manifest stores configuration, sessions, tasks, candidate URLs, transfer
+events, background jobs, daemon state, control messages, and data-node history.
+
+# Download One File Directly
+
+`download()` is the shortcut API for a single URL. It can run without a
+persistent session, but using it on the same downloader keeps the destination,
+temporary directory, retry, timeout, and checksum behavior consistent.
+
+```{r direct-download}
+single_path <- downloader$download(
+    url = "https://raw.githubusercontent.com/r-lib/actions/v2/README.md",
+    filename = "r-lib-actions-readme.md",
+    subdir = "single",
+    progress = FALSE,
+    overwrite = FALSE,
+    resume = TRUE
+)
+
+single_path
+file.info(single_path)[, c("size", "mtime")]
+readLines(single_path, n = 6L)
+```
+
+# Enqueue a General Download Plan
+
+A persistent plan can contain multiple URLs and candidate mirrors. The minimal
+required columns are `logical_file_id`, `filename`, and `url`; `subdir`,
+`checksum`, `checksum_type`, `size`, `service`, and `data_node` are optional.
+
+This live example downloads several small HTTPS files into the article-local
+temporary directory.
+
+```{r general-plan}
+small_plan <- data.frame(
+    logical_file_id = c(
+        "r-lib-setup-r",
+        "r-lib-setup-r-dependencies",
+        "r-lib-check-r-package"
+    ),
+    filename = c(
+        "setup-r-action.yml",
+        "setup-r-dependencies-action.yaml",
+        "check-r-package-action.yaml"
+    ),
+    subdir = "batch",
+    url = c(
+        "https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml",
+        "https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml",
+        "https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml"
+    ),
+    checksum = NA_character_,
+    checksum_type = "sha256",
+    size = NA_real_,
+    service = "HTTPS",
+    data_node = "raw.githubusercontent.com",
+    stringsAsFactors = FALSE
+)
+
+select_cols(small_plan, c("logical_file_id", "filename", "subdir", "url", "service", "data_node"))
+```
+
+Preflight is read-only. It estimates task count, known byte requirements, free
+space, and whether disk preflight would block the run.
+
+```{r general-preflight}
+downloader$preflight(plan = small_plan)
+```
+
+Enqueue writes a session, tasks, and candidates to the manifest. It does not
+download until `run()` is called.
+
+```{r enqueue-run}
+session_id <- downloader$enqueue(
+    small_plan,
+    session_label = "small-live-files"
+)
+
+downloader$sessions()
+select_cols(downloader$tasks(session_id = session_id), c(
+    "task_id", "logical_file_id", "filename", "status",
+    "target_path", "size"
+), n = 6L)
+
+run_rows <- downloader$run(
+    session_id = session_id,
+    progress = FALSE,
+    overwrite = FALSE,
+    resume = TRUE
+)
+
+select_cols(run_rows, c(
+    "logical_file_id", "filename", "status",
+    "bytes_done", "target_path", "selected_url"
+), n = 6L)
+```
+
+# Inspect Sessions, Tasks, Events, and Files
+
+The manifest is useful after the R session that started the download has gone
+away. It records what was queued, what completed, and which URL was selected.
+
+```{r inspect-persistent-state}
+downloader$sessions()
+
+select_cols(downloader$status(session_id = session_id), c(
+    "logical_file_id", "status", "bytes_done", "target_path",
+    "selected_url", "last_error"
+), n = 10L)
+
+select_cols(downloader$events(session_id = session_id), c(
+    "event", "message", "task_id", "created_at"
+), n = 12L)
+
+list.files(file.path(download_root, "files"), recursive = TRUE)
+```
+
+`verify()` checks completed files. When a task has no checksum, successful file
+existence is enough. When a checksum exists, the recorded algorithm is used.
+
+```{r verify-and-cleanup}
+select_cols(downloader$verify(session_id = session_id), c(
+    "logical_file_id", "status", "checksum_ok", "target_path"
+), n = 10L)
+
+downloader$cleanup_tmp(all = TRUE)
+```
+
+Retry and resume become important after interrupted jobs, failed checksums,
+cancelled tasks, or a process exit during transfer. In a successful article run
+there is nothing to requeue, so the operational calls are shown here without
+executing them:
+
+```r
+downloader$retry(session_id = session_id)
+downloader$resume(session_id = session_id, progress = TRUE)
+downloader$cancel(session_id = session_id)
+```
+
+# Background Jobs and Daemon Mode
+
+Long-running sessions can be submitted in the background. The job itself is
+stored in the manifest, and logs are written next to the manifest.
+
+```r
+job <- downloader$start(
+    session_id = session_id,
+    overwrite = FALSE,
+    resume = TRUE,
+    mode = "process"
+)
+
+downloader$jobs()
+downloader$job_status(job$job_id)
+downloader$job_logs(job$job_id, tail = 50L)
+downloader$stop_job(job$job_id)
+```
+
+Daemon mode keeps a persistent downloader loop alive for repeated submissions:
+
+```r
+downloader$daemon_start(port = 0L, heartbeat_interval = 5)
+downloader$daemon_status()
+downloader$start(session_id = session_id, mode = "daemon")
+downloader$daemon_stop()
+```
+
+Those examples are intentionally shown as ordinary code snippets instead of
+executed article chunks because starting detached processes during documentation
+builds can leave local background work behind.
+
+# Generate an ESGF Download Plan
+
+ESGF File results produce downloader-ready plans with service URLs, candidate
+ranking fields, file keys, sizes, checksums, and data-node metadata. This live
+example builds an ESGF plan but does not download the large NetCDF files.
+
+```{r esgf-query}
+esgf_query <- esg_query("https://esgf-data.dkrz.de")$
+    activity_id("ScenarioMIP")$
+    experiment_id("ssp585")$
+    source_id("MPI-ESM1-2-LR")$
+    variant_label("r1i1p1f1")$
+    frequency("mon")$
+    variable_id("tas")$
+    data_node("esgf.ceda.ac.uk")$
+    params(table_id = "Amon")$
+    limit(3L)
+
+esgf_files <- esgf_query$collect(
+    type = "File",
+    fields = "*",
+    all = FALSE,
+    limit = TRUE
+)
+
+if (!esgf_files$count()) {
+    stop("The live ESGF query returned no File records.", call. = FALSE)
+}
+
+esgf_files_2060 <- esgf_files$filter_time(
+    "2060-01-01T00:00:00Z",
+    "2060-12-31T23:59:59Z",
+    method = "drs"
+)
+
+if (!esgf_files_2060$count()) {
+    stop("The live ESGF query returned no File records covering 2060.", call. = FALSE)
+}
+
+esgf_files_2060$count()
+```
+
+```{r esgf-download-plan}
+esgf_plan <- esgf_files_2060$download_plan(
+    replica = "current",
+    service = "HTTPServer",
+    probe = FALSE,
+    strategy = "stable"
+)
+
+select_cols(esgf_plan, c(
+    "logical_file_id", "filename", "service", "data_node",
+    "size", "url", "checksum", "checksum_type"
+), n = 10L)
+```
+
+`probe = FALSE` keeps this article fast and avoids touching candidate URLs just
+to rank them. In operational runs, `probe = TRUE` can record latency and
+availability in the downloader's `download_node` table.
+
+# Use a Store-Bound Downloader
+
+For store-managed ESGF work, prefer `store$downloader()`. The downloader
+manifest, temporary files, final files, and logs then live under the store, and
+completed tasks can be synced back into the store catalog.
+
+```{r store-bound-downloader}
+store <- EsgStore$new(file.path(workflow_root, "store"))
+store_query_id <- store$add_query(
+    esgf_query,
+    label = "tas-ssp585-2060-plan",
+    track = TRUE
+)
+
+store_downloader <- store$downloader(
+    n_workers = 2L,
+    retries = 1L,
+    timeout = 120L,
+    resource_policy = list(min_free_space = 0)
+)
+
+preflight <- store$download_preflight(
+    query_id = store_query_id,
+    downloader = store_downloader,
+    replica = "current",
+    service = "HTTPServer",
+    probe = FALSE,
+    all = FALSE,
+    limit = TRUE
+)
+
+preflight$summary
+select_cols(preflight$files, c(
+    "file_key", "filename", "variable_id", "size", "local_path", "status"
+), n = 10L)
+select_cols(preflight$candidates, c(
+    "filename", "service", "data_node", "size", "url"
+), n = 10L)
+```
+
+To actually enqueue and run those ESGF downloads, use:
+
+```r
+session_id <- store$download_query(
+    query_id = store_query_id,
+    downloader = store_downloader,
+    replica = "current",
+    service = "HTTPServer",
+    probe = TRUE,
+    run = TRUE,
+    progress = TRUE
+)
+
+store$sync_downloads(store_downloader)
+```
+
+For command-line operation, see [CLI operations](cli-esgf-store.html). For how
+query records, downloads, extraction outputs, and artifacts are tied together,
+see [ESG stores](esg-store.html).

@@ -1,0 +1,221 @@
+---
+title: "Troubleshoot ESGF Workflows"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Troubleshoot ESGF Workflows}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Diagnose index-node, data-node, OPeNDAP, download, extraction coverage,
+    store validation, and morphing issues.
+---
+
+This article collects the checks that are most useful when a
+[future EPW workflow](future-epw-workflow.html) returns empty results, cannot
+open remote data, downloads slowly, or produces incomplete coverage.
+
+# Start with the Stage
+
+For high-level workflows, inspect the stage first. Stage diagnostics are meant
+to point to the layer that needs attention.
+
+```r
+shift_status(epws)
+shift_diagnostics(epws)
+shift_ids(epws)
+```
+
+Use `shift_ids()` only for deeper inspection. Ordinary scripts should rely on
+the stage helpers first.
+
+# Index Node vs Data Node
+
+An index node answers search requests. A data node hosts files and service URLs.
+Confusing the two is a common source of empty results.
+
+```r
+query <- esg_query("https://esgf-data.dkrz.de")
+
+query$list_fields()
+query$list_shards()
+query$list_values(c("activity_id", "experiment_id", "table_id"))
+```
+
+`shards` controls distributed search indexes. `data_node` is a search facet that
+restricts where the matching files are hosted.
+
+If a query is unexpectedly empty:
+
+- confirm the index node is a standard ESGF search node for the record type;
+- remove `data_node` temporarily to see whether files exist elsewhere;
+- verify `activity_id`, `experiment_id`, `source_id`, `variant_label`,
+  `frequency`, `table_id`, and `variable_id`;
+- use [ESG dictionaries](esg-dictionaries.html) to check request values before
+  contacting ESGF.
+
+# Dataset, File, and Aggregation Records
+
+Dataset records are parent records. File records identify NetCDF files.
+Aggregation records are optional and may be absent.
+
+```r
+datasets <- shift_datasets(request)
+datasets$count()
+
+files <- datasets$collect(type = "File", fields = "*", all = TRUE, limit = NULL)
+files$count()
+
+aggregations <- datasets$collect(type = "Aggregation", fields = "*", all = TRUE, limit = NULL)
+aggregations$count()
+```
+
+If Aggregation records are empty, continue with File records. The robust store
+workflow does not require Aggregation records.
+
+# Time Filtering
+
+ESGF datetime search parameters and file coverage are not the same thing. For
+CMIP-style files, prefer collecting Dataset/File records and then filtering file
+coverage.
+
+```r
+files_2060 <- files$filter_time(
+    "2060-01-01T00:00:00Z",
+    "2060-12-31T23:59:59Z",
+    method = "drs"
+)
+```
+
+Use `method = "drs"` for lightweight filename parsing. Use `method = "opendap"`
+only when you need to inspect remote time axes and can tolerate live network
+reads.
+
+# OPeNDAP and HTTPServer Access
+
+The default extraction path is OPeNDAP-first. Full NetCDF downloads are optional
+unless you need offline work, repeated extraction, or fallback from unreliable
+remote access.
+
+```r
+file_table <- shift_files(files_stage)$to_data_table(fields = c(
+    "filename", "variable_id", "data_node", "url_opendap", "url_download"
+))
+
+file_table[, .(
+    filename,
+    variable_id,
+    opendap = !is.na(url_opendap) & nzchar(url_opendap),
+    http = !is.na(url_download) & nzchar(url_download)
+)]
+```
+
+When OPeNDAP fails, try:
+
+- rerun extraction with `fallback = "auto"`;
+- insert `shift_download()` before `shift_extract()` if repeated local reads are
+  preferred;
+- check whether the selected files expose `url_opendap`;
+- inspect data-node history in [Downloader](downloader.html).
+
+# Download Problems
+
+Downloader state is persistent. Inspect sessions, tasks, jobs, and events before
+re-running a large download.
+
+```r
+downloader <- shift_store(files_stage)$downloader()
+
+downloader$sessions()
+downloader$tasks(session_id = session_id)
+downloader$events(session_id = session_id)
+downloader$data_nodes(service = "HTTPServer")
+```
+
+For failed or interrupted tasks:
+
+```r
+downloader$retry(session_id = session_id)
+downloader$resume(session_id = session_id)
+downloader$verify(session_id = session_id)
+```
+
+If using the CLI:
+
+```sh
+epwshiftr --store ~/cmip6-store download watch --query <query_id>
+epwshiftr --store ~/cmip6-store download logs --session <session_id> --tail 100
+epwshiftr --store ~/cmip6-store download retry --query <query_id> --run
+```
+
+# Store Validation
+
+Use store validation when local files, manifest records, or download layout look
+inconsistent.
+
+```r
+store <- shift_store(epws)
+
+store$storage_report(detail = TRUE)
+
+validation <- store$validate_files(
+    query_id = shift_ids(epws)$query_id,
+    checksum = FALSE,
+    layout = TRUE
+)
+
+validation$summary
+validation$actions
+```
+
+Repair and cleanup methods are preview-first. Execute only after reviewing
+actions.
+
+```r
+store$repair_files(validation$actions, dry_run = TRUE)
+store$cleanup_downloads(scope = "tmp", older_than = 7 * 24 * 3600, dry_run = TRUE)
+```
+
+# Extraction Coverage
+
+Coverage must be complete before strict morphing can write future EPWs.
+
+```r
+coverage <- shift_coverage(extracted)
+coverage[, .(site_id, variable_id, complete, status, output_rows, output_file_count)]
+```
+
+If coverage is incomplete:
+
+- check that the requested variables match `epw_morph_variables("recommended")`;
+- confirm each File record covers the requested morphing period;
+- inspect whether OPeNDAP access or fallback downloads failed;
+- rerun `shift_extract()` after fixing file selection or access;
+- reduce to a single variable or shorter period to isolate the failing record.
+
+# Morphing Diagnostics
+
+Strict morphing blocks on missing recipe variables, missing baseline EPW fields,
+or incomplete monthly summaries.
+
+```r
+morphed <- shift_morph(extracted, baseline = epw, strict = FALSE)
+shift_diagnostics(morphed)
+```
+
+Use the lower-level `EpwMorpher` article when you need to inspect climate
+summaries, baseline summaries, factors, and morphing plan diagnostics directly.
+
+# Quick Triage Order
+
+1. `shift_status()` and `shift_diagnostics()`.
+2. Query values and index/data-node selection.
+3. Dataset count, then File count.
+4. File coverage with `filter_time(method = "drs")`.
+5. OPeNDAP/HTTPServer URL availability.
+6. Downloader sessions/tasks/events if full downloads are involved.
+7. Store validation if local files or manifest state look wrong.
+8. `shift_coverage()` before strict morphing.
