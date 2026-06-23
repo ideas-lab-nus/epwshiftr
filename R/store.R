@@ -5516,7 +5516,7 @@ EsgStore <- R6::R6Class(
                 checksum <- NULL
                 checksum_type <- "sha256"
             }
-            if (is.na(checksum)) {
+            if (is.null(checksum) || is.na(checksum)) {
                 checksum <- NULL
             }
 
@@ -5833,11 +5833,16 @@ store__hash_piece <- function(x) {
 }
 
 store__chr1 <- function(x) {
-    if (is.null(x) || !length(x) || is.na(x[[1L]])) {
+    if (is.null(x) || !length(x)) {
         return(NA_character_)
     }
 
-    as.character(x[[1L]])
+    value <- x[[1L]]
+    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+        return(NA_character_)
+    }
+
+    as.character(value[[1L]])
 }
 
 store__chr <- function(x) {

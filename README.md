@@ -18,10 +18,10 @@ Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/
 > Shift weather files with climate projection data and generate future
 > EPW files.
 
-epwshiftr helps you request climate projection data, download it into a
-local store, extract site-level climate variables, morph a baseline
-EnergyPlus Weather (EPW) file, and write shifted future EPW files. The
-recommended user-facing path is the `shift_*` workflow.
+epwshiftr helps you request climate projection data, collect file
+records in a local store, extract site-level climate variables, morph a
+baseline EnergyPlus Weather (EPW) file, and write shifted future EPW
+files. The recommended user-facing path is the `shift_*` workflow.
 
 <!-- TOC GFM -->
 
@@ -67,9 +67,10 @@ workflow, use the `legacy` branch on GitHub or install epwshiftr
 ## Quick start
 
 The `shift_*` workflow keeps the complete process readable: create a
-site, request climate data, collect file records, download, extract,
-morph, and write EPW outputs. Each stage returns an inspectable object
-and carries the internal store IDs forward automatically.
+site, request climate data, collect file records, extract the needed
+site data, morph, and write EPW outputs. Each stage returns an
+inspectable object and carries the internal store IDs forward
+automatically.
 
 ``` r
 library(epwshiftr)
@@ -101,7 +102,6 @@ req <- shift_request(
 epws <-
     req |>
     shift_collect(store = "cache/singapore-store") |>
-    shift_download() |>
     shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
     shift_morph(baseline = site, strict = TRUE) |>
     shift_epw()
@@ -112,7 +112,7 @@ shift_outputs(epws)
 
 This example uses monthly CMIP6 `Amon` records and the recommended EPW
 morphing variable set. The code is not evaluated when building the
-README because it performs live ESGF queries and downloads.
+README because it performs live ESGF queries and remote data reads.
 
 ## Inspect a workflow
 
@@ -124,18 +124,31 @@ shift_status(epws)
 shift_diagnostics(epws)
 shift_outputs(epws)
 
-climate <- req |>
+extracted <- req |>
     shift_collect(store = "cache/singapore-store") |>
-    shift_download() |>
     shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L))
 
-shift_coverage(climate)
-shift_ids(climate)
+shift_coverage(extracted)
+shift_data(extracted)
+shift_ids(extracted)
+
+morphed <- shift_morph(extracted, baseline = site, strict = TRUE)
+shift_data(morphed)
+
+epws <- shift_epw(morphed)
+shift_outputs(epws)
+shift_data(epws)
 ```
 
 `shift_ids()` exposes underlying manifest IDs for advanced debugging,
 but normal workflows should not require users to pass `query_id`,
 `plan_id`, `summary_id`, or `morph_id` by hand.
+
+To keep a complete local copy of the source NetCDF files, insert
+`shift_download()` after `shift_collect()`. This is optional for the
+normal single-site workflow because `shift_extract()` reads through
+OPeNDAP first and only falls back to HTTP downloads when
+`fallback = "auto"` and remote access is unavailable.
 
 ## Advanced workflows
 

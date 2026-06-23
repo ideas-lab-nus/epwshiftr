@@ -2213,6 +2213,7 @@ test_that("EsgResultDataset$to_data_table() supports offline fixtures", {
     )
 
     expect_s3_class(datasets$to_data_table(), "data.table")
+    expect_true(withVisible(datasets$to_data_table())$visible)
     expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
     expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
     expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
@@ -2477,6 +2478,7 @@ test_that("EsgResultFile$to_data_table() supports offline fixtures", {
     )
 
     expect_s3_class(files$to_data_table(), "data.table")
+    expect_true(withVisible(files$to_data_table())$visible)
     expect_s3_class(files$to_data_table(c("checksum", "checksum_type")), "data.table")
     expect_equal(names(files$to_data_table(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
     expect_s3_class(files$to_data_table(formatted = TRUE)$size, "units")
@@ -2565,6 +2567,7 @@ test_that("EsgResultAggregation$to_data_table() supports offline fixtures", {
     )
 
     expect_s3_class(aggs$to_data_table(), "data.table")
+    expect_true(withVisible(aggs$to_data_table())$visible)
     expect_s3_class(aggs$to_data_table(c("url", "size")), "data.table")
     expect_equal(names(aggs$to_data_table(c("url", "size"))), c("url", "size"))
     expect_s3_class(aggs$to_data_table(formatted = TRUE)$size, "units")

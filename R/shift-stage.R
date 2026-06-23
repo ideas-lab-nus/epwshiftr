@@ -203,11 +203,39 @@ shift_extraction_plan <- function(store, plan_id) {
     ))
 }
 
+shift_extraction_result_rows <- function(store, plan_id) {
+    shift_query_maybe(store, sprintf(
+        paste(
+            "SELECT r.*,",
+            "p.site_id,",
+            "f.source_id, f.experiment_id, f.variant_label, f.frequency,",
+            "p.variable_id",
+            "FROM extraction_result r",
+            "LEFT JOIN extraction_plan p ON r.plan_id = p.plan_id",
+            "LEFT JOIN file_catalog f ON p.query_id = f.query_id AND p.file_key = f.file_key",
+            "WHERE r.plan_id IN (%s)",
+            "ORDER BY p.variable_id, r.year, r.output_path"
+        ),
+        shift_stage_query_ids(plan_id)
+    ))
+}
+
 shift_morph_plan <- function(store, morph_id) {
     shift_query_maybe(store, sprintf(
         "SELECT * FROM epw_morph_plan WHERE morph_id IN (%s)",
         shift_stage_query_ids(morph_id)
     ))
+}
+
+shift_morph_result_rows <- function(store, morph_id, case_id = NULL) {
+    sql <- sprintf(
+        "SELECT * FROM epw_morph_result WHERE morph_id IN (%s)",
+        shift_stage_query_ids(morph_id)
+    )
+    if (!is.null(case_id)) {
+        sql <- paste(sql, sprintf("AND case_id IN (%s)", shift_stage_query_ids(case_id)))
+    }
+    shift_query_maybe(store, paste(sql, "ORDER BY case_id, output_path"))
 }
 
 shift_epw_output_rows <- function(store, morph_id) {
@@ -217,10 +245,167 @@ shift_epw_output_rows <- function(store, morph_id) {
     ))
 }
 
+shift_epw_output_rows_for_cases <- function(store, morph_id, case_id = NULL) {
+    rows <- shift_epw_output_rows(store, morph_id)
+    if (!is.null(case_id) && nrow(rows)) {
+        target_case_id <- case_id
+        rows <- rows[rows[["case_id"]] %in% target_case_id]
+    }
+    rows[order(rows$case_id, rows$path)]
+}
+
+shift_artifact_rows <- function(store, artifact_id) {
+    artifact_id <- unique(as.character(artifact_id))
+    artifact_id <- artifact_id[!is.na(artifact_id) & nzchar(artifact_id)]
+    if (!length(artifact_id)) {
+        return(data.table::data.table())
+    }
+    shift_query_maybe(store, sprintf(
+        "SELECT * FROM artifact WHERE artifact_id IN (%s)",
+        shift_stage_query_ids(artifact_id)
+    ))
+}
+
 shift_relative_paths_exist <- function(store, paths) {
     paths <- as.character(paths)
     paths <- paths[!is.na(paths) & nzchar(paths)]
     length(paths) > 0L && all(file.exists(file.path(store$path, paths)))
+}
+
+shift_data_limit <- function(n) {
+    if (is.null(n) || identical(n, Inf)) {
+        return(Inf)
+    }
+    checkmate::assert_count(n, positive = FALSE)
+    if (is.na(n)) {
+        cli::cli_abort("`n` cannot be missing.")
+    }
+    as.integer(n)
+}
+
+shift_read_parquet <- function(store, path, n = Inf, columns = NULL) {
+    conn <- epw_morph_private_store(store)$conn
+    select <- if (is.null(columns)) {
+        "*"
+    } else {
+        paste(vapply(columns, function(column) ddb_ident(conn, column), character(1L)), collapse = ", ")
+    }
+    sql <- sprintf(
+        "SELECT %s FROM read_parquet(%s)",
+        select,
+        ddb_literal(conn, path)
+    )
+    if (!is.infinite(n)) {
+        sql <- paste(sql, sprintf("LIMIT %d", n))
+    }
+    data.table::as.data.table(ddb_query(conn, sql))
+}
+
+shift_select_data_columns <- function(dt, columns, stage) {
+    if (is.null(columns)) {
+        return(dt)
+    }
+    unknown <- setdiff(columns, names(dt))
+    if (length(unknown)) {
+        cli::cli_abort("Unknown {stage} data column(s): {.val {unknown}}.")
+    }
+    dt[, columns, with = FALSE]
+}
+
+shift_add_constant_columns <- function(dt, values) {
+    for (name in names(values)) {
+        dt[, (name) := values[[name]]]
+    }
+    data.table::setcolorder(dt, c(names(values), setdiff(names(dt), names(values))))
+    dt
+}
+
+shift_read_morph_data <- function(store, results, n, columns) {
+    pieces <- vector("list", nrow(results))
+    remaining <- n
+    for (i in seq_len(nrow(results))) {
+        if (!is.infinite(remaining) && remaining <= 0L) {
+            break
+        }
+        path <- store_abs_path(results$output_path[[i]], root = store$path)
+        if (!file.exists(path)) {
+            cli::cli_abort(c(
+                "Morphed Parquet data file is missing.",
+                "x" = "{.path {path}}",
+                "i" = "Run {.fn shift_morph} again or inspect {.fn shift_artifacts}."
+            ))
+        }
+        limit <- if (is.infinite(remaining)) Inf else remaining
+        dt <- shift_read_parquet(store, path, n = limit)
+        dt <- shift_add_constant_columns(dt, list(
+            result_id = results$result_id[[i]],
+            morph_id = results$morph_id[[i]],
+            case_id = results$case_id[[i]],
+            output_path = results$output_path[[i]]
+        ))
+        pieces[[i]] <- shift_select_data_columns(dt, columns, "morphed")
+        if (!is.infinite(remaining)) {
+            remaining <- remaining - nrow(dt)
+        }
+    }
+    pieces <- Filter(Negate(is.null), pieces)
+    if (!length(pieces)) {
+        return(data.table::data.table())
+    }
+    data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+}
+
+shift_read_epw_output_data <- function(store, outputs, n, columns) {
+    pieces <- vector("list", nrow(outputs))
+    remaining <- n
+    for (i in seq_len(nrow(outputs))) {
+        if (!is.infinite(remaining) && remaining <= 0L) {
+            break
+        }
+        path <- store_abs_path(outputs$path[[i]], root = store$path)
+        if (!file.exists(path)) {
+            cli::cli_abort(c(
+                "EPW output file is missing.",
+                "x" = "{.path {path}}",
+                "i" = "Run {.fn shift_epw} again or inspect {.fn shift_outputs}."
+            ))
+        }
+        dt <- data.table::as.data.table(eplusr::read_epw(path)$data())
+        if (!is.infinite(remaining)) {
+            dt <- utils::head(dt, remaining)
+        }
+        dt <- shift_add_constant_columns(dt, list(
+            output_id = outputs$output_id[[i]],
+            morph_id = outputs$morph_id[[i]],
+            case_id = outputs$case_id[[i]],
+            source_id = outputs$source_id[[i]],
+            experiment_id = outputs$experiment_id[[i]],
+            variant_label = outputs$variant_label[[i]],
+            period = outputs$period[[i]],
+            path = outputs$path[[i]]
+        ))
+        pieces[[i]] <- shift_select_data_columns(dt, columns, "EPW output")
+        if (!is.infinite(remaining)) {
+            remaining <- remaining - nrow(dt)
+        }
+    }
+    pieces <- Filter(Negate(is.null), pieces)
+    if (!length(pieces)) {
+        return(data.table::data.table())
+    }
+    data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+}
+
+shift_display_path <- function(path) {
+    if (is.null(path) || !nzchar(path)) {
+        return(path)
+    }
+    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+    temp <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+    if (startsWith(path, temp)) {
+        return(sub(temp, "<tempdir>", path, fixed = TRUE))
+    }
+    path
 }
 
 shift_periods_time <- function(periods) {
@@ -235,6 +420,115 @@ shift_periods_time <- function(periods) {
         sprintf("%d-01-01T00:00:00Z", min(years)),
         sprintf("%d-12-31T23:59:59Z", max(years))
     )
+}
+
+shift_time_window <- function(time) {
+    if (is.null(time)) {
+        return(NULL)
+    }
+    if (is.numeric(time) && !inherits(time, c("Date", "POSIXt"))) {
+        checkmate::assert_integerish(time, any.missing = FALSE, min.len = 1L, max.len = 2L)
+        years <- as.integer(time)
+        years <- range(years)
+        return(c(
+            sprintf("%04d-01-01T00:00:00Z", years[[1L]]),
+            sprintf("%04d-12-31T23:59:59Z", years[[2L]])
+        ))
+    }
+    time
+}
+
+shift_display_values <- function(x, max = 7L) {
+    x <- as.character(x)
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) {
+        return(NULL)
+    }
+    if (length(x) > max) {
+        return(sprintf("%s, ... (%d total)", paste(utils::head(x, max), collapse = ", "), length(x)))
+    }
+    paste(x, collapse = ", ")
+}
+
+shift_request_filter <- function(x, name) {
+    value <- x@meta$filters[[name]]
+    if (is.null(value)) {
+        return(NULL)
+    }
+    value
+}
+
+shift_stage_print_line <- function(label, value) {
+    value <- shift_display_values(value)
+    if (!is.null(value)) {
+        cat(sprintf("  %s: %s\n", label, value))
+    }
+}
+
+shift_stage_print_details <- function(x) {
+    if (S7::S7_inherits(x, ShiftRequest)) {
+        if (!identical(x@meta$provider, "esgf")) {
+            shift_stage_print_line("provider", x@meta$provider)
+        }
+        shift_stage_print_line("project", x@meta$project)
+        shift_stage_print_line("source", shift_coalesce(x@meta$source, shift_request_filter(x, "source_id")))
+        shift_stage_print_line("experiment", shift_coalesce(x@meta$experiment, shift_request_filter(x, "experiment_id")))
+        shift_stage_print_line("variant", shift_coalesce(x@meta$variant, shift_request_filter(x, "variant_label")))
+        shift_stage_print_line("frequency", shift_coalesce(x@meta$frequency, shift_request_filter(x, "frequency")))
+        shift_stage_print_line("variables", shift_coalesce(x@meta$variables, shift_request_filter(x, "variable_id")))
+        if (!is.null(x@meta$time)) {
+            cat(sprintf("  time:   %s\n", paste(as.character(x@meta$time), collapse = " -> ")))
+        }
+        return(invisible())
+    }
+
+    if (S7::S7_inherits(x, ShiftFiles)) {
+        cat(sprintf("  files:  %s\n", shift_coalesce(x@meta$file_count, NA_integer_)))
+        shift_stage_print_line("variables", x@meta$variables)
+        return(invisible())
+    }
+
+    if (S7::S7_inherits(x, ShiftDownload)) {
+        tasks <- tryCatch(data.table::as.data.table(x), error = function(e) data.table::data.table())
+        if (nrow(tasks) && "status" %in% names(tasks)) {
+            counts <- table(tasks$status)
+            complete <- sum(tasks$status %in% c("done", "skipped"))
+            percent <- round(100 * complete / nrow(tasks))
+            cat(sprintf(
+                "  tasks:  %d/%d complete (%d%%); %s\n",
+                complete, nrow(tasks), percent,
+                paste(sprintf("%s=%s", names(counts), counts), collapse = ", ")
+            ))
+        }
+        return(invisible())
+    }
+
+    if (S7::S7_inherits(x, ShiftClimate)) {
+        coverage <- tryCatch(shift_coverage(x), error = function(e) data.table::data.table())
+        if (nrow(coverage) && "complete" %in% names(coverage)) {
+            cat(sprintf("  coverage: %d/%d complete\n", sum(coverage$complete %in% TRUE), nrow(coverage)))
+        }
+        return(invisible())
+    }
+
+    if (S7::S7_inherits(x, ShiftMorphed)) {
+        plan <- data.table::as.data.table(shift_coalesce(x@meta$plan, data.table::data.table()))
+        if (nrow(plan)) {
+            shift_stage_print_line("morph", unique(plan$status))
+            cat(sprintf("  cases:  %d\n", nrow(plan)))
+        }
+        return(invisible())
+    }
+
+    if (S7::S7_inherits(x, ShiftOutputs)) {
+        outputs <- data.table::as.data.table(shift_coalesce(x@meta$outputs, data.table::data.table()))
+        if (nrow(outputs)) {
+            cat(sprintf("  outputs: %d\n", nrow(outputs)))
+        }
+        return(invisible())
+    }
+
+    invisible()
 }
 
 shift_stage_root <- function(x) {
@@ -279,6 +573,68 @@ shift_stage_variables <- function(x) {
         }
     }
     NULL
+}
+
+shift_stage_nested <- function(x, classes = list()) {
+    if (!S7::S7_inherits(x, ShiftStage)) {
+        return(NULL)
+    }
+    if (!length(classes) || any(vapply(classes, function(class) S7::S7_inherits(x, class), logical(1L)))) {
+        return(x)
+    }
+    for (name in c("files", "download", "climate", "morphed")) {
+        value <- x@meta[[name]]
+        if (S7::S7_inherits(value, ShiftStage)) {
+            hit <- shift_stage_nested(value, classes)
+            if (!is.null(hit)) {
+                return(hit)
+            }
+        }
+    }
+    NULL
+}
+
+shift_stage_query_result <- function(store, query_id, result_type = NULL) {
+    checkmate::assert_string(query_id, min.chars = 1L)
+    checkmate::assert_choice(result_type, c("File", "Aggregation"), null.ok = TRUE)
+
+    runs <- shift_query_run(store, query_id)
+    if (!nrow(runs)) {
+        cli::cli_abort("No stored File query result was found for this shift stage.")
+    }
+
+    run <- runs[1L]
+    if (!is.null(result_type) && !identical(run$result_type[[1L]], result_type)) {
+        cli::cli_abort(
+            "The stored query result has type {.val {run$result_type[[1L]]}}, not {.val {result_type}}."
+        )
+    }
+
+    query_file <- file.path(store$path, run$query_file[[1L]])
+    if (!file.exists(query_file)) {
+        cli::cli_abort("The stored query result file no longer exists: {.path {query_file}}.")
+    }
+
+    schema <- switch(
+        run$result_type[[1L]],
+        File = SCHEMA_RESULT_FILE,
+        Aggregation = SCHEMA_RESULT_AGGREGATION,
+        cli::cli_abort("Unsupported stored query result type: {.val {run$result_type[[1L]]}}.")
+    )
+    loaded <- query__load(query_file, schema)
+    generator <- switch(
+        run$result_type[[1L]],
+        File = EsgResultFile,
+        Aggregation = EsgResultAggregation,
+        cli::cli_abort("Unsupported stored query result type: {.val {run$result_type[[1L]]}}.")
+    )
+    query_result__new(
+        generator,
+        index_node = loaded$index_node,
+        params = loaded$parameter,
+        result = loaded$response,
+        context = loaded$context
+    )
 }
 
 shift_is_epw_object <- function(x) {
@@ -371,10 +727,13 @@ shift_resolve_epw <- function(x) {
 #' @param provider Climate data provider. The first implementation supports
 #'   `"esgf"`.
 #' @param project Optional provider project, for example `"CMIP6"`.
-#' @param source,experiment,variant,frequency,time Provider-neutral request
-#'   aliases.
-#' @param variables Provider-neutral request alias in [shift_request()], or
-#'   optional extraction variables in [shift_extract()].
+#' @param source,experiment,variant,frequency Provider-neutral request aliases.
+#' @param time Optional request or extraction time filter. Numeric years such as
+#'   `2060L` are expanded to the full UTC year; otherwise supply one or two
+#'   date-time values accepted by the provider/store.
+#' @param variables Provider-neutral request alias in [shift_request()], optional
+#'   extraction variables in [shift_extract()], or optional variables to read in
+#'   `shift_data()`.
 #' @param filters Provider-specific query filters in [shift_request()], or
 #'   extraction filters in [shift_extract()].
 #' @param options Provider-specific request options. For ESGF, `index_node` and
@@ -407,6 +766,7 @@ shift_request <- function(provider = "esgf", project = NULL, source = NULL, expe
     checkmate::assert_character(frequency, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
     if (!is.null(time)) {
         checkmate::assert_atomic_vector(time, any.missing = FALSE, min.len = 1L, max.len = 2L)
+        time <- shift_time_window(time)
     }
     checkmate::assert_list(filters, names = "unique")
     checkmate::assert_list(options, names = "unique")
@@ -501,7 +861,9 @@ shift_collect <- S7::new_generic(
 
 #' @rdname shift_api
 #' @param downloader Optional [Downloader] instance.
-#' @param run Whether to run queued downloads immediately.
+#' @param run Whether to run queued downloads immediately. Downloading full
+#'   NetCDF files is optional for the normal workflow because [shift_extract()]
+#'   can use OPeNDAP first and only download as a fallback when requested.
 #' @param background Whether to run downloads in a background job.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
@@ -590,6 +952,140 @@ shift_refresh <- function(x) {
 shift_ids <- function(x) {
     shift_assert_stage(x)
     x@ids
+}
+
+#' @rdname shift_api
+#' @export
+shift_datasets <- function(x, all = TRUE, limit = FALSE) {
+    shift_assert_stage(x)
+    checkmate::assert_flag(all)
+
+    if (S7::S7_inherits(x, ShiftRequest)) {
+        return(shift_as_query(x)$collect(type = "Dataset", all = all, limit = limit))
+    }
+
+    files <- shift_stage_nested(x, list(ShiftFiles))
+    if (!is.null(files) && !is.null(files@meta$datasets)) {
+        return(files@meta$datasets)
+    }
+
+    request <- shift_stage_root(x)
+    if (!is.null(request)) {
+        return(shift_datasets(request, all = all, limit = limit))
+    }
+
+    cli::cli_abort("No Dataset result is available for this shift stage.")
+}
+
+#' @rdname shift_api
+#' @export
+shift_files <- function(x) {
+    shift_assert_stage(x)
+    ids <- shift_ids(x)
+    if (is.null(ids$query_id) || !length(ids$query_id) || is.na(ids$query_id[[1L]])) {
+        cli::cli_abort("No File result is available before {.fn shift_collect}.")
+    }
+
+    store <- shift_store(x)
+    shift_stage_query_result(store, ids$query_id[[1L]], result_type = "File")
+}
+
+#' @rdname shift_api
+#' @param n Maximum number of data rows to read. Use `Inf` to read all rows.
+#' @param case_id Optional morphing case IDs to read from morphed or EPW output
+#'   stages.
+#' @param columns Optional data columns to keep.
+#' @export
+shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL, columns = NULL) {
+    shift_assert_stage(x)
+    n <- shift_data_limit(n)
+    checkmate::assert_character(variables, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
+    checkmate::assert_character(case_id, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
+    checkmate::assert_character(columns, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    if (!S7::S7_inherits(x, ShiftClimate) &&
+        !S7::S7_inherits(x, ShiftMorphed) &&
+        !S7::S7_inherits(x, ShiftOutputs)) {
+        cli::cli_abort("{.fn shift_data} reads data from {.cls ShiftClimate}, {.cls ShiftMorphed}, or {.cls ShiftOutputs} stages.")
+    }
+    if (identical(n, 0L)) {
+        return(data.table::data.table())
+    }
+
+    ids <- shift_ids(x)
+    store <- shift_store(x)
+
+    if (S7::S7_inherits(x, ShiftClimate)) {
+        if (!is.null(case_id)) {
+            cli::cli_abort("`case_id` is only supported for morphed and EPW output stages.")
+        }
+        if (is.null(ids$plan_id) || !length(ids$plan_id)) {
+            return(data.table::data.table())
+        }
+        results <- shift_extraction_result_rows(store, ids$plan_id)
+        if (!is.null(variables)) {
+            results <- results[results[["variable_id"]] %in% variables]
+        }
+        if (!nrow(results)) {
+            return(data.table::data.table())
+        }
+
+        pieces <- vector("list", nrow(results))
+        remaining <- n
+        for (i in seq_len(nrow(results))) {
+            if (!is.infinite(remaining) && remaining <= 0L) {
+                break
+            }
+            path <- store_abs_path(results$output_path[[i]], root = store$path)
+            if (!file.exists(path)) {
+                cli::cli_abort(c(
+                    "Extracted Parquet data file is missing.",
+                    "x" = "{.path {path}}",
+                    "i" = "Run {.fn shift_extract} again or inspect {.fn shift_coverage}."
+                ))
+            }
+
+            limit <- if (is.infinite(remaining)) Inf else remaining
+            dt <- shift_read_parquet(store, path, n = limit, columns = columns)
+            pieces[[i]] <- dt
+            if (!is.infinite(remaining)) {
+                remaining <- remaining - nrow(dt)
+            }
+        }
+
+        pieces <- Filter(Negate(is.null), pieces)
+        if (!length(pieces)) {
+            return(data.table::data.table())
+        }
+        return(data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE))
+    }
+
+    if (!is.null(variables)) {
+        cli::cli_abort("`variables` is only supported for extracted climate stages.")
+    }
+
+    if (S7::S7_inherits(x, ShiftMorphed)) {
+        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+            return(data.table::data.table())
+        }
+        results <- shift_morph_result_rows(store, ids$morph_id, case_id = case_id)
+        if (!nrow(results)) {
+            return(data.table::data.table())
+        }
+        return(shift_read_morph_data(store, results, n = n, columns = columns))
+    }
+
+    if (S7::S7_inherits(x, ShiftOutputs)) {
+        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+            return(data.table::data.table())
+        }
+        outputs <- shift_epw_output_rows_for_cases(store, ids$morph_id, case_id = case_id)
+        if (!nrow(outputs)) {
+            return(data.table::data.table())
+        }
+        return(shift_read_epw_output_data(store, outputs, n = n, columns = columns))
+    }
+
+    data.table::data.table()
 }
 
 #' @rdname shift_api
@@ -682,6 +1178,19 @@ shift_outputs <- function(x) {
 shift_artifacts <- function(x) {
     shift_assert_stage(x)
     ids <- shift_ids(x)
+
+    if (S7::S7_inherits(x, ShiftMorphed) && !is.null(ids$morph_id)) {
+        store <- shift_store(x)
+        results <- shift_morph_result_rows(store, ids$morph_id)
+        return(shift_artifact_rows(store, results$artifact_id))
+    }
+
+    if (S7::S7_inherits(x, ShiftOutputs) && !is.null(ids$morph_id)) {
+        store <- shift_store(x)
+        outputs <- shift_epw_output_rows_for_cases(store, ids$morph_id)
+        return(shift_artifact_rows(store, outputs$artifact_id))
+    }
+
     ids <- ids[!vapply(ids, is.null, logical(1L))]
     if (!length(ids)) {
         return(data.table::data.table())
@@ -866,9 +1375,7 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
         cli::cli_abort("`store` is required for {.fn shift_collect}.")
     }
     store <- shift_store(store, create = TRUE)
-    query <- shift_as_query(x)
-
-    datasets <- query$collect(type = "Dataset", all = all, limit = limit)
+    datasets <- shift_datasets(x, all = all, limit = limit)
     files <- datasets$collect(type = "File", fields = fields, all = TRUE, limit = NULL, ...)
 
     if (!is.null(x@meta$time)) {
@@ -893,6 +1400,7 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
         meta = list(
             request = x,
             dataset_count = datasets$count(),
+            datasets = datasets,
             file_count = files$count(),
             variables = variables,
             fields = fields
@@ -948,10 +1456,11 @@ S7::method(shift_download, ShiftFiles) <- function(x, downloader = NULL, run = T
     )
 }
 
-S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
-                                                     filters = list(), nearest = 1L,
-                                                     fallback = c("auto", "error"), overwrite = FALSE,
-                                                     resume = TRUE) {
+shift_extract_stage <- function(x, upstream_name, site = NULL, periods = NULL, variables = NULL, time = NULL,
+                                filters = list(), nearest = 1L,
+                                fallback = c("auto", "error"), overwrite = FALSE,
+                                resume = TRUE) {
+    checkmate::assert_choice(upstream_name, c("files", "download"))
     if (!S7::S7_inherits(site, ShiftSite)) {
         cli::cli_abort("`site` must be created by {.fn shift_site}.")
     }
@@ -965,7 +1474,7 @@ S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = N
     store <- shift_store(x)
     ids <- shift_ids(x)
     variables <- shift_coalesce(variables, shift_stage_variables(x))
-    time <- shift_coalesce(time, shift_periods_time(periods))
+    time <- shift_time_window(shift_coalesce(time, shift_periods_time(periods)))
 
     plan <- store$plan_region(
         query_id = ids$query_id,
@@ -981,22 +1490,63 @@ S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = N
     processed <- store$extract(plan_id = plan_id, fallback = fallback, overwrite = overwrite, resume = resume)
     coverage <- store$coverage(plan_id = plan_id)
     diagnostics <- shift_diagnostics_from_coverage(coverage)
+    upstream <- stats::setNames(list(x), upstream_name)
 
     shift_stage_new(
         ShiftClimate,
         "climate",
         store_path = x@store_path,
         ids = utils::modifyList(ids, list(plan_id = plan_id)),
-        meta = list(
-            download = x,
-            site = site,
-            periods = data.table::as.data.table(periods),
-            variables = variables,
-            plan = plan,
-            processed = processed,
-            coverage = coverage
+        meta = c(
+            upstream,
+            list(
+                site = site,
+                periods = data.table::as.data.table(periods),
+                variables = variables,
+                plan = plan,
+                processed = processed,
+                coverage = coverage
+            )
         ),
         diagnostics = diagnostics
+    )
+}
+
+S7::method(shift_extract, ShiftFiles) <- function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
+                                                  filters = list(), nearest = 1L,
+                                                  fallback = c("auto", "error"), overwrite = FALSE,
+                                                  resume = TRUE) {
+    shift_extract_stage(
+        x,
+        upstream_name = "files",
+        site = site,
+        periods = periods,
+        variables = variables,
+        time = time,
+        filters = filters,
+        nearest = nearest,
+        fallback = fallback,
+        overwrite = overwrite,
+        resume = resume
+    )
+}
+
+S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
+                                                     filters = list(), nearest = 1L,
+                                                     fallback = c("auto", "error"), overwrite = FALSE,
+                                                     resume = TRUE) {
+    shift_extract_stage(
+        x,
+        upstream_name = "download",
+        site = site,
+        periods = periods,
+        variables = variables,
+        time = time,
+        filters = filters,
+        nearest = nearest,
+        fallback = fallback,
+        overwrite = overwrite,
+        resume = resume
     )
 }
 
@@ -1260,8 +1810,9 @@ S7::method(print, ShiftStage) <- function(x, ...) {
     cat(sprintf("  stage:  %s\n", x@stage))
     cat(sprintf("  status: %s\n", status))
     if (!is.null(x@store_path)) {
-        cat(sprintf("  store:  %s\n", x@store_path))
+        cat(sprintf("  store:  %s\n", shift_display_path(x@store_path)))
     }
+    shift_stage_print_details(x)
     ids <- shift_ids(x)
     ids <- ids[!vapply(ids, is.null, logical(1L))]
     ids <- ids[vapply(ids, function(value) any(!is.na(value)), logical(1L))]
@@ -1285,6 +1836,9 @@ S7::method(print, ShiftSite) <- function(x, ...) {
     }
     if (!is.null(x@epw)) {
         epw <- if (is.character(x@epw)) x@epw else class(x@epw)[[1L]]
+        if (is.character(epw)) {
+            epw <- shift_display_path(epw)
+        }
         cat(sprintf("  epw:    %s\n", epw))
     }
     invisible(x)
