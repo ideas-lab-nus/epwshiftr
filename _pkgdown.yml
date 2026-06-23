@@ -20,18 +20,24 @@ navbar:
     articles:
       text: Articles
       menu:
-      - text: "Extract Future Weather Data"
-        href: articles/future-weather-workflow.html
-      - text: "Store-Native EPW Morphing Workflow"
-        href: articles/store-native-morphing-workflow.html
-      - text: "Select ESGF Data for Future Weather"
-        href: articles/select-esgf-data.html
-      - text: "Store, Download, and Extract ESGF Files"
-        href: articles/store-download-extract.html
+      - text: "Create Future EPW Files"
+        href: articles/future-epw-workflow.html
+      - text: "Work with ESGF Query Results"
+        href: articles/esgf-query-results.html
+      - text: "Manage ESG Dictionaries"
+        href: articles/esg-dictionaries.html
+      - text: "Manage ESG Stores"
+        href: articles/esg-store.html
+      - text: "Run Persistent Downloads"
+        href: articles/downloader.html
+      - text: "Inspect EPW Morphing"
+        href: articles/epw-morpher.html
       - text: "Manage ESGF Stores from the Command Line"
         href: articles/cli-esgf-store.html
-      - text: "Manage ESG Dictionaries"
-        href: articles/cmip6_dict.html
+      - text: "Troubleshoot ESGF Workflows"
+        href: articles/esgf-troubleshooting.html
+      - text: "Migrate from the Legacy Workflow"
+        href: articles/legacy-migration.html
     reference:
       text: Manual
       href: reference/index.html
@@ -112,6 +118,12 @@ reference:
       - EsgStore
       - Downloader
 
+  - title: Command line interface
+    contents:
+      - epwshiftr_cli
+      - install_cli
+      - uninstall_cli
+
   - title: epwshiftr Options
     contents:
       - epwshiftr-package
@@ -122,6 +134,7 @@ reference:
       - EsgDataset
       - esg_result
       - EsgResult
+      - "[.EsgResult"
       - EsgResultDataset
       - EsgResultFile
       - EsgResultAggregation

@@ -1,0 +1,408 @@
+---
+title: "Manage ESG Stores"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Manage ESG Stores}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Use EsgStore to keep live query snapshots, file catalogs, download plans,
+    extraction plans, artifacts, and generated outputs connected.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{r setup}
+library(epwshiftr)
+
+workflow_root <- file.path(tempdir(), "epwshiftr-esg-store")
+if (dir.exists(workflow_root)) {
+    unlink(workflow_root, recursive = TRUE)
+}
+dir.create(workflow_root, recursive = TRUE, showWarnings = FALSE)
+
+options(
+    epwshiftr.dir_cache = file.path(workflow_root, "cache")
+)
+
+select_cols <- function(x, cols, n = 10L) {
+    x <- data.table::as.data.table(x)
+    keep <- intersect(cols, names(x))
+    if (length(keep)) {
+        x <- x[, keep, with = FALSE]
+    }
+    utils::head(x, n)
+}
+```
+
+`EsgStore` is the durable workspace behind the
+[future EPW workflow](future-epw-workflow.html). The high-level `shift_*()`
+functions carry store paths and manifest IDs for ordinary workflows, but the
+lower-level store API is useful when you need to inspect, update, maintain, or
+repair a project.
+
+An ESG store has two parts:
+
+- a fixed directory layout for source artifacts and generated files;
+- a DuckDB manifest that records identity, provenance, relationships, status,
+  and file paths.
+
+Use store methods to change store state. Manual edits to the manifest or moving
+registered files by hand can break the links that let epwshiftr resume work.
+
+# Create or Open a Store
+
+Use a persistent path for real projects. This article uses a temporary path and
+removes it before each render so the live output is reproducible.
+
+```{r create-store}
+store_path <- file.path(workflow_root, "store")
+store <- EsgStore$new(store_path)
+
+store$path
+store$manifest
+list.files(store$path, all.files = TRUE, no.. = TRUE)
+```
+
+`EsgStore$new()` creates these directories:
+
+- `queries/`: serialized query and result snapshots.
+- `dicts/`: saved project dictionaries.
+- `sources/`: raw upstream dictionary or request sources.
+- `downloads/`: store-managed NetCDF downloads.
+- `extracts/`: site-scale extracted Parquet outputs.
+- `outputs/`: morphing outputs and generated EPW files.
+- `tmp/`: temporary working files, including `tmp/downloads/`.
+- `logs/`: downloader background job and daemon logs.
+
+The root path and manifest path are not meant to be changed after creation. If
+you need a new location, create a new store or move the whole store directory as
+a unit while no R process has it open.
+
+# Inspect the Manifest
+
+The manifest is a DuckDB database. `store$query()` is the safe read path for
+ad-hoc inspection.
+
+```{r manifest-tables}
+store$query("
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'main'
+    ORDER BY table_name
+")
+```
+
+The core table families are:
+
+- metadata: `store_meta`;
+- artifacts: `artifact`;
+- stored queries and updates: `esg_query`, `esg_query_file`,
+  `esg_query_update`, `esg_query_update_file`, `esg_query_tag`,
+  `esg_query_dependency`;
+- file identity and catalog: `esg_file`, `file_catalog`;
+- extraction: `extraction_plan`, `extraction_result`;
+- EPW morphing and outputs: `epw_source`, `epw_baseline_summary`,
+  `epw_climate_summary`, `epw_morph_plan`, `epw_morph_factor`,
+  `epw_morph_result`, `epw_output`.
+
+Downloader state is stored in the downloader's own manifest. When you create it
+through `store$downloader()`, that manifest lives under `tmp/downloads/`.
+
+```{r store-meta}
+store$get_meta("schema_version")
+store$download_layout()
+```
+
+# Configure Download Layout
+
+Only the download layout is designed to be changed after store creation. Choose
+it before large downloads so paths stay stable.
+
+```{r download-layout}
+store$set_download_layout(
+    layout = "drs",
+    include_version = TRUE,
+    collision = "error",
+    missing = "fallback"
+)
+
+store$download_layout()
+```
+
+Supported layouts are:
+
+- `flat`: put files directly under `downloads/`;
+- `dataset`: group by ESGF dataset identity;
+- `drs`: use a CMIP-style DRS path;
+- `template`: use a custom subdirectory template such as
+  `{source_id}/{experiment_id}/{variable_id}`.
+
+`collision` controls what happens when different logical files map to the same
+path. `missing` controls whether missing layout fields fall back to a safe
+path or stop the operation.
+
+# Add a Live Query
+
+`add_query()` stores a query definition, not just one collected result. Tracked
+queries can later be previewed, updated, tagged, and used to build download
+plans.
+
+```{r live-query}
+variables <- epw_morph_variables("recommended")
+
+query <- esg_query("https://esgf-data.dkrz.de")$
+    activity_id("ScenarioMIP")$
+    experiment_id("ssp585")$
+    source_id("MPI-ESM1-2-LR")$
+    variant_label("r1i1p1f1")$
+    frequency("mon")$
+    variable_id(variables)$
+    data_node("esgf.ceda.ac.uk")$
+    params(table_id = "Amon")$
+    limit(20L)
+
+query_id <- store$add_query(
+    query,
+    label = "singapore-ssp585-amon",
+    track = TRUE
+)
+
+store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
+select_cols(store$queries(), c(
+    "query_id", "label", "index_node", "tracked", "created_at"
+))
+store$query_tags(query_id)
+```
+
+The query snapshot is written under `queries/`, while the query identity and
+tracking state are recorded in the manifest.
+
+```{r query-snapshot}
+list.files(file.path(store$path, "queries"), recursive = TRUE)
+
+store$query("
+    SELECT query_id, label, tracked, query_file
+    FROM esg_query
+")
+```
+
+# Preview and Update Query Files
+
+Previewing asks ESGF for current File records and compares them with the
+store's current links. It does not modify the store.
+
+```{r preview-update}
+preview <- store$preview_update_queries(
+    query_id = query_id,
+    detail = TRUE,
+    fields = "*",
+    all = FALSE,
+    limit = TRUE
+)
+
+preview$summary
+select_cols(preview$changes, c(
+    "change_type", "file_key", "previous_status", "current_status",
+    "current_version", "data_node_changed", "url_changed"
+), n = 12L)
+```
+
+Updating writes the current File identities, file metadata, query-file links,
+and an update record.
+
+```{r update-query}
+updated <- store$update_queries(
+    query_id = query_id,
+    fields = "*",
+    all = FALSE,
+    limit = TRUE
+)
+
+select_cols(updated, c(
+    "query_id", "update_id", "status", "file_total",
+    "new_count", "changed_count", "stale_count"
+))
+
+select_cols(store$query_files(query_id), c(
+    "query_id", "file_key", "status", "filename", "variable_id",
+    "data_node", "datetime_start", "datetime_end"
+), n = 12L)
+```
+
+`query_updates()` and `query_changes()` make update history reviewable.
+
+```{r query-update-history}
+updates <- store$query_updates(query_id)
+select_cols(updates, c(
+    "update_id", "query_id", "status", "file_total",
+    "new_count", "changed_count", "completed_at"
+))
+
+latest_update <- store$query_updates(query_id, latest = TRUE)
+select_cols(
+    store$query_changes(update_id = latest_update$update_id),
+    c("change_type", "file_key", "current_status", "current_version"),
+    n = 12L
+)
+```
+
+# Plan Downloads Without Downloading
+
+The store owns downloader paths for store-managed downloads. Prefer
+`store$downloader()` so completed tasks can be synchronized back into
+`esg_file`, `file_catalog`, and `artifact`.
+
+```{r download-preflight}
+downloader <- store$downloader(
+    n_workers = 2L,
+    retries = 1L,
+    timeout = 120L,
+    resource_policy = list(min_free_space = 0)
+)
+
+download_preview <- store$download_preflight(
+    query_id = query_id,
+    downloader = downloader,
+    replica = "current",
+    service = "HTTPServer",
+    probe = FALSE,
+    fields = "*",
+    all = FALSE,
+    limit = TRUE
+)
+
+download_preview$summary
+select_cols(download_preview$files, c(
+    "file_key", "filename", "variable_id", "size",
+    "local_path", "status"
+), n = 12L)
+select_cols(download_preview$candidates, c(
+    "filename", "service", "data_node", "size", "url"
+), n = 12L)
+```
+
+To enqueue or run downloads, use `download_query()` or `download_files()`. This
+article stops at preflight because CMIP NetCDF files are large.
+
+```r
+session_id <- store$download_query(
+    query_id = query_id,
+    downloader = downloader,
+    replica = "current",
+    service = "HTTPServer",
+    run = TRUE,
+    progress = TRUE
+)
+
+store$sync_downloads(downloader)
+```
+
+# Plan Extraction
+
+Extraction plans connect query files to a site, time range, variables, and a
+nearest-grid rule. Planning is metadata-only; extraction reads OPeNDAP or local
+NetCDF data and writes Parquet outputs under `extracts/`.
+
+```{r plan-region}
+region <- store$plan_region(
+    query_id = query_id,
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    site_id = "SIN",
+    variable_id = variables,
+    nearest = 1L
+)
+
+select_cols(region, c(
+    "plan_id", "query_id", "file_key", "site_id", "variable_id",
+    "lon", "lat", "time_start", "time_stop", "status"
+), n = 12L)
+
+select_cols(store$coverage(plan_id = region$plan_id), c(
+    "plan_id", "site_id", "variable_id", "status",
+    "complete", "output_rows", "output_time_count"
+), n = 12L)
+```
+
+Use `store$extract()` when you want to execute the plan. With
+`fallback = "auto"`, extraction tries OPeNDAP first and may fall back to local
+or HTTP downloads when needed.
+
+# Inspect Artifacts and Store State
+
+Artifacts connect files on disk to manifest records. Query snapshots,
+dictionaries, NetCDF downloads, extracted Parquet files, morphing intermediates,
+and EPW outputs all use the same artifact table.
+
+```{r artifact-state}
+store$validate()
+
+store$query("
+    SELECT kind, role, project, relative_path, status, query_id, file_key
+    FROM artifact
+    ORDER BY kind, relative_path
+")
+```
+
+When you have an `artifact_id`, use `artifact_path()` to resolve the absolute
+path instead of assembling paths by hand.
+
+# Maintain Storage
+
+Maintenance methods are intentionally preview-first. Use validation and dry-run
+cleanup before changing anything.
+
+```{r maintenance}
+report <- store$storage_report(detail = TRUE)
+
+report$summary
+select_cols(report$downloads, c("relative_path", "size", "mtime"), n = 8L)
+select_cols(report$registered, c("source", "file_key", "relative_path", "size"), n = 8L)
+
+validation <- store$validate_files(
+    query_id = query_id,
+    checksum = FALSE,
+    layout = TRUE
+)
+
+validation$summary
+select_cols(validation$actions, c(
+    "action", "file_key", "artifact_id", "from_path", "to_path", "reason"
+), n = 10L)
+
+store$repair_files(validation$actions, dry_run = TRUE)
+store$cleanup_downloads(
+    scope = "tmp",
+    older_than = 7 * 24 * 3600,
+    dry_run = TRUE
+)
+```
+
+Checksum validation is useful, but it must read files and can be expensive on a
+large store. Layout validation is cheaper and catches many broken local-path or
+artifact-record problems.
+
+# Store Boundaries
+
+- Use `shift_*()` for the normal end-to-end future EPW workflow.
+- Use `EsgQuery` when you need to understand live Dataset/File/Aggregation
+  results before they enter a store.
+- Use `EsgStore` when you need durable state, query tracking, file catalog
+  inspection, extraction planning, artifact validation, or maintenance.
+- Use `Downloader` when you need transfer execution details: sessions, tasks,
+  retries, background jobs, daemon mode, and node history.
+- Use `EpwMorpher` when you need lower-level control over climate summaries,
+  morphing factors, diagnostics, and EPW writing.

@@ -27,3 +27,33 @@ if (is.data.frame(freshness) && any(freshness$status != "fresh")) {
         call. = FALSE
     )
 }
+
+article_paths <- list.files("vignettes/articles", pattern = "[.]Rmd$", full.names = TRUE)
+render_errors <- lapply(article_paths, function(path) {
+    lines <- readLines(path, warn = FALSE)
+    index <- grep("^#> Error", lines)
+    if (!length(index)) {
+        return(NULL)
+    }
+    data.frame(
+        file = path,
+        line = index,
+        text = lines[index],
+        stringsAsFactors = FALSE
+    )
+})
+render_errors <- do.call(rbind, render_errors[lengths(render_errors) > 0L])
+
+if (!is.null(render_errors) && nrow(render_errors)) {
+    details <- sprintf(
+        "%s:%d: %s",
+        render_errors$file,
+        render_errors$line,
+        render_errors$text
+    )
+    stop(
+        "Rendered raw vignette output contains errors:\n",
+        paste(details, collapse = "\n"),
+        call. = FALSE
+    )
+}

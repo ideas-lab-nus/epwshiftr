@@ -163,9 +163,9 @@ engines:
 
 Use those lower-level objects when you need to inspect or tune
 manifests, download candidate selection, extraction coverage, morphing
-factors, or output registration. See the [store-native morphing workflow
-article](vignettes/articles/store-native-morphing-workflow.Rmd) for the
-expanded query/download/extract/morph/write path.
+factors, or output registration. See [Create Future EPW
+Files](vignettes/articles/future-epw-workflow.Rmd) for the expanded
+query/download/extract/morph/write path.
 
 ## Legacy workflow
 
