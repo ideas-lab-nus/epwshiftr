@@ -517,14 +517,19 @@ esgvocdict__download_vocab_files <- function(
         spinner = TRUE
     )
     zipball <- download_gh_ref(source$repo, tag, tempdir(), token)
-    extracted <- utils::unzip(zipball, exdir = tempdir())
+    archive <- utils::unzip(zipball, list = TRUE)
+    json_files <- archive$Name[grepl("[.]json$", archive$Name)]
+    json_files <- json_files[!grepl("(^|/)[.]", json_files)]
+    extracted <- dict__unzip_archive(zipball, "esg-vocab", json_files)
     files <- extracted[grepl("[.]json$", extracted)]
     files <- files[!grepl("(^|/)[.]", files)]
 
     rel <- esgvocdict__archive_relative_paths(files)
     dests <- file.path(dir, rel)
     if (length(dests)) {
-        dir.create(unique(dirname(dests)), recursive = TRUE, showWarnings = FALSE)
+        for (dest_dir in unique(dirname(dests))) {
+            dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
+        }
         ok <- file.copy(files, dests, overwrite = TRUE)
         if (!all(ok)) {
             stop("Failed to cache downloaded ESG vocabulary files.", call. = FALSE)
@@ -541,6 +546,15 @@ esgvocdict__relative_paths <- function(files, root) {
         "",
         normalizePath(files, winslash = "/", mustWork = FALSE)
     )
+}
+
+dict__unzip_archive <- function(zipball, prefix = "esg-dict-archive", files = NULL) {
+    if (!is.null(files) && !length(files)) {
+        return(character())
+    }
+    exdir <- tempfile(pattern = paste0(prefix, "-"), tmpdir = tempdir())
+    dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
+    utils::unzip(zipball, files = files, exdir = exdir)
 }
 
 esgvocdict__archive_relative_paths <- function(files) {
@@ -743,7 +757,7 @@ cmip6dict__download_dreq_file <- function(
         spinner = TRUE
     )
     zipball <- download_gh_tag(repo, tag, tempdir(), token)
-    extracted <- utils::unzip(zipball, exdir = tempdir())
+    extracted <- dict__unzip_archive(zipball, "cmip6-dreq")
 
     files <- extracted[basename(dirname(extracted)) == "Tables"]
     names(files) <- basename(files)

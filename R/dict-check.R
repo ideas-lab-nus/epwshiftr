@@ -245,6 +245,12 @@ esgdict__value_rows_from_table <- function(field, dt) {
 }
 
 cmip6dict__value_rows <- function(field, value, description = NA_character_, source = NA_character_) {
+    if (is.null(description)) {
+        description <- NA_character_
+    }
+    if (is.null(source)) {
+        source <- NA_character_
+    }
     data.table::data.table(
         field = field,
         value = as.character(value),
