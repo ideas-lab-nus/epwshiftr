@@ -143,13 +143,13 @@ current records.}
 \item{\code{all}}{Reserved for API symmetry with \code{EsgResultFile}.}
 
 \item{\code{node_stats}}{Optional data node history from
-\code{FileDownloader$data_nodes()}.}
+\code{Downloader$data_nodes()}.}
 
 \item{\code{network_policy}}{Optional network options from
-\code{FileDownloader$network_policy}.}
+\code{Downloader$network_policy}.}
 
 \item{\code{node_policy}}{Optional data-node cooldown policy from
-\code{FileDownloader$node_policy}.}
+\code{Downloader$node_policy}.}
 
 \item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
 
@@ -166,7 +166,7 @@ A data.table download plan.
 \if{html}{\out{<a id="method-EsgResultAggregation-download"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultAggregation-download}{}}}
 \subsection{Method \code{download()}}{
-Enqueue and run aggregation downloads using a FileDownloader.
+Enqueue and run aggregation downloads using a Downloader.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$download(
   downloader = NULL,
@@ -186,7 +186,7 @@ Enqueue and run aggregation downloads using a FileDownloader.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{downloader}}{Optional persistent \link{FileDownloader}. If \code{NULL},
+\item{\code{downloader}}{Optional persistent \link{Downloader}. If \code{NULL},
 \code{store$downloader()} is used when \code{store} is supplied.}
 
 \item{\code{store}}{Optional \link{EsgStore} providing a bound downloader.}
@@ -212,7 +212,7 @@ history before probing a URL again. Default: \code{3600}.}
 \item{\code{run}}{Whether to run the queued session immediately. Default:
 \code{TRUE}.}
 
-\item{\code{...}}{Additional arguments passed to \code{FileDownloader$run()}.}
+\item{\code{...}}{Additional arguments passed to \code{Downloader$run()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -271,7 +271,7 @@ non-interactive session this raises an error.
 
 \item{\code{store}}{Optional \link{EsgStore} used for recoverable HTTP fallback.}
 
-\item{\code{downloader}}{Optional persistent \link{FileDownloader} used for
+\item{\code{downloader}}{Optional persistent \link{Downloader} used for
 recoverable HTTP fallback.}
 }
 \if{html}{\out{</div>}}

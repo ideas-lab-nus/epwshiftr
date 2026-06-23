@@ -1001,7 +1001,7 @@ query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
     start <- Sys.time()
     ok <- tryCatch(
         {
-            handle <- download_curl_handle(
+            handle <- downloader__curl_handle(
                 timeout = timeout,
                 connect_timeout = connect_timeout,
                 ssl_verifypeer = ssl_verifypeer,
@@ -1018,7 +1018,7 @@ query_result_probe_url <- function(url, timeout = 5, network_policy = NULL) {
         start <- Sys.time()
         ok <- tryCatch(
             {
-                handle <- download_curl_handle(
+                handle <- downloader__curl_handle(
                     timeout = timeout,
                     connect_timeout = connect_timeout,
                     ssl_verifypeer = ssl_verifypeer,
@@ -1068,7 +1068,7 @@ query_result_probe_urls_network <- function(urls, timeout = 5, network_policy = 
             local({
                 j <- i
                 start <- Sys.time()
-                handle <- download_curl_handle(
+                handle <- downloader__curl_handle(
                     timeout = timeout,
                     connect_timeout = connect_timeout,
                     ssl_verifypeer = ssl_verifypeer,
@@ -1178,8 +1178,8 @@ query_result_probe_urls <- function(urls, data_node = NULL, service = "HTTPServe
 }
 
 query_result_normalize_node_policy <- function(node_policy = NULL) {
-    if (exists("download_node_policy_defaults", mode = "function")) {
-        return(download_node_policy_defaults(node_policy))
+    if (exists("downloader__node_policy_defaults", mode = "function")) {
+        return(downloader__node_policy_defaults(node_policy))
     }
     if (is.null(node_policy)) {
         return(list(history_ttl_seconds = 14L * 24L * 3600L))
@@ -1425,7 +1425,7 @@ query_result_run_http_fallback <- function(result, indices, downloader, session_
 
     session_id <- downloader$enqueue(plan, session_label = session_label)
     tasks <- downloader$run(session_id = session_id, progress = progress)
-    failed <- tasks[!tasks[["status"]] %in% c("done", "skipped")]
+    failed <- tasks[!tasks[["status"]] %in% c("done", "skipped"), , drop = FALSE]
     if (nrow(failed)) {
         cli::cli_abort("HTTP fallback download failed for {nrow(failed)} task(s). Inspect downloader$status(session_id = {.val {session_id}}) for details.")
     }
@@ -1995,11 +1995,11 @@ EsgResultFile <- R6::R6Class(
         #' @param strategy Candidate ranking strategy.
         #' @param all Whether replica expansion should retrieve all matching records.
         #' @param node_stats Optional data node history from
-        #'        `FileDownloader$data_nodes()`.
+        #'        `Downloader$data_nodes()`.
         #' @param network_policy Optional network options from
-        #'        `FileDownloader$network_policy`.
+        #'        `Downloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
-        #'        `FileDownloader$node_policy`.
+        #'        `Downloader$node_policy`.
         #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
         #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
         #'        history before probing a URL again. Default: `3600`.
@@ -2056,11 +2056,11 @@ EsgResultFile <- R6::R6Class(
         #' @param service ESGF URL service to download from. Default:
         #'        `"HTTPServer"`.
         #' @param node_stats Optional data node history from
-        #'        `FileDownloader$data_nodes()`.
+        #'        `Downloader$data_nodes()`.
         #' @param network_policy Optional network options from
-        #'        `FileDownloader$network_policy`.
+        #'        `Downloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
-        #'        `FileDownloader$node_policy`.
+        #'        `Downloader$node_policy`.
         #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
         #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
         #'        history before probing a URL again. Default: `3600`.
@@ -2091,9 +2091,9 @@ EsgResultFile <- R6::R6Class(
 
         # download {{{
         #' @description
-        #' Enqueue and run file downloads using a FileDownloader.
+        #' Enqueue and run file downloads using a Downloader.
         #'
-        #' @param downloader Optional persistent [FileDownloader]. If `NULL`,
+        #' @param downloader Optional persistent [Downloader]. If `NULL`,
         #'        `store$downloader()` is used when `store` is supplied.
         #' @param store Optional [EsgStore] providing a bound downloader.
         #' @param replica Whether to use current records or expand known
@@ -2109,7 +2109,7 @@ EsgResultFile <- R6::R6Class(
         #' @param session_label Optional download session label.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
-        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #' @param ... Additional arguments passed to `Downloader$run()`.
         #'
         #' @return The created downloader session ID.
         download = function(downloader = NULL, store = NULL, replica = c("auto", "current"),
@@ -2187,7 +2187,7 @@ EsgResultFile <- R6::R6Class(
         #'   - `"error"`: Raise an error.
         #'
         #' @param store Optional [EsgStore] used for recoverable HTTP fallback.
-        #' @param downloader Optional persistent [FileDownloader] used for
+        #' @param downloader Optional persistent [Downloader] used for
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.
@@ -2489,11 +2489,11 @@ EsgResultAggregation <- R6::R6Class(
         #' @param strategy Candidate ranking strategy.
         #' @param all Reserved for API symmetry with `EsgResultFile`.
         #' @param node_stats Optional data node history from
-        #'        `FileDownloader$data_nodes()`.
+        #'        `Downloader$data_nodes()`.
         #' @param network_policy Optional network options from
-        #'        `FileDownloader$network_policy`.
+        #'        `Downloader$network_policy`.
         #' @param node_policy Optional data-node cooldown policy from
-        #'        `FileDownloader$node_policy`.
+        #'        `Downloader$node_policy`.
         #' @param probe_concurrency Maximum concurrent URL probes. Default: `1`.
         #' @param probe_cache_seconds Seconds to reuse fresh data-node probe
         #'        history before probing a URL again. Default: `3600`.
@@ -2522,9 +2522,9 @@ EsgResultAggregation <- R6::R6Class(
 
         # download {{{
         #' @description
-        #' Enqueue and run aggregation downloads using a FileDownloader.
+        #' Enqueue and run aggregation downloads using a Downloader.
         #'
-        #' @param downloader Optional persistent [FileDownloader]. If `NULL`,
+        #' @param downloader Optional persistent [Downloader]. If `NULL`,
         #'        `store$downloader()` is used when `store` is supplied.
         #' @param store Optional [EsgStore] providing a bound downloader.
         #' @param replica Replica policy. Aggregation records currently use the
@@ -2540,7 +2540,7 @@ EsgResultAggregation <- R6::R6Class(
         #' @param session_label Optional download session label.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
-        #' @param ... Additional arguments passed to `FileDownloader$run()`.
+        #' @param ... Additional arguments passed to `Downloader$run()`.
         #'
         #' @return The created downloader session ID.
         download = function(downloader = NULL, store = NULL, replica = c("current", "auto"),
@@ -2613,7 +2613,7 @@ EsgResultAggregation <- R6::R6Class(
         #'   - `"error"`: Raise an error.
         #'
         #' @param store Optional [EsgStore] used for recoverable HTTP fallback.
-        #' @param downloader Optional persistent [FileDownloader] used for
+        #' @param downloader Optional persistent [Downloader] used for
         #'        recoverable HTTP fallback.
         #'
         #' @return An `EsgDataset` object with the connection already opened.

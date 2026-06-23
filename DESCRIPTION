@@ -45,6 +45,15 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Collate:
     'cache.R'
+    'cli-doctor.R'
+    'cli-download.R'
+    'cli-help.R'
+    'cli-launcher.R'
+    'cli-parse.R'
+    'cli-query.R'
+    'cli-render.R'
+    'cli-storage.R'
+    'cli.R'
     'coord.R'
     'dataset.R'
     'dict-check.R'
