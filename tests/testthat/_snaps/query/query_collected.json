@@ -53,6 +53,11 @@
       "value": ["application/solr+json"],
       "negate": [false]
     },
+    "datetime_start": null,
+    "datetime_stop": null,
+    "_timestamp": null,
+    "version_min": null,
+    "version_max": null,
     "table_id": {
       "value": ["Amon", "day"],
       "negate": [false]
