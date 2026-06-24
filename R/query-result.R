@@ -1,13 +1,3 @@
-print_trunc <- function(x, n) {
-    total <- length(x)
-    if (is.null(n) || n >= total) {
-        return(invisible(FALSE))
-    }
-
-    cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
-    invisible(TRUE)
-}
-
 # EsgResult {{{
 #' Base class for results for ESGF query
 #'
