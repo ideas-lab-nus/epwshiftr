@@ -1,5 +1,5 @@
 gh_token <- function(token = NULL, header = TRUE) {
-    assert_string(token, null.ok = TRUE)
+    checkmate::assert_string(token, null.ok = TRUE)
 
     if (is.null(token)) {
         token <- Sys.getenv("GITHUB_PAT")
@@ -38,7 +38,7 @@ gh <- function(path, token = NULL) {
         headers <- c(headers, token)
     }
 
-    jsonlite::parse_json(base::url(link, headers = headers))
+    jsonlite::fromJSON(base::url(link, headers = headers))
 }
 
 # TODO: pagination for tags

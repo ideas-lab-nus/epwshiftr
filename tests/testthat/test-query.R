@@ -1,6 +1,4 @@
-# this host that currently supports facet listing
-host <- "https://esgf.ceda.ac.uk/esg-search"
-
+# new_query_param() {{{
 test_that("ESGF Query Parameter works", {
     # can create new query parameter
     expect_s3_class(
@@ -8,32 +6,32 @@ test_that("ESGF Query Parameter works", {
         "EsgfQueryParam"
     )
 
-    expect_snapshot_output(format(new_query_param("x", list(value = TRUE, negate = TRUE))))
-    expect_snapshot_output(format(new_query_param("x", list(value = 1.0, negate = TRUE))))
+    expect_snapshot(format(new_query_param("x", list(value = TRUE, negate = TRUE))))
+    expect_snapshot(format(new_query_param("x", list(value = 1.0, negate = TRUE))))
     # can encode parameter
-    expect_snapshot_output(format(new_query_param("x", list(value = "solr+json", negate = TRUE))))
+    expect_snapshot(format(new_query_param("x", list(value = "solr+json", negate = TRUE))))
 
     # can add spaces
-    expect_snapshot_output(format(new_query_param("x", TRUE), space = TRUE))
-    expect_snapshot_output(format(new_query_param("x", 1.0), space = TRUE))
-    expect_snapshot_output(format(new_query_param("x", "solr+json"), space = TRUE))
+    expect_snapshot(format(new_query_param("x", TRUE), space = TRUE))
+    expect_snapshot(format(new_query_param("x", 1.0), space = TRUE))
+    expect_snapshot(format(new_query_param("x", "solr+json"), space = TRUE))
 
     # can print query parameter
-    expect_snapshot_output(print(new_query_param("x", list(value = TRUE, negate = TRUE))))
-    expect_snapshot_output(print(new_query_param("x", list(value = 1.0, negate = TRUE))))
-    expect_snapshot_output(print(new_query_param("x", list(value = "solr+json", negate = TRUE))))
+    expect_snapshot(print(new_query_param("x", list(value = TRUE, negate = TRUE))))
+    expect_snapshot(print(new_query_param("x", list(value = 1.0, negate = TRUE))))
+    expect_snapshot(print(new_query_param("x", list(value = "solr+json", negate = TRUE))))
 
     # can build query url
-    host <- "https://esgf-node.llnl.gov/esg-search"
-    expect_null(query_build(host, list(project = NULL)))
-    expect_true(grepl("CMIP5", query_build(host, list(project = "CMIP6", others = list(project = "CMIP5")))))
+    index_node <- "https://esgf-node.llnl.gov/esg-search"
+    expect_null(query_build(index_node, list(project = NULL)))
+    expect_true(grepl("CMIP5", query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5")))))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
-        query_build(host, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon")))
+        query_build(index_node, list(project = "CMIP6", others = list(project = "CMIP5", table_id = "Amon")))
     ))
     expect_true(grepl(
         "project=CMIP5&table_id=Amon",
-        query_build(host,
+        query_build(index_node,
             list(
                 project = new_query_param("project", "CMIP6"),
                 others = list(
@@ -44,22 +42,86 @@ test_that("ESGF Query Parameter works", {
         )
     ))
 })
+# }}}
 
-test_that("ESGF Query works", {
+# query_esgf() {{{
+test_that("query_esgf()", {
+    expect_s3_class(EsgfQuery$new(), "EsgfQuery")
+    expect_s3_class(query_esgf(), "EsgfQuery")
+
     skip_on_cran()
 
-    host <- "https://esgf.ceda.ac.uk/esg-search"
-    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
-    expect_s3_class(q <- query_esgf(host), "EsgfQuery")
+    index_node <- get_fast_index_node()
+    expect_s3_class(q <- EsgfQuery$new(index_node), "EsgfQuery")
+    expect_s3_class(q <- query_esgf(index_node), "EsgfQuery")
+})
+# }}}
 
-    # listing
-    expect_type(q$list_all_facets(), "character")
-    expect_type(q$list_all_shards(), "character")
-    expect_type(q$list_all_values("activity_id"), "character")
+# EsgfQuery$list_facets() {{{
+test_that("EsgfQuery$list_facets()", {
+    skip_on_cran()
+    index_node_normal <- INDEX_NODES[["CEDA"]]
+    index_node_bridge <- INDEX_NODES[["ORNL"]]
+
+    expect_s3_class(q <- query_esgf(index_node_normal), "EsgfQuery")
+    expect_type(q$list_facets(), "character")
+
+    # bridge node directly returns predefined facet names
+    expect_s3_class(q <- query_esgf(index_node_bridge), "EsgfQuery")
+    expect_type(q$list_facets(), "character")
+    expect_equal(q$list_facets(), FIELDS_FACETS_COMMON)
+})
+# }}}
+
+# EsgfQuery$list_fields() {{{
+test_that("EsgfQuery$list_fields()", {
+    skip_on_cran()
+    index_node_normal <- INDEX_NODES[["CEDA"]]
+    index_node_bridge <- INDEX_NODES[["ORNL"]]
+
+    expect_s3_class(q <- query_esgf(index_node_normal), "EsgfQuery")
+    expect_type(q$list_fields(), "character")
+    expect_s3_class(q <- query_esgf(index_node_bridge), "EsgfQuery")
+    expect_type(q$list_fields(), "character")
+})
+# }}}
+
+# EsgfQuery$list_shards() {{{
+test_that("EsgfQuery$list_shards()", {
+    skip_on_cran()
+    index_node_normal <- INDEX_NODES[["CEDA"]]
+    index_node_bridge <- INDEX_NODES[["ORNL"]]
+
+    expect_s3_class(q <- query_esgf(index_node_normal), "EsgfQuery")
+    expect_type(q$list_shards(), "character")
+    expect_s3_class(q <- query_esgf(index_node_bridge), "EsgfQuery")
+    expect_type(q$list_shards(), "character")
+})
+# }}}
+
+# EsgfQuery$list_values() {{{
+test_that("EsgfQuery$list_values()", {
+    skip_on_cran()
+    index_node_normal <- INDEX_NODES[["CEDA"]]
+    index_node_bridge <- INDEX_NODES[["ORNL"]]
+
+    expect_s3_class(q <- query_esgf(index_node_normal), "EsgfQuery")
+    expect_type(q$list_values("activity_id"), "integer")
+    expect_s3_class(q <- query_esgf(index_node_bridge), "EsgfQuery")
+    expect_type(q$list_values(c("activity_id", "experiment_id")), "list")
+    expect_named(q$list_values(c("activity_id", "experiment_id")), c("activity_id", "experiment_id"))
+})
+# }}}
+
+# EsgfQuery$project() and other facet methods {{{
+test_that("EsgfQuery$project() and other facet methods", {
+    q <- query_esgf()
 
     # project
     expect_equal(q$project()$value, "CMIP6")
     expect_equal(q$project("CMIP5")$project()$value, "CMIP5")
+    expect_equal(q$project(-"CMIP5")$project()$value, "CMIP5")
+    expect_equal(q$project(!"CMIP5")$project()$value, "CMIP5")
 
     # activity id
     expect_null(q$activity_id())
@@ -104,65 +166,88 @@ test_that("ESGF Query works", {
 
     # data_node
     expect_null(q$data_node())
-    dn <- q$list_all_values("data_node")
-    expect_equal(q$data_node(dn)$data_node()$value, dn)
+    expect_equal(q$data_node("esgf-node.ornl.gov")$data_node()$value, "esgf-node.ornl.gov")
     expect_null(q$data_node(NULL)$data_node())
+})
+# }}}
 
-    # facets
-    expect_null(q$facets())
-    expect_equal(q$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
-    expect_null(q$facets(NULL)$facets())
+# EsgfQuery$facets() {{{
+test_that("EsgfQuery$facets()", {
+    expect_null(query_esgf()$facets())
+    expect_equal(query_esgf()$facets(c("activity_id", "source_id"))$facets()$value, c("activity_id", "source_id"))
+    expect_null(query_esgf()$facets(NULL)$facets())
+})
+# }}}
 
-    # fields
-    expect_equal(q$fields()$value, "*")
-    expect_equal(q$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
-    expect_equal(q$fields("*")$fields()$value, "*")
-    expect_null(q$fields(NULL)$fields())
+# EsgfQuery$fields() {{{
+test_that("EsgfQuery$fields()", {
+    expect_equal(query_esgf()$fields()$value, "*")
+    expect_equal(query_esgf()$fields(c("activity_id", "source_id"))$fields()$value, c("activity_id", "source_id"))
+    expect_equal(query_esgf()$fields("*")$fields()$value, "*")
+    expect_null(query_esgf()$fields(NULL)$fields())
+})
+# }}}
 
-    # shards
+# EsgfQuery$shards() {{{
+test_that("EsgfQuery$shards()", {
+    expect_s3_class(q <- query_esgf(), "EsgfQuery")
+
     expect_null(q$shards())
     expect_false(q$distrib(FALSE)$distrib()$value)
     expect_error(q$shards("a"), "distrib")
     expect_true(q$distrib(TRUE)$distrib()$value)
-    expect_error(q$shards("a"), "Assertion")
-    shard <- gsub("(?<=/solr).+", "", q$list_all_shards()[1L], perl = TRUE)
-    expect_equal(q$shards(shard)$shards()$value, shard)
+    expect_s3_class(q$shards("a"), "EsgfQuery")
+    expect_equal(
+        q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()$value,
+        "esgf-solr.ceda.ac.uk:8983/solr"
+    )
     expect_null(q$shards(NULL)$shards())
+})
+# }}}
 
-    # replica
-    expect_null(q$replica())
-    expect_equal(q$replica(TRUE)$replica()$value, TRUE)
-    expect_equal(q$replica(FALSE)$replica()$value, FALSE)
-    expect_null(q$replica(NULL)$replica())
+# EsgfQuery$replica() {{{
+test_that("EsgfQuery$replica()", {
+    expect_null(query_esgf()$replica())
+    expect_equal(query_esgf()$replica(TRUE)$replica()$value, TRUE)
+    expect_equal(query_esgf()$replica(FALSE)$replica()$value, FALSE)
+    expect_null(query_esgf()$replica(NULL)$replica())
+})
+# }}}
 
-    # latest
-    expect_true(q$latest()$value)
-    expect_false(q$latest(FALSE)$latest()$value)
-    expect_true(q$latest(TRUE)$latest()$value)
+# EsgfQuery$latest() {{{
+test_that("EsgfQuery$latest()", {
+    expect_true(query_esgf()$latest()$value)
+    expect_false(query_esgf()$latest(FALSE)$latest()$value)
+    expect_true(query_esgf()$latest(TRUE)$latest()$value)
+})
+# }}}
 
-    # type
-    expect_equal(q$type()$value, "Dataset")
-    expect_equal(q$type("Aggregation")$type()$value, "Aggregation")
-    expect_equal(q$type("Dataset")$type()$value, "Dataset")
-
-    # limit
-    expect_equal(q$limit()$value, 10L)
-    expect_warning(lim <- q$limit(12000)$limit(), "10,000")
+# EsgfQuery$limit() {{{
+test_that("EsgfQuery$limit()", {
+    expect_equal(query_esgf()$limit()$value, 10L)
+    expect_warning(lim <- query_esgf()$limit(12000)$limit(), "10,000")
     expect_equal(lim$value, 10000L)
-    expect_equal(q$limit(10L)$limit()$value, 10L)
+    expect_equal(query_esgf()$limit(10L)$limit()$value, 10L)
+})
+# }}}
 
-    # offset
-    expect_equal(q$offset()$value, 0L)
-    expect_equal(q$offset(0)$offset()$value, 0L)
+# EsgfQuery$offset() {{{
+test_that("EsgfQuery$offset()", {
+    expect_equal(query_esgf()$offset()$value, 0L)
+    expect_equal(query_esgf()$offset(0)$offset()$value, 0L)
+})
+# }}}
 
-    # params
-    ## can use existing method for common parameters
+# EsgfQuery$params() {{{
+test_that("EsgfQuery$params()", {
+    expect_s3_class(q <- query_esgf(), "EsgfQuery")
+
+    # can use existing method for common parameters
     expect_equal(q$params(), list())
-    expect_error(q$params(nominal_resolution = !c("a", "b")), "Assertion")
     expect_equal(q$params(nominal_resolution = !c("10 km", "25 km"))$params(), list())
-    expect_error(q$params(table_id = "1"), "Assertion")
     expect_error(q$params(table_id = "day", table_id = "hour"), "unique names")
-    ## can reset existing parameters
+
+    # can reset existing parameters
     expect_equal(q$frequency("day")$frequency()$value, "day")
     expect_equal(q$params(frequency = NULL)$params(), list())
     expect_null(q$frequency())
@@ -173,37 +258,116 @@ test_that("ESGF Query works", {
             member_id = new_query_param("member_id", "r1i1p1f1")
         )
     )
-    ## can reset format
+
+    # can reset format
     expect_warning(q$params(format = "xml"), "JSON")
+
+    # can reset type
+    expect_warning(q$params(type = "File"))
+
     # can restore original values in case of error
     expect_equal(q$frequency("day")$frequency()$value, "day")
-    expect_error(q$params(frequency = "1hr", source_id = "a"), "Assertion")
+    expect_error(q$params(frequency = "1hr", frequency = "a"), "Assertion")
     expect_equal(q$frequency()$value, "day")
-    ## can remove all paramters
+
+    # can remove all paramters
     expect_equal(q$params(NULL)$params(), list())
+})
+# }}}
+
+# EsgfQuery$url(), EsgfQuery$count() {{{
+test_that("EsgfQuery$url(), EsgfQuery$count()", {
+    skip_on_cran()
+    index_node <- INDEX_NODES[["CEDA"]]
 
     # can get url
-    expect_type(EsgfQuery$new(host)$nominal_resolution("100 km")$url(), "character")
-    expect_type(EsgfQuery$new(host)$nominal_resolution("100 km")$url(TRUE), "character")
-    expect_type(EsgfQuery$new(host)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
+    expect_type(EsgfQuery$new(index_node)$nominal_resolution("100 km")$url(), "character")
+    expect_type(EsgfQuery$new(index_node)$nominal_resolution("100 km")$url(TRUE), "character")
+    expect_type(EsgfQuery$new(index_node)$params(project = "CMIP5", table_id = "Amon")$url(), "character")
 
     # can get count
-    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(FALSE), "integer")
-    expect_type(EsgfQuery$new(host)$frequency("1hr")$count(TRUE), "integer")
-    expect_type(cnt <- EsgfQuery$new(host)$frequency("1hr")$count("activity_id"), "list")
+    expect_type(EsgfQuery$new(index_node)$frequency("1hr")$count(FALSE), "integer")
+    expect_type(EsgfQuery$new(index_node)$frequency("1hr")$count(TRUE), "integer")
+    expect_type(cnt <- EsgfQuery$new(index_node)$frequency("1hr")$count("activity_id"), "list")
     expect_equal(names(cnt), c("total", "activity_id"))
-
-    # can collect data
-    expect_equal(EsgfQuery$new(host)$limit(0)$frequency("1hr")$collect(), data.table::setDT(list()))
-    expect_s3_class(res <- EsgfQuery$new(host)$limit(1)$fields("source_id")$collect(), "data.table")
-    expect_equal(names(res), "source_id")
-
-    # can return last response
-    expect_null(EsgfQuery$new(host)$response())
-    expect_s3_class(q <- EsgfQuery$new(host), "EsgfQuery")
-    expect_type(q$limit(0)$frequency("1hr")$count(), "integer")
-    expect_type(q$response(), "list")
-    expect_equal(names(q$response()), c("responseHeader", "response", "facet_counts"))
-
-    expect_snapshot_output(EsgfQuery$new(host)$params(table_id = "Amon", member_id = "r1i1p1f1")$print())
 })
+# }}}
+
+# EsgfQuery$collect() {{{
+test_that("EsgfQuery$collect()", {
+    skip_on_cran()
+    index_node <- get_fast_index_node()
+
+    expect_s3_class(q <- query_esgf(index_node)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgfQuery")
+
+    # can collect the specified limit number of records
+    expect_s3_class(
+        res <- q$limit(1)$collect(),
+        "EsgfQueryResultDataset"
+    )
+
+    # can collect fields with constraints
+    expect_true(all(c("project", "frequency", "source_id") %in% names(res)))
+
+    # can collect required fields
+    # NOTE: it is possible that some index nodes do not have
+    # 'number_of_aggregations' field
+    expect_true(
+        all(setdiff(EsgfQueryResultDataset$private_fields$required_fields, "number_of_aggregations") %in% names(res))
+    )
+
+    # can collect all results with auto-pagination
+    ## with maximum batch size
+    expect_s3_class(res <- q$collect(all = TRUE, limit = FALSE), "EsgfQueryResultDataset")
+    ## with specified limits
+    expect_s3_class(res <- q$collect(all = TRUE, limit = 30), "EsgfQueryResultDataset")
+})
+# }}}
+
+# EsgfQuery$save() & EsgfQuery$load() {{{
+test_that("EsgfQuery$save() & EsgfQuery$load()", {
+    skip_on_cran()
+    index_node <- INDEX_NODES[["CEDA"]]
+
+    q <- EsgfQuery$new(index_node)$
+        activity_id("ScenarioMIP")$
+        experiment_id("ssp585")$
+        variable_id("tas")$
+        limit(2)$
+        params(table_id = c("Amon", "day"))
+
+    # empty query object
+    file_empty <- tempfile(fileext = ".json")
+    expect_snapshot_file(q$save(file_empty), "query_empty.json")
+    expect_s3_class(q_empty <- query_esgf()$load(file_empty), "EsgfQuery")
+    expect_equal(priv(q_empty)$url_index_node, priv(q)$url_index_node)
+    expect_equal(priv(q_empty)$parameter,      priv(q)$parameter)
+    expect_equal(priv(q_empty)$response,       priv(q)$response)
+
+    # query object with results
+    q$collect()
+    file_collected <- tempfile(fileext = ".json")
+    expect_type(q$save(file_collected), "character")
+    expect_true(file.exists(file_collected))
+    file_collected_copied <- tempfile(fileext = ".json")
+    expect_true(file.copy(file_collected, file_collected_copied))
+    expect_snapshot_file(file_collected_copied, "query_collected.json", transform = transform_json)
+    expect_s3_class(q_collected <- query_esgf()$load(file_collected), "EsgfQuery")
+    expect_equal(priv(q_collected)$index_node, priv(q)$index_node)
+    expect_equal(priv(q_collected)$parameter,  priv(q)$parameter)
+
+    unlink(c(file_collected, file_collected_copied))
+})
+# }}}
+
+# EsgfQuery$print() {{{
+test_that("EsgfQuery$print()", {
+    skip_on_cran()
+
+    expect_snapshot(
+        EsgfQuery$new("a")$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+    )
+})
+# }}}
+
+# vim: fdm=marker :

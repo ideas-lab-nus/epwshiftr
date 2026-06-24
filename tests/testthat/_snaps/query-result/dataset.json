@@ -1,0 +1,139 @@
+{
+  "index_node": ["..."],
+  "parameter": {
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
+    },
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
+    },
+    "experiment_id": {
+      "value": ["ssp585"],
+      "negate": [false]
+    },
+    "source_id": {
+      "value": ["AWI-CM-1-1-MR"],
+      "negate": [false]
+    },
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": {
+      "value": ["day"],
+      "negate": [false]
+    },
+    "variant_label": {
+      "value": ["r1i1p1f1"],
+      "negate": [false]
+    },
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["source_id", "experiment_id", "frequency"],
+      "negate": [false]
+    },
+    "shards": null,
+    "replica": null,
+    "latest": {
+      "value": [true],
+      "negate": [false]
+    },
+    "type": {
+      "value": ["Dataset"],
+      "negate": [false]
+    },
+    "offset": {
+      "value": [0],
+      "negate": [false]
+    },
+    "distrib": {
+      "value": [true],
+      "negate": [false]
+    },
+    "limit": {
+      "value": [2],
+      "negate": [false]
+    },
+    "format": {
+      "value": ["application/solr+json"],
+      "negate": [false]
+    }
+  },
+  "response": {
+    "responseHeader": {
+      "status": [0],
+      "QTime": [-1],
+      "params": {
+        "df": ["text"],
+        "q.alt": ["*:*"],
+        "indent": ["true"],
+        "echoParams": ["all"],
+        "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
+        "start": ["0"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "experiment_id:\"ssp585\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "rows": ["2"],
+        "q": ["*:*"],
+        "shards": ["..."],
+        "tie": ["0.01"],
+        "facet.limit": ["-1"],
+        "qf": ["text"],
+        "facet.method": ["enum"],
+        "facet.mincount": ["1"],
+        "wt": ["json"],
+        "facet": ["true"],
+        "facet.sort": ["lex"]
+      }
+    },
+    "response": {
+      "numFound": [-1],
+      "start": [0],
+      "maxScore": [0.5],
+      "docs": [
+        {
+          "id": "...",
+          "access": ["...", "..."],
+          "activity_id": ["..."],
+          "experiment_id": ["..."],
+          "frequency": ["..."],
+          "index_node": "...",
+          "number_of_files": -1,
+          "project": ["..."],
+          "size": -1.5,
+          "source_id": ["..."],
+          "variable_id": ["..."],
+          "variant_label": ["..."],
+          "url": null,
+          "number_of_aggregations": -1
+        },
+        {
+          "id": "...",
+          "access": ["...", "...", "...", "...", "..."],
+          "activity_id": ["..."],
+          "experiment_id": ["..."],
+          "frequency": ["..."],
+          "index_node": "...",
+          "number_of_files": -1,
+          "project": ["..."],
+          "size": -1.5,
+          "source_id": ["..."],
+          "variable_id": ["..."],
+          "variant_label": ["..."],
+          "url": ["...", "..."],
+          "number_of_aggregations": -1
+        }
+      ]
+    },
+    "facet_counts": {
+      "facet_queries": {},
+      "facet_fields": {},
+      "facet_ranges": {},
+      "facet_intervals": {},
+      "facet_heatmaps": {}
+    },
+    "timestamp": ["2020-02-02 22:22:22"]
+  }
+}
