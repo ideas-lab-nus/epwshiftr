@@ -967,6 +967,7 @@ utils::globalVariables(c(
     "dew_point_temperature",
     "diffuse_horizontal_radiation",
     "direct_normal_radiation",
+    "dry_run",
     "dl_percent",
     "dry_bulb_temperature",
     "epw_max",

@@ -640,7 +640,7 @@ queries.}
 \item{\code{enqueue}}{Whether to enqueue current files after updating.
 Default: \code{FALSE}.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader} used when \code{enqueue = TRUE}.}
+\item{\code{downloader}}{Optional \link{Downloader} used when \code{enqueue = TRUE}.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()} when
 enqueuing.}
@@ -697,7 +697,7 @@ Preview a tracked query download without changing the store.
 \describe{
 \item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader} used only for node
+\item{\code{downloader}}{Optional \link{Downloader} used only for node
 history, network policy, and cooldown policy.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
@@ -753,7 +753,7 @@ Refresh, enqueue, and optionally run downloads for a stored ESGF query.
 \describe{
 \item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
 
@@ -802,7 +802,7 @@ Return downloader tasks linked to stored query files.
 
 \item{\code{session_id}}{Optional downloader session ID.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -825,7 +825,7 @@ Summarise tracked ESGF query file and download status.
 \item{\code{query_id}}{Optional stored query ID vector. If \code{NULL}, all
 stored ESGF queries are summarised.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -893,7 +893,7 @@ Summarise query, download, local, and extraction status together.
 \describe{
 \item{\code{query_id}}{Optional stored query ID filter.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -915,7 +915,7 @@ Return a compact ESGF query workflow health report.
 \describe{
 \item{\code{query_id}}{Optional stored query ID filter.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1124,13 +1124,13 @@ Requeue retryable downloader tasks linked to stored query files.
 
 \item{\code{session_id}}{Optional downloader session ID.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 
 \item{\code{status}}{Retryable statuses. Default: \code{c("error", "cancelled")}.}
 
 \item{\code{run}}{Whether to run requeued tasks immediately. Default: \code{TRUE}.}
 
-\item{\code{...}}{Additional arguments passed to \code{FileDownloader$run()}.}
+\item{\code{...}}{Additional arguments passed to \code{Downloader$run()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1164,7 +1164,7 @@ The created or updated query ID.
 \if{html}{\out{<a id="method-EsgStore-downloader"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-downloader}{}}}
 \subsection{Method \code{downloader()}}{
-Return a FileDownloader bound to this store.
+Return a Downloader bound to this store.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgStore$downloader(...)}\if{html}{\out{</div>}}
 }
@@ -1172,12 +1172,12 @@ Return a FileDownloader bound to this store.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{...}}{Additional arguments passed to \code{FileDownloader$new()}.}
+\item{\code{...}}{Additional arguments passed to \code{Downloader$new()}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A \link{FileDownloader} object.
+A \link{Downloader} object.
 }
 }
 \if{html}{\out{<hr>}}
@@ -1212,7 +1212,7 @@ If supplied, it is cataloged before the download plan is created.}
 
 \item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
 
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 
 \item{\code{run}}{Whether to run the queued session immediately. Default: \code{TRUE}.}
 
@@ -1238,7 +1238,7 @@ history before probing a URL again. Default: \code{3600}.}
 \item{\code{resume}}{Whether to resume interrupted \code{.part} files.}
 
 \item{\code{...}}{Additional arguments passed to \verb{$download_plan()} and
-\code{FileDownloader$run()}.}
+\code{Downloader$run()}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -1258,7 +1258,7 @@ Register completed downloader tasks as local store artifacts.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+\item{\code{downloader}}{Optional \link{Downloader}. Default: \verb{$downloader()}.}
 }
 \if{html}{\out{</div>}}
 }
