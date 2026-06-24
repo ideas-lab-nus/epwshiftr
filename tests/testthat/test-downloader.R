@@ -1,4 +1,4 @@
-# Basic Tests {{{
+# downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() / downloader_test_async_task() {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
 }
@@ -9,7 +9,47 @@ downloader_test_file_url <- function(root, filename, size) {
     paste0("file://", normalizePath(path, winslash = "/"))
 }
 
-test_that("Downloader can be created", {
+downloader_test_queued_job <- function(label = "job") {
+    root <- tempfile("downloader-job-")
+    withr::defer(unlink(root, recursive = TRUE), envir = parent.frame())
+
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+    src <- file.path(root, paste0(label, ".txt"))
+    dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
+    writeLines(paste(label, "content"), src)
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = paste0("tracking:", label),
+        filename = paste0(label, ".txt"),
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ))
+
+    withr::local_options(list(epwshiftr.downloader.launcher = function(...) TRUE))
+    job <- dl$run(session_id = session_id, block = FALSE, progress = FALSE)
+    task_id <- dl$tasks(job_id = job$job_id[[1L]])$task_id[[1L]]
+
+    list(
+        root = root,
+        dl = dl,
+        session_id = session_id,
+        task_id = task_id,
+        job = job
+    )
+}
+
+downloader_test_async_task <- function(dl, task_id = "async-task") {
+    task <- DownloadTask$new("file:///tmp/async-source.bin", "async-target.bin")
+    task$update_progress(5L, 10L)
+    priv(dl)$async_tasks[[task_id]] <- task
+    task_id
+}
+# }}}
+# Downloader$new() {{{
+test_that("Downloader$new()", {
     dl <- Downloader$new()
     expect_s3_class(dl, "Downloader")
     expect_true(dir.exists(dl$data_dir))
@@ -89,9 +129,8 @@ test_that("Downloader can be created", {
     unlink(temp, recursive = TRUE)
 })
 # }}}
-
-# Persistent Manifest Tests {{{
-test_that("Downloader persists config and manifest state", {
+# Downloader$enqueue() {{{
+test_that("Downloader$enqueue() creates sessions and tasks", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -160,12 +199,173 @@ test_that("Downloader persists config and manifest state", {
     expect_equal(nrow(dl$sessions()), 1L)
     expect_equal(nrow(dl$tasks(session_id = session_id)), 1L)
 
+    rm(dl)
+    gc()
+    conn <- ddb_connect(manifest, read_only = TRUE)
+    on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
+    expect_setequal(
+        ddb_list_tables(conn),
+        c(
+            "download_candidate", "download_config", "download_control",
+            "download_daemon", "download_event", "download_job",
+            "download_meta", "download_node", "download_piece",
+            "download_session", "download_task"
+        )
+    )
+})
+# }}}
+# Downloader$sessions() {{{
+test_that("Downloader$sessions()", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("session content", src)
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:sessions",
+        filename = "sessions.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ), session_label = "session-list")
+
+    sessions <- dl$sessions()
+    expect_equal(nrow(sessions), 1L)
+    expect_equal(sessions$session_id, session_id)
+    expect_equal(sessions$label, "session-list")
+    expect_equal(sessions$status, "queued")
+})
+# }}}
+# Downloader$tasks() {{{
+test_that("Downloader$tasks()", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("task content", src)
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:tasks",
+        filename = "tasks.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ))
+
+    tasks <- dl$tasks(session_id = session_id)
+    expect_equal(nrow(tasks), 1L)
+    expect_equal(tasks$session_id, session_id)
+    expect_equal(tasks$status, "queued")
+    expect_equal(nrow(dl$tasks(session_id = session_id, status = "done")), 0L)
+    expect_equal(nrow(dl$tasks(status = "queued")), 1L)
+})
+# }}}
+# Downloader$status() {{{
+test_that("Downloader$status()", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("status content", src)
+
+    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    session_id <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:status",
+        filename = "status.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        priority = 1L
+    ))
+    task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
+
+    by_session <- dl$status(session_id = session_id)
+    expect_equal(nrow(by_session), 1L)
+    expect_equal(by_session$task_id, task_id)
+
+    by_task <- dl$status(task_id = task_id)
+    expect_equal(nrow(by_task), 1L)
+    expect_equal(by_task$session_id, session_id)
+    expect_equal(nrow(dl$status(task_id = "missing-task")), 0L)
+})
+# }}}
+# Downloader$run() {{{
+test_that("Downloader$run() downloads enqueued local files", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("persistent content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        timeout = 30L,
+        ssl_verifypeer = FALSE,
+        connect_timeout = 2L,
+        useragent = "epwshiftr-test",
+        node_policy = list(
+            cooldown_after_failures = 1L,
+            cooldown_seconds = 60L,
+            history_ttl_seconds = 600L,
+            min_attempts = 1L
+        ),
+        transfer_policy = list(
+            chunk_size = 32768L,
+            bandwidth_limit = 2048L,
+            low_speed_limit = 64L,
+            low_speed_time = 5L,
+            range_mode = "auto",
+            piece_size = 8L,
+            piece_concurrency = 2L,
+            max_sources = 2L,
+            require_checksum_for_multisource = TRUE,
+            range_probe_timeout = 7L
+        ),
+        resource_policy = list(
+            host_concurrency = 1L,
+            disk_preflight = TRUE,
+            min_free_space = 4096
+        ),
+        n_workers = 0L
+    )
+
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:local-test",
+        filename = "local.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "unit-test")
     tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "done")
     expect_equal(tasks$candidate_count, 1L)
     expect_equal(tasks$failed_candidate_count, 0L)
     expect_true(file.exists(file.path(dest, "local.txt")))
-    expect_true(dl$verify(session_id = session_id)$checksum_ok)
 
     restored <- Downloader$new(manifest = manifest)
     expect_equal(restored$data_dir, normalizePath(dest, winslash = "/"))
@@ -190,23 +390,45 @@ test_that("Downloader persists config and manifest state", {
     expect_true(restored$resource_policy$disk_preflight)
     expect_equal(restored$resource_policy$min_free_space, 4096)
     expect_equal(restored$tasks(session_id = session_id)$status, "done")
-
-    rm(dl, restored)
-    gc()
-    conn <- ddb_connect(manifest, read_only = TRUE)
-    on.exit(ddb_disconnect(conn, shutdown = TRUE), add = TRUE, after = FALSE)
-    expect_setequal(
-        ddb_list_tables(conn),
-        c(
-            "download_candidate", "download_config", "download_control",
-            "download_daemon", "download_event", "download_job",
-            "download_meta", "download_node", "download_piece",
-            "download_session", "download_task"
-        )
-    )
 })
+# }}}
+# Downloader$verify() {{{
+test_that("Downloader$verify() reports checksum status for completed sessions", {
+    skip_if_not_installed("duckdb")
 
-test_that("Downloader creates background jobs with a mock launcher", {
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("persistent content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:local-test",
+        filename = "local.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "unit-test")
+    expect_equal(dl$run(session_id = session_id, progress = FALSE)$status, "done")
+    expect_true(dl$verify(session_id = session_id)$checksum_ok)
+})
+# }}}
+# Downloader$run() {{{
+test_that("Downloader$run() supports block = FALSE", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-bg-")
@@ -247,8 +469,72 @@ test_that("Downloader creates background jobs with a mock launcher", {
     expect_equal(tasks$job_id, job$job_id[[1L]])
     expect_equal(dl$job_status(job$job_id[[1L]])$status, "queued")
 })
+# }}}
+# Downloader$jobs() {{{
+test_that("Downloader$jobs()", {
+    skip_if_not_installed("duckdb")
 
-test_that("Downloader job runner updates job, task, and progress state", {
+    fixture <- downloader_test_queued_job("jobs")
+    dl <- fixture$dl
+    job_id <- fixture$job$job_id[[1L]]
+
+    jobs <- dl$jobs()
+    expect_equal(nrow(jobs), 1L)
+    expect_equal(jobs$job_id, job_id)
+    expect_equal(jobs$status, "queued")
+
+    queued <- dl$jobs(status = "queued")
+    expect_equal(nrow(queued), 1L)
+    expect_equal(queued$job_id, job_id)
+    expect_equal(nrow(dl$jobs(status = "done")), 0L)
+})
+# }}}
+# Downloader$job_logs() {{{
+test_that("Downloader$job_logs()", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- downloader_test_queued_job("job-logs")
+    dl <- fixture$dl
+    job_id <- fixture$job$job_id[[1L]]
+    log_path <- fixture$job$log_path[[1L]]
+    dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
+    writeLines(c("first", "second", "third"), log_path)
+
+    logs <- dl$job_logs(job_id, tail = 2L)
+    expect_equal(logs$job_id, rep(job_id, 2L))
+    expect_equal(logs$line, 1:2)
+    expect_equal(logs$message, c("second", "third"))
+
+    expect_error(dl$job_logs("missing-job"), "Downloader job not found")
+})
+# }}}
+# Downloader$stop_job() {{{
+test_that("Downloader$stop_job()", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- downloader_test_queued_job("stop-job")
+    dl <- fixture$dl
+    job_id <- fixture$job$job_id[[1L]]
+
+    stopped <- dl$stop_job(job_id)
+    expect_equal(stopped$status, "cancelled")
+    expect_equal(stopped$error, "Cancelled by user.")
+
+    tasks <- dl$tasks(job_id = job_id)
+    expect_equal(tasks$status, "cancelled")
+    expect_match(tasks$last_error, "Cancelled by user")
+
+    controls <- ddb_read_table(priv(dl)$manifest_conn, "download_control")
+    expect_equal(controls$target_type, "job")
+    expect_equal(controls$target_id, job_id)
+    expect_equal(controls$command, "stop")
+    expect_equal(controls$status, "queued")
+
+    expect_error(dl$stop_job("missing-job"), "Downloader job not found")
+})
+# }}}
+# Downloader$start() / Downloader$job_status() {{{
+test_that("Downloader$start() / Downloader$job_status()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-job-")
@@ -283,8 +569,9 @@ test_that("Downloader job runner updates job, task, and progress state", {
     expect_true(all(!is.na(events$job_id)))
     expect_true(file.exists(file.path(dest, "job.txt")))
 })
-
-test_that("Downloader daemon lifecycle records manifest state with a mock launcher", {
+# }}}
+# Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop() {{{
+test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-daemon-")
@@ -314,8 +601,9 @@ test_that("Downloader daemon lifecycle records manifest state with a mock launch
     stopped <- dl$daemon_stop()
     expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
 })
-
-test_that("Downloader probes local range metadata", {
+# }}}
+# downloader__range_probe_url() {{{
+test_that("downloader__range_probe_url() probes local files", {
     root <- tempfile("downloader-range-")
     dir.create(root)
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -332,7 +620,7 @@ test_that("Downloader probes local range metadata", {
     expect_match(missing$range_probe_error, "does not exist")
 })
 
-test_that("Downloader probes HTTP range metadata and follows redirects", {
+test_that("downloader__range_probe_url() probes HTTP range metadata", {
     skip_if_not_installed("webfakes")
 
     server <- local_downloader_http_server()
@@ -349,8 +637,9 @@ test_that("Downloader probes HTTP range metadata and follows redirects", {
     expect_false(missing$range_supported)
     expect_match(missing$range_probe_error, "206 Content-Range")
 })
-
-test_that("Downloader uses manifest-backed single-source pieces", {
+# }}}
+# Downloader$run() {{{
+test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -396,7 +685,7 @@ test_that("Downloader uses manifest-backed single-source pieces", {
     expect_false(dir.exists(file.path(temp, paste0(tasks$task_id[[1L]], ".pieces"))))
 })
 
-test_that("Downloader uses pieces inside a persistent worker", {
+test_that("Downloader$run() downloads pieces inside a persistent worker", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
     # covr cannot reliably merge coverage traces emitted by mirai worker processes.
@@ -445,7 +734,7 @@ test_that("Downloader uses pieces inside a persistent worker", {
     expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
 })
 
-test_that("Downloader can stitch one file from multiple range sources", {
+test_that("Downloader$run() downloads multi-source range pieces", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -492,8 +781,9 @@ test_that("Downloader can stitch one file from multiple range sources", {
     nodes <- dl$data_nodes()
     expect_true(all(c("local-http-a", "local-http-b") %in% nodes$data_node))
 })
-
-test_that("Downloader preflights disk requirements", {
+# }}}
+# Downloader$preflight() {{{
+test_that("Downloader$preflight()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -543,8 +833,9 @@ test_that("Downloader preflights disk requirements", {
         "Insufficient disk space"
     )
 })
-
-test_that("Downloader migrates older manifests to the current schema version", {
+# }}}
+# Downloader$new() {{{
+test_that("Downloader$new() migrates older manifests", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -602,7 +893,7 @@ test_that("Downloader migrates older manifests to the current schema version", {
     expect_true(all(c("download_job", "download_daemon", "download_control") %in% tables))
 })
 
-test_that("Downloader stores typed config in the manifest", {
+test_that("Downloader$new() stores typed config in the manifest", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -670,8 +961,9 @@ test_that("Downloader stores typed config in the manifest", {
     expect_null(reloaded$transfer_policy$bandwidth_limit)
     expect_null(reloaded$resource_policy$host_concurrency)
 })
-
-test_that("Downloader reconnects manifest after shallow clone finalization", {
+# }}}
+# Downloader$clone() {{{
+test_that("Downloader$clone() reconnects manifest after finalization", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -710,8 +1002,9 @@ test_that("Downloader reconnects manifest after shallow clone finalization", {
     expect_equal(tasks$status, "done")
     expect_true(file.exists(file.path(dest, "clone.txt")))
 })
-
-test_that("Downloader cancels stale downloading tasks before run", {
+# }}}
+# Downloader$run() / Downloader$resume() {{{
+test_that("Downloader$run() cancels stale downloading tasks", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -760,8 +1053,9 @@ test_that("Downloader cancels stale downloading tasks before run", {
     expect_equal(resumed$status, "done")
     expect_true(file.exists(file.path(dest, "stale.txt")))
 })
-
-test_that("Downloader cancels persistent queued tasks", {
+# }}}
+# Downloader$cancel() / Downloader$retry() {{{
+test_that("Downloader$cancel() / Downloader$retry()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -806,8 +1100,9 @@ test_that("Downloader cancels persistent queued tasks", {
     events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
     expect_true("cancelled" %in% events$event)
 })
-
-test_that("Downloader cancels persistent downloading tasks", {
+# }}}
+# Downloader$cancel() {{{
+test_that("Downloader$cancel() cancels by task_id", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -849,8 +1144,9 @@ test_that("Downloader cancels persistent downloading tasks", {
     expect_equal(dl$status(task_id = task_id)$status, "cancelled")
     expect_false(file.exists(file.path(dest, "cancel-downloading.txt")))
 })
-
-test_that("Downloader falls back across candidate URLs", {
+# }}}
+# Downloader$run() {{{
+test_that("Downloader$run() falls back across candidate URLs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -905,7 +1201,7 @@ test_that("Downloader falls back across candidate URLs", {
     expect_equal(candidates[order(candidates$priority), , drop = FALSE]$failed_count, c(1L, 0L))
 })
 
-test_that("Downloader retries transient HTTP failures", {
+test_that("Downloader$run() retries transient HTTP failures", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -933,7 +1229,7 @@ test_that("Downloader retries transient HTTP failures", {
     expect_true(dl$verify(session_id = session_id)$checksum_ok)
 })
 
-test_that("Downloader keeps candidate URLs scoped to each task", {
+test_that("Downloader$run() keeps candidate URLs task-scoped", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -973,8 +1269,9 @@ test_that("Downloader keeps candidate URLs scoped to each task", {
     expect_equal(readLines(file.path(dest, "first.txt")), "first task content")
     expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
 })
-
-test_that("Downloader records probe outcomes and resets data node health", {
+# }}}
+# Downloader$record_probes() {{{
+test_that("Downloader$record_probes()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -1013,13 +1310,85 @@ test_that("Downloader records probe outcomes and resets data node health", {
     cached$probe_cached <- TRUE
     nodes <- dl$record_probes(cached, probed = TRUE)
     expect_equal(nodes[nodes$data_node == "ok.example.org", , drop = FALSE]$probe_success_count, 1L)
+})
+# }}}
+# Downloader$data_nodes() {{{
+test_that("Downloader$data_nodes()", {
+    skip_if_not_installed("duckdb")
 
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    dl <- Downloader$new(
+        dest = file.path(root, "downloads"),
+        temp = file.path(root, "tmp"),
+        manifest = manifest,
+        n_workers = 0L,
+        node_policy = list(
+            cooldown_after_failures = 1L,
+            cooldown_seconds = 60L,
+            history_ttl_seconds = 3600L,
+            min_attempts = 1L
+        )
+    )
+    plan <- downloader_test_df(
+        logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
+        filename = c("ok.nc", "fail.nc"),
+        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        service = "HTTPServer",
+        data_node = c("ok.example.org", "fail.example.org"),
+        priority = c(1L, 1L),
+        probe_latency = c(0.2, NA_real_),
+        probe_throughput = NA_real_
+    )
+
+    dl$record_probes(plan, probed = TRUE)
+    nodes <- dl$data_nodes()
+    expect_true(all(c("ok.example.org", "fail.example.org") %in% nodes$data_node))
+    expect_equal(nodes[nodes$data_node == "ok.example.org", , drop = FALSE]$probe_success_count, 1L)
+    expect_equal(nodes[nodes$data_node == "fail.example.org", , drop = FALSE]$probe_failure_count, 1L)
+})
+# }}}
+# Downloader$reset_data_nodes() {{{
+test_that("Downloader$reset_data_nodes()", {
+    skip_if_not_installed("duckdb")
+
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    dl <- Downloader$new(
+        dest = file.path(root, "downloads"),
+        temp = file.path(root, "tmp"),
+        manifest = manifest,
+        n_workers = 0L,
+        node_policy = list(
+            cooldown_after_failures = 1L,
+            cooldown_seconds = 60L,
+            history_ttl_seconds = 3600L,
+            min_attempts = 1L
+        )
+    )
+    plan <- downloader_test_df(
+        logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
+        filename = c("ok.nc", "fail.nc"),
+        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        service = "HTTPServer",
+        data_node = c("ok.example.org", "fail.example.org"),
+        priority = c(1L, 1L),
+        probe_latency = c(0.2, NA_real_),
+        probe_throughput = NA_real_
+    )
+
+    dl$record_probes(plan, probed = TRUE)
     remaining <- dl$reset_data_nodes(data_node = "fail.example.org")
     expect_false("fail.example.org" %in% remaining$data_node)
     expect_true("ok.example.org" %in% remaining$data_node)
 })
-
-test_that("Downloader exposes persistent events and callbacks", {
+# }}}
+# Downloader$on() / Downloader$off() {{{
+test_that("Downloader$on() / Downloader$off()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -1087,16 +1456,57 @@ test_that("Downloader exposes persistent events and callbacks", {
     expect_equal(done_payload$session_id, session_id)
     expect_equal(done_payload$task_id, tasks$task_id[[1L]])
     expect_equal(session_payload$session_id, session_id)
-    events <- dl$events(session_id = session_id)
-    expect_true(all(c("enqueue", "start", "done", "session_done", "callback_error") %in% events$event))
-    task_events <- dl$events(task_id = tasks$task_id[[1L]])
-    expect_true(all(c("start", "done", "callback_error") %in% task_events$event))
     expect_true(dl$off(done_token))
     expect_false(dl$off(done_token))
     expect_true(dl$off(session_token))
 })
+# }}}
+# Downloader$events() {{{
+test_that("Downloader$events()", {
+    skip_if_not_installed("duckdb")
 
-test_that("Downloader runs persistent tasks with worker concurrency", {
+    root <- tempfile("downloader-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    manifest <- file.path(root, "_downloader", "manifest.duckdb")
+
+    src <- tempfile()
+    writeLines("event content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    dl$on("task_done", function(event, downloader) {
+        stop("callback boom", call. = FALSE)
+    })
+
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:event-test",
+        file_key = "event-file-key",
+        filename = "event.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        data_node = "local-file",
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+    session_id <- dl$enqueue(plan, session_label = "events")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    events <- dl$events(session_id = session_id)
+    expect_true(all(c("enqueue", "start", "done", "session_done", "callback_error") %in% events$event))
+    task_events <- dl$events(task_id = tasks$task_id[[1L]])
+    expect_true(all(c("start", "done", "callback_error") %in% task_events$event))
+})
+# }}}
+# Downloader$run() {{{
+test_that("Downloader$run() uses worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
     # covr cannot reliably merge coverage traces emitted by mirai worker processes.
@@ -1141,7 +1551,7 @@ test_that("Downloader runs persistent tasks with worker concurrency", {
     expect_equal(sessions[sessions$session_id == session_id, , drop = FALSE]$status, "done")
 })
 
-test_that("Downloader defers persistent tasks beyond per-host capacity", {
+test_that("Downloader$run() defers tasks beyond per-host capacity", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
     # covr cannot reliably merge coverage traces emitted by mirai worker processes.
@@ -1188,7 +1598,7 @@ test_that("Downloader defers persistent tasks beyond per-host capacity", {
     expect_equal(sessions[sessions$session_id == session_id, , drop = FALSE]$status, "done")
 })
 
-test_that("Downloader serializes persistent tasks for the same target path", {
+test_that("Downloader$run() serializes tasks for the same target path", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
     # covr cannot reliably merge coverage traces emitted by mirai worker processes.
@@ -1228,9 +1638,8 @@ test_that("Downloader serializes persistent tasks for the same target path", {
     expect_equal(readLines(file.path(dest, "shared.txt")), "shared target content")
 })
 # }}}
-
-# Download Tests {{{
-test_that("Downloader can download a single file", {
+# Downloader$download() {{{
+test_that("Downloader$download()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
     url <- downloader_test_file_url(temp_dir, "source-1024.bin", 1024L)
@@ -1246,7 +1655,7 @@ test_that("Downloader can download a single file", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("Downloader can download with subdir", {
+test_that("Downloader$download() honors subdir", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
     url <- downloader_test_file_url(temp_dir, "source-512.bin", 512L)
@@ -1267,12 +1676,13 @@ test_that("Downloader can download with subdir", {
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("Downloader respects overwrite parameter with local files", {
+test_that("Downloader$download() honors overwrite = FALSE", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
 
     test_file <- file.path(temp_dir, "source.txt")
     writeLines("test content", test_file)
+    url <- paste0("file://", normalizePath(test_file, winslash = "/"))
 
     dl <- Downloader$new(dest = temp_dir)
 
@@ -1283,14 +1693,16 @@ test_that("Downloader respects overwrite parameter with local files", {
 
     Sys.sleep(0.1)
 
+    path <- dl$download(url, filename = "dest.txt", progress = FALSE, overwrite = FALSE)
     expect_true(file.exists(dest_file))
+    expect_equal(normalizePath(path), normalizePath(dest_file))
     mtime2 <- file.info(dest_file)$mtime
     expect_equal(mtime1, mtime2)
 
     unlink(temp_dir, recursive = TRUE)
 })
 
-test_that("Downloader restarts partial downloads when Range resume is unsupported", {
+test_that("Downloader$download() restarts unsupported Range resume", {
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -1316,10 +1728,169 @@ test_that("Downloader restarts partial downloads when Range resume is unsupporte
     expect_equal(readBin(path, "raw", n = 8193L), downloader_http_bytes(8193L))
     expect_false(file.exists(file.path(temp, paste0(tmp_id, ".part"))))
 })
-# }}}
 
-# File Status Tests {{{
-test_that("Downloader tracks file status correctly", {
+test_that("Downloader$download() verifies checksum", {
+    skip_if_not_installed("webfakes")
+
+    temp_dir <- tempfile()
+    dir.create(temp_dir)
+    server <- local_downloader_http_server()
+    file_checksum <- downloader_http_checksum(algo = "sha256")
+
+    dl <- Downloader$new(
+        dest = temp_dir,
+        retries = 3,
+        timeout = 300
+    )
+
+    path <- dl$download(
+        url = server$url("/files/ok.bin"),
+        filename = "ok.bin",
+        checksum = file_checksum,
+        checksum_type = "sha256",
+        progress = FALSE
+    )
+
+    expect_true(file.exists(path))
+
+    is_valid <- epwshiftr:::downloader__verify_checksum(path, file_checksum, "sha256")
+    expect_true(is_valid)
+
+    unlink(temp_dir, recursive = TRUE)
+})
+
+test_that("Downloader$download() handles HTTP errors", {
+    skip_if_not_installed("webfakes")
+
+    temp_dir <- tempfile()
+    dir.create(temp_dir)
+    server <- local_downloader_http_server()
+
+    dl <- Downloader$new(
+        dest = temp_dir,
+        retries = 1L,
+        timeout = 1L
+    )
+
+    url <- server$url("/files/missing.bin")
+
+    expect_warning(expect_error(
+        dl$download(url, filename = "nonexistent.nc", progress = FALSE),
+        "Failed to download"
+    ))
+
+    unlink(temp_dir, recursive = TRUE)
+})
+
+test_that("Downloader$download() handles checksum mismatch", {
+    skip_if_not_installed("webfakes")
+
+    temp_dir <- tempfile()
+    dir.create(temp_dir)
+    server <- local_downloader_http_server()
+
+    dl <- Downloader$new(
+        dest = temp_dir,
+        retries = 1L
+    )
+
+    expect_error(
+        dl$download(
+            server$url("/files/ok.bin"),
+            filename = "ok.bin",
+            checksum = "wrongchecksum",
+            checksum_type = "sha256",
+            progress = FALSE
+        ),
+        "Checksum verification failed"
+    )
+
+    unlink(temp_dir, recursive = TRUE)
+})
+
+test_that("Downloader$download() offline mode blocks new downloads", {
+    local_cache_mode("offline")
+    dl <- Downloader$new(dest = tempdir(), n_workers = 0L)
+
+    expect_error(
+        dl$download(url = "https://example.com/nonexistent.nc"),
+        "offline"
+    )
+})
+
+test_that("Downloader$download() offline mode allows verified files", {
+    local_cache_mode("offline")
+
+    dest <- tempdir()
+    test_file <- file.path(dest, "test-offline-verified.txt")
+    writeLines("test content", test_file)
+    on.exit(unlink(test_file), add = TRUE)
+
+    dl <- Downloader$new(dest = dest, n_workers = 0L)
+
+    result <- dl$download(
+        url = "https://example.com/test-offline-verified.txt",
+        filename = "test-offline-verified.txt"
+    )
+    expect_equal(normalizePath(result), normalizePath(test_file))
+})
+# }}}
+# Downloader$get_tasks() {{{
+test_that("Downloader$get_tasks()", {
+    dl <- Downloader$new(n_workers = 0L)
+    task_id <- downloader_test_async_task(dl, "async-get-tasks")
+
+    tasks <- dl$get_tasks()
+    expect_named(tasks, task_id)
+    expect_s3_class(tasks[[task_id]], "DownloadTask")
+})
+# }}}
+# Downloader$get_task_status() {{{
+test_that("Downloader$get_task_status()", {
+    dl <- Downloader$new(n_workers = 0L)
+    task_id <- downloader_test_async_task(dl, "async-status")
+    priv(dl)$async_tasks[[task_id]]$mark_completed()
+
+    status <- dl$get_task_status(task_id)
+    expect_equal(status$task_id, task_id)
+    expect_equal(status$url, "file:///tmp/async-source.bin")
+    expect_equal(status$filename, "async-target.bin")
+    expect_equal(status$status, DownloadStatus$Completed)
+    expect_equal(status$progress, 5L)
+    expect_equal(status$total, 10L)
+    expect_null(status$error)
+    expect_s3_class(status$completed_at, "POSIXct")
+
+    expect_error(dl$get_task_status("missing-task"), "Task ID 'missing-task' not found")
+})
+# }}}
+# Downloader$wait_for_tasks() {{{
+test_that("Downloader$wait_for_tasks()", {
+    dl <- Downloader$new(n_workers = 0L)
+    expect_equal(dl$wait_for_tasks(progress = FALSE), list())
+
+    task_id <- downloader_test_async_task(dl, "async-wait")
+    results <- dl$wait_for_tasks(task_id, progress = FALSE)
+
+    expect_named(results, task_id)
+    expect_equal(results[[task_id]]$task_id, task_id)
+    expect_equal(results[[task_id]]$status, DownloadStatus$Pending)
+    expect_equal(results[[task_id]]$progress, 5L)
+    expect_equal(results[[task_id]]$total, 10L)
+})
+# }}}
+# Downloader$cancel_task() {{{
+test_that("Downloader$cancel_task()", {
+    dl <- Downloader$new(n_workers = 0L)
+    task_id <- downloader_test_async_task(dl, "async-cancel")
+
+    cancelled <- suppressMessages(dl$cancel_task(task_id))
+    expect_false(cancelled)
+    expect_error(dl$cancel_task("missing-task"), "Task ID 'missing-task' not found")
+})
+# }}}
+# Downloader$list_incomplete() {{{
+test_that("Downloader$list_incomplete()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
     url <- downloader_test_file_url(temp_dir, "source-2048.bin", 2048L)
@@ -1333,8 +1904,9 @@ test_that("Downloader tracks file status correctly", {
 
     unlink(temp_dir, recursive = TRUE)
 })
-
-test_that("cleanup_tmp works", {
+# }}}
+# Downloader$cleanup_tmp() {{{
+test_that("Downloader$cleanup_tmp()", {
     temp_dir <- tempfile()
     dir.create(temp_dir)
     temp <- file.path(temp_dir, ".tmp")
@@ -1352,9 +1924,8 @@ test_that("cleanup_tmp works", {
     unlink(temp_dir, recursive = TRUE)
 })
 # }}}
-
-# Checksum Tests {{{
-test_that("Downloader can verify checksums", {
+# Downloader$verify_checksum() {{{
+test_that("Downloader$verify_checksum()", {
     dl <- Downloader$new()
 
     test_file <- tempfile()
@@ -1369,8 +1940,9 @@ test_that("Downloader can verify checksums", {
 
     unlink(test_file)
 })
-
-test_that("Downloader verify marks checksum failures as error", {
+# }}}
+# Downloader$verify() {{{
+test_that("Downloader$verify()", {
     skip_if_not_installed("duckdb")
 
     root <- tempfile("downloader-")
@@ -1410,126 +1982,16 @@ test_that("Downloader verify marks checksum failures as error", {
     events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
     expect_true("verify_error" %in% events$event)
 })
-
-test_that("Downloader can download with checksum verification", {
-    skip_if_not_installed("webfakes")
-
-    temp_dir <- tempfile()
-    dir.create(temp_dir)
-    server <- local_downloader_http_server()
-    file_checksum <- downloader_http_checksum(algo = "sha256")
-
-    dl <- Downloader$new(
-        dest = temp_dir,
-        retries = 3,
-        timeout = 300
-    )
-
-    path <- dl$download(
-        url = server$url("/files/ok.bin"),
-        filename = "ok.bin",
-        checksum = file_checksum,
-        checksum_type = "sha256",
-        progress = FALSE
-    )
-
-    expect_true(file.exists(path))
-
-    is_valid <- epwshiftr:::downloader__verify_checksum(path, file_checksum, "sha256")
-    expect_true(is_valid)
-
-    unlink(temp_dir, recursive = TRUE)
-})
 # }}}
-
-# Error Handling Tests {{{
-test_that("Downloader handles download errors", {
-    skip_if_not_installed("webfakes")
-
-    temp_dir <- tempfile()
-    dir.create(temp_dir)
-    server <- local_downloader_http_server()
-
-    dl <- Downloader$new(
-        dest = temp_dir,
-        retries = 1L,
-        timeout = 1L
-    )
-
-    url <- server$url("/files/missing.bin")
-
-    expect_warning(expect_error(
-        dl$download(url, filename = "nonexistent.nc", progress = FALSE),
-        "Failed to download"
-    ))
-
-    unlink(temp_dir, recursive = TRUE)
-})
-
-test_that("Downloader handles checksum mismatch", {
-    skip_if_not_installed("webfakes")
-
-    temp_dir <- tempfile()
-    dir.create(temp_dir)
-    server <- local_downloader_http_server()
-
-    dl <- Downloader$new(
-        dest = temp_dir,
-        retries = 1L
-    )
-
-    expect_error(
-        dl$download(
-            server$url("/files/ok.bin"),
-            filename = "ok.bin",
-            checksum = "wrongchecksum",
-            checksum_type = "sha256",
-            progress = FALSE
-        ),
-        "Checksum verification failed"
-    )
-
-    unlink(temp_dir, recursive = TRUE)
-})
-# }}}
-
-# Print Tests {{{
-test_that("Downloader print works", {
+# Downloader$print() {{{
+test_that("Downloader$print()", {
     dl <- Downloader$new()
 
-    # Just test that print doesn't error
-    # cli output produces messages, which is expected
-    expect_no_error(expect_message(print(dl)))
-})
-# }}}
-
-# Offline Mode Tests {{{
-test_that("Downloader: offline mode blocks new downloads", {
-    local_cache_mode("offline")
-    dl <- Downloader$new(dest = tempdir(), n_workers = 0L)
-
-    expect_error(
-        dl$download(url = "https://example.com/nonexistent.nc"),
-        "offline"
+    expect_snapshot(
+        print(dl),
+        transform = function(lines) {
+            gsub("^/.+", "<path>", lines)
+        }
     )
-})
-
-test_that("Downloader: offline mode allows verified files", {
-    local_cache_mode("offline")
-
-    dest <- tempdir()
-    # Create a file that would be "verified"
-    test_file <- file.path(dest, "test-offline-verified.txt")
-    writeLines("test content", test_file)
-    on.exit(unlink(test_file), add = TRUE)
-
-    dl <- Downloader$new(dest = dest, n_workers = 0L)
-
-    # This should succeed because the file already exists (Verified status)
-    result <- dl$download(
-        url = "https://example.com/test-offline-verified.txt",
-        filename = "test-offline-verified.txt"
-    )
-    expect_equal(normalizePath(result), normalizePath(test_file))
 })
 # }}}

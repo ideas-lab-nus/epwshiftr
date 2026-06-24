@@ -74,7 +74,24 @@ epw_morpher_test_file_docs <- function(path, opendap_url, download_url, variable
     docs
 }
 
-test_that("EpwMorpher creates relaxed future EPW outputs from store extracts", {
+test_that("get_cache_epw() prepares a stable local EPW fixture", {
+    dir <- withr::local_tempdir()
+    withr::local_envvar(EPWSHIFTR_CHECK_CACHE = dir)
+
+    path <- get_cache_epw()
+
+    expect_true(file.exists(path))
+    expect_identical(basename(path), "SGP_Singapore.486980_IWEC.epw")
+
+    epw <- eplusr::read_epw(path)
+    expect_equal(epw$location()$city, "Singapore")
+    expect_equal(epw$location()$country, "Singapore")
+    expect_equal(nrow(epw$data()), 8760L)
+
+    expect_identical(get_cache_epw(), path)
+})
+
+test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
@@ -163,7 +180,7 @@ test_that("EpwMorpher creates relaxed future EPW outputs from store extracts", {
     expect_equal(nrow(morpher$outputs(relaxed$morph_id)), 1L)
 })
 
-test_that("EpwMorpher completes strict outputs with recommended variables", {
+test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
