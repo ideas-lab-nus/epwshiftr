@@ -20,7 +20,8 @@ init_cmip6_index(
   limit = 10000L,
   data_node = NULL,
   years = NULL,
-  save = FALSE
+  save = FALSE,
+  host = "http://esgf-node.llnl.gov/esg-search"
 )
 }
 \arguments{
@@ -143,6 +144,12 @@ subsetting on years will be performed. Default: \code{NULL}.}
 
 \item{save}{If \code{TRUE}, the results will be saved into user data directory.
 Default: \code{FALSE}.}
+
+\item{host}{The URL to the ESGF Search API service. This should be the URL of
+the ESGF search service excluding the final endpoint name. Usually
+this is \verb{http://<hostname>/esg-search}. Default is set to the
+\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
+which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 22 columns:\tabular{rlll}{

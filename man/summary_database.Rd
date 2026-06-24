@@ -89,7 +89,7 @@ For the meaning of grouping columns, see \code{\link[=init_cmip6_index]{init_cmi
 }
 \description{
 \code{summary_database()} scans the directory specified and returns a
-\code{\link[=data.table]{data.table()}} containing summary information about all the CMIP6
+\code{\link[data.table:data.table]{data.table::data.table()}} containing summary information about all the CMIP6
 files available against the output file index loaded using
 \code{\link[=load_cmip6_index]{load_cmip6_index()}}.
 }

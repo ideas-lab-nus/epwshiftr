@@ -19,38 +19,56 @@
 #' * `epwshiftr.dir`: The directory to store package data, including CMIP6
 #'   model output file index and etc. If not set, the current user data
 #'   directory will be used.
+#' * `epwshiftr.cache`: If `TRUE`, ESGF queries will be cached so that
+#'   duplicated queries will instantly return. It can also be a positive integer
+#'   specifying the maximum number of queries can be cached. `TRUE` means
+#'   infinite. Default: `TRUE`
+#'
 #'
 #' @include utils.R
 #' @author Hongyuan Jia
+## usethis namespace: start
+#' @importFrom checkmate assert_count
+#' @importFrom cli cli_rule
+#' @importFrom data.table :=
+#' @importFrom data.table data.table
+#' @importFrom eplusr read_epw
+#' @importFrom fst write_fst
+#' @importFrom future.apply future_lapply
+#' @importFrom jsonlite fromJSON
+#' @importFrom PCICt as.PCICt
+#' @importFrom progressr with_progress
+#' @importFrom psychrolib GetTDewPointFromRelHum
+#' @importFrom psychrolib SetUnitSystem
+#' @importFrom R6 R6Class
+#' @importFrom rappdirs user_data_dir
+#' @importFrom RNetCDF utcal.nc
+#' @importFrom units set_units
+#' @importFrom utils menu
+## usethis namespace: end
 "_PACKAGE"
 
 # package internal environment
 this <- new.env(parent = emptyenv())
 this$index_db <- NULL
 this$dict <- NULL
-this$cache <- list()
+this$cache <- NULL
+this$data_max_limit <- 10000L
 
 # nocov start
-attach_cache <- function(cache) this$cache <- cache
-# nocov end
-
-## usethis namespace: start
-#' @importFrom checkmate assert_string
-#' @importFrom cli cli_rule
-#' @importFrom jsonlite parse_json
-## usethis namespace: end
-
-# nocov start
-# set package options
-# reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
-.onLoad <- function (libname, pkgname) {
-    .opts  <-  c(
-        "epwshiftr.verbose" = "FALSE",
-        "epwshiftr.threshold_alpha" = "3"
-    )
-    for (i in setdiff(names(.opts), names(options()))) {
-        eval(parse(text = paste0("options(",i,"=",.opts[i],")")))
+get_cache <- function() {
+    if (is.null(this$cache)) {
+        cache_dir <- getOption(
+            "epwshiftr.cache_dir",
+            tools::R_user_dir("epwshiftr", "cache")
+        )
+        this$cache <- DiskCache$new(
+            dir = cache_dir,
+            max_size = getOption("epwshiftr.cache_max_size", 1024^3),
+            max_age = getOption("epwshiftr.cache_max_age", 30 * 60),
+            max_n = getOption("epwshiftr.cache_max_n", Inf)
+        )
     }
-    invisible()
+    this$cache
 }
 # nocov end
