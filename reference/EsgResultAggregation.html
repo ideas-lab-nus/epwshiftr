@@ -114,14 +114,20 @@ available.</p></dd>
 <ul><li><p><a href="#method-EsgResultAggregation-to_data_table"><code>EsgResultAggregation$to_data_table()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-filter_time"><code>EsgResultAggregation$filter_time()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-download_plan"><code>EsgResultAggregation$download_plan()</code></a></p></li>
+<li><p><a href="#method-EsgResultAggregation-repair_urls"><code>EsgResultAggregation$repair_urls()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-download"><code>EsgResultAggregation$download()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-print"><code>EsgResultAggregation$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-open_dataset"><code>EsgResultAggregation$open_dataset()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-clone"><code>EsgResultAggregation$clone()</code></a></p></li>
-</ul></div><p><details open><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>epwshiftr::EsgResult$count()</code></a></span></li>
+</ul></div><p><details><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>epwshiftr::EsgResult$count()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href="EsgResult.html#method-filter"><code>epwshiftr::EsgResult$filter()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href="EsgResult.html#method-query_url"><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href="EsgResult.html#method-reachable"><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href="EsgResult.html#method-selection"><code>epwshiftr::EsgResult$selection()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href="EsgResult.html#method-slice"><code>epwshiftr::EsgResult$slice()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultAggregation-to_data_table"></a><div class="section">
 <h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
@@ -250,10 +256,55 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 <p>A data.table download plan.</p>
 </div>
 
+</div><p></p><hr><a id="method-EsgResultAggregation-repair_urls"></a><div class="section">
+<h3 id="method-repair-urls-">Method <code>repair_urls()</code><a class="anchor" aria-label="anchor" href="#method-repair-urls-"></a></h3>
+<p>Replace unreachable service URLs with reachable replica records.</p>
+<p><code>$repair_urls()</code> probes the current records for the selected service,
+queries ESGF replicas by <code>master_id</code> for records whose URL is missing or
+unreachable, probes candidate replica URLs, and returns a new result with
+repaired records in the original row order. The original result is not
+modified. Aggregation results are not downloadable as files; repaired
+aggregation URLs are intended for service access such as OPeNDAP.
+The returned result records the original query URL plus the replica
+lookup query URL in <code>$query_url("all")</code>.</p><div class="section">
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">repair_urls</span><span class="op">(</span></span>
+<span>  service <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"OPENDAP"</span>, <span class="st">"HTTPServer"</span><span class="op">)</span>,</span>
+<span>  index_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>service</code></dt>
+<dd><p>Service URL to repair. One of <code>"OPENDAP"</code> or
+<code>"HTTPServer"</code>. Default: <code>"OPENDAP"</code>.</p></dd>
+
+
+<dt><code>index_node</code></dt>
+<dd><p>Optional ESGF search index node used to look up
+replicas. If <code>NULL</code>, the current result index node is used.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Optional named list of probe settings. Supported fields
+are <code>level</code>, <code>timeout</code>, <code>concurrency</code>, <code>network_policy</code>,
+<code>cache_seconds</code>, and <code>cache_failures_seconds</code>. Default
+<code>level</code> is <code>"data_node"</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p>A new <code>EsgResultAggregation</code> object.</p>
+</div>
+
 </div><p></p><hr><a id="method-EsgResultAggregation-download"></a><div class="section">
 <h3 id="method-download-">Method <code>download()</code><a class="anchor" aria-label="anchor" href="#method-download-"></a></h3>
 <p>Enqueue and run aggregation downloads using a Downloader.</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">download</span><span class="op">(</span></span>
 <span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -270,7 +321,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
 <dd><p>Optional persistent <a href="Downloader.html">Downloader</a>. If <code>NULL</code>,
 <code>store$downloader()</code> is used when <code>store</code> is supplied.</p></dd>
@@ -324,19 +375,19 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
 <p>The created downloader session ID.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-print"></a><div class="section">
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print a summary of the current dataset</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
@@ -345,16 +396,16 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
 <p>The <code>EsgResultAggregation</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-open_dataset"></a><div class="section">
 <h3 id="method-open-dataset-">Method <code>open_dataset()</code><a class="anchor" aria-label="anchor" href="#method-open-dataset-"></a></h3>
 <p>Open aggregation files as an EsgDataset for remote data access via OPeNDAP</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span></span>
-<span>  aggregate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  which <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  downloader <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -362,10 +413,11 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>aggregate</code></dt>
-<dd><p>If <code>TRUE</code> (default), open all files as a multi-file dataset.
-If <code>FALSE</code>, open only the first file.</p></dd>
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>which</code></dt>
+<dd><p>Aggregation records to open. Use integer indices or
+aggregation record IDs. If <code>NULL</code>, all aggregation records
+are opened. Default: <code>NULL</code>.</p></dd>
 
 
 <dt><code>fallback</code></dt>
@@ -388,19 +440,19 @@ recoverable HTTP fallback.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
 <p>An <code>EsgDataset</code> object with the connection already opened.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

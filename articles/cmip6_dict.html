@@ -215,19 +215,19 @@ e.g. <code>none</code>, <code>s1960</code>.</li>
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">build</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>...</span></span>
 <span><span class="co">#&gt; ⠙ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> []...</span></span>
-<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_frequency.json</span>]...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[2.7s]</span></span></span>
+<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_grid_label.json</span>]...</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[1.2s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>...⠙ Downloading data of <span style="font-weight: bold;">CMIP6 DReq</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[642ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[272ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 ESG Dictionary</span> successfully at 2026-06-24 14:51:33.344321 <span style="color: #B2B2B2;">[3.6s]</span></span></span>
+<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 ESG Dictionary</span> successfully at 2026-06-24 15:26:45.741702 <span style="color: #B2B2B2;">[1.7s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ══ ESG Dictionary ══════════════════════════════════════════════════════════════</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Project</span>: <span style="color: #0000BB;">"CMIP6"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Profile</span>: <span style="color: #0000BB;">"cmip6"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Status</span>: <span style="color: #0000BB;">"built"</span></span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 14:51:33 UTC</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 15:26:45 UTC</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Vocabulary</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Vocab Version</span>: `6.2.60.0`</span></span>
@@ -268,7 +268,7 @@ CV collection (<code>cvs</code>) and Data Request
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">last_built</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">last_built</span></span>
-<span><span class="co">#&gt; [1] "2026-06-24 14:51:33 UTC"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "2026-06-24 15:26:45 UTC"</span></span></code></pre></div>
 <p>The last modified time of the CV collection and each CV can be
 retrieved using the <code>$timestamp()</code> method:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
@@ -1477,19 +1477,19 @@ of the saved JSON file.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict_file</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"CMIP6DICT.json"</span><span class="op">)</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="va">dict_file</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpW4gEAz/CMIP6DICT.json"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "/tmp/Rtmp4cDrMW/CMIP6DICT.json"</span></span></code></pre></div>
 <p>This file can be reloaded via <code>$load()</code> method to restore
 the last state of current <code>EsgDict</code> object. It reads the JSON
 file and loads the CVs and Data Request data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">new_dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/EsgDict.html">esgdict</a></span><span class="op">(</span>project <span class="op">=</span> <span class="st">"CMIP6"</span><span class="op">)</span></span>
 <span><span class="va">new_dict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="va">dict_file</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded ESG Dictionary that was built at 2026-06-24 14:51:33 UTC.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded ESG Dictionary that was built at 2026-06-24 15:26:45 UTC.</span></span>
 <span><span class="co">#&gt; ══ ESG Dictionary ══════════════════════════════════════════════════════════════</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Project</span>: <span style="color: #0000BB;">"CMIP6"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Profile</span>: <span style="color: #0000BB;">"cmip6"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Status</span>: <span style="color: #0000BB;">"loaded"</span></span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 14:51:33 UTC</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 15:26:45 UTC</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Vocabulary</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">Vocab Version</span>: `6.2.60.0`</span></span>

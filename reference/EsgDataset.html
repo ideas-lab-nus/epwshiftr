@@ -127,6 +127,8 @@ automatically handling time dimension concatenation.</p>
 <ul><li><p><a href="#method-EsgDataset-new"><code>EsgDataset$new()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-open"><code>EsgDataset$open()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-close"><code>EsgDataset$close()</code></a></p></li>
+<li><p><a href="#method-EsgDataset-slice"><code>EsgDataset$slice()</code></a></p></li>
+<li><p><a href="#method-EsgDataset-reachable"><code>EsgDataset$reachable()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-file_inq"><code>EsgDataset$file_inq()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-var_inq"><code>EsgDataset$var_inq()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-dim_inq"><code>EsgDataset$dim_inq()</code></a></p></li>
@@ -139,6 +141,7 @@ automatically handling time dimension concatenation.</p>
 <li><p><a href="#method-EsgDataset-read_array"><code>EsgDataset$read_array()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-read_data_table"><code>EsgDataset$read_data_table()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-read_region"><code>EsgDataset$read_region()</code></a></p></li>
+<li><p><a href="#method-EsgDataset-selection"><code>EsgDataset$selection()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-print"><code>EsgDataset$print()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-clone"><code>EsgDataset$clone()</code></a></p></li>
 </ul></div><p></p><hr><a id="method-EsgDataset-new"></a><div class="section">
@@ -235,15 +238,83 @@ ds$close()
 </div>
 
 
-</div><p></p><hr><a id="method-EsgDataset-file_inq"></a><div class="section">
-<h3 id="method-file-inq-">Method <code>file_inq()</code><a class="anchor" aria-label="anchor" href="#method-file-inq-"></a></h3>
-<p>Get file information</p><div class="section">
+</div><p></p><hr><a id="method-EsgDataset-slice"></a><div class="section">
+<h3 id="method-slice-">Method <code>slice()</code><a class="anchor" aria-label="anchor" href="#method-slice-"></a></h3>
+<p>Select files from this dataset by file position.</p>
+<p><code>$slice()</code> creates a new <code>EsgDataset</code> with a subset of the current
+dataset URLs. This is a file/URL-level operation; NetCDF variable,
+dimension, time, and spatial slicing is still performed by
+<code>$var_get()</code>, <code>$read_array()</code>, <code>$read_data_table()</code>, and
+<code>$read_region()</code>.</p><div class="section">
 <h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">file_inq</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">slice</span><span class="op">(</span><span class="va">i</span>, reopen <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>i</code></dt>
+<dd><p>A positive or negative integer vector, or a logical vector
+with one value per file.</p></dd>
+
+
+<dt><code>reopen</code></dt>
+<dd><p>Whether to open the returned dataset when the current
+dataset is already open. If <code>FALSE</code> (default), slicing an
+open dataset raises an error because RNetCDF handles cannot
+be safely shared between dataset objects.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p>A new <code>EsgDataset</code> object.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgDataset-reachable"></a><div class="section">
+<h3 id="method-reachable-">Method <code>reachable()</code><a class="anchor" aria-label="anchor" href="#method-reachable-"></a></h3>
+<p>Probe whether this dataset's current files or URLs are reachable.</p>
+<p><code>$reachable()</code> checks the actual URLs or local paths stored in the
+dataset. It does not reuse reachability checks from an <code>EsgResult</code>;
+opened datasets, fallback downloads, and manually created datasets
+are always evaluated from their current <code>url</code> values.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">reachable</span><span class="op">(</span>level <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"data_node"</span>, <span class="st">"url"</span><span class="op">)</span>, probe <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>level</code></dt>
+<dd><p>Probe level. <code>"data_node"</code> probes the root URL of each
+remote data node; <code>"url"</code> probes the actual dataset URL.
+Default: <code>"data_node"</code>.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Optional named list of probe settings. Supported fields
+are <code>timeout</code>, <code>concurrency</code>, <code>network_policy</code>,
+<code>cache_seconds</code>, and <code>cache_failures_seconds</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<p>A <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a> with columns
+<code>file_index</code>, <code>source_index</code>, <code>data_node</code>, <code>service</code>, <code>url</code>,
+<code>reachable</code>, <code>latency_ms</code>, <code>error</code>, <code>probe_level</code>,
+<code>probe_url</code>, and <code>probe_cached</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgDataset-file_inq"></a><div class="section">
+<h3 id="method-file-inq-">Method <code>file_inq()</code><a class="anchor" aria-label="anchor" href="#method-file-inq-"></a></h3>
+<p>Get file information</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">file_inq</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>index</code></dt>
 <dd><p>File index for multi-file datasets. Default: <code>1L</code>.</p></dd>
 
@@ -251,7 +322,7 @@ ds$close()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
 <p>A list with file information.</p>
 </div>
 <div class="section">
@@ -266,12 +337,12 @@ info &lt;- ds$file_inq()
 </div><p></p><hr><a id="method-EsgDataset-var_inq"></a><div class="section">
 <h3 id="method-var-inq-">Method <code>var_inq()</code><a class="anchor" aria-label="anchor" href="#method-var-inq-"></a></h3>
 <p>Get variable information</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">var_inq</span><span class="op">(</span><span class="va">var</span>, index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>var</code></dt>
 <dd><p>Variable name or ID.</p></dd>
 
@@ -283,7 +354,7 @@ info &lt;- ds$file_inq()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
 <p>A list with variable information.</p>
 </div>
 <div class="section">
@@ -298,12 +369,12 @@ var_info &lt;- ds$var_inq("tas")
 </div><p></p><hr><a id="method-EsgDataset-dim_inq"></a><div class="section">
 <h3 id="method-dim-inq-">Method <code>dim_inq()</code><a class="anchor" aria-label="anchor" href="#method-dim-inq-"></a></h3>
 <p>Get dimension information</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">dim_inq</span><span class="op">(</span><span class="va">dim</span>, index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>dim</code></dt>
 <dd><p>Dimension name or ID.</p></dd>
 
@@ -315,7 +386,7 @@ var_info &lt;- ds$var_inq("tas")
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
 <p>A list with dimension information.</p>
 </div>
 <div class="section">
@@ -330,12 +401,12 @@ dim_info &lt;- ds$dim_inq("time")
 </div><p></p><hr><a id="method-EsgDataset-att_get"></a><div class="section">
 <h3 id="method-att-get-">Method <code>att_get()</code><a class="anchor" aria-label="anchor" href="#method-att-get-"></a></h3>
 <p>Get attribute value</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">att_get</span><span class="op">(</span><span class="va">var</span>, <span class="va">att</span>, index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>var</code></dt>
 <dd><p>Variable name or ID, or "NC_GLOBAL" for global attributes.</p></dd>
 
@@ -351,7 +422,7 @@ dim_info &lt;- ds$dim_inq("time")
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
 <p>The attribute value.</p>
 </div>
 <div class="section">
@@ -366,7 +437,7 @@ units &lt;- ds$att_get("tas", "units")
 </div><p></p><hr><a id="method-EsgDataset-var_get"></a><div class="section">
 <h3 id="method-var-get-">Method <code>var_get()</code><a class="anchor" aria-label="anchor" href="#method-var-get-"></a></h3>
 <p>Read variable data</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">var_get</span><span class="op">(</span></span>
 <span>  <span class="va">var</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -379,7 +450,7 @@ units &lt;- ds$att_get("tas", "units")
 </div>
 
 <div class="section">
-<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>var</code></dt>
 <dd><p>Variable name or ID.</p></dd>
 
@@ -414,7 +485,7 @@ worker phase. Only supported when <code>async = TRUE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
 <p>An array with variable data.</p>
 </div>
 <div class="section">
@@ -432,12 +503,12 @@ data_async &lt;- ds$var_get("tas", async = TRUE, timeout = 10)
 </div><p></p><hr><a id="method-EsgDataset-get_variables"></a><div class="section">
 <h3 id="method-get-variables-">Method <code>get_variables()</code><a class="anchor" aria-label="anchor" href="#method-get-variables-"></a></h3>
 <p>List all variables in the dataset</p><div class="section">
-<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">get_variables</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>index</code></dt>
 <dd><p>File index for multi-file datasets. Default: <code>1L</code>.</p></dd>
 
@@ -445,7 +516,7 @@ data_async &lt;- ds$var_get("tas", async = TRUE, timeout = 10)
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
 <p>A character vector of variable names.</p>
 </div>
 <div class="section">
@@ -460,12 +531,12 @@ vars &lt;- ds$get_variables()
 </div><p></p><hr><a id="method-EsgDataset-get_dimensions"></a><div class="section">
 <h3 id="method-get-dimensions-">Method <code>get_dimensions()</code><a class="anchor" aria-label="anchor" href="#method-get-dimensions-"></a></h3>
 <p>List all dimensions in the dataset</p><div class="section">
-<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">get_dimensions</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>index</code></dt>
 <dd><p>File index for multi-file datasets. Default: <code>1L</code>.</p></dd>
 
@@ -473,7 +544,7 @@ vars &lt;- ds$get_variables()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
 <p>A character vector of dimension names.</p>
 </div>
 <div class="section">
@@ -488,12 +559,12 @@ dims &lt;- ds$get_dimensions()
 </div><p></p><hr><a id="method-EsgDataset-get_time_axis"></a><div class="section">
 <h3 id="method-get-time-axis-">Method <code>get_time_axis()</code><a class="anchor" aria-label="anchor" href="#method-get-time-axis-"></a></h3>
 <p>Get time axis information</p><div class="section">
-<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">get_time_axis</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
+<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>index</code></dt>
 <dd><p>File index for multi-file datasets. Default: <code>1L</code>.</p></dd>
 
@@ -501,7 +572,7 @@ dims &lt;- ds$get_dimensions()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
+<h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
 <p>A list containing time values, units, and calendar.</p>
 </div>
 <div class="section">
@@ -516,12 +587,12 @@ time_info &lt;- ds$get_time_axis()
 </div><p></p><hr><a id="method-EsgDataset-get_spatial_grid"></a><div class="section">
 <h3 id="method-get-spatial-grid-">Method <code>get_spatial_grid()</code><a class="anchor" aria-label="anchor" href="#method-get-spatial-grid-"></a></h3>
 <p>Get spatial grid information (latitude and longitude)</p><div class="section">
-<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">get_spatial_grid</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
+<h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>index</code></dt>
 <dd><p>File index for multi-file datasets. Default: <code>1L</code>.</p></dd>
 
@@ -529,7 +600,7 @@ time_info &lt;- ds$get_time_axis()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
+<h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
 <p>A list containing latitude and longitude values.</p>
 </div>
 <div class="section">
@@ -544,7 +615,7 @@ grid &lt;- ds$get_spatial_grid()
 </div><p></p><hr><a id="method-EsgDataset-read_array"></a><div class="section">
 <h3 id="method-read-array-">Method <code>read_array()</code><a class="anchor" aria-label="anchor" href="#method-read-array-"></a></h3>
 <p>Read variable data as a list of arrays (one per file)</p><div class="section">
-<h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
+<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">read_array</span><span class="op">(</span></span>
 <span>  <span class="va">variable</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -556,7 +627,7 @@ grid &lt;- ds$get_spatial_grid()
 </div>
 
 <div class="section">
-<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
+<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>variable</code></dt>
 <dd><p>Variable name.</p></dd>
 
@@ -587,7 +658,7 @@ worker phase. Only supported when <code>async = TRUE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
+<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
 <p>A list of arrays with variable data. Each element
 corresponds to a file in the dataset.</p>
 </div>
@@ -606,7 +677,7 @@ data_list_async &lt;- ds$read_array("tas", async = TRUE, timeout = 10)
 </div><p></p><hr><a id="method-EsgDataset-read_data_table"></a><div class="section">
 <h3 id="method-read-data-table-">Method <code>read_data_table()</code><a class="anchor" aria-label="anchor" href="#method-read-data-table-"></a></h3>
 <p>Read variable data as a list of data.table (one per file)</p><div class="section">
-<h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
+<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">read_data_table</span><span class="op">(</span></span>
 <span>  <span class="va">variable</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -618,7 +689,7 @@ data_list_async &lt;- ds$read_array("tas", async = TRUE, timeout = 10)
 </div>
 
 <div class="section">
-<h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
+<h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>variable</code></dt>
 <dd><p>Variable name.</p></dd>
 
@@ -651,7 +722,7 @@ worker phase. Only supported when <code>async = TRUE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
+<h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
 <p>If <code>rbind = FALSE</code>, a list of data.table (one per file).
 If <code>rbind = TRUE</code>, a single data.table with an extra <code>file_index</code> column.</p>
 </div>
@@ -671,7 +742,7 @@ dt_async &lt;- ds$read_data_table("tas", async = TRUE, timeout = 10)
 </div><p></p><hr><a id="method-EsgDataset-read_region"></a><div class="section">
 <h3 id="method-read-region-">Method <code>read_region()</code><a class="anchor" aria-label="anchor" href="#method-read-region-"></a></h3>
 <p>Read variable values near a target coordinate and optional time range</p><div class="section">
-<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">read_region</span><span class="op">(</span></span>
 <span>  <span class="va">variable</span>,</span>
 <span>  <span class="va">lon</span>,</span>
@@ -685,7 +756,7 @@ dt_async &lt;- ds$read_data_table("tas", async = TRUE, timeout = 10)
 </div>
 
 <div class="section">
-<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
+<h4 id="arguments-15">Arguments<a class="anchor" aria-label="anchor" href="#arguments-15"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>variable</code></dt>
 <dd><p>Character vector of variable names.</p></dd>
 
@@ -730,7 +801,7 @@ read. Only supported when <code>async = TRUE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
+<h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
 <p>A data.table or list of data.tables with columns including
 <code>file_index</code>, <code>variable</code>, <code>time</code>, <code>lon</code>, <code>lat</code>, <code>dist</code>, and <code>value</code>.</p>
 </div>
@@ -748,27 +819,43 @@ dt &lt;- ds$read_region(
 </div>
 
 
+</div><p></p><hr><a id="method-EsgDataset-selection"></a><div class="section">
+<h3 id="method-selection-">Method <code>selection()</code><a class="anchor" aria-label="anchor" href="#method-selection-"></a></h3>
+<p>Return file selection provenance for this dataset.</p>
+<p><code>$selection()</code> maps the current dataset file positions back to the
+result rows that produced the dataset when that information is
+available. It does not record intermediate filter steps.</p><div class="section">
+<h4 id="usage-17">Usage<a class="anchor" aria-label="anchor" href="#usage-17"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">selection</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="returns-17">Returns<a class="anchor" aria-label="anchor" href="#returns-17"></a></h4>
+<p>A list with <code>source_count</code>, <code>source_num_found</code>, and
+<code>source_indices</code>.</p>
+</div>
+
 </div><p></p><hr><a id="method-EsgDataset-print"></a><div class="section">
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print dataset summary</p><div class="section">
-<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
+<h4 id="usage-18">Usage<a class="anchor" aria-label="anchor" href="#usage-18"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
+<h4 id="returns-18">Returns<a class="anchor" aria-label="anchor" href="#returns-18"></a></h4>
 <p>The <code>EsgDataset</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgDataset-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
+<h4 id="usage-19">Usage<a class="anchor" aria-label="anchor" href="#usage-19"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
+<h4 id="arguments-16">Arguments<a class="anchor" aria-label="anchor" href="#arguments-16"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

@@ -95,12 +95,18 @@ Usually, it is created by calling
 <li><p><a href="#method-EsgResultDataset-has_opendap"><code>EsgResultDataset$has_opendap()</code></a></p></li>
 <li><p><a href="#method-EsgResultDataset-has_download"><code>EsgResultDataset$has_download()</code></a></p></li>
 <li><p><a href="#method-EsgResultDataset-collect"><code>EsgResultDataset$collect()</code></a></p></li>
+<li><p><a href="#method-EsgResultDataset-expand_replicas"><code>EsgResultDataset$expand_replicas()</code></a></p></li>
 <li><p><a href="#method-EsgResultDataset-print"><code>EsgResultDataset$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultDataset-clone"><code>EsgResultDataset$clone()</code></a></p></li>
-</ul></div><p><details open><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>epwshiftr::EsgResult$count()</code></a></span></li>
+</ul></div><p><details><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>epwshiftr::EsgResult$count()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href="EsgResult.html#method-filter"><code>epwshiftr::EsgResult$filter()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href="EsgResult.html#method-query_url"><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href="EsgResult.html#method-reachable"><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href="EsgResult.html#method-selection"><code>epwshiftr::EsgResult$selection()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href="EsgResult.html#method-slice"><code>epwshiftr::EsgResult$slice()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultDataset-to_data_table"></a><div class="section">
 <h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
@@ -171,6 +177,8 @@ datasets and returns an
 <span>  all <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  limit <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  type <span class="op">=</span> <span class="st">"File"</span>,</span>
+<span>  index_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  use_record_index_node <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -208,17 +216,36 @@ used. Default: <code>100L</code>.</p></dd>
 <code>File</code> or <code>Aggregation</code>. Default: <code>"File"</code>.</p></dd>
 
 
+<dt><code>index_node</code></dt>
+<dd><p>Optional ESGF index node used for the child query.
+If <code>NULL</code>, the index node that created the Dataset result is
+used. Default: <code>NULL</code>.</p></dd>
+
+
+<dt><code>use_record_index_node</code></dt>
+<dd><p>Whether to group selected Dataset records
+by their <code>index_node</code> metadata and send child queries to those
+record-level index nodes. Records without <code>index_node</code> fall back
+to the <code>index_node</code> argument or the index node that created this
+result. Default: <code>FALSE</code>.</p></dd>
+
+
 <dt><code>...</code></dt>
-<dd><p>Additional child-result facet filters, plus the control
-parameters <code>replica</code>, <code>distrib</code>, <code>latest</code>, and <code>shards</code>.
+<dd><p>Optional child-result scope filter <code>data_node</code>, plus the
+control parameters <code>replica</code>, <code>distrib</code>, <code>latest</code>, and <code>shards</code>.
 Query-level parameters such as <code>datetime_start</code> and
 <code>datetime_stop</code> cannot be passed through <code>...</code>.
 File/Aggregation collection does not use ESGF datetime search
 parameters; call <code>$filter_time()</code> on the returned result for
 time filtering. If control parameters are omitted, they are
 inherited from the dataset query when available, with
-<code>distrib = TRUE</code> and <code>latest = TRUE</code> as fallbacks. For details
+<code>distrib = TRUE</code> as fallback. If <code>latest</code> is omitted and was not
+set on the dataset query, no <code>latest</code> constraint is sent. For details
 on possible parameters, please see <code><a href="EsgQuery.html">esg_query()</a></code>.
+When a local <a href="EsgDict.html">EsgDict</a> is available for the query project, child
+collection performs a warning-only dictionary check before sending
+the query. Missing local dictionaries are ignored and never
+downloaded.
 <code>Aggregation</code> collection uses <code>dataset_id</code> plus explicit child filters
 in <code>...</code>; parent Dataset facet filters are not inherited because
 Aggregation records on standard ESGF search nodes do not necessarily
@@ -234,15 +261,54 @@ expose the same facet fields as Dataset records.</p></dd>
 <li><p>If <code>type="Aggregation"</code>, an <a href="EsgResultAggregation.html">EsgResultAggregation</a> object</p></li>
 </ul></div>
 
-</div><p></p><hr><a id="method-EsgResultDataset-print"></a><div class="section">
-<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
-<p>Print a summary of the current dataset</p><div class="section">
+</div><p></p><hr><a id="method-EsgResultDataset-expand_replicas"></a><div class="section">
+<h3 id="method-expand-replicas-">Method <code>expand_replicas()</code><a class="anchor" aria-label="anchor" href="#method-expand-replicas-"></a></h3>
+<p>Query ESGF for Dataset master and replica records.</p><div class="section">
 <h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultDataset</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultDataset</span><span class="op">$</span><span class="fu">expand_replicas</span><span class="op">(</span></span>
+<span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"instance_id"</span>, <span class="st">"master_id"</span><span class="op">)</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  index_node <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>by</code></dt>
+<dd><p>Replica identity key. Use <code>"instance_id"</code> to retrieve
+same-version Dataset replicas, or <code>"master_id"</code> to retrieve all
+versions and replicas for the logical Dataset. Default:
+<code>"instance_id"</code>.</p></dd>
+
+
+<dt><code>all</code></dt>
+<dd><p>Whether to retrieve all matching records. Default:
+<code>TRUE</code>.</p></dd>
+
+
+<dt><code>index_node</code></dt>
+<dd><p>Optional ESGF index node used for the replica query.
+If <code>NULL</code>, the index node that created this result is used.
+Default: <code>NULL</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<p>A new <code>EsgResultDataset</code> object with expanded Dataset records
+when the requested identity key is available; otherwise <code>self</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResultDataset-print"></a><div class="section">
+<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
+<p>Print a summary of the current dataset</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultDataset</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
@@ -251,19 +317,19 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
 <p>The <code>EsgResultDataset</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultDataset-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultDataset</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

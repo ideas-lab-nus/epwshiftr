@@ -129,6 +129,11 @@ has been recorded.</p></dd>
 <li><p><a href="#method-EsgResult-count"><code>EsgResult$count()</code></a></p></li>
 <li><p><a href="#method-EsgResult-save"><code>EsgResult$save()</code></a></p></li>
 <li><p><a href="#method-EsgResult-load"><code>EsgResult$load()</code></a></p></li>
+<li><p><a href="#method-EsgResult-query_url"><code>EsgResult$query_url()</code></a></p></li>
+<li><p><a href="#method-EsgResult-reachable"><code>EsgResult$reachable()</code></a></p></li>
+<li><p><a href="#method-EsgResult-slice"><code>EsgResult$slice()</code></a></p></li>
+<li><p><a href="#method-EsgResult-filter"><code>EsgResult$filter()</code></a></p></li>
+<li><p><a href="#method-EsgResult-selection"><code>EsgResult$selection()</code></a></p></li>
 <li><p><a href="#method-EsgResult-clone"><code>EsgResult$clone()</code></a></p></li>
 </ul></div><p></p><hr><a id="method-EsgResult-new"></a><div class="section">
 <h3 id="method-new-">Method <code>new()</code><a class="anchor" aria-label="anchor" href="#method-new-"></a></h3>
@@ -280,15 +285,145 @@ from.</p></dd>
 <p>The modified <code>EsgResult</code> object itself.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResult-clone"></a><div class="section">
-<h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
-<p>The objects of this class are cloneable with this method.</p><div class="section">
+</div><p></p><hr><a id="method-EsgResult-query_url"></a><div class="section">
+<h3 id="method-query-url-">Method <code>query_url()</code><a class="anchor" aria-label="anchor" href="#method-query-url-"></a></h3>
+<p>Return the ESGF search query URL used to create this result.</p><div class="section">
 <h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">query_url</span><span class="op">(</span>pages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"first"</span>, <span class="st">"all"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>pages</code></dt>
+<dd><p>Which recorded query URLs to return. <code>"first"</code> returns
+the first request URL. <code>"all"</code> returns every recorded request
+URL, including pagination requests. Default: <code>"first"</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+<p>A named character vector of query URLs.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResult-reachable"></a><div class="section">
+<h3 id="method-reachable-">Method <code>reachable()</code><a class="anchor" aria-label="anchor" href="#method-reachable-"></a></h3>
+<p>Probe whether result records are reachable through a service URL.</p>
+<p><code>$reachable()</code> performs a lightweight probe of the selected service
+URL for each record already held in the result. It returns diagnostic
+rows and does not modify result context or saved-result metadata.</p><div class="section">
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">reachable</span><span class="op">(</span></span>
+<span>  service <span class="op">=</span> <span class="st">"OPENDAP"</span>,</span>
+<span>  level <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"data_node"</span>, <span class="st">"url"</span><span class="op">)</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>service</code></dt>
+<dd><p>ESGF URL service to probe. Default: <code>"OPENDAP"</code>.</p></dd>
+
+
+<dt><code>level</code></dt>
+<dd><p>Probe level. <code>"data_node"</code> probes the root URL of each
+data node; <code>"url"</code> probes the actual service URL for each
+record. Default: <code>"data_node"</code>.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Optional named list of probe settings. Supported fields
+are <code>timeout</code>, <code>concurrency</code>, <code>network_policy</code>,
+<code>cache_seconds</code>, and <code>cache_failures_seconds</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+<p>A <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a> with columns
+<code>record_index</code>, <code>id</code>, <code>data_node</code>, <code>service</code>, <code>url</code>,
+<code>reachable</code>, <code>latency_ms</code>, <code>error</code>, <code>probe_level</code>,
+<code>probe_url</code>, and <code>probe_cached</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResult-slice"></a><div class="section">
+<h3 id="method-slice-">Method <code>slice()</code><a class="anchor" aria-label="anchor" href="#method-slice-"></a></h3>
+<p>Subset result records by row, logical selector, or record ID.</p>
+<p><code>$slice()</code> filters the records already held in memory. It does not
+change the original ESGF query parameters or query URL provenance.</p><div class="section">
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">slice</span><span class="op">(</span>i <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>i</code></dt>
+<dd><p>A positive or negative integer vector, logical vector,
+character vector of record IDs, or <code>NULL</code>. <code>NULL</code> returns an
+empty result.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+<p>A new result object of the same type.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResult-filter"></a><div class="section">
+<h3 id="method-filter-">Method <code><a href="https://rdrr.io/r/stats/filter.html" class="external-link">filter()</a></code><a class="anchor" aria-label="anchor" href="#method-filter-"></a></h3>
+<p>Subset result records with a predicate function.</p><div class="section">
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">filter</span><span class="op">(</span><span class="va">predicate</span>, formatted <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>predicate</code></dt>
+<dd><p>A function that accepts <code>self$to_data_table()</code> and
+returns a logical vector with one value per current record.</p></dd>
+
+
+<dt><code>formatted</code></dt>
+<dd><p>Whether to use formatted values when creating the
+predicate input data table. Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<p>A new result object of the same type.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResult-selection"></a><div class="section">
+<h3 id="method-selection-">Method <code>selection()</code><a class="anchor" aria-label="anchor" href="#method-selection-"></a></h3>
+<p>Return local selection provenance for this result.</p>
+<p><code>$selection()</code> maps current rows back to the result object that first
+recorded selection provenance. It does not record intermediate filter
+steps.</p><div class="section">
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">selection</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
+<p>A list with <code>source_count</code>, <code>source_num_found</code>, and
+<code>source_indices</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResult-clone"></a><div class="section">
+<h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
+<p>The objects of this class are cloneable with this method.</p><div class="section">
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

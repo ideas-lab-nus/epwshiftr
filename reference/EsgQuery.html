@@ -194,8 +194,8 @@ all projects except for <code>CMIP6</code>.</p></li>
 <li><p>If no input is given, the current parameter value is returned. For example,
 directly calling <code>EsgQuery$project()</code> returns the current value of the
 <code>project</code> parameter. The returned value can be two types:</p><ul><li><p><code>NULL</code>, i.e. there is no constraint on the corresponding parameter</p></li>
-<li><p>A <code>QueryParam</code> object. Use <code>query_param_value()</code>, <code>query_param_negate()</code>,
-<code>query_param_name()</code> and <code>query_param_kind()</code> to inspect it.</p></li>
+<li><p>A <code>QueryParam</code> object. Use <code>query_param__value()</code> and
+<code>query_param__negate()</code> to inspect it.</p></li>
 </ul></li>
 </ul><p>Despite methods for specific keywords and facets, you can specify arbitrary
 query parameters using
@@ -795,7 +795,9 @@ Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 <p></p><div class="arguments"><dl><dt><code>start, stop</code></dt>
 <dd><p>Temporal boundary strings accepted by <code><a href="solr_date.html">solr_date()</a></code>,
 complete Solr range expressions, <code>"*"</code>, or <code>NULL</code>. If both are
-omitted, the current range state is returned.</p></dd>
+omitted, the current range state is returned. The helper renders
+Solr constraints for the ESGF REST <code>start</code>/<code>end</code> temporal
+coverage keyword semantics.</p></dd>
 
 
 </dl><p></p></div>
@@ -840,10 +842,12 @@ object. Otherwise, a list with <code>from</code> and <code>to</code> elements.</
 <div class="section">
 <h4 id="arguments-20">Arguments<a class="anchor" aria-label="anchor" href="#arguments-20"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>min, max</code></dt>
-<dd><p>Version boundary strings such as <code>"20200101"</code>,
-simplified dates, <code>"*"</code>, or <code>NULL</code>. Solr Date Math and complete
-range expressions are not accepted here. If both are omitted,
-the current range state is returned.</p></dd>
+<dd><p>Version boundaries such as <code>20200101</code>, <code>"20200101"</code>,
+simplified dates, <code>"*"</code>, or <code>NULL</code>. ESGF <code>version</code> is queried
+as a numeric field; simplified date inputs are normalized to
+comparable <code>YYYYMMDD</code> integer boundaries before rendering.
+Solr Date Math and complete range expressions are not accepted
+here. If both are omitted, the current range state is returned.</p></dd>
 
 
 </dl><p></p></div>
@@ -880,14 +884,14 @@ Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 <h3 id="method-latest-">Method <code>latest()</code><a class="anchor" aria-label="anchor" href="#method-latest-"></a></h3>
 <p>Get or set the <code>latest</code> parameter.</p><div class="section">
 <h4 id="usage-22">Usage<a class="anchor" aria-label="anchor" href="#usage-22"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-22">Arguments<a class="anchor" aria-label="anchor" href="#arguments-22"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>A flag. If omitted, the current value is returned.
-Default when setting without an explicit value: <code>TRUE</code>.</p></dd>
+<dd><p>A flag, or <code>NULL</code> to remove the <code>latest</code> constraint. If
+omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
@@ -1093,7 +1097,10 @@ By default it collects <strong><code>type=Dataset</code></strong> results and re
 collects child File or Aggregation results for those datasets.
 The fields included depend on <code>fields</code> parameter.
 However, the following fields are always included in the results:
-<code>access</code>, <code>id</code>, <code>index_node</code>, <code>number_of_aggregations</code>, <code>number_of_files</code>, <code>size</code>, <code>url</code>.</p><div class="section">
+<code>access</code>, <code>data_node</code>, <code>id</code>, <code>index_node</code>, <code>instance_id</code>, <code>latest</code>, <code>master_id</code>, <code>number_of_aggregations</code>, <code>number_of_files</code>, <code>replica</code>, <code>size</code>, <code>url</code>, <code>version</code>.
+When a local <a href="EsgDict.html">EsgDict</a> is available for the query project, <code>$collect()</code>
+also performs a warning-only dictionary check before sending the query.
+Missing local dictionaries are ignored and never downloaded.</p><div class="section">
 <h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span></span>
 <span>  all <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -1143,10 +1150,12 @@ or <code>"Aggregation"</code>. Default: <code>"Dataset"</code>.</p></dd>
 
 
 <dt><code>...</code></dt>
-<dd><p>Additional File/Aggregation facet filters used only when
-<code>type</code> is <code>"File"</code> or <code>"Aggregation"</code>. File/Aggregation
-collection does not use ESGF datetime search parameters; use
-<code>$filter_time()</code> on the returned result for time filtering.</p></dd>
+<dd><p>Arguments passed to <a href="EsgResultDataset.html">EsgResultDataset</a> child collection
+when <code>type</code> is <code>"File"</code> or <code>"Aggregation"</code>, including the
+<code>data_node</code> scope filter, child-query controls, and
+<code>use_record_index_node</code>. File/Aggregation collection does not
+use ESGF datetime search parameters; use <code>$filter_time()</code> on the
+returned result for time filtering.</p></dd>
 
 
 </dl><p></p></div>

@@ -82,7 +82,7 @@ data.table-oriented CMIP6 query workflow.</p>
 <span>    <span class="st">"MRI-ESM2-0"</span><span class="op">)</span>,</span>
 <span>  variant <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,</span>
 <span>  replica <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  latest <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  latest <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  resolution <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100 km"</span>, <span class="st">"50 km"</span><span class="op">)</span>,</span>
 <span>  type <span class="op">=</span> <span class="st">"Dataset"</span>,</span>
 <span>  limit <span class="op">=</span> <span class="fl">10000L</span>,</span>
@@ -201,9 +201,10 @@ Default: <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-latest">latest<a class="anchor" aria-label="anchor" href="#arg-latest"></a></dt>
-<dd><p>Whether the record is the latest available version, or a
-previous version. Use <code>TRUE</code> to return only the latest version of all
-records and <code>FALSE</code> to return previous versions. Default: <code>FALSE</code>.</p></dd>
+<dd><p>Whether to constrain records by latest-version status. Use
+<code>TRUE</code> to return only the latest version of all records, <code>FALSE</code> to
+return previous versions, and <code>NULL</code> to return all versions.
+Default: <code>NULL</code>.</p></dd>
 
 
 <dt id="arg-resolution">resolution<a class="anchor" aria-label="anchor" href="#arg-resolution"></a></dt>
