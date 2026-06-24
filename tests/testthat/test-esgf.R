@@ -175,6 +175,42 @@ test_that("init_cmip6_index()", {
     }
 })
 
+test_that("init_cmip6_index() keeps empty file-query joins stable", {
+    qd <- data.table::data.table(
+        dataset_id = "dataset-id", mip_era = "CMIP6", activity_drs = "ScenarioMIP",
+        institution_id = "ECMWF", source_id = "EC-Earth3", experiment_id = "ssp585",
+        member_id = "r1i1p1f1", table_id = "day", frequency = "day", grid_label = "gr",
+        version = "v20240101", nominal_resolution = "100 km", variable_id = "tas",
+        variable_long_name = "Near-Surface Air Temperature", variable_units = "K",
+        data_node = "example.org", dataset_pid = "hdl:21.14100/mock-dataset"
+    )
+
+    testthat::local_mocked_bindings(
+        esgf_query = function(..., type = "Dataset") {
+            if (identical(type, "Dataset")) qd else data.table::data.table()
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_warning(
+        idx <- init_cmip6_index(
+            variable = "tas",
+            source = "EC-Earth3",
+            experiment = "ssp585",
+            years = 2060
+        ),
+        "did not find any matched output file after 10 retries"
+    )
+    expect_s3_class(idx, "data.table")
+    expect_named(idx, c(
+        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "source_id", "experiment_id", "member_id", "table_id", "frequency",
+        "grid_label", "version", "nominal_resolution", "variable_id",
+        "variable_long_name", "variable_units", "datetime_start", "datetime_end",
+        "file_size", "data_node", "file_url", "dataset_pid", "tracking_id"
+    ))
+})
+
 test_that("load_cmip6_index()", {
     old_warned <- this$esgf_query_deprecated_warned
     this$esgf_query_deprecated_warned <- TRUE

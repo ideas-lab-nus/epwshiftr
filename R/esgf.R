@@ -108,7 +108,7 @@ esgf_query_normalize_legacy_fq <- function(response, replica, latest) {
 esgf_query_collect <- function(q) {
     withCallingHandlers(
         query_collect(
-            priv(q)$index_node,
+            priv(q)$index_node_url,
             priv(q)$parameter,
             required_fields = NULL,
             all = FALSE,
@@ -144,7 +144,7 @@ esgf_query_build <- function(host, type, activity, variable, frequency, experime
 
     # keep the legacy host semantics and only reuse the new query stack for
     # parameter normalization and request execution.
-    priv(q)$index_node <- index_node
+    q$index_node(index_node)
 
     q$project("CMIP6")
     q$activity_id(activity)
@@ -156,14 +156,9 @@ esgf_query_build <- function(host, type, activity, variable, frequency, experime
     q$replica(replica)
     q$latest(latest)
     q$data_node(data_node)
-
-    priv(q)$parameter$nominal_resolution <- new_query_param("nominal_resolution", resolution_param)
-    priv(q)$parameter$limit <- new_query_param("limit", as.integer(limit))
-    priv(q)$parameter$type <- new_query_param("type", type)
-    priv(q)$parameter$fields <- new_query_param(
-        "fields",
-        if (type == "Dataset") RES_DATASET else RES_FILE
-    )
+    q$nominal_resolution(resolution_param)
+    q$limit(as.integer(limit))
+    q$fields(RES_DATASET)
 
     q
 }
@@ -511,14 +506,31 @@ esgf_query <- function(
         {
             res <- esgf_query_collect(q)
             res$response$response$docs <- res$docs
-            esgf_query_normalize_legacy_fq(
-                esgf_subset_response_docs(
-                    res$response,
-                    if (type == "Dataset") RES_DATASET else RES_FILE
-                ),
-                replica = replica,
-                latest = latest
-            )
+            response <- if (type == "Dataset" || res$response$response$numFound == 0L) {
+                esgf_subset_response_docs(res$response, RES_DATASET)
+            } else {
+                datasets <- new_query_result(
+                    EsgResultDataset,
+                    priv(q)$index_node_url,
+                    priv(q)$parameter,
+                    res$response
+                )
+                collect_args <- list(
+                    fields = RES_FILE,
+                    all = FALSE,
+                    limit = limit,
+                    type = "File",
+                    latest = latest
+                )
+                if (!is.null(replica)) {
+                    collect_args$replica <- replica
+                }
+
+                files <- do.call(datasets$collect, collect_args)
+                esgf_subset_response_docs(priv(files)$response, RES_FILE)
+            }
+
+            esgf_query_normalize_legacy_fq(response, replica = replica, latest = latest)
         },
         error = function(e) e
     )
@@ -823,6 +835,19 @@ init_cmip6_index <- function(
             data_node = data_node,
             host = host
         )
+
+        required_qf_cols <- list(
+            file_id = character(),
+            dataset_id = character(),
+            datetime_start = as.POSIXct(character(), tz = "UTC"),
+            datetime_end = as.POSIXct(character(), tz = "UTC"),
+            file_size = character(),
+            file_url = character(),
+            tracking_id = character()
+        )
+        for (nm in setdiff(names(required_qf_cols), names(qf))) {
+            data.table::set(qf, NULL, nm, required_qf_cols[[nm]])
+        }
 
         # remove all common columns in file query except for "dataset_id"
         data.table::set(qf, NULL, value = NULL, setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url")))

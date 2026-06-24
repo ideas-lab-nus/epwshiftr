@@ -40,7 +40,8 @@ Imports:
     R6,
     rappdirs,
     RNetCDF,
-    units
+    units,
+    S7
 Suggests:
     testthat (>= 3.0.0),
     withr,
@@ -57,18 +58,26 @@ Collate:
     'cache.R'
     'coord.R'
     'dataset.R'
+    'dict-check.R'
+    'dict-fetch.R'
+    'dict-parse-cv.R'
+    'dict-parse-dreq.R'
+    'dict-print.R'
+    'dict-store.R'
     'dict.R'
     'downloader.R'
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
     'gh.R'
+    'import-standalone-schema.R'
     'morph.R'
     'netcdf.R'
+    'solr_date.R'
+    'query-param.R'
     'query-result.R'
     'query.R'
     'schema.R'
-    'utils-solrdt.R'
     'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph

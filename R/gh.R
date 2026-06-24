@@ -67,3 +67,14 @@ download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
         dest
     })
 }
+
+download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
+    url <- sprintf("https://api.github.com/repos/%s/zipball/%s", repo, ref)
+    ref_file <- gsub("[/\\\\]", "-", ref)
+    dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), ref_file))
+
+    with_download_cache(url, dest, function() {
+        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        dest
+    })
+}
