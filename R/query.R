@@ -3,14 +3,21 @@ NULL
 
 FORMAT_JSON <- "application/solr+json"
 
+# Federated ESGF Nodes
+# https://esgf.github.io/nodes.html
 INDEX_NODES <- c(
+    # Metagrid Nodes - Europe/AU
+    CEDA = "https://esgf.ceda.ac.uk",
+    DKRZ = "https://esgf-data.dkrz.de",
+    NCI = "https://esgf.nci.org.au",
+
+    # Metagrid Nodes - DOE/US
     ORNL = "https://esgf-node.ornl.gov",
     LLNL = "https://esgf-node.llnl.gov",
-    NCI = "https://esgf.nci.org.au",
+
+    # CoG Nodes - Europe/AU
     IPSL = "https://esgf-node.ipsl.upmc.fr",
-    DKRZ = "https://esgf-data.dkrz.de",
-    LIU = "https://esg-dn1.nsc.liu.se",
-    CEDA = "https://esgf.ceda.ac.uk"
+    LIU = "https://esg-dn1.nsc.liu.se"
 )
 
 FIELDS_FACETS_ALL <- c(
@@ -158,14 +165,25 @@ FIELDS_FACETS_COMMON <- c(
 
 # read_json_response {{{
 read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.cache", TRUE), ...) {
-    checkmate::assert_flag(cache)
-    if (cache) {
+    # Determine effective cache mode
+    # cache parameter can be TRUE, FALSE, or "offline" (from option)
+    if (isFALSE(cache)) {
+        mode <- "off"
+    } else {
+        mode <- cache_mode()
+    }
+
+    if (mode != "off") {
         disk_cache <- get_cache()
         key <- get_response_cache_key(url)
 
         cached <- disk_cache$get(key)
         if (!is.key_missing(cached)) {
             return(cached)
+        }
+
+        if (mode == "offline") {
+            stop("Cache miss in offline mode for URL '", url, "'. Cannot fetch data while offline.", call. = FALSE)
         }
     }
 
@@ -181,7 +199,7 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
         )
 
         res <- NULL
-    # nocov end
+        # nocov end
     } else if (res$response$numFound == 0L) {
         verbose(warning(
             "No matched data. ",
@@ -191,8 +209,8 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 
     res$timestamp <- timestamp
 
-    # cache results
-    if (cache) {
+    # cache successful results only
+    if (mode != "off" && !is.null(res)) {
         # record the cache key
         res$cache <- key
         disk_cache$set(key, res)
@@ -206,38 +224,41 @@ read_json_response <- function(url, strict = TRUE, cache = getOption("epwshiftr.
 new_query_param <- function(name, value) {
     checkmate::assert_string(name)
 
-    if (!is.list(value)) value <- list(value = value, negate = FALSE)
-    if (is.null(value$value)) return(NULL)
+    if (!is.list(value)) {
+        value <- list(value = value, negate = FALSE)
+    }
+    if (is.null(value$value)) {
+        return(NULL)
+    }
 
-    checkmate::assert_list(value,
-        types = c("logical", "numeric", "character"),
-        any.missing = TRUE, names = "unique"
-    )
+    checkmate::assert_list(value, types = c("logical", "numeric", "character"), any.missing = TRUE, names = "unique")
     checkmate::assert_names(names(value), must.include = c("value", "negate"))
 
     # do not allow NAs
-    for (val in value) checkmate::assert_atomic(val, any.missing = FALSE)
+    for (val in value) {
+        checkmate::assert_atomic(val, any.missing = FALSE)
+    }
 
     value$name <- name
-    structure(value, class = c("EsgfQueryParam", "list"))
+    structure(value, class = c("EsgQueryParam", "list"))
 }
 # }}}
 
 # is.query_param {{{
-is.query_param <- function(x) inherits(x, "EsgfQueryParam")
+is.query_param <- function(x) inherits(x, "EsgQueryParam")
 # }}}
 
 #' @export
-# print.EsgfQueryParam {{{
-print.EsgfQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
-    cat(format.EsgfQueryParam(x, encode = encode, space = space), sep = "\n")
+# print.EsgQueryParam {{{
+print.EsgQueryParam <- function(x, encode = FALSE, space = TRUE, ...) {
+    cat(format.EsgQueryParam(x, encode = encode, space = space), sep = "\n")
     invisible(x)
 }
 # }}}
 
 #' @export
-# format.EsgfQueryParam {{{
-format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
+# format.EsgQueryParam {{{
+format.EsgQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
     if (is.logical(x$value)) {
         res <- tolower(if (x$negate) !x$value else x$value)
     } else if (is.numeric(x$value)) {
@@ -258,7 +279,7 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 }
 # }}}
 
-# query_esgf {{{
+# esg_query {{{
 #' Query CMIP6 data using ESGF search RESTful API
 #'
 #' @description
@@ -272,11 +293,15 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #' using this
 #' [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html).
 #'
-#' `EsgfQuery` is the workhorse for dealing with ESGF search services.
+#' `EsgQuery` is the workhorse for dealing with ESGF search services.
+#' For new code, start with `esg_query()` / `EsgQuery`. The older [esgf_query()]
+#' wrapper is retained for compatibility with the legacy data.table-oriented API,
+#' emits a gentle deprecation warning, and preserves its historical LLNL `host`
+#' semantics instead of `esg_query()`'s ORNL `index_node` default.
 #'
-#' # `EsgfQuery` object
+#' # `EsgQuery` object
 #'
-#' `query_esgf()` returns an `EsgfQuery` object, which is an [R6][R6::R6Class]
+#' `esg_query()` returns an `EsgQuery` object, which is an [R6][R6::R6Class]
 #' object with quite a few methods that can be classified into 3 categories:
 #'
 #' - **Value listing**: methods to list all possible values of facets, fields,
@@ -289,75 +314,76 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' ## Value listing
 #'
-#' `EsgfQuery` object provides the following value-listing methods to query
+#' `EsgQuery` object provides the following value-listing methods to query
 #' available facets, fields, shards, and values from the ESGF index node:
 #'
-#' - \href{#method-EsgfQuery-list_facets}{\code{EsgfQuery$list_facets()}}:
+#' - \href{#method-EsgQuery-list_facets}{\code{EsgQuery$list_facets()}}:
 #'   List all available facet names. When called, a
 #'   [facet listing query](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#facet-listings)
 #'   is sent to the index node to get all available facets for the current
 #'   project (default: CMIP6).
 #'
-#' - \href{#method-EsgfQuery-list_fields}{\code{EsgfQuery$list_fields()}}:
+#' - \href{#method-EsgQuery-list_fields}{\code{EsgQuery$list_fields()}}:
 #'   List all available field names. This is useful for bridge index nodes
 #'   where facet listing is not available.
 #'
-#' - \href{#method-EsgfQuery-list_shards}{\code{EsgfQuery$list_shards()}}:
+#' - \href{#method-EsgQuery-list_shards}{\code{EsgQuery$list_shards()}}:
 #'   List all available shards (ESGF index nodes) that can be queried in
 #'   distributed searches.
 #'
-#' - \href{#method-EsgfQuery-list_values}{\code{EsgfQuery$list_values()}}:
+#' - \href{#method-EsgQuery-list_values}{\code{EsgQuery$list_values()}}:
 #'   List all available values of specific facets.
 #'
 #' ## Parameter getter & setter
 #'
-#' The ESGF search services support a lot of parameters. The `EsgfQuery`
+#' The ESGF search services support a lot of parameters. The `EsgQuery`
 #' contains dedicated methods to set values for most of them, including:
 #'
 #' - Most common keywords:
-#'   \href{#method-EsgfQuery-facets}{\code{facets}},
-#'   \href{#method-EsgfQuery-offset}{\code{offset}},
-#'   \href{#method-EsgfQuery-limit}{\code{limit}},
-#'   \href{#method-EsgfQuery-fields}{\code{fields}},
-#'   \href{#method-EsgfQuery-type}{\code{type}},
-#'   \href{#method-EsgfQuery-replica}{\code{replica}},
-#'   \href{#method-EsgfQuery-latest}{\code{latest}},
-#'   \href{#method-EsgfQuery-distrib}{\code{distrib}}
+#'   \href{#method-EsgQuery-facets}{\code{facets}},
+#'   \href{#method-EsgQuery-offset}{\code{offset}},
+#'   \href{#method-EsgQuery-limit}{\code{limit}},
+#'   \href{#method-EsgQuery-fields}{\code{fields}},
+#'   \href{#method-EsgQuery-type}{\code{type}},
+#'   \href{#method-EsgQuery-replica}{\code{replica}},
+#'   \href{#method-EsgQuery-latest}{\code{latest}},
+#'   \href{#method-EsgQuery-distrib}{\code{distrib}}
 #'   and
-#'   \href{#method-EsgfQuery-shards}{\code{shards}}.
+#'   \href{#method-EsgQuery-shards}{\code{shards}}.
 #'
 #' - Most common facets:
-#'   \href{#method-EsgfQuery-project}{\code{project}},
-#'   \href{#method-EsgfQuery-activity_id}{\code{activity_id}},
-#'   \href{#method-EsgfQuery-experiment_id}{\code{experiment_id}},
-#'   \href{#method-EsgfQuery-source_id}{\code{source_id}},
-#'   \href{#method-EsgfQuery-variable_id}{\code{variable_id}},
-#'   \href{#method-EsgfQuery-frequency}{\code{frequency}},
-#'   \href{#method-EsgfQuery-variant_label}{\code{variant_label}},
-#'   \href{#method-EsgfQuery-nominal_resolution}{\code{nominal_resolution}}
+#'   \href{#method-EsgQuery-project}{\code{project}},
+#'   \href{#method-EsgQuery-activity_id}{\code{activity_id}},
+#'   \href{#method-EsgQuery-experiment_id}{\code{experiment_id}},
+#'   \href{#method-EsgQuery-source_id}{\code{source_id}},
+#'   \href{#method-EsgQuery-variable_id}{\code{variable_id}},
+#'   \href{#method-EsgQuery-frequency}{\code{frequency}},
+#'   \href{#method-EsgQuery-variant_label}{\code{variant_label}},
+#'   \href{#method-EsgQuery-date_range}{\code{date_range}},
+#'   \href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}}
 #'   and
-#'   \href{#method-EsgfQuery-data_node}{\code{data_node}}.
+#'   \href{#method-EsgQuery-data_node}{\code{data_node}}.
 #'
 #' All methods act in a similar way:
 #'
 #' - If input is given, the corresponding parameter is set and the updated
-#'   `EsgfQuery` object is returned.
+#'   `EsgQuery` object is returned.
 #'
 #'   * This makes it possible to chain different parameter setters, e.g.
-#'     `EsgfQuery$project("CMIP6")$frequency("day")$limit(1)` sets the parameter
+#'     `EsgQuery$project("CMIP6")$frequency("day")$limit(1)` sets the parameter
 #'     `project`, `frequency` and `limit` sequentially.
 #'
 #'   * For parameters that want character inputs, you can put a preceding `!` to
-#'     negate the constraints, e.g. `EsgfQuery$project(!"CMIP6")` searches for
+#'     negate the constraints, e.g. `EsgQuery$project(!"CMIP6")` searches for
 #'     all projects except for `CMIP6`.
 #'
 #' - If no input is given, the current parameter value is returned. For example,
-#'   directly calling `EsgfQuery$project()` returns the current value of the
+#'   directly calling `EsgQuery$project()` returns the current value of the
 #'   `project` parameter. The returned value can be two types:
 #'
 #'   * `NULL`, i.e. there is no constraint on the corresponding parameter
 #'
-#'   * An `EsgfQueryParam` object which is essentially a list of three elements:
+#'   * An `EsgQueryParam` object which is essentially a list of three elements:
 #'
 #'     + `value`: The input values
 #'     + `negate`: Whether there is a preceding `!` in the input
@@ -365,25 +391,25 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' Despite methods for specific keywords and facets, you can specify arbitrary
 #' query parameters using
-#' \href{#method-EsgfQuery-params}{\code{EsgfQuery$params()}} method. For
+#' \href{#method-EsgQuery-params}{\code{EsgQuery$params()}} method. For
 #' details on the usage, please see the
-#' \href{#method-EsgfQuery-params}{documentation}.
+#' \href{#method-EsgQuery-params}{documentation}.
 #'
 #' ## Query responses
 #'
 #' The query is not sent unless related methods are called:
 #'
-#' - \href{#method-EsgfQuery-count}{\code{EsgfQuery$count()}}: Count the total
+#' - \href{#method-EsgQuery-count}{\code{EsgQuery$count()}}: Count the total
 #'   number of records that match the query.
 #'
 #'   * You can return only the total number of matched record by calling
-#'     `EsgfQuery$count(facets = FALSE)`
+#'     `EsgQuery$count(facets = FALSE)`
 #'
 #'   * You can also count the matched records for specified facets, e.g.
-#'     `EsgfQuery$count(facets = c("source_id", "activity_id"))`
+#'     `EsgQuery$count(facets = c("source_id", "activity_id"))`
 #'
-#' - \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}: Collect the
-#'   query results and format it into an [EsgfQueryResultDataset] object.
+#' - \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}: Collect the
+#'   query results and format it into an [EsgResultDataset] object.
 #'
 #' ## Bridge Index Nodes
 #'
@@ -403,31 +429,31 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'
 #' ## Other helpers
 #'
-#' `EsgfQuery` object also provides several other helper functions:
+#' `EsgQuery` object also provides several other helper functions:
 #'
 #' - **Query URL generation**:
 #'
-#'   * \href{#method-EsgfQuery-url}{\code{EsgfQuery$url()}}: Returns the actual
+#'   * \href{#method-EsgQuery-url}{\code{EsgQuery$url()}}: Returns the actual
 #'     query URL or the wget script URL which can be used to download all files
 #'     matching the given constraints.
 #'
 #' - **State persistence**:
 #'
-#'   * \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}: Save the query
+#'   * \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}: Save the query
 #'     state to a JSON file for later use.
 #'
-#'   * \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}: Restore the
+#'   * \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}: Restore the
 #'     query state from a JSON file created by `$save()`.
 #'
 #' - **Display**:
 #'
-#'   * \href{#method-EsgfQuery-print}{\code{EsgfQuery$print()}}: Print a
-#'     summary of the current `EsgfQuery` object including the index node URL,
+#'   * \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}: Print a
+#'     summary of the current `EsgQuery` object including the index node URL,
 #'     the last query timestamp, and all query parameters.
 #'
 #' @author Hongyuan Jia
 #'
-#' @name EsgfQuery
+#' @name EsgQuery
 #'
 #' @param index_node The URL to the ESGF Index Node. Default is to use the
 #'        [ORNL (Oak Ridge National Laboratory) Index Node](https://esgf-node.ornl.gov).
@@ -449,20 +475,21 @@ format.EsgfQueryParam <- function(x, encode = TRUE, space = FALSE, ...) {
 #'   `https://esgf.ceda.ac.uk`
 #'
 #' @export
-query_esgf <- function(index_node = "https://esgf-node.ornl.gov") {
-    EsgfQuery$new(index_node = index_node)
+esg_query <- function(index_node = "https://esgf-node.ornl.gov") {
+    EsgQuery$new(index_node = index_node)
 }
 # }}}
 
-#' @name EsgfQuery
+#' @name EsgQuery
 #' @export
-# EsgfQuery {{{
-EsgfQuery <- R6::R6Class("EsgfQuery",
+# EsgQuery {{{
+EsgQuery <- R6::R6Class(
+    "EsgQuery",
     lock_class = TRUE,
     public = list(
         # initialize {{{
         #' @description
-        #' Create a new EsgfQuery object
+        #' Create a new EsgQuery object
         #'
         #' @param index_node The URL to the ESGF Index Node. Default is to use the
         #'        [ORNL (Oak Ridge National Laboratory)](https://esgf-node.ornl.gov)
@@ -483,11 +510,11 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' - CEDA (Centre for Environmental Data Analysis), UK:
         #'   `https://esgf.ceda.ac.uk`
         #'
-        #' @return An `EsgfQuery` object.
+        #' @return An `EsgQuery` object.
         #'
         #' @examples
         #' \dontrun{
-        #' q <- EsgfQuery$new(index_node = "https://esgf-node.ornl.gov")
+        #' q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
         #' q
         #' }
         initialize = function(index_node = "https://esgf-node.ornl.gov") {
@@ -499,7 +526,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             for (name in params) {
                 if (!is.null(.subset2(private$parameter, name))) {
                     private$parameter[[name]] <- new_query_param(
-                        name = name, value = .subset2(private$parameter, name)
+                        name = name,
+                        value = .subset2(private$parameter, name)
                     )
                 }
             }
@@ -625,7 +653,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             res <- private$query_listing_cached(url, force, "shard")
             shards <- res$responseHeader$params$shards
 
-            if (!length(shards)) return(NULL)
+            if (!length(shards)) {
+                return(NULL)
+            }
 
             shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
 
@@ -697,7 +727,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 )
             }
 
-            if (length(facets) == 1L) out <- out[[1L]]
+            if (length(facets) == 1L) {
+                out <- out[[1L]]
+            }
             out
         },
         # }}}
@@ -724,7 +756,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$project(NULL)
         #' }
         project = function(value = "CMIP6") {
-            if (missing(value)) return(private$parameter$project)
+            if (missing(value)) {
+                return(private$parameter$project)
+            }
             # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$project <- eval(bquote(
@@ -759,7 +793,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$activity_id(NULL)
         #' }
         activity_id = function(value) {
-            if (missing(value)) return(private$parameter$activity_id)
+            if (missing(value)) {
+                return(private$parameter$activity_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$activity_id <- eval(bquote(
@@ -794,7 +830,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$experiment_id(NULL)
         #' }
         experiment_id = function(value) {
-            if (missing(value)) return(private$parameter$experiment_id)
+            if (missing(value)) {
+                return(private$parameter$experiment_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$experiment_id <- eval(bquote(
@@ -829,7 +867,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$source_id(NULL)
         #' }
         source_id = function(value) {
-            if (missing(value)) return(private$parameter$source_id)
+            if (missing(value)) {
+                return(private$parameter$source_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$source_id <- eval(bquote(
@@ -864,7 +904,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$variable_id(NULL)
         #' }
         variable_id = function(value) {
-            if (missing(value)) return(private$parameter$variable_id)
+            if (missing(value)) {
+                return(private$parameter$variable_id)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$variable_id <- eval(bquote(
@@ -899,7 +941,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$frequency(NULL)
         #' }
         frequency = function(value) {
-            if (missing(value)) return(private$parameter$frequency)
+            if (missing(value)) {
+                return(private$parameter$frequency)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$frequency <- eval(bquote(
@@ -934,7 +978,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$variant_label(NULL)
         #' }
         variant_label = function(value) {
-            if (missing(value)) return(private$parameter$variant_label)
+            if (missing(value)) {
+                return(private$parameter$variant_label)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$variant_label <- eval(bquote(
@@ -969,7 +1015,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$nominal_resolution(NULL)
         #' }
         nominal_resolution = function(value) {
-            if (missing(value)) return(private$parameter$nominal_resolution)
+            if (missing(value)) {
+                return(private$parameter$nominal_resolution)
+            }
             # see: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             param <- eval(bquote(
@@ -1021,7 +1069,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$data_node(NULL)
         #' }
         data_node = function(value) {
-            if (missing(value)) return(private$parameter$data_node)
+            if (missing(value)) {
+                return(private$parameter$data_node)
+            }
             # See: https://stackoverflow.com/questions/75543796/how-to-use-substitute-and-quote-with-nested-functions-in-r
             env <- parent.frame()
             private$parameter$data_node <- eval(bquote(
@@ -1036,7 +1086,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `facets` parameter for facet counting query.
         #'
         #' Note that `$facets()` only affects
-        #' \href{#method-EsgfQuery-count}{\code{$count()}}
+        #' \href{#method-EsgQuery-count}{\code{$count()}}
         #' method when sending a query of facet counting.
         #'
         #' @param value
@@ -1057,7 +1107,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$facets("*")
         #' }
         facets = function(value) {
-            if (missing(value)) return(private$parameter$facets)
+            if (missing(value)) {
+                return(private$parameter$facets)
+            }
             private$parameter$facets <- private$new_facet_param("facets", value, FALSE)
             invisible(self)
         },
@@ -1071,7 +1123,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' query. `$fields()` can be used to limit the number of fields returned
         #' in the query response. However, the following fields are always
         #' included in the results:
-        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
+        #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param value
         #' `r rd_query_method_param("fields", "character vector", default = "*")`
@@ -1096,7 +1148,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$fields(NULL)
         #' }
         fields = function(value = "*") {
-            if (missing(value)) return(private$parameter$fields)
+            if (missing(value)) {
+                return(private$parameter$fields)
+            }
             private$parameter$fields <- private$new_facet_param("fields", value, FALSE)
             invisible(self)
         },
@@ -1134,7 +1188,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$shards(NULL)
         #' }
         shards = function(value) {
-            if (missing(value)) return(private$parameter$shards)
+            if (missing(value)) {
+                return(private$parameter$shards)
+            }
             if (!private$parameter$distrib$value && !is.null(value)) {
                 stop("'$distrib()' returns FALSE. Shard specification is only applicable for distributed queries.")
             }
@@ -1170,7 +1226,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$replica(NULL)
         #' }
         replica = function(value) {
-            if (missing(value)) return(private$parameter$replica)
+            if (missing(value)) {
+                return(private$parameter$replica)
+            }
             checkmate::assert_flag(value, null.ok = TRUE, .var.name = "replica")
             private$parameter$replica <- new_query_param("replica", value)
             self
@@ -1200,7 +1258,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$latest(TRUE)
         #' }
         latest = function(value = TRUE) {
-            if (missing(value)) return(private$parameter$latest)
+            if (missing(value)) {
+                return(private$parameter$latest)
+            }
             checkmate::assert_flag(value, .var.name = "latest")
             private$parameter$latest <- new_query_param("latest", value)
             self
@@ -1235,7 +1295,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$limit(12000L) # warning
         #' }
         limit = function(value = 10L) {
-            if (missing(value)) return(private$parameter$limit)
+            if (missing(value)) {
+                return(private$parameter$limit)
+            }
             checkmate::assert_count(value, .var.name = "limit")
             if (value > this$data_max_limit) {
                 warning(sprintf(
@@ -1258,7 +1320,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' Get or set the `offset` parameter.
         #'
         #' If the query returns records that exceed the
-        #' \href{#method-EsgfQuery-limit}{\code{limit}} number,
+        #' \href{#method-EsgQuery-limit}{\code{limit}} number,
         #' `$offset()` can be used to paginate through the available results.
         #'
         #' @param value
@@ -1276,7 +1338,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$offset(0L)
         #' }
         offset = function(value = 0L) {
-            if (missing(value)) return(private$parameter$offset)
+            if (missing(value)) {
+                return(private$parameter$offset)
+            }
             checkmate::assert_count(value, .var.name = "offset")
             private$parameter$offset <- new_query_param("offset", value)
             self
@@ -1307,7 +1371,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' q$distrib(TRUE)
         #' }
         distrib = function(value = TRUE) {
-            if (missing(value)) return(private$parameter$distrib)
+            if (missing(value)) {
+                return(private$parameter$distrib)
+            }
             checkmate::assert_flag(value, .var.name = "distrib")
             private$parameter$distrib <- new_query_param("distrib", value)
             self
@@ -1321,7 +1387,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' `$params()` can be used to specify other parameters that do not have
         #' a dedicated method, e.g. `version`, `master_id`, etc. It can also be
         #' used to overwrite existing parameter values specified using methods
-        #' like \href{#method-EsgfQuery-activity_id}{\code{$activity_id()}}.
+        #' like \href{#method-EsgQuery-activity_id}{\code{$activity_id()}}.
         #'
         #' @param ... Parameter values to set. There are three options:
         #'
@@ -1337,10 +1403,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' @return
         #'
-        #' - If parameters are specified, the modified `EsgfQuery` object.
+        #' - If parameters are specified, the modified `EsgQuery` object.
         #'
         #' - Otherwise, an empty list for `$params(NULL)` or a list of
-        #'   `EsgfQueryParam` objects.
+        #'   `EsgQueryParam` objects.
         #'
         #' @examples
         #' \dontrun{
@@ -1366,7 +1432,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         params = function(...) {
             dots <- eval(substitute(alist(...)))
 
-            if (length(dots) == 0L) return(private$parameter$others)
+            if (length(dots) == 0L) {
+                return(private$parameter$others)
+            }
 
             if (length(dots) == 1L && is.null(names(dots)) && is.null(dots[[1L]])) {
                 private$parameter$others <- list()
@@ -1379,16 +1447,16 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 lapply(params, .subset2, "value"),
                 # allow NULL
                 types = c("logical", "numeric", "character", "null"),
-                any.missing = TRUE, names = "unique", .var.name = "params"
+                any.missing = TRUE,
+                names = "unique",
+                .var.name = "params"
             )
             nms <- names(params)
 
             predefined <- private$predefined_facets()
 
             if ("type" %in% nms && length(type <- params[[nms == "type"]])) {
-                checkmate::assert_choice(type$value,
-                    c("Dataset", "File", "Aggregation"), .var.name = "type"
-                )
+                checkmate::assert_choice(type$value, c("Dataset", "File", "Aggregation"), .var.name = "type")
 
                 if (type$value != "Dataset") {
                     warning(sprintf(
@@ -1397,18 +1465,23 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                             "But 'type' found in input with value = '%s'.",
                             "It will be reset to 'Dataset'.",
                             "If you want to perform a '%s' query,",
-                            "please first run 'EsgfQuery$collect()' to get the 'Dataset'",
-                            "result, and then use 'EsgfQueryResultDataset$collect(type = '%s')'."
+                            "please first run 'EsgQuery$collect()' to get the 'Dataset'",
+                            "result, and then use 'EsgResultDataset$collect(type = '%s')'."
                         ),
-                        type$value, type$value, type$value
+                        type$value,
+                        type$value,
+                        type$value
                     ))
                     params$type$value <- "Dataset"
                     params$type$negate <- FALSE
                 }
             }
 
-            if ("format" %in% nms && length(fmt <- params[[nms == "format"]]) &&
-                (is.null(fmt) || fmt$value != FORMAT_JSON)
+            if (
+                "format" %in%
+                    nms &&
+                    length(fmt <- params[[nms == "format"]]) &&
+                    (is.null(fmt) || fmt$value != FORMAT_JSON)
             ) {
                 warning(sprintf(
                     paste(
@@ -1423,8 +1496,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 nms <- nms[nms != "format"]
             }
 
-            if (is_bridge_index_node(private$index_node) &&
-                "retracted" %in% nms && length(val <- params[[nms == "retracted"]]) && !is.null(val$value)) {
+            if (
+                is_bridge_index_node(private$index_node) &&
+                    "retracted" %in% nms &&
+                    length(val <- params[[nms == "retracted"]]) &&
+                    !is.null(val$value)
+            ) {
                 warning(sprintf(
                     paste(
                         "'retracted' is not supported for bridge index node.",
@@ -1541,7 +1618,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' - If `NULL` or `FALSE`, only the total number of matched records is
         #'   returned.
-        #' - If `TRUE`, the value of \href{#method-EsgfQuery-facets}{\code{$facets()}}
+        #' - If `TRUE`, the value of \href{#method-EsgQuery-facets}{\code{$facets()}}
         #'   is used to limit the facets. If `$facets()` returns `NULL`, only the
         #'   total count is returned. This is the default value.
         #' - If a character vector, it is used to limit the facets.
@@ -1587,7 +1664,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
             url <- query_build(private$index_node, params)
             res <- read_json_response(url, simplifyVector = FALSE)
 
-            if (!facets) return(res$response$numFound)
+            if (!facets) {
+                return(res$response$numFound)
+            }
 
             counts <- lapply(res$facet_counts$facet_fields, private$format_facet_counts)
             c(list(total = res$response$numFound), counts)
@@ -1600,10 +1679,10 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'
         #' `$collect()` sends the actual query with **`type=Dataset`** to the
         #' ESGF search services and returns the results as an
-        #' [EsgfQueryResultDataset] object.
+        #' [EsgResultDataset] object.
         #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
-        #' `r paste0("\\verb{", EsgfQueryResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
+        #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param all Whether to collect all results despite of the value of
         #'        `offset`. Default: `FALSE`.
@@ -1616,18 +1695,18 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #'        Default: `FALSE`.
         #'
         #' @param params Whether to include facet fields that have parameter
-        #'        constraints explicitly set using `EsgfQuery$project()`,
-        #'        `EsgfQuery$activity_id()`, `EsgfQuery$params()` and etc. in the
+        #'        constraints explicitly set using `EsgQuery$project()`,
+        #'        `EsgQuery$activity_id()`, `EsgQuery$params()` and etc. in the
         #'        returned fields. For example, if you set `$experiment_id("ssp585")`,
         #'        the `experiment_id` field will be included in the results when
         #'        `params = TRUE`. Default: `TRUE`.
         #'
-        #' @return An [EsgfQueryResultDataset] object.
+        #' @return An [EsgResultDataset] object.
         #'
         #' @examples
         #' \dontrun{
         #' # by default, all fields with constrains are included in the results
-        #' query <- query_esgf()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
+        #' query <- esg_query()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
         #' res1 <- query$collect()
         #' res1$fields
         #'
@@ -1650,18 +1729,19 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' }
         collect = function(all = FALSE, limit = TRUE, params = TRUE) {
             result <- query_collect(
-                private$index_node, private$parameter,
-                required_fields = EsgfQueryResultDataset$private_fields$required_fields,
-                all = all, limit = limit, constraints = params
+                private$index_node,
+                private$parameter,
+                required_fields = EsgResultDataset$private_fields$required_fields,
+                all = all,
+                limit = limit,
+                constraints = params
             )
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
 
             # create new results
-            new_query_result(EsgfQueryResultDataset,
-                private$index_node, private$parameter, result$response
-            )
+            new_query_result(EsgResultDataset, private$index_node, private$parameter, result$response)
         },
         # }}}
 
@@ -1669,9 +1749,9 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Save the query into a JSON file
         #'
-        #' `$save()` puts main data of an `EsgfQuery` object into a JSON file
+        #' `$save()` puts main data of an `EsgQuery` object into a JSON file
         #' which can be loaded to restore the current state of query using
-        #' \href{#method-EsgfQuery-load}{\code{EsgfQuery$load()}}.
+        #' \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
         #'        to.
@@ -1690,7 +1770,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
                 index_node = private$index_node,
                 parameter = private$parameter,
                 response = NULL,
-                file = file, pretty = pretty
+                file = file,
+                pretty = pretty
             )
         },
         # }}}
@@ -1699,20 +1780,20 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         #' @description
         #' Restore the query state from an JSON file
         #'
-        #' `$load()` reads data of an `EsgfQuery` object from a JSON file
+        #' `$load()` reads data of an `EsgQuery` object from a JSON file
         #' created using
-        #' \href{#method-EsgfQuery-save}{\code{EsgfQuery$save()}}.
+        #' \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
         #'        from.
         #'
-        #' @return The modified `EsgfQuery` object itself.
+        #' @return The modified `EsgQuery` object itself.
         #'
         #' @examples
         #' \dontrun{
         #' f <- tempfile(fileext = "json")
         #'
-        #' q <- query_esgf()
+        #' q <- esg_query()
         #' json <- q$save(f)
         #' q$load(f)
         #' }
@@ -1728,12 +1809,12 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
         # print {{{
         #' @description
-        #' Print a summary of the current `EsgfQuery` object
+        #' Print a summary of the current `EsgQuery` object
         #'
-        #' `$print()` gives the summary of current `EsgfQuery` object including
+        #' `$print()` gives the summary of current `EsgQuery` object including
         #' the index node URL, the last query timestamp, and all query parameters.
         #'
-        #' @return The `EsgfQuery` object itself, invisibly.
+        #' @return The `EsgQuery` object itself, invisibly.
         #'
         #' @examples
         #' \dontrun{
@@ -1757,7 +1838,7 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
     private = list(
         index_node = NULL,
 
-        # all query parameters
+        # all query parameters {{{
         parameter = list(
             # facets
             project = "CMIP6",
@@ -1821,7 +1902,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
         },
 
         query_listing_cached = function(url, force, type) {
-            if (getOption("epwshiftr.cache", TRUE)) {
+            mode <- cache_mode()
+            if (mode != "off") {
                 cache <- get_cache()
                 key <- get_response_cache_key(url)
                 cached <- cache$exists(key)
@@ -1836,6 +1918,8 @@ EsgfQuery <- R6::R6Class("EsgfQuery",
 
                         return(cache$get(key))
                     }
+                } else if (mode == "offline") {
+                    stop("Cache miss in offline mode. Cannot fetch data while offline.", call. = FALSE)
                 }
             }
 
@@ -1860,7 +1944,7 @@ is_bridge_index_node <- function(index_node) {
 # }}}
 
 # normalize_index_node {{{
-normalize_index_node <- function(index_node) {
+normalize_index_node <- function(index_node, raw = FALSE) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
     if (!grepl("://", index_node, fixed = TRUE)) {
@@ -1878,6 +1962,10 @@ normalize_index_node <- function(index_node) {
         # since LLNL will redirect to ORNL bridge, we always use ORNL bridge
         parsed$path <- "/esgf-1-5-bridge"
         parsed$host <- "esgf-node.ornl.gov"
+    }
+
+    if (raw) {
+        return(parsed)
     }
 
     url <- do.call(curl::curl_modify_url, parsed)
@@ -1899,7 +1987,9 @@ get_response_cache_key <- function(url) {
 query_param_encode <- function(param) {
     # nocov start
     # only for character
-    if (!is.character(param)) return(param)
+    if (!is.character(param)) {
+        return(param)
+    }
     # nocov end
 
     # escape encoding if needed
@@ -1976,7 +2066,9 @@ query_build <- function(index_node, params, type = "search") {
         params <- params[!names(params) %in% c("type", "format")]
     }
 
-    if (!length(params)) return(NULL)
+    if (!length(params)) {
+        return(NULL)
+    }
 
     # NOTE: handle special endpoint for bridge
     if (is_bridge_index_node(index_node)) {
@@ -1999,7 +2091,7 @@ query_build <- function(index_node, params, type = "search") {
     is_negate <- vapply(params, function(param) param$negate, logical(1L))
     # facet queries without any negated inputs
     if (!is_bridge_index_node(index_node) || !any(is_negate)) {
-        facets <- paste(vapply(params, format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
+        facets <- paste(vapply(params, format.EsgQueryParam, FUN.VALUE = ""), collapse = "&")
         return(paste0(endpoint, "?", facets))
     }
 
@@ -2008,15 +2100,22 @@ query_build <- function(index_node, params, type = "search") {
     # query syntax should be used since bridge does not support negate syntax
     # like 'project!=CMIP6'.
     # see: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html#free-text-queries
-    facets <- paste(vapply(params[!is_negate], format.EsgfQueryParam, FUN.VALUE = ""), collapse = "&")
-    query <- paste(vapply(params[is_negate], function(param) {
-        if (length(param$value) == 1L) {
-            value <- param$value
-        } else {
-            value <- sprintf("(%s)", paste(param$value, collapse = " "))
-        }
-        sprintf("%s:(NOT %s)", param$name, value)
-    }, FUN.VALUE = ""), collapse = " AND ")
+    facets <- paste(vapply(params[!is_negate], format.EsgQueryParam, FUN.VALUE = ""), collapse = "&")
+    query <- paste(
+        vapply(
+            params[is_negate],
+            function(param) {
+                if (length(param$value) == 1L) {
+                    value <- param$value
+                } else {
+                    value <- sprintf("(%s)", paste(param$value, collapse = " "))
+                }
+                sprintf("%s:(NOT %s)", param$name, value)
+            },
+            FUN.VALUE = ""
+        ),
+        collapse = " AND "
+    )
 
     paste0(
         endpoint,
@@ -2054,9 +2153,21 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
                 par_nms <- names(params)[!vapply(params, is.null, logical(1L))]
                 # exclude keywords
                 keywords <- c(
-                    "facets", "offset", "limit", "fields", "format", "type",
-                    "replica", "latest", "distrib", "shards", "bbox", "start",
-                    "end", "from", "to"
+                    "facets",
+                    "offset",
+                    "limit",
+                    "fields",
+                    "format",
+                    "type",
+                    "replica",
+                    "latest",
+                    "distrib",
+                    "shards",
+                    "bbox",
+                    "start",
+                    "end",
+                    "from",
+                    "to"
                 )
                 par_nms <- setdiff(par_nms, keywords)
                 params$fields <- unique(c(params$fields, par_nms))
@@ -2072,7 +2183,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         # use specified batch
         if (is.numeric(limit)) {
             params$limit <- limit
-        # use 'unlimited' batch
+            # use 'unlimited' batch
         } else if (!limit) {
             params$limit <- this$data_max_limit
         }
@@ -2130,7 +2241,9 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
         # to string we can convert it to a string in advance
         if (length(response$timestamp)) {
             response$timestamp <- format.POSIXct(
-                response$timestamp, digits = 6, tz = "UTC",
+                response$timestamp,
+                digits = 6,
+                tz = "UTC",
                 format = "%Y-%m-%dT%H:%M:%S:%OS6Z"
             )
         }
@@ -2142,9 +2255,13 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
     }
 
     data <- list(index_node = index_node, parameter = params)
-    if (length(response)) data$response <- response
+    if (length(response)) {
+        data$response <- response
+    }
 
-    if (length(list(...))) data <- c(data, list(...))
+    if (length(list(...))) {
+        data <- c(data, list(...))
+    }
 
     jsonlite::write_json(data, file, null = "null", digits = 6, pretty = pretty)
 
@@ -2166,13 +2283,14 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
     if (length(json$parameter)) {
         json$parameter <- restore_params(
             input = json$parameter,
-            params = EsgfQuery$private_fields$parameter
+            params = EsgQuery$private_fields$parameter
         )
     }
 
     if (length(json$response) && length(json$response$timestamp)) {
         json$response$timestamp <- as.POSIXct(
-            json$response$timestamp, tz = "UTC",
+            json$response$timestamp,
+            tz = "UTC",
             format = "%Y-%m-%dT%H:%M:%S:%OSZ"
         )
         # change the time zone to current time zone
@@ -2184,7 +2302,7 @@ query_load <- function(file, schema = SCHEMA_QUERY) {
 # }}}
 
 # restore_params {{{
-restore_params <- function(input, params = EsgfQuery$private_fields$parameter) {
+restore_params <- function(input, params = EsgQuery$private_fields$parameter) {
     for (nm in names(input)) {
         par <- input[[nm]]
         if (!is.null(par)) {

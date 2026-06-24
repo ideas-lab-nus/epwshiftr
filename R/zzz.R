@@ -5,6 +5,7 @@
     .opts <- list(
         "epwshiftr.verbose" = FALSE,
         "epwshiftr.threshold_alpha" = 3,
+        # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = TRUE,
         "epwshiftr.cache_dir" = tools::R_user_dir("epwshiftr", "cache")
     )
@@ -16,9 +17,7 @@
     big <- IEC[-1L]
     small <- IEC[-length(IEC)]
     for (i in seq_along(big)) {
-        try(units::install_unit(big[[i]], sprintf("1024 %s", small[[i]])),
-            silent = TRUE
-        )
+        try(units::install_unit(big[[i]], sprintf("1024 %s", small[[i]])), silent = TRUE)
     }
 
     invisible()
