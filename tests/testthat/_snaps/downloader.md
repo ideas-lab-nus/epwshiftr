@@ -4,7 +4,7 @@
       print(dl)
     Message
       
-      -- ESGF File Downloader --------------------------------------------------------
+      -- File Downloader -------------------------------------------------------------
       * Data directory:
       <path>
       * Temporary directory:

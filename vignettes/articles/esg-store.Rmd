@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -258,9 +258,9 @@ store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #> 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-06-24 16:29:47
-#> 2: future-weather 2026-06-24 16:29:47
-#> 3:      singapore 2026-06-24 16:29:47
+#> 1:          cmip6 2026-06-24 18:15:15
+#> 2: future-weather 2026-06-24 18:15:15
+#> 3:      singapore 2026-06-24 18:15:15
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
@@ -269,7 +269,7 @@ select_cols(store$queries(), c(
 #> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 16:29:47
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 18:15:15
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
@@ -283,9 +283,9 @@ store$query_tags(query_id)
 #> 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-06-24 16:29:47
-#> 2: future-weather 2026-06-24 16:29:47
-#> 3:      singapore 2026-06-24 16:29:47
+#> 1:          cmip6 2026-06-24 18:15:15
+#> 2: future-weather 2026-06-24 18:15:15
+#> 3:      singapore 2026-06-24 18:15:15
 ```
 
 The query snapshot is written under `queries/`, while the query identity and
@@ -431,16 +431,16 @@ select_cols(updated, c(
 #> 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
 #>                                                            update_id  status
 #>                                                               <char>  <char>
-#>  1: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  2: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  3: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  4: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  5: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  6: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  7: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  8: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#>  9: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
-#> 10: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current
+#>  1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  2: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  3: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  4: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  5: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  6: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  7: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  8: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#>  9: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
+#> 10: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
 
 select_cols(store$query_files(query_id), c(
     "query_id", "file_key", "status", "filename", "variable_id",
@@ -515,13 +515,13 @@ select_cols(updates, c(
 ))
 #>                                                           update_id
 #>                                                              <char>
-#> 1: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4
+#> 1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a
 #>                                                            query_id status
 #>                                                              <char> <char>
 #> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c   done
 #>    file_total new_count changed_count        completed_at
 #>         <int>     <int>         <int>              <POSc>
-#> 1:         20        20             0 2026-06-24 16:29:54
+#> 1:         20        20             0 2026-06-24 18:15:20
 
 latest_update <- store$query_updates(query_id, latest = TRUE)
 select_cols(
@@ -614,7 +614,7 @@ download_preview$summary
 #> 1:                           0                          0      175082403
 #>    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok
 #>                 <int>           <num>          <num>          <num>  <lgcl>
-#> 1:                  0    298705752064   298705752064              0    TRUE
+#> 1:                  0    298175320064   298175320064              0    TRUE
 #>    disk_would_block disk_preflight
 #>              <lgcl>         <lgcl>
 #> 1:            FALSE           TRUE
@@ -859,7 +859,7 @@ store$validate()
 #> 1: 0ba5c9b45f6e79375ad1cf96f9b5e6409123f14c07ea6552b4a10a1082cacdf4  query
 #>                                                                                                                                                                        expected_path
 #>                                                                                                                                                                               <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json
+#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json
 #>    exists checksum_ok size_ok    status
 #>    <lgcl>      <lgcl>  <lgcl>    <char>
 #> 1:   TRUE        TRUE    TRUE available

@@ -125,10 +125,8 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
 #' [link](https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html).
 #'
 #' `EsgQuery` is the workhorse for dealing with ESGF search services.
-#' For new code, start with `esg_query()` / `EsgQuery`. The older [esgf_query()]
-#' wrapper is retained for compatibility with the legacy data.table-oriented API,
-#' emits a gentle deprecation warning, and preserves its historical LLNL `host`
-#' semantics instead of `esg_query()`'s ORNL `index_node` default.
+#' Start with `esg_query()` / `EsgQuery` for new workflow code. The legacy
+#' data.table-oriented API is available from the `legacy` branch or v0.1.4.
 #'
 #' # `EsgQuery` object
 #'

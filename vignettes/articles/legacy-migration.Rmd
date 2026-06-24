@@ -26,9 +26,9 @@ epwshiftr's recommended workflow is now
 [Create Future EPW Files](future-epw-workflow.html), built around `shift_*()`,
 `EsgStore`, `Downloader`, and `EpwMorpher`.
 
-The older data.table-oriented workflow remains documented in the reference for
-compatibility, but new work should migrate to the store-native API. This article
-maps old concepts to new ones.
+The older data.table-oriented workflow is available from the `legacy` branch or
+epwshiftr v0.1.4. Those functions are no longer exported by the current package.
+This article maps old concepts to new store-native concepts.
 
 # Concept Map
 

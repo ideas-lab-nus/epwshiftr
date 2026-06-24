@@ -100,10 +100,6 @@ get_cache_nc <- function(reset = FALSE) {
         write_local_cmip6_netcdf_fixture(paths[[i]], local_cmip6_test_years[[i]])
     }
 
-    withr::with_options(list(epwshiftr.dir_store = dir), {
-        set_cmip6_index(local_cmip6_index(paths), save = FALSE)
-    })
-
     normalizePath(dir)
 }
 
