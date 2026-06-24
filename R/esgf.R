@@ -1099,16 +1099,46 @@ set_cmip6_index <- function(index, save = FALSE) {
 # }}}
 
 # data_node_status {{{
+data_node_http_probe <- function(node, timeout = 3) {
+    urls <- if (grepl("^https?://", node, ignore.case = TRUE)) {
+        node
+    } else {
+        c(sprintf("https://%s/", node), sprintf("http://%s/", node))
+    }
+
+    for (url in urls) {
+        handle <- curl::new_handle(
+            nobody = TRUE,
+            timeout = timeout,
+            connecttimeout = timeout,
+            followlocation = TRUE,
+            failonerror = FALSE
+        )
+        start <- proc.time()[["elapsed"]]
+        ok <- tryCatch(
+            {
+                curl::curl_fetch_memory(url, handle = handle)
+                TRUE
+            },
+            error = function(e) FALSE
+        )
+        if (ok) {
+            return((proc.time()[["elapsed"]] - start) * 1000)
+        }
+    }
+
+    NA_real_
+}
+
 #' Get status of data nodes which store CMIP6 output
 #'
 #' `data_node_status()` is the user-facing replacement for the legacy
 #' data-node helper name used in earlier releases.
 #'
-#' @param speed_test If `TRUE`, use [pingr::ping()] to perform connection speed
-#'        test on each data node. A `ping` column is appended in returned
-#'        data.table which stores each data node response in milliseconds. This
-#'        feature needs pingr package already installed. Default: `FALSE`.
-#' @param timeout Timeout for a ping response in seconds. Default: `3`.
+#' @param speed_test If `TRUE`, perform a lightweight HTTP probe on each `UP`
+#'        data node. A `probe_ms` column is appended in returned data.table
+#'        which stores elapsed request time in milliseconds. Default: `FALSE`.
+#' @param timeout Timeout for each HTTP probe in seconds. Default: `3`.
 #' @param index_node The index node to query the data node status. Default: `INDEX_NODES[["ORNL"]]`.
 #'
 #' @return A [data.table::data.table()] of 2 or 3 (when `speed_test` is `TRUE`)
@@ -1118,7 +1148,7 @@ set_cmip6_index <- function(index, save = FALSE) {
 #' | -----       | -----     | -----                                                                           |
 #' | `data_node` | character | Web address of data node                                                        |
 #' | `status`    | character | Status of data node. `"UP"` means OK and `"DOWN"` means currently not available |
-#' | `ping`      | double    | Data node response in milliseconds during speed test                            |
+#' | `probe_ms`  | double    | HTTP probe elapsed time in milliseconds for `UP` data nodes                     |
 #'
 #' @examples
 #' \dontrun{
@@ -1127,12 +1157,15 @@ set_cmip6_index <- function(index, save = FALSE) {
 #'
 #' @export
 data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX_NODES[["ORNL"]]) {
+    checkmate::assert_flag(speed_test)
+    checkmate::assert_number(timeout, lower = 0)
+
     empty_nodes <- function() {
         if (speed_test) {
             data.table::data.table(
                 data_node = character(),
                 status = character(),
-                ping = numeric()
+                probe_ms = numeric()
             )
         } else {
             data.table::data.table(
@@ -1196,34 +1229,24 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
     }
 
     # nocov start
-    if (!requireNamespace("pingr", quietly = TRUE)) {
-        stop(
-            "'epwshiftr' relies on the package 'pingr' to perform speed test",
-            "please add this to your library with install.packages('pingr') and try again."
-        )
-    }
-    # nocov end
-
-    # nocov start
-    res[, ping := NA_real_]
+    res[, probe_ms := NA_real_]
 
     if (!length(nodes_up <- res$data_node[res$status == "UP"])) {
-        message("No working data nodes available now. Skip speed test")
+        message("No working data nodes available now. Skip HTTP probe")
         return(res)
     }
     # nocov end
 
-    # use the pingr package to test the connection speed
-    speed <- vapply(
+    probe <- vapply(
         nodes_up,
         function(node) {
-            message(sprintf("Testing data node '%s'...", node))
-            pingr::ping(node, count = 1, timeout = timeout)
+            message(sprintf("Probing data node '%s'...", node))
+            data_node_http_probe(node, timeout = timeout)
         },
         numeric(1)
     )
 
-    res[status == "UP", ping := speed][order(ping)]
+    res[status == "UP", probe_ms := probe][order(probe_ms)]
 }
 # }}}
 

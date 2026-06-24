@@ -236,7 +236,7 @@ test_that("EsgQuery listing cache respects max_age", {
     key <- get_response_cache_key(url)
     cached <- list(timestamp = Sys.time() - 3600, value = "old")
     cache$set(key, cached)
-    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".qs")), Sys.time() - 3600)
+    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".rds")), Sys.time() - 3600)
 
     calls <- 0L
     fetched <- list(timestamp = Sys.time(), value = "new")
@@ -266,7 +266,7 @@ test_that("EsgQuery listing cache treats expired offline entries as misses", {
     url <- "https://example.org/esg-search/search?project=CMIP6"
     key <- get_response_cache_key(url)
     cache$set(key, list(timestamp = Sys.time() - 3600, value = "old"))
-    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".qs")), Sys.time() - 3600)
+    Sys.setFileTime(file.path(cache$info()$dir, paste0(key, ".rds")), Sys.time() - 3600)
 
     q <- esg_query("https://example.org")
     expect_error(

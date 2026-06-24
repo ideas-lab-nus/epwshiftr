@@ -11,12 +11,11 @@ data_node_status(
 )
 }
 \arguments{
-\item{speed_test}{If \code{TRUE}, use \code{\link[pingr:ping]{pingr::ping()}} to perform connection speed
-test on each data node. A \code{ping} column is appended in returned
-data.table which stores each data node response in milliseconds. This
-feature needs pingr package already installed. Default: \code{FALSE}.}
+\item{speed_test}{If \code{TRUE}, perform a lightweight HTTP probe on each \code{UP}
+data node. A \code{probe_ms} column is appended in returned data.table
+which stores elapsed request time in milliseconds. Default: \code{FALSE}.}
 
-\item{timeout}{Timeout for a ping response in seconds. Default: \code{3}.}
+\item{timeout}{Timeout for each HTTP probe in seconds. Default: \code{3}.}
 
 \item{index_node}{The index node to query the data node status. Default: \code{INDEX_NODES[["ORNL"]]}.}
 }
@@ -26,7 +25,7 @@ columns:\tabular{lll}{
    Column \tab Type \tab Description \cr
    \code{data_node} \tab character \tab Web address of data node \cr
    \code{status} \tab character \tab Status of data node. \code{"UP"} means OK and \code{"DOWN"} means currently not available \cr
-   \code{ping} \tab double \tab Data node response in milliseconds during speed test \cr
+   \code{probe_ms} \tab double \tab HTTP probe elapsed time in milliseconds for \code{UP} data nodes \cr
 }
 }
 \description{

@@ -1,0 +1,255 @@
+{
+  "check": {
+    "kind": "list"
+  },
+  "keys": {
+    "type": "named",
+    "must.include": ["schema_version", "dest", "temp", "retries", "timeout", "cleanup", "n_workers"]
+  },
+  "fields": {
+    "schema_version": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "dest": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "temp": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "manifest": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "retries": {
+      "check": {
+        "kind": "count",
+        "positive": true
+      }
+    },
+    "timeout": {
+      "check": {
+        "kind": "count",
+        "positive": true
+      }
+    },
+    "ssl_verifypeer": {
+      "check": {
+        "kind": "flag"
+      }
+    },
+    "proxy": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "connect_timeout": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        }
+      ]
+    },
+    "useragent": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "cleanup": {
+      "check": {
+        "kind": "flag"
+      }
+    },
+    "n_workers": {
+      "check": {
+        "kind": "count",
+        "positive": false
+      }
+    },
+    "node_policy": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "must.include": ["cooldown_after_failures", "cooldown_seconds", "history_ttl_seconds", "min_attempts"]
+      },
+      "fields": {
+        "cooldown_after_failures": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "cooldown_seconds": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "history_ttl_seconds": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        },
+        "min_attempts": {
+          "check": {
+            "kind": "count",
+            "positive": true
+          }
+        }
+      }
+    },
+    "transfer_policy": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "must.include": ["chunk_size", "bandwidth_limit", "low_speed_limit", "low_speed_time"]
+      },
+      "fields": {
+        "chunk_size": {
+          "any": [
+            {
+              "check": {
+                "kind": "null"
+              }
+            },
+            {
+              "check": {
+                "kind": "count",
+                "positive": true
+              }
+            }
+          ]
+        },
+        "bandwidth_limit": {
+          "any": [
+            {
+              "check": {
+                "kind": "null"
+              }
+            },
+            {
+              "check": {
+                "kind": "count",
+                "positive": true
+              }
+            }
+          ]
+        },
+        "low_speed_limit": {
+          "any": [
+            {
+              "check": {
+                "kind": "null"
+              }
+            },
+            {
+              "check": {
+                "kind": "count",
+                "positive": true
+              }
+            }
+          ]
+        },
+        "low_speed_time": {
+          "any": [
+            {
+              "check": {
+                "kind": "null"
+              }
+            },
+            {
+              "check": {
+                "kind": "count",
+                "positive": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    "resource_policy": {
+      "check": {
+        "kind": "list"
+      },
+      "keys": {
+        "type": "named",
+        "must.include": ["host_concurrency", "disk_preflight", "min_free_space"]
+      },
+      "fields": {
+        "host_concurrency": {
+          "any": [
+            {
+              "check": {
+                "kind": "null"
+              }
+            },
+            {
+              "check": {
+                "kind": "count",
+                "positive": true
+              }
+            }
+          ]
+        },
+        "disk_preflight": {
+          "check": {
+            "kind": "flag"
+          }
+        },
+        "min_free_space": {
+          "check": {
+            "kind": "number",
+            "lower": 0,
+            "finite": true
+          }
+        }
+      }
+    }
+  }
+}

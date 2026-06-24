@@ -114,6 +114,12 @@ local_summary_database_fixture <- function(years = 2059:2061, include_unmatched 
     )
 }
 
+skip_summary_database_on_covr <- function() {
+    # covr cannot reliably merge coverage traces emitted by mirai worker
+    # processes used by summary_database() NetCDF scans.
+    skip_on_covr()
+}
+
 test_that("parse_cf_time() returns UTC POSIXct with CF metadata", {
     time <- parse_cf_time(c(0, 1.5), "days since 2000-01-01 00:00:00", "standard")
 
@@ -146,7 +152,7 @@ test_that("parse_cf_time() returns POSIXct for common CF calendars", {
     }
 })
 
-test_that("get_nc_time() and EsgDataset$get_time_axis() share CFtime parsing", {
+test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", {
     path <- local_nc_time_file(
         time_vals = c(0, 1.5),
         units = "days since 2000-01-01 00:00:00",
@@ -340,7 +346,7 @@ test_that("get_nc_time()", {
             .package = "epwshiftr"
         )
 
-        # can parse months resolution with CFtime
+        # can parse months resolution with the internal CF time parser
         testthat::with_mocked_bindings(
             expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
             get_nc_atts = function(...) {
@@ -431,6 +437,8 @@ test_that("match_nc_time()", {
 })
 
 test_that("summary_database() uses single-file scan helper", {
+    skip_summary_database_on_covr()
+
     path <- local_summary_database_file()
     on.exit(unlink(path), add = TRUE)
 
@@ -488,6 +496,8 @@ test_that("summary_database() uses single-file scan helper", {
 })
 
 test_that("summary_database() matches temporary NetCDF files self-contained", {
+    skip_summary_database_on_covr()
+
     fixture <- local_summary_database_fixture(include_unmatched = TRUE)
     on.exit(unlink(fixture$dir, recursive = TRUE), add = TRUE)
 
@@ -514,6 +524,8 @@ test_that("summary_database() matches temporary NetCDF files self-contained", {
 })
 
 test_that("summary_database() append mode works with temporary NetCDF files", {
+    skip_summary_database_on_covr()
+
     fixture <- local_summary_database_fixture()
     on.exit(unlink(fixture$dir, recursive = TRUE), add = TRUE)
 
@@ -533,6 +545,8 @@ test_that("summary_database() append mode works with temporary NetCDF files", {
 })
 
 test_that("summary_database() handles lost and missing temporary NetCDF files", {
+    skip_summary_database_on_covr()
+
     fixture <- local_summary_database_fixture()
     on.exit(unlink(fixture$dir, recursive = TRUE), add = TRUE)
 
@@ -628,6 +642,8 @@ test_that("summary_database() handles empty directories and update self-containe
 })
 
 test_that("summary_database() handles duplicate temporary NetCDF matches", {
+    skip_summary_database_on_covr()
+
     fixture <- local_summary_database_fixture()
     on.exit(unlink(fixture$dir, recursive = TRUE), add = TRUE)
 
@@ -722,8 +738,10 @@ test_that("extract_data()", {
 
         expect_s3_class(d1 <- extract_data(coord, out_dir = cache), "epw_cmip6_data")
         expect_identical(d1$data, data.table())
-        expect_true(file.exists(file.path(cache, "data.fst")))
-        unlink(file.path(cache, "data.fst"))
+        parquet <- file.path(cache, "data.parquet")
+        expect_true(file.exists(parquet))
+        expect_equal(nrow(read_test_parquet(parquet)), nrow(d$data))
+        unlink(parquet)
 
         expect_s3_class(
             d2 <- extract_data(coord, out_dir = cache,
@@ -733,8 +751,10 @@ test_that("extract_data()", {
             "epw_cmip6_data"
         )
         expect_equal(d2$data, data.table())
-        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
-        unlink(file.path(cache, "EC-Earth3.ssp585.tas.fst"))
+        parquet <- file.path(cache, "EC-Earth3.ssp585.tas.parquet")
+        expect_true(file.exists(parquet))
+        expect_equal(nrow(read_test_parquet(parquet)), 2196L)
+        unlink(parquet)
 
         expect_s3_class(
             d3 <- extract_data(coord, out_dir = cache,
@@ -744,6 +764,6 @@ test_that("extract_data()", {
             "epw_cmip6_data"
         )
         expect_equal(d3$data, d$data)
-        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.fst")))
+        expect_true(file.exists(file.path(cache, "EC-Earth3.ssp585.tas.parquet")))
     }
 })

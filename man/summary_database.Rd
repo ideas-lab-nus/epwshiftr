@@ -109,11 +109,8 @@ CMIP6 file name encoding.
 \item \code{file_path}: the full path of matched NetCDF file for every case.
 }
 
-\code{summary_database()} uses \link[future.apply:future_lapply]{future.apply}
-underneath to speed up the data processing if applicable. You can use your
-preferable future backend to speed up data extraction in parallel. By default,
-\code{summary_database()} uses \code{future::sequential} backend, which runs things in
-sequential.
+\code{summary_database()} uses \link[mirai:mirai]{mirai} internally for parallel
+NetCDF metadata scanning when there is more than one file to inspect.
 }
 \examples{
 \dontrun{

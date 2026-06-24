@@ -41,6 +41,10 @@ and \code{url_download} when their source fields are available.}
 \itemize{
 \item \href{#method-EsgResultFile-to_data_table}{\code{EsgResultFile$to_data_table()}}
 \item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
+\item \href{#method-EsgResultFile-download_plan}{\code{EsgResultFile$download_plan()}}
+\item \href{#method-EsgResultFile-expand_replicas}{\code{EsgResultFile$expand_replicas()}}
+\item \href{#method-EsgResultFile-select_replica}{\code{EsgResultFile$select_replica()}}
+\item \href{#method-EsgResultFile-download}{\code{EsgResultFile$download()}}
 \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
 \item \href{#method-EsgResultFile-open_dataset}{\code{EsgResultFile$open_dataset()}}
 \item \href{#method-EsgResultFile-clone}{\code{EsgResultFile$clone()}}
@@ -121,6 +125,190 @@ A new \code{EsgResultFile} object.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-download_plan"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-download_plan}{}}}
+\subsection{Method \code{download_plan()}}{
+Build a persistent downloader plan for file records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$download_plan(
+  replica = c("auto", "current"),
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  all = TRUE,
+  node_stats = NULL,
+  network_policy = NULL,
+  node_policy = NULL,
+  probe_concurrency = 1L,
+  probe_cache_seconds = 3600L
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{replica}}{Whether to use current records or expand known replicas.}
+
+\item{\code{service}}{ESGF URL service to download from. Default: \code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{all}}{Whether replica expansion should retrieve all matching records.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
+
+\item{\code{node_policy}}{Optional data-node cooldown policy from
+\code{FileDownloader$node_policy}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table download plan.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-expand_replicas"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-expand_replicas}{}}}
+\subsection{Method \code{expand_replicas()}}{
+Query ESGF for master and replica records for known \code{master_id}s.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$expand_replicas(service = "HTTPServer", all = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{ESGF URL service to keep in the method contract.
+Default: \code{"HTTPServer"}.}
+
+\item{\code{all}}{Whether to retrieve all matching records. Default:
+\code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultFile} object with expanded replica records
+when \code{master_id} is available; otherwise \code{self}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-select_replica"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-select_replica}{}}}
+\subsection{Method \code{select_replica()}}{
+Select the preferred candidate URL per logical file.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$select_replica(
+  strategy = c("fastest", "first", "stable"),
+  probe = TRUE,
+  service = "HTTPServer",
+  node_stats = NULL,
+  network_policy = NULL,
+  node_policy = NULL,
+  probe_concurrency = 1L,
+  probe_cache_seconds = 3600L
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{node_stats}}{Optional data node history from
+\code{FileDownloader$data_nodes()}.}
+
+\item{\code{network_policy}}{Optional network options from
+\code{FileDownloader$network_policy}.}
+
+\item{\code{node_policy}}{Optional data-node cooldown policy from
+\code{FileDownloader$node_policy}.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table with one selected candidate per logical file.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-download"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-download}{}}}
+\subsection{Method \code{download()}}{
+Enqueue and run file downloads using a FileDownloader.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$download(
+  downloader = NULL,
+  store = NULL,
+  replica = c("auto", "current"),
+  service = "HTTPServer",
+  probe = TRUE,
+  strategy = c("fastest", "first", "stable"),
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  session_label = NULL,
+  run = TRUE,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{downloader}}{Optional persistent \link{FileDownloader}. If \code{NULL},
+\code{store$downloader()} is used when \code{store} is supplied.}
+
+\item{\code{store}}{Optional \link{EsgStore} providing a bound downloader.}
+
+\item{\code{replica}}{Whether to use current records or expand known
+replicas before downloading.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{run}}{Whether to run the queued session immediately. Default:
+\code{TRUE}.}
+
+\item{\code{...}}{Additional arguments passed to \code{FileDownloader$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created downloader session ID.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-print"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-print}{}}}
 \subsection{Method \code{print()}}{
@@ -150,7 +338,9 @@ Open a file as an EsgDataset for remote data access via OPeNDAP
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(
   which = NULL,
   aggregate = TRUE,
-  fallback = c("ask", "auto", "error")
+  fallback = c("ask", "auto", "error"),
+  store = NULL,
+  downloader = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -173,6 +363,11 @@ non-interactive session this raises an error.
 \item \code{"auto"}: Automatically download the file via HTTPServer.
 \item \code{"error"}: Raise an error.
 }}
+
+\item{\code{store}}{Optional \link{EsgStore} used for recoverable HTTP fallback.}
+
+\item{\code{downloader}}{Optional persistent \link{FileDownloader} used for
+recoverable HTTP fallback.}
 }
 \if{html}{\out{</div>}}
 }
