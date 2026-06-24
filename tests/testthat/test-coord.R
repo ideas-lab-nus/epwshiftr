@@ -133,7 +133,11 @@ test_that("match_coord()", {
         # can select the location interactively
         testthat::with_mocked_bindings(
             expect_s3_class(res3 <- match_coord("Singapore"), "epw_cmip6_coord"),
-            extract_location_dict = function(...) eplusr:::WEATHER_DB[grepl("Singapore", title)][1L],
+            extract_location_dict = function(...) {
+                dict <- data.table::copy(eplusr:::WEATHER_DB[grepl("Singapore", title)][1L])
+                dict[, epw_url := path]
+                dict
+            },
             .package = "epwshiftr"
         )
 

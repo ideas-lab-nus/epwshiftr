@@ -146,7 +146,7 @@ local_cache_mode <- function(mode, env = parent.frame()) {
 # @param scope Character. One of:
 #   - "test" (default): ephemeral cache in tempfile(), deleted on exit
 #   - "session": persists within the R session (tempdir()-based), not deleted
-#   - "persist": persists across R sessions (system temp dir), not deleted
+#   - "persist": persists for the testthat run, then is deleted at teardown
 # @param env The environment for withr::defer cleanup
 local_test_cache <- function(scope = c("test", "session", "persist"), env = parent.frame()) {
     scope <- match.arg(scope)
@@ -158,13 +158,14 @@ local_test_cache <- function(scope = c("test", "session", "persist"), env = pare
     )
 
     cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
-    old_cache <- set_cache(cache)
+    old_cache <- cache__set(cache)
+    cleanup_env <- if (identical(scope, "persist")) testthat::teardown_env() else env
     withr::defer(
         {
-            set_cache(old_cache)
-            if (scope == "test") unlink(dir, recursive = TRUE)
+            cache__set(old_cache)
+            if (scope %in% c("test", "persist")) unlink(dir, recursive = TRUE)
         },
-        envir = env
+        envir = cleanup_env
     )
     cache
 }

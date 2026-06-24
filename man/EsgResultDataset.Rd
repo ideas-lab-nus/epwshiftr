@@ -25,17 +25,23 @@ Hongyuan Jia
 \item \href{#method-EsgResultDataset-has_opendap}{\code{EsgResultDataset$has_opendap()}}
 \item \href{#method-EsgResultDataset-has_download}{\code{EsgResultDataset$has_download()}}
 \item \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}
+\item \href{#method-EsgResultDataset-expand_replicas}{\code{EsgResultDataset$expand_replicas()}}
 \item \href{#method-EsgResultDataset-print}{\code{EsgResultDataset$print()}}
 \item \href{#method-EsgResultDataset-clone}{\code{EsgResultDataset$clone()}}
 }
 }
 \if{html}{\out{
-<details open><summary>Inherited methods</summary>
+<details><summary>Inherited methods</summary>
 <ul>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-count'><code>epwshiftr::EsgResult$count()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-filter'><code>epwshiftr::EsgResult$filter()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-query_url'><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-reachable'><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-selection'><code>epwshiftr::EsgResult$selection()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-slice'><code>epwshiftr::EsgResult$slice()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
@@ -115,6 +121,8 @@ The following fields are always included in the results:
   all = FALSE,
   limit = 100L,
   type = "File",
+  index_node = NULL,
+  use_record_index_node = FALSE,
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -143,16 +151,31 @@ used. Default: \code{100L}.}
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}
 
-\item{\code{...}}{Additional child-result facet filters, plus the control
-parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
+\item{\code{index_node}}{Optional ESGF index node used for the child query.
+If \code{NULL}, the index node that created the Dataset result is
+used. Default: \code{NULL}.}
+
+\item{\code{use_record_index_node}}{Whether to group selected Dataset records
+by their \code{index_node} metadata and send child queries to those
+record-level index nodes. Records without \code{index_node} fall back
+to the \code{index_node} argument or the index node that created this
+result. Default: \code{FALSE}.}
+
+\item{\code{...}}{Optional child-result scope filter \code{data_node}, plus the
+control parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
 Query-level parameters such as \code{datetime_start} and
 \code{datetime_stop} cannot be passed through \code{...}.
 File/Aggregation collection does not use ESGF datetime search
 parameters; call \verb{$filter_time()} on the returned result for
 time filtering. If control parameters are omitted, they are
 inherited from the dataset query when available, with
-\code{distrib = TRUE} and \code{latest = TRUE} as fallbacks. For details
+\code{distrib = TRUE} as fallback. If \code{latest} is omitted and was not
+set on the dataset query, no \code{latest} constraint is sent. For details
 on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.
+When a local \link{EsgDict} is available for the query project, child
+collection performs a warning-only dictionary check before sending
+the query. Missing local dictionaries are ignored and never
+downloaded.
 \code{Aggregation} collection uses \code{dataset_id} plus explicit child filters
 in \code{...}; parent Dataset facet filters are not inherited because
 Aggregation records on standard ESGF search nodes do not necessarily
@@ -165,6 +188,41 @@ expose the same facet fields as Dataset records.}
 \item If \code{type="File"}, an \link{EsgResultFile} object
 \item If \code{type="Aggregation"}, an \link{EsgResultAggregation} object
 }
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultDataset-expand_replicas"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultDataset-expand_replicas}{}}}
+\subsection{Method \code{expand_replicas()}}{
+Query ESGF for Dataset master and replica records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultDataset$expand_replicas(
+  by = c("instance_id", "master_id"),
+  all = TRUE,
+  index_node = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{by}}{Replica identity key. Use \code{"instance_id"} to retrieve
+same-version Dataset replicas, or \code{"master_id"} to retrieve all
+versions and replicas for the logical Dataset. Default:
+\code{"instance_id"}.}
+
+\item{\code{all}}{Whether to retrieve all matching records. Default:
+\code{TRUE}.}
+
+\item{\code{index_node}}{Optional ESGF index node used for the replica query.
+If \code{NULL}, the index node that created this result is used.
+Default: \code{NULL}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultDataset} object with expanded Dataset records
+when the requested identity key is available; otherwise \code{self}.
 }
 }
 \if{html}{\out{<hr>}}

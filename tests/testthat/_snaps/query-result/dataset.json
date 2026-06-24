@@ -1,58 +1,62 @@
 {
   "index_node": ["..."],
   "parameter": {
-    "facet": {
-      "project": {
-        "value": ["CMIP6"],
-        "negate": [false]
-      },
-      "activity_id": {
-        "value": ["ScenarioMIP"],
-        "negate": [false]
-      },
-      "source_id": {
-        "value": ["AWI-CM-1-1-MR"],
-        "negate": [false]
-      },
-      "variable_id": {
-        "value": ["tas"],
-        "negate": [false]
-      },
-      "frequency": {
-        "value": ["day"],
-        "negate": [false]
-      },
-      "variant_label": {
-        "value": ["r1i1p1f1"],
-        "negate": [false]
-      },
-      "fields": {
-        "value": ["source_id", "experiment_id", "frequency", "access", "id", "index_node", "number_of_aggregations", "number_of_files", "size", "url", "project", "activity_id", "variable_id", "variant_label"],
-        "negate": [false]
-      }
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
     },
-    "query": [],
-    "control": {
-      "latest": {
-        "value": [true]
-      },
-      "type": {
-        "value": ["Dataset"]
-      },
-      "offset": {
-        "value": [0]
-      },
-      "distrib": {
-        "value": [true]
-      },
-      "limit": {
-        "value": [2]
-      },
-      "format": {
-        "value": ["application/solr+json"]
-      }
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
     },
-    "others": []
+    "experiment_id": null,
+    "source_id": {
+      "value": ["AWI-CM-1-1-MR"],
+      "negate": [false]
+    },
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": {
+      "value": ["day"],
+      "negate": [false]
+    },
+    "variant_label": {
+      "value": ["r1i1p1f1"],
+      "negate": [false]
+    },
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["source_id", "experiment_id", "frequency", "access", "data_node", "id", "index_node", "instance_id", "latest", "master_id", "number_of_aggregations", "number_of_files", "replica", "size", "url", "version", "project", "activity_id", "variable_id", "variant_label"],
+      "negate": [false]
+    },
+    "shards": null,
+    "datetime_start": null,
+    "datetime_stop": null,
+    "timestamp_from": null,
+    "timestamp_to": null,
+    "version_min": null,
+    "version_max": null,
+    "replica": null,
+    "latest": null,
+    "type": {
+      "value": ["Dataset"]
+    },
+    "offset": {
+      "value": [0]
+    },
+    "distrib": {
+      "value": [true]
+    },
+    "limit": {
+      "value": [2]
+    },
+    "format": {
+      "value": ["application/solr+json"]
+    }
   },
   "response": {
     "responseHeader": {
@@ -63,9 +67,9 @@
         "q.alt": ["*:*"],
         "indent": ["true"],
         "echoParams": ["all"],
-        "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
+        "fl": ["master_id,number_of_aggregations,access,data_node,replica,experiment_id,number_of_files,project,index_node,version,url,frequency,instance_id,variant_label,size,variable_id,activity_id,source_id,id,latest,score"],
         "start": ["0"],
-        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\""],
         "rows": ["2"],
         "q": ["*:*"],
         "shards": ["..."],
@@ -86,13 +90,19 @@
       "docs": [
         {
           "id": "...",
+          "version": "...",
           "access": ["...", "..."],
           "activity_id": ["..."],
+          "data_node": "...",
           "experiment_id": ["..."],
           "frequency": ["..."],
           "index_node": "...",
+          "instance_id": "...",
+          "latest": true,
+          "master_id": "...",
           "number_of_files": -1,
           "project": ["..."],
+          "replica": true,
           "size": -1.5,
           "source_id": ["..."],
           "variable_id": ["..."],
@@ -100,13 +110,19 @@
         },
         {
           "id": "...",
+          "version": "...",
           "access": ["...", "..."],
           "activity_id": ["..."],
+          "data_node": "...",
           "experiment_id": ["..."],
           "frequency": ["..."],
           "index_node": "...",
+          "instance_id": "...",
+          "latest": true,
+          "master_id": "...",
           "number_of_files": -1,
           "project": ["..."],
+          "replica": true,
           "size": -1.5,
           "source_id": ["..."],
           "variable_id": ["..."],

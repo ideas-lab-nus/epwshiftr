@@ -1,7 +1,7 @@
-esgdict__build <- function(dict) {
+dict__build <- function(dict) {
     res <- list()
-    res$project <- esgdict__normalize_project(if (is.null(dict$project)) "CMIP6" else dict$project)
-    res$profile <- esgdict__profile(res$project)
+    res$project <- dict__project(if (is.null(dict$project)) "CMIP6" else dict$project)
+    res$profile <- dict__profile(res$project)
     res$built_time <- dict$built_time
     res$sources <- dict$sources
     dict$built_time <- NULL
@@ -20,7 +20,7 @@ esgdict__build <- function(dict) {
         return(res)
     }
 
-    if (is.null(vocab) || (!is.null(esgdict__project_spec(res$project)$request) && is.null(request))) {
+    if (is.null(vocab) || (!is.null(dict__spec(res$project)$request) && is.null(request))) {
         res$version <- NULL
         res$timestamps <- NULL
         res$data <- list(vocab = vocab, request = request)
@@ -29,25 +29,23 @@ esgdict__build <- function(dict) {
     }
 
     res$version <- list(
-        vocab = esgdict__vocab_version(vocab),
-        request = esgdict__request_version(request)
+        vocab = dict__vocab_version(vocab),
+        request = dict__request_version(request)
     )
 
-    res$timestamps <- esgdict__vocab_timestamps(vocab)
+    res$timestamps <- dict__vocab_times(vocab)
 
     res$data <- list(vocab = vocab, request = request)
     res$indices <- if (is.null(dict$indices)) {
-        esgdict__indices(res$project, res$data)
+        dict__make_indices(res$project, res$data)
     } else {
-        esgdict__normalize_indices(dict$indices)
+        dict__norm_indices(dict$indices)
     }
 
     res
 }
 
-cmip6dict__build <- esgdict__build
-
-esgdict__vocab_version <- function(vocab) {
+dict__vocab_version <- function(vocab) {
     if (is.null(vocab)) return(NULL)
     if (!is.null(vocab$drs)) {
         return(attr(vocab$drs, "version", TRUE)$CV_collection_version)
@@ -61,12 +59,12 @@ esgdict__vocab_version <- function(vocab) {
     NULL
 }
 
-esgdict__request_version <- function(request) {
+dict__request_version <- function(request) {
     if (is.null(request)) return(NULL)
     attr(request, "metadata", TRUE)$dreq_version[[1L]]
 }
 
-esgdict__vocab_timestamps <- function(vocab) {
+dict__vocab_times <- function(vocab) {
     if (is.null(vocab)) return(NULL)
 
     out <- lapply(vocab, function(cv) attr(cv, "version", TRUE)$CV_modified)
@@ -76,7 +74,7 @@ esgdict__vocab_timestamps <- function(vocab) {
     out[lengths(out) > 0L]
 }
 
-esgdict__normalize_indices <- function(indices) {
+dict__norm_indices <- function(indices) {
     if (is.null(indices)) return(NULL)
     if ("dreq" %in% names(indices) && !"variable" %in% names(indices)) {
         names(indices)[names(indices) == "dreq"] <- "variable"
@@ -84,7 +82,7 @@ esgdict__normalize_indices <- function(indices) {
     indices
 }
 
-esgdict__save <- function(
+dict__save <- function(
     project,
     profile,
     built_time,
@@ -95,14 +93,14 @@ esgdict__save <- function(
     indices = NULL,
     path
 ) {
-    project <- esgdict__normalize_project(project)
-    profile <- esgdict__profile(project)
+    project <- dict__project(project)
+    profile <- dict__profile(project)
     checkmate::assert_string(path, min.chars = 1L)
 
     path <- normalizePath(path, winslash = "/", mustWork = FALSE)
-    payload <- esgdict__payload(project, profile, built_time, data, version, timestamps, sources, indices)
+    payload <- dict__payload(project, profile, built_time, data, version, timestamps, sources, indices)
     schema_validate(SCHEMA_ESG_DICT, payload, mode = "assert", name = path)
-    esgdict__validate_payload(payload, name = path)
+    dict__validate(payload, name = path)
     store_write_json_atomic(payload, path,
         auto_unbox = TRUE,
         pretty = TRUE,
@@ -112,8 +110,8 @@ esgdict__save <- function(
     path
 }
 
-esgdict__load <- function(path, project = "CMIP6") {
-    project <- esgdict__normalize_project(project)
+dict__load <- function(path, project = "CMIP6") {
+    project <- dict__project(project)
     checkmate::assert_string(path, min.chars = 1L)
 
     path <- normalizePath(path, winslash = "/", mustWork = FALSE)
@@ -121,9 +119,9 @@ esgdict__load <- function(path, project = "CMIP6") {
 
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
     schema_validate(SCHEMA_ESG_DICT, payload, mode = "assert", name = path)
-    esgdict__validate_payload(payload, name = path)
+    dict__validate(payload, name = path)
 
-    loaded_project <- esgdict__normalize_project(payload$project)
+    loaded_project <- dict__project(payload$project)
     if (!identical(loaded_project, project)) {
         stop(
             sprintf(
@@ -136,12 +134,12 @@ esgdict__load <- function(path, project = "CMIP6") {
         )
     }
 
-    esgdict__from_payload(payload)
+    dict__from_payload(payload)
 }
 
-esgdict__validate_payload <- function(payload, name = "ESGDICT.json") {
-    project <- esgdict__normalize_project(payload$project)
-    profile <- esgdict__profile(project)
+dict__validate <- function(payload, name = "ESGDICT.json") {
+    project <- dict__project(payload$project)
+    profile <- dict__profile(project)
     if (!identical(as.character(payload$profile), profile)) {
         stop(
             sprintf("%s profile `%s` does not match project `%s`.", name, payload$profile, project),
@@ -149,11 +147,11 @@ esgdict__validate_payload <- function(payload, name = "ESGDICT.json") {
         )
     }
 
-    esgdict__validate_body(payload$payload, project = project, name = name)
+    dict__validate_body(payload$payload, project = project, name = name)
 }
 
-esgdict__validate_body <- function(payload, project = "CMIP6", name = "ESGDICT.json") {
-    project <- esgdict__normalize_project(project)
+dict__validate_body <- function(payload, project = "CMIP6", name = "ESGDICT.json") {
+    project <- dict__project(project)
     if (is.null(payload) || (is.null(payload$vocab) && is.null(payload$request))) {
         return(invisible(TRUE))
     }
@@ -189,7 +187,7 @@ esgdict__validate_body <- function(payload, project = "CMIP6", name = "ESGDICT.j
             stop(sprintf("%s is a partial CMIP6 dictionary payload.", name), call. = FALSE)
         }
 
-        request_cols <- cmip6dict__payload_column_names(payload$request)
+        request_cols <- dict__payload_cols(payload$request)
         missing_request <- setdiff(c("variable", "table_id", "frequency", "modeling_realm"), request_cols)
         if (length(missing_request)) {
             stop(
@@ -198,7 +196,7 @@ esgdict__validate_body <- function(payload, project = "CMIP6", name = "ESGDICT.j
             )
         }
 
-        meta_cols <- cmip6dict__payload_column_names(payload$request_metadata)
+        meta_cols <- dict__payload_cols(payload$request_metadata)
         missing_meta <- setdiff(c("dreq_version", "cmor_version", "table_id", "mip_era"), meta_cols)
         if (length(missing_meta)) {
             stop(
@@ -221,26 +219,14 @@ esgdict__validate_body <- function(payload, project = "CMIP6", name = "ESGDICT.j
     invisible(TRUE)
 }
 
-cmip6dict__validate_payload <- function(payload, name = "CMIP6DICT.json") {
-    if (!is.null(payload) && "cvs" %in% names(payload)) {
-        payload <- list(
-            vocab = payload$cvs,
-            request = payload$dreq,
-            request_metadata = payload$dreq_metadata,
-            indices = esgdict__normalize_indices(payload$indices)
-        )
-    }
-    esgdict__validate_body(payload, project = "CMIP6", name = name)
-}
-
-cmip6dict__payload_column_names <- function(payload) {
+dict__payload_cols <- function(payload) {
     if (is.null(payload) || is.null(payload$columns)) {
         return(character())
     }
     vapply(payload$columns, function(col) as.character(col$name), character(1L), USE.NAMES = FALSE)
 }
 
-esgdict__payload <- function(
+dict__payload <- function(
     project,
     profile,
     built_time,
@@ -250,52 +236,46 @@ esgdict__payload <- function(
     sources = NULL,
     indices = NULL
 ) {
-    project <- esgdict__normalize_project(project)
-    profile <- esgdict__profile(project)
+    project <- dict__project(project)
+    profile <- dict__profile(project)
     list(
         format = ESGDICT_FORMAT,
         format_version = ESGDICT_FORMAT_VERSION,
         project = project,
         profile = profile,
-        built_time = cmip6dict__encode_time(built_time),
-        version = cmip6dict__encode_version(version),
-        timestamps = cmip6dict__encode_value(timestamps),
-        sources = cmip6dict__encode_value(sources),
-        payload = esgdict__body_payload(data, indices)
+        built_time = dict__enc_time(built_time),
+        version = dict__enc_version(version),
+        timestamps = dict__enc(timestamps),
+        sources = dict__enc(sources),
+        payload = dict__body(data, indices)
     )
 }
 
-esgdict__body_payload <- function(data, indices = NULL) {
+dict__body <- function(data, indices = NULL) {
     list(
-        vocab = esgdict__encode_vocab(data$vocab),
-        request = cmip6dict__encode_table(data$request),
-        request_metadata = cmip6dict__encode_table(attr(data$request, "metadata", TRUE), include_class = FALSE),
-        indices = cmip6dict__encode_indices(indices)
+        vocab = dict__enc_vocab(data$vocab),
+        request = dict__enc_table(data$request),
+        request_metadata = dict__enc_table(attr(data$request, "metadata", TRUE), include_class = FALSE),
+        indices = dict__enc_indices(indices)
     )
 }
 
-cmip6dict__payload <- function(data, indices = NULL) {
-    if (is.null(data$vocab) && !is.null(data$cvs)) data$vocab <- data$cvs
-    if (is.null(data$request) && !is.null(data$dreq)) data$request <- data$dreq
-    esgdict__body_payload(data, indices)
-}
-
-esgdict__from_payload <- function(payload) {
-    project <- esgdict__normalize_project(payload$project)
-    profile <- esgdict__profile(project)
+dict__from_payload <- function(payload) {
+    project <- dict__project(payload$project)
+    profile <- dict__profile(project)
     body <- payload$payload
     list(
         project = project,
         profile = profile,
-        built_time = cmip6dict__decode_time(payload$built_time),
+        built_time = dict__dec_time(payload$built_time),
         sources = payload$sources,
-        vocab = esgdict__decode_vocab(body$vocab),
-        request = esgdict__decode_request(body$request, body$request_metadata),
-        indices = esgdict__normalize_indices(cmip6dict__decode_indices(body$indices))
+        vocab = dict__dec_vocab(body$vocab),
+        request = dict__dec_request(body$request, body$request_metadata),
+        indices = dict__norm_indices(dict__dec_indices(body$indices))
     )
 }
 
-cmip6dict__encode_version <- function(version) {
+dict__enc_version <- function(version) {
     if (is.null(version)) return(NULL)
 
     list(
@@ -304,77 +284,75 @@ cmip6dict__encode_version <- function(version) {
     )
 }
 
-cmip6dict__encode_time <- function(x) {
+dict__enc_time <- function(x) {
     if (is.null(x)) return(NULL)
     format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
 }
 
-cmip6dict__decode_time <- function(x) {
+dict__dec_time <- function(x) {
     if (is.null(x) || !length(x) || is.na(x)) return(NULL)
     as.POSIXct(x, tz = "UTC", format = "%Y-%m-%dT%H:%M:%OSZ")
 }
 
-cmip6dict__encode_value <- function(x) {
+dict__enc <- function(x) {
     if (is.null(x)) return(NULL)
     if (inherits(x, "numeric_version")) return(as.character(x))
-    if (inherits(x, "POSIXt")) return(vapply(x, cmip6dict__encode_time, character(1L), USE.NAMES = FALSE))
+    if (inherits(x, "POSIXt")) return(vapply(x, dict__enc_time, character(1L), USE.NAMES = FALSE))
     if (inherits(x, "Date")) return(as.character(x))
-    if (is.list(x) && !is.data.frame(x)) return(lapply(x, cmip6dict__encode_value))
+    if (is.list(x) && !is.data.frame(x)) return(lapply(x, dict__enc))
     if (is.atomic(x)) return(as.vector(x))
     x
 }
 
-esgdict__encode_vocab <- function(vocab) {
+dict__enc_vocab <- function(vocab) {
     if (is.null(vocab)) return(NULL)
 
-    out <- lapply(vocab, cmip6dict__encode_cv)
+    out <- lapply(vocab, dict__enc_cv)
     order <- unique(c(intersect(tolower(CV_TYPES), names(out)), names(out)))
     out[order]
 }
 
-cmip6dict__encode_cvs <- esgdict__encode_vocab
-
-cmip6dict__encode_cv <- function(cv) {
+dict__enc_cv <- function(cv) {
     payload <- list(
-        kind = cmip6dict__cv_kind(cv),
+        kind = dict__cv_kind(cv),
         class = class(cv),
-        version = cmip6dict__encode_value(attr(cv, "version", TRUE))
+        version = dict__enc(attr(cv, "version", TRUE))
     )
 
     if (is.data.frame(cv)) {
-        payload$columns <- cmip6dict__column_specs(cv)
-        payload$rows <- cmip6dict__encode_rows(cv)
+        payload$columns <- dict__cols(cv)
+        payload$rows <- dict__enc_rows(cv)
     } else {
-        payload$values <- cmip6dict__encode_value(unclass(cv))
+        payload$values <- dict__enc(unclass(cv))
     }
 
     payload
 }
 
-cmip6dict__cv_kind <- function(cv) {
+dict__cv_kind <- function(cv) {
     if (is.data.frame(cv)) return("table")
     if (is.list(cv)) return("list")
     "vector"
 }
 
-cmip6dict__encode_indices <- function(indices) {
+dict__enc_indices <- function(indices) {
     if (is.null(indices) || !length(indices)) return(NULL)
-    lapply(indices, cmip6dict__encode_table)
+    lapply(indices, dict__enc_table)
 }
 
-cmip6dict__decode_indices <- function(indices) {
+dict__dec_indices <- function(indices) {
     if (is.null(indices)) return(NULL)
-    out <- lapply(indices, cmip6dict__decode_table)
+    out <- lapply(indices, dict__dec_table)
     names(out) <- names(indices)
     out
 }
 
-cmip6dict__encode_table <- function(x, include_class = TRUE) {
+dict__enc_table <- function(x, include_class = TRUE) {
     if (is.null(x)) return(NULL)
 
     out <- list(
-        columns = cmip6dict__column_specs(x),
-        rows = cmip6dict__encode_rows(x)
+        columns = dict__cols(x),
+        rows = dict__enc_rows(x)
     )
     if (include_class) {
         out <- c(list(class = class(x)), out)
@@ -382,13 +360,13 @@ cmip6dict__encode_table <- function(x, include_class = TRUE) {
     out
 }
 
-cmip6dict__column_specs <- function(x) {
+dict__cols <- function(x) {
     lapply(names(x), function(col) {
-        list(name = col, type = cmip6dict__column_type(x[[col]]))
+        list(name = col, type = dict__col_type(x[[col]]))
     })
 }
 
-cmip6dict__column_type <- function(x) {
+dict__col_type <- function(x) {
     if (is.list(x) && !inherits(x, c("Date", "POSIXt", "numeric_version"))) return("list")
     if (inherits(x, "numeric_version")) return("numeric_version")
     if (inherits(x, "POSIXt")) return("posixct")
@@ -399,41 +377,39 @@ cmip6dict__column_type <- function(x) {
     "character"
 }
 
-cmip6dict__encode_rows <- function(x) {
+dict__enc_rows <- function(x) {
     if (is.null(x) || !nrow(x)) return(list())
 
     lapply(seq_len(nrow(x)), function(i) {
         row <- lapply(names(x), function(col) {
-            cmip6dict__encode_value(cmip6dict__table_cell(x[[col]], i))
+            dict__enc(dict__cell(x[[col]], i))
         })
         names(row) <- names(x)
         row
     })
 }
 
-cmip6dict__table_cell <- function(col, i) {
+dict__cell <- function(col, i) {
     if (is.list(col) && !inherits(col, c("Date", "POSIXt", "numeric_version"))) {
         return(col[[i]])
     }
     col[i]
 }
 
-esgdict__decode_vocab <- function(vocab) {
+dict__dec_vocab <- function(vocab) {
     if (is.null(vocab)) return(NULL)
 
-    out <- lapply(names(vocab), function(nm) cmip6dict__decode_cv(nm, vocab[[nm]]))
+    out <- lapply(names(vocab), function(nm) dict__dec_cv(nm, vocab[[nm]]))
     names(out) <- names(vocab)
     out
 }
 
-cmip6dict__decode_cvs <- esgdict__decode_vocab
-
-cmip6dict__decode_cv <- function(name, payload) {
-    cls <- cmip6dict__decode_class(payload$class)
-    version <- cmip6dict__decode_cv_version(payload$version)
+dict__dec_cv <- function(name, payload) {
+    cls <- dict__dec_class(payload$class)
+    version <- dict__dec_cv_version(payload$version)
 
     if (identical(payload$kind, "table")) {
-        x <- cmip6dict__decode_table(payload, class = cls)
+        x <- dict__dec_table(payload, class = cls)
     } else if (identical(payload$kind, "list")) {
         x <- payload$values
         class(x) <- cls
@@ -446,37 +422,35 @@ cmip6dict__decode_cv <- function(name, payload) {
     x
 }
 
-cmip6dict__decode_class <- function(x) {
+dict__dec_class <- function(x) {
     if (is.null(x)) return(NULL)
     as.character(unlst(x))
 }
 
-cmip6dict__decode_cv_version <- function(x) {
+dict__dec_cv_version <- function(x) {
     if (is.null(x)) return(NULL)
 
     list(
         CV_collection_version = as.numeric_version(x$CV_collection_version),
-        CV_collection_modified = cmip6dict__decode_time(x$CV_collection_modified),
-        CV_modified = cmip6dict__decode_time(x$CV_modified),
+        CV_collection_modified = dict__dec_time(x$CV_collection_modified),
+        CV_modified = dict__dec_time(x$CV_modified),
         CV_note = as.character(x$CV_note)
     )
 }
 
-esgdict__decode_request <- function(payload, metadata) {
+dict__dec_request <- function(payload, metadata) {
     if (is.null(payload)) return(NULL)
 
-    request <- cmip6dict__decode_table(payload, class = cmip6dict__decode_class(payload$class))
-    meta <- cmip6dict__decode_table(metadata)
+    request <- dict__dec_table(payload, class = dict__dec_class(payload$class))
+    meta <- dict__dec_table(metadata)
     data.table::setattr(request, "metadata", meta)
     request
 }
 
-cmip6dict__decode_dreq <- esgdict__decode_request
-
-cmip6dict__decode_table <- function(payload, class = NULL) {
+dict__dec_table <- function(payload, class = NULL) {
     if (is.null(payload)) return(NULL)
 
-    columns <- cmip6dict__decode_columns(payload$columns)
+    columns <- dict__dec_cols(payload$columns)
     rows <- payload$rows
     values <- lapply(columns$name, function(col) {
         lapply(rows, function(row) {
@@ -487,7 +461,7 @@ cmip6dict__decode_table <- function(payload, class = NULL) {
 
     for (i in seq_len(nrow(columns))) {
         col <- columns$name[[i]]
-        values[[col]] <- cmip6dict__decode_column(values[[col]], columns$type[[i]])
+        values[[col]] <- dict__dec_col(values[[col]], columns$type[[i]])
     }
 
     out <- data.table::as.data.table(values)
@@ -498,7 +472,7 @@ cmip6dict__decode_table <- function(payload, class = NULL) {
     out
 }
 
-cmip6dict__decode_columns <- function(columns) {
+dict__dec_cols <- function(columns) {
     if (!length(columns)) {
         return(data.table::data.table(name = character(), type = character()))
     }
@@ -511,25 +485,25 @@ cmip6dict__decode_columns <- function(columns) {
     }))
 }
 
-cmip6dict__decode_column <- function(values, type) {
+dict__dec_col <- function(values, type) {
     switch(type,
-        list = lapply(values, cmip6dict__decode_list_cell),
-        integer = suppressWarnings(as.integer(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE))),
-        numeric = suppressWarnings(as.numeric(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE))),
-        logical = as.logical(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE)),
-        date = as.Date(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE)),
-        posixct = as.POSIXct(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE), tz = "UTC"),
-        numeric_version = as.numeric_version(vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE)),
-        vapply(values, cmip6dict__decode_scalar_cell, character(1L), USE.NAMES = FALSE)
+        list = lapply(values, dict__dec_list_cell),
+        integer = suppressWarnings(as.integer(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE))),
+        numeric = suppressWarnings(as.numeric(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE))),
+        logical = as.logical(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE)),
+        date = as.Date(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE)),
+        posixct = as.POSIXct(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE), tz = "UTC"),
+        numeric_version = as.numeric_version(vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE)),
+        vapply(values, dict__dec_scalar, character(1L), USE.NAMES = FALSE)
     )
 }
 
-cmip6dict__decode_list_cell <- function(x) {
+dict__dec_list_cell <- function(x) {
     if (is.null(x)) return(character())
     x
 }
 
-cmip6dict__decode_scalar_cell <- function(x) {
+dict__dec_scalar <- function(x) {
     if (is.null(x) || !length(x)) return(NA_character_)
     if (is.list(x)) {
         if (!length(x) || is.null(x[[1L]])) return(NA_character_)

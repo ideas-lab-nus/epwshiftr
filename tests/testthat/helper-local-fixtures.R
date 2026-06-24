@@ -1,7 +1,7 @@
 local_cmip6_test_years <- 2059:2061
 
-local_cmip6_nc_file <- function(year) {
-    sprintf("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_%s0101-%s1231.nc", year, year)
+local_cmip6_nc_file <- function(year, variable_id = "tas") {
+    sprintf("%s_day_EC-Earth3_ssp585_r1i1p1f1_gr_%s0101-%s1231.nc", variable_id, year, year)
 }
 
 local_is_leap_year <- function(year) {
@@ -24,7 +24,77 @@ local_tunnel_dist <- function(lat1, lon1, lat2, lon2) {
     sqrt(delta_x ^ 2 + delta_y ^ 2 + delta_z ^ 2) * earth_radius
 }
 
-write_local_cmip6_netcdf_fixture <- function(path, year) {
+local_cmip6_variable_spec <- function(variable_id) {
+    specs <- list(
+        tas = list(
+            standard_name = "air_temperature",
+            long_name = "Near-Surface Air Temperature",
+            units = "K"
+        ),
+        hurs = list(
+            standard_name = "relative_humidity",
+            long_name = "Near-Surface Relative Humidity",
+            units = "%"
+        ),
+        psl = list(
+            standard_name = "air_pressure_at_mean_sea_level",
+            long_name = "Sea Level Pressure",
+            units = "Pa"
+        ),
+        rlds = list(
+            standard_name = "surface_downwelling_longwave_flux_in_air",
+            long_name = "Surface Downwelling Longwave Radiation",
+            units = "W m-2"
+        ),
+        rsds = list(
+            standard_name = "surface_downwelling_shortwave_flux_in_air",
+            long_name = "Surface Downwelling Shortwave Radiation",
+            units = "W m-2"
+        ),
+        sfcWind = list(
+            standard_name = "wind_speed",
+            long_name = "Near-Surface Wind Speed",
+            units = "m s-1"
+        ),
+        clt = list(
+            standard_name = "cloud_area_fraction",
+            long_name = "Total Cloud Cover Percentage",
+            units = "%"
+        )
+    )
+    spec <- specs[[variable_id]]
+    if (is.null(spec)) {
+        stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
+    }
+    spec
+}
+
+local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
+    values <- array(NA_real_, dim = c(length(lon), length(lat), length(time)))
+    phase <- 2 * pi * time / length(time)
+
+    for (i in seq_along(lat)) {
+        for (j in seq_along(lon)) {
+            spatial <- i / 10 + j / 20
+            values[j, i, ] <- switch(
+                variable_id,
+                tas = 299 + 5 * sin(phase) + spatial,
+                hurs = pmin(95, pmax(40, 72 + 10 * cos(phase) + spatial)),
+                psl = 101000 + 250 * sin(phase / 2) + 10 * spatial,
+                rlds = 340 + 18 * sin(phase) + spatial,
+                rsds = pmax(0, 260 + 180 * sin(phase - pi / 3) + 3 * spatial),
+                sfcWind = pmax(0.1, 3 + 0.6 * cos(phase) + spatial / 8),
+                clt = pmin(100, pmax(0, 52 + 22 * cos(phase - pi / 6) + spatial)),
+                stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
+            )
+        }
+    }
+
+    values
+}
+
+write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas") {
+    spec <- local_cmip6_variable_spec(variable_id)
     lat <- c(1.0, 2.0, 41.0)
     lon <- c(103.5, 104.0, 104.5, 254.0)
     time <- seq_len(if (local_is_leap_year(year)) 366L else 365L) - 0.5
@@ -33,13 +103,7 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     lon_step <- min(diff(sort(lon)))
     lat_bnds <- rbind(lat - lat_step / 2, lat + lat_step / 2)
     lon_bnds <- rbind(lon - lon_step / 2, lon + lon_step / 2)
-    tas <- array(NA_real_, dim = c(length(lon), length(lat), length(time)))
-
-    for (i in seq_along(lat)) {
-        for (j in seq_along(lon)) {
-            tas[j, i, ] <- 299 + 5 * sin(2 * pi * time / length(time)) + i / 10 + j / 20
-        }
-    }
+    values <- local_cmip6_variable_array(variable_id, lon, lat, time)
 
     nc <- RNetCDF::create.nc(path)
     on.exit(RNetCDF::close.nc(nc), add = TRUE)
@@ -56,7 +120,7 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::var.def.nc(nc, "lon", "NC_DOUBLE", "lon")
     RNetCDF::var.def.nc(nc, "lon_bnds", "NC_DOUBLE", c("bnds", "lon"))
     RNetCDF::var.def.nc(nc, "height", "NC_DOUBLE", "height")
-    RNetCDF::var.def.nc(nc, "tas", "NC_FLOAT", c("lon", "lat", "time"))
+    RNetCDF::var.def.nc(nc, variable_id, "NC_FLOAT", c("lon", "lat", "time"))
 
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "mip_era", "NC_CHAR", "CMIP6")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "activity_id", "NC_CHAR", "ScenarioMIP")
@@ -68,8 +132,8 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "frequency", "NC_CHAR", "day")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "grid_label", "NC_CHAR", "gr")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "nominal_resolution", "NC_CHAR", "100 km")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variable_id", "NC_CHAR", "tas")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "tracking_id", "NC_CHAR", sprintf("hdl:21.14100/local-test-%s", year))
+    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variable_id", "NC_CHAR", variable_id)
+    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "tracking_id", "NC_CHAR", sprintf("hdl:21.14100/local-test-%s-%s", variable_id, year))
 
     RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", sprintf("days since %s-01-01 00:00:00", year))
     RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "proleptic_gregorian")
@@ -86,9 +150,9 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::att.put.nc(nc, "height", "units", "NC_CHAR", "m")
     RNetCDF::att.put.nc(nc, "height", "standard_name", "NC_CHAR", "height")
     RNetCDF::att.put.nc(nc, "height", "positive", "NC_CHAR", "up")
-    RNetCDF::att.put.nc(nc, "tas", "standard_name", "NC_CHAR", "air_temperature")
-    RNetCDF::att.put.nc(nc, "tas", "long_name", "NC_CHAR", "Near-Surface Air Temperature")
-    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
+    RNetCDF::att.put.nc(nc, variable_id, "standard_name", "NC_CHAR", spec$standard_name)
+    RNetCDF::att.put.nc(nc, variable_id, "long_name", "NC_CHAR", spec$long_name)
+    RNetCDF::att.put.nc(nc, variable_id, "units", "NC_CHAR", spec$units)
 
     RNetCDF::var.put.nc(nc, "time", time, count = length(time))
     RNetCDF::var.put.nc(nc, "time_bnds", time_bnds, count = dim(time_bnds))
@@ -97,7 +161,7 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::var.put.nc(nc, "lon", lon, count = length(lon))
     RNetCDF::var.put.nc(nc, "lon_bnds", lon_bnds, count = dim(lon_bnds))
     RNetCDF::var.put.nc(nc, "height", 2.0, count = 1L)
-    RNetCDF::var.put.nc(nc, "tas", tas, count = dim(tas))
+    RNetCDF::var.put.nc(nc, variable_id, values, count = dim(values))
 
     invisible(path)
 }
@@ -109,7 +173,7 @@ local_cmip6_index <- function(paths) {
         year <- sub(".*_(\\d{4})0101-\\d{4}1231\\.nc$", "\\1", basename(path))
 
         data.table::data.table(
-            file_id = sprintf("local|tas|%s", year),
+            file_id = sprintf("local|%s|%s", meta$variable_id, year),
             dataset_id = sprintf("local-dataset-%s", year),
             mip_era = meta$mip_era,
             activity_drs = meta$activity_id,

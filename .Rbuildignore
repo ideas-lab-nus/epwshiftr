@@ -13,3 +13,6 @@
 ^\.git$
 ^.*\.pdf$
 ^vignettes$
+^inst/extdata/vignettes($|/)
+^data-raw$
+^OPENDAP_IMPLEMENTATION\.md$

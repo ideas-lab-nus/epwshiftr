@@ -1,0 +1,54 @@
+{
+  "responseHeader": {
+    "status": 0,
+    "QTime": 1,
+    "params": {
+      "fq": [
+        "type:File",
+        "dataset_id:\"CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.day.tas.gr.v20240101\"",
+        "replica:false"
+      ]
+    }
+  },
+  "response": {
+    "numFound": 1,
+    "start": 0,
+    "maxScore": 1,
+    "docs": [
+      {
+        "id": "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+        "dataset_id": "CMIP6.ScenarioMIP.EC-Earth-Consortium.EC-Earth3.ssp585.r1i1p1f1.day.tas.gr.v20240101",
+        "mip_era": "CMIP6",
+        "activity_drs": "ScenarioMIP",
+        "institution_id": "EC-Earth-Consortium",
+        "source_id": "EC-Earth3",
+        "experiment_id": "ssp585",
+        "member_id": "r1i1p1f1",
+        "table_id": "day",
+        "frequency": "day",
+        "grid_label": "gr",
+        "version": "v20240101",
+        "nominal_resolution": "100 km",
+        "variable_id": "tas",
+        "variable_long_name": "Near-Surface Air Temperature",
+        "variable_units": "K",
+        "datetime_start": "2060-01-01T00:00:00Z",
+        "datetime_end": "2060-12-31T00:00:00Z",
+        "size": 128,
+        "data_node": "example.test",
+        "url": [
+          "https://example.test/dods/tas.nc|application/netcdf|OPENDAP",
+          "https://example.test/fileServer/tas.nc|application/netcdf|HTTPServer"
+        ],
+        "tracking_id": "hdl:21.14100/mock-file"
+      }
+    ]
+  },
+  "facet_counts": {
+    "facet_queries": {},
+    "facet_fields": {},
+    "facet_ranges": {},
+    "facet_intervals": {},
+    "facet_heatmaps": {}
+  }
+}

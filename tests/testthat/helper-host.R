@@ -1,10 +1,10 @@
 get_fast_index_node <- function(force = FALSE) {
-    cache <- get_cache()
+    cache <- cache__get()
     cache_key <- "fast_index_node"
 
     if (!force) {
         cached <- cache$get(cache_key)
-        if (!is.key_missing(cached)) {
+        if (!cache__missing(cached)) {
             return(cached)
         }
     }

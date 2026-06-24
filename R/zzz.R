@@ -2,6 +2,7 @@
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
 .onLoad <- function(libname, pkgname) {
     S7::methods_register()
+    cache__configure(pkgname)
 
     # set package options
     .opts <- list(

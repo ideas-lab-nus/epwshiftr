@@ -18,6 +18,6 @@ Invisibly, a list with \code{status}, \code{result}, and \code{error}.
 }
 \description{
 \code{epwshiftr_cli()} is the package-level entry point used by the optional
-\code{epwshiftr} launcher. It exposes a small ESGF store workflow interface and
+\code{epwshiftr} launcher. It exposes a small ESGF store management interface and
 returns status metadata when \code{exit = FALSE}, which makes it testable from R.
 }

@@ -213,11 +213,11 @@ local_cmip6_source_store <- function(root) {
 
 local_test_esgdict <- function() {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
-    spec <- esgdict__project_spec("CMIP6")
+    spec <- dict__spec("CMIP6")
     fetched <- list(
         project = "CMIP6",
-        vocab = cmip6dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv")),
-        request = cmip6dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request")),
+        vocab = dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv")),
+        request = dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request")),
         built_time = as.POSIXct("2025-01-04 00:00:00", tz = "UTC"),
         sources = list(
             vocab = list(repo = spec$vocab$repo, tag = "test-cv", commit = "abc123", source_dir = file.path(source_root, "vocab", "test-cv")),
@@ -225,7 +225,7 @@ local_test_esgdict <- function() {
         )
     )
 
-    built <- cmip6dict__build(fetched)
+    built <- dict__build(fetched)
     dict <- EsgDict$new()
     private <- priv(dict)
     private$replace(built, status = "built")
@@ -264,10 +264,10 @@ local_esgdict_disk_cache <- function(env = parent.frame()) {
     cache_dir <- tempfile("epwshiftr-esgdict-cache-")
     dir.create(cache_dir, recursive = TRUE)
     cache <- DiskCache$new(cache_dir, max_size = Inf, max_age = Inf, max_n = Inf, prune_on_init = FALSE)
-    old <- set_cache(cache)
+    old <- cache__set(cache)
 
     withr::defer({
-        set_cache(old)
+        cache__set(old)
         unlink(cache_dir, recursive = TRUE)
     }, envir = env)
 
@@ -352,7 +352,7 @@ test_that("EsgDict save/load uses typed schema-validated JSON", {
     expect_match(store_rel_path(path, root = dir), "^dicts/cmip6/[0-9a-f]{64}[.]json$")
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
     expect_true(schema_validate(SCHEMA_ESG_DICT, payload, mode = "test", name = path))
-    expect_true(esgdict__validate_payload(payload, name = path))
+    expect_true(dict__validate(payload, name = path))
     expect_equal(payload$format, "epwshiftr_esg_dict")
     expect_equal(payload$format_version, "2")
     expect_equal(payload$project, "CMIP6")
@@ -514,7 +514,7 @@ test_that("CV-only ESG projects can build and report unchecked relationships", {
     expect_identical(dict$save(path = path), path)
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
     expect_true(schema_validate(SCHEMA_ESG_DICT, payload, mode = "test", name = path))
-    expect_true(esgdict__validate_payload(payload, name = path))
+    expect_true(dict__validate(payload, name = path))
     expect_null(payload$payload$request)
 
     loaded <- EsgDict$new("CMIP6PLUS")
@@ -525,21 +525,21 @@ test_that("CV-only ESG projects can build and report unchecked relationships", {
 
 test_that("EsgDict cache policy follows package cache mode", {
     local_cache_mode_for_test(TRUE)
-    normal <- esgdict__cache_policy(TRUE)
+    normal <- dict__cache(TRUE)
     expect_equal(normal$mode, "normal")
     expect_true(normal$read)
     expect_true(normal$write)
     expect_true(normal$source_read)
     expect_true(normal$source_write)
 
-    no_call_cache <- esgdict__cache_policy(FALSE)
+    no_call_cache <- dict__cache(FALSE)
     expect_false(no_call_cache$read)
     expect_false(no_call_cache$write)
     expect_true(no_call_cache$source_read)
     expect_true(no_call_cache$source_write)
 
     local_cache_mode_for_test(FALSE)
-    off <- esgdict__cache_policy(TRUE)
+    off <- dict__cache(TRUE)
     expect_equal(off$mode, "off")
     expect_false(off$read)
     expect_false(off$write)
@@ -547,14 +547,14 @@ test_that("EsgDict cache policy follows package cache mode", {
     expect_true(off$source_write)
 
     local_cache_mode_for_test("offline")
-    offline <- esgdict__cache_policy(TRUE)
+    offline <- dict__cache(TRUE)
     expect_equal(offline$mode, "offline")
     expect_true(offline$read)
     expect_false(offline$write)
     expect_true(offline$source_read)
     expect_false(offline$source_write)
     expect_true(offline$offline)
-    offline_no_call_cache <- esgdict__cache_policy(FALSE)
+    offline_no_call_cache <- dict__cache(FALSE)
     expect_false(offline_no_call_cache$read)
     expect_false(offline_no_call_cache$write)
     expect_true(offline_no_call_cache$source_read)
@@ -565,8 +565,8 @@ test_that("EsgDict cache policy follows package cache mode", {
 test_that("source files can rebuild parsed data without network", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
-    cvs <- cmip6dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv"))
-    dreq <- cmip6dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request"))
+    cvs <- dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv"))
+    dreq <- dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request"))
 
     expect_named(cvs, tolower(CV_TYPES))
     expect_s3_class(cvs$experiment_id, "data.table")
@@ -602,7 +602,7 @@ test_that("parsed EsgDict cache can satisfy offline builds without source files"
     first <- EsgDict$new()
     first$build(cv_tag = "test-cv", request_tag = "test-request", source_dir = source_root)
     expect_true(first$has_data())
-    expect_equal(get_cache()$size(), 1L)
+    expect_equal(cache__get()$size(), 1L)
 
     local_cache_mode_for_test("offline")
     empty_source <- withr::local_tempdir()

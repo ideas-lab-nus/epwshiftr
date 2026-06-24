@@ -53,6 +53,11 @@ has been recorded.}
 \item \href{#method-EsgResult-count}{\code{EsgResult$count()}}
 \item \href{#method-EsgResult-save}{\code{EsgResult$save()}}
 \item \href{#method-EsgResult-load}{\code{EsgResult$load()}}
+\item \href{#method-EsgResult-query_url}{\code{EsgResult$query_url()}}
+\item \href{#method-EsgResult-reachable}{\code{EsgResult$reachable()}}
+\item \href{#method-EsgResult-slice}{\code{EsgResult$slice()}}
+\item \href{#method-EsgResult-filter}{\code{EsgResult$filter()}}
+\item \href{#method-EsgResult-selection}{\code{EsgResult$selection()}}
 \item \href{#method-EsgResult-clone}{\code{EsgResult$clone()}}
 }
 }
@@ -197,6 +202,134 @@ from.}
 }
 \subsection{Returns}{
 The modified \code{EsgResult} object itself.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-query_url"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-query_url}{}}}
+\subsection{Method \code{query_url()}}{
+Return the ESGF search query URL used to create this result.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$query_url(pages = c("first", "all"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{pages}}{Which recorded query URLs to return. \code{"first"} returns
+the first request URL. \code{"all"} returns every recorded request
+URL, including pagination requests. Default: \code{"first"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named character vector of query URLs.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-reachable"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-reachable}{}}}
+\subsection{Method \code{reachable()}}{
+Probe whether result records are reachable through a service URL.
+
+\verb{$reachable()} performs a lightweight probe of the selected service
+URL for each record already held in the result. It returns diagnostic
+rows and does not modify result context or saved-result metadata.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$reachable(
+  service = "OPENDAP",
+  level = c("data_node", "url"),
+  probe = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{service}}{ESGF URL service to probe. Default: \code{"OPENDAP"}.}
+
+\item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
+data node; \code{"url"} probes the actual service URL for each
+record. Default: \code{"data_node"}.}
+
+\item{\code{probe}}{Optional named list of probe settings. Supported fields
+are \code{timeout}, \code{concurrency}, \code{network_policy},
+\code{cache_seconds}, and \code{cache_failures_seconds}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link[data.table:data.table]{data.table} with columns
+\code{record_index}, \code{id}, \code{data_node}, \code{service}, \code{url},
+\code{reachable}, \code{latency_ms}, \code{error}, \code{probe_level},
+\code{probe_url}, and \code{probe_cached}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-slice"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-slice}{}}}
+\subsection{Method \code{slice()}}{
+Subset result records by row, logical selector, or record ID.
+
+\verb{$slice()} filters the records already held in memory. It does not
+change the original ESGF query parameters or query URL provenance.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$slice(i = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{i}}{A positive or negative integer vector, logical vector,
+character vector of record IDs, or \code{NULL}. \code{NULL} returns an
+empty result.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new result object of the same type.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-filter"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-filter}{}}}
+\subsection{Method \code{filter()}}{
+Subset result records with a predicate function.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$filter(predicate, formatted = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{predicate}}{A function that accepts \code{self$to_data_table()} and
+returns a logical vector with one value per current record.}
+
+\item{\code{formatted}}{Whether to use formatted values when creating the
+predicate input data table. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new result object of the same type.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResult-selection"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResult-selection}{}}}
+\subsection{Method \code{selection()}}{
+Return local selection provenance for this result.
+
+\verb{$selection()} maps current rows back to the result object that first
+recorded selection provenance. It does not record intermediate filter
+steps.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResult$selection()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list with \code{source_count}, \code{source_num_found}, and
+\code{source_indices}.
 }
 }
 \if{html}{\out{<hr>}}

@@ -1,32 +1,24 @@
-esgdict__source_dir <- function(root = store_dir(init = TRUE), project = "CMIP6") {
-    file.path(root, "sources", "esg-dict", tolower(esgdict__normalize_project(project)))
+dict__source_dir <- function(root = store_dir(init = TRUE), project = "CMIP6") {
+    file.path(root, "sources", "esg-dict", tolower(dict__project(project)))
 }
 
-cmip6dict__source_dir <- function(root = store_dir(init = TRUE)) {
-    esgdict__source_dir(root, "CMIP6")
-}
-
-esgdict__volatile_source_dir <- function(project = "CMIP6") {
+dict__tmp_source_dir <- function(project = "CMIP6") {
     file.path(
         tempdir(),
         paste0(
             "esg-dict-source-",
-            tolower(esgdict__normalize_project(project)),
+            tolower(dict__project(project)),
             "-",
             fast_hash(list(Sys.getpid(), Sys.time(), sample.int(.Machine$integer.max, 1L)))
         )
     )
 }
 
-cmip6dict__volatile_source_dir <- function() {
-    esgdict__volatile_source_dir("CMIP6")
-}
-
-esgdict__parsed_cache_key <- function(project, cv_tag_info, request_tag_info, spec) {
-    make_cache_key(
+dict__cache_key <- function(project, cv_tag_info, request_tag_info, spec) {
+    cache__key(
         "esgdict",
-        project = esgdict__normalize_project(project),
-        profile = esgdict__profile(project),
+        project = dict__project(project),
+        profile = dict__profile(project),
         vocab_reader = spec$vocab$reader,
         cv_tag = cv_tag_info$tag,
         cv_commit = cv_tag_info$commit,
@@ -37,74 +29,42 @@ esgdict__parsed_cache_key <- function(project, cv_tag_info, request_tag_info, sp
     )
 }
 
-cmip6dict__parsed_cache_key <- function(cv_tag_info, dreq_tag_info) {
-    esgdict__parsed_cache_key("CMIP6", cv_tag_info, dreq_tag_info, esgdict__project_spec("CMIP6"))
-}
-
-esgdict__cached_fetch_value <- function(fetched) {
-    list(
-        project = fetched$project,
-        profile = fetched$profile,
-        vocab = fetched$vocab,
-        request = fetched$request,
-        sources = fetched$sources
-    )
-}
-
-cmip6dict__cached_fetch_value <- function(fetched) {
-    esgdict__cached_fetch_value(esgdict__compat_fetched(fetched))
-}
-
-esgdict__compat_fetched <- function(fetched) {
-    if (is.null(fetched$vocab) && !is.null(fetched$cvs)) fetched$vocab <- fetched$cvs
-    if (is.null(fetched$request) && !is.null(fetched$dreq)) fetched$request <- fetched$dreq
-    if (is.null(fetched$project)) fetched$project <- "CMIP6"
-    if (is.null(fetched$profile)) fetched$profile <- esgdict__profile(fetched$project)
-    fetched
-}
-
-esgdict__with_built_time <- function(fetched) {
-    fetched$built_time <- Sys.time()
-    fetched
-}
-
-cmip6dict__with_built_time <- esgdict__with_built_time
-
-esgdict__fetch_cached <- function(
+dict__fetch <- function(
     project = "CMIP6",
     token = NULL,
     cv_tag = NULL,
     request_tag = NULL,
     policy,
-    source_dir = esgdict__source_dir(project = project),
+    source_dir = dict__source_dir(project = project),
     force = FALSE
 ) {
-    project <- esgdict__normalize_project(project)
-    spec <- esgdict__project_spec(project)
+    project <- dict__project(project)
+    spec <- dict__spec(project)
     checkmate::assert_string(cv_tag, null.ok = TRUE)
     checkmate::assert_string(request_tag, null.ok = TRUE)
     checkmate::assert_flag(force)
 
-    cv_tag_info <- esgdict__resolve_source_ref_cached(spec$vocab, cv_tag, token, policy)
-    request_tag_info <- esgdict__resolve_source_ref_cached(spec$request, request_tag, token, policy)
-    cache_key <- esgdict__parsed_cache_key(project, cv_tag_info, request_tag_info, spec)
+    cv_tag_info <- dict__resolve_ref(spec$vocab, cv_tag, token, policy)
+    request_tag_info <- dict__resolve_ref(spec$request, request_tag, token, policy)
+    cache_key <- dict__cache_key(project, cv_tag_info, request_tag_info, spec)
 
     # Parsed vocab/request payloads are cached separately from source JSON files. A forced
     # build skips this read path, but still writes a fresh parsed value later.
     if (isTRUE(policy$read) && !isTRUE(force)) {
-        cached <- get_cache()$get(cache_key)
-        if (!is.key_missing(cached)) {
-            return(esgdict__with_built_time(cached))
+        cached <- cache__get()$get(cache_key)
+        if (!cache__missing(cached)) {
+            cached$built_time <- Sys.time()
+            return(cached)
         }
     }
 
     source_dir <- if (isTRUE(policy$source_read) || isTRUE(policy$source_write)) {
         source_dir
     } else {
-        esgdict__volatile_source_dir(project)
+        dict__tmp_source_dir(project)
     }
 
-    fetched <- esgdict__fetch_resolved(
+    fetched <- dict__fetch_resolved(
         project = project,
         spec = spec,
         cv_tag_info = cv_tag_info,
@@ -115,70 +75,28 @@ esgdict__fetch_cached <- function(
     )
 
     if (isTRUE(policy$write)) {
-        get_cache()$set(cache_key, esgdict__cached_fetch_value(fetched))
+        cache__get()$set(cache_key, list(
+            project = fetched$project,
+            profile = fetched$profile,
+            vocab = fetched$vocab,
+            request = fetched$request,
+            sources = fetched$sources
+        ))
     }
 
     fetched
 }
 
-cmip6dict__fetch_cached <- function(
-    token = NULL,
-    cv_tag = NULL,
-    dreq_tag = NULL,
-    policy,
-    source_dir = cmip6dict__source_dir(),
-    force = FALSE
-) {
-    esgdict__fetch_cached(
-        project = "CMIP6",
-        token = token,
-        cv_tag = cv_tag,
-        request_tag = dreq_tag,
-        policy = policy,
-        source_dir = source_dir,
-        force = force
-    )
-}
-
-cmip6dict__fetch <- function(
-    token = NULL,
-    cv_tag = NULL,
-    dreq_tag = NULL,
-    use_source = TRUE,
-    source_dir = cmip6dict__source_dir()
-) {
-    checkmate::assert_flag(use_source)
-
-    spec <- esgdict__project_spec("CMIP6")
-    cv_tag_info <- cmip6dict__resolve_tag(spec$vocab$repo, cv_tag, token)
-    dreq_tag_info <- cmip6dict__resolve_tag(spec$request$repo, dreq_tag, token)
-    source_dir <- if (isTRUE(use_source)) source_dir else cmip6dict__volatile_source_dir()
-
-    esgdict__fetch_resolved(
-        project = "CMIP6",
-        spec = spec,
-        cv_tag_info = cv_tag_info,
-        request_tag_info = dreq_tag_info,
-        token = token,
-        policy = list(
-            source_read = isTRUE(use_source),
-            source_write = isTRUE(use_source),
-            offline = FALSE
-        ),
-        source_dir = source_dir
-    )
-}
-
-esgdict__fetch_resolved <- function(
+dict__fetch_resolved <- function(
     project,
     spec,
     cv_tag_info,
     request_tag_info,
     token = NULL,
     policy,
-    source_dir = esgdict__source_dir(project = project)
+    source_dir = dict__source_dir(project = project)
 ) {
-    project <- esgdict__normalize_project(project)
+    project <- dict__project(project)
     cli::cli_progress_step(
         "Fetching {.strong {project} ESG Dictionary}...",
         "Fetched {.strong {project} ESG Dictionary} successfully at {Sys.time()}",
@@ -186,7 +104,7 @@ esgdict__fetch_resolved <- function(
         spinner = TRUE
     )
 
-    vocab <- esgdict__read_vocab(
+    vocab <- dict__read_vocab(
         spec$vocab$reader,
         project = project,
         source = spec$vocab,
@@ -199,7 +117,7 @@ esgdict__fetch_resolved <- function(
     )
     request <- NULL
     if (!is.null(spec$request)) {
-        request <- esgdict__read_request(
+        request <- dict__read_request(
             spec$request$reader,
             project = project,
             source = spec$request,
@@ -214,43 +132,31 @@ esgdict__fetch_resolved <- function(
 
     list(
         project = project,
-        profile = esgdict__profile(project),
+        profile = dict__profile(project),
         vocab = vocab,
         request = request,
         built_time = Sys.time(),
         sources = list(
-            vocab = cmip6dict__source_info(spec$vocab$repo, cv_tag_info, file.path(source_dir, "vocab", cv_tag_info$tag)),
-            request = if (!is.null(spec$request)) cmip6dict__source_info(spec$request$repo, request_tag_info, file.path(source_dir, "request", request_tag_info$tag)) else NULL
+            vocab = dict__source_info(spec$vocab$repo, cv_tag_info, file.path(source_dir, "vocab", cv_tag_info$tag)),
+            request = if (!is.null(spec$request)) dict__source_info(spec$request$repo, request_tag_info, file.path(source_dir, "request", request_tag_info$tag)) else NULL
         )
     )
 }
 
-cmip6dict__fetch_resolved <- function(cv_tag_info, dreq_tag_info, token = NULL, policy, source_dir = cmip6dict__source_dir()) {
-    esgdict__fetch_resolved(
-        project = "CMIP6",
-        spec = esgdict__project_spec("CMIP6"),
-        cv_tag_info = cv_tag_info,
-        request_tag_info = dreq_tag_info,
-        token = token,
-        policy = policy,
-        source_dir = source_dir
-    )
-}
-
-cmip6dict__resolve_tag_cached <- function(repo, tag = NULL, token = NULL, policy) {
+dict__resolve_tag_cache <- function(repo, tag = NULL, token = NULL, policy) {
     if (!is.null(tag)) {
-        return(cmip6dict__resolve_tag(repo, tag, token))
+        return(dict__resolve_tag(repo, tag, token))
     }
 
     if (!isTRUE(policy$read)) {
-        return(cmip6dict__resolve_tag(repo, tag, token))
+        return(dict__resolve_tag(repo, tag, token))
     }
 
     tryCatch(
-        with_url_cache(
+        cache__url(
             "esgdict-tag",
             list(repo = repo),
-            fn = function() cmip6dict__resolve_tag(repo, tag, token),
+            fn = function() dict__resolve_tag(repo, tag, token),
             validate = function(x) {
                 is.list(x) &&
                     is.character(x$tag) &&
@@ -277,7 +183,7 @@ cmip6dict__resolve_tag_cached <- function(repo, tag = NULL, token = NULL, policy
     )
 }
 
-esgdict__resolve_source_ref_cached <- function(source, tag = NULL, token = NULL, policy) {
+dict__resolve_ref <- function(source, tag = NULL, token = NULL, policy) {
     if (is.null(source)) {
         return(list(tag = NULL, commit = NULL))
     }
@@ -288,22 +194,22 @@ esgdict__resolve_source_ref_cached <- function(source, tag = NULL, token = NULL,
         return(list(tag = source$ref, commit = NA_character_))
     }
 
-    cmip6dict__resolve_tag_cached(source$repo, tag, token, policy)
+    dict__resolve_tag_cache(source$repo, tag, token, policy)
 }
 
-cmip6dict__resolve_tag <- function(repo, tag = NULL, token = NULL) {
+dict__resolve_tag <- function(repo, tag = NULL, token = NULL) {
     if (!is.null(tag)) {
         return(list(tag = tag, commit = NA_character_))
     }
 
     tag_row <- gh_tags(repo, token)[1L, ]
     list(
-        tag = cmip6dict__tag_value(tag_row, "name"),
-        commit = cmip6dict__tag_commit(tag_row)
+        tag = dict__tag_value(tag_row, "name"),
+        commit = dict__tag_commit(tag_row)
     )
 }
 
-esgdict__read_vocab <- function(
+dict__read_vocab <- function(
     reader,
     project,
     source,
@@ -315,13 +221,13 @@ esgdict__read_vocab <- function(
     offline = FALSE
 ) {
     switch(reader,
-        cmip6_cvs = cmip6dict__fetch_cv(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
-        esgvoc = esgvocdict__fetch_vocab(project, source, tag, token, use_source, source_dir, write_source, offline),
+        cmip6_cvs = dict__fetch_cv(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
+        esgvoc = dict__fetch_voc(project, source, tag, token, use_source, source_dir, write_source, offline),
         stop(sprintf("Unknown ESG dictionary vocab reader `%s`.", reader), call. = FALSE)
     )
 }
 
-esgdict__read_request <- function(
+dict__read_request <- function(
     reader,
     project,
     source,
@@ -333,20 +239,20 @@ esgdict__read_request <- function(
     offline = FALSE
 ) {
     switch(reader,
-        cmip6_cmor = cmip6dict__fetch_dreq(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
+        cmip6_cmor = dict__fetch_dreq(tag, token, use_source, source_dir, write_source, offline, repo = source$repo),
         stop(sprintf("Unknown ESG dictionary request reader `%s`.", reader), call. = FALSE)
     )
 }
 
-cmip6dict__tag_value <- function(tag_row, name) {
+dict__tag_value <- function(tag_row, name) {
     value <- tag_row[[name]]
     if (is.list(value)) value <- value[[1L]]
     as.character(value[[1L]])
 }
 
-cmip6dict__tag_commit <- function(tag_row) {
+dict__tag_commit <- function(tag_row) {
     if ("commit.sha" %in% names(tag_row)) {
-        return(cmip6dict__tag_value(tag_row, "commit.sha"))
+        return(dict__tag_value(tag_row, "commit.sha"))
     }
     if ("commit" %in% names(tag_row)) {
         commit <- tag_row[["commit"]]
@@ -360,7 +266,7 @@ cmip6dict__tag_commit <- function(tag_row) {
     NA_character_
 }
 
-cmip6dict__source_info <- function(repo, tag_info, source_dir) {
+dict__source_info <- function(repo, tag_info, source_dir) {
     list(
         repo = repo,
         tag = tag_info$tag,
@@ -369,11 +275,11 @@ cmip6dict__source_info <- function(repo, tag_info, source_dir) {
     )
 }
 
-cmip6dict__source_ready <- function(files) {
+dict__source_ready <- function(files) {
     length(files) && all(file.exists(files))
 }
 
-cmip6dict__source_miss_error <- function(kind, dir) {
+dict__source_miss <- function(kind, dir) {
     stop(
         sprintf(
             paste(
@@ -387,19 +293,19 @@ cmip6dict__source_miss_error <- function(kind, dir) {
     )
 }
 
-cmip6dict__fetch_cv <- function(
+dict__fetch_cv <- function(
     tag,
     token = NULL,
     use_source = TRUE,
     source_dir = tempdir(),
     write_source = use_source,
     offline = FALSE,
-    repo = esgdict__project_spec("CMIP6")$vocab$repo
+    repo = dict__spec("CMIP6")$vocab$repo
 ) {
     checkmate::assert_string(tag, min.chars = 1L)
     checkmate::assert_string(repo, min.chars = 1L)
 
-    files <- cmip6dict__download_cv_file(
+    files <- dict__download_cv(
         tag,
         repo = repo,
         dir = source_dir,
@@ -412,15 +318,15 @@ cmip6dict__fetch_cv <- function(
     cvs <- list()
     for (type in names(files)) {
         abbr <- tolower(tools::file_path_sans_ext(type))
-        cvs[[abbr]] <- match.fun(sprintf("cmip6dict__parse_cv_%s", abbr))(files[[type]])
+        cvs[[abbr]] <- match.fun(sprintf("dict__parse_cv_%s", abbr))(files[[type]])
     }
 
     cvs
 }
 
-cmip6dict__download_cv_file <- function(
+dict__download_cv <- function(
     tag,
-    repo = esgdict__project_spec("CMIP6")$vocab$repo,
+    repo = dict__spec("CMIP6")$vocab$repo,
     dir = tempdir(),
     token = NULL,
     use_source = TRUE,
@@ -430,17 +336,17 @@ cmip6dict__download_cv_file <- function(
     checkmate::assert_string(repo, min.chars = 1L)
     dests <- file.path(dir, sprintf("CMIP6_%s.json", CV_TYPES))
     names(dests) <- CV_TYPES
-    if (use_source && cmip6dict__source_ready(dests)) {
+    if (use_source && dict__source_ready(dests)) {
         return(dests)
     }
     if (isTRUE(offline)) {
-        cmip6dict__source_miss_error("CMIP6 CV", dir)
+        dict__source_miss("CMIP6 CV", dir)
     }
 
     # Source CV files stay as normal JSON files so users can inspect exactly what
     # came from the upstream CV repository when source persistence is enabled.
     if (!isTRUE(write_source)) {
-        dir <- file.path(cmip6dict__volatile_source_dir(), "cvs", tag)
+        dir <- file.path(dict__tmp_source_dir(), "cvs", tag)
         dests <- file.path(dir, sprintf("CMIP6_%s.json", CV_TYPES))
         names(dests) <- CV_TYPES
     }
@@ -463,7 +369,7 @@ cmip6dict__download_cv_file <- function(
     dests
 }
 
-esgvocdict__fetch_vocab <- function(
+dict__fetch_voc <- function(
     project,
     source,
     tag,
@@ -475,7 +381,7 @@ esgvocdict__fetch_vocab <- function(
 ) {
     checkmate::assert_string(tag, min.chars = 1L)
 
-    files <- esgvocdict__download_vocab_files(
+    files <- dict__download_voc(
         source = source,
         tag = tag,
         dir = source_dir,
@@ -484,10 +390,10 @@ esgvocdict__fetch_vocab <- function(
         write_source = write_source,
         offline = offline
     )
-    esgvocdict__parse_vocab_files(files, project = project)
+    dict__parse_voc(files, project = project)
 }
 
-esgvocdict__download_vocab_files <- function(
+dict__download_voc <- function(
     source,
     tag,
     dir = tempdir(),
@@ -498,15 +404,15 @@ esgvocdict__download_vocab_files <- function(
 ) {
     files <- list.files(dir, pattern = "[.]json$", full.names = TRUE, recursive = TRUE)
     if (use_source && length(files)) {
-        names(files) <- esgvocdict__relative_paths(files, dir)
+        names(files) <- dict__rel_paths(files, dir)
         return(files)
     }
     if (isTRUE(offline)) {
-        cmip6dict__source_miss_error("ESG vocabulary", dir)
+        dict__source_miss("ESG vocabulary", dir)
     }
 
     if (!isTRUE(write_source)) {
-        dir <- file.path(esgdict__volatile_source_dir(), "vocab", tag)
+        dir <- file.path(dict__tmp_source_dir(), "vocab", tag)
     }
     if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
 
@@ -524,7 +430,7 @@ esgvocdict__download_vocab_files <- function(
     files <- extracted[grepl("[.]json$", extracted)]
     files <- files[!grepl("(^|/)[.]", files)]
 
-    rel <- esgvocdict__archive_relative_paths(files)
+    rel <- dict__archive_paths(files)
     dests <- file.path(dir, rel)
     if (length(dests)) {
         for (dest_dir in unique(dirname(dests))) {
@@ -540,7 +446,7 @@ esgvocdict__download_vocab_files <- function(
     dests
 }
 
-esgvocdict__relative_paths <- function(files, root) {
+dict__rel_paths <- function(files, root) {
     sub(
         sprintf("^%s/+", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", normalizePath(root, winslash = "/", mustWork = FALSE))),
         "",
@@ -557,7 +463,7 @@ dict__unzip_archive <- function(zipball, prefix = "esg-dict-archive", files = NU
     utils::unzip(zipball, files = files, exdir = exdir)
 }
 
-esgvocdict__archive_relative_paths <- function(files) {
+dict__archive_paths <- function(files) {
     files <- normalizePath(files, winslash = "/", mustWork = FALSE)
     parts <- strsplit(files, "/", fixed = TRUE)
     min_len <- min(lengths(parts))
@@ -571,8 +477,8 @@ esgvocdict__archive_relative_paths <- function(files) {
     vapply(parts, function(x) paste(x[(common + 1L):length(x)], collapse = "/"), character(1L), USE.NAMES = FALSE)
 }
 
-esgvocdict__parse_vocab_files <- function(files, project) {
-    rows <- lapply(files, esgvocdict__parse_vocab_file)
+dict__parse_voc <- function(files, project) {
+    rows <- lapply(files, dict__parse_voc_file)
     rows <- rows[lengths(rows) > 0L]
     if (!length(rows)) {
         return(list())
@@ -592,35 +498,35 @@ esgvocdict__parse_vocab_files <- function(files, project) {
     out
 }
 
-esgvocdict__parse_vocab_file <- function(file) {
+dict__parse_voc_file <- function(file) {
     json <- tryCatch(jsonlite::read_json(file), error = function(e) NULL)
     if (is.null(json) || !length(json)) return(NULL)
 
-    collection <- esgvocdict__collection_from_json(json, file)
+    collection <- dict__voc_collection(json, file)
     if (is.null(collection) || !nzchar(collection)) return(NULL)
 
     if (collection %in% names(json) && is.list(json[[collection]]) && length(json[[collection]]) > 1L) {
-        return(esgvocdict__rows_from_collection(collection, json[[collection]]))
+        return(dict__voc_rows(collection, json[[collection]]))
     }
 
-    esgvocdict__rows_from_term(collection, json, file)
+    dict__voc_term_rows(collection, json, file)
 }
 
-esgvocdict__collection_from_json <- function(json, file) {
+dict__voc_collection <- function(json, file) {
     nms <- setdiff(names(json), c("version_metadata", "@context", "$schema"))
     if (length(nms) == 1L && is.list(json[[nms]]) && !any(c("@id", "id", "drs_name") %in% names(json))) {
-        return(esgvocdict__normalize_collection(nms))
+        return(dict__voc_field(nms))
     }
 
     parent <- basename(dirname(file))
     stem <- tools::file_path_sans_ext(basename(file))
     if (!identical(parent, ".") && nzchar(parent) && !parent %in% c("vocab", "raw")) {
-        return(esgvocdict__normalize_collection(parent))
+        return(dict__voc_field(parent))
     }
-    esgvocdict__normalize_collection(sub("^[A-Za-z0-9]+_", "", stem))
+    dict__voc_field(sub("^[A-Za-z0-9]+_", "", stem))
 }
 
-esgvocdict__normalize_collection <- function(field) {
+dict__voc_field <- function(field) {
     field <- tolower(field)
     # esgvoc collection names are often shorter than ESGF query field names.
     # Normalize them before building the shared value index.
@@ -641,40 +547,40 @@ esgvocdict__normalize_collection <- function(field) {
     }
 }
 
-esgvocdict__rows_from_collection <- function(field, values) {
+dict__voc_rows <- function(field, values) {
     if (is.atomic(values)) {
-        return(cmip6dict__value_rows(field, values, NA_character_, "vocab"))
+        return(dict__value_rows(field, values, NA_character_, "vocab"))
     }
 
     if (is.list(values) && !is.null(names(values))) {
-        return(cmip6dict__value_rows(
+        return(dict__value_rows(
             field,
             names(values),
-            vapply(values, cmip6dict__description, character(1L), USE.NAMES = FALSE),
+            vapply(values, dict__desc, character(1L), USE.NAMES = FALSE),
             "vocab"
         ))
     }
 
-    rows <- lapply(values, function(term) esgvocdict__rows_from_term(field, term, NULL))
+    rows <- lapply(values, function(term) dict__voc_term_rows(field, term, NULL))
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 
-esgvocdict__rows_from_term <- function(field, term, file = NULL) {
-    value <- esgvocdict__first_scalar(term, c("drs_name", "id", "@id", "term", "label"))
+dict__voc_term_rows <- function(field, term, file = NULL) {
+    value <- dict__first(term, c("drs_name", "id", "@id", "term", "label"))
     if (is.null(value) && !is.null(file)) {
         value <- tools::file_path_sans_ext(basename(file))
     }
     if (is.null(value) || !nzchar(value)) return(NULL)
 
-    cmip6dict__value_rows(
+    dict__value_rows(
         field,
         value,
-        esgvocdict__first_scalar(term, c("description", "label_extended", "label", "title", "name")),
+        dict__first(term, c("description", "label_extended", "label", "title", "name")),
         "vocab"
     )
 }
 
-esgvocdict__first_scalar <- function(x, names) {
+dict__first <- function(x, names) {
     for (nm in names) {
         value <- x[[nm]]
         if (is.null(value)) next
@@ -686,19 +592,19 @@ esgvocdict__first_scalar <- function(x, names) {
     NULL
 }
 
-cmip6dict__fetch_dreq <- function(
+dict__fetch_dreq <- function(
     tag,
     token = NULL,
     use_source = TRUE,
     source_dir = tempdir(),
     write_source = use_source,
     offline = FALSE,
-    repo = esgdict__project_spec("CMIP6")$request$repo
+    repo = dict__spec("CMIP6")$request$repo
 ) {
     checkmate::assert_string(tag, min.chars = 1L)
     checkmate::assert_string(repo, min.chars = 1L)
 
-    files <- cmip6dict__download_dreq_file(
+    files <- dict__download_dreq(
         tag,
         repo = repo,
         dir = source_dir,
@@ -708,7 +614,7 @@ cmip6dict__fetch_dreq <- function(
         offline = offline
     )
 
-    dreq <- lapply(files, cmip6dict__parse_dreq_file)
+    dreq <- lapply(files, dict__parse_dreq)
     metadata <- lapply(dreq, attr, "metadata", TRUE)
 
     for (nm in names(dreq)) {
@@ -723,9 +629,9 @@ cmip6dict__fetch_dreq <- function(
     )
 }
 
-cmip6dict__download_dreq_file <- function(
+dict__download_dreq <- function(
     tag,
-    repo = esgdict__project_spec("CMIP6")$request$repo,
+    repo = dict__spec("CMIP6")$request$repo,
     dir = tempdir(),
     token = NULL,
     use_source = TRUE,
@@ -739,13 +645,13 @@ cmip6dict__download_dreq_file <- function(
         return(files)
     }
     if (isTRUE(offline)) {
-        cmip6dict__source_miss_error("CMIP6 DReq", dir)
+        dict__source_miss("CMIP6 DReq", dir)
     }
 
     # DReq is downloaded as an archive, but the store keeps only the extracted
     # table JSON files. That keeps the source stable and easy to diff.
     if (!isTRUE(write_source)) {
-        dir <- file.path(cmip6dict__volatile_source_dir(), "dreq", tag)
+        dir <- file.path(dict__tmp_source_dir(), "dreq", tag)
     }
 
     if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)

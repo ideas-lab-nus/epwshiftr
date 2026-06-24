@@ -15,7 +15,7 @@ init_cmip6_index(
     "MRI-ESM2-0"),
   variant = "r1i1p1f1",
   replica = FALSE,
-  latest = TRUE,
+  latest = NULL,
   resolution = c("100 km", "50 km"),
   limit = 10000L,
   data_node = NULL,
@@ -124,9 +124,10 @@ If \code{NULL}, all possible variants are returned.
 Use \code{NULL} to return both the master and the replicas.
 Default: \code{FALSE}.}
 
-\item{latest}{Whether the record is the latest available version, or a
-previous version. Use \code{TRUE} to return only the latest version of all
-records and \code{FALSE} to return previous versions. Default: \code{FALSE}.}
+\item{latest}{Whether to constrain records by latest-version status. Use
+\code{TRUE} to return only the latest version of all records, \code{FALSE} to
+return previous versions, and \code{NULL} to return all versions.
+Default: \code{NULL}.}
 
 \item{resolution}{A character vector indicating approximate horizontal
 resolution. Default: \code{c("50 km", "100 km")}.

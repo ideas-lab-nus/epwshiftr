@@ -1,15 +1,3 @@
-skip_live_esgf_downloader <- function() {
-    run <- tolower(Sys.getenv("EPWSHIFTR_RUN_LIVE_ESGF", "false"))
-    testthat::skip_if_not(
-        run %in% c("1", "true", "yes"),
-        "Set EPWSHIFTR_RUN_LIVE_ESGF=true to run live ESGF downloader tests."
-    )
-    skip_on_cran()
-    skip_if_offline()
-    skip_if_not_installed("curl")
-    skip_if_not_installed("duckdb")
-}
-
 live_esgf_files <- function() {
     q <- esg_query(INDEX_NODES[["DKRZ"]])$
         source_id("CMCC-CM2-SR5")$
@@ -63,8 +51,33 @@ capture_live_warnings <- function(expr) {
     list(value = value, warnings = warnings)
 }
 
+skip_live_download_error <- function(expr) {
+    tryCatch(
+        force(expr),
+        error = function(e) {
+            msg <- conditionMessage(e)
+            pattern <- paste(
+                c(
+                    "Failed to download file after",
+                    "cannot open the connection",
+                    "Empty reply from server",
+                    "Timeout was reached",
+                    "Could not resolve host",
+                    "SSL connect error",
+                    "Recv failure"
+                ),
+                collapse = "|"
+            )
+            if (grepl(pattern, msg)) {
+                skip(sprintf("Live ESGF download endpoint failed: %s", msg))
+            }
+            stop(e)
+        }
+    )
+}
+
 test_that("Downloader live ESGF workflow covers persistent methods and resume", {
-    skip_live_esgf_downloader()
+    skip_live_esgf()
 
     live <- tryCatch(live_esgf_files(), error = function(e) skip(conditionMessage(e)))
     files <- live$files
@@ -98,14 +111,14 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
 
     shortcut_dir <- file.path(root, "shortcut")
     shortcut <- Downloader$new(dest = shortcut_dir, temp = file.path(root, "shortcut-tmp"), retries = 2L, timeout = 240L, n_workers = 0L)
-    shortcut_path <- shortcut$download(
+    shortcut_path <- skip_live_download_error(shortcut$download(
         url = plan$url[[1L]],
         filename = plan$filename[[1L]],
         checksum = plan$checksum[[1L]],
         checksum_type = plan$checksum_type[[1L]],
         progress = FALSE,
         block = FALSE
-    )
+    ))
     expect_true(file.exists(shortcut_path))
     expect_true(shortcut$verify_checksum(shortcut_path, plan$checksum[[1L]], tolower(plan$checksum_type[[1L]])))
     file.create(file.path(shortcut$tmp_dir, "manual.part"))
@@ -117,12 +130,12 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
     resume_session <- dl$enqueue(resume_plan, session_label = "live-resume")
     resume_task <- dl$tasks(session_id = resume_session)
     partial_path <- file.path(dl$tmp_dir, paste0(resume_task$task_id[[1L]], ".part"))
-    write_live_partial(resume_plan$url[[1L]], partial_path)
+    skip_live_download_error(write_live_partial(resume_plan$url[[1L]], partial_path))
     expect_true(file.exists(partial_path))
     expect_gt(file.info(partial_path)$size, 0)
     expect_equal(nrow(dl$list_incomplete()), 1L)
 
-    resumed <- dl$resume(session_id = resume_session, progress = FALSE)
+    resumed <- skip_live_download_error(dl$resume(session_id = resume_session, progress = FALSE))
     expect_equal(resumed$status, "done")
     expect_true(file.exists(resumed$target_path[[1L]]))
     expect_true(dl$verify(session_id = resume_session)$checksum_ok)
@@ -184,7 +197,7 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
     store <- EsgStore$new(store_dir)
     on.exit(store$close(), add = TRUE)
     store_dl <- store$downloader(n_workers = 0L, retries = 2L, timeout = 240L)
-    store_session <- store$download_files(
+    store_session <- skip_live_download_error(store$download_files(
         files = files,
         replica = "current",
         downloader = store_dl,
@@ -192,7 +205,7 @@ test_that("Downloader live ESGF workflow covers persistent methods and resume", 
         session_label = "live-store-download",
         probe = TRUE,
         progress = FALSE
-    )
+    ))
     store_tasks <- store_dl$tasks(session_id = store_session)
     expect_equal(sort(store_tasks$status), c("done", "done"))
     expect_true(all(file.exists(store_tasks$target_path)))

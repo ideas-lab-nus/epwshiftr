@@ -208,13 +208,13 @@ example_cmip6_source_store(source_root)
 spec <- esgdict__project_spec("CMIP6")
 fetched <- list(
     project = "CMIP6",
-    vocab = cmip6dict__fetch_cv(
+    vocab = esgdict__fetch_cv(
         "test-cv",
         use_source = TRUE,
         source_dir = file.path(source_root, "vocab", "test-cv"),
         offline = TRUE
     ),
-    request = cmip6dict__fetch_dreq(
+    request = esgdict__fetch_dreq(
         "test-request",
         use_source = TRUE,
         source_dir = file.path(source_root, "request", "test-request"),

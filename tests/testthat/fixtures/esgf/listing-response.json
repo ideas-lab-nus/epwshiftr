@@ -1,0 +1,37 @@
+{
+  "responseHeader": {
+    "status": 0,
+    "QTime": 1,
+    "params": {
+      "facet.field": [
+        "activity_id",
+        "source_id"
+      ],
+      "shards": "example.test"
+    }
+  },
+  "response": {
+    "numFound": 2,
+    "start": 0,
+    "maxScore": 1,
+    "docs": [
+      {
+        "id": "dataset-id"
+      }
+    ]
+  },
+  "facet_counts": {
+    "facet_queries": {},
+    "facet_fields": {
+      "activity_id": [
+        "CMIP",
+        1,
+        "ScenarioMIP",
+        1
+      ]
+    },
+    "facet_ranges": {},
+    "facet_intervals": {},
+    "facet_heatmaps": {}
+  }
+}

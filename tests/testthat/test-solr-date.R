@@ -1,39 +1,39 @@
 utc <- function(x) as.POSIXct(x, tz = "UTC")
 
-test_that("parse_datetime", {
-    expect_equal(parse_datetime(2025), utc("2025-01-01 00:00:00"))
-    expect_equal(parse_datetime(202502), utc("2025-02-01 00:00:00"))
-    expect_equal(parse_datetime(20250204), utc("2025-02-04 00:00:00"))
-    expect_equal(parse_datetime("20250204"), utc("2025-02-04 00:00:00"))
+test_that("solrdate__parse", {
+    expect_equal(solrdate__parse(2025), utc("2025-01-01 00:00:00"))
+    expect_equal(solrdate__parse(202502), utc("2025-02-01 00:00:00"))
+    expect_equal(solrdate__parse(20250204), utc("2025-02-04 00:00:00"))
+    expect_equal(solrdate__parse("20250204"), utc("2025-02-04 00:00:00"))
 
-    expect_equal(parse_datetime(" 2025-02 "), utc("2025-02-01 00:00:00"))
-    expect_equal(parse_datetime("2025/02/03"), utc("2025-02-03 00:00:00"))
-    expect_equal(parse_datetime("2025.02.03"), utc("2025-02-03 00:00:00"))
+    expect_equal(solrdate__parse(" 2025-02 "), utc("2025-02-01 00:00:00"))
+    expect_equal(solrdate__parse("2025/02/03"), utc("2025-02-03 00:00:00"))
+    expect_equal(solrdate__parse("2025.02.03"), utc("2025-02-03 00:00:00"))
 
-    expect_equal(parse_datetime("2025-02-03"), utc("2025-02-03 00:00:00"))
-    expect_equal(parse_datetime("2025-02-03T01"), utc("2025-02-03 01:00:00"))
-    expect_equal(parse_datetime("2025-02-03T01:02"), utc("2025-02-03 01:02:00"))
-    expect_equal(parse_datetime("2025-02-03T01:02:03Z"), utc("2025-02-03 01:02:03"))
+    expect_equal(solrdate__parse("2025-02-03"), utc("2025-02-03 00:00:00"))
+    expect_equal(solrdate__parse("2025-02-03T01"), utc("2025-02-03 01:00:00"))
+    expect_equal(solrdate__parse("2025-02-03T01:02"), utc("2025-02-03 01:02:00"))
+    expect_equal(solrdate__parse("2025-02-03T01:02:03Z"), utc("2025-02-03 01:02:03"))
 
-    expect_equal(parse_datetime("2025-01-01T01:02:03Z"), utc("2025-01-01 01:02:03"))
-    expect_equal(parse_datetime("2025-01-01T01:02:03+1200"), utc("2024-12-31 13:02:03"))
-    expect_equal(parse_datetime("2025-01-01T01:02:03+12:00"), utc("2024-12-31 13:02:03"))
-    expect_equal(parse_datetime("2025-01-01T01:02:03+12"), utc("2024-12-31 13:02:03"))
-    expect_equal(parse_datetime("2025-01-01T01:02:03-05:30"), utc("2025-01-01 06:32:03"))
-    expect_equal(parse_datetime("2025-01-01T01:02:03-05"), utc("2025-01-01 06:02:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03Z"), utc("2025-01-01 01:02:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03+1200"), utc("2024-12-31 13:02:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03+12:00"), utc("2024-12-31 13:02:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03+12"), utc("2024-12-31 13:02:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03-05:30"), utc("2025-01-01 06:32:03"))
+    expect_equal(solrdate__parse("2025-01-01T01:02:03-05"), utc("2025-01-01 06:02:03"))
 
-    expect_equal(parse_datetime(as.Date("2025-02-03")), utc("2025-02-03 00:00:00"))
+    expect_equal(solrdate__parse(as.Date("2025-02-03")), utc("2025-02-03 00:00:00"))
     expect_equal(
-        parse_datetime(as.POSIXct("2025-02-03 01:02:03", tz = "UTC")),
+        solrdate__parse(as.POSIXct("2025-02-03 01:02:03", tz = "UTC")),
         utc("2025-02-03 01:02:03")
     )
 
-    expect_true(is.na(parse_datetime(NA_character_)))
-    expect_true(is.na(parse_datetime("")))
-    expect_true(is.na(parse_datetime("not-a-date")))
-    expect_true(is.na(parse_datetime("2025-13-01")))
-    expect_true(is.na(parse_datetime("2025-02-30")))
-    expect_true(is.na(parse_datetime("2025020")))
+    expect_true(is.na(solrdate__parse(NA_character_)))
+    expect_true(is.na(solrdate__parse("")))
+    expect_true(is.na(solrdate__parse("not-a-date")))
+    expect_true(is.na(solrdate__parse("2025-13-01")))
+    expect_true(is.na(solrdate__parse("2025-02-30")))
+    expect_true(is.na(solrdate__parse("2025020")))
 })
 
 test_that("solr_date", {
@@ -120,5 +120,59 @@ test_that("solr_date", {
     expect_error(
         solr_date(as.POSIXct("2025-01-15 12:30:45", tz = "America/New_York")),
         "UTC"
+    )
+})
+
+test_that("solrdate__eval evaluates Solr Date Math for bridge rendering", {
+    now <- utc("2025-06-13 12:34:56")
+
+    expect_identical(
+        format(solrdate__eval(solr_date("NOW-1YEAR"), now = now)),
+        "2024-06-13T12:34:56Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("NOW"), now = now)),
+        "2025-06-13T12:34:56Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("2025-06-13T00:00:00Z-1YEAR"))),
+        "2024-06-13T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("2023-06-13T00:00:00Z+1YEAR"))),
+        "2024-06-13T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("NOW/DAY-1YEAR+6MONTHS"), now = now)),
+        "2024-12-13T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("2024-02-29T00:00:00Z+1YEAR"))),
+        "2025-02-28T00:00:00Z"
+    )
+
+    expect_identical(
+        format(solr_date("-0009-01-01T00:00:00Z")),
+        "-0009-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solr_date("0000-01-01T00:00:00Z")),
+        "0000-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solr_date("+10000-01-01T00:00:00Z")),
+        "+10000-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("-0009-01-01T00:00:00Z+1YEAR"))),
+        "-0008-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("+10000-01-01T00:00:00Z-1YEAR"))),
+        "9999-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(solrdate__eval(solr_date("+10000-06-13T12:34:56Z/YEAR"))),
+        "+10000-01-01T00:00:00Z"
     )
 })

@@ -17,307 +17,82 @@
         "kind": "list"
       },
       "keys": {
-        "type": "named",
-        "subset.of": ["facet", "query", "control", "others"]
+        "type": "named"
       },
-      "fields": {
-        "facet": {
+      "rest": {
+        "$ref": "#/$defs/parameter_entry"
+      }
+    }
+  },
+  "$defs": {
+    "parameter_entry": {
+      "any": [
+        {
           "check": {
-            "kind": "list"
-          },
-          "rest": {
-            "any": [
-              {
-                "check": {
-                  "kind": "null"
-                }
-              },
-              {
-                "check": {
-                  "kind": "list"
-                },
-                "keys": {
-                  "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
-                  "must.include": "value"
-                },
-                "fields": {
-                  "kind": {
-                    "check": {
-                      "kind": "string"
-                    }
-                  },
-                  "value": {
-                    "any": [
-                      {
-                        "check": {
-                          "kind": "character",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "logical",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "integer",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "numeric",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "null"
-                        }
-                      }
-                    ]
-                  },
-                  "negate": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  },
-                  "encoded": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  }
-                }
-              }
-            ]
+            "kind": "null"
           }
         },
-        "query": {
+        {
           "check": {
             "kind": "list"
           },
-          "rest": {
-            "any": [
-              {
-                "check": {
-                  "kind": "null"
-                }
-              },
-              {
-                "check": {
-                  "kind": "list"
-                },
-                "keys": {
-                  "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
-                  "must.include": "value"
-                },
-                "fields": {
-                  "kind": {
-                    "check": {
-                      "kind": "string"
-                    }
-                  },
-                  "value": {
-                    "any": [
-                      {
-                        "check": {
-                          "kind": "character",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "logical",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "integer",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "numeric",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "null"
-                        }
-                      }
-                    ]
-                  },
-                  "negate": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  },
-                  "encoded": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        },
-        "control": {
-          "check": {
-            "kind": "list"
+          "keys": {
+            "type": "named",
+            "subset.of": ["kind", "value", "negate", "encoded"],
+            "must.include": "value"
           },
-          "rest": {
-            "any": [
-              {
-                "check": {
-                  "kind": "null"
-                }
-              },
-              {
-                "check": {
-                  "kind": "list"
+          "fields": {
+            "kind": {
+              "check": {
+                "kind": "string"
+              }
+            },
+            "value": {
+              "any": [
+                {
+                  "check": {
+                    "kind": "character",
+                    "any.missing": false
+                  }
                 },
-                "keys": {
-                  "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
-                  "must.include": "value"
+                {
+                  "check": {
+                    "kind": "logical",
+                    "any.missing": false
+                  }
                 },
-                "fields": {
-                  "kind": {
-                    "check": {
-                      "kind": "string"
-                    }
-                  },
-                  "value": {
-                    "any": [
-                      {
-                        "check": {
-                          "kind": "character",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "logical",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "integer",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "numeric",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "null"
-                        }
-                      }
-                    ]
-                  },
-                  "negate": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  },
-                  "encoded": {
-                    "check": {
-                      "kind": "flag"
-                    }
+                {
+                  "check": {
+                    "kind": "integer",
+                    "any.missing": false
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "numeric",
+                    "any.missing": false
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "null"
                   }
                 }
+              ]
+            },
+            "negate": {
+              "check": {
+                "kind": "flag"
               }
-            ]
-          }
-        },
-        "others": {
-          "check": {
-            "kind": "list"
-          },
-          "rest": {
-            "any": [
-              {
-                "check": {
-                  "kind": "null"
-                }
-              },
-              {
-                "check": {
-                  "kind": "list"
-                },
-                "keys": {
-                  "type": "named",
-                  "subset.of": ["kind", "value", "negate", "encoded"],
-                  "must.include": "value"
-                },
-                "fields": {
-                  "kind": {
-                    "check": {
-                      "kind": "string"
-                    }
-                  },
-                  "value": {
-                    "any": [
-                      {
-                        "check": {
-                          "kind": "character",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "logical",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "integer",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "numeric",
-                          "any.missing": false
-                        }
-                      },
-                      {
-                        "check": {
-                          "kind": "null"
-                        }
-                      }
-                    ]
-                  },
-                  "negate": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  },
-                  "encoded": {
-                    "check": {
-                      "kind": "flag"
-                    }
-                  }
-                }
+            },
+            "encoded": {
+              "check": {
+                "kind": "flag"
               }
-            ]
+            }
           }
         }
-      }
+      ]
     }
   }
 }

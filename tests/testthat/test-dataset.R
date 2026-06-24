@@ -49,8 +49,8 @@ local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along
 mirai_dataset_symbols <- c(
     "EsgDataset",
     "DatasetAsyncTask",
-    "dataset_async_error_condition",
-    "dataset_async_result_error"
+    "dataset__async_condition",
+    "dataset__async_error"
 )
 
 start_mirai_dataset_runtime <- function(workers) {
@@ -448,7 +448,7 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds <- EsgDataset$new(c(path1, path2))
-    esg_dataset_set_context(ds, list(time_filter = list(
+    dataset__set_context(ds, list(time_filter = list(
         start = "2060-01-02T00:00:00Z",
         stop = "2060-01-03T23:59:59Z",
         method = "drs"
@@ -481,6 +481,257 @@ test_that("EsgDataset read_region() reuses recorded result time filters by defau
         "extends outside"
     )
     expect_identical(unique(dt_outside$file_index), 2L)
+})
+
+test_that("EsgDataset slice() selects files and preserves runtime context", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        ),
+        local_dataset_table_file(
+            time_vals = c(4, 5),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(31, 32)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    dataset__set_context(ds, list(
+        time_filter = list(
+            start = "2000-01-01T00:00:00Z",
+            stop = "2000-01-02T23:59:59Z",
+            method = "drs"
+        ),
+        selection = list(
+            source_count = 5L,
+            source_num_found = 10L,
+            source_indices = c(2L, 4L, 5L)
+        )
+    ))
+
+    sliced <- ds$slice(c(3L, 1L))
+    expect_false(sliced$is_open)
+    expect_identical(sliced$url, paths[c(3L, 1L)])
+    expect_identical(ds$url, paths)
+    expect_identical(sliced$time_filter$method, "drs")
+    expect_identical(sliced$selection(), list(
+        source_count = 5L,
+        source_num_found = 10L,
+        source_indices = c(5L, 2L)
+    ))
+
+    logical_slice <- ds$slice(c(TRUE, FALSE, TRUE))
+    expect_identical(logical_slice$url, paths[c(1L, 3L)])
+    expect_identical(logical_slice$selection()$source_indices, c(2L, 5L))
+
+    negative_slice <- ds$slice(-2L)
+    expect_identical(negative_slice$url, paths[c(1L, 3L)])
+    expect_identical(negative_slice$selection()$source_indices, c(2L, 5L))
+
+    identity <- EsgDataset$new(paths[1:2])$selection()
+    expect_identical(identity, list(
+        source_count = 2L,
+        source_num_found = 2L,
+        source_indices = 1:2
+    ))
+})
+
+test_that("EsgDataset slice() validates selectors", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+
+    expect_error(ds$slice(), "must be supplied")
+    expect_error(ds$slice(NULL), "must not be `NULL`")
+    expect_error(ds$slice(integer()), "at least one file")
+    expect_error(ds$slice(c(FALSE, FALSE)), "at least one file")
+    expect_error(ds$slice(c(TRUE, FALSE, TRUE)), "length")
+    expect_error(ds$slice(c(1L, 1L)), "duplicate")
+    expect_error(ds$slice(0L), "zero")
+    expect_error(ds$slice(c(1L, -2L)), "mix")
+    expect_error(ds$slice(3L), "outside")
+    expect_error(ds$slice("1"), "integer")
+})
+
+test_that("EsgDataset slice() reopens selected files only when requested", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_error(ds$slice(1L), "reopen = TRUE")
+
+    sliced <- ds$slice(2L, reopen = TRUE)
+    on.exit(sliced$close(), add = TRUE)
+
+    expect_true(ds$is_open)
+    expect_true(sliced$is_open)
+    expect_identical(sliced$url, paths[2L])
+    expect_identical(sliced$selection()$source_indices, 2L)
+    expect_equal(
+        as.numeric(sliced$var_get("tas", start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        21
+    )
+    expect_equal(
+        as.numeric(ds$var_get("tas", index = 2L, start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        21
+    )
+})
+
+test_that("EsgDataset reachable() checks current local files and selection source indices", {
+    paths <- c(
+        local_dataset_table_file(
+            time_vals = c(0, 1),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(11, 12)
+        ),
+        tempfile(fileext = ".nc"),
+        local_dataset_table_file(
+            time_vals = c(2, 3),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(21, 22)
+        )
+    )
+    on.exit(unlink(paths), add = TRUE)
+
+    ds <- EsgDataset$new(paths)
+    sliced <- ds$slice(c(3L, 2L))
+    diag <- sliced$reachable()
+
+    expect_named(diag, c(
+        "file_index", "source_index", "data_node", "service", "url",
+        "reachable", "latency_ms", "error", "probe_level",
+        "probe_url", "probe_cached"
+    ))
+    expect_s3_class(diag, "data.table")
+    expect_identical(diag$file_index, 1:2)
+    expect_identical(diag$source_index, c(3L, 2L))
+    expect_identical(diag$data_node, c(NA_character_, NA_character_))
+    expect_identical(diag$service, c("local", "local"))
+    expect_identical(diag$url, paths[c(3L, 2L)])
+    expect_identical(diag$reachable, c(TRUE, FALSE))
+    expect_equal(diag$latency_ms, c(0, 0))
+    expect_identical(diag$error, c(NA_character_, "File does not exist."))
+    expect_identical(diag$probe_level, c("local", "local"))
+    expect_identical(diag$probe_url, paths[c(3L, 2L)])
+    expect_false(any(diag$probe_cached))
+
+    file_url <- EsgDataset$new(paste0("file://", paths[[1L]]))$reachable()
+    expect_identical(file_url$service, "local")
+    expect_true(file_url$reachable)
+    expect_equal(file_url$latency_ms, 0)
+})
+
+test_that("EsgDataset reachable() treats Windows drive paths as local files", {
+    win_path <- "C:/epwshiftr/missing.nc"
+
+    expect_identical(query_result__url_scheme(win_path), NA_character_)
+    expect_true(query_result__url_local(win_path))
+
+    diag <- EsgDataset$new(win_path)$reachable()
+
+    expect_identical(diag$service, "local")
+    expect_identical(diag$probe_level, "local")
+    expect_identical(diag$probe_url, win_path)
+    expect_false(diag$reachable)
+    expect_identical(diag$error, "File does not exist.")
+})
+
+test_that("EsgDataset reachable() probes current remote data nodes without cached result context", {
+    urls <- c("https://ok.example.org/data.nc", "https://bad.example.org/data.nc")
+    ds <- EsgDataset$new(urls)
+    dataset__set_context(ds, list(
+        selection = list(
+            source_count = 11L,
+            source_num_found = 20L,
+            source_indices = c(10L, 11L)
+        ),
+        reachability = list(stale = TRUE)
+    ))
+
+    seen <- NULL
+    testthat::local_mocked_bindings(
+        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
+                                                           probe_concurrency = 1L,
+                                                           cache_seconds = 3600L,
+                                                           cache_failures_seconds = 0L) {
+            seen <<- list(
+                data_node = data_node,
+                timeout = timeout,
+                useragent = network_policy$useragent,
+                probe_concurrency = probe_concurrency,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
+            )
+            data.table::data.table(
+                data_node = data_node,
+                reachable = c(TRUE, FALSE),
+                latency_ms = c(12, NA_real_),
+                error = c(NA_character_, "remote boom"),
+                probe_url = paste0("https://", data_node, "/"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    diag <- ds$reachable(
+        probe = list(
+            timeout = 7,
+            concurrency = 2L,
+            network_policy = list(useragent = "dataset-agent")
+        )
+    )
+
+    expect_identical(seen$data_node, c("ok.example.org", "bad.example.org"))
+    expect_identical(seen$timeout, 7)
+    expect_identical(seen$useragent, "dataset-agent")
+    expect_identical(seen$probe_concurrency, 2L)
+    expect_identical(seen$cache_seconds, 3600L)
+    expect_identical(seen$cache_failures_seconds, 0L)
+    expect_identical(diag$file_index, 1:2)
+    expect_identical(diag$source_index, c(10L, 11L))
+    expect_identical(diag$data_node, c("ok.example.org", "bad.example.org"))
+    expect_true(all(is.na(diag$service)))
+    expect_identical(diag$reachable, c(TRUE, FALSE))
+    expect_equal(diag$latency_ms, c(12, NA))
+    expect_identical(diag$error, c(NA_character_, "remote boom"))
+    expect_identical(diag$probe_level, c("data_node", "data_node"))
+    expect_identical(diag$probe_url, c("https://ok.example.org/", "https://bad.example.org/"))
+    expect_false(any(diag$probe_cached))
 })
 
 test_that("EsgDataset public async open keeps the dataset opened after return", {
@@ -695,15 +946,15 @@ test_that("EsgDataset internal helpers transfer partially opened handles", {
 
     source <- EsgDataset$new(path_opened)
     source$open()
-    handles <- esg_dataset_detach_handles(source)
-    on.exit(esg_dataset_close_handles(path_opened, handles), add = TRUE)
+    handles <- dataset__detach_handles(source)
+    on.exit(dataset__close_handles(path_opened, handles), add = TRUE)
     source_private <- source$.__enclos_env__$private
 
     expect_false(source$is_open)
     expect_true(all(vapply(source_private$nc_handles, is.null, logical(1L))))
 
     ds <- EsgDataset$new(c(path_opened, path_pending))
-    esg_dataset_adopt_handles(ds, list(handles[[1L]], NULL))
+    dataset__adopt_handles(ds, list(handles[[1L]], NULL))
     handles <- vector("list", length(handles))
     private <- ds$.__enclos_env__$private
     on.exit(ds$close(), add = TRUE)
@@ -730,9 +981,9 @@ test_that("EsgDataset internal helpers transfer partially opened handles", {
     }
     failing_source <- EsgDataset$new(path_opened)
     failing_source$open()
-    failing_handles <- esg_dataset_detach_handles(failing_source)
+    failing_handles <- dataset__detach_handles(failing_source)
     failing <- EsgDataset$new(c(path_opened, missing_path))
-    esg_dataset_adopt_handles(failing, list(failing_handles[[1L]], NULL))
+    dataset__adopt_handles(failing, list(failing_handles[[1L]], NULL))
     failing_handles <- vector("list", length(failing_handles))
     failing_private <- failing$.__enclos_env__$private
 
