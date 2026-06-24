@@ -39,22 +39,31 @@ esgdict() is a small constructor around EsgDict$new()."><meta property="og:image
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/future-weather-workflow.html">Extract Future Weather Data</a>
+      <a href="../articles/future-epw-workflow.html">Create Future EPW Files</a>
     </li>
     <li>
-      <a href="../articles/store-native-morphing-workflow.html">Store-Native EPW Morphing Workflow</a>
+      <a href="../articles/esgf-query-results.html">Work with ESGF Query Results</a>
     </li>
     <li>
-      <a href="../articles/select-esgf-data.html">Select ESGF Data for Future Weather</a>
+      <a href="../articles/esg-dictionaries.html">Manage ESG Dictionaries</a>
     </li>
     <li>
-      <a href="../articles/store-download-extract.html">Store, Download, and Extract ESGF Files</a>
+      <a href="../articles/esg-store.html">Manage ESG Stores</a>
+    </li>
+    <li>
+      <a href="../articles/downloader.html">Run Persistent Downloads</a>
+    </li>
+    <li>
+      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
     </li>
     <li>
-      <a href="../articles/cmip6_dict.html">Manage ESG Dictionaries</a>
+      <a href="../articles/esgf-troubleshooting.html">Troubleshoot ESGF Workflows</a>
+    </li>
+    <li>
+      <a href="../articles/legacy-migration.html">Migrate from the Legacy Workflow</a>
     </li>
   </ul></li>
 <li>
@@ -1108,10 +1117,10 @@ dictionary for this project.</p></dd>
 <span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>downloaded length 0 != reported length 14</span>
 <span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>cannot open URL 'https://raw.githubusercontent.com/WCRP-CMIP/CMIP6_CVs/6.2.58/CMIP6_DRS.json': HTTP status was '404 Not Found'</span>
 <span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in utils::download.file(url, dest, mode = "wb", headers = gh_token(token),     quiet = TRUE):</span> cannot open URL 'https://raw.githubusercontent.com/WCRP-CMIP/CMIP6_CVs/6.2.58/CMIP6_DRS.json'</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BB0000;">✖</span> Failed to download data of <span style="font-weight: bold;">CMIP6 CVs</span>. <span style="color: #B2B2B2;">[149ms]</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BB0000;">✖</span> Failed to download data of <span style="font-weight: bold;">CMIP6 CVs</span>. <span style="color: #B2B2B2;">[172ms]</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> ⠙ Fetching <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BB0000;">✖</span> Failed to fetch <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>. <span style="color: #B2B2B2;">[175ms]</span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BB0000;">✖</span> Failed to fetch <span style="font-weight: bold;">CMIP6 ESG Dictionary</span>. <span style="color: #B2B2B2;">[192ms]</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
@@ -1546,7 +1555,7 @@ dictionary for this project.</p></dd>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".json"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "/tmp/RtmpUefUAL/file1a727eedaea3.json"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "/tmp/Rtmp4Gs27k/file1b3a55acc4c3.json"</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-in"><span></span></span>

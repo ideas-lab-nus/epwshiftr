@@ -2,7 +2,14 @@ pandoc: 3.8.3
 pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
-  articles/cmip6_dict: cmip6_dict.html
+  articles/cli-esgf-store: cli-esgf-store.html
+  articles/downloader: downloader.html
+  articles/epw-morpher: epw-morpher.html
+  articles/esg-dictionaries: esg-dictionaries.html
+  articles/esg-store: esg-store.html
+  articles/esgf-query-results: esgf-query-results.html
+  articles/esgf-troubleshooting: esgf-troubleshooting.html
+  articles/future-epw-workflow: future-epw-workflow.html
+  articles/legacy-migration: legacy-migration.html
   paper: paper.html
-  articles/store-native-morphing-workflow: store-native-morphing-workflow.html
-last_built: 2026-06-24T16:25Z
+last_built: 2026-06-24T16:56Z
