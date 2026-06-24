@@ -1611,6 +1611,94 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     expect_false(is.na(catalog$local_artifact_id))
     expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
 })
+
+test_that("EsgStore$download_files() selects catalog candidates before enqueueing", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    old <- store_test__file_docs(
+        path = "candidate.nc",
+        download_url = "https://old.example.org/fileServer/candidate.nc"
+    )
+    old$master_id <- "candidate.old"
+    old$tracking_id <- "hdl:21.14100/candidate-old"
+    old$checksum <- "old-checksum"
+    old$version <- 20250101L
+    old$data_node <- "old.example.org"
+
+    new <- store_test__file_docs(
+        path = "candidate.nc",
+        download_url = "https://new.example.org/fileServer/candidate.nc"
+    )
+    new$master_id <- "candidate.new"
+    new$tracking_id <- "hdl:21.14100/candidate-new"
+    new$checksum <- "new-checksum"
+    new$version <- 20260101L
+    new$data_node <- "new.example.org"
+
+    query_id <- store$add_files(store_test__result(
+        docs = data.table::rbindlist(list(old, new), fill = TRUE)
+    ))
+    plan <- priv(store)$catalog_download_plan(query_id = query_id)
+    dl <- store$downloader(n_workers = 0L)
+    session_id <- store$download_files(
+        query_id = query_id,
+        downloader = dl,
+        run = FALSE,
+        probe = FALSE
+    )
+    tasks <- dl$tasks(session_id = session_id)
+
+    expect_equal(nrow(plan), 1L)
+    expect_equal(plan$data_node, "new.example.org")
+    expect_equal(plan$url, "https://new.example.org/fileServer/candidate.nc")
+    expect_equal(plan$candidate_count, 2L)
+    expect_equal(plan$candidate_rank, 1L)
+    expect_equal(plan$candidate_selection, "ranked_by_catalog_metadata")
+    expect_equal(nrow(tasks), 1L)
+    expect_equal(tasks$file_key, plan$file_key)
+})
+
+test_that("EsgStore$download_files() aborts ambiguous catalog target collisions", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    first <- store_test__file_docs(
+        path = "ambiguous.nc",
+        download_url = "https://a.example.org/fileServer/ambiguous.nc"
+    )
+    first$master_id <- "ambiguous.a"
+    first$tracking_id <- "hdl:21.14100/ambiguous-a"
+    first$checksum <- "aaa"
+    first$version <- 20260101L
+    first$data_node <- "a.example.org"
+
+    second <- store_test__file_docs(
+        path = "ambiguous.nc",
+        download_url = "https://b.example.org/fileServer/ambiguous.nc"
+    )
+    second$master_id <- "ambiguous.b"
+    second$tracking_id <- "hdl:21.14100/ambiguous-b"
+    second$checksum <- "bbb"
+    second$version <- 20260101L
+    second$data_node <- "b.example.org"
+
+    query_id <- store$add_files(store_test__result(
+        docs = data.table::rbindlist(list(first, second), fill = TRUE)
+    ))
+    dl <- store$downloader(n_workers = 0L)
+
+    expect_error(
+        store$download_files(query_id = query_id, downloader = dl, run = FALSE, probe = FALSE),
+        "different checksums"
+    )
+})
 # }}}
 # EsgStore$add_files() {{{
 test_that("EsgStore$add_files() catalogs Aggregation records", {
@@ -1673,6 +1761,28 @@ test_that("EsgStore$add_files() records empty child query runs", {
     expect_true(all(validation$exists))
     expect_true(all(validation$checksum_ok))
     expect_true(all(validation$size_ok))
+})
+
+test_that("EsgStore$add_files() preserves File publish_path in stored query results", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- store_test__file_docs()
+    docs$publish_path <- "/css03_data/CMIP6/ScenarioMIP/mock/tas.nc"
+    query_id <- store$add_files(store_test__result(docs = docs), label = "publish-path")
+
+    runs <- ddb_read_table(priv(store)$conn, "query_run")
+    query_file <- file.path(store$path, runs$query_file[runs$query_id == query_id])
+    loaded <- esg_result("file")$load(query_file)
+    catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
+
+    expect_true("publish_path" %in% loaded$fields)
+    expect_identical(loaded$publish_path, docs$publish_path)
+    expect_false("publish_path" %in% names(catalog))
+    expect_equal(nrow(catalog), 1L)
 })
 # }}}
 # EsgStore$plan_region() {{{
@@ -1842,6 +1952,10 @@ test_that("EsgStore$extract()", {
     expect_true(all(validation$exists))
     expect_true(all(validation$checksum_ok, na.rm = TRUE))
     expect_true(all(validation$size_ok, na.rm = TRUE))
+
+    resumed <- store$extract(plan_id = plan$plan_id)
+    expect_equal(resumed$status, "done")
+    expect_equal(nrow(ddb_read_table(conn, "extraction_result")), 1L)
 })
 
 test_that("EsgStore$extract() records failed plans", {
@@ -1876,6 +1990,52 @@ test_that("EsgStore$extract() records failed plans", {
     expect_equal(plans$status, "failed")
     expect_equal(plans$attempt_count, 1L)
     expect_match(plans$last_error, "None of the requested variable")
+})
+
+test_that("EsgStore$extract() detects output conflicts without manifest rows", {
+    skip_if_not_installed("duckdb")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L)
+    on.exit(unlink(nc), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- store_test__file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(store_test__result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "SIN",
+        nearest = 1L
+    )
+
+    processed <- store$extract(plan_id = plan$plan_id)
+    conn <- priv(store)$conn
+    output_path <- file.path(store$path, ddb_read_table(conn, "extraction_result")$output_path[[1L]])
+    expect_true(file.exists(output_path))
+
+    ddb_exec(conn, sprintf(
+        "DELETE FROM extraction_result WHERE plan_id = %s",
+        ddb_literal(conn, plan$plan_id[[1L]])
+    ))
+    expect_error(
+        store$extract(plan_id = plan$plan_id, overwrite = FALSE),
+        "Parquet output already exists"
+    )
+
+    processed_again <- store$extract(plan_id = plan$plan_id, overwrite = TRUE)
+    expect_equal(processed_again$status, "done")
+    expect_equal(nrow(ddb_read_table(conn, "extraction_result")), 1L)
+    expect_equal(processed$status, "done")
 })
 # }}}
 # EsgStore$summarise() {{{

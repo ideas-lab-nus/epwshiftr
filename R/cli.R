@@ -145,7 +145,7 @@ epwshiftr_cli_dispatch <- function(parsed) {
     rest <- args[-seq_len(2L)]
 
     if (identical(group, "query")) {
-        return(epwshiftr_cli_query(store, command, rest))
+        return(epwshiftr_cli_query(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
     }
     if (identical(group, "download")) {
         return(epwshiftr_cli_download(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))

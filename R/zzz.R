@@ -2,11 +2,13 @@
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
 .onLoad <- function(libname, pkgname) {
     S7::methods_register()
+    registerS3method("as.data.table", "epwshiftr::ShiftStage", shift_stage_as_data_table, envir = asNamespace("data.table"))
     cache__configure(pkgname)
 
     # set package options
     .opts <- list(
         "epwshiftr.verbose" = FALSE,
+        "epwshiftr.progress" = interactive(),
         "epwshiftr.threshold_alpha" = 3,
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = TRUE,

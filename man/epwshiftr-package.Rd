@@ -16,6 +16,8 @@ adjusted from climate changes using data from Global Climate Models (GCM).
 \itemize{
 \item \code{epwshiftr.verbose}: If \code{TRUE}, more detailed message will be printed.
 Default: \code{FALSE}.
+\item \code{epwshiftr.progress}: If \code{TRUE}, progress bars are shown for long-running
+operations that support them. Default: \code{\link[=interactive]{interactive()}}.
 \item \code{epwshiftr.threshold_alpha}: the threshold of the absolute value for alpha,
 i.e. monthly-mean fractional change, when performing morphing operations.
 The default value is set to \code{3}. If the morphing methods are set

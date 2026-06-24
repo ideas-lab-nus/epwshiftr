@@ -15,13 +15,16 @@ Hongyuan Jia
 \itemize{
 \item \href{#method-EpwMorpher-new}{\code{EpwMorpher$new()}}
 \item \href{#method-EpwMorpher-required_variables}{\code{EpwMorpher$required_variables()}}
+\item \href{#method-EpwMorpher-preflight}{\code{EpwMorpher$preflight()}}
 \item \href{#method-EpwMorpher-summarise_climate}{\code{EpwMorpher$summarise_climate()}}
 \item \href{#method-EpwMorpher-summarise_baseline}{\code{EpwMorpher$summarise_baseline()}}
 \item \href{#method-EpwMorpher-plan}{\code{EpwMorpher$plan()}}
+\item \href{#method-EpwMorpher-preview_plan}{\code{EpwMorpher$preview_plan()}}
 \item \href{#method-EpwMorpher-diagnose}{\code{EpwMorpher$diagnose()}}
 \item \href{#method-EpwMorpher-check}{\code{EpwMorpher$check()}}
 \item \href{#method-EpwMorpher-run}{\code{EpwMorpher$run()}}
 \item \href{#method-EpwMorpher-write_epw}{\code{EpwMorpher$write_epw()}}
+\item \href{#method-EpwMorpher-workflow}{\code{EpwMorpher$workflow()}}
 \item \href{#method-EpwMorpher-status}{\code{EpwMorpher$status()}}
 \item \href{#method-EpwMorpher-outputs}{\code{EpwMorpher$outputs()}}
 \item \href{#method-EpwMorpher-clone}{\code{EpwMorpher$clone()}}
@@ -67,6 +70,40 @@ Return recipe-required CMIP variable IDs.
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$required_variables()}\if{html}{\out{</div>}}
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EpwMorpher-preflight"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorpher-preflight}{}}}
+\subsection{Method \code{preflight()}}{
+Preflight EPW morphing inputs without writing store state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$preflight(
+  plan_id = NULL,
+  periods = NULL,
+  summary_id = NULL,
+  baseline_id = NULL,
+  by = c("source_id", "experiment_id", "variant_label", "period"),
+  strict = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{plan_id}}{Optional extraction plan IDs.}
+
+\item{\code{periods}}{Optional period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{\code{summary_id}}{Optional climate summary ID.}
+
+\item{\code{baseline_id}}{Optional baseline summary ID.}
+
+\item{\code{by}}{Climate grouping columns.}
+
+\item{\code{strict}}{Whether required-data issues are errors.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-summarise_climate"></a>}}
@@ -145,6 +182,34 @@ Create a morphing plan and monthly factors.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EpwMorpher-preview_plan"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorpher-preview_plan}{}}}
+\subsection{Method \code{preview_plan()}}{
+Preview a morphing plan and monthly factors without writing store state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$preview_plan(
+  summary_id,
+  baseline_id = NULL,
+  by = c("source_id", "experiment_id", "variant_label", "period"),
+  strict = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{summary_id}}{Climate summary ID.}
+
+\item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
+
+\item{\code{by}}{Climate grouping columns.}
+
+\item{\code{strict}}{Whether missing required variables are blocking errors.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-diagnose"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-diagnose}{}}}
 \subsection{Method \code{diagnose()}}{
@@ -184,7 +249,7 @@ Abort if a morphing plan has blocking diagnostics.
 \subsection{Method \code{run()}}{
 Execute a morphing plan and write hourly result Parquet files.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -193,6 +258,8 @@ Execute a morphing plan and write hourly result Parquet files.
 \item{\code{morph_id}}{Morphing plan ID.}
 
 \item{\code{overwrite}}{Whether to overwrite existing result files.}
+
+\item{\code{resume}}{Whether to reuse complete existing results.}
 }
 \if{html}{\out{</div>}}
 }
@@ -203,7 +270,13 @@ Execute a morphing plan and write hourly result Parquet files.
 \subsection{Method \code{write_epw()}}{
 Write future EPW files from morphing results.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$write_epw(morph_id, dir, separate = TRUE, overwrite = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$write_epw(
+  morph_id,
+  dir,
+  separate = TRUE,
+  overwrite = FALSE,
+  resume = TRUE
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -211,11 +284,55 @@ Write future EPW files from morphing results.
 \describe{
 \item{\code{morph_id}}{Morphing plan ID.}
 
-\item{\code{dir}}{Output directory. Relative paths are resolved under the store root.}
+\item{\code{dir}}{Output directory. Relative paths are resolved under the store
+root. If \code{NULL}, the workflow stops after writing morph result
+Parquet files and does not write EPW outputs.}
 
 \item{\code{separate}}{Whether to create case subdirectories.}
 
 \item{\code{overwrite}}{Whether to overwrite existing EPW files.}
+
+\item{\code{resume}}{Whether to reuse complete existing EPW outputs.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EpwMorpher-workflow"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorpher-workflow}{}}}
+\subsection{Method \code{workflow()}}{
+Run the store-native EPW morphing workflow.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$workflow(
+  plan_id,
+  periods,
+  by = c("source_id", "experiment_id", "variant_label", "period"),
+  strict = TRUE,
+  dir = "outputs/future-epw",
+  separate = TRUE,
+  overwrite = FALSE,
+  resume = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{plan_id}}{Extraction plan IDs.}
+
+\item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{\code{by}}{Climate grouping columns.}
+
+\item{\code{strict}}{Whether blocking diagnostics should abort the workflow.}
+
+\item{\code{dir}}{Output directory. Relative paths are resolved under the store root.}
+
+\item{\code{separate}}{Whether to create case subdirectories.}
+
+\item{\code{overwrite}}{Whether to overwrite existing plan, result, and EPW outputs.}
+
+\item{\code{resume}}{Whether to reuse complete existing result and EPW outputs.}
 }
 \if{html}{\out{</div>}}
 }

@@ -776,6 +776,34 @@ test_that("cache__read_json() honors explicit cache mode", {
     )
 })
 
+test_that("cache__read_json() parses long HTTP URLs through an explicit connection", {
+    cache <- local_test_cache()
+    local_cache_mode("normal")
+    long_url <- paste0("https://example.org/esg-search/search?", paste(rep("a", 2100), collapse = ""))
+    seen <- NULL
+
+    testthat::local_mocked_bindings(
+        fromJSON = function(txt, bigint_as_char = FALSE, ...) {
+            seen <<- list(
+                is_connection = inherits(txt, "connection"),
+                is_character = is.character(txt),
+                bigint_as_char = bigint_as_char
+            )
+            close(txt)
+            list(response = list(numFound = 1L, docs = list()))
+        },
+        .package = "jsonlite"
+    )
+
+    expect_gt(nchar(long_url, type = "bytes"), 2084L)
+    res <- cache__read_json(long_url, simplifyVector = FALSE)
+    expect_true(seen$is_connection)
+    expect_false(seen$is_character)
+    expect_true(seen$bigint_as_char)
+    expect_equal(res$response$numFound, 1L)
+    expect_equal(cache$size(), 1L)
+})
+
 test_that("cache__read_json() does not cache failed non-strict reads", {
     cache <- local_test_cache()
     local_cache_mode("normal")

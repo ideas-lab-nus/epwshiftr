@@ -26,7 +26,7 @@ epwshiftr_cli_context_columns <- function(args) {
     }
     parsed <- epwshiftr_cli_parse_command(
         args[-seq_len(2L)],
-        flags = c("--all", "--dry-run"),
+        flags = c("--all", "--dry-run", "--no-progress"),
         options = c("--index-node", "--type", "--fields", "--columns", "--limit")
     )
     epwshiftr_cli_csv(parsed$options[["--columns"]])
