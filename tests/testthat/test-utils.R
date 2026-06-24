@@ -1,4 +1,4 @@
-test_that("Verbose message", {
+test_that("vmsg() respects epwshiftr.verbose", {
     withr::with_options(
         list("epwshiftr.verbose" = FALSE),
         expect_silent(vmsg("a"))
@@ -357,7 +357,7 @@ test_that(".onLoad() preserves explicit directory options", {
     expect_false(dir.exists(cache))
 })
 
-test_that("store path helpers keep paths inside the store", {
+test_that("store_cmip6_index_path() / store_rel_path() / store_abs_path() keep paths inside the store", {
     root <- tempfile("epwshiftr-store-")
     withr::local_options(list(epwshiftr.dir_store = root))
 

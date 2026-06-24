@@ -1,6 +1,7 @@
 utc <- function(x) as.POSIXct(x, tz = "UTC")
 
-test_that("solrdate__parse", {
+# solrdate__parse() {{{
+test_that("solrdate__parse()", {
     expect_equal(solrdate__parse(2025), utc("2025-01-01 00:00:00"))
     expect_equal(solrdate__parse(202502), utc("2025-02-01 00:00:00"))
     expect_equal(solrdate__parse(20250204), utc("2025-02-04 00:00:00"))
@@ -35,8 +36,9 @@ test_that("solrdate__parse", {
     expect_true(is.na(solrdate__parse("2025-02-30")))
     expect_true(is.na(solrdate__parse("2025020")))
 })
-
-test_that("solr_date", {
+# }}}
+# solr_date() {{{
+test_that("solr_date()", {
     # range syntax parsing
     left_open <- solr_date("{2000 TO 2010]")
     right_open <- solr_date("[2000 TO 2010}")
@@ -122,8 +124,9 @@ test_that("solr_date", {
         "UTC"
     )
 })
-
-test_that("solrdate__eval evaluates Solr Date Math for bridge rendering", {
+# }}}
+# solrdate__eval() {{{
+test_that("solrdate__eval() evaluates Solr Date Math for bridge rendering", {
     now <- utc("2025-06-13 12:34:56")
 
     expect_identical(
@@ -176,3 +179,5 @@ test_that("solrdate__eval evaluates Solr Date Math for bridge rendering", {
         "+10000-01-01T00:00:00Z"
     )
 })
+# }}}
+# vim: fdm=marker :

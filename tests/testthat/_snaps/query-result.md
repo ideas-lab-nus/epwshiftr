@@ -1,16 +1,16 @@
-# ESGF Query Result Dataset works
+# EsgResultDataset$print() snapshots offline fixtures
 
     Code
       datasets$print()
     Message
       == ESGF Query Result [Dataset] =================================================
-      * Index Node: https://esgf-data.dkrz.de
+      * Index Node: https://example.org
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
-      * Fields: XX | [ id, version, access, activity_id, data_node, experiment_id,
-        frequency, index_node, instance_id, latest, master_id, number_of_files,
-        project, replica, size, source_id, variable_id, and variant_label ]
+      * Fields: XX | [ id, version, activity_id, data_node, experiment_id, frequency,
+        index_node, instance_id, latest, master_id, number_of_files, project,
+        replica, size, source_id, variable_id, variant_label, and access ]
       
       -- <Query Parameter> -----------------------------------------------------------
       * project = CMIP6
@@ -19,10 +19,7 @@
       * variable_id = tas
       * frequency = day
       * variant_label = r1i1p1f1
-      * fields = source_id, experiment_id, frequency, access, data_node, id,
-        index_node, instance_id, latest, master_id, number_of_aggregations,
-        number_of_files, replica, size, url, version, project, activity_id,
-        variable_id, variant_label
+      * fields = source_id, experiment_id, frequency
       * type = Dataset
       * offset = 0
       * distrib = true
@@ -34,29 +31,29 @@
       -- <Dataset> (From 1 Data Nodes) -----------------------------------------------
     Output
       [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 86 Files, 6.6 GiB | No Aggregations ]
+          [ 2 Files, 1 GiB | No Aggregations ]
           [ Access: <...> ]
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 86 Files, 6.59 GiB | No Aggregations ]
+          [ 1 Files, 2 GiB | No Aggregations ]
           [ Access: <...> ]
 
-# ESGF Query Result File works
+# EsgResultFile$print() snapshots offline fixtures
 
     Code
       files$print()
     Message
       == ESGF Query Result [File] ====================================================
-      * Index Node: https://esgf-data.dkrz.de
+      * Index Node: https://example.org
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
       * Total size: XX [GiB]
-      * Fields: XX | [ id, version, activity_drs, activity_id, cf_standard_name,
-        checksum, checksum_type, citation_url, data_node, data_specs_version,
-        dataset_id, dataset_id_template_, directory_format_template_, experiment_id,
-        experiment_title, frequency, further_info_url, grid, ..., url_opendap, and
-        url_download ]
+      * Fields: XX | [ id, version, activity_id, institution_id, dataset_id, size,
+        checksum, checksum_type, instance_id, master_id, replica, tracking_id, title,
+        data_node, url, filename, url_opendap, and url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project = CMIP6
+      * fields = source_id, experiment_id, frequency
       * type = File
       * offset = 0
       * distrib = true
@@ -69,25 +66,26 @@
     Message
       -- <File> (From 1 Data Nodes) --------------------------------------------------
     Output
-      [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20190529.tas_day_AWI-CM-1-1-MR_sspXXX_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
-          [ XX MiB | Access: <...> ]
+      [1] tas_day_AWI-CM-1-1-MR_sspXXX_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
+          [ 1 MiB | Access: <OPENDAP, HTTPServer> ]
 
-# ESGF Query Result Aggregation works
+# EsgResultAggregation$print() snapshots offline fixtures
 
     Code
       aggs$print()
     Message
       == ESGF Query Result [Aggregation] =============================================
-      * Index Node: https://esgf-data.dkrz.de
+      * Index Node: https://example.org
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: <Unknown> [Byte]
-      * Fields: XX | [ id, data_node, dataset_id, instance_id, master_id, replica,
-        size, title, url, url_opendap, and url_download ]
+      * Fields: XX | [ id, version, activity_id, institution_id, data_node,
+        dataset_id, instance_id, master_id, replica, size, title, url, url_opendap,
+        and url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * fields = id, activity_id, data_node, dataset_id, instance_id, institution_id,
-        master_id, replica, size, title, url, version
+      * project = CMIP6
+      * fields = id
       * type = Aggregation
       * offset = 0
       * distrib = true
@@ -105,7 +103,7 @@
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
           [ <Unknown> Byte | Access: <...> ]
 
-# esg_result() works
+# esg_result() constructs typed empty query results
 
     Code
       esg_result("file")$print()
