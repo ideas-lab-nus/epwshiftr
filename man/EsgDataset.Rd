@@ -248,7 +248,11 @@ ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 \subsection{Method \code{open()}}{
 Open OPeNDAP connection(s)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$open(async = FALSE, timeout = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$open(
+  async = FALSE,
+  timeout = NULL,
+  progress = getOption("epwshiftr.progress", interactive())
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -264,6 +268,10 @@ receives the final \code{EsgDataset} object itself rather than a
 worker pre-open phase. Only supported when \code{async = TRUE}.
 It does not limit the final caller-owned reopen that makes the
 returned dataset stay opened.}
+
+\item{\code{progress}}{Whether to show a progress bar while opening
+NetCDF/OPeNDAP handles. By default the package option
+\code{epwshiftr.progress} is used, falling back to \code{\link[=interactive]{interactive()}}.}
 }
 \if{html}{\out{</div>}}
 }

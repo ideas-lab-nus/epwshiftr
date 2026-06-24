@@ -1023,6 +1023,54 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_error(q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"), "Additional query filters")
     expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
 })
+
+test_that("EsgQuery$collect() passes progress to Dataset and child collection", {
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress = FALSE,
+            progress_label = NULL
+        ) {
+            calls[[length(calls) + 1L]] <<- list(
+                type = query_param__value(params$type()),
+                all = all,
+                limit = limit,
+                progress = progress,
+                progress_label = progress_label
+            )
+            esgf_fixture_collect(params)
+        },
+        .package = "epwshiftr"
+    )
+
+    q <- esg_query("https://example.org")$experiment_id("ssp585")$variable_id("tas")$limit(2L)
+    expect_s3_class(q$collect(progress = TRUE), "EsgResultDataset")
+    expect_length(calls, 1L)
+    expect_true(calls[[1L]]$progress)
+    expect_identical(calls[[1L]]$progress_label, "Collecting Dataset records")
+
+    calls <- list()
+    expect_s3_class(q$collect(type = "File", fields = "id", progress = TRUE), "EsgResultFile")
+    expect_length(calls, 2L)
+    expect_identical(vapply(calls, `[[`, character(1L), "type"), c("Dataset", "File"))
+    expect_true(all(vapply(calls, `[[`, logical(1L), "progress")))
+    expect_identical(
+        vapply(calls, `[[`, character(1L), "progress_label"),
+        c("Collecting Dataset records", "Collecting File records")
+    )
+
+    calls <- list()
+    expect_s3_class(q$collect(progress = FALSE), "EsgResultDataset")
+    expect_false(calls[[1L]]$progress)
+    expect_null(calls[[1L]]$progress_label)
+})
 # }}}
 # query__collect() {{{
 test_that("query__collect() includes only result-field constraints in fields", {
@@ -1150,6 +1198,103 @@ test_that("query__collect() records actual page query URLs", {
     expect_identical(res$context$query_url, captured_url)
     expect_true(grepl("offset=0", utils::URLdecode(captured_url[[1L]]), fixed = TRUE))
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
+})
+
+test_that("query__collect() reports progress across collected pages", {
+    reads <- 0L
+    events <- character()
+    bars <- list()
+    updates <- list()
+    dones <- list()
+    testthat::local_mocked_bindings(
+        cache__read_json = function(url, ...) {
+            reads <<- reads + 1L
+            events <<- c(events, sprintf("read:%d", reads))
+            docs <- if (reads == 1L) {
+                data.frame(id = c("dataset-1", "dataset-2"), score = 1, check.names = FALSE)
+            } else {
+                data.frame(id = "dataset-3", score = 1, check.names = FALSE)
+            }
+            list(response = list(numFound = 3L, docs = docs))
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
+            "progress-id"
+        },
+        cli_progress_update = function(id = NULL, set = NULL, total = NULL, force = FALSE, ...) {
+            events <<- c(events, sprintf("update:%d", set))
+            updates[[length(updates) + 1L]] <<- list(
+                id = id,
+                set = as.integer(set),
+                total = if (is.null(total)) NA_integer_ else as.integer(total),
+                force = isTRUE(force)
+            )
+        },
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
+        },
+        .package = "cli"
+    )
+
+    res <- query__collect(
+        "https://example.org",
+        QueryParamStore$new()$limit(2L),
+        all = TRUE,
+        limit = 2L,
+        progress = TRUE,
+        progress_label = "Collecting test records"
+    )
+
+    expect_equal(nrow(res$docs), 3L)
+    expect_length(bars, 1L)
+    expect_identical(bars[[1L]]$name, "Collecting test records")
+    expect_identical(bars[[1L]]$total, 1L)
+    expect_identical(events, c("update:0", "read:1", "update:2", "read:2", "update:3"))
+    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(0L, 2L, 3L))
+    expect_equal(vapply(updates, `[[`, integer(1L), "total"), c(1L, 3L, 3L))
+    expect_equal(vapply(updates, `[[`, logical(1L), "force"), c(TRUE, FALSE, FALSE))
+    expect_equal(dones, list(list(id = "progress-id", result = "done")))
+})
+
+test_that("query__collect() updates progress once for a single request", {
+    updates <- list()
+    testthat::local_mocked_bindings(
+        cache__read_json = function(url, ...) {
+            docs <- data.frame(id = "dataset-1", score = 1, check.names = FALSE)
+            list(response = list(numFound = 3L, docs = docs))
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(...) "progress-id",
+        cli_progress_update = function(id = NULL, set = NULL, total = NULL, force = FALSE, ...) {
+            updates[[length(updates) + 1L]] <<- list(
+                id = id,
+                set = as.integer(set),
+                total = if (is.null(total)) NA_integer_ else as.integer(total),
+                force = isTRUE(force)
+            )
+        },
+        cli_progress_done = function(...) NULL,
+        .package = "cli"
+    )
+
+    query__collect(
+        "https://example.org",
+        QueryParamStore$new()$limit(1L),
+        progress = TRUE
+    )
+
+    expect_equal(
+        updates,
+        list(
+            list(id = "progress-id", set = 0L, total = 1L, force = TRUE),
+            list(id = "progress-id", set = 1L, total = 3L, force = FALSE)
+        )
+    )
 })
 # }}}
 # EsgQuery$collect() {{{

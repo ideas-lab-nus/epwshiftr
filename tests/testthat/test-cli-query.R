@@ -196,8 +196,23 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )
 
     file_docs <- cli_test_file_docs()
+    collect_calls <- list()
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress = FALSE,
+            progress_label = NULL
+        ) {
+            collect_calls[[length(collect_calls) + 1L]] <<- list(
+                progress = progress,
+                progress_label = progress_label
+            )
             response <- cli_test_response(file_docs)
             params$fields(c(query_param__value(params$fields()), required_fields))
             list(response = response, docs = response$response$docs, parameter = params)
@@ -214,6 +229,7 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     expect_equal(searched$status, 0L)
     expect_equal(nrow(searched$result), 1L)
     expect_true(all(c("id", "title") %in% names(searched$result)))
+    expect_false(any(vapply(collect_calls, `[[`, logical(1L), "progress")))
 
     json_search_text <- capture.output(
         json_search <- epwshiftr_cli(c(
@@ -227,6 +243,33 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     expect_equal(json_search$status, 0L)
     json_search_result <- jsonlite::fromJSON(paste(json_search_text, collapse = "\n"))
     expect_true(all(c("id", "title", "source_id") %in% names(json_search_result)))
+    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+
+    jsonl_search_text <- capture.output(
+        jsonl_search <- epwshiftr_cli(c(
+            "--store", dir, "--jsonl", "query", "search",
+            "--index-node", "https://example.org", "--type", "File",
+            "--fields", "id,title,source_id", "--columns", "title",
+            "--limit", "1",
+            "experiment_id=ssp585", "variable_id=tas"
+        ))
+    )
+    expect_equal(jsonl_search$status, 0L)
+    expect_match(paste(jsonl_search_text, collapse = "\n"), "\"id\"")
+    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+
+    capture.output(
+        no_progress <- epwshiftr_cli(c(
+            "--store", dir, "query", "search",
+            "--index-node", "https://example.org", "--type", "File",
+            "--fields", "id,title", "--columns", "title,id", "--limit", "1",
+            "--no-progress",
+            "experiment_id=ssp585", "variable_id=tas"
+        )),
+        type = "message"
+    )
+    expect_equal(no_progress$status, 0L)
+    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
 
     capture.output(
         bad_columns <- epwshiftr_cli(c(
@@ -240,6 +283,11 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )
     expect_equal(bad_columns$status, 2L)
     expect_match(bad_columns$error, "Unknown display column")
+    expect_true(all(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+    expect_identical(
+        vapply(tail(collect_calls, 2L), `[[`, character(1L), "progress_label"),
+        c("Collecting Dataset records", "Collecting File records")
+    )
 
     preview <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "preview", query_id, "--detail"))
     expect_equal(preview$status, 0L)
