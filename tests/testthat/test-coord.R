@@ -85,7 +85,7 @@ test_that("match_coord()", {
     path <- get_cache_epw()
 
     if (file.exists(path)) {
-        withr::local_options(list(epwshiftr.dir = tempdir()))
+        withr::local_options(list(epwshiftr.dir_store = tempdir()))
         summary_database(cache, update = TRUE)
 
         idx <- load_cmip6_index()

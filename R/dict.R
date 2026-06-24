@@ -119,6 +119,59 @@ esgdict__default_file <- function(project = "CMIP6") {
     sprintf("%sDICT.json", esgdict__normalize_project(project))
 }
 
+esgdict__default_store_path <- function(project = "CMIP6", dict_id = NULL) {
+    project <- esgdict__normalize_project(project)
+    checkmate::assert_string(dict_id, min.chars = 1L, null.ok = TRUE)
+
+    file <- if (is.null(dict_id)) {
+        esgdict__default_file(project)
+    } else {
+        sprintf("%s.json", dict_id)
+    }
+    store_path("dicts", tolower(project), file)
+}
+
+esgdict__hashable <- function(x) {
+    if (inherits(x, "numeric_version")) {
+        return(as.character(x))
+    }
+    if (inherits(x, "POSIXt")) {
+        return(format(x, usetz = TRUE))
+    }
+    if (is.list(x)) {
+        return(lapply(x, esgdict__hashable))
+    }
+    x
+}
+
+esgdict__dict_id <- function(project, version, sources, built_time = NULL) {
+    extract_store_hash(
+        esgdict__normalize_project(project),
+        ESGDICT_FORMAT_VERSION,
+        jsonlite::toJSON(esgdict__hashable(version), auto_unbox = TRUE, null = "null"),
+        jsonlite::toJSON(esgdict__hashable(sources), auto_unbox = TRUE, null = "null"),
+        esgdict__hashable(built_time)
+    )
+}
+
+esgdict__latest_store_path <- function(project = "CMIP6") {
+    target_project <- esgdict__normalize_project(project)
+    root <- store_dir(init = FALSE)
+    if (!dir.exists(root)) {
+        return(NULL)
+    }
+
+    store <- EsgStore$new(root, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+    artifacts <- data.table::as.data.table(DBI::dbReadTable(priv(store)$conn, "artifact"))
+    artifacts <- artifacts[kind == "dict" & project == target_project & status == "available"]
+    if (!nrow(artifacts)) {
+        return(NULL)
+    }
+    data.table::setorder(artifacts, -updated_at)
+    store$artifact_path(artifacts$artifact_id[[1L]])
+}
+
 esgdict__default_env <- function() {
     if (is.null(this$dicts)) {
         this$dicts <- new.env(parent = emptyenv())
@@ -135,22 +188,13 @@ esgdict__cache_policy <- function(use_cache = TRUE) {
     checkmate::assert_flag(use_cache)
 
     mode <- cache_mode()
-    if (identical(mode, "offline") && !isTRUE(use_cache)) {
-        stop(
-            "Cannot build an ESG dictionary with `use_cache = FALSE` in offline cache mode.",
-            call. = FALSE
-        )
-    }
-
-    # This is the compatibility bridge between the older per-call `use_cache`
-    # flag and the package-wide `epwshiftr.cache` mode used by `DiskCache`.
     enabled <- isTRUE(use_cache) && !identical(mode, "off")
     list(
         mode = mode,
         read = enabled,
         write = enabled && identical(mode, "normal"),
-        raw_read = enabled,
-        raw_write = enabled && identical(mode, "normal"),
+        source_read = TRUE,
+        source_write = !identical(mode, "offline"),
         offline = identical(mode, "offline")
     )
 }
@@ -277,7 +321,7 @@ EsgDict <- R6::R6Class("EsgDict",
             request_tag = NULL,
             dreq_tag = NULL,
             use_cache = TRUE,
-            cache_dir = esgdict__raw_cache_dir(project = private$m_project)
+            source_dir = esgdict__source_dir(project = private$m_project)
         ) {
             esgdict__assert_implemented(private$m_project)
             checkmate::assert_flag(force)
@@ -300,7 +344,7 @@ EsgDict <- R6::R6Class("EsgDict",
                 cv_tag = cv_tag,
                 request_tag = request_tag,
                 policy = esgdict__cache_policy(use_cache),
-                cache_dir = cache_dir,
+                source_dir = source_dir,
                 force = force
             ))
             private$replace(dict, status = "built")
@@ -380,13 +424,9 @@ EsgDict <- R6::R6Class("EsgDict",
             )
         },
 
-        save = function(
-            dir = getOption("epwshiftr.dir", "."),
-            file = NULL,
-            allow_empty = FALSE
-        ) {
+        save = function(path = NULL, allow_empty = FALSE) {
             checkmate::assert_flag(allow_empty)
-            if (is.null(file)) file <- esgdict__default_file(private$m_project)
+            register <- is.null(path)
             if (self$is_empty() && !allow_empty) {
                 stop(
                     "Cannot save an empty ESG Dictionary. Build or load data first, ",
@@ -394,6 +434,8 @@ EsgDict <- R6::R6Class("EsgDict",
                     call. = FALSE
                 )
             }
+            dict_id <- esgdict__dict_id(private$m_project, private$m_version, private$m_sources, private$m_built_time)
+            if (is.null(path)) path <- esgdict__default_store_path(private$m_project, dict_id = dict_id)
 
             esgdict__save(
                 private$m_project,
@@ -404,17 +446,41 @@ EsgDict <- R6::R6Class("EsgDict",
                 private$m_timestamps,
                 private$m_sources,
                 private$m_indices,
-                dir = dir,
-                file = file
+                path = path
             )
+            if (isTRUE(register)) {
+                store <- EsgStore$new(store_dir(init = TRUE))
+                on.exit(store$close(), add = TRUE)
+                store$register_artifact(
+                    kind = "dict",
+                    path = path,
+                    role = "input",
+                    project = private$m_project,
+                    dict_id = dict_id,
+                    metadata = list(
+                        profile = private$m_profile,
+                        version = esgdict__hashable(private$m_version),
+                        built_time = if (is.null(private$m_built_time)) NULL else format(private$m_built_time, usetz = TRUE)
+                    )
+                )
+            }
+            path
         },
 
-        load = function(dir = getOption("epwshiftr.dir", "."), file = NULL) {
-            if (is.null(file)) file <- esgdict__default_file(private$m_project)
-            dict <- esgdict__load(dir, file = file, project = private$m_project)
+        load = function(path = NULL) {
+            if (is.null(path)) {
+                path <- esgdict__latest_store_path(private$m_project)
+            }
+
+            if (is.null(path)) {
+                cli::cli_alert_info("Failed to find a stored ESG Dictionary for project {.val {private$m_project}}. Skip loading.")
+                return(self)
+            }
+
+            dict <- esgdict__load(path, project = private$m_project)
 
             if (is.null(dict)) {
-                cli::cli_alert_info("Failed to find file {.file {file}} at {.path {normalizePath(dir, mustWork = FALSE)}}. Skip loading.")
+                cli::cli_alert_info("Failed to find ESG Dictionary at {.path {normalizePath(path, mustWork = FALSE)}}. Skip loading.")
                 return(self)
             }
 

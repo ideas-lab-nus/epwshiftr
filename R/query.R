@@ -188,6 +188,9 @@ FIELDS_FACETS_COMMON <- c(
 #'
 #' - The `fields` parameter is not supported. All available fields are always
 #'   returned.
+#' - Only `Dataset` and `File` queries are supported. `Aggregation` queries
+#'   should use a standard ESGF search index node, such as
+#'   `https://esgf-data.dkrz.de` or `https://esgf.ceda.ac.uk`.
 #' - The `retracted` parameter is not supported and will be ignored.
 #' - Wget script generation is not supported. Calling `$url(wget = TRUE)` will
 #'   result in an error.
@@ -994,9 +997,11 @@ EsgQuery <- R6::R6Class(
         #' @description
         #' Send the actual query and fetch the results
         #'
-        #' `$collect()` sends the actual query with **`type=Dataset`** to the
-        #' ESGF search services and returns the results as an
-        #' [EsgResultDataset] object.
+        #' `$collect()` sends the actual query to the ESGF search services.
+        #' By default it collects **`type=Dataset`** results and returns an
+        #' [EsgResultDataset] object. If `type` is `"File"` or
+        #' `"Aggregation"`, it first collects matching Dataset results and then
+        #' collects child File or Aggregation results for those datasets.
         #' The fields included depend on `fields` parameter.
         #' However, the following fields are always included in the results:
         #' `r paste0("\\verb{", EsgResultDataset$private_fields$required_fields, "}", collapse = ", ")`.
@@ -1004,12 +1009,13 @@ EsgQuery <- R6::R6Class(
         #' @param all Whether to collect all results despite of the value of
         #'        `offset`. Default: `FALSE`.
         #'
-        #' @param limit Only applicable when `all` is set to `TRUE`. Whether to
-        #'        respect the current value of `limit` when collecting all
-        #'        matched records. If `FALSE`, the allowed maximum limit number
+        #' @param limit If `all = FALSE`, the maximum number of records to
+        #'        collect in this request. If `all = TRUE`, the page size used
+        #'        for each paginated request, not a total cap. When `all = TRUE`
+        #'        and `limit = TRUE`, the current query `limit` value is used;
+        #'        if `limit = FALSE`, the allowed maximum limit number
         #'        `r this$data_max_limit` is used. It can also be a positive
-        #'        integer which will be used as a temporary limit per query.
-        #'        Default: `TRUE`.
+        #'        integer used as a temporary page size. Default: `TRUE`.
         #'
         #' @param params Whether to include facet fields that have parameter
         #'        constraints explicitly set using `EsgQuery$project()`,
@@ -1018,7 +1024,20 @@ EsgQuery <- R6::R6Class(
         #'        the `experiment_id` field will be included in the results when
         #'        `params = TRUE`. Default: `TRUE`.
         #'
-        #' @return An [EsgResultDataset] object.
+        #' @param type Result type to collect. One of `"Dataset"`, `"File"`,
+        #'        or `"Aggregation"`. Default: `"Dataset"`.
+        #'
+        #' @param fields Optional fields used only when `type` is `"File"` or
+        #'        `"Aggregation"`. Dataset fields should be configured with
+        #'        `$fields()` before collecting.
+        #'
+        #' @param ... Additional File/Aggregation facet filters used only when
+        #'        `type` is `"File"` or `"Aggregation"`. File/Aggregation
+        #'        collection does not use ESGF datetime search parameters; use
+        #'        `$filter_time()` on the returned result for time filtering.
+        #'
+        #' @return An [EsgResultDataset], [EsgResultFile], or
+        #' [EsgResultAggregation] object.
         #'
         #' @examples
         #' \dontrun{
@@ -1044,21 +1063,47 @@ EsgQuery <- R6::R6Class(
         #' res4 <- query$collect(all = TRUE, limit = 30)
         #' identical(res2$count(), res4$count())
         #' }
-        collect = function(all = FALSE, limit = TRUE, params = TRUE) {
-            result <- query_collect(
-                private$index_node_url,
-                private$parameter,
-                required_fields = EsgResultDataset$private_fields$required_fields,
+        collect = function(all = FALSE, limit = TRUE, params = TRUE, type = "Dataset", fields = NULL, ...) {
+            type <- query_result_normalize_type(type)
+            dots <- eval(substitute(alist(...)))
+
+            collect_dataset <- function(all, limit) {
+                result <- query_collect(
+                    private$index_node_url,
+                    private$parameter,
+                    required_fields = EsgResultDataset$private_fields$required_fields,
+                    all = all,
+                    limit = limit,
+                    constraints = params
+                )
+
+                # replace docs in the last response
+                result$response$response$docs <- result$docs
+                result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
+
+                # create new results
+                new_query_result(EsgResultDataset, private$index_node_url, result_params, result$response)
+            }
+
+            if (identical(type, "Dataset")) {
+                if (length(dots)) {
+                    stop("Additional query filters in `...` are only supported when `type` is 'File' or 'Aggregation'.", call. = FALSE)
+                }
+                if (!is.null(fields)) {
+                    stop("`fields` in `$collect()` is only supported when `type` is 'File' or 'Aggregation'. Use `$fields()` before collecting Dataset results.", call. = FALSE)
+                }
+                return(collect_dataset(all = all, limit = limit))
+            }
+
+            child_limit <- private$collect_child_limit(limit)
+            datasets <- collect_dataset(all = TRUE, limit = FALSE)
+            datasets$collect(
+                fields = fields,
                 all = all,
-                limit = limit,
-                constraints = params
+                limit = child_limit,
+                type = type,
+                ...
             )
-
-            # replace docs in the last response
-            result$response$response$docs <- result$docs
-
-            # create new results
-            new_query_result(EsgResultDataset, private$index_node_url, private$parameter, result$response)
         },
         # }}}
 
@@ -1205,6 +1250,26 @@ EsgQuery <- R6::R6Class(
 
         parameter = NULL,
 
+        collect_child_limit = function(limit) {
+            checkmate::assert(
+                checkmate::check_flag(limit),
+                checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
+            )
+
+            if (isTRUE(limit)) {
+                value <- query_param_value(private$parameter$limit())
+                if (is.null(value)) {
+                    value <- 10L
+                }
+                return(as.integer(value))
+            }
+            if (identical(limit, FALSE)) {
+                return(NULL)
+            }
+
+            as.integer(limit)
+        },
+
         validate_query_state = function(parameter) {
             type <- parameter$type()
             type_value <- query_param_value(type)
@@ -1290,6 +1355,23 @@ EsgQuery <- R6::R6Class(
 is_bridge_index_node <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
+
+assert_bridge_index_node_type <- function(index_node, params) {
+    if (!is_bridge_index_node(index_node)) {
+        return(invisible(TRUE))
+    }
+
+    type <- query_param_value(query_param_as_store(params)$type())
+    if (identical(type, "Aggregation")) {
+        cli::cli_abort(c(
+            "Bridge index nodes do not support {.val Aggregation} queries.",
+            "i" = "The ORNL/LLNL bridge accepts only {.val Dataset} and {.val File} query types.",
+            "i" = "Use a standard ESGF search index node, such as {.url https://esgf-data.dkrz.de} or {.url https://esgf.ceda.ac.uk}, for Aggregation results."
+        ))
+    }
+
+    invisible(TRUE)
+}
 # }}}
 
 # normalize_index_node {{{
@@ -1327,6 +1409,19 @@ normalize_index_node <- function(index_node, raw = FALSE) {
 # }}}
 
 # query_build {{{
+query_render_free_text <- function(query) {
+    if (!length(query) || !nchar(query)) {
+        return(character())
+    }
+
+    paste0("query=", query_param_encode(query))
+}
+
+query_render_globus_value <- function(value) {
+    value <- as.character(value)
+    ifelse(grepl("*", value, fixed = TRUE), value, query_param_quote_range_bound(value))
+}
+
 query_build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
     store <- query_param_clone(params)
@@ -1335,6 +1430,8 @@ query_build <- function(index_node, params, type = "search") {
         store$type(NULL)
         store$format(NULL)
     }
+
+    assert_bridge_index_node_type(index_node, store)
 
     # NOTE: handle special endpoint for bridge
     if (is_bridge_index_node(index_node)) {
@@ -1359,15 +1456,20 @@ query_build <- function(index_node, params, type = "search") {
 
     # separate query= params from regular facet params
     query_names <- names(store$state()$query)
-    query_clauses <- if (length(query_names)) store$render(query_names) else character()
+    is_bridge <- is_bridge_index_node(index_node)
+    query_clauses <- if (length(query_names)) {
+        store$render(query_names, quote_date = is_bridge, datetime_end_alias = is_bridge)
+    } else {
+        character()
+    }
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
     params <- params[!names(params) %in% query_names]
 
     is_negate <- vapply(params, function(param) isTRUE(query_param_negate(param)), logical(1L))
     # facet queries without any negated inputs
-    if (!is_bridge_index_node(index_node) || !any(is_negate)) {
+    if (!is_bridge || !any(is_negate)) {
         rendered <- c(vapply(params, query_param_render, FUN.VALUE = ""), if (length(query_clauses)) {
-            paste0("query=", query_param_encode(paste(query_clauses, collapse = " AND ")))
+            query_render_free_text(paste(query_clauses, collapse = " AND "))
         })
         rendered <- rendered[nchar(rendered) > 0L]
         if (!length(rendered)) {
@@ -1386,13 +1488,13 @@ query_build <- function(index_node, params, type = "search") {
         vapply(
             params[is_negate],
             function(param) {
-                value <- query_param_value(param)
+                value <- query_render_globus_value(query_param_value(param))
                 if (length(value) == 1L) {
                     value <- value
                 } else {
                     value <- sprintf("(%s)", paste(value, collapse = " "))
                 }
-                sprintf("%s:(NOT %s)", query_param_name(param), value)
+                sprintf("NOT (%s:%s)", query_param_name(param), value)
             },
             FUN.VALUE = ""
         ),
@@ -1407,7 +1509,7 @@ query_build <- function(index_node, params, type = "search") {
         endpoint,
         "?",
         if (nchar(facets)) paste0(facets, "&"),
-        paste0("query=", query_param_encode(query))
+        query_render_free_text(query)
     )
 }
 # }}}
@@ -1457,6 +1559,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         store$offset(0L)
     }
 
+    effective_store <- store$copy()
     response <- read_json_response(query_build(index_node, store))
     docs <- response$response$docs
 
@@ -1489,7 +1592,7 @@ query_collect <- function(index_node, params, required_fields = NULL, all = FALS
         }
     }
 
-    list(response = response, docs = docs)
+    list(response = response, docs = docs, parameter = effective_store)
 }
 # }}}
 
@@ -1499,7 +1602,6 @@ query_save <- function(index_node, parameter, response, ..., file = "query.json"
     checkmate::assert_choice(tools::file_ext(file), "json")
 
     params <- query_param_as_store(parameter)$serialize(null = TRUE)
-    params <- do.call(c, unname(params[!vapply(params, is.null, logical(1L))]))
 
     if (length(response)) {
         # NOTE: the timestamp may include sub-seconds, but
@@ -1546,6 +1648,17 @@ query_load <- function(file, schema = NULL) {
     # simplifyVector will convert facet counts to characters
     # have to set simplifyMatrix to FALSE
     json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+
+    if (
+        length(json$response) &&
+            length(json$response$response) &&
+            "docs" %in% names(json$response$response) &&
+            is.list(json$response$response$docs) &&
+            !inherits(json$response$response$docs, "data.frame") &&
+            !length(json$response$response$docs)
+    ) {
+        json$response$response$docs <- data.frame()
+    }
 
     if (!is.null(schema)) {
         schema_validate(schema, json, mode = "assert", name = file)

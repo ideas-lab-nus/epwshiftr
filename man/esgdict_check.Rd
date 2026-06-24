@@ -22,7 +22,7 @@ from \code{dict} when supplied, otherwise \code{"CMIP6"} is used.}
 
 \item{dict}{Optional \link{EsgDict} object. If \code{NULL}, the package-level default
 dictionary for \code{project} is used when available; otherwise the project
-default JSON file is loaded from \code{getOption("epwshiftr.dir", ".")}.}
+default dictionary is loaded from the persistent store manifest.}
 
 \item{error}{If \code{TRUE}, throw an error when invalid values or relationships
 are found.}

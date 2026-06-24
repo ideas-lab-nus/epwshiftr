@@ -27,7 +27,12 @@ local_tunnel_dist <- function(lat1, lon1, lat2, lon2) {
 write_local_cmip6_netcdf_fixture <- function(path, year) {
     lat <- c(1.0, 2.0, 41.0)
     lon <- c(103.5, 104.0, 104.5, 254.0)
-    time <- seq_len(if (local_is_leap_year(year)) 366L else 365L) - 1L
+    time <- seq_len(if (local_is_leap_year(year)) 366L else 365L) - 0.5
+    time_bnds <- rbind(time - 0.5, time + 0.5)
+    lat_step <- min(diff(sort(lat)))
+    lon_step <- min(diff(sort(lon)))
+    lat_bnds <- rbind(lat - lat_step / 2, lat + lat_step / 2)
+    lon_bnds <- rbind(lon - lon_step / 2, lon + lon_step / 2)
     tas <- array(NA_real_, dim = c(length(lon), length(lat), length(time)))
 
     for (i in seq_along(lat)) {
@@ -42,12 +47,16 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::dim.def.nc(nc, "time", length(time))
     RNetCDF::dim.def.nc(nc, "lat", length(lat))
     RNetCDF::dim.def.nc(nc, "lon", length(lon))
+    RNetCDF::dim.def.nc(nc, "bnds", 2L)
     RNetCDF::dim.def.nc(nc, "height", 1L)
     RNetCDF::var.def.nc(nc, "time", "NC_DOUBLE", "time")
+    RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", c("bnds", "time"))
     RNetCDF::var.def.nc(nc, "lat", "NC_DOUBLE", "lat")
+    RNetCDF::var.def.nc(nc, "lat_bnds", "NC_DOUBLE", c("bnds", "lat"))
     RNetCDF::var.def.nc(nc, "lon", "NC_DOUBLE", "lon")
+    RNetCDF::var.def.nc(nc, "lon_bnds", "NC_DOUBLE", c("bnds", "lon"))
     RNetCDF::var.def.nc(nc, "height", "NC_DOUBLE", "height")
-    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("lon", "lat", "time"))
+    RNetCDF::var.def.nc(nc, "tas", "NC_FLOAT", c("lon", "lat", "time"))
 
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "mip_era", "NC_CHAR", "CMIP6")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "activity_id", "NC_CHAR", "ScenarioMIP")
@@ -63,14 +72,17 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "tracking_id", "NC_CHAR", sprintf("hdl:21.14100/local-test-%s", year))
 
     RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", sprintf("days since %s-01-01 00:00:00", year))
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "standard")
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "proleptic_gregorian")
     RNetCDF::att.put.nc(nc, "time", "axis", "NC_CHAR", "T")
+    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
     RNetCDF::att.put.nc(nc, "lat", "units", "NC_CHAR", "degrees_north")
     RNetCDF::att.put.nc(nc, "lat", "standard_name", "NC_CHAR", "latitude")
     RNetCDF::att.put.nc(nc, "lat", "axis", "NC_CHAR", "Y")
+    RNetCDF::att.put.nc(nc, "lat", "bounds", "NC_CHAR", "lat_bnds")
     RNetCDF::att.put.nc(nc, "lon", "units", "NC_CHAR", "degrees_east")
     RNetCDF::att.put.nc(nc, "lon", "standard_name", "NC_CHAR", "longitude")
     RNetCDF::att.put.nc(nc, "lon", "axis", "NC_CHAR", "X")
+    RNetCDF::att.put.nc(nc, "lon", "bounds", "NC_CHAR", "lon_bnds")
     RNetCDF::att.put.nc(nc, "height", "units", "NC_CHAR", "m")
     RNetCDF::att.put.nc(nc, "height", "standard_name", "NC_CHAR", "height")
     RNetCDF::att.put.nc(nc, "height", "positive", "NC_CHAR", "up")
@@ -79,8 +91,11 @@ write_local_cmip6_netcdf_fixture <- function(path, year) {
     RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
 
     RNetCDF::var.put.nc(nc, "time", time, count = length(time))
+    RNetCDF::var.put.nc(nc, "time_bnds", time_bnds, count = dim(time_bnds))
     RNetCDF::var.put.nc(nc, "lat", lat, count = length(lat))
+    RNetCDF::var.put.nc(nc, "lat_bnds", lat_bnds, count = dim(lat_bnds))
     RNetCDF::var.put.nc(nc, "lon", lon, count = length(lon))
+    RNetCDF::var.put.nc(nc, "lon_bnds", lon_bnds, count = dim(lon_bnds))
     RNetCDF::var.put.nc(nc, "height", 2.0, count = 1L)
     RNetCDF::var.put.nc(nc, "tas", tas, count = dim(tas))
 

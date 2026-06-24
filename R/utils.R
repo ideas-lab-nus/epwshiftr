@@ -55,6 +55,14 @@ vb <- function(...) {
     paste0(...)
 }
 
+print_trunc <- function(x, n) {
+    if (is.null(n) || length(x) <= n) {
+        return(invisible(NULL))
+    }
+    cli::cat_line(sprintf("... and %i more", length(x) - n))
+    invisible(NULL)
+}
+
 with_silent <- function(expr) {
     old <- options("epwshiftr.verbose" = FALSE)
     on.exit(options(old), add = TRUE)
@@ -378,48 +386,218 @@ set_size_units <- function(x) {
     units::set_units(x, iec[power + 1L], mode = "standard")
 }
 
-#' Get the package data storage directory
+# store_is_abs_path {{{
+store_is_abs_path <- function(path) {
+    grepl("^(/|~|[A-Za-z]:[\\\\/]|\\\\\\\\)", path)
+}
+# }}}
+
+# store_normalize_path {{{
+store_normalize_path <- function(path) {
+    path <- path.expand(path)
+    if (file.exists(path)) {
+        return(normalizePath(path, winslash = "/", mustWork = TRUE))
+    }
+
+    parent <- dirname(path)
+    if (dir.exists(parent)) {
+        return(file.path(normalizePath(parent, winslash = "/", mustWork = TRUE), basename(path)))
+    }
+
+    normalizePath(path, winslash = "/", mustWork = FALSE)
+}
+# }}}
+
+#' Get the epwshiftr store directory
 #'
-#' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
-#' directory using [rappdirs::user_data_dir()].
+#' `store_dir()` returns the root directory used for persistent epwshiftr store
+#' artifacts, including query snapshots, dictionaries, sources, downloads,
+#' extracted data, generated outputs, and the DuckDB manifest.
 #'
-#' @param init If TRUE, the directory will be created if not exists.
-#' @param force If TRUE, issue an error if the directory does not exist.
+#' @param init If `TRUE`, create the directory when it does not exist.
 #'
 #' @return A single string indicating the directory location.
 #'
-#' @noRd
-.data_dir <- function(init = FALSE, force = TRUE) {
+#' @export
+store_dir <- function(init = TRUE) {
     checkmate::assert_flag(init)
-    checkmate::assert_flag(force)
 
-    d <- getOption("epwshiftr.dir", NULL)
-    if (is.null(d)) {
-        # nocov start
-        if (.Platform$OS.type == "windows") {
-            d <- normalizePath(rappdirs::user_data_dir(appauthor = "epwshiftr"), mustWork = FALSE)
-        } else {
-            d <- normalizePath(rappdirs::user_data_dir(appname = "epwshiftr"), mustWork = FALSE)
-        }
-        # nocov end
+    path <- getOption(
+        "epwshiftr.dir_store",
+        tools::R_user_dir("epwshiftr", "data")
+    )
+    checkmate::assert_string(path, min.chars = 1L)
 
-        if (init && !dir.exists(d)) {
-            verbose(sprintf("Creating %s package data storage directory '%s'", "epwshiftr", d))
-            dir.create(d, recursive = TRUE)
-        }
-    } else {
-        # make sure user specified directory exists
-        d <- normalizePath(d, mustWork = FALSE)
-        init <- FALSE
-        force <- TRUE
+    path <- store_normalize_path(path)
+    if (isTRUE(init) && !dir.exists(path)) {
+        verbose(sprintf("Creating epwshiftr store directory '%s'", path))
+        dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (isTRUE(init)) {
+        path <- store_normalize_path(path)
     }
 
-    if ((init || force) && !checkmate::test_directory_exists(d, "rw")) {
-        stop(sprintf("%s package data storage directory '%s' does not exists or is not writable.", "epwshiftr", d))
+    if (isTRUE(init) && !checkmate::test_directory_exists(path, "rw")) {
+        stop(sprintf("epwshiftr store directory '%s' does not exist or is not writable.", path), call. = FALSE)
     }
 
-    d
+    path
 }
+
+# store_path {{{
+store_path <- function(..., root = store_dir(init = TRUE)) {
+    parts <- c(list(root), list(...))
+    do.call(file.path, parts)
+}
+# }}}
+
+# store_abs_path {{{
+store_abs_path <- function(path, root = store_dir(init = TRUE)) {
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(root, min.chars = 1L)
+
+    if (store_is_abs_path(path)) {
+        return(store_normalize_path(path))
+    }
+    store_normalize_path(file.path(root, path))
+}
+# }}}
+
+# store_rel_path {{{
+store_rel_path <- function(path, root = store_dir(init = TRUE)) {
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(root, min.chars = 1L)
+
+    path <- store_abs_path(path, root)
+    root <- store_normalize_path(root)
+    root_prefix <- paste0(sub("/+$", "", root), "/")
+    if (identical(path, root)) {
+        return(".")
+    }
+    if (!startsWith(path, root_prefix)) {
+        stop(sprintf("Path '%s' is outside the epwshiftr store root '%s'.", path, root), call. = FALSE)
+    }
+    substring(path, nchar(root_prefix) + 1L)
+}
+# }}}
+
+# store_hash_file {{{
+store_hash_file <- function(path, algo = "sha256") {
+    checkmate::assert_file_exists(path, access = "r")
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    con <- file(path, "rb")
+    on.exit(close(con), add = TRUE)
+    if (identical(algo, "sha256")) {
+        paste0(openssl::sha256(con))
+    } else {
+        paste0(openssl::md5(con))
+    }
+}
+# }}}
+
+# store_write_json_atomic {{{
+store_write_json_atomic <- function(x, path, ...) {
+    checkmate::assert_string(path, min.chars = 1L)
+    path <- store_normalize_path(path)
+
+    dir <- dirname(path)
+    if (!dir.exists(dir)) {
+        dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    tmp <- tempfile(pattern = paste0(basename(path), "-"), tmpdir = dir)
+    on.exit(unlink(tmp, force = TRUE), add = TRUE)
+    jsonlite::write_json(x, tmp, ...)
+    if (!file.rename(tmp, path)) {
+        file.copy(tmp, path, overwrite = TRUE)
+        unlink(tmp, force = TRUE)
+    }
+    path
+}
+# }}}
+
+# store_cmip6_index_active_key {{{
+store_cmip6_index_active_key <- function() {
+    "active_cmip6_index_artifact_id"
+}
+# }}}
+
+# store_cmip6_index_dir {{{
+store_cmip6_index_dir <- function(init = TRUE) {
+    checkmate::assert_flag(init)
+    path <- store_path("queries", "cmip6-index", root = store_dir(init = init))
+    if (isTRUE(init)) {
+        dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    }
+    path
+}
+# }}}
+
+# store_cmip6_index_path {{{
+store_cmip6_index_path <- function(index_id, init = TRUE) {
+    checkmate::assert_string(index_id, min.chars = 1L)
+    file.path(store_cmip6_index_dir(init), sprintf("%s.csv", index_id))
+}
+# }}}
+
+# store_cmip6_index_save {{{
+store_cmip6_index_save <- function(index) {
+    checkmate::assert_data_table(index)
+
+    dir <- store_cmip6_index_dir(init = TRUE)
+    tmp <- tempfile(pattern = "cmip6-index-", tmpdir = dir, fileext = ".csv")
+    on.exit(unlink(tmp, force = TRUE), add = TRUE)
+    data.table::fwrite(index, tmp)
+
+    index_id <- store_hash_file(tmp)
+    path <- store_cmip6_index_path(index_id, init = TRUE)
+    if (!file.exists(path)) {
+        if (!file.rename(tmp, path)) {
+            ok <- file.copy(tmp, path, overwrite = TRUE)
+            if (!isTRUE(ok)) {
+                stop(sprintf("Failed to save CMIP6 index artifact to '%s'.", path), call. = FALSE)
+            }
+        }
+    }
+
+    store <- EsgStore$new(store_dir(init = TRUE))
+    on.exit(store$close(), add = TRUE)
+    artifact_id <- store$register_artifact(
+        kind = "cmip6_index",
+        path = path,
+        role = "input",
+        project = "CMIP6",
+        metadata = list(
+            rows = nrow(index),
+            columns = names(index)
+        )
+    )
+    store$set_meta(store_cmip6_index_active_key(), artifact_id)
+
+    path
+}
+# }}}
+
+# store_cmip6_index_active_path {{{
+store_cmip6_index_active_path <- function() {
+    root <- store_dir(init = FALSE)
+    if (!dir.exists(root)) {
+        return(NULL)
+    }
+
+    store <- EsgStore$new(root, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+    artifact_id <- store$get_meta(store_cmip6_index_active_key())
+    if (is.null(artifact_id) || is.na(artifact_id) || !nzchar(artifact_id)) {
+        return(NULL)
+    }
+
+    tryCatch(
+        store$artifact_path(artifact_id),
+        error = function(e) NULL
+    )
+}
+# }}}
 
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
@@ -469,6 +647,7 @@ utils::globalVariables(c(
     "index",
     "index_case",
     "institution_id",
+    "kind",
     "lat",
     "latitude",
     "location",
@@ -487,6 +666,7 @@ utils::globalVariables(c(
     "table_id",
     "title",
     "total_sky_cover",
+    "updated_at",
     "val_max",
     "val_mean",
     "val_min",
