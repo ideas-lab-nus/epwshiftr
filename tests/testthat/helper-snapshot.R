@@ -76,6 +76,7 @@ transform_print <- function(lines) {
 
     # replace date and data node
     # datasets
+    lines <- gsub("ssp[0-9]+", "sspXXX", lines)
     lines <- gsub("\\d{8}\\|\\w.+(,)?$", "20200202|esgf.data.node\\1", lines)
     # files
     lines <- gsub("(_g\\w+_)\\d{8}-\\d{8}\\.nc\\|\\w.+$", "\\120200101-20211231.nc|esgf.data.node", lines)
@@ -83,6 +84,7 @@ transform_print <- function(lines) {
     lines <- gsub("\\d{8}.aggregation.*?\\|\\w.+$", "20200101.aggregration|esgf.data.node", lines)
 
     # replace file size and access methods
+    lines <- gsub("^\\* Fields: [0-9]+ \\| \\[", "* Fields: XX | [", lines)
     # datasets
     lines <- gsub("\\d+ Files, \\d+\\.\\d+ [MG]iB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", lines)
     lines <- gsub("\\[ Access: <.+> \\]$", "[ Access: <...> ]", lines)
@@ -90,6 +92,10 @@ transform_print <- function(lines) {
     lines <- gsub("\\d+\\.\\d+ [MGT]iB \\| Access: <.+>", "XX MiB | Access: <...>", lines)
     # aggregations
     lines <- gsub("(<Unknown> Byte \\| Access: )<.+>", "\\1<...>", lines)
+
+    dataset_param <- grepl("^\\s+CMIP6\\.", lines)
+    duplicated_previous <- c(FALSE, lines[-1L] == lines[-length(lines)])
+    lines <- lines[!(dataset_param & duplicated_previous)]
 
     lines
 }

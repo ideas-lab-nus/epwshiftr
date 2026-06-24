@@ -1,4 +1,8 @@
-test_that("esgf_query()", {
+test_that("esgf_query() compatibility wrapper", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     options(epwshiftr.verbose = FALSE)
     # Dataset query
     expect_s3_class(
@@ -10,25 +14,43 @@ test_that("esgf_query()", {
     if (nrow(qd)) {
         fq_qd <- unlist(attr(qd, "response")$responseHeader$params$fq)
         expect_true(
-            all(c("type:Dataset",
-              "project:\"CMIP6\"",
-              "activity_id:\"ScenarioMIP\"",
-              "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-              "source_id:\"EC-Earth3\"",
-              "variable_id:\"tas\"",
-              "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-              "frequency:\"day\"",
-              "replica:false",
-              "latest:true",
-              "variant_label:\"r1i1p1f1\""
-            ) %in% fq_qd)
+            all(
+                c(
+                    "type:Dataset",
+                    "project:\"CMIP6\"",
+                    "activity_id:\"ScenarioMIP\"",
+                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
+                    "source_id:\"EC-Earth3\"",
+                    "variable_id:\"tas\"",
+                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
+                    "frequency:\"day\"",
+                    "replica:false",
+                    "latest:true",
+                    "variant_label:\"r1i1p1f1\""
+                ) %in%
+                    fq_qd
+            )
         )
-        expect_named(qd,
+        expect_named(
+            qd,
             c(
-                "dataset_id", "mip_era", "activity_drs", "institution_id", "source_id",
-                "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-                "version", "nominal_resolution", "variable_id", "variable_long_name",
-                "variable_units", "data_node", "dataset_pid"
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "data_node",
+                "dataset_pid"
             )
         )
     }
@@ -43,26 +65,48 @@ test_that("esgf_query()", {
     if (nrow(qf)) {
         fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
         expect_true(
-            all(c("type:File",
-              "project:\"CMIP6\"",
-              "activity_id:\"ScenarioMIP\"",
-              "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-              "source_id:\"EC-Earth3\"",
-              "variable_id:\"tas\"",
-              "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-              "frequency:\"day\"",
-              "replica:false",
-              "latest:true",
-              "variant_label:\"r1i1p1f1\""
-            ) %in% fq_qf)
+            all(
+                c(
+                    "type:File",
+                    "project:\"CMIP6\"",
+                    "activity_id:\"ScenarioMIP\"",
+                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
+                    "source_id:\"EC-Earth3\"",
+                    "variable_id:\"tas\"",
+                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
+                    "frequency:\"day\"",
+                    "replica:false",
+                    "latest:true",
+                    "variant_label:\"r1i1p1f1\""
+                ) %in%
+                    fq_qf
+            )
         )
-        expect_named(qf,
+        expect_named(
+            qf,
             c(
-                "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-                "source_id", "experiment_id", "member_id", "table_id", "frequency", 
-                "grid_label", "version", "nominal_resolution", "variable_id",
-                "variable_long_name", "variable_units", "datetime_start",
-                "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
+                "file_id",
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "datetime_start",
+                "datetime_end",
+                "file_size",
+                "data_node",
+                "file_url",
+                "tracking_id"
             )
         )
     }
@@ -76,27 +120,54 @@ test_that("esgf_query()", {
 })
 
 test_that("init_cmip6_index()", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     options(epwshiftr.dir = tempdir())
 
     # can return if no data has been found
     expect_s3_class(init_cmip6_index(resolution = "1 m"), "data.table")
 
     expect_s3_class(
-        idx <- init_cmip6_index(variable = "tas", source = "EC-Earth3",
-            experiment = "ssp585", years = 2060, limit = 1, save = TRUE
+        idx <- init_cmip6_index(
+            variable = "tas",
+            source = "EC-Earth3",
+            experiment = "ssp585",
+            years = 2060,
+            limit = 1,
+            save = TRUE
         ),
         "data.table"
     )
 
     # only check when LLNL ESGF node works
     if (nrow(idx)) {
-        expect_equal(names(idx),
+        expect_equal(
+            names(idx),
             c(
-                "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-                "source_id", "experiment_id", "member_id", "table_id", "frequency",
-                "grid_label", "version", "nominal_resolution", "variable_id",
-                "variable_long_name", "variable_units", "datetime_start",
-                "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
+                "file_id",
+                "dataset_id",
+                "mip_era",
+                "activity_drs",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "member_id",
+                "table_id",
+                "frequency",
+                "grid_label",
+                "version",
+                "nominal_resolution",
+                "variable_id",
+                "variable_long_name",
+                "variable_units",
+                "datetime_start",
+                "datetime_end",
+                "file_size",
+                "data_node",
+                "file_url",
+                "dataset_pid",
                 "tracking_id"
             )
         )
@@ -105,6 +176,10 @@ test_that("init_cmip6_index()", {
 })
 
 test_that("load_cmip6_index()", {
+    old_warned <- this$esgf_query_deprecated_warned
+    this$esgf_query_deprecated_warned <- TRUE
+    withr::defer(this$esgf_query_deprecated_warned <- old_warned)
+
     skip_on_cran()
 
     dir <- file.path(tempdir(), "test1")
@@ -124,8 +199,12 @@ test_that("load_cmip6_index()", {
 
     expect_s3_class(
         idx <- init_cmip6_index(
-            variable = "tas", source = "EC-Earth3", years = 2060,
-            experiment = "ssp585", limit = 1, save = TRUE
+            variable = "tas",
+            source = "EC-Earth3",
+            years = 2060,
+            experiment = "ssp585",
+            limit = 1,
+            save = TRUE
         ),
         "data.table"
     )
@@ -169,13 +248,52 @@ test_that("get_data_dir()", {
     }
 })
 
-test_that("get_data_node()", {
+test_that("data_node_status()", {
+    response <- list(
+        status = "success",
+        data = list(
+            result = list(
+                metric = list(instance = "example.org"),
+                value = list(c("0", "1"))
+            )
+        )
+    )
+
+    testthat::local_mocked_bindings(
+        normalize_index_node = function(index_node, raw = TRUE) {
+            expect_true(raw)
+            list(url = "https://example.org", path = "/esgf-1-5-bridge")
+        },
+        with_url_cache = function(name, url, fn, validate) {
+            expect_identical(name, "datanode")
+            expect_identical(url, "https://example.org/proxy/status")
+            res <- fn()
+            expect_true(validate(res))
+            res
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        fromJSON = function(url) {
+            expect_identical(url, "https://example.org/proxy/status")
+            response
+        },
+        .package = "jsonlite"
+    )
+
+    node <- expect_s3_class(data_node_status(), "data.table")
+    expect_named(node, c("data_node", "status"))
+    expect_identical(node$data_node, "example.org")
+    expect_identical(node$status, "UP")
+})
+
+test_that("data_node_status() live query", {
     skip_on_cran()
 
-    expect_s3_class(node <- get_data_node(), "data.table")
+    node <- expect_s3_class(data_node_status(), "data.table")
     expect_named(node, c("data_node", "status"))
 
     # can test speed using pingr
-    expect_s3_class(node <- get_data_node(TRUE, 1), "data.table")
+    node <- expect_s3_class(data_node_status(TRUE, 1), "data.table")
     expect_named(node, c("data_node", "status", "ping"))
 })

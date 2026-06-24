@@ -21,13 +21,18 @@ Description:
     <https://energyplus.net> Weather ('EPW') files adjusted from climate changes
     using data from Global Climate Models ('GCM').
 Imports:
+    abind,
     checkmate (>= 2.0.0),
     cli (>= 3.4.0),
+    CFtime,
+    curl,
     data.table (>= 1.12.4),
     eplusr (>= 0.15.2),
     fst,
     future.apply,
     jsonlite,
+    mirai,
+    openssl,
     PCICt,
     progressr,
     psychrolib,
@@ -38,8 +43,6 @@ Imports:
     units
 Suggests:
     testthat (>= 3.0.0),
-    curl,
-    mockery,
     withr,
     pingr,
     knitr,
@@ -53,7 +56,9 @@ RoxygenNote: 7.3.3
 Collate:
     'cache.R'
     'coord.R'
+    'dataset.R'
     'dict.R'
+    'downloader.R'
     'utils.R'
     'epwshiftr-package.R'
     'esgf.R'
@@ -63,6 +68,7 @@ Collate:
     'query-result.R'
     'query.R'
     'schema.R'
+    'utils-solrdt.R'
     'zzz.R'
 VignetteBuilder: knitr
 Config/testthat/start-first: utils, esgf, coord, netcdf, morph
