@@ -19,7 +19,8 @@ esgf_query(
   resolution = c("100 km", "50 km"),
   type = "Dataset",
   limit = 10000L,
-  data_node = NULL
+  data_node = NULL,
+  host = "http://esgf-node.llnl.gov/esg-search"
 )
 }
 \arguments{
@@ -138,6 +139,12 @@ Should be <= 10,000. Default: \code{10000}.}
 
 \item{data_node}{A character vector indicating data nodes to be queried.
 Default to \code{NULL}, which means all possible data nodes.}
+
+\item{host}{The URL to the ESGF Search API service. This should be the URL of
+the ESGF search service excluding the final endpoint name. Usually
+this is \verb{http://<hostname>/esg-search}. Default is set to the
+\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
+which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with an attribute named \code{response} which
