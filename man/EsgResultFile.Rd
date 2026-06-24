@@ -30,7 +30,9 @@ files.}
 \item{\code{url_download}}{A character vector of the download URLs of the
 files.}
 
-\item{\code{fields}}{A character vector indicating all fields in the results.}
+\item{\code{fields}}{A character vector indicating all response fields,
+followed by derived fields such as \code{filename}, \code{url_opendap}
+and \code{url_download} when their source fields are available.}
 }
 \if{html}{\out{</div>}}
 }
@@ -38,6 +40,7 @@ files.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgResultFile-to_data_table}{\code{EsgResultFile$to_data_table()}}
+\item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
 \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
 \item \href{#method-EsgResultFile-open_dataset}{\code{EsgResultFile$open_dataset()}}
 \item \href{#method-EsgResultFile-clone}{\code{EsgResultFile$clone()}}
@@ -50,6 +53,7 @@ files.}
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
@@ -65,9 +69,9 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+\item{\code{fields}}{A non-empty character vector indicating the fields to
+put into the \code{data.table}. If \code{NULL}, all fields in the query
+result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
@@ -76,6 +80,44 @@ including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-filter_time"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-filter_time}{}}}
+\subsection{Method \code{filter_time()}}{
+Filter file records by the time range covered by each file
+
+\code{method = "drs"} parses the time range from CMIP/DRS-style NetCDF
+filenames in \code{title}, URL basenames, or \code{id}. This is fast and does
+not open files, but it depends on the ESGF filename convention.
+Records whose time range cannot be parsed are kept and reported with
+a warning.
+
+\code{method = "opendap"} opens each OPeNDAP URL and reads the NetCDF
+time axis to determine the file range. This is more exact, but much
+slower and requires OPeNDAP access.
+
+The requested time filter is recorded on the returned result and is
+carried into \code{EsgDataset$read_region()} when a dataset is opened from
+the filtered result.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
+\code{POSIXt} inputs are accepted and parsed in UTC.}
+
+\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
+\code{"opendap"}. Default: \code{"drs"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultFile} object.
 }
 }
 \if{html}{\out{<hr>}}
@@ -105,19 +147,31 @@ The \code{EsgResultFile} object itself, invisibly.
 \subsection{Method \code{open_dataset()}}{
 Open a file as an EsgDataset for remote data access via OPeNDAP
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(index = 1L, fallback = c("ask", "auto", "error"))}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(
+  which = NULL,
+  aggregate = TRUE,
+  fallback = c("ask", "auto", "error")
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{index}}{Integer index of the file to open. Default: \code{1L}.}
+\item{\code{which}}{File records to open. Use integer indices or file IDs.
+If \code{NULL}, all file records are opened when \code{aggregate = TRUE}
+and the first record is opened when \code{aggregate = FALSE}.
+Default: \code{NULL}.}
+
+\item{\code{aggregate}}{Whether to open multiple selected files as one
+aggregated \link{EsgDataset}. If \code{FALSE}, exactly one file record
+must be selected. Default: \code{TRUE}.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{
-\item \code{"ask"}: Interactively ask the user (default)
-\item \code{"auto"}: Automatically download the file
-\item \code{"error"}: Raise an error
+\item \code{"ask"}: Interactively ask the user (default). In a
+non-interactive session this raises an error.
+\item \code{"auto"}: Automatically download the file via HTTPServer.
+\item \code{"error"}: Raise an error.
 }}
 }
 \if{html}{\out{</div>}}

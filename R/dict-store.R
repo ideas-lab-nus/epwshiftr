@@ -93,19 +93,17 @@ esgdict__save <- function(
     timestamps = NULL,
     sources = NULL,
     indices = NULL,
-    dir = getOption("epwshiftr.dir", "."),
-    file = "CMIP6DICT.json"
+    path
 ) {
     project <- esgdict__normalize_project(project)
     profile <- esgdict__profile(project)
-    checkmate::assert_string(file, min.chars = 1L)
+    checkmate::assert_string(path, min.chars = 1L)
 
-    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
-    path <- normalizePath(file.path(dir, file), mustWork = FALSE)
+    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
     payload <- esgdict__payload(project, profile, built_time, data, version, timestamps, sources, indices)
     schema_validate(SCHEMA_ESG_DICT, payload, mode = "assert", name = path)
     esgdict__validate_payload(payload, name = path)
-    jsonlite::write_json(payload, path,
+    store_write_json_atomic(payload, path,
         auto_unbox = TRUE,
         pretty = TRUE,
         null = "null",
@@ -114,11 +112,11 @@ esgdict__save <- function(
     path
 }
 
-esgdict__load <- function(dir = getOption("epwshiftr.dir", "."), file = "CMIP6DICT.json", project = "CMIP6") {
+esgdict__load <- function(path, project = "CMIP6") {
     project <- esgdict__normalize_project(project)
-    checkmate::assert_string(file, min.chars = 1L)
+    checkmate::assert_string(path, min.chars = 1L)
 
-    path <- normalizePath(file.path(dir, file), mustWork = FALSE)
+    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
     if (!file.exists(path)) return(NULL)
 
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)

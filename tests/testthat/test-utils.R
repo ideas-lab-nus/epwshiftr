@@ -215,18 +215,34 @@ test_that("set_size_units()", {
 })
 
 
-test_that(".data_dir()", {
-    options("epwshiftr.verbose" = FALSE)
+test_that("store_dir() resolves and creates the persistent store root", {
+    root <- tempfile("epwshiftr-store-")
+    withr::local_options(list(epwshiftr.dir_store = root, epwshiftr.verbose = FALSE))
 
-    # can stop if user specified data directory did not exist
-    options("epwshiftr.dir" = file.path(tempdir(), "test"))
-    expect_error(.data_dir())
+    expect_false(dir.exists(root))
+    expect_identical(store_dir(init = FALSE), store_normalize_path(root))
+    expect_true(dir.exists(store_dir()))
+    expect_identical(store_dir(), store_normalize_path(root))
+})
 
-    # can create data dir if not exists in the user home
-    skip_on_cran()
-    options("epwshiftr.dir" = NULL)
-    if (dir.exists(.data_dir(force = FALSE))) {
-        unlink(.data_dir(force = FALSE), recursive = TRUE)
-    }
-    expect_true(dir.exists(.data_dir(init = TRUE, force = TRUE)))
+test_that("store path helpers keep paths inside the store", {
+    root <- tempfile("epwshiftr-store-")
+    withr::local_options(list(epwshiftr.dir_store = root))
+
+    path <- store_cmip6_index_path(strrep("a", 64L))
+    expect_identical(store_rel_path(path), sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L)))
+    expect_identical(store_abs_path(sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))), path)
+    expect_error(store_rel_path(tempfile()), "outside")
+})
+
+test_that("store_write_json_atomic() writes valid JSON", {
+    root <- tempfile("epwshiftr-store-")
+    withr::local_options(list(epwshiftr.dir_store = root))
+
+    path <- store_path("queries", "payload.json")
+    expect_identical(
+        store_write_json_atomic(list(a = 1L), path, auto_unbox = TRUE),
+        normalizePath(path, winslash = "/", mustWork = FALSE)
+    )
+    expect_identical(jsonlite::read_json(path, simplifyVector = TRUE)$a, 1L)
 })

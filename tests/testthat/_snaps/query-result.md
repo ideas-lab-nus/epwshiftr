@@ -8,7 +8,7 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
-      * Fields: XX | [ access, activity_id, experiment_id, frequency, id, index_node,
+      * Fields: XX | [ id, access, activity_id, experiment_id, frequency, index_node,
         number_of_files, project, size, source_id, variable_id, and variant_label ]
       
       -- <Query Parameter> -----------------------------------------------------------
@@ -18,7 +18,7 @@
       * variable_id=tas
       * frequency=day
       * variant_label=r1i1p1f1
-      * fields=source_id,experiment_id,frequency
+      * fields=source_id,experiment_id,frequency,access,id,index_node,number_of_aggregations,number_of_files,size,url,project,activity_id,variable_id,variant_label
       * latest=true
       * type=Dataset
       * offset=0
@@ -47,15 +47,23 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
       * Total size: XX [GiB]
-      * Fields: XX | [ _timestamp, _version_, activity_drs, activity_id,
-        cf_standard_name, checksum, checksum_type, citation_url, data_node,
-        data_specs_version, dataset_id, dataset_id_template_,
-        directory_format_template_, experiment_id, experiment_title, filename,
-        frequency, further_info_url, ..., variant_label, and version ]
+      * Fields: XX | [ id, version, activity_drs, activity_id, cf_standard_name,
+        checksum, checksum_type, citation_url, data_node, data_specs_version,
+        dataset_id, dataset_id_template_, directory_format_template_, experiment_id,
+        experiment_title, frequency, further_info_url, grid, ..., url_opendap, and
+        url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * activity_id=ScenarioMIP
+      * experiment_id=sspXXX
+      * source_id=AWI-CM-1-1-MR
+      * variable_id=tas
+      * frequency=day
+      * variant_label=r1i1p1f1
       * latest=true
       * type=File
+      * offset=0
       * distrib=true
       * limit=1
       * format=application%2Fsolr%2Bjson
@@ -78,13 +86,14 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: <Unknown> [Byte]
-      * Fields: XX | [ data_node, dataset_id, id, size, title, url, url_download, and
-        url_opendap ]
+      * Fields: XX | [ id, data_node, dataset_id, size, title, url, url_opendap, and
+        url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * fields=id
+      * fields=id,data_node,dataset_id,size,title,url
       * latest=true
       * type=Aggregation
+      * offset=0
       * distrib=true
       * limit=2
       * format=application%2Fsolr%2Bjson

@@ -72,6 +72,7 @@ reference:
   - title: Data extraction
     desc: Extract CMIP6 data based on EPW
     contents:
+      - EsgStore
       - match_coord
       - extract_data
 
@@ -83,4 +84,4 @@ reference:
   - title: epwshiftr Options
     contents:
       - epwshiftr-package
-      - get_data_dir
+      - store_dir

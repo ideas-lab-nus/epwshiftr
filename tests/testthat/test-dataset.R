@@ -375,6 +375,114 @@ test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like 
     expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
 })
 
+test_that("EsgDataset read_region() reads nearest grid cells and time windows", {
+    path1 <- tempfile(fileext = ".nc")
+    path2 <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path1, 2060L)
+    write_local_cmip6_netcdf_fixture(path2, 2061L)
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    dt <- ds$read_region(
+        variable = "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        nearest = 2L
+    )
+    expect_s3_class(dt, "data.table")
+    expect_named(dt, c("file_index", "variable", "time", "lon", "lat", "dist", "value"))
+    expect_identical(unique(dt$file_index), 1L)
+    expect_identical(unique(dt$variable), "tas")
+    expect_equal(nrow(dt), 4L)
+    expect_equal(
+        sort(unique(as.Date(dt$time))),
+        as.Date(c("2060-01-02", "2060-01-03"))
+    )
+
+    coords <- data.table::CJ(lat = c(1.0, 2.0, 41.0), lon = c(103.5, 104.0, 104.5, 254.0))
+    coords[, dist := local_tunnel_dist(lat, lon, 1.37, 103.98)]
+    data.table::setorder(coords, dist)
+    expected_coords <- coords[1:2, .(lat, lon)]
+    got_coords <- unique(dt[, .(lat, lon)])
+    data.table::setorder(got_coords, lat, lon)
+    data.table::setorder(expected_coords, lat, lon)
+    expect_equal(got_coords, expected_coords)
+
+    dt_list <- ds$read_region(
+        variable = "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        nearest = 1L,
+        rbind = FALSE
+    )
+    expect_type(dt_list, "list")
+    expect_length(dt_list, 2L)
+    expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
+
+    dt_neg_lon <- ds$read_region(
+        variable = "tas",
+        lon = -106,
+        lat = 41,
+        time = c("2060-01-01T00:00:00Z", "2060-01-01T23:59:59Z"),
+        nearest = 1L
+    )
+    expect_identical(unique(dt_neg_lon$lon), 254)
+    expect_identical(unique(dt_neg_lon$lat), 41)
+
+    expect_error(
+        ds$read_region("hurs", lon = 103.98, lat = 1.37),
+        "None of the requested variable"
+    )
+})
+
+test_that("EsgDataset read_region() reuses recorded result time filters by default", {
+    path1 <- tempfile(fileext = ".nc")
+    path2 <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path1, 2060L)
+    write_local_cmip6_netcdf_fixture(path2, 2061L)
+    on.exit(unlink(c(path1, path2)), add = TRUE)
+
+    ds <- EsgDataset$new(c(path1, path2))
+    esg_dataset_set_context(ds, list(time_filter = list(
+        start = "2060-01-02T00:00:00Z",
+        stop = "2060-01-03T23:59:59Z",
+        method = "drs"
+    )))
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_identical(ds$time_filter$method, "drs")
+
+    dt_default <- ds$read_region("tas", lon = 103.98, lat = 1.37)
+    dt_auto <- ds$read_region("tas", lon = 103.98, lat = 1.37, time = "auto")
+    expect_equal(dt_default, dt_auto)
+    expect_identical(unique(dt_auto$file_index), 1L)
+    expect_equal(
+        sort(unique(as.Date(dt_auto$time))),
+        as.Date(c("2060-01-02", "2060-01-03"))
+    )
+
+    dt_all <- ds$read_region("tas", lon = 103.98, lat = 1.37, time = NULL)
+    expect_true(nrow(dt_all) > nrow(dt_auto))
+    expect_identical(sort(unique(dt_all$file_index)), c(1L, 2L))
+
+    expect_warning(
+        dt_outside <- ds$read_region(
+            "tas",
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2061-01-01T00:00:00Z", "2061-01-02T23:59:59Z")
+        ),
+        "extends outside"
+    )
+    expect_identical(unique(dt_outside$file_index), 2L)
+})
+
 test_that("EsgDataset public async open keeps the dataset opened after return", {
     skip_dataset_async_on_covr()
 
@@ -568,6 +676,69 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     expect_identical(private$async_state, "failed")
     expect_null(private$async_task)
     expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
+})
+
+test_that("EsgDataset internal helpers transfer partially opened handles", {
+    path_opened <- local_dataset_table_file(
+        time_vals = c(0, 1),
+        time_units = "days since 2000-01-01 00:00:00",
+        tas_vals = c(11, 12)
+    )
+    path_pending <- local_dataset_table_file(
+        time_vals = c(2, 3),
+        time_units = "days since 2000-01-03 00:00:00",
+        tas_vals = c(13, 14)
+    )
+    on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
+
+    expect_error(EsgDataset$new(path_opened, nc_handles = list(NULL)), "unused argument")
+
+    source <- EsgDataset$new(path_opened)
+    source$open()
+    handles <- esg_dataset_detach_handles(source)
+    on.exit(esg_dataset_close_handles(path_opened, handles), add = TRUE)
+    source_private <- source$.__enclos_env__$private
+
+    expect_false(source$is_open)
+    expect_true(all(vapply(source_private$nc_handles, is.null, logical(1L))))
+
+    ds <- EsgDataset$new(c(path_opened, path_pending))
+    esg_dataset_adopt_handles(ds, list(handles[[1L]], NULL))
+    handles <- vector("list", length(handles))
+    private <- ds$.__enclos_env__$private
+    on.exit(ds$close(), add = TRUE)
+
+    expect_false(ds$is_open)
+    expect_false(is.null(private$nc_handles[[1L]]))
+    expect_null(private$nc_handles[[2L]])
+
+    ds$open()
+
+    expect_true(ds$is_open)
+    expect_false(is.null(private$nc_handles[[1L]]))
+    expect_false(is.null(private$nc_handles[[2L]]))
+    expect_equal(as.numeric(ds$var_get("tas", index = 1L)), c(11, 12))
+    expect_equal(as.numeric(ds$var_get("tas", index = 2L)), c(13, 14))
+
+    ds$close()
+    expect_false(ds$is_open)
+    expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
+
+    missing_path <- tempfile(fileext = ".nc")
+    if (file.exists(missing_path)) {
+        unlink(missing_path)
+    }
+    failing_source <- EsgDataset$new(path_opened)
+    failing_source$open()
+    failing_handles <- esg_dataset_detach_handles(failing_source)
+    failing <- EsgDataset$new(c(path_opened, missing_path))
+    esg_dataset_adopt_handles(failing, list(failing_handles[[1L]], NULL))
+    failing_handles <- vector("list", length(failing_handles))
+    failing_private <- failing$.__enclos_env__$private
+
+    expect_error(failing$open(), "Failed to open OPeNDAP connection")
+    expect_false(failing$is_open)
+    expect_true(all(vapply(failing_private$nc_handles, is.null, logical(1L))))
 })
 
 test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {

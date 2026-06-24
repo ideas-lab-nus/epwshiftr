@@ -192,7 +192,6 @@ EsgDataset <- R6::R6Class(
         #'
         #' @param urls A character vector of OPeNDAP URLs. Can be a single URL
         #'        or multiple URLs for a multi-file dataset.
-        #'
         #' @return An `EsgDataset` object.
         #'
         #' @examples
@@ -207,11 +206,10 @@ EsgDataset <- R6::R6Class(
             checkmate::assert_character(urls, any.missing = FALSE, min.len = 1L)
 
             private$urls <- urls
-            private$opened <- FALSE
             private$metadata_cache <- list()
-
-            # Initialize file handles list
+            private$opened <- FALSE
             private$nc_handles <- vector("list", length(urls))
+            private$context <- list()
 
             self
         },
@@ -674,6 +672,102 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # read_region {{{
+        #' @description
+        #' Read variable values near a target coordinate and optional time range
+        #'
+        #' @param variable Character vector of variable names.
+        #' @param lon Target longitude.
+        #' @param lat Target latitude.
+        #' @param time Time range to read. Use `"auto"` to reuse the time
+        #'        range recorded by `EsgResultFile$filter_time()` or
+        #'        `EsgResultAggregation$filter_time()` when available; if no
+        #'        recorded range exists, all times are read. Use `NULL` to
+        #'        always read the full time axis. A length-2 character,
+        #'        `Date`, or `POSIXt` range is parsed in UTC and used
+        #'        explicitly. Default: `"auto"`.
+        #' @param nearest Number of nearest grid cells to keep. Default: `1L`.
+        #' @param rbind If `TRUE`, return one data.table. If `FALSE`, return a
+        #'        list of per-file, per-variable data.tables. Default: `TRUE`.
+        #' @param async If `TRUE`, offload each NetCDF variable read to a
+        #'        one-shot worker. Default: `FALSE`.
+        #' @param timeout Optional positive number of seconds for each async
+        #'        read. Only supported when `async = TRUE`.
+        #'
+        #' @return A data.table or list of data.tables with columns including
+        #' `file_index`, `variable`, `time`, `lon`, `lat`, `dist`, and `value`.
+        #'
+        #' @examples
+        #' \dontrun{
+        #' dt <- ds$read_region(
+        #'     variable = c("tas", "hurs"),
+        #'     lon = 103.98,
+        #'     lat = 1.37,
+        #'     time = c("2050-01-01", "2050-12-31")
+        #' )
+        #' }
+        read_region = function(variable, lon, lat, time = "auto", nearest = 1L,
+                               rbind = TRUE, async = FALSE, timeout = NULL) {
+            checkmate::assert_character(variable, any.missing = FALSE, min.len = 1L, unique = TRUE)
+            checkmate::assert_number(lon, lower = -180, upper = 360, finite = TRUE)
+            checkmate::assert_number(lat, lower = -90, upper = 90, finite = TRUE)
+            checkmate::assert_int(nearest, lower = 1L)
+            checkmate::assert_flag(rbind)
+            private$validate_async_request(async, timeout)
+            private$check_open()
+
+            time <- private$normalize_region_time(time)
+
+            pieces <- list()
+            found <- stats::setNames(rep(FALSE, length(variable)), variable)
+
+            for (i in seq_along(private$urls)) {
+                for (var in variable) {
+                    chunk <- private$read_region_one(
+                        variable = var,
+                        lon = lon,
+                        lat = lat,
+                        time = time,
+                        nearest = nearest,
+                        index = i,
+                        async = async,
+                        timeout = timeout
+                    )
+                    if (is.null(chunk)) {
+                        next
+                    }
+
+                    found[[var]] <- TRUE
+                    pieces[[length(pieces) + 1L]] <- chunk
+                }
+            }
+
+            missing <- names(found)[!found]
+            if (length(missing) == length(found)) {
+                stop(sprintf(
+                    "None of the requested variable(s) were found in the dataset: [%s].",
+                    paste(sprintf("'%s'", missing), collapse = ", ")
+                ), call. = FALSE)
+            }
+            if (length(missing)) {
+                warning(sprintf(
+                    "The following variable(s) were not found in any file and were skipped: [%s].",
+                    paste(sprintf("'%s'", missing), collapse = ", ")
+                ), call. = FALSE)
+            }
+
+            if (!length(pieces)) {
+                empty <- private$empty_region_data_table()
+                return(if (isTRUE(rbind)) empty else list())
+            }
+            if (!isTRUE(rbind)) {
+                return(pieces)
+            }
+
+            data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+        },
+        # }}}
+
         # print {{{
         #' @description
         #' Print dataset summary
@@ -727,6 +821,20 @@ EsgDataset <- R6::R6Class(
         #' @field file_count Number of files in the dataset
         file_count = function() {
             length(private$urls)
+        },
+        # }}}
+
+        # time_filter {{{
+        #' @field time_filter A result-level time filter recorded by
+        #'        `EsgResultFile$filter_time()` or
+        #'        `EsgResultAggregation$filter_time()`, or `NULL`.
+        time_filter = function() {
+            ctx <- private$context$time_filter
+            if (is.null(ctx) || !length(ctx)) {
+                return(NULL)
+            }
+
+            ctx
         }
         # }}}
     ),
@@ -736,9 +844,53 @@ EsgDataset <- R6::R6Class(
         nc_handles = NULL,
         opened = FALSE,
         metadata_cache = NULL,
+        context = list(),
         async_task = NULL,
         async_state = "idle",
         async_sequence = 0L,
+
+        # normalize_region_time {{
+        normalize_region_time = function(time) {
+            context <- private$context$time_filter
+            context_range <- NULL
+            if (!is.null(context) && length(context$start) && length(context$stop)) {
+                context_range <- parse_datetime(c(context$start, context$stop), tz = "UTC")
+                if (any(is.na(context_range)) || context_range[[2L]] < context_range[[1L]]) {
+                    context_range <- NULL
+                }
+            }
+
+            if (identical(time, "auto")) {
+                return(context_range)
+            }
+            if (is.null(time)) {
+                return(NULL)
+            }
+            if (is.character(time) && length(time) == 1L && identical(tolower(time), "auto")) {
+                return(context_range)
+            }
+
+            if (length(time) != 2L) {
+                stop("`time` must be 'auto', `NULL`, or a length-2 range.", call. = FALSE)
+            }
+            time <- parse_datetime(time, tz = "UTC")
+            if (any(is.na(time))) {
+                stop("`time` contains values that cannot be parsed as datetimes.", call. = FALSE)
+            }
+            if (time[[2L]] < time[[1L]]) {
+                stop("`time` end must be greater than or equal to `time` start.", call. = FALSE)
+            }
+
+            if (!is.null(context_range) && (time[[1L]] < context_range[[1L]] || time[[2L]] > context_range[[2L]])) {
+                warning(
+                    "The explicit `time` range extends outside the result-level time filter recorded on this dataset; the explicit range is still used.",
+                    call. = FALSE
+                )
+            }
+
+            time
+        },
+        # }}}
 
         # get_var_dim_meta {{
         # NOTE: `start`/`count` are in NetCDF dimension order.
@@ -811,6 +963,9 @@ EsgDataset <- R6::R6Class(
             tryCatch(
                 {
                     for (i in seq_along(private$urls)) {
+                        if (!is.null(private$nc_handles[[i]])) {
+                            next
+                        }
                         private$nc_handles[[i]] <- RNetCDF::open.nc(private$urls[[i]])
                     }
                     private$opened <- TRUE
@@ -1035,6 +1190,159 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # empty_region_data_table {{{
+        empty_region_data_table = function() {
+            data.table::data.table(
+                file_index = integer(),
+                variable = character(),
+                time = as.POSIXct(character(), tz = "UTC"),
+                lon = numeric(),
+                lat = numeric(),
+                dist = numeric(),
+                value = numeric()
+            )
+        },
+        # }}}
+
+        # normalize_lon_for_grid {{{
+        normalize_lon_for_grid = function(lon, grid_lon) {
+            grid_lon <- grid_lon[!is.na(grid_lon)]
+            if (!length(grid_lon)) {
+                return(lon)
+            }
+            if (min(grid_lon) >= 0 && lon < 0) {
+                return((lon + 360) %% 360)
+            }
+            if (max(grid_lon) <= 180 && lon > 180) {
+                return(((lon + 180) %% 360) - 180)
+            }
+            lon
+        },
+        # }}}
+
+        # read_region_one {{{
+        read_region_one = function(variable, lon, lat, time, nearest, index,
+                                   async = FALSE, timeout = NULL) {
+            meta <- tryCatch(
+                private$get_var_dim_meta(variable, index = index),
+                error = function(e) NULL
+            )
+            if (is.null(meta)) {
+                return(NULL)
+            }
+
+            required_dims <- c("time", "lat", "lon")
+            missing_dims <- setdiff(required_dims, meta$names)
+            if (length(missing_dims)) {
+                stop(sprintf(
+                    "Variable '%s' in file index %d is missing required dimension(s): [%s].",
+                    variable,
+                    index,
+                    paste(sprintf("'%s'", missing_dims), collapse = ", ")
+                ), call. = FALSE)
+            }
+
+            extra_dims <- setdiff(meta$names, required_dims)
+            if (length(extra_dims)) {
+                extra_lengths <- meta$lengths[match(extra_dims, meta$names)]
+                if (any(extra_lengths != 1L)) {
+                    stop(sprintf(
+                        "Variable '%s' in file index %d has unsupported non-spatiotemporal dimension(s): [%s].",
+                        variable,
+                        index,
+                        paste(sprintf("'%s'", extra_dims[extra_lengths != 1L]), collapse = ", ")
+                    ), call. = FALSE)
+                }
+            }
+
+            time_axis <- self$get_time_axis(index = index)$values
+            time_idx <- if (is.null(time)) {
+                seq_along(time_axis)
+            } else {
+                base::which(time_axis >= time[[1L]] & time_axis <= time[[2L]])
+            }
+            if (!length(time_idx)) {
+                return(private$empty_region_data_table())
+            }
+
+            grid <- self$get_spatial_grid(index = index)
+            if (is.null(grid$lat) || is.null(grid$lon)) {
+                stop(sprintf("File index %d does not expose both 'lat' and 'lon' coordinate variables.", index), call. = FALSE)
+            }
+            grid_lat <- as.vector(grid$lat)
+            grid_lon <- as.vector(grid$lon)
+            target_lon <- private$normalize_lon_for_grid(lon, grid_lon)
+
+            coords <- data.table::CJ(
+                ind_lat = seq_along(grid_lat),
+                ind_lon = seq_along(grid_lon)
+            )
+            coords[, `:=`(
+                lat = grid_lat[ind_lat],
+                lon = grid_lon[ind_lon],
+                dist = tunnel_dist(grid_lat[ind_lat], grid_lon[ind_lon], lat, target_lon)
+            )]
+            data.table::setorder(coords, dist)
+            coords <- coords[seq_len(min(nearest, .N))]
+
+            dim_index <- function(name) match(name, meta$names)
+            selected <- list(
+                time = time_idx,
+                lat = coords$ind_lat,
+                lon = coords$ind_lon
+            )
+
+            start <- rep(1L, length(meta$names))
+            count <- meta$lengths
+            for (name in names(selected)) {
+                k <- dim_index(name)
+                idx <- selected[[name]]
+                start[[k]] <- min(idx)
+                count[[k]] <- max(idx) - min(idx) + 1L
+            }
+            for (name in extra_dims) {
+                k <- dim_index(name)
+                start[[k]] <- 1L
+                count[[k]] <- 1L
+            }
+
+            arr <- self$var_get(
+                variable,
+                start = start,
+                count = count,
+                index = index,
+                collapse = FALSE,
+                async = async,
+                timeout = timeout
+            )
+            dt <- private$array_to_data_table(arr, variable, start = start, count = count, index = index)
+
+            if (!nrow(dt)) {
+                return(private$empty_region_data_table())
+            }
+
+            coords_keep <- coords[, .(lat, lon, dist)]
+            dt <- merge(dt, coords_keep, by = c("lat", "lon"), all = FALSE, sort = FALSE)
+            dt <- dt[time %in% time_axis[time_idx]]
+            if (!nrow(dt)) {
+                return(private$empty_region_data_table())
+            }
+
+            value_col <- if (variable %in% names(dt)) variable else paste0(variable, "_value")
+            if (!value_col %in% names(dt)) {
+                stop(sprintf("Cannot identify value column for variable '%s'.", variable), call. = FALSE)
+            }
+            data.table::setnames(dt, value_col, "value")
+            dt[, `:=`(file_index = index, variable = variable)]
+            data.table::setcolorder(dt, c(
+                "file_index", "variable",
+                intersect(c("time", "lon", "lat", "dist"), names(dt)),
+                setdiff(names(dt), c("file_index", "variable", "time", "lon", "lat", "dist"))
+            ))
+            dt[]
+        },
+        # }}}
+
         # array_to_data_table {{{
         array_to_data_table = function(arr, variable, start = NULL, count = NULL, index = 1L) {
             meta <- private$get_var_dim_meta(variable, index = index)
@@ -1132,4 +1440,98 @@ EsgDataset <- R6::R6Class(
         # }}}
     )
 )
+# }}}
+
+# esg_dataset_private {{{
+esg_dataset_private <- function(dataset) {
+    private <- tryCatch(dataset$.__enclos_env__$private, error = function(e) NULL)
+    if (is.null(private) || !is.environment(private)) {
+        stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
+    }
+    missing <- setdiff(c("nc_handles", "opened"), names(private))
+    if (length(missing)) {
+        stop(sprintf(
+            "`dataset` is missing required internal field(s): %s.",
+            paste(sprintf("`%s`", missing), collapse = ", ")
+        ), call. = FALSE)
+    }
+    if (!is.list(private$nc_handles)) {
+        stop("`dataset` internal `nc_handles` field must be a list.", call. = FALSE)
+    }
+
+    private
+}
+# }}}
+
+# esg_dataset_detach_handles {{{
+esg_dataset_detach_handles <- function(dataset) {
+    private <- esg_dataset_private(dataset)
+    handles <- private$nc_handles
+    private$nc_handles <- vector("list", length(handles))
+    private$opened <- FALSE
+    handles
+}
+# }}}
+
+# esg_dataset_adopt_handles {{{
+esg_dataset_adopt_handles <- function(dataset, handles) {
+    checkmate::assert_list(handles)
+
+    private <- esg_dataset_private(dataset)
+    if (length(handles) != length(private$nc_handles)) {
+        stop("`handles` must have the same length as the target dataset.", call. = FALSE)
+    }
+
+    private$nc_handles <- handles
+    private$opened <- all(!vapply(private$nc_handles, is.null, logical(1L)))
+
+    invisible(dataset)
+}
+# }}}
+
+# esg_dataset_set_context {{{
+esg_dataset_set_context <- function(dataset, context = NULL) {
+    private <- esg_dataset_private(dataset)
+    if (!"context" %in% names(private)) {
+        return(invisible(dataset))
+    }
+    if (is.null(context) || !length(context)) {
+        private$context <- list()
+    } else if (is.list(context)) {
+        private$context <- context
+    } else {
+        stop("`context` must be a list or `NULL`.", call. = FALSE)
+    }
+
+    invisible(dataset)
+}
+# }}}
+
+# esg_dataset_get_context {{{
+esg_dataset_get_context <- function(dataset) {
+    private <- esg_dataset_private(dataset)
+    if (!"context" %in% names(private)) {
+        return(list())
+    }
+
+    private$context
+}
+# }}}
+
+# esg_dataset_close_handles {{{
+esg_dataset_close_handles <- function(urls, handles) {
+    checkmate::assert_character(urls, any.missing = FALSE)
+    checkmate::assert_list(handles)
+    if (length(urls) != length(handles)) {
+        stop("`urls` and `handles` must have the same length.", call. = FALSE)
+    }
+    if (!length(handles) || all(vapply(handles, is.null, logical(1L)))) {
+        return(invisible(NULL))
+    }
+
+    holder <- EsgDataset$new(urls)
+    esg_dataset_adopt_handles(holder, handles)
+    holder$close()
+    invisible(NULL)
+}
 # }}}

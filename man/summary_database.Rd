@@ -53,8 +53,8 @@ newly matched files if possible. Default: \code{"keep"}.}
 
 \item{update}{If \code{TRUE}, the output file index will be updated based
 on the matched NetCDF files in specified directory. If \code{FALSE}, only
-current loaded index will be updated, but the actual index
-database file saved in \code{\link[=get_data_dir]{get_data_dir()}} will remain unchanged.
+current loaded index will be updated, but the actual index file saved
+in the persistent store will remain unchanged.
 Default: \code{FALSE}.}
 
 \item{warning}{If \code{TRUE}, warning messages will show when target files are
@@ -95,9 +95,9 @@ files available against the output file index loaded using
 }
 \details{
 The database here can be any directory that stores the NetCDF files for CMIP6
-GCMs. It can be also be the same as \code{get_data_dir()} where epwshiftr stores
-the output file index, if you want to save the output file index and output
-files in the same place.
+GCMs. It can also be the same as \code{\link[=store_dir]{store_dir()}} where epwshiftr keeps the
+persistent store, if you want to keep the output file index and output files
+together.
 
 \code{summary_database()} uses the \code{tracking_id}, \code{datetime_start} and
 \code{datetime_end} global attributes of each NetCDF file to match against the

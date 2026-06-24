@@ -36,6 +36,7 @@ Hongyuan Jia
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
@@ -51,9 +52,9 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+\item{\code{fields}}{A non-empty character vector indicating the fields to
+put into the \code{data.table}. If \code{NULL}, all fields in the query
+result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
@@ -123,7 +124,9 @@ The following fields are always included in the results:
 \describe{
 \item{\code{which}}{A character vector giving the value of dataset ID or an
 integer vector giving the indices of the dataset. If \code{NULL},
-all datasets will be sent. Default: \code{NULL}.}
+all datasets will be sent. Empty dataset results return empty
+child results without sending another ESGF query. Default:
+\code{NULL}.}
 
 \item{\code{fields}}{A character vector indicating the value of \code{fields}
 parameter when sending the query. If \code{NULL}, all available
@@ -131,16 +134,29 @@ fields will be included. Default: \code{NULL}.}
 
 \item{\code{all}}{A flag. Whether to collect all results. Default: \code{FALSE}.}
 
-\item{\code{limit}}{A positive integer indicating the number of records to
-fetch per query. If \code{NULL}, the allowed maximum limit number
-10000 is used. Default: \code{100L}.}
+\item{\code{limit}}{If \code{all = FALSE}, the maximum number of child records
+to collect in this request. If \code{all = TRUE}, the page size
+used for each paginated request, not a total cap. If \code{NULL},
+the allowed maximum limit number 10000 is
+used. Default: \code{100L}.}
 
 \item{\code{type}}{A string indicating the query type. Should be one of
 \code{File} or \code{Aggregation}. Default: \code{"File"}.}
 
-\item{\code{...}}{Other parameters to set. Currently, there are 4 parameters
-supported, including \code{replica}, \code{distrib}, \code{latest}, \code{shards}.
-For details on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.}
+\item{\code{...}}{Additional child-result facet filters, plus the control
+parameters \code{replica}, \code{distrib}, \code{latest}, and \code{shards}.
+Query-level parameters such as \code{datetime_start} and
+\code{datetime_stop} cannot be passed through \code{...}.
+File/Aggregation collection does not use ESGF datetime search
+parameters; call \verb{$filter_time()} on the returned result for
+time filtering. If control parameters are omitted, they are
+inherited from the dataset query when available, with
+\code{distrib = TRUE} and \code{latest = TRUE} as fallbacks. For details
+on possible parameters, please see \code{\link[=esg_query]{esg_query()}}.
+\code{Aggregation} collection uses \code{dataset_id} plus explicit child filters
+in \code{...}; parent Dataset facet filters are not inherited because
+Aggregation records on standard ESGF search nodes do not necessarily
+expose the same facet fields as Dataset records.}
 }
 \if{html}{\out{</div>}}
 }

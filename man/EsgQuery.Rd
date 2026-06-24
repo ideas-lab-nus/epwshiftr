@@ -167,6 +167,9 @@ apply:
 \itemize{
 \item The \code{fields} parameter is not supported. All available fields are always
 returned.
+\item Only \code{Dataset} and \code{File} queries are supported. \code{Aggregation} queries
+should use a standard ESGF search index node, such as
+\verb{https://esgf-data.dkrz.de} or \verb{https://esgf.ceda.ac.uk}.
 \item The \code{retracted} parameter is not supported and will be ignored.
 \item Wget script generation is not supported. Calling \verb{$url(wget = TRUE)} will
 result in an error.
@@ -1211,14 +1214,23 @@ q$count(facets = c("activity_id", "source_id"))
 \subsection{Method \code{collect()}}{
 Send the actual query and fetch the results
 
-\verb{$collect()} sends the actual query with \strong{\code{type=Dataset}} to the
-ESGF search services and returns the results as an
-\link{EsgResultDataset} object.
+\verb{$collect()} sends the actual query to the ESGF search services.
+By default it collects \strong{\code{type=Dataset}} results and returns an
+\link{EsgResultDataset} object. If \code{type} is \code{"File"} or
+\code{"Aggregation"}, it first collects matching Dataset results and then
+collects child File or Aggregation results for those datasets.
 The fields included depend on \code{fields} parameter.
 However, the following fields are always included in the results:
 \verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$collect(all = FALSE, limit = TRUE, params = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$collect(
+  all = FALSE,
+  limit = TRUE,
+  params = TRUE,
+  type = "Dataset",
+  fields = NULL,
+  ...
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -1227,12 +1239,13 @@ However, the following fields are always included in the results:
 \item{\code{all}}{Whether to collect all results despite of the value of
 \code{offset}. Default: \code{FALSE}.}
 
-\item{\code{limit}}{Only applicable when \code{all} is set to \code{TRUE}. Whether to
-respect the current value of \code{limit} when collecting all
-matched records. If \code{FALSE}, the allowed maximum limit number
+\item{\code{limit}}{If \code{all = FALSE}, the maximum number of records to
+collect in this request. If \code{all = TRUE}, the page size used
+for each paginated request, not a total cap. When \code{all = TRUE}
+and \code{limit = TRUE}, the current query \code{limit} value is used;
+if \code{limit = FALSE}, the allowed maximum limit number
 10000 is used. It can also be a positive
-integer which will be used as a temporary limit per query.
-Default: \code{TRUE}.}
+integer used as a temporary page size. Default: \code{TRUE}.}
 
 \item{\code{params}}{Whether to include facet fields that have parameter
 constraints explicitly set using \code{EsgQuery$project()},
@@ -1240,11 +1253,24 @@ constraints explicitly set using \code{EsgQuery$project()},
 returned fields. For example, if you set \verb{$experiment_id("ssp585")},
 the \code{experiment_id} field will be included in the results when
 \code{params = TRUE}. Default: \code{TRUE}.}
+
+\item{\code{type}}{Result type to collect. One of \code{"Dataset"}, \code{"File"},
+or \code{"Aggregation"}. Default: \code{"Dataset"}.}
+
+\item{\code{fields}}{Optional fields used only when \code{type} is \code{"File"} or
+\code{"Aggregation"}. Dataset fields should be configured with
+\verb{$fields()} before collecting.}
+
+\item{\code{...}}{Additional File/Aggregation facet filters used only when
+\code{type} is \code{"File"} or \code{"Aggregation"}. File/Aggregation
+collection does not use ESGF datetime search parameters; use
+\verb{$filter_time()} on the returned result for time filtering.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-An \link{EsgResultDataset} object.
+An \link{EsgResultDataset}, \link{EsgResultFile}, or
+\link{EsgResultAggregation} object.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}

@@ -27,7 +27,9 @@ files.}
 \item{\code{url_download}}{A character vector of the download URLs of the
 files.}
 
-\item{\code{fields}}{A character vector indicating all fields in the results.}
+\item{\code{fields}}{A character vector indicating all response fields,
+followed by derived URL fields when their source fields are
+available.}
 }
 \if{html}{\out{</div>}}
 }
@@ -35,6 +37,7 @@ files.}
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgResultAggregation-to_data_table}{\code{EsgResultAggregation$to_data_table()}}
+\item \href{#method-EsgResultAggregation-filter_time}{\code{EsgResultAggregation$filter_time()}}
 \item \href{#method-EsgResultAggregation-print}{\code{EsgResultAggregation$print()}}
 \item \href{#method-EsgResultAggregation-open_dataset}{\code{EsgResultAggregation$open_dataset()}}
 \item \href{#method-EsgResultAggregation-clone}{\code{EsgResultAggregation$clone()}}
@@ -47,6 +50,7 @@ files.}
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul>
 </details>
 }}
@@ -62,9 +66,9 @@ Convert the results into a \link[data.table:data.table]{data.table}
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{fields}}{A character vector indicating the fields to put into
-the \code{data.table}. If \code{NULL}, all fields in the query result
-will be used. Default: \code{NULL}.}
+\item{\code{fields}}{A non-empty character vector indicating the fields to
+put into the \code{data.table}. If \code{NULL}, all fields in the query
+result will be used. Default: \code{NULL}.}
 
 \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
@@ -73,6 +77,32 @@ including \code{url} and \code{size}. Default: \code{FALSE}.}
 }
 \subsection{Returns}{
 A \link[data.table:data.table]{data.table}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultAggregation-filter_time"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultAggregation-filter_time}{}}}
+\subsection{Method \code{filter_time()}}{
+Filter aggregation records by the time range covered by each file
+
+See \code{EsgResultFile$filter_time()} for the method semantics.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
+\code{POSIXt} inputs are accepted and parsed in UTC.}
+
+\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
+\code{"opendap"}. Default: \code{"drs"}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A new \code{EsgResultAggregation} object.
 }
 }
 \if{html}{\out{<hr>}}
@@ -116,9 +146,10 @@ If \code{FALSE}, open only the first file.}
 
 \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{
-\item \code{"ask"}: Interactively ask the user (default)
-\item \code{"auto"}: Automatically download files
-\item \code{"error"}: Raise an error
+\item \code{"ask"}: Interactively ask the user (default). In a
+non-interactive session this raises an error.
+\item \code{"auto"}: Automatically download files via HTTPServer.
+\item \code{"error"}: Raise an error.
 }}
 }
 \if{html}{\out{</div>}}

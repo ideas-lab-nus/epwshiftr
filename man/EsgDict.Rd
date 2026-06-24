@@ -175,7 +175,7 @@ Hongyuan Jia
   request_tag = NULL,
   dreq_tag = NULL,
   use_cache = TRUE,
-  cache_dir = esgdict__raw_cache_dir(project = private$m_project)
+  source_dir = esgdict__source_dir(project = private$m_project)
 )}\if{html}{\out{</div>}}
 }
 
@@ -254,11 +254,7 @@ Hongyuan Jia
 \if{latex}{\out{\hypertarget{method-EsgDict-save}{}}}
 \subsection{Method \code{save()}}{
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDict$save(
-  dir = getOption("epwshiftr.dir", "."),
-  file = NULL,
-  allow_empty = FALSE
-)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDict$save(path = NULL, allow_empty = FALSE)}\if{html}{\out{</div>}}
 }
 
 }
@@ -267,7 +263,7 @@ Hongyuan Jia
 \if{latex}{\out{\hypertarget{method-EsgDict-load}{}}}
 \subsection{Method \code{load()}}{
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDict$load(dir = getOption("epwshiftr.dir", "."), file = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgDict$load(path = NULL)}\if{html}{\out{</div>}}
 }
 
 }

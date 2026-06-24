@@ -10,8 +10,8 @@ set_cmip6_index(index, save = FALSE)
 \item{index}{A \code{\link[data.table:data.table]{data.table::data.table()}} containing the same column names
 and types as the output of \code{\link[=init_cmip6_index]{init_cmip6_index()}}.}
 
-\item{save}{If \code{TRUE}, besides loaded index, the index file saved to data
-directory will be also updated. Default: \code{FALSE}.}
+\item{save}{If \code{TRUE}, besides the in-memory index, the active CMIP6 index
+artifact in the persistent store will also be updated. Default: \code{FALSE}.}
 }
 \value{
 A \code{\link[data.table:data.table]{data.table::data.table()}}.

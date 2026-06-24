@@ -62,9 +62,9 @@ summary_database_scan_file <- function (file) {
 #' [load_cmip6_index()].
 #'
 #' The database here can be any directory that stores the NetCDF files for CMIP6
-#' GCMs. It can be also be the same as `get_data_dir()` where epwshiftr stores
-#' the output file index, if you want to save the output file index and output
-#' files in the same place.
+#' GCMs. It can also be the same as [store_dir()] where epwshiftr keeps the
+#' persistent store, if you want to keep the output file index and output files
+#' together.
 #'
 #' `summary_database()` uses the `tracking_id`, `datetime_start` and
 #' `datetime_end` global attributes of each NetCDF file to match against the
@@ -116,8 +116,8 @@ summary_database_scan_file <- function (file) {
 #'
 #' @param update If `TRUE`, the output file index will be updated based
 #'        on the matched NetCDF files in specified directory. If `FALSE`, only
-#'        current loaded index will be updated, but the actual index
-#'        database file saved in [get_data_dir()] will remain unchanged.
+#'        current loaded index will be updated, but the actual index file saved
+#'        in the persistent store will remain unchanged.
 #'        Default: `FALSE`.
 #'
 #' @param warning If `TRUE`, warning messages will show when target files are
@@ -430,11 +430,10 @@ summary_database <- function (
     this$index_db <- copy(idx)
 
     if (update) {
-        # save database into the app data directory
-        fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        index_path <- store_cmip6_index_save(idx)
         vmsg(sprintf(
             "Data file index updated and saved to '%s'",
-            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+            normalizePath(index_path, winslash = "/", mustWork = FALSE)
         ))
     }
 

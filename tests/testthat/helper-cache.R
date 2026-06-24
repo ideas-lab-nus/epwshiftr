@@ -93,14 +93,14 @@ get_cache_nc <- function(reset = FALSE) {
     dir <- test_data_dir()
     paths <- file.path(dir, vapply(local_cmip6_test_years, local_cmip6_nc_file, character(1)))
 
-    if (reset) unlink(c(paths, file.path(dir, "cmip6_index.csv")), force = TRUE)
+    if (reset) unlink(paths, force = TRUE)
     unlink(paths[file.exists(paths)], force = TRUE)
 
     for (i in seq_along(paths)) {
         write_local_cmip6_netcdf_fixture(paths[[i]], local_cmip6_test_years[[i]])
     }
 
-    withr::with_options(list(epwshiftr.dir = dir), {
+    withr::with_options(list(epwshiftr.dir_store = dir), {
         set_cmip6_index(local_cmip6_index(paths), save = FALSE)
     })
 
