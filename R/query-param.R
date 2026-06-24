@@ -237,23 +237,23 @@ S7::method(render, QueryParamCtrl) <- function(x, name, ...) {
 # }}}
 
 # as.list {{{
-S7::method(as.list, QueryParamFacet) <- function(x) {
+S7::method(as.list, QueryParamFacet) <- function(x, ...) {
     list(
         value = x@value,
         negate = x@negate,
         encoded = x@encoded
     )
 }
-S7::method(as.list, QueryParamDate) <- function(x) {
+S7::method(as.list, QueryParamDate) <- function(x, ...) {
     list(value = format(x@value, as = "iso"))
 }
-S7::method(as.list, QueryParamCtrl) <- function(x) {
+S7::method(as.list, QueryParamCtrl) <- function(x, ...) {
     list(value = x@value)
 }
 # }}}
 
 # print {{{
-S7::method(print, QueryParam) <- function(x) {
+S7::method(print, QueryParam) <- function(x, ...) {
     rendered <- render(x, name = NULL)
     if (S7::S7_inherits(x, QueryParamDate)) {
         # remove the leading ":"

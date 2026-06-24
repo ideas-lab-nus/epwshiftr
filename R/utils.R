@@ -479,6 +479,7 @@ utils::globalVariables(c(
     "natts",
     "opaque_sky_cover",
     "ping",
+    "properties",
     "relative_humidity",
     "source_id",
     "source_type",

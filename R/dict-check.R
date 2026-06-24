@@ -416,7 +416,11 @@ cmip6dict__candidate_values <- esgdict__candidate_values
 esgdict__field_values <- function(dict, field) {
     values <- dict$indices("values")
     target_field <- field
-    out <- values[values[["field"]] == target_field & !is.na(values[["value"]]), .(value, source)]
+    out <- values[
+        values[["field"]] == target_field & !is.na(values[["value"]]),
+        c("value", "source"),
+        with = FALSE
+    ]
     unique(out)
 }
 
@@ -498,10 +502,10 @@ cmip6dict__suggest <- function(value, choices, n) {
     if (!length(choices)) return(character())
 
     exact <- choices[tolower(choices) == tolower(value)]
-    if (length(exact)) return(head(exact, n))
+    if (length(exact)) return(utils::head(exact, n))
 
     dist <- utils::adist(value, choices, ignore.case = TRUE)
-    choices[head(order(dist[1L, ]), n)]
+    choices[utils::head(order(dist[1L, ]), n)]
 }
 
 esgdict__check_relations <- function(dict, args, relationship) {
