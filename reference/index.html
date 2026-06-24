@@ -75,13 +75,85 @@
           <p class="section-desc"></p>
         </th>
       </tr></tbody><tbody><tr><td>
-          <p><code><a href="EsgfQuery.html">query_esgf()</a></code> </p>
+          <p><code><a href="EsgQuery.html">esg_query()</a></code> </p>
         </td>
         <td><p>Query CMIP6 data using ESGF search RESTful API</p></td>
       </tr><tr><td>
-          <p><code><a href="result_esgf.html">result_esgf()</a></code> </p>
+          <p><code><a href="esgf_query.html">esgf_query()</a></code> </p>
+        </td>
+        <td><p>Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API</p></td>
+      </tr><tr><td>
+          <p><code><a href="esg_result.html">esg_result()</a></code> </p>
         </td>
         <td><p>Create empty query result object</p></td>
+      </tr></tbody><tbody><tr><th colspan="2">
+          <h2 id="remote-esgf-data-access">Remote ESGF data access <a href="#remote-esgf-data-access" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p>
+        </th>
+      </tr></tbody><tbody><tr><td>
+          <p><code><a href="EsgDataset.html">EsgDataset</a></code> </p>
+        </td>
+        <td><p>Remote NetCDF Dataset Access via OPeNDAP</p></td>
+      </tr><tr><td>
+          <p><code><a href="FileDownloader.html">FileDownloader</a></code> </p>
+        </td>
+        <td><p>General Purpose File Downloader</p></td>
+      </tr></tbody><tbody><tr><th colspan="2">
+          <h2 id="solr-datetime-helpers">Solr DateTime helpers <a href="#solr-datetime-helpers" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p>
+        </th>
+      </tr></tbody><tbody><tr><td>
+          <p><code><a href="is.solrdt.html">is.solrdt()</a></code> </p>
+        </td>
+        <td><p>Check if object is SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="is_solrdt_range.html">is_solrdt_range()</a></code> </p>
+        </td>
+        <td><p>Check if SolrDateTime object represents a range</p></td>
+      </tr><tr><td>
+          <p><code><a href="is_solrdt_start_unbounded.html">is_solrdt_start_unbounded()</a></code> </p>
+        </td>
+        <td><p>Check if SolrDateTime has unbounded start</p></td>
+      </tr><tr><td>
+          <p><code><a href="is_solrdt_end_unbounded.html">is_solrdt_end_unbounded()</a></code> </p>
+        </td>
+        <td><p>Check if SolrDateTime has unbounded end</p></td>
+      </tr><tr><td>
+          <p><code><a href="solrdt_start.html">solrdt_start()</a></code> </p>
+        </td>
+        <td><p>Extract start datetime from SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="solrdt_end.html">solrdt_end()</a></code> </p>
+        </td>
+        <td><p>Extract end datetime from SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="as.POSIXct.SolrDateTime.html">as.POSIXct(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Convert SolrDateTime to POSIXct</p></td>
+      </tr><tr><td>
+          <p><code><a href="as.character.SolrDateTime.html">as.character(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Convert SolrDateTime to character</p></td>
+      </tr><tr><td>
+          <p><code><a href="c.SolrDateTime.html">c(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Combine SolrDateTime objects</p></td>
+      </tr><tr><td>
+          <p><code><a href="format.SolrDateTime.html">format(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Format method for SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="length.SolrDateTime.html">length(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Length method for SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="print.SolrDateTime.html">print(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Print method for SolrDateTime</p></td>
+      </tr><tr><td>
+          <p><code><a href="sub-.SolrDateTime.html">`[`(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
+        </td>
+        <td><p>Subsetting method for SolrDateTime</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="cmip-index">CMIP6 Index <a href="#cmip-index" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p><p>Build CMIP6 output index</p>
@@ -89,7 +161,7 @@
       </tr></tbody><tbody><tr><td>
           <p><code><a href="esgf_query.html">esgf_query()</a></code> </p>
         </td>
-        <td><p>Query CMIP6 data using ESGF search RESTful API</p></td>
+        <td><p>Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API</p></td>
       </tr><tr><td>
           <p><code><a href="init_cmip6_index.html">init_cmip6_index()</a></code> </p>
         </td>
@@ -103,9 +175,9 @@
         </td>
         <td><p>Set CMIP6 index</p></td>
       </tr><tr><td>
-          <p><code><a href="get_data_node.html">get_data_node()</a></code> </p>
+          <p><code><a href="data_node_status.html">data_node_status()</a></code> </p>
         </td>
-        <td><p>Get data nodes which store CMIP6 output</p></td>
+        <td><p>Get status of data nodes which store CMIP6 output</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="cmip-output">CMIP6 Output <a href="#cmip-output" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p><p>Manage CMIP6 output files</p>

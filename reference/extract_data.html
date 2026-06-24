@@ -143,8 +143,9 @@ extract CMIP6 data. It is the same object as created in <code><a href="match_coo
 </ul></div>
     <div id="details">
     <h2>Details</h2>
-    <p><code>extract_data()</code> supports common calendars, including <code>365_day</code> and
-<code>360_day</code>, thanks to the <a href="https://rdrr.io/pkg/PCICt/man/as.PCICt.html" class="external-link">PCICt</a> package.</p>
+    <p><code>extract_data()</code> uses <a href="https://cran.r-project.org/package=CFtime" class="external-link">CFtime</a>
+to parse CF-compliant time coordinates into UTC <code>POSIXct</code> values when the
+calendar supports POSIX conversion.</p>
 <p><code>extract_data()</code> uses <a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply</a>
 underneath. You can use your preferable future backend to
 speed up data extraction in parallel. By default, <code>extract_data()</code> uses
