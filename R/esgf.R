@@ -512,7 +512,7 @@ esgf_query <- function(
                 datasets <- new_query_result(
                     EsgResultDataset,
                     priv(q)$index_node_url,
-                    priv(q)$parameter,
+                    if (!is.null(res$parameter)) res$parameter else priv(q)$parameter,
                     res$response
                 )
                 collect_args <- list(
@@ -663,9 +663,7 @@ extract_query_file <- function(q) {
 #' host-based workflows keep working. For new direct ESGF searches, start with
 #' [esg_query()] / [EsgQuery]. It returns a
 #' [data.table::data.table()] containing the actual NetCDF file url to
-#' download, and stores it into user data directory for future use.
-#'
-#' For details on where the file index is stored, see [rappdirs::user_data_dir()].
+#' download, and can store it in the persistent epwshiftr store for future use.
 #'
 #' @note
 #' Argument `limit` will only apply to `Dataset` query. `init_cmip6_index()` will
@@ -679,7 +677,8 @@ extract_query_file <- function(q) {
 #' @param years An integer vector indicating the target years to be include in
 #'        the data file. All other years will be excluded. If `NULL`, no
 #'        subsetting on years will be performed. Default: `NULL`.
-#' @param save If `TRUE`, the results will be saved into user data directory.
+#' @param save If `TRUE`, the results will be saved as an active CMIP6 index
+#'        artifact in the persistent store.
 #'        Default: `FALSE`.
 #'
 #' @return A [data.table::data.table] with 22 columns:
@@ -922,11 +921,10 @@ init_cmip6_index <- function(
     dt <- unique(dt, by = "file_id")
 
     if (save) {
-        # save database into the app data directory
-        data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        index_path <- store_cmip6_index_save(dt)
         vmsg(sprintf(
             "Data file index saved to '%s'",
-            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+            normalizePath(index_path, winslash = "/", mustWork = FALSE)
         ))
 
         this$index_db <- data.table::copy(dt)
@@ -959,12 +957,13 @@ load_cmip6_index <- function(force = FALSE) {
     if (!force) {
         idx <- data.table::copy(this$index_db)
     } else {
-        f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
-        if (!file.exists(f)) {
+        f <- store_cmip6_index_active_path()
+        if (is.null(f) || !file.exists(f)) {
             stop(
-                "CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."
+                "CMIP6 experiment output file index does not exist. You may want to create one using 'init_cmip6_index()'."
             )
         }
+        f <- normalizePath(f, winslash = "/", mustWork = TRUE)
 
         # nocov start
         # load file info
@@ -1042,8 +1041,8 @@ load_cmip6_index <- function(force = FALSE) {
 #' @param index A [data.table::data.table()] containing the same column names
 #'        and types as the output of [init_cmip6_index()].
 #'
-#' @param save If `TRUE`, besides loaded index, the index file saved to data
-#'        directory will be also updated. Default: `FALSE`.
+#' @param save If `TRUE`, besides the in-memory index, the active CMIP6 index
+#'        artifact in the persistent store will also be updated. Default: `FALSE`.
 #'
 #' @return A [data.table::data.table()].
 #' @export
@@ -1083,12 +1082,12 @@ set_cmip6_index <- function(index, save = FALSE) {
         )
     )
 
-    # save database into the app data directory
+    # save database into the persistent store
     if (save) {
-        data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        index_path <- store_cmip6_index_save(index)
         vmsg(sprintf(
             "Data file index saved to '%s'",
-            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+            normalizePath(index_path, winslash = "/", mustWork = FALSE)
         ))
     }
 
@@ -1096,24 +1095,6 @@ set_cmip6_index <- function(index, save = FALSE) {
     this$index_db <- data.table::copy(index)
 
     invisible(index)
-}
-# }}}
-
-# get_data_dir {{{
-#' Get the path of directory where epwshiftr data is stored
-#'
-#' If option `epwshiftr.dir` is set, use it. Otherwise, get package data storage
-#' directory using [rappdirs::user_data_dir()].
-#'
-#' @return A single string.
-#'
-#' @examples
-#' options(epwshiftr.dir = tempdir())
-#' get_data_dir()
-#'
-#' @export
-get_data_dir <- function() {
-    .data_dir(force = TRUE)
 }
 # }}}
 

@@ -36,6 +36,11 @@ test_that("QueryParamCtrl", {
         list(value = TRUE)
     )
     expect_equal(render(ctrl, "latest"), "latest=true")
+    expect_equal(render(QueryParamCtrl(1L), "limit"), "limit=1")
+    expect_equal(
+        render(QueryParamCtrl(FORMAT_JSON), "format"),
+        "format=application%2Fsolr%2Bjson"
+    )
 })
 
 test_that("QueryParamDate", {
@@ -46,6 +51,10 @@ test_that("QueryParamDate", {
         list(value = solr_date("[2017-02-03T05:06:07Z+2MONTHS TO *]"))
     )
     expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
+    expect_equal(
+        render(date, "datetime_start", quote_date = TRUE),
+        'datetime_start:["2017-02-03T05:06:07Z+2MONTHS" TO *]'
+    )
 })
 
 test_that("QueryParamStore", {
@@ -218,6 +227,7 @@ test_that("QueryParamStore", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
+    expect_error(QueryParamStore$new()$restore(list(project = serialized$facet$project)), "subset")
     expect_setequal(
         q$param_names(role = "result_field"),
         c("project", "activity_id", "table_id")

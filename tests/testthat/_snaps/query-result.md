@@ -8,23 +8,36 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: XX [GiB]
-      * Fields: XX | [ access, activity_id, experiment_id, frequency, id, index_node,
+      * Fields: XX | [ id, access, activity_id, experiment_id, frequency, index_node,
         number_of_files, project, size, source_id, variable_id, and variant_label ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * project = CMIP6
-      * activity_id = ScenarioMIP
-      * source_id = AWI-CM-1-1-MR
-      * variable_id = tas
-      * frequency = day
-      * variant_label = r1i1p1f1
-      * fields = source_id, experiment_id, frequency
-      * latest = true
-      * type = Dataset
-      * offset = 0
-      * distrib = true
-      * limit = 2
-      * format = application/solr+json
+      * project=CMIP6
+      * activity_id=ScenarioMIP
+      * source_id=AWI-CM-1-1-MR
+      * variable_id=tas
+      * frequency=day
+      * variant_label=r1i1p1f1
+      * fields=source_id,experiment_id,frequency,access,id,index_node,number_of_aggregations,number_of_files,size,url,project,activity_id,variable_id,variant_label
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=2
+      * format=application%2Fsolr%2Bjson
+      * project=CMIP6
+      * activity_id=ScenarioMIP
+      * source_id=AWI-CM-1-1-MR
+      * variable_id=tas
+      * frequency=day
+      * variant_label=r1i1p1f1
+      * fields=source_id,experiment_id,frequency,access,id,index_node,number_of_aggregations,number_of_files,size,url,project,activity_id,variable_id,variant_label
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=2
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -47,20 +60,27 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
       * Total size: XX [GiB]
-      * Fields: XX | [ _timestamp, _version_, activity_drs, activity_id,
-        cf_standard_name, checksum, checksum_type, citation_url, data_node,
-        data_specs_version, dataset_id, dataset_id_template_,
-        directory_format_template_, experiment_id, experiment_title, filename,
-        frequency, further_info_url, ..., variant_label, and version ]
+      * Fields: XX | [ id, version, activity_drs, activity_id, cf_standard_name,
+        checksum, checksum_type, citation_url, data_node, data_specs_version,
+        dataset_id, dataset_id_template_, directory_format_template_, experiment_id,
+        experiment_title, frequency, further_info_url, grid, ..., url_opendap, and
+        url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-      * latest = true
-      * distrib = true
-      * limit = 1
-      * type = File
-      * format = application/solr+json
+      * project=CMIP6
+      * activity_id=ScenarioMIP
+      * experiment_id=sspXXX
+      * source_id=AWI-CM-1-1-MR
+      * variable_id=tas
+      * frequency=day
+      * variant_label=r1i1p1f1
+      * latest=true
+      * type=File
+      * offset=0
+      * distrib=true
+      * limit=1
+      * format=application%2Fsolr%2Bjson
+      * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
     Message
@@ -79,18 +99,18 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: <Unknown> [Byte]
-      * Fields: XX | [ data_node, dataset_id, id, size, title, url, url_download, and
-        url_opendap ]
+      * Fields: XX | [ id, data_node, dataset_id, size, title, url, url_opendap, and
+        url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-      * fields = id
-      * latest = true
-      * distrib = true
-      * limit = 2
-      * type = Aggregation
-      * format = application/solr+json
+      * fields=id,data_node,dataset_id,size,title,url
+      * latest=true
+      * type=Aggregation
+      * offset=0
+      * distrib=true
+      * limit=2
+      * format=application%2Fsolr%2Bjson
+      * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
     Message
@@ -114,6 +134,22 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -134,6 +170,22 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -154,6 +206,22 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message

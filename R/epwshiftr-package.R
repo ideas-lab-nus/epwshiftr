@@ -16,13 +16,17 @@
 #'   `"stretch"` or `"combined"`, and the absolute alpha exceeds the threshold
 #'   value, warnings are issued and the morphing method fallbacks to
 #'   `"shift"` to avoid unrealistic morphed values.
-#' * `epwshiftr.dir`: The directory to store package data, including CMIP6
-#'   model output file index and etc. If not set, the current user data
-#'   directory will be used.
+#' * `epwshiftr.dir_store`: The persistent store directory for query snapshots,
+#'   dictionaries, source mirrors, downloads, extraction results, outputs, and
+#'   the store manifest. If not set, [tools::R_user_dir()] with type `"data"`
+#'   will be used.
 #' * `epwshiftr.cache`: Controls caching behavior. `TRUE` enables normal
 #'   caching (default), `FALSE` disables caching entirely, and `"offline"`
 #'   enables offline mode where only cached data is used and no network
 #'   requests are made. Default: `TRUE`
+#' * `epwshiftr.cache_dir`: The directory for disposable cache entries. Deleting
+#'   this directory can require re-fetching or re-parsing data, but should not
+#'   invalidate a persistent store.
 #'
 #'
 #' @include utils.R
@@ -43,7 +47,6 @@
 #' @importFrom psychrolib GetTDewPointFromRelHum
 #' @importFrom psychrolib SetUnitSystem
 #' @importFrom R6 R6Class
-#' @importFrom rappdirs user_data_dir
 #' @importFrom RNetCDF utcal.nc
 #' @importFrom units set_units
 #' @importFrom utils menu

@@ -124,7 +124,7 @@ test_that("init_cmip6_index()", {
     this$esgf_query_deprecated_warned <- TRUE
     withr::defer(this$esgf_query_deprecated_warned <- old_warned)
 
-    options(epwshiftr.dir = tempdir())
+    withr::local_options(list(epwshiftr.dir_store = withr::local_tempdir()))
 
     # can return if no data has been found
     expect_s3_class(init_cmip6_index(resolution = "1 m"), "data.table")
@@ -171,7 +171,7 @@ test_that("init_cmip6_index()", {
                 "tracking_id"
             )
         )
-        expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
+        expect_true(file.exists(store_cmip6_index_active_path()))
     }
 })
 
@@ -218,20 +218,22 @@ test_that("load_cmip6_index()", {
 
     skip_on_cran()
 
-    dir <- file.path(tempdir(), "test1")
-    dir.create(dir, FALSE)
-    options(epwshiftr.dir = dir)
+    dir <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_store = dir))
 
-    # can stop if 'cmip6_index.csv' file was not found
+    # can stop if no active index artifact is available
     expect_error(load_cmip6_index(TRUE))
-    unlink(dir, TRUE)
 
     # can stop if malformed input
-    options(epwshiftr.dir = tempdir())
-    index <- file.path(tempdir(), "cmip6_index.csv")
+    bad_store <- EsgStore$new(dir, create = TRUE)
+    withr::defer(bad_store$close())
+    index <- store_path("queries", "cmip6-index", "bad.csv", root = dir)
+    dir.create(dirname(index), recursive = TRUE, showWarnings = FALSE)
     file.create(index)
+    artifact_id <- bad_store$register_artifact(kind = "cmip6_index", path = index, project = "CMIP6")
+    bad_store$set_meta(store_cmip6_index_active_key(), artifact_id)
+    bad_store$close()
     expect_error(load_cmip6_index(TRUE))
-    unlink(index, TRUE)
 
     expect_s3_class(
         idx <- init_cmip6_index(
@@ -262,26 +264,13 @@ test_that("load_cmip6_index()", {
 test_that("set_cmip6_index()", {
     skip_on_cran()
 
-    # can overwrite index
-    if (file.exists(file.path(tempdir(), "cmip6_index.csv"))) {
-        idx <- load_cmip6_index()
-        expect_s3_class(set_cmip6_index(idx, save = TRUE), "data.table")
-    }
-})
+    withr::local_options(list(epwshiftr.dir_store = withr::local_tempdir()))
+    idx <- data.table::data.table(file_id = "file-1", dataset_id = "dataset-1")
 
-test_that("get_data_dir()", {
-    options("epwshiftr.dir" = "a")
-    expect_error(get_data_dir(), "not exists")
-
-    options("epwshiftr.dir" = NULL)
-
-    skip_on_cran()
-    .data_dir(TRUE)
-    if (.Platform$OS.type == "windows") {
-        expect_identical(get_data_dir(), normalizePath(user_data_dir(appauthor = "epwshiftr")))
-    } else {
-        expect_identical(get_data_dir(), normalizePath(user_data_dir(appname = "epwshiftr")))
-    }
+    expect_s3_class(set_cmip6_index(idx, save = TRUE), "data.table")
+    index_path <- store_cmip6_index_active_path()
+    expect_true(file.exists(index_path))
+    expect_equal(data.table::fread(index_path), idx)
 })
 
 test_that("data_node_status()", {

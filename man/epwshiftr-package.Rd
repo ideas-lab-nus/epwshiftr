@@ -22,13 +22,17 @@ The default value is set to \code{3}. If the morphing methods are set
 \code{"stretch"} or \code{"combined"}, and the absolute alpha exceeds the threshold
 value, warnings are issued and the morphing method fallbacks to
 \code{"shift"} to avoid unrealistic morphed values.
-\item \code{epwshiftr.dir}: The directory to store package data, including CMIP6
-model output file index and etc. If not set, the current user data
-directory will be used.
+\item \code{epwshiftr.dir_store}: The persistent store directory for query snapshots,
+dictionaries, source mirrors, downloads, extraction results, outputs, and
+the store manifest. If not set, \code{\link[tools:userdir]{tools::R_user_dir()}} with type \code{"data"}
+will be used.
 \item \code{epwshiftr.cache}: Controls caching behavior. \code{TRUE} enables normal
 caching (default), \code{FALSE} disables caching entirely, and \code{"offline"}
 enables offline mode where only cached data is used and no network
 requests are made. Default: \code{TRUE}
+\item \code{epwshiftr.cache_dir}: The directory for disposable cache entries. Deleting
+this directory can require re-fetching or re-parsing data, but should not
+invalidate a persistent store.
 }
 }
 
