@@ -39,7 +39,22 @@ EsgQuery$collect()."><meta property="og:image" content="/logo.svg"><!-- mathjax 
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/cmip6_dict.html">Manage CMIP6 CVs and Data Request</a>
+      <a href="../articles/future-weather-workflow.html">Extract Future Weather Data</a>
+    </li>
+    <li>
+      <a href="../articles/store-native-morphing-workflow.html">Store-Native EPW Morphing Workflow</a>
+    </li>
+    <li>
+      <a href="../articles/select-esgf-data.html">Select ESGF Data for Future Weather</a>
+    </li>
+    <li>
+      <a href="../articles/store-download-extract.html">Store, Download, and Extract ESGF Files</a>
+    </li>
+    <li>
+      <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
+    </li>
+    <li>
+      <a href="../articles/cmip6_dict.html">Manage ESG Dictionaries</a>
     </li>
   </ul></li>
 <li>
@@ -178,7 +193,7 @@ datasets and returns an
 <span>  limit <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  type <span class="op">=</span> <span class="st">"File"</span>,</span>
 <span>  index_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  use_record_index_node <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  progress <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"epwshiftr.progress"</span>, <span class="fu"><a href="https://rdrr.io/r/base/interactive.html" class="external-link">interactive</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -222,12 +237,10 @@ If <code>NULL</code>, the index node that created the Dataset result is
 used. Default: <code>NULL</code>.</p></dd>
 
 
-<dt><code>use_record_index_node</code></dt>
-<dd><p>Whether to group selected Dataset records
-by their <code>index_node</code> metadata and send child queries to those
-record-level index nodes. Records without <code>index_node</code> fall back
-to the <code>index_node</code> argument or the index node that created this
-result. Default: <code>FALSE</code>.</p></dd>
+<dt><code>progress</code></dt>
+<dd><p>Whether to show a progress bar while collecting ESGF
+child search pages. By default, the value of option
+<code>epwshiftr.progress</code> is used, falling back to <code><a href="https://rdrr.io/r/base/interactive.html" class="external-link">interactive()</a></code>.</p></dd>
 
 
 <dt><code>...</code></dt>

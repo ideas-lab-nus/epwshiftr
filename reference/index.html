@@ -35,7 +35,22 @@
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu"><li>
-      <a href="../articles/cmip6_dict.html">Manage CMIP6 CVs and Data Request</a>
+      <a href="../articles/future-weather-workflow.html">Extract Future Weather Data</a>
+    </li>
+    <li>
+      <a href="../articles/store-native-morphing-workflow.html">Store-Native EPW Morphing Workflow</a>
+    </li>
+    <li>
+      <a href="../articles/select-esgf-data.html">Select ESGF Data for Future Weather</a>
+    </li>
+    <li>
+      <a href="../articles/store-download-extract.html">Store, Download, and Extract ESGF Files</a>
+    </li>
+    <li>
+      <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
+    </li>
+    <li>
+      <a href="../articles/cmip6_dict.html">Manage ESG Dictionaries</a>
     </li>
   </ul></li>
 <li>
@@ -80,7 +95,7 @@
         <td><p>Check ESG Dictionary Parameter Values</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="esgf-search-services">ESGF search services <a href="#esgf-search-services" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
+          <p class="section-desc"></p><p>Start with esg_query() / EsgQuery; esgf_query() is a gently deprecated compatibility wrapper with legacy LLNL host semantics.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="EsgQuery.html">esg_query()</a></code> </p>
@@ -127,10 +142,6 @@
           <p class="section-desc"></p><p>Build CMIP6 output index</p>
         </th>
       </tr></tbody><tbody><tr><td>
-          <p><code><a href="esgf_query.html">esgf_query()</a></code> </p>
-        </td>
-        <td><p>Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API</p></td>
-      </tr><tr><td>
           <p><code><a href="init_cmip6_index.html">init_cmip6_index()</a></code> </p>
         </td>
         <td><p>Build CMIP6 experiment output file index</p></td>
@@ -202,6 +213,14 @@
           <p><code><a href="future_epw.html">future_epw()</a></code> </p>
         </td>
         <td><p>Create future EPW files using morphed data</p></td>
+      </tr></tbody><tbody><tr><th colspan="2">
+          <h2 id="store-native-shift-workflow">Store-native shift workflow <a href="#store-native-shift-workflow" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p>
+        </th>
+      </tr></tbody><tbody><tr><td>
+          <p><code><a href="shift_api.html">shift_request()</a></code> <code><a href="shift_api.html">shift_site()</a></code> <code><a href="shift_api.html">shift_collect()</a></code> <code><a href="shift_api.html">shift_download()</a></code> <code><a href="shift_api.html">shift_extract()</a></code> <code><a href="shift_api.html">shift_morph()</a></code> <code><a href="shift_api.html">shift_epw()</a></code> <code><a href="shift_api.html">shift_check()</a></code> <code><a href="shift_api.html">shift_refresh()</a></code> <code><a href="shift_api.html">shift_ids()</a></code> <code><a href="shift_api.html">shift_datasets()</a></code> <code><a href="shift_api.html">shift_files()</a></code> <code><a href="shift_api.html">shift_data()</a></code> <code><a href="shift_api.html">shift_diagnostics()</a></code> <code><a href="shift_api.html">shift_store()</a></code> <code><a href="shift_api.html">shift_target()</a></code> <code><a href="shift_api.html">shift_coverage()</a></code> <code><a href="shift_api.html">shift_outputs()</a></code> <code><a href="shift_api.html">shift_artifacts()</a></code> <code><a href="shift_api.html">shift_status()</a></code> </p>
+        </td>
+        <td><p>Store-native shift workflow API</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="command-line-interface">Command line interface <a href="#command-line-interface" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
