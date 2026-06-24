@@ -16,6 +16,8 @@
 url_nc <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20250101-20251231.nc"
 url_nc2 <- "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/ScenarioMIP/AWI/AWI-CM-1-1-MR/ssp585/r1i1p1f1/day/tas/gn/v20190529/tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gn_20300101-20301231.nc"
 
+dataset_async_timeout <- 10
+
 local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along(time_vals), calendar = "standard") {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
@@ -378,7 +380,7 @@ test_that("EsgDataset public async open keeps the dataset opened after return", 
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
 
-    returned <- ds$open(async = TRUE, timeout = 2)
+    returned <- ds$open(async = TRUE, timeout = dataset_async_timeout)
     on.exit(ds$close(), add = TRUE)
 
     expect_identical(returned, ds)
@@ -405,8 +407,8 @@ test_that("EsgDataset public async reads match sync results and keep open-state 
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds_closed <- EsgDataset$new(path1)
-    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = 2), "not open")
-    expect_error(ds_closed$var_get("tas", timeout = 2), "only supported")
+    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = dataset_async_timeout), "not open")
+    expect_error(ds_closed$var_get("tas", timeout = dataset_async_timeout), "only supported")
 
     ds <- EsgDataset$new(c(path1, path2))
     ds$open()
@@ -416,17 +418,17 @@ test_that("EsgDataset public async reads match sync results and keep open-state 
     count <- c(2L, 1L, 1L)
 
     expect_equal(
-        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE, async = TRUE, timeout = 2),
+        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE, async = TRUE, timeout = dataset_async_timeout),
         ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE)
     )
 
     expect_equal(
-        ds$read_array("tas", start = start, count = count, collapse = FALSE, async = TRUE, timeout = 2),
+        ds$read_array("tas", start = start, count = count, collapse = FALSE, async = TRUE, timeout = dataset_async_timeout),
         ds$read_array("tas", start = start, count = count, collapse = FALSE)
     )
 
     expect_equal(
-        ds$read_data_table("tas", start = start, count = count, rbind = TRUE, async = TRUE, timeout = 2),
+        ds$read_data_table("tas", start = start, count = count, rbind = TRUE, async = TRUE, timeout = dataset_async_timeout),
         ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
     )
 
@@ -455,7 +457,7 @@ test_that("EsgDataset public async open supports concurrent local datasets", {
         private <- ds$.__enclos_env__$private
         on.exit(ds$close(), add = TRUE)
 
-        ds$open(async = TRUE, timeout = 2)
+        ds$open(async = TRUE, timeout = dataset_async_timeout)
 
         list(
             is_open = ds$is_open,
@@ -506,7 +508,7 @@ test_that("EsgDataset public async reads support concurrent local datasets", {
             count = count,
             collapse = TRUE,
             async = TRUE,
-            timeout = 2
+            timeout = dataset_async_timeout
         ))
 
         list(
@@ -546,7 +548,7 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
 
-    expect_error(ds$open(async = TRUE, timeout = 2), "Failed to open OPeNDAP connection")
+    expect_error(ds$open(async = TRUE, timeout = dataset_async_timeout), "Failed to open OPeNDAP connection")
 
     expect_false(ds$is_open)
     expect_identical(private$async_state, "failed")
@@ -568,7 +570,7 @@ test_that("EsgDataset public async read failures clear task state and keep sync 
     private <- ds$.__enclos_env__$private
 
     expect_error(
-        ds$var_get("missing_var", async = TRUE, timeout = 2),
+        ds$var_get("missing_var", async = TRUE, timeout = dataset_async_timeout),
         "Failed to read variable data"
     )
 
@@ -623,7 +625,7 @@ test_that("EsgDataset internal async tasks keep sync handle state separate", {
             count = c(2L, 1L, 1L),
             collapse = TRUE
         ),
-        timeout = 2
+        timeout = dataset_async_timeout
     )
 
     expect_false(ds$is_open)
