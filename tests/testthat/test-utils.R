@@ -225,6 +225,55 @@ test_that("store_dir() resolves and creates the persistent store root", {
     expect_identical(store_dir(), store_normalize_path(root))
 })
 
+test_that(".onLoad() initializes directory options without requiring existing dirs", {
+    dir_opts <- c("epwshiftr.dir_store", "epwshiftr.dir_cache")
+    old_present <- dir_opts %in% names(options())
+    old_values <- options()[dir_opts]
+    withr::defer({
+        for (i in seq_along(dir_opts)) {
+            value <- if (old_present[[i]]) old_values[[dir_opts[[i]]]] else NULL
+            do.call(options, stats::setNames(list(value), dir_opts[[i]]))
+        }
+    })
+    for (opt in dir_opts) {
+        do.call(options, stats::setNames(list(NULL), opt))
+    }
+
+    store_default <- store_normalize_path(tools::R_user_dir("epwshiftr", "data"))
+    cache_default <- store_normalize_path(tools::R_user_dir("epwshiftr", "cache"))
+    store_exists <- dir.exists(store_default)
+    cache_exists <- dir.exists(cache_default)
+
+    on_load <- get(".onLoad", envir = asNamespace("epwshiftr"))
+    expect_warning(on_load("", "epwshiftr"), NA)
+
+    expect_identical(getOption("epwshiftr.dir_store"), store_default)
+    expect_identical(getOption("epwshiftr.dir_cache"), cache_default)
+    if (!store_exists) {
+        expect_false(dir.exists(store_default))
+    }
+    if (!cache_exists) {
+        expect_false(dir.exists(cache_default))
+    }
+})
+
+test_that(".onLoad() preserves explicit directory options", {
+    store <- tempfile("epwshiftr-store-explicit-")
+    cache <- tempfile("epwshiftr-cache-explicit-")
+    withr::local_options(list(
+        epwshiftr.dir_store = store,
+        epwshiftr.dir_cache = cache
+    ))
+
+    on_load <- get(".onLoad", envir = asNamespace("epwshiftr"))
+    expect_warning(on_load("", "epwshiftr"), NA)
+
+    expect_identical(getOption("epwshiftr.dir_store"), store)
+    expect_identical(getOption("epwshiftr.dir_cache"), cache)
+    expect_false(dir.exists(store))
+    expect_false(dir.exists(cache))
+})
+
 test_that("store path helpers keep paths inside the store", {
     root <- tempfile("epwshiftr-store-")
     withr::local_options(list(epwshiftr.dir_store = root))

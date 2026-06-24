@@ -86,11 +86,11 @@
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 2
       * Total size: <Unknown> [Byte]
-      * Fields: XX | [ id, data_node, dataset_id, size, title, url, url_opendap, and
-        url_download ]
+      * Fields: XX | [ id, data_node, dataset_id, instance_id, master_id, replica,
+        size, title, url, url_opendap, and url_download ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * fields=id,data_node,dataset_id,size,title,url
+      * fields=id,activity_id,data_node,dataset_id,instance_id,institution_id,master_id,replica,size,title,url,version
       * latest=true
       * type=Aggregation
       * offset=0

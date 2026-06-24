@@ -167,6 +167,6 @@ write_local_morph_tas_fixture <- function(path, year = 2060L) {
         "member_id", "table_id", "lon", "lat", "dist", "datetime",
         "variable", "description", "units", "value"
     ))
-    fst::write_fst(data, path, compress = 100)
+    write_parquet_file(data, path)
     invisible(path)
 }

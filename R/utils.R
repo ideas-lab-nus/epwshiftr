@@ -481,18 +481,360 @@ store_rel_path <- function(path, root = store_dir(init = TRUE)) {
 }
 # }}}
 
+# checksum helpers {{{
+checksum_file <- function(path, algo = "sha256") {
+    checkmate::assert_file_exists(path, access = "r")
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    out <- if (identical(algo, "sha256")) {
+        tools::sha256sum(path)
+    } else {
+        tools::md5sum(path)
+    }
+    unname(as.character(out))
+}
+
+checksum_bytes <- function(bytes, algo = "sha256") {
+    if (!is.raw(bytes)) {
+        stop("`bytes` must be a raw vector.", call. = FALSE)
+    }
+    checkmate::assert_choice(algo, c("md5", "sha256"))
+
+    out <- if (identical(algo, "sha256")) {
+        tools::sha256sum(bytes = bytes)
+    } else {
+        tools::md5sum(bytes = bytes)
+    }
+    unname(as.character(out))
+}
+# }}}
+
+# duckdb helpers {{{
+ddb_connect <- function(dbdir, read_only = FALSE, ...) {
+    duckdb::dbConnect(duckdb::duckdb(), dbdir = dbdir, read_only = read_only, ...)
+}
+
+ddb_disconnect <- function(conn, shutdown = TRUE) {
+    duckdb::dbDisconnect(conn, shutdown = shutdown)
+}
+
+ddb_is_valid <- function(conn) {
+    duckdb::dbIsValid(conn)
+}
+
+ddb_exec <- function(conn, sql) {
+    duckdb::sql_exec(sql, conn = conn)
+}
+
+ddb_query <- function(conn, sql) {
+    duckdb::sql_query(sql, conn = conn)
+}
+
+ddb_list_tables <- function(conn) {
+    duckdb::dbListTables(conn)
+}
+
+ddb_read_table <- function(conn, table) {
+    ddb_query(conn, sprintf("SELECT * FROM %s", ddb_ident(conn, table)))
+}
+
+ddb_write_table <- function(conn, table, rows, ...) {
+    duckdb::dbWriteTable(conn, table, rows, ...)
+}
+
+ddb_append_table <- function(conn, table, rows, ...) {
+    duckdb::dbAppendTable(conn, table, rows, ...)
+}
+
+ddb_ident <- function(conn, x) {
+    as.character(duckdb::dbQuoteIdentifier(conn, x))
+}
+
+ddb_literal <- function(conn, x) {
+    as.character(duckdb::dbQuoteLiteral(conn, x))
+}
+# }}}
+
+# manifest_lock {{{
+manifest_lock_path <- function(path) {
+    paste0(normalizePath(path, mustWork = FALSE, winslash = "/"), ".lock")
+}
+
+manifest_lock_metadata <- function(lock_dir) {
+    file.path(lock_dir, "owner.json")
+}
+
+manifest_lock_stale <- function(lock_dir, stale_after) {
+    if (!dir.exists(lock_dir)) {
+        return(FALSE)
+    }
+    info <- file.info(lock_dir, extra_cols = FALSE)
+    if (is.na(info$mtime)) {
+        return(TRUE)
+    }
+    age <- as.numeric(difftime(Sys.time(), info$mtime, units = "secs"))
+    is.finite(age) && age > stale_after
+}
+
+manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
+    lock_dir <- manifest_lock_path(path)
+    checkmate::assert_count(timeout, positive = FALSE)
+    checkmate::assert_count(stale_after, positive = TRUE)
+    started <- Sys.time()
+
+    repeat {
+        ok <- dir.create(lock_dir, showWarnings = FALSE)
+        if (isTRUE(ok)) {
+            meta <- list(
+                pid = Sys.getpid(),
+                hostname = unname(Sys.info()[["nodename"]]),
+                created_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+            )
+            try(
+                jsonlite::write_json(meta, manifest_lock_metadata(lock_dir), auto_unbox = TRUE, pretty = TRUE),
+                silent = TRUE
+            )
+            return(function() {
+                if (dir.exists(lock_dir)) {
+                    unlink(lock_dir, recursive = TRUE, force = TRUE)
+                }
+                invisible(NULL)
+            })
+        }
+
+        if (manifest_lock_stale(lock_dir, stale_after)) {
+            unlink(lock_dir, recursive = TRUE, force = TRUE)
+            next
+        }
+
+        elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+        if (elapsed >= timeout) {
+            cli::cli_abort("Manifest is locked by another process: {.path {lock_dir}}.")
+        }
+        Sys.sleep(min(0.2, max(0.01, timeout - elapsed)))
+    }
+}
+
+manifest_with_lock <- function(path, expr, timeout = 30, stale_after = 24 * 3600) {
+    release <- manifest_acquire_lock(path, timeout = timeout, stale_after = stale_after)
+    on.exit(release(), add = TRUE)
+    force(expr)
+}
+# }}}
+
+# write_parquet_file {{{
+write_parquet_file <- function(dt, path) {
+    checkmate::assert_data_frame(dt)
+    checkmate::assert_string(path, min.chars = 1L)
+
+    path <- normalizePath(path, mustWork = FALSE, winslash = "/")
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+
+    conn <- ddb_connect(":memory:")
+    on.exit(ddb_disconnect(conn), add = TRUE)
+
+    tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
+    tmp_table <- sprintf("tmp_parquet_%s", fast_hash(list(path, Sys.time(), stats::runif(1L))))
+    on.exit({
+        try(ddb_exec(conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(conn, tmp_table))), silent = TRUE)
+        if (file.exists(tmp_file)) {
+            unlink(tmp_file)
+        }
+    }, add = TRUE)
+
+    ddb_write_table(conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+    ddb_exec(conn, sprintf(
+        "COPY %s TO %s (FORMAT PARQUET)",
+        ddb_ident(conn, tmp_table),
+        ddb_literal(conn, tmp_file)
+    ))
+
+    if (file.exists(path)) {
+        unlink(path)
+    }
+    ok <- file.rename(tmp_file, path)
+    if (!ok) {
+        stop(sprintf("Failed to write Parquet file '%s'.", path), call. = FALSE)
+    }
+
+    invisible(path)
+}
+# }}}
+
+# mirai helpers {{{
+mirai_default_workers <- function(n) {
+    if (!n) {
+        return(0L)
+    }
+
+    workers <- getOption("epwshiftr.mirai_workers", NULL)
+    if (is.null(workers)) {
+        workers <- parallel::detectCores(logical = FALSE)
+        if (is.na(workers) || workers < 1L) {
+            workers <- 1L
+        }
+    }
+
+    max(1L, min(as.integer(workers), n))
+}
+
+mirai_error_message <- function(result) {
+    if (inherits(result, "miraiError")) {
+        message <- attr(result, "message", exact = TRUE)
+        if (is.null(message) || !nzchar(message)) {
+            message <- as.character(result)
+        }
+        return(message)
+    }
+
+    if (inherits(result, "errorValue")) {
+        code <- unclass(result)[[1L]]
+        return(sprintf("mirai worker returned error code %s", code))
+    }
+
+    ""
+}
+
+mirai_worker_bindings <- function(symbols = character()) {
+    ns <- asNamespace("epwshiftr")
+    symbols <- unique(c(
+        "J",
+        "copy",
+        "rbindlist",
+        "set",
+        "setcolorder",
+        "setnames",
+        symbols
+    ))
+    symbols <- symbols[symbols %in% ls(ns, all.names = TRUE)]
+
+    bindings <- mget(symbols, envir = ns, inherits = FALSE)
+    local <- vapply(
+        bindings,
+        function(x) is.function(x) && identical(environment(x), ns),
+        logical(1L)
+    )
+    attr(bindings, "local_symbols") <- names(bindings)[local]
+    bindings
+}
+
+mirai_lapply <- function(X, FUN, ..., workers = NULL, symbols = character(), label = "mirai task") {
+    checkmate::assert_function(FUN)
+
+    n <- length(X)
+    if (!n) {
+        return(vector("list", 0L))
+    }
+
+    workers <- if (is.null(workers)) mirai_default_workers(n) else max(1L, min(as.integer(workers), n))
+    dot_args <- list(...)
+
+    if (workers <= 1L) {
+        return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
+    }
+
+    compute_profile <- sprintf("epwshiftr-%s-%s", gsub("[^A-Za-z0-9]+", "-", label), fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L))))
+    mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+    on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
+
+    worker_symbols <- mirai_worker_bindings(symbols)
+    tasks <- lapply(X, function(x) {
+        mirai::mirai(
+            {
+                old_env <- environment(FUN)
+                worker_env <- new.env(parent = old_env)
+                if (length(worker_symbols)) {
+                    local_symbols <- attr(worker_symbols, "local_symbols", exact = TRUE)
+                    list2env(worker_symbols, envir = worker_env)
+                    for (nm in local_symbols) {
+                        if (is.function(worker_env[[nm]])) {
+                            environment(worker_env[[nm]]) <- worker_env
+                        }
+                    }
+                }
+                environment(FUN) <- worker_env
+
+                do.call(FUN, c(list(x), dot_args))
+            },
+            FUN = FUN,
+            x = x,
+            dot_args = dot_args,
+            worker_symbols = worker_symbols,
+            .compute = compute_profile
+        )
+    })
+
+    results <- lapply(tasks, mirai::collect_mirai)
+    errors <- vapply(results, mirai_error_message, character(1L))
+    failed <- nzchar(errors)
+    if (any(failed)) {
+        stop(sprintf(
+            "Failed to complete %s for %d task(s). First error: %s",
+            label,
+            sum(failed),
+            errors[failed][[1L]]
+        ), call. = FALSE)
+    }
+
+    results
+}
+
+mirai_map <- function(FUN, ..., workers = NULL, symbols = character(), label = "mirai map") {
+    args <- list(...)
+    if (!length(args)) {
+        stop("At least one mapped input is required.", call. = FALSE)
+    }
+
+    lens <- vapply(args, length, integer(1L))
+    if (!lens[[1L]]) {
+        return(vector("list", 0L))
+    }
+    if (length(unique(lens)) != 1L) {
+        stop("Mapped inputs must have the same length.", call. = FALSE)
+    }
+
+    items <- lapply(seq_len(lens[[1L]]), function(i) lapply(args, `[[`, i))
+    mirai_lapply(
+        items,
+        function(item) do.call(FUN, item),
+        workers = workers,
+        symbols = symbols,
+        label = label
+    )
+}
+
+netcdf_mirai_symbols <- function(extra = character()) {
+    ns <- asNamespace("epwshiftr")
+    unique(c(
+        "CF_TIME_CALENDARS",
+        "CF_TIME_UNIT_SECONDS",
+        grep("^cf_time_", ls(ns, all.names = TRUE), value = TRUE),
+        "get_nc_atts",
+        "get_nc_axes",
+        "get_nc_data",
+        "get_nc_dims",
+        "get_nc_meta",
+        "get_nc_time",
+        "get_nc_time_att",
+        "match_location_coord",
+        "match_nc_coord",
+        "match_nc_time",
+        "normalize_cf_calendar",
+        "parse_cf_time",
+        "summary_database_scan_file",
+        "to_radian",
+        "tunnel_dist",
+        extra
+    ))
+}
+# }}}
+
 # store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")
     checkmate::assert_choice(algo, c("md5", "sha256"))
 
-    con <- file(path, "rb")
-    on.exit(close(con), add = TRUE)
-    if (identical(algo, "sha256")) {
-        paste0(openssl::sha256(con))
-    } else {
-        paste0(openssl::md5(con))
-    }
+    checksum_file(path, algo)
 }
 # }}}
 
@@ -605,11 +947,15 @@ utils::globalVariables(c(
     ".I",
     ".N",
     ".SD",
+    ".",
     "J",
     ".GRP",
     "activity_drs",
+    "all_candidates_cooling",
     "alpha",
     "attribute",
+    "avg_latency",
+    "cooldown_until",
     "country",
     "data_node",
     "datetime",
@@ -631,6 +977,7 @@ utils::globalVariables(c(
     "file_path",
     "file_realsize",
     "file_size",
+    "failure_count",
     "global_horizontal_radiation",
     "horizontal_infrared_radiation_intensity_from_sky",
     "hour",
@@ -648,6 +995,7 @@ utils::globalVariables(c(
     "index_case",
     "institution_id",
     "kind",
+    "last_probe_at",
     "lat",
     "latitude",
     "location",
@@ -656,13 +1004,36 @@ utils::globalVariables(c(
     "member_id",
     "name",
     "natts",
+    "node_attempt_count",
+    "node_avg_latency",
+    "node_cooldown_rank",
+    "node_cooldown_until",
+    "node_failure_count",
+    "node_is_cooling_down",
+    "node_last_probe_at",
+    "node_missing",
+    "node_probe_failure_count",
+    "node_probe_success_count",
+    "node_success_count",
+    "node_success_rate",
+    "node_updated_at",
     "opaque_sky_cover",
     "ping",
+    "priority",
+    "probe_cached",
+    "probe_failure_count",
+    "probe_latency",
+    "probe_missing",
+    "probe_ms",
+    "probe_success_count",
+    "probe_throughput",
     "properties",
+    "record_index",
     "relative_humidity",
     "source_id",
     "source_type",
     "state_province",
+    "success_count",
     "table_id",
     "title",
     "total_sky_cover",

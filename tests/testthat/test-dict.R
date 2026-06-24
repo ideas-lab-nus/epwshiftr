@@ -361,7 +361,7 @@ test_that("EsgDict save/load uses typed schema-validated JSON", {
 
     store <- EsgStore$new(dir, create = FALSE)
     withr::defer(store$close())
-    artifacts <- data.table::as.data.table(DBI::dbReadTable(priv(store)$conn, "artifact"))
+    artifacts <- data.table::as.data.table(ddb_read_table(priv(store)$conn, "artifact"))
     expect_equal(nrow(artifacts[kind == "dict" & project == "CMIP6" & status == "available"]), 1L)
 
     loaded <- EsgDict$new()

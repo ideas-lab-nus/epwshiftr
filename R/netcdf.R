@@ -75,11 +75,8 @@ summary_database_scan_file <- function (file) {
 #'
 #' - `file_path`: the full path of matched NetCDF file for every case.
 #'
-#' `summary_database()` uses [future.apply][future.apply::future_lapply()]
-#' underneath to speed up the data processing if applicable. You can use your
-#' preferable future backend to speed up data extraction in parallel. By default,
-#' `summary_database()` uses `future::sequential` backend, which runs things in
-#' sequential.
+#' `summary_database()` uses [mirai][mirai::mirai()] internally for parallel
+#' NetCDF metadata scanning when there is more than one file to inspect.
 #'
 #' @param dir A single string indicating the directory where CMIP6 model output
 #'        NetCDF files are stored.
@@ -205,25 +202,12 @@ summary_database <- function (
         left <- data.table::data.table()
         miss <- data.table::data.table()
     } else {
-        if (length(ncfiles) == 1L) {
-            ncmeta <- summary_database_scan_file(ncfiles)
-        } else {
-            progressr::with_progress({
-                p <- progressr::progressor(along = ncfiles)
-
-                ncmeta <- rbindlist(future.apply::future_lapply(seq_along(ncfiles),
-                    function (i) {
-                        p(message = sprintf("[%i/%i]", i, length(ncfiles)))
-                        meta <- get_nc_meta(ncfiles[i])
-                        time <- as.list(get_nc_time(ncfiles[i], range = TRUE))
-                        names(time) <- c("datetime_start", "datetime_end")
-                        c(meta, time)
-                    }
-                ))
-            })
-
-            ncmeta[, `:=`(file_path = ncfiles, file_realsize = file.size(ncfiles), file_mtime = file.mtime(ncfiles))]
-        }
+        ncmeta <- rbindlist(mirai_lapply(
+            ncfiles,
+            summary_database_scan_file,
+            symbols = netcdf_mirai_symbols(),
+            label = "NetCDF metadata scan"
+        ))
 
         # store original column names
         cols_idx <- names(idx)
@@ -583,14 +567,11 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' [match_coord()] and extracts CMIP6 data using the coordinates and years of
 #' interest specified.
 #'
-#' `extract_data()` uses [CFtime](https://cran.r-project.org/package=CFtime)
-#' to parse CF-compliant time coordinates into UTC `POSIXct` values when the
-#' calendar supports POSIX conversion.
+#' `extract_data()` parses CF-compliant time coordinates into UTC `POSIXct`
+#' values using epwshiftr's internal NetCDF time parser.
 #'
-#' `extract_data()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable future backend to
-#' speed up data extraction in parallel. By default, `extract_data()` uses
-#' `future::sequential` backend, which runs things in sequential.
+#' `extract_data()` uses [mirai][mirai::mirai()] internally for parallel NetCDF
+#' extraction when there is more than one file-coordinate pair to inspect.
 #'
 #' @param coord An `epw_cmip6_coord` object created using [match_coord()]
 #'
@@ -601,8 +582,8 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' @param unit If `TRUE`, units will be added to values using
 #'        [units::set_units()].
 #'
-#' @param out_dir The directory to save extracted data using [fst::write_fst()].
-#'        If `NULL`, all data will be kept in memory by default. Default: `NULL`.
+#' @param out_dir The directory to save extracted data as Parquet files. If
+#'        `NULL`, all data will be kept in memory by default. Default: `NULL`.
 #'
 #' @param by A character vector of variable names used to split data
 #'        during extraction. Should be a subset of:
@@ -615,15 +596,11 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' * `"variant"`: variant label
 #' * `"resolution"`: approximate horizontal resolution
 #'
-#' If `NULL` and `out_dir` is given, file name `data.fst` will be used. Default:
-#' `NULL`.
+#' If `NULL` and `out_dir` is given, file name `data.parquet` will be used.
+#' Default: `NULL`.
 #'
 #' @param keep Whether keep extracted data in memory. Default: `TRUE` if
 #'        `out_dir` is `NULL`, and `FALSE` otherwise.
-#'
-#' @param compress A single integer in the range 0 to 100, indicating the amount
-#'        of compression to use. Lower values mean larger file sizes. Default:
-#'        `100`.
 #'
 #' @return An `epw_cmip6_data` object, which is basically a list of 3 elements:
 #'
@@ -658,7 +635,7 @@ get_nc_data <- function (x, coord, years, unit = TRUE) {
 #' }
 #' @export
 extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
-                          by = NULL, keep = is.null(out_dir), compress = 100) {
+                          by = NULL, keep = is.null(out_dir)) {
     checkmate::assert_class(coord, "epw_cmip6_coord")
 
     # column names
@@ -678,10 +655,10 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         by_cols <- names(dict)[match(by, dict, 0L)]
         if (length(by_cols)) {
             m_coord <- split(m_coord[, .SD, .SDcols = c("file_path", "coord", by_cols)], by = by_cols)
-            out_files <- file.path(normalizePath(out_dir), paste0(names(m_coord), ".fst"))
+            out_files <- file.path(normalizePath(out_dir), paste0(names(m_coord), ".parquet"))
         } else {
             m_coord <- list(data = m_coord)
-            out_files <- file.path(normalizePath(out_dir), "data.fst")
+            out_files <- file.path(normalizePath(out_dir), "data.parquet")
         }
     }
 
@@ -696,23 +673,23 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         if (!is.null(out_dir) && length(by_cols)) {
             vmsg(sprintf("Extracting data for case '%s'...", names(m_coord)[[i]]))
         }
-        progressr::with_progress({
-            p <- progressr::progressor(nrow(co))
-
-            d <- rbindlist(
-                future.apply::future_Map(
-                    function(ip, path, coord) {
-                        p(message = sprintf("[%i/%i]", ip, nrow(co)))
-                        d <- get_nc_data(path, coord, years = years, unit = unit)
-                        set(d, NULL, "index", NULL)
-                    },
-                    seq.int(nrow(co)), co$file_path, co$coord
-            ))
-        })
+        d <- rbindlist(mirai_map(
+            function(path, coord, years, unit) {
+                d <- get_nc_data(path, coord, years = years, unit = unit)
+                set(d, NULL, "index", NULL)
+                d
+            },
+            co$file_path,
+            co$coord,
+            years = rep(list(years), nrow(co)),
+            unit = rep(list(unit), nrow(co)),
+            symbols = netcdf_mirai_symbols(),
+            label = "NetCDF extraction"
+        ))
 
         if (!is.null(out_dir)) {
             f <- out_files[i]
-            fst::write_fst(d, f, compress = compress)
+            write_parquet_file(d, f)
         }
 
         if (keep) {
@@ -845,30 +822,335 @@ get_nc_time_att <- function (atts, attribute, default = NULL) {
     atts$value[[idx[[1L]]]]
 }
 
+CF_TIME_CALENDARS <- c(
+    "standard",
+    "gregorian",
+    "proleptic_gregorian",
+    "noleap",
+    "365_day",
+    "360_day",
+    "366_day",
+    "all_leap"
+)
+
+CF_TIME_UNIT_SECONDS <- c(
+    seconds = 1,
+    minutes = 60,
+    hours = 3600,
+    days = 86400
+)
+
+cf_time_check_calendar <- function (calendar) {
+    if (!calendar %in% CF_TIME_CALENDARS) {
+        stop("Invalid calendar specification", call. = FALSE)
+    }
+    calendar
+}
+
+cf_time_parse_unit <- function (unit) {
+    aliases <- c(
+        years = "years",
+        year = "years",
+        yr = "years",
+        months = "months",
+        month = "months",
+        mon = "months",
+        days = "days",
+        day = "days",
+        d = "days",
+        hours = "hours",
+        hour = "hours",
+        hr = "hours",
+        h = "hours",
+        minutes = "minutes",
+        minute = "minutes",
+        min = "minutes",
+        seconds = "seconds",
+        second = "seconds",
+        sec = "seconds",
+        s = "seconds"
+    )
+    raw_unit <- tolower(unit)
+    unit <- aliases[[raw_unit]]
+    if (is.null(unit)) {
+        stop(sprintf("Unsupported CF time unit: %s", raw_unit), call. = FALSE)
+    }
+    unit
+}
+
+cf_time_is_leap_gregorian <- function (year) {
+    (year %% 4L == 0L & year %% 100L != 0L) | year %% 400L == 0L
+}
+
+cf_time_month_days <- function (year, month, calendar) {
+    common <- c(31L, 28L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
+    leap <- c(31L, 29L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
+
+    switch(
+        calendar,
+        "360_day" = rep(30L, length(month)),
+        "365_day" = common[month],
+        "noleap" = common[month],
+        "366_day" = leap[month],
+        "all_leap" = leap[month],
+        ifelse(cf_time_is_leap_gregorian(year), leap[month], common[month])
+    )
+}
+
+cf_time_valid_days <- function (parts, calendar) {
+    valid <- !is.na(parts$year) & !is.na(parts$month) & !is.na(parts$day) &
+        parts$month >= 1L & parts$month <= 12L & parts$day >= 1L
+    days <- cf_time_month_days(parts$year, parts$month, calendar)
+    valid & !is.na(days) & parts$day <= days
+}
+
+cf_time_parse_origin <- function (origin, calendar) {
+    pattern <- paste0(
+        "^\\s*",
+        "([+-]?[0-9]{1,4})",
+        "(?:-(0?[1-9]|1[0-2]))?",
+        "(?:-(0?[1-9]|[12][0-9]|3[01]))?",
+        "(?:[T ]",
+        "([01]?[0-9]|2[0-3])",
+        "(?::([0-5]?[0-9]))?",
+        "(?::([0-5]?[0-9](?:\\.[0-9]+)?))?",
+        ")?",
+        "(?:\\s*(Z|UTC|[+-][0-9]{2}(?::?[0-9]{2})?))?",
+        "\\s*$"
+    )
+    proto <- data.frame(
+        year = integer(),
+        month = integer(),
+        day = integer(),
+        hour = integer(),
+        minute = integer(),
+        second = numeric(),
+        zone = character()
+    )
+    parts <- utils::strcapture(pattern, trimws(origin), proto)
+
+    if (is.na(parts$year[[1L]])) {
+        stop(
+            "Definition string does not appear to be a CF-compliant time coordinate description: invalid base date specification",
+            call. = FALSE
+        )
+    }
+
+    parts$month[is.na(parts$month)] <- 1L
+    parts$day[is.na(parts$day)] <- 1L
+    parts$hour[is.na(parts$hour)] <- 0L
+    parts$minute[is.na(parts$minute)] <- 0L
+    parts$second[is.na(parts$second)] <- 0
+    parts$tz <- ifelse(is.na(parts$zone), "+0000", parts$zone)
+    parts$zone <- NULL
+
+    if (!cf_time_valid_days(parts, calendar)) {
+        stop(
+            "Definition string does not appear to be a CF-compliant time coordinate description: invalid base date specification",
+            call. = FALSE
+        )
+    }
+
+    parts
+}
+
+cf_time_parse_definition <- function (units, calendar) {
+    units <- as.character(units[[1L]])
+    pattern <- "^\\s*([[:alpha:]]+)\\s+(since|after|from|ref|per)\\s+(.+?)\\s*$"
+    match <- regexec(pattern, units, ignore.case = TRUE)
+    parts <- regmatches(units, match)[[1L]]
+
+    if (length(parts) != 4L) {
+        stop("Definition string does not appear to be a CF-compliant time coordinate description", call. = FALSE)
+    }
+
+    list(
+        unit = cf_time_parse_unit(parts[[2L]]),
+        origin = cf_time_parse_origin(parts[[4L]], calendar)
+    )
+}
+
+cf_time_gregorian_date2offset <- function (parts) {
+    year1 <- parts$year - 1L
+    corr <- ifelse(parts$month <= 2L, 0L, as.integer(cf_time_is_leap_gregorian(parts$year)) - 2L)
+    365L * year1 + year1 %/% 4L - year1 %/% 100L + year1 %/% 400L +
+        (367L * parts$month - 362L) %/% 12L + corr + parts$day
+}
+
+cf_time_gregorian_offset2date <- function (offsets) {
+    d0 <- offsets - 1L
+    n400 <- d0 %/% 146097L
+    d1 <- d0 %% 146097L
+    n100 <- d1 %/% 36524L
+    d2 <- d1 %% 36524L
+    n4 <- d2 %/% 1461L
+    d3 <- d2 %% 1461L
+    n1 <- d3 %/% 365L
+    year <- 400L * n400 + 100L * n100 + 4L * n4 + n1
+    year <- ifelse(n100 == 4L | n1 == 4L, year, year + 1L)
+    year1 <- year - 1L
+    leap <- cf_time_is_leap_gregorian(year)
+    jan1 <- 365L * year1 + year1 %/% 4L - year1 %/% 100L + year1 %/% 400L + 1L
+    prior_days <- offsets - jan1 + ifelse(offsets < jan1 + 59L + as.integer(leap), 0L, 2L - as.integer(leap))
+    month <- (12L * prior_days + 373L) %/% 367L
+    day <- offsets - cf_time_gregorian_date2offset(data.frame(year = year, month = month, day = 1L)) + 1L
+
+    data.frame(year = year, month = month, day = day)
+}
+
+cf_time_365_date2offset <- function (parts) {
+    corr <- ifelse(parts$month <= 2L, 0L, -2L)
+    365L * (parts$year - 1L) + (367L * parts$month - 362L) %/% 12L + corr + parts$day
+}
+
+cf_time_365_offset2date <- function (offsets) {
+    d0 <- offsets - 1L
+    year <- d0 %/% 365L + 1L
+    d1 <- d0 %% 365L
+    corr <- ifelse(d1 < 59L, 0L, 2L)
+    month <- (12L * (d1 + corr) + 373L) %/% 367L
+    day <- d1 - (367L * month - 362L) %/% 12L + corr + 1L
+
+    data.frame(year = year, month = month, day = day)
+}
+
+cf_time_366_date2offset <- function (parts) {
+    corr <- ifelse(parts$month <= 2L, 0L, -1L)
+    366L * (parts$year - 1L) + (367L * parts$month - 362L) %/% 12L + corr + parts$day
+}
+
+cf_time_366_offset2date <- function (offsets) {
+    d0 <- offsets - 1L
+    year <- d0 %/% 366L + 1L
+    d1 <- d0 %% 366L
+    corr <- ifelse(d1 < 60L, 0L, 1L)
+    month <- (12L * (d1 + corr) + 373L) %/% 367L
+    day <- d1 - (367L * month - 362L) %/% 12L + corr + 1L
+
+    data.frame(year = year, month = month, day = day)
+}
+
+cf_time_date2offset <- function (parts, origin, calendar) {
+    switch(
+        calendar,
+        "360_day" = (parts$year - origin$year) * 360L +
+            (parts$month - origin$month) * 30L + parts$day - origin$day,
+        "365_day" = cf_time_365_date2offset(parts) - cf_time_365_date2offset(origin),
+        "noleap" = cf_time_365_date2offset(parts) - cf_time_365_date2offset(origin),
+        "366_day" = cf_time_366_date2offset(parts) - cf_time_366_date2offset(origin),
+        "all_leap" = cf_time_366_date2offset(parts) - cf_time_366_date2offset(origin),
+        cf_time_gregorian_date2offset(parts) - cf_time_gregorian_date2offset(origin)
+    )
+}
+
+cf_time_offset2date <- function (offsets, origin, calendar) {
+    switch(
+        calendar,
+        "360_day" = {
+            year <- origin$year + offsets %/% 360L
+            month <- origin$month + (offsets %% 360L) %/% 30L
+            day <- origin$day + offsets %% 30L
+
+            over <- day > 30L
+            day[over] <- day[over] - 30L
+            month[over] <- month[over] + 1L
+            over <- month > 12L
+            month[over] <- month[over] - 12L
+            year[over] <- year[over] + 1L
+
+            data.frame(year = year, month = month, day = day)
+        },
+        "365_day" = cf_time_365_offset2date(offsets + cf_time_365_date2offset(origin)),
+        "noleap" = cf_time_365_offset2date(offsets + cf_time_365_date2offset(origin)),
+        "366_day" = cf_time_366_offset2date(offsets + cf_time_366_date2offset(origin)),
+        "all_leap" = cf_time_366_offset2date(offsets + cf_time_366_date2offset(origin)),
+        cf_time_gregorian_offset2date(offsets + cf_time_gregorian_date2offset(origin))
+    )
+}
+
+cf_time_origin_posix <- function (origin, tz) {
+    ISOdatetime(origin$year[[1L]], origin$month[[1L]], 1L, 0L, 0L, 0, tz = tz) +
+        (origin$day[[1L]] - 1L) * 86400 +
+        origin$hour[[1L]] * 3600 +
+        origin$minute[[1L]] * 60 +
+        origin$second[[1L]]
+}
+
+cf_time_add_seconds_to_fields <- function (fields, seconds, origin, calendar) {
+    total_seconds <- fields$hour * 3600 + fields$minute * 60 + fields$second + seconds
+    day_offsets <- cf_time_date2offset(fields, origin, calendar) + total_seconds %/% 86400L
+    seconds <- round(total_seconds %% 86400L, 3L)
+
+    fields <- cf_time_offset2date(day_offsets, origin, calendar)
+    fields$hour <- seconds %/% 3600L
+    fields$minute <- (seconds %% 3600L) %/% 60L
+    fields$second <- seconds %% 60L
+    fields
+}
+
+cf_time_offsets2fields <- function (offsets, unit, origin, calendar) {
+    if (unit %in% names(CF_TIME_UNIT_SECONDS)) {
+        seconds <- offsets * CF_TIME_UNIT_SECONDS[[unit]] +
+            origin$hour * 3600 + origin$minute * 60 + origin$second
+        day_offsets <- seconds %/% 86400L
+        seconds <- round(seconds %% 86400L, 3L)
+
+        fields <- cf_time_offset2date(day_offsets, origin, calendar)
+        fields$hour <- seconds %/% 3600L
+        fields$minute <- (seconds %% 3600L) %/% 60L
+        fields$second <- seconds %% 60L
+        return(fields)
+    }
+
+    whole_offsets <- offsets %/% 1L
+    fractional_offsets <- offsets - whole_offsets
+    fields <- origin[rep(1L, length(offsets)), c("year", "month", "day", "hour", "minute", "second")]
+    if (unit == "months") {
+        months <- fields$month + whole_offsets - 1L
+        fields$month <- months %% 12L + 1L
+        fields$year <- fields$year + months %/% 12L
+        fractional_seconds <- fractional_offsets * 30 * 86400
+    } else {
+        fields$year <- fields$year + whole_offsets
+        fractional_seconds <- fractional_offsets * 365 * 86400
+    }
+
+    if (any(fractional_seconds != 0)) {
+        fields <- cf_time_add_seconds_to_fields(fields, fractional_seconds, origin, calendar)
+    }
+
+    fields
+}
+
+cf_time_fields2posix <- function (fields, origin, calendar, tz) {
+    if (calendar %in% c("standard", "gregorian", "proleptic_gregorian")) {
+        return(as.POSIXct(
+            ISOdatetime(fields$year, fields$month, fields$day, fields$hour, fields$minute, fields$second, tz = tz),
+            tz = tz
+        ))
+    }
+
+    origin_time <- cf_time_origin_posix(origin, tz)
+    day_offsets <- cf_time_date2offset(fields, origin, calendar)
+    second_offsets <- fields$hour * 3600 + fields$minute * 60 + fields$second -
+        (origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]])
+
+    as.POSIXct(origin_time + day_offsets * 86400 + second_offsets, tz = tz)
+}
+
 parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
     calendar <- normalize_cf_calendar(calendar)
+    calendar <- cf_time_check_calendar(calendar)
     units <- as.character(units[[1L]])
 
-    cf_time <- CFtime::CFtime(units, calendar = calendar, offsets = offsets)
-    posix_time <- tryCatch(
-        {
-            CFtime::as_timestamp(cf_time, asPOSIX = TRUE)
-        },
-        error = function(e) {
-            origin <- cf_time$cal$origin
-            origin_time <- ISOdatetime(origin$year[[1L]], origin$month[[1L]], 1L, 0L, 0L, 0, tz = tz)
-            origin_time <- origin_time + (origin$day[[1L]] - 1) * 86400 +
-                origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]]
+    if (!is.numeric(offsets) || anyNA(offsets) || any(!is.finite(offsets))) {
+        stop("Invalid offsets for CF time coordinate.", call. = FALSE)
+    }
+    dim(offsets) <- NULL
 
-            fields <- cf_time$cal$offsets2time(cf_time$offsets)
-            day_offsets <- cf_time$cal$date2offset(fields)
-            second_offsets <- fields$hour * 3600 + fields$minute * 60 + fields$second -
-                (origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]])
-
-            origin_time + day_offsets * 86400 + second_offsets
-        }
-    )
-    posix_time <- as.POSIXct(posix_time, tz = tz)
+    parsed <- cf_time_parse_definition(units, calendar)
+    fields <- cf_time_offsets2fields(offsets, parsed$unit, parsed$origin, calendar)
+    posix_time <- cf_time_fields2posix(fields, parsed$origin, calendar, tz)
 
     data.table::setattr(posix_time, "cf_units", units)
     data.table::setattr(posix_time, "cf_calendar", calendar)

@@ -10,8 +10,7 @@ extract_data(
   unit = FALSE,
   out_dir = NULL,
   by = NULL,
-  keep = is.null(out_dir),
-  compress = 100
+  keep = is.null(out_dir)
 )
 }
 \arguments{
@@ -24,8 +23,8 @@ subsetting on years will be performed. Default: \code{NULL}.}
 \item{unit}{If \code{TRUE}, units will be added to values using
 \code{\link[units:units]{units::set_units()}}.}
 
-\item{out_dir}{The directory to save extracted data using \code{\link[fst:write_fst]{fst::write_fst()}}.
-If \code{NULL}, all data will be kept in memory by default. Default: \code{NULL}.}
+\item{out_dir}{The directory to save extracted data as Parquet files. If
+\code{NULL}, all data will be kept in memory by default. Default: \code{NULL}.}
 
 \item{by}{A character vector of variable names used to split data
 during extraction. Should be a subset of:
@@ -39,15 +38,11 @@ during extraction. Should be a subset of:
 \item \code{"resolution"}: approximate horizontal resolution
 }
 
-If \code{NULL} and \code{out_dir} is given, file name \code{data.fst} will be used. Default:
-\code{NULL}.}
+If \code{NULL} and \code{out_dir} is given, file name \code{data.parquet} will be used.
+Default: \code{NULL}.}
 
 \item{keep}{Whether keep extracted data in memory. Default: \code{TRUE} if
 \code{out_dir} is \code{NULL}, and \code{FALSE} otherwise.}
-
-\item{compress}{A single integer in the range 0 to 100, indicating the amount
-of compression to use. Lower values mean larger file sizes. Default:
-\code{100}.}
 }
 \value{
 An \code{epw_cmip6_data} object, which is basically a list of 3 elements:
@@ -83,14 +78,11 @@ extract CMIP6 data. It is the same object as created in \code{\link[=match_coord
 interest specified.
 }
 \details{
-\code{extract_data()} uses \href{https://cran.r-project.org/package=CFtime}{CFtime}
-to parse CF-compliant time coordinates into UTC \code{POSIXct} values when the
-calendar supports POSIX conversion.
+\code{extract_data()} parses CF-compliant time coordinates into UTC \code{POSIXct}
+values using epwshiftr's internal NetCDF time parser.
 
-\code{extract_data()} uses \link[future.apply:future_lapply]{future.apply}
-underneath. You can use your preferable future backend to
-speed up data extraction in parallel. By default, \code{extract_data()} uses
-\code{future::sequential} backend, which runs things in sequential.
+\code{extract_data()} uses \link[mirai:mirai]{mirai} internally for parallel NetCDF
+extraction when there is more than one file-coordinate pair to inspect.
 }
 \examples{
 \dontrun{

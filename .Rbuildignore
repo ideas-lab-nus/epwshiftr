@@ -10,5 +10,6 @@
 ^cran-comments\.md$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.git$
 ^.*\.pdf$
-^vignettes/articles$
+^vignettes$

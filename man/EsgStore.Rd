@@ -29,10 +29,44 @@ Hongyuan Jia
 \item \href{#method-EsgStore-close}{\code{EsgStore$close()}}
 \item \href{#method-EsgStore-get_meta}{\code{EsgStore$get_meta()}}
 \item \href{#method-EsgStore-set_meta}{\code{EsgStore$set_meta()}}
+\item \href{#method-EsgStore-download_layout}{\code{EsgStore$download_layout()}}
+\item \href{#method-EsgStore-set_download_layout}{\code{EsgStore$set_download_layout()}}
 \item \href{#method-EsgStore-register_artifact}{\code{EsgStore$register_artifact()}}
 \item \href{#method-EsgStore-artifact_path}{\code{EsgStore$artifact_path()}}
 \item \href{#method-EsgStore-validate}{\code{EsgStore$validate()}}
+\item \href{#method-EsgStore-add_query}{\code{EsgStore$add_query()}}
+\item \href{#method-EsgStore-track_query}{\code{EsgStore$track_query()}}
+\item \href{#method-EsgStore-untrack_query}{\code{EsgStore$untrack_query()}}
+\item \href{#method-EsgStore-tag_query}{\code{EsgStore$tag_query()}}
+\item \href{#method-EsgStore-untag_query}{\code{EsgStore$untag_query()}}
+\item \href{#method-EsgStore-query_tags}{\code{EsgStore$query_tags()}}
+\item \href{#method-EsgStore-require_query}{\code{EsgStore$require_query()}}
+\item \href{#method-EsgStore-unrequire_query}{\code{EsgStore$unrequire_query()}}
+\item \href{#method-EsgStore-query_graph}{\code{EsgStore$query_graph()}}
+\item \href{#method-EsgStore-queries}{\code{EsgStore$queries()}}
+\item \href{#method-EsgStore-query_files}{\code{EsgStore$query_files()}}
+\item \href{#method-EsgStore-preview_update_queries}{\code{EsgStore$preview_update_queries()}}
+\item \href{#method-EsgStore-update_queries}{\code{EsgStore$update_queries()}}
+\item \href{#method-EsgStore-download_preflight}{\code{EsgStore$download_preflight()}}
+\item \href{#method-EsgStore-download_query}{\code{EsgStore$download_query()}}
+\item \href{#method-EsgStore-download_status}{\code{EsgStore$download_status()}}
+\item \href{#method-EsgStore-query_status}{\code{EsgStore$query_status()}}
+\item \href{#method-EsgStore-query_updates}{\code{EsgStore$query_updates()}}
+\item \href{#method-EsgStore-query_changes}{\code{EsgStore$query_changes()}}
+\item \href{#method-EsgStore-workflow_status}{\code{EsgStore$workflow_status()}}
+\item \href{#method-EsgStore-workflow_report}{\code{EsgStore$workflow_report()}}
+\item \href{#method-EsgStore-remove_query}{\code{EsgStore$remove_query()}}
+\item \href{#method-EsgStore-remove_files}{\code{EsgStore$remove_files()}}
+\item \href{#method-EsgStore-prune_orphans}{\code{EsgStore$prune_orphans()}}
+\item \href{#method-EsgStore-storage_report}{\code{EsgStore$storage_report()}}
+\item \href{#method-EsgStore-validate_files}{\code{EsgStore$validate_files()}}
+\item \href{#method-EsgStore-repair_files}{\code{EsgStore$repair_files()}}
+\item \href{#method-EsgStore-cleanup_downloads}{\code{EsgStore$cleanup_downloads()}}
+\item \href{#method-EsgStore-retry_downloads}{\code{EsgStore$retry_downloads()}}
 \item \href{#method-EsgStore-add_files}{\code{EsgStore$add_files()}}
+\item \href{#method-EsgStore-downloader}{\code{EsgStore$downloader()}}
+\item \href{#method-EsgStore-download_files}{\code{EsgStore$download_files()}}
+\item \href{#method-EsgStore-sync_downloads}{\code{EsgStore$sync_downloads()}}
 \item \href{#method-EsgStore-plan_region}{\code{EsgStore$plan_region()}}
 \item \href{#method-EsgStore-extract}{\code{EsgStore$extract()}}
 \item \href{#method-EsgStore-query}{\code{EsgStore$query()}}
@@ -118,6 +152,60 @@ Set a store metadata value.
 \item{\code{key}}{Metadata key.}
 
 \item{\code{value}}{Metadata value. \code{NULL} is stored as \code{NA}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The store object, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_layout"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_layout}{}}}
+\subsection{Method \code{download_layout()}}{
+Return the store download layout policy.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_layout()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list describing how store downloads are placed under
+\verb{downloads/}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-set_download_layout"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-set_download_layout}{}}}
+\subsection{Method \code{set_download_layout()}}{
+Configure how store-managed ESGF downloads are placed under
+\verb{downloads/}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$set_download_layout(
+  layout = c("flat", "dataset", "drs", "template"),
+  template = NULL,
+  include_version = TRUE,
+  collision = c("error", "checksum", "suffix"),
+  missing = c("fallback", "error")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{layout}}{Download layout. \code{"flat"} stores files directly under
+\verb{downloads/}; \code{"dataset"} groups by dataset; \code{"drs"} uses a
+CMIP6-style DRS path; \code{"template"} uses \code{template}.}
+
+\item{\code{template}}{Optional subdirectory template for \code{layout = "template"}, using placeholders such as \code{{source_id}}.}
+
+\item{\code{include_version}}{Whether DRS paths include the ESGF version.
+Default: \code{TRUE}.}
+
+\item{\code{collision}}{How to handle different logical files that map to
+the same local path. Default: \code{"error"}.}
+
+\item{\code{missing}}{How to handle missing layout fields. Default:
+\code{"fallback"}.}
 }
 \if{html}{\out{</div>}}
 }
@@ -219,6 +307,838 @@ A data.table with validation results.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-add_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-add_query}{}}}
+\subsection{Method \code{add_query()}}{
+Add an ESGF query to the long-lived store query registry.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$add_query(query, label = NULL, track = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query}}{An \link{EsgQuery} object.}
+
+\item{\code{label}}{Optional label.}
+
+\item{\code{track}}{Whether to mark the query as tracked. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The stable query ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-track_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-track_query}{}}}
+\subsection{Method \code{track_query()}}{
+Mark a stored ESGF query as tracked.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$track_query(query_id)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The store object, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-untrack_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-untrack_query}{}}}
+\subsection{Method \code{untrack_query()}}{
+Mark a stored ESGF query as untracked.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$untrack_query(query_id)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The store object, invisibly.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-tag_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-tag_query}{}}}
+\subsection{Method \code{tag_query()}}{
+Add tags to a stored ESGF query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$tag_query(query_id, tag, replace = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{tag}}{Character vector of tags.}
+
+\item{\code{replace}}{Whether to replace existing tags for the query.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of tags for the query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-untag_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-untag_query}{}}}
+\subsection{Method \code{untag_query()}}{
+Remove tags from a stored ESGF query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$untag_query(query_id, tag = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{tag}}{Optional tags. If \code{NULL}, all tags are removed.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of remaining tags for the query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_tags"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_tags}{}}}
+\subsection{Method \code{query_tags()}}{
+List stored ESGF query tags.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_tags(query_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional query ID filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of query tags.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-require_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-require_query}{}}}
+\subsection{Method \code{require_query()}}{
+Record that one stored query depends on another stored query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$require_query(query_id, parent_query_id)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Child query ID.}
+
+\item{\code{parent_query_id}}{Required parent query ID.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of query dependency edges.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-unrequire_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-unrequire_query}{}}}
+\subsection{Method \code{unrequire_query()}}{
+Remove query dependency edges.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$unrequire_query(query_id, parent_query_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Child query ID.}
+
+\item{\code{parent_query_id}}{Optional parent query ID. If \code{NULL}, all
+parents for \code{query_id} are removed.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of remaining dependency edges for the query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_graph"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_graph}{}}}
+\subsection{Method \code{query_graph()}}{
+List stored query dependency edges.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_graph(
+  query_id = NULL,
+  direction = c("children", "parents", "both"),
+  recursive = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional query ID anchor.}
+
+\item{\code{direction}}{Which edge direction to return for an anchor.}
+
+\item{\code{recursive}}{Whether to include transitive edges.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of dependency edges.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-queries"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-queries}{}}}
+\subsection{Method \code{queries()}}{
+List stored ESGF queries.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$queries(tracked = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{tracked}}{Optional tracked-state filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of stored query records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_files}{}}}
+\subsection{Method \code{query_files()}}{
+List files linked to a stored ESGF query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_files(query_id, status = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{status}}{Optional query-file status filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of linked file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-preview_update_queries"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-preview_update_queries}{}}}
+\subsection{Method \code{preview_update_queries()}}{
+Preview tracked ESGF query updates without changing the store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$preview_update_queries(
+  query_id = NULL,
+  tracked = TRUE,
+  tag = NULL,
+  children = FALSE,
+  detail = FALSE,
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional query ID. If \code{NULL}, tracked queries are
+previewed by default.}
+
+\item{\code{tracked}}{Tracked-state filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{tag}}{Optional query tag filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{children}}{Whether to include dependency children of selected
+queries.}
+
+\item{\code{detail}}{Whether to return per-file changes together with the
+summary. Default: \code{FALSE}.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table summary, or a list with \code{summary} and \code{changes}
+when \code{detail = TRUE}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-update_queries"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-update_queries}{}}}
+\subsection{Method \code{update_queries()}}{
+Refresh stored ESGF queries and link their current File records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$update_queries(
+  query_id = NULL,
+  tracked = TRUE,
+  tag = NULL,
+  children = FALSE,
+  enqueue = FALSE,
+  downloader = NULL,
+  replica = "auto",
+  session_label = NULL,
+  service = "HTTPServer",
+  probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  strategy = c("fastest", "first", "stable"),
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional query ID. If \code{NULL}, tracked queries are
+updated by default.}
+
+\item{\code{tracked}}{Tracked-state filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{tag}}{Optional query tag filter used when \code{query_id} is \code{NULL}.}
+
+\item{\code{children}}{Whether to include dependency children of selected
+queries.}
+
+\item{\code{enqueue}}{Whether to enqueue current files after updating.
+Default: \code{FALSE}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader} used when \code{enqueue = TRUE}.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()} when
+enqueuing.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{service}}{ESGF URL service used for the download plan.}
+
+\item{\code{probe}}{Whether to probe candidate URLs before ranking.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count
+when \code{enqueue = TRUE}.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of query-file links touched by the update.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_preflight"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_preflight}{}}}
+\subsection{Method \code{download_preflight()}}{
+Preview a tracked query download without changing the store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_preflight(
+  query_id,
+  downloader = NULL,
+  replica = "auto",
+  service = "HTTPServer",
+  probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  strategy = c("fastest", "first", "stable"),
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader} used only for node
+history, network policy, and cooldown policy.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{service, probe, strategy}}{Download plan arguments.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from \code{downloader} when supplied.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{changes}, \code{files}, and \code{candidates}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_query}{}}}
+\subsection{Method \code{download_query()}}{
+Refresh, enqueue, and optionally run downloads for a stored ESGF query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_query(
+  query_id,
+  downloader = NULL,
+  replica = "auto",
+  dry_run = FALSE,
+  run = TRUE,
+  session_label = NULL,
+  service = "HTTPServer",
+  probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  strategy = c("fastest", "first", "stable"),
+  progress = TRUE,
+  overwrite = FALSE,
+  resume = TRUE,
+  all = TRUE,
+  limit = FALSE,
+  fields = "*",
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Query ID returned by \verb{$add_query()}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{dry_run}}{Whether to return a download preflight without
+changing the store, enqueueing, or downloading. Default:
+\code{FALSE}.}
+
+\item{\code{run}}{Whether to run the queued session immediately. Default:
+\code{TRUE}.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{service, probe, strategy}}{Download plan arguments.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{progress, overwrite, resume}}{Run arguments.}
+
+\item{\code{all, limit, fields}}{Arguments passed to \code{EsgQuery$collect()}.}
+
+\item{\code{...}}{Additional File query filters passed to \code{EsgQuery$collect()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created downloader session ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_status"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_status}{}}}
+\subsection{Method \code{download_status()}}{
+Return downloader tasks linked to stored query files.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_status(query_id = NULL, session_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID.}
+
+\item{\code{session_id}}{Optional downloader session ID.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of downloader task rows.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_status"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_status}{}}}
+\subsection{Method \code{query_status()}}{
+Summarise tracked ESGF query file and download status.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_status(query_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID vector. If \code{NULL}, all
+stored ESGF queries are summarised.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table with one row per stored query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_updates"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_updates}{}}}
+\subsection{Method \code{query_updates()}}{
+List tracked query update runs.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_updates(query_id = NULL, latest = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID filter.}
+
+\item{\code{latest}}{Whether to return only the latest update per query.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of update run summaries.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-query_changes"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-query_changes}{}}}
+\subsection{Method \code{query_changes()}}{
+List per-file changes recorded by tracked query updates.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$query_changes(update_id = NULL, query_id = NULL, change_type = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{update_id}}{Optional update run ID filter.}
+
+\item{\code{query_id}}{Optional stored query ID filter.}
+
+\item{\code{change_type}}{Optional change type filter.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of per-file query update changes.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-workflow_status"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-workflow_status}{}}}
+\subsection{Method \code{workflow_status()}}{
+Summarise query, download, local, and extraction status together.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$workflow_status(query_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID filter.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table with one row per stored query.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-workflow_report"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-workflow_report}{}}}
+\subsection{Method \code{workflow_report()}}{
+Return a compact ESGF query workflow health report.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$workflow_report(query_id = NULL, downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID filter.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{updates}, \code{changes}, \code{downloads},
+and \code{nodes}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-remove_query"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-remove_query}{}}}
+\subsection{Method \code{remove_query()}}{
+Remove stored ESGF queries and optionally delete orphaned local files.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$remove_query(query_id, delete = c("none", "orphaned"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Stored query ID vector.}
+
+\item{\code{delete}}{Whether to leave local files untouched (\code{"none"}) or
+delete files orphaned by the removal (\code{"orphaned"}).}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing removed queries.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-remove_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-remove_files}{}}}
+\subsection{Method \code{remove_files()}}{
+Remove ESGF file records and optionally delete local artifacts.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$remove_files(file_key, delete_local = FALSE, force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{file_key}}{File key vector.}
+
+\item{\code{delete_local}}{Whether to delete local NetCDF files. Default:
+\code{FALSE}.}
+
+\item{\code{force}}{Whether to remove files still linked to queries.
+Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing removed file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-prune_orphans"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-prune_orphans}{}}}
+\subsection{Method \code{prune_orphans()}}{
+Report or remove file records no longer linked to any query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$prune_orphans(delete_local = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{delete_local}}{Whether to delete local NetCDF files and remove
+orphaned registry records. Default: \code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of orphaned file records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-storage_report"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-storage_report}{}}}
+\subsection{Method \code{storage_report()}}{
+Summarise store download storage, registered local assets, temporary
+files, and cleanup candidates.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$storage_report(detail = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{detail}}{Whether to return detailed file tables. Default:
+\code{FALSE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A summary data.table, or a list when \code{detail = TRUE}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-validate_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-validate_files}{}}}
+\subsection{Method \code{validate_files()}}{
+Validate store-managed NetCDF downloads against the manifest.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$validate_files(query_id = NULL, checksum = FALSE, layout = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query IDs to validate. When \code{NULL},
+all known downloaded ESGF files are checked.}
+
+\item{\code{checksum}}{Whether to compute file checksums. Default: \code{FALSE}.}
+
+\item{\code{layout}}{Whether to compare registered files with the current
+download layout policy. Default: \code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{summary}, \code{files}, \code{artifacts}, \code{untracked}, and
+\code{actions} data.tables. The method is read-only.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-repair_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-repair_files}{}}}
+\subsection{Method \code{repair_files()}}{
+Repair safe store download inconsistencies reported by
+\verb{$validate_files()}.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$repair_files(actions = NULL, dry_run = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{actions}}{Optional action table from \verb{$validate_files()$actions}.
+When \code{NULL}, actions are generated from \verb{$validate_files()}.}
+
+\item{\code{dry_run}}{Whether to only report planned repairs. Default:
+\code{TRUE}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing attempted repairs.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-cleanup_downloads"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-cleanup_downloads}{}}}
+\subsection{Method \code{cleanup_downloads()}}{
+Report or remove download cleanup candidates.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$cleanup_downloads(
+  scope = c("tmp", "orphan_records", "untracked_files", "missing_records"),
+  dry_run = TRUE,
+  older_than = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{scope}}{Cleanup scopes. Supported values are \code{"tmp"},
+\code{"orphan_records"}, \code{"untracked_files"}, and
+\code{"missing_records"}.}
+
+\item{\code{dry_run}}{Whether to only report cleanup candidates. Default:
+\code{TRUE}.}
+
+\item{\code{older_than}}{Optional age filter for file scopes. A numeric value
+is interpreted as seconds before now; a \code{POSIXct} value is used
+as an absolute mtime cutoff.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table describing cleanup candidates or removals.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-retry_downloads"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-retry_downloads}{}}}
+\subsection{Method \code{retry_downloads()}}{
+Requeue retryable downloader tasks linked to stored query files.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$retry_downloads(
+  query_id = NULL,
+  session_id = NULL,
+  downloader = NULL,
+  status = c("error", "cancelled"),
+  run = TRUE,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query_id}}{Optional stored query ID.}
+
+\item{\code{session_id}}{Optional downloader session ID.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+
+\item{\code{status}}{Retryable statuses. Default: \code{c("error", "cancelled")}.}
+
+\item{\code{run}}{Whether to run requeued tasks immediately. Default: \code{TRUE}.}
+
+\item{\code{...}}{Additional arguments passed to \code{FileDownloader$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of matching task rows after retry handling.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-add_files"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-add_files}{}}}
 \subsection{Method \code{add_files()}}{
@@ -238,6 +1158,112 @@ Add File or Aggregation query results to the local file catalog.
 }
 \subsection{Returns}{
 The created or updated query ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-downloader"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-downloader}{}}}
+\subsection{Method \code{downloader()}}{
+Return a FileDownloader bound to this store.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$downloader(...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{Additional arguments passed to \code{FileDownloader$new()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A \link{FileDownloader} object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-download_files"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-download_files}{}}}
+\subsection{Method \code{download_files()}}{
+Enqueue and optionally download ESGF file records through the store downloader.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$download_files(
+  files = NULL,
+  replica = "auto",
+  downloader = NULL,
+  run = TRUE,
+  session_label = NULL,
+  service = "HTTPServer",
+  probe = TRUE,
+  probe_concurrency = NULL,
+  probe_cache_seconds = 3600L,
+  strategy = c("fastest", "first", "stable"),
+  progress = TRUE,
+  overwrite = FALSE,
+  resume = TRUE,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{files}}{Optional \link{EsgResultFile} or \link{EsgResultAggregation} object.
+If supplied, it is cataloged before the download plan is created.}
+
+\item{\code{replica}}{Replica policy passed to \verb{$download_plan()}.}
+
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+
+\item{\code{run}}{Whether to run the queued session immediately. Default: \code{TRUE}.}
+
+\item{\code{session_label}}{Optional download session label.}
+
+\item{\code{service}}{ESGF URL service to download from. Default:
+\code{"HTTPServer"}.}
+
+\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+
+\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+\code{probe = TRUE}. Default comes from the downloader worker count.}
+
+\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: \code{3600}.}
+
+\item{\code{strategy}}{Candidate ranking strategy.}
+
+\item{\code{progress}}{Whether to show per-file download progress.}
+
+\item{\code{overwrite}}{Whether to overwrite existing final files.}
+
+\item{\code{resume}}{Whether to resume interrupted \code{.part} files.}
+
+\item{\code{...}}{Additional arguments passed to \verb{$download_plan()} and
+\code{FileDownloader$run()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The created downloader session ID.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-sync_downloads"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-sync_downloads}{}}}
+\subsection{Method \code{sync_downloads()}}{
+Register completed downloader tasks as local store artifacts.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgStore$sync_downloads(downloader = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{downloader}}{Optional \link{FileDownloader}. Default: \verb{$downloader()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A data.table of completed tasks.
 }
 }
 \if{html}{\out{<hr>}}

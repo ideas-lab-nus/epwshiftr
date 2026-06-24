@@ -29,5 +29,6 @@ schema__load_lazy("SCHEMA_RESULT_DATASET", "result-dataset.json")
 schema__load_lazy("SCHEMA_RESULT_FILE", "result-file.json")
 schema__load_lazy("SCHEMA_RESULT_AGGREGATION", "result-aggregation.json")
 schema__load_lazy("SCHEMA_ESG_DICT", "esg-dict.json")
+schema__load_lazy("SCHEMA_DOWNLOADER_CONFIG", "downloader-config.json")
 
 # vim: fdm=marker :

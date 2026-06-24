@@ -67,10 +67,8 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #' the distance between the EPW location and the global grid points in NetCDF
 #' files.
 #'
-#' `match_coord()` uses [future.apply][future.apply::future_lapply()]
-#' underneath. You can use your preferable future backend to
-#' speed up data extraction in parallel. By default, `match_coord()` uses
-#' `future::sequential` backend, which runs things in sequential.
+#' `match_coord()` uses [mirai][mirai::mirai()] internally for parallel
+#' coordinate matching when there is more than one NetCDF file to inspect.
 #'
 #' @section Geographical distance calculation:
 #'
@@ -184,17 +182,18 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
         meta <- dict[c("city", "state_province", "country", "latitude", "longitude")]
     }
 
-    message("Start to match coordinates...")
-    progressr::with_progress({
-        p <- progressr::progressor(nrow(index))
-        i <- 0L
-
-        coords <- future.apply::future_lapply(index$file_path, function (f) {
-            i <<- i + 1L
-            p(message = sprintf("[%i/%i]", i, nrow(index)))
+    vmsg("Start to match coordinates...")
+    coords <- mirai_lapply(
+        index$file_path,
+        function(f, meta, threshold, max_num) {
             match_location_coord(f, meta, threshold, max_num)
-        })
-    })
+        },
+        meta = meta,
+        threshold = threshold,
+        max_num = max_num,
+        symbols = netcdf_mirai_symbols(),
+        label = "coordinate matching"
+    )
 
     data.table::set(index, NULL, "coord", coords)
 

@@ -34,10 +34,10 @@ test_that("preprocess_morphing()", {
     skip_on_cran()
 
     cache <- test_data_dir()
-    path <- file.path(cache, "EC-Earth3.ssp585.tas.fst")
+    path <- file.path(cache, "EC-Earth3.ssp585.tas.parquet")
 
     if (file.exists(path)) {
-        d <- fst::read_fst(path, as.data.table = TRUE)
+        d <- read_test_parquet(path)
 
         expect_warning(res <- preprocess_morphing(d, warning = TRUE), "less than a decade")
         expect_named(res,
@@ -68,12 +68,12 @@ test_that("morphing_from_mean()", {
     skip_on_cran()
 
     cache <- test_data_dir()
-    file <- "EC-Earth3.ssp585.tas.fst"
+    file <- "EC-Earth3.ssp585.tas.parquet"
     path <- file.path(cache, file)
 
     epw <- file.path(cache, "SGP_Singapore.486980_IWEC.epw")
     if (file.exists(path) && file.exists(epw)) {
-        data_mean <- fst::read_fst(path, as.data.table = TRUE)
+        data_mean <- read_test_parquet(path)
         data_epw <- read_epw(epw)$add_unit()$data()
 
         expect_equal(
@@ -207,13 +207,13 @@ test_that("morphing_epw()", {
     skip_on_cran()
 
     cache <- test_data_dir()
-    file <- "EC-Earth3.ssp585.tas.fst"
+    file <- "EC-Earth3.ssp585.tas.parquet"
     path <- file.path(cache, file)
 
     epw <- file.path(cache, "SGP_Singapore.486980_IWEC.epw")
     if (file.exists(path) && file.exists(epw)) {
         data_epw <- read_epw(epw)$add_unit()$data()
-        data_mean <- fst::read_fst(path, as.data.table = TRUE)
+        data_mean <- read_test_parquet(path)
 
         d <- structure(
             list(epw = eplusr::read_epw(epw), meta = list(), data = copy(data_mean)),
@@ -331,13 +331,13 @@ test_that("future_epw()", {
     skip_on_cran()
 
     cache <- test_data_dir()
-    file <- "EC-Earth3.ssp585.tas.fst"
+    file <- "EC-Earth3.ssp585.tas.parquet"
     path <- file.path(cache, file)
 
     epw <- file.path(cache, "SGP_Singapore.486980_IWEC.epw")
 
     if (file.exists(path) && file.exists(epw)) {
-        data_mean <- fst::read_fst(path, as.data.table = TRUE)
+        data_mean <- read_test_parquet(path)
 
         d <- structure(
             list(epw = eplusr::read_epw(epw), meta = list(), data = data_mean[0L]),

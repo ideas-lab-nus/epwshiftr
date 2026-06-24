@@ -68,6 +68,10 @@ DiskCache <- R6::R6Class(
             private$validate_key(key)
             path <- private$get_cache_path(key)
 
+            if (!file.exists(path)) {
+                return(private$missing)
+            }
+
             if (!is.infinite(private$max_age) && file.exists(path)) {
                 info <- file.info(path, extra_cols = FALSE)
                 if (!is.na(info$mtime)) {
@@ -80,7 +84,7 @@ DiskCache <- R6::R6Class(
             }
 
             value <- tryCatch(
-                qs2::qs_read(path),
+                readRDS(path),
                 error = function(e) private$missing
             )
 
@@ -279,10 +283,10 @@ DiskCache <- R6::R6Class(
         prune_limit = NULL,
         set_count = 0L,
         destroyed = FALSE,
-        metadata_file = ".metadata.qs",
+        metadata_file = ".metadata.rds",
         missing = structure(list(), class = "key_missing"),
         list_files = function() {
-            files <- list.files(private$dir, pattern = "\\.qs$", full.names = TRUE)
+            files <- list.files(private$dir, pattern = "\\.rds$", full.names = TRUE)
             files <- files[basename(files) != private$metadata_file]
             files
         },
@@ -307,7 +311,7 @@ DiskCache <- R6::R6Class(
             on.exit(unlink(temp_file), add = TRUE)
             tryCatch(
                 {
-                    qs2::qs_save(value, temp_file)
+                    saveRDS(value, temp_file)
                     success <- file.rename(temp_file, path)
                     if (!success) {
                         stop("Failed to rename temporary file.")
@@ -348,7 +352,7 @@ DiskCache <- R6::R6Class(
         },
 
         get_cache_path = function(key) {
-            file.path(private$dir, paste0(key, ".qs"))
+            file.path(private$dir, paste0(key, ".rds"))
         },
 
         check_config = function(prune = TRUE) {
@@ -357,7 +361,7 @@ DiskCache <- R6::R6Class(
             old <- tryCatch(
                 {
                     if (file.exists(metadata)) {
-                        qs2::qs_read(metadata)
+                        readRDS(metadata)
                     } else {
                         NULL
                     }
@@ -403,7 +407,7 @@ DiskCache <- R6::R6Class(
 
             if (to_write) {
                 tryCatch(
-                    qs2::qs_save(current, metadata),
+                    saveRDS(current, metadata),
                     error = function(e) {
                         warning("Failed to save cache metadata. ", conditionMessage(e))
                     }
