@@ -237,7 +237,7 @@ and validation helpers.</p></div>
 <span>  request_tag <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  dreq_tag <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  use_cache <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  cache_dir <span class="op">=</span> <span class="fu">esgdict__raw_cache_dir</span><span class="op">(</span>project <span class="op">=</span> <span class="va">private</span><span class="op">$</span><span class="va">m_project</span><span class="op">)</span></span>
+<span>  source_dir <span class="op">=</span> <span class="fu">esgdict__source_dir</span><span class="op">(</span>project <span class="op">=</span> <span class="va">private</span><span class="op">$</span><span class="va">m_project</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -316,11 +316,7 @@ and validation helpers.</p></div>
 
 <div class="section">
 <h4 id="usage-18">Usage<a class="anchor" aria-label="anchor" href="#usage-18"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span></span>
-<span>  dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"epwshiftr.dir"</span>, <span class="st">"."</span><span class="op">)</span>,</span>
-<span>  file <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  allow_empty <span class="op">=</span> <span class="cn">FALSE</span></span>
-<span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span>path <span class="op">=</span> <span class="cn">NULL</span>, allow_empty <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 
@@ -329,7 +325,7 @@ and validation helpers.</p></div>
 
 <div class="section">
 <h4 id="usage-19">Usage<a class="anchor" aria-label="anchor" href="#usage-19"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span>dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"epwshiftr.dir"</span>, <span class="st">"."</span><span class="op">)</span>, file <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span>path <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 

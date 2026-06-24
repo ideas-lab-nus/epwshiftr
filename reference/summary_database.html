@@ -139,8 +139,8 @@ newly matched files if possible. Default: <code>"keep"</code>.</p></dd>
 <dt id="arg-update">update<a class="anchor" aria-label="anchor" href="#arg-update"></a></dt>
 <dd><p>If <code>TRUE</code>, the output file index will be updated based
 on the matched NetCDF files in specified directory. If <code>FALSE</code>, only
-current loaded index will be updated, but the actual index
-database file saved in <code><a href="get_data_dir.html">get_data_dir()</a></code> will remain unchanged.
+current loaded index will be updated, but the actual index file saved
+in the persistent store will remain unchanged.
 Default: <code>FALSE</code>.</p></dd>
 
 
@@ -164,9 +164,9 @@ in current CMIP6 output file index.</p></li>
     <div id="details">
     <h2>Details</h2>
     <p>The database here can be any directory that stores the NetCDF files for CMIP6
-GCMs. It can be also be the same as <code><a href="get_data_dir.html">get_data_dir()</a></code> where epwshiftr stores
-the output file index, if you want to save the output file index and output
-files in the same place.</p>
+GCMs. It can also be the same as <code><a href="store_dir.html">store_dir()</a></code> where epwshiftr keeps the
+persistent store, if you want to keep the output file index and output files
+together.</p>
 <p><code>summary_database()</code> uses the <code>tracking_id</code>, <code>datetime_start</code> and
 <code>datetime_end</code> global attributes of each NetCDF file to match against the
 output file index. So the names of NetCDF files do not necessarily follow the

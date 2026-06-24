@@ -103,7 +103,9 @@ files.</p></dd>
 
 
 <dt><code>fields</code></dt>
-<dd><p>A character vector indicating all fields in the results.</p></dd>
+<dd><p>A character vector indicating all response fields,
+followed by derived fields such as <code>filename</code>, <code>url_opendap</code>
+and <code>url_download</code> when their source fields are available.</p></dd>
 
 
 </dl><p></p></div>
@@ -115,6 +117,7 @@ files.</p></dd>
 <h3 id="public-methods">Public methods<a class="anchor" aria-label="anchor" href="#public-methods"></a></h3>
 
 <ul><li><p><a href="#method-EsgResultFile-to_data_table"><code>EsgResultFile$to_data_table()</code></a></p></li>
+<li><p><a href="#method-EsgResultFile-filter_time"><code>EsgResultFile$filter_time()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-print"><code>EsgResultFile$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-open_dataset"><code>EsgResultFile$open_dataset()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-clone"><code>EsgResultFile$clone()</code></a></p></li>
@@ -122,6 +125,7 @@ files.</p></dd>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultFile-to_data_table"></a><div class="section">
 <h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
 <p>Convert the results into a <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></p><div class="section">
@@ -132,9 +136,9 @@ files.</p></dd>
 <div class="section">
 <h4 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>fields</code></dt>
-<dd><p>A character vector indicating the fields to put into
-the <code>data.table</code>. If <code>NULL</code>, all fields in the query result
-will be used. Default: <code>NULL</code>.</p></dd>
+<dd><p>A non-empty character vector indicating the fields to
+put into the <code>data.table</code>. If <code>NULL</code>, all fields in the query
+result will be used. Default: <code>NULL</code>.</p></dd>
 
 
 <dt><code>formatted</code></dt>
@@ -149,15 +153,52 @@ including <code>url</code> and <code>size</code>. Default: <code>FALSE</code>.</
 <p>A <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a>.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-print"></a><div class="section">
-<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
-<p>Print a summary of the current dataset</p><div class="section">
+</div><p></p><hr><a id="method-EsgResultFile-filter_time"></a><div class="section">
+<h3 id="method-filter-time-">Method <code>filter_time()</code><a class="anchor" aria-label="anchor" href="#method-filter-time-"></a></h3>
+<p>Filter file records by the time range covered by each file</p>
+<p><code>method = "drs"</code> parses the time range from CMIP/DRS-style NetCDF
+filenames in <code>title</code>, URL basenames, or <code>id</code>. This is fast and does
+not open files, but it depends on the ESGF filename convention.
+Records whose time range cannot be parsed are kept and reported with
+a warning.</p>
+<p><code>method = "opendap"</code> opens each OPeNDAP URL and reads the NetCDF
+time axis to determine the file range. This is more exact, but much
+slower and requires OPeNDAP access.</p>
+<p>The requested time filter is recorded on the returned result and is
+carried into <code>EsgDataset$read_region()</code> when a dataset is opened from
+the filtered result.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">filter_time</span><span class="op">(</span><span class="va">start</span>, <span class="va">stop</span>, method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"drs"</span>, <span class="st">"opendap"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>start, stop</code></dt>
+<dd><p>Time range boundaries. Character, <code>Date</code>, and
+<code>POSIXt</code> inputs are accepted and parsed in UTC.</p></dd>
+
+
+<dt><code>method</code></dt>
+<dd><p>How to determine file time ranges. One of <code>"drs"</code> or
+<code>"opendap"</code>. Default: <code>"drs"</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<p>A new <code>EsgResultFile</code> object.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResultFile-print"></a><div class="section">
+<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
+<p>Print a summary of the current dataset</p><div class="section">
+<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
@@ -166,46 +207,60 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
 <p>The <code>EsgResultFile</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultFile-open_dataset"></a><div class="section">
 <h3 id="method-open-dataset-">Method <code>open_dataset()</code><a class="anchor" aria-label="anchor" href="#method-open-dataset-"></a></h3>
 <p>Open a file as an EsgDataset for remote data access via OPeNDAP</p><div class="section">
-<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span>index <span class="op">=</span> <span class="fl">1L</span>, fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span></span>
+<span>  which <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  aggregate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>index</code></dt>
-<dd><p>Integer index of the file to open. Default: <code>1L</code>.</p></dd>
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>which</code></dt>
+<dd><p>File records to open. Use integer indices or file IDs.
+If <code>NULL</code>, all file records are opened when <code>aggregate = TRUE</code>
+and the first record is opened when <code>aggregate = FALSE</code>.
+Default: <code>NULL</code>.</p></dd>
+
+
+<dt><code>aggregate</code></dt>
+<dd><p>Whether to open multiple selected files as one
+aggregated <a href="EsgDataset.html">EsgDataset</a>. If <code>FALSE</code>, exactly one file record
+must be selected. Default: <code>TRUE</code>.</p></dd>
 
 
 <dt><code>fallback</code></dt>
-<dd><p>What to do if OPeNDAP is unavailable. One of:</p><ul><li><p><code>"ask"</code>: Interactively ask the user (default)</p></li>
-<li><p><code>"auto"</code>: Automatically download the file</p></li>
-<li><p><code>"error"</code>: Raise an error</p></li>
+<dd><p>What to do if OPeNDAP is unavailable. One of:</p><ul><li><p><code>"ask"</code>: Interactively ask the user (default). In a
+non-interactive session this raises an error.</p></li>
+<li><p><code>"auto"</code>: Automatically download the file via HTTPServer.</p></li>
+<li><p><code>"error"</code>: Raise an error.</p></li>
 </ul></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
 <p>An <code>EsgDataset</code> object with the connection already opened.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultFile-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

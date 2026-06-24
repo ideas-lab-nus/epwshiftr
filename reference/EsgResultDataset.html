@@ -101,6 +101,7 @@ Usually, it is created by calling
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultDataset-to_data_table"></a><div class="section">
 <h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
 <p>Convert the results into a <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></p><div class="section">
@@ -111,9 +112,9 @@ Usually, it is created by calling
 <div class="section">
 <h4 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>fields</code></dt>
-<dd><p>A character vector indicating the fields to put into
-the <code>data.table</code>. If <code>NULL</code>, all fields in the query result
-will be used. Default: <code>NULL</code>.</p></dd>
+<dd><p>A non-empty character vector indicating the fields to
+put into the <code>data.table</code>. If <code>NULL</code>, all fields in the query
+result will be used. Default: <code>NULL</code>.</p></dd>
 
 
 <dt><code>formatted</code></dt>
@@ -179,7 +180,9 @@ datasets and returns an
 <p></p><div class="arguments"><dl><dt><code>which</code></dt>
 <dd><p>A character vector giving the value of dataset ID or an
 integer vector giving the indices of the dataset. If <code>NULL</code>,
-all datasets will be sent. Default: <code>NULL</code>.</p></dd>
+all datasets will be sent. Empty dataset results return empty
+child results without sending another ESGF query. Default:
+<code>NULL</code>.</p></dd>
 
 
 <dt><code>fields</code></dt>
@@ -193,9 +196,11 @@ fields will be included. Default: <code>NULL</code>.</p></dd>
 
 
 <dt><code>limit</code></dt>
-<dd><p>A positive integer indicating the number of records to
-fetch per query. If <code>NULL</code>, the allowed maximum limit number
-10000 is used. Default: <code>100L</code>.</p></dd>
+<dd><p>If <code>all = FALSE</code>, the maximum number of child records
+to collect in this request. If <code>all = TRUE</code>, the page size
+used for each paginated request, not a total cap. If <code>NULL</code>,
+the allowed maximum limit number 10000 is
+used. Default: <code>100L</code>.</p></dd>
 
 
 <dt><code>type</code></dt>
@@ -204,9 +209,20 @@ fetch per query. If <code>NULL</code>, the allowed maximum limit number
 
 
 <dt><code>...</code></dt>
-<dd><p>Other parameters to set. Currently, there are 4 parameters
-supported, including <code>replica</code>, <code>distrib</code>, <code>latest</code>, <code>shards</code>.
-For details on possible parameters, please see <code><a href="EsgQuery.html">esg_query()</a></code>.</p></dd>
+<dd><p>Additional child-result facet filters, plus the control
+parameters <code>replica</code>, <code>distrib</code>, <code>latest</code>, and <code>shards</code>.
+Query-level parameters such as <code>datetime_start</code> and
+<code>datetime_stop</code> cannot be passed through <code>...</code>.
+File/Aggregation collection does not use ESGF datetime search
+parameters; call <code>$filter_time()</code> on the returned result for
+time filtering. If control parameters are omitted, they are
+inherited from the dataset query when available, with
+<code>distrib = TRUE</code> and <code>latest = TRUE</code> as fallbacks. For details
+on possible parameters, please see <code><a href="EsgQuery.html">esg_query()</a></code>.
+<code>Aggregation</code> collection uses <code>dataset_id</code> plus explicit child filters
+in <code>...</code>; parent Dataset facet filters are not inherited because
+Aggregation records on standard ESGF search nodes do not necessarily
+expose the same facet fields as Dataset records.</p></dd>
 
 
 </dl><p></p></div>

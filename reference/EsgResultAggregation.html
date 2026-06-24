@@ -98,7 +98,9 @@ files.</p></dd>
 
 
 <dt><code>fields</code></dt>
-<dd><p>A character vector indicating all fields in the results.</p></dd>
+<dd><p>A character vector indicating all response fields,
+followed by derived URL fields when their source fields are
+available.</p></dd>
 
 
 </dl><p></p></div>
@@ -110,6 +112,7 @@ files.</p></dd>
 <h3 id="public-methods">Public methods<a class="anchor" aria-label="anchor" href="#public-methods"></a></h3>
 
 <ul><li><p><a href="#method-EsgResultAggregation-to_data_table"><code>EsgResultAggregation$to_data_table()</code></a></p></li>
+<li><p><a href="#method-EsgResultAggregation-filter_time"><code>EsgResultAggregation$filter_time()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-print"><code>EsgResultAggregation$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-open_dataset"><code>EsgResultAggregation$open_dataset()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-clone"><code>EsgResultAggregation$clone()</code></a></p></li>
@@ -117,6 +120,7 @@ files.</p></dd>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
+<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultAggregation-to_data_table"></a><div class="section">
 <h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
 <p>Convert the results into a <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></p><div class="section">
@@ -127,9 +131,9 @@ files.</p></dd>
 <div class="section">
 <h4 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>fields</code></dt>
-<dd><p>A character vector indicating the fields to put into
-the <code>data.table</code>. If <code>NULL</code>, all fields in the query result
-will be used. Default: <code>NULL</code>.</p></dd>
+<dd><p>A non-empty character vector indicating the fields to
+put into the <code>data.table</code>. If <code>NULL</code>, all fields in the query
+result will be used. Default: <code>NULL</code>.</p></dd>
 
 
 <dt><code>formatted</code></dt>
@@ -144,15 +148,42 @@ including <code>url</code> and <code>size</code>. Default: <code>FALSE</code>.</
 <p>A <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a>.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultAggregation-print"></a><div class="section">
-<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
-<p>Print a summary of the current dataset</p><div class="section">
+</div><p></p><hr><a id="method-EsgResultAggregation-filter_time"></a><div class="section">
+<h3 id="method-filter-time-">Method <code>filter_time()</code><a class="anchor" aria-label="anchor" href="#method-filter-time-"></a></h3>
+<p>Filter aggregation records by the time range covered by each file</p>
+<p>See <code>EsgResultFile$filter_time()</code> for the method semantics.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">filter_time</span><span class="op">(</span><span class="va">start</span>, <span class="va">stop</span>, method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"drs"</span>, <span class="st">"opendap"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>start, stop</code></dt>
+<dd><p>Time range boundaries. Character, <code>Date</code>, and
+<code>POSIXt</code> inputs are accepted and parsed in UTC.</p></dd>
+
+
+<dt><code>method</code></dt>
+<dd><p>How to determine file time ranges. One of <code>"drs"</code> or
+<code>"opendap"</code>. Default: <code>"drs"</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<p>A new <code>EsgResultAggregation</code> object.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResultAggregation-print"></a><div class="section">
+<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
+<p>Print a summary of the current dataset</p><div class="section">
+<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
@@ -161,14 +192,14 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
 <p>The <code>EsgResultAggregation</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-open_dataset"></a><div class="section">
 <h3 id="method-open-dataset-">Method <code>open_dataset()</code><a class="anchor" aria-label="anchor" href="#method-open-dataset-"></a></h3>
 <p>Open aggregation files as an EsgDataset for remote data access via OPeNDAP</p><div class="section">
-<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span></span>
 <span>  aggregate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span></span>
@@ -176,35 +207,36 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>aggregate</code></dt>
 <dd><p>If <code>TRUE</code> (default), open all files as a multi-file dataset.
 If <code>FALSE</code>, open only the first file.</p></dd>
 
 
 <dt><code>fallback</code></dt>
-<dd><p>What to do if OPeNDAP is unavailable. One of:</p><ul><li><p><code>"ask"</code>: Interactively ask the user (default)</p></li>
-<li><p><code>"auto"</code>: Automatically download files</p></li>
-<li><p><code>"error"</code>: Raise an error</p></li>
+<dd><p>What to do if OPeNDAP is unavailable. One of:</p><ul><li><p><code>"ask"</code>: Interactively ask the user (default). In a
+non-interactive session this raises an error.</p></li>
+<li><p><code>"auto"</code>: Automatically download files via HTTPServer.</p></li>
+<li><p><code>"error"</code>: Raise an error.</p></li>
 </ul></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
 <p>An <code>EsgDataset</code> object with the connection already opened.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

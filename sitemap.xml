@@ -20,6 +20,7 @@
 <url><loc>/reference/EsgResultAggregation.html</loc></url>
 <url><loc>/reference/EsgResultDataset.html</loc></url>
 <url><loc>/reference/EsgResultFile.html</loc></url>
+<url><loc>/reference/EsgStore.html</loc></url>
 <url><loc>/reference/FileDownloader.html</loc></url>
 <url><loc>/reference/as.character.DiskCache.html</loc></url>
 <url><loc>/reference/data_node_status.html</loc></url>
@@ -30,7 +31,6 @@
 <url><loc>/reference/esgf_query.html</loc></url>
 <url><loc>/reference/extract_data.html</loc></url>
 <url><loc>/reference/future_epw.html</loc></url>
-<url><loc>/reference/get_data_dir.html</loc></url>
 <url><loc>/reference/index.html</loc></url>
 <url><loc>/reference/init_cmip6_index.html</loc></url>
 <url><loc>/reference/is.solr_date.html</loc></url>
@@ -39,6 +39,7 @@
 <url><loc>/reference/morphing_epw.html</loc></url>
 <url><loc>/reference/set_cmip6_index.html</loc></url>
 <url><loc>/reference/solr_date.html</loc></url>
+<url><loc>/reference/store_dir.html</loc></url>
 <url><loc>/reference/summary_database.html</loc></url>
 </urlset>
 

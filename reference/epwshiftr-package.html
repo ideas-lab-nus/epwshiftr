@@ -87,13 +87,17 @@ The default value is set to <code>3</code>. If the morphing methods are set
 <code>"stretch"</code> or <code>"combined"</code>, and the absolute alpha exceeds the threshold
 value, warnings are issued and the morphing method fallbacks to
 <code>"shift"</code> to avoid unrealistic morphed values.</p></li>
-<li><p><code>epwshiftr.dir</code>: The directory to store package data, including CMIP6
-model output file index and etc. If not set, the current user data
-directory will be used.</p></li>
+<li><p><code>epwshiftr.dir_store</code>: The persistent store directory for query snapshots,
+dictionaries, source mirrors, downloads, extraction results, outputs, and
+the store manifest. If not set, <code><a href="https://rdrr.io/r/tools/userdir.html" class="external-link">tools::R_user_dir()</a></code> with type <code>"data"</code>
+will be used.</p></li>
 <li><p><code>epwshiftr.cache</code>: Controls caching behavior. <code>TRUE</code> enables normal
 caching (default), <code>FALSE</code> disables caching entirely, and <code>"offline"</code>
 enables offline mode where only cached data is used and no network
 requests are made. Default: <code>TRUE</code></p></li>
+<li><p><code>epwshiftr.cache_dir</code>: The directory for disposable cache entries. Deleting
+this directory can require re-fetching or re-parsing data, but should not
+invalidate a persistent store.</p></li>
 </ul></div>
     <div id="see-also">
     <h2>See also</h2>

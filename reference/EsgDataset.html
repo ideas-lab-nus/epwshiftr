@@ -110,6 +110,12 @@ automatically handling time dimension concatenation.</p>
 <dd><p>Number of files in the dataset</p></dd>
 
 
+<dt><code>time_filter</code></dt>
+<dd><p>A result-level time filter recorded by
+<code>EsgResultFile$filter_time()</code> or
+<code>EsgResultAggregation$filter_time()</code>, or <code>NULL</code>.</p></dd>
+
+
 </dl><p></p></div>
     </div>
     <div id="methods">
@@ -132,6 +138,7 @@ automatically handling time dimension concatenation.</p>
 <li><p><a href="#method-EsgDataset-get_spatial_grid"><code>EsgDataset$get_spatial_grid()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-read_array"><code>EsgDataset$read_array()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-read_data_table"><code>EsgDataset$read_data_table()</code></a></p></li>
+<li><p><a href="#method-EsgDataset-read_region"><code>EsgDataset$read_region()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-print"><code>EsgDataset$print()</code></a></p></li>
 <li><p><a href="#method-EsgDataset-clone"><code>EsgDataset$clone()</code></a></p></li>
 </ul></div><p></p><hr><a id="method-EsgDataset-new"></a><div class="section">
@@ -661,27 +668,107 @@ dt_async &lt;- ds$read_data_table("tas", async = TRUE, timeout = 10)
 </div>
 
 
+</div><p></p><hr><a id="method-EsgDataset-read_region"></a><div class="section">
+<h3 id="method-read-region-">Method <code>read_region()</code><a class="anchor" aria-label="anchor" href="#method-read-region-"></a></h3>
+<p>Read variable values near a target coordinate and optional time range</p><div class="section">
+<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">read_region</span><span class="op">(</span></span>
+<span>  <span class="va">variable</span>,</span>
+<span>  <span class="va">lon</span>,</span>
+<span>  <span class="va">lat</span>,</span>
+<span>  time <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  nearest <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  rbind <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  async <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  timeout <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>variable</code></dt>
+<dd><p>Character vector of variable names.</p></dd>
+
+
+<dt><code>lon</code></dt>
+<dd><p>Target longitude.</p></dd>
+
+
+<dt><code>lat</code></dt>
+<dd><p>Target latitude.</p></dd>
+
+
+<dt><code>time</code></dt>
+<dd><p>Time range to read. Use <code>"auto"</code> to reuse the time
+range recorded by <code>EsgResultFile$filter_time()</code> or
+<code>EsgResultAggregation$filter_time()</code> when available; if no
+recorded range exists, all times are read. Use <code>NULL</code> to
+always read the full time axis. A length-2 character,
+<code>Date</code>, or <code>POSIXt</code> range is parsed in UTC and used
+explicitly. Default: <code>"auto"</code>.</p></dd>
+
+
+<dt><code>nearest</code></dt>
+<dd><p>Number of nearest grid cells to keep. Default: <code>1L</code>.</p></dd>
+
+
+<dt><code>rbind</code></dt>
+<dd><p>If <code>TRUE</code>, return one data.table. If <code>FALSE</code>, return a
+list of per-file, per-variable data.tables. Default: <code>TRUE</code>.</p></dd>
+
+
+<dt><code>async</code></dt>
+<dd><p>If <code>TRUE</code>, offload each NetCDF variable read to a
+one-shot worker. Default: <code>FALSE</code>.</p></dd>
+
+
+<dt><code>timeout</code></dt>
+<dd><p>Optional positive number of seconds for each async
+read. Only supported when <code>async = TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
+<p>A data.table or list of data.tables with columns including
+<code>file_index</code>, <code>variable</code>, <code>time</code>, <code>lon</code>, <code>lat</code>, <code>dist</code>, and <code>value</code>.</p>
+</div>
+<div class="section">
+<h4 id="examples-14">Examples<a class="anchor" aria-label="anchor" href="#examples-14"></a></h4>
+<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
+dt &lt;- ds$read_region(
+    variable = c("tas", "hurs"),
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2050-01-01", "2050-12-31")
+)
+}
+</code></pre></div><p></p></div>
+</div>
+
+
 </div><p></p><hr><a id="method-EsgDataset-print"></a><div class="section">
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print dataset summary</p><div class="section">
-<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
+<h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
 <p>The <code>EsgDataset</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgDataset-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
+<h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
+<h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 
@@ -822,6 +909,19 @@ dt_async &lt;- ds$read_data_table("tas", async = TRUE, timeout = 10)
 <span class="r-in"><span><span class="va">dt_all</span> <span class="op">&lt;-</span> <span class="va">ds</span><span class="op">$</span><span class="fu">read_data_table</span><span class="op">(</span><span class="st">"tas"</span>, rbind <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co"># Returns the final data.table directly; no Mirai/Future handling required.</span></span></span>
 <span class="r-in"><span><span class="va">dt_async</span> <span class="op">&lt;-</span> <span class="va">ds</span><span class="op">$</span><span class="fu">read_data_table</span><span class="op">(</span><span class="st">"tas"</span>, async <span class="op">=</span> <span class="cn">TRUE</span>, timeout <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span><span class="co">## Method `EsgDataset$read_region`</span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="va">dt</span> <span class="op">&lt;-</span> <span class="va">ds</span><span class="op">$</span><span class="fu">read_region</span><span class="op">(</span></span></span>
+<span class="r-in"><span>    variable <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"hurs"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>    lon <span class="op">=</span> <span class="fl">103.98</span>,</span></span>
+<span class="r-in"><span>    lat <span class="op">=</span> <span class="fl">1.37</span>,</span></span>
+<span class="r-in"><span>    time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"2050-01-01"</span>, <span class="st">"2050-12-31"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 </code></pre></div>
     </div>

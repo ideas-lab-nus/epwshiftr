@@ -227,6 +227,9 @@ compared to standard index nodes. When using a bridge index node (e.g.,
 <code>https://esgf-node.ornl.gov/esgf-1-5-bridge</code>), the following restrictions
 apply:</p><ul><li><p>The <code>fields</code> parameter is not supported. All available fields are always
 returned.</p></li>
+<li><p>Only <code>Dataset</code> and <code>File</code> queries are supported. <code>Aggregation</code> queries
+should use a standard ESGF search index node, such as
+<code>https://esgf-data.dkrz.de</code> or <code>https://esgf.ceda.ac.uk</code>.</p></li>
 <li><p>The <code>retracted</code> parameter is not supported and will be ignored.</p></li>
 <li><p>Wget script generation is not supported. Calling <code>$url(wget = TRUE)</code> will
 result in an error.</p></li>
@@ -1083,14 +1086,23 @@ q$count(facets = c("activity_id", "source_id"))
 </div><p></p><hr><a id="method-EsgQuery-collect"></a><div class="section">
 <h3 id="method-collect-">Method <code>collect()</code><a class="anchor" aria-label="anchor" href="#method-collect-"></a></h3>
 <p>Send the actual query and fetch the results</p>
-<p><code>$collect()</code> sends the actual query with <strong><code>type=Dataset</code></strong> to the
-ESGF search services and returns the results as an
-<a href="EsgResultDataset.html">EsgResultDataset</a> object.
+<p><code>$collect()</code> sends the actual query to the ESGF search services.
+By default it collects <strong><code>type=Dataset</code></strong> results and returns an
+<a href="EsgResultDataset.html">EsgResultDataset</a> object. If <code>type</code> is <code>"File"</code> or
+<code>"Aggregation"</code>, it first collects matching Dataset results and then
+collects child File or Aggregation results for those datasets.
 The fields included depend on <code>fields</code> parameter.
 However, the following fields are always included in the results:
 <code>access</code>, <code>id</code>, <code>index_node</code>, <code>number_of_aggregations</code>, <code>number_of_files</code>, <code>size</code>, <code>url</code>.</p><div class="section">
 <h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">FALSE</span>, limit <span class="op">=</span> <span class="cn">TRUE</span>, params <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span></span>
+<span>  all <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  limit <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  params <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  type <span class="op">=</span> <span class="st">"Dataset"</span>,</span>
+<span>  fields <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
@@ -1101,12 +1113,13 @@ However, the following fields are always included in the results:
 
 
 <dt><code>limit</code></dt>
-<dd><p>Only applicable when <code>all</code> is set to <code>TRUE</code>. Whether to
-respect the current value of <code>limit</code> when collecting all
-matched records. If <code>FALSE</code>, the allowed maximum limit number
+<dd><p>If <code>all = FALSE</code>, the maximum number of records to
+collect in this request. If <code>all = TRUE</code>, the page size used
+for each paginated request, not a total cap. When <code>all = TRUE</code>
+and <code>limit = TRUE</code>, the current query <code>limit</code> value is used;
+if <code>limit = FALSE</code>, the allowed maximum limit number
 10000 is used. It can also be a positive
-integer which will be used as a temporary limit per query.
-Default: <code>TRUE</code>.</p></dd>
+integer used as a temporary page size. Default: <code>TRUE</code>.</p></dd>
 
 
 <dt><code>params</code></dt>
@@ -1118,11 +1131,30 @@ the <code>experiment_id</code> field will be included in the results when
 <code>params = TRUE</code>. Default: <code>TRUE</code>.</p></dd>
 
 
+<dt><code>type</code></dt>
+<dd><p>Result type to collect. One of <code>"Dataset"</code>, <code>"File"</code>,
+or <code>"Aggregation"</code>. Default: <code>"Dataset"</code>.</p></dd>
+
+
+<dt><code>fields</code></dt>
+<dd><p>Optional fields used only when <code>type</code> is <code>"File"</code> or
+<code>"Aggregation"</code>. Dataset fields should be configured with
+<code>$fields()</code> before collecting.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional File/Aggregation facet filters used only when
+<code>type</code> is <code>"File"</code> or <code>"Aggregation"</code>. File/Aggregation
+collection does not use ESGF datetime search parameters; use
+<code>$filter_time()</code> on the returned result for time filtering.</p></dd>
+
+
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-29">Returns<a class="anchor" aria-label="anchor" href="#returns-29"></a></h4>
-<p>An <a href="EsgResultDataset.html">EsgResultDataset</a> object.</p>
+<p>An <a href="EsgResultDataset.html">EsgResultDataset</a>, <a href="EsgResultFile.html">EsgResultFile</a>, or
+<a href="EsgResultAggregation.html">EsgResultAggregation</a> object.</p>
 </div>
 <div class="section">
 <h4 id="examples-8">Examples<a class="anchor" aria-label="anchor" href="#examples-8"></a></h4>
