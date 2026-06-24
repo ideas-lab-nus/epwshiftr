@@ -113,6 +113,8 @@ available.</p></dd>
 
 <ul><li><p><a href="#method-EsgResultAggregation-to_data_table"><code>EsgResultAggregation$to_data_table()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-filter_time"><code>EsgResultAggregation$filter_time()</code></a></p></li>
+<li><p><a href="#method-EsgResultAggregation-download_plan"><code>EsgResultAggregation$download_plan()</code></a></p></li>
+<li><p><a href="#method-EsgResultAggregation-download"><code>EsgResultAggregation$download()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-print"><code>EsgResultAggregation$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-open_dataset"><code>EsgResultAggregation$open_dataset()</code></a></p></li>
 <li><p><a href="#method-EsgResultAggregation-clone"><code>EsgResultAggregation$clone()</code></a></p></li>
@@ -175,15 +177,166 @@ including <code>url</code> and <code>size</code>. Default: <code>FALSE</code>.</
 <p>A new <code>EsgResultAggregation</code> object.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultAggregation-print"></a><div class="section">
-<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
-<p>Print a summary of the current dataset</p><div class="section">
+</div><p></p><hr><a id="method-EsgResultAggregation-download_plan"></a><div class="section">
+<h3 id="method-download-plan-">Method <code>download_plan()</code><a class="anchor" aria-label="anchor" href="#method-download-plan-"></a></h3>
+<p>Build a persistent downloader plan for aggregation records.</p><div class="section">
 <h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">download_plan</span><span class="op">(</span></span>
+<span>  replica <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"current"</span>, <span class="st">"auto"</span><span class="op">)</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  node_stats <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  network_policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  node_policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>replica</code></dt>
+<dd><p>Replica policy. Aggregation records currently use the
+current records.</p></dd>
+
+
+<dt><code>service</code></dt>
+<dd><p>ESGF URL service to download from. Default:
+<code>"HTTPServer"</code>.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
+
+
+<dt><code>strategy</code></dt>
+<dd><p>Candidate ranking strategy.</p></dd>
+
+
+<dt><code>all</code></dt>
+<dd><p>Reserved for API symmetry with <code>EsgResultFile</code>.</p></dd>
+
+
+<dt><code>node_stats</code></dt>
+<dd><p>Optional data node history from
+<code>FileDownloader$data_nodes()</code>.</p></dd>
+
+
+<dt><code>network_policy</code></dt>
+<dd><p>Optional network options from
+<code>FileDownloader$network_policy</code>.</p></dd>
+
+
+<dt><code>node_policy</code></dt>
+<dd><p>Optional data-node cooldown policy from
+<code>FileDownloader$node_policy</code>.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes. Default: <code>1</code>.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<p>A data.table download plan.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResultAggregation-download"></a><div class="section">
+<h3 id="method-download-">Method <code>download()</code><a class="anchor" aria-label="anchor" href="#method-download-"></a></h3>
+<p>Enqueue and run aggregation downloads using a FileDownloader.</p><div class="section">
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">download</span><span class="op">(</span></span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  replica <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"current"</span>, <span class="st">"auto"</span><span class="op">)</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  session_label <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
+<dd><p>Optional persistent <a href="FileDownloader.html">FileDownloader</a>. If <code>NULL</code>,
+<code>store$downloader()</code> is used when <code>store</code> is supplied.</p></dd>
+
+
+<dt><code>store</code></dt>
+<dd><p>Optional <a href="EsgStore.html">EsgStore</a> providing a bound downloader.</p></dd>
+
+
+<dt><code>replica</code></dt>
+<dd><p>Replica policy. Aggregation records currently use the
+current records.</p></dd>
+
+
+<dt><code>service</code></dt>
+<dd><p>ESGF URL service to download from. Default:
+<code>"HTTPServer"</code>.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
+
+
+<dt><code>strategy</code></dt>
+<dd><p>Candidate ranking strategy.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes when
+<code>probe = TRUE</code>. Default comes from the downloader worker count.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+<dt><code>session_label</code></dt>
+<dd><p>Optional download session label.</p></dd>
+
+
+<dt><code>run</code></dt>
+<dd><p>Whether to run the queued session immediately. Default:
+<code>TRUE</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional arguments passed to <code>FileDownloader$run()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p>The created downloader session ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgResultAggregation-print"></a><div class="section">
+<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
+<p>Print a summary of the current dataset</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
@@ -192,22 +345,24 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
 <p>The <code>EsgResultAggregation</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-open_dataset"></a><div class="section">
 <h3 id="method-open-dataset-">Method <code>open_dataset()</code><a class="anchor" aria-label="anchor" href="#method-open-dataset-"></a></h3>
 <p>Open aggregation files as an EsgDataset for remote data access via OPeNDAP</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span></span>
 <span>  aggregate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span></span>
+<span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
+<span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>aggregate</code></dt>
 <dd><p>If <code>TRUE</code> (default), open all files as a multi-file dataset.
 If <code>FALSE</code>, open only the first file.</p></dd>
@@ -221,22 +376,31 @@ non-interactive session this raises an error.</p></li>
 </ul></dd>
 
 
+<dt><code>store</code></dt>
+<dd><p>Optional <a href="EsgStore.html">EsgStore</a> used for recoverable HTTP fallback.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional persistent <a href="FileDownloader.html">FileDownloader</a> used for
+recoverable HTTP fallback.</p></dd>
+
+
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
 <p>An <code>EsgDataset</code> object with the connection already opened.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

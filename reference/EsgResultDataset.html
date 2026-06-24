@@ -161,8 +161,8 @@ including <code>url</code> and <code>size</code>. Default: <code>FALSE</code>.</
 datasets and returns an
 <a href="EsgResultFile.html">EsgResultFile</a> or
 <a href="EsgResultAggregation.html">EsgResultAggregation</a> object, respectively.</p>
-<p>The following fields are always included in the results:</p><ul><li><p>For <code>File</code> query: <code>checksum</code>, <code>checksum_type</code>, <code>data_node</code>, <code>dataset_id</code>, <code>id</code>, <code>size</code>, <code>title</code>, <code>tracking_id</code>, <code>url</code>.</p></li>
-<li><p>For <code>Aggregation</code> query: <code>data_node</code>, <code>dataset_id</code>, <code>id</code>, <code>size</code>, <code>title</code>, <code>url</code>.</p></li>
+<p>The following fields are always included in the results:</p><ul><li><p>For <code>File</code> query: <code>activity_id</code>, <code>checksum</code>, <code>checksum_type</code>, <code>data_node</code>, <code>dataset_id</code>, <code>id</code>, <code>instance_id</code>, <code>institution_id</code>, <code>master_id</code>, <code>replica</code>, <code>size</code>, <code>title</code>, <code>tracking_id</code>, <code>url</code>, <code>version</code>.</p></li>
+<li><p>For <code>Aggregation</code> query: <code>activity_id</code>, <code>data_node</code>, <code>dataset_id</code>, <code>id</code>, <code>instance_id</code>, <code>institution_id</code>, <code>master_id</code>, <code>replica</code>, <code>size</code>, <code>title</code>, <code>url</code>, <code>version</code>.</p></li>
 </ul><div class="section">
 <h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultDataset</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span></span>

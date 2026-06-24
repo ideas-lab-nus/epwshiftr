@@ -103,10 +103,44 @@ Parquet regional extracts, and generated outputs.</p>
 <li><p><a href="#method-EsgStore-close"><code>EsgStore$close()</code></a></p></li>
 <li><p><a href="#method-EsgStore-get_meta"><code>EsgStore$get_meta()</code></a></p></li>
 <li><p><a href="#method-EsgStore-set_meta"><code>EsgStore$set_meta()</code></a></p></li>
+<li><p><a href="#method-EsgStore-download_layout"><code>EsgStore$download_layout()</code></a></p></li>
+<li><p><a href="#method-EsgStore-set_download_layout"><code>EsgStore$set_download_layout()</code></a></p></li>
 <li><p><a href="#method-EsgStore-register_artifact"><code>EsgStore$register_artifact()</code></a></p></li>
 <li><p><a href="#method-EsgStore-artifact_path"><code>EsgStore$artifact_path()</code></a></p></li>
 <li><p><a href="#method-EsgStore-validate"><code>EsgStore$validate()</code></a></p></li>
+<li><p><a href="#method-EsgStore-add_query"><code>EsgStore$add_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-track_query"><code>EsgStore$track_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-untrack_query"><code>EsgStore$untrack_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-tag_query"><code>EsgStore$tag_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-untag_query"><code>EsgStore$untag_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_tags"><code>EsgStore$query_tags()</code></a></p></li>
+<li><p><a href="#method-EsgStore-require_query"><code>EsgStore$require_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-unrequire_query"><code>EsgStore$unrequire_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_graph"><code>EsgStore$query_graph()</code></a></p></li>
+<li><p><a href="#method-EsgStore-queries"><code>EsgStore$queries()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_files"><code>EsgStore$query_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-preview_update_queries"><code>EsgStore$preview_update_queries()</code></a></p></li>
+<li><p><a href="#method-EsgStore-update_queries"><code>EsgStore$update_queries()</code></a></p></li>
+<li><p><a href="#method-EsgStore-download_preflight"><code>EsgStore$download_preflight()</code></a></p></li>
+<li><p><a href="#method-EsgStore-download_query"><code>EsgStore$download_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-download_status"><code>EsgStore$download_status()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_status"><code>EsgStore$query_status()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_updates"><code>EsgStore$query_updates()</code></a></p></li>
+<li><p><a href="#method-EsgStore-query_changes"><code>EsgStore$query_changes()</code></a></p></li>
+<li><p><a href="#method-EsgStore-workflow_status"><code>EsgStore$workflow_status()</code></a></p></li>
+<li><p><a href="#method-EsgStore-workflow_report"><code>EsgStore$workflow_report()</code></a></p></li>
+<li><p><a href="#method-EsgStore-remove_query"><code>EsgStore$remove_query()</code></a></p></li>
+<li><p><a href="#method-EsgStore-remove_files"><code>EsgStore$remove_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-prune_orphans"><code>EsgStore$prune_orphans()</code></a></p></li>
+<li><p><a href="#method-EsgStore-storage_report"><code>EsgStore$storage_report()</code></a></p></li>
+<li><p><a href="#method-EsgStore-validate_files"><code>EsgStore$validate_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-repair_files"><code>EsgStore$repair_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-cleanup_downloads"><code>EsgStore$cleanup_downloads()</code></a></p></li>
+<li><p><a href="#method-EsgStore-retry_downloads"><code>EsgStore$retry_downloads()</code></a></p></li>
 <li><p><a href="#method-EsgStore-add_files"><code>EsgStore$add_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-downloader"><code>EsgStore$downloader()</code></a></p></li>
+<li><p><a href="#method-EsgStore-download_files"><code>EsgStore$download_files()</code></a></p></li>
+<li><p><a href="#method-EsgStore-sync_downloads"><code>EsgStore$sync_downloads()</code></a></p></li>
 <li><p><a href="#method-EsgStore-plan_region"><code>EsgStore$plan_region()</code></a></p></li>
 <li><p><a href="#method-EsgStore-extract"><code>EsgStore$extract()</code></a></p></li>
 <li><p><a href="#method-EsgStore-query"><code>EsgStore$query()</code></a></p></li>
@@ -204,10 +238,71 @@ creating a new store. Default: <code>FALSE</code>.</p></dd>
 <p>The store object, invisibly.</p>
 </div>
 
+</div><p></p><hr><a id="method-EsgStore-download_layout"></a><div class="section">
+<h3 id="method-download-layout-">Method <code>download_layout()</code><a class="anchor" aria-label="anchor" href="#method-download-layout-"></a></h3>
+<p>Return the store download layout policy.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">download_layout</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<p>A named list describing how store downloads are placed under
+<code>downloads/</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-set_download_layout"></a><div class="section">
+<h3 id="method-set-download-layout-">Method <code>set_download_layout()</code><a class="anchor" aria-label="anchor" href="#method-set-download-layout-"></a></h3>
+<p>Configure how store-managed ESGF downloads are placed under
+<code>downloads/</code>.</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">set_download_layout</span><span class="op">(</span></span>
+<span>  layout <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"flat"</span>, <span class="st">"dataset"</span>, <span class="st">"drs"</span>, <span class="st">"template"</span><span class="op">)</span>,</span>
+<span>  template <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  include_version <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  collision <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"checksum"</span>, <span class="st">"suffix"</span><span class="op">)</span>,</span>
+<span>  missing <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fallback"</span>, <span class="st">"error"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>layout</code></dt>
+<dd><p>Download layout. <code>"flat"</code> stores files directly under
+<code>downloads/</code>; <code>"dataset"</code> groups by dataset; <code>"drs"</code> uses a
+CMIP6-style DRS path; <code>"template"</code> uses <code>template</code>.</p></dd>
+
+
+<dt><code>template</code></dt>
+<dd><p>Optional subdirectory template for <code>layout = "template"</code>, using placeholders such as <code>{source_id}</code>.</p></dd>
+
+
+<dt><code>include_version</code></dt>
+<dd><p>Whether DRS paths include the ESGF version.
+Default: <code>TRUE</code>.</p></dd>
+
+
+<dt><code>collision</code></dt>
+<dd><p>How to handle different logical files that map to
+the same local path. Default: <code>"error"</code>.</p></dd>
+
+
+<dt><code>missing</code></dt>
+<dd><p>How to handle missing layout fields. Default:
+<code>"fallback"</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<p>The store object, invisibly.</p>
+</div>
+
 </div><p></p><hr><a id="method-EsgStore-register_artifact"></a><div class="section">
 <h3 id="method-register-artifact-">Method <code>register_artifact()</code><a class="anchor" aria-label="anchor" href="#method-register-artifact-"></a></h3>
 <p>Register a file artifact in the store manifest.</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">register_artifact</span><span class="op">(</span></span>
 <span>  <span class="va">kind</span>,</span>
 <span>  <span class="va">path</span>,</span>
@@ -229,7 +324,7 @@ creating a new store. Default: <code>FALSE</code>.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>kind</code></dt>
 <dd><p>Artifact kind.</p></dd>
 
@@ -280,19 +375,19 @@ provenance.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
 <p>The artifact ID.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-artifact_path"></a><div class="section">
 <h3 id="method-artifact-path-">Method <code>artifact_path()</code><a class="anchor" aria-label="anchor" href="#method-artifact-path-"></a></h3>
 <p>Return an artifact path from the manifest.</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">artifact_path</span><span class="op">(</span><span class="va">artifact_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>artifact_id</code></dt>
 <dd><p>Artifact ID.</p></dd>
 
@@ -300,31 +395,1001 @@ provenance.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
 <p>Absolute artifact path.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-validate"></a><div class="section">
 <h3 id="method-validate-">Method <code>validate()</code><a class="anchor" aria-label="anchor" href="#method-validate-"></a></h3>
 <p>Validate registered artifact files against the manifest.</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">validate</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
 <p>A data.table with validation results.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-add_query"></a><div class="section">
+<h3 id="method-add-query-">Method <code>add_query()</code><a class="anchor" aria-label="anchor" href="#method-add-query-"></a></h3>
+<p>Add an ESGF query to the long-lived store query registry.</p><div class="section">
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">add_query</span><span class="op">(</span><span class="va">query</span>, label <span class="op">=</span> <span class="cn">NULL</span>, track <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query</code></dt>
+<dd><p>An <a href="EsgQuery.html">EsgQuery</a> object.</p></dd>
+
+
+<dt><code>label</code></dt>
+<dd><p>Optional label.</p></dd>
+
+
+<dt><code>track</code></dt>
+<dd><p>Whether to mark the query as tracked. Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<p>The stable query ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-track_query"></a><div class="section">
+<h3 id="method-track-query-">Method <code>track_query()</code><a class="anchor" aria-label="anchor" href="#method-track-query-"></a></h3>
+<p>Mark a stored ESGF query as tracked.</p><div class="section">
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">track_query</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
+<p>The store object, invisibly.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-untrack_query"></a><div class="section">
+<h3 id="method-untrack-query-">Method <code>untrack_query()</code><a class="anchor" aria-label="anchor" href="#method-untrack-query-"></a></h3>
+<p>Mark a stored ESGF query as untracked.</p><div class="section">
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">untrack_query</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
+<p>The store object, invisibly.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-tag_query"></a><div class="section">
+<h3 id="method-tag-query-">Method <code>tag_query()</code><a class="anchor" aria-label="anchor" href="#method-tag-query-"></a></h3>
+<p>Add tags to a stored ESGF query.</p><div class="section">
+<h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">tag_query</span><span class="op">(</span><span class="va">query_id</span>, <span class="va">tag</span>, replace <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+<dt><code>tag</code></dt>
+<dd><p>Character vector of tags.</p></dd>
+
+
+<dt><code>replace</code></dt>
+<dd><p>Whether to replace existing tags for the query.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
+<p>A data.table of tags for the query.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-untag_query"></a><div class="section">
+<h3 id="method-untag-query-">Method <code>untag_query()</code><a class="anchor" aria-label="anchor" href="#method-untag-query-"></a></h3>
+<p>Remove tags from a stored ESGF query.</p><div class="section">
+<h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">untag_query</span><span class="op">(</span><span class="va">query_id</span>, tag <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+<dt><code>tag</code></dt>
+<dd><p>Optional tags. If <code>NULL</code>, all tags are removed.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
+<p>A data.table of remaining tags for the query.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_tags"></a><div class="section">
+<h3 id="method-query-tags-">Method <code>query_tags()</code><a class="anchor" aria-label="anchor" href="#method-query-tags-"></a></h3>
+<p>List stored ESGF query tags.</p><div class="section">
+<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_tags</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional query ID filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
+<p>A data.table of query tags.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-require_query"></a><div class="section">
+<h3 id="method-require-query-">Method <code>require_query()</code><a class="anchor" aria-label="anchor" href="#method-require-query-"></a></h3>
+<p>Record that one stored query depends on another stored query.</p><div class="section">
+<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">require_query</span><span class="op">(</span><span class="va">query_id</span>, <span class="va">parent_query_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Child query ID.</p></dd>
+
+
+<dt><code>parent_query_id</code></dt>
+<dd><p>Required parent query ID.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
+<p>A data.table of query dependency edges.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-unrequire_query"></a><div class="section">
+<h3 id="method-unrequire-query-">Method <code>unrequire_query()</code><a class="anchor" aria-label="anchor" href="#method-unrequire-query-"></a></h3>
+<p>Remove query dependency edges.</p><div class="section">
+<h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">unrequire_query</span><span class="op">(</span><span class="va">query_id</span>, parent_query_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Child query ID.</p></dd>
+
+
+<dt><code>parent_query_id</code></dt>
+<dd><p>Optional parent query ID. If <code>NULL</code>, all
+parents for <code>query_id</code> are removed.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
+<p>A data.table of remaining dependency edges for the query.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_graph"></a><div class="section">
+<h3 id="method-query-graph-">Method <code>query_graph()</code><a class="anchor" aria-label="anchor" href="#method-query-graph-"></a></h3>
+<p>List stored query dependency edges.</p><div class="section">
+<h4 id="usage-17">Usage<a class="anchor" aria-label="anchor" href="#usage-17"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_graph</span><span class="op">(</span></span>
+<span>  query_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  direction <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"children"</span>, <span class="st">"parents"</span>, <span class="st">"both"</span><span class="op">)</span>,</span>
+<span>  recursive <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional query ID anchor.</p></dd>
+
+
+<dt><code>direction</code></dt>
+<dd><p>Which edge direction to return for an anchor.</p></dd>
+
+
+<dt><code>recursive</code></dt>
+<dd><p>Whether to include transitive edges.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-17">Returns<a class="anchor" aria-label="anchor" href="#returns-17"></a></h4>
+<p>A data.table of dependency edges.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-queries"></a><div class="section">
+<h3 id="method-queries-">Method <code>queries()</code><a class="anchor" aria-label="anchor" href="#method-queries-"></a></h3>
+<p>List stored ESGF queries.</p><div class="section">
+<h4 id="usage-18">Usage<a class="anchor" aria-label="anchor" href="#usage-18"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">queries</span><span class="op">(</span>tracked <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-15">Arguments<a class="anchor" aria-label="anchor" href="#arguments-15"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>tracked</code></dt>
+<dd><p>Optional tracked-state filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-18">Returns<a class="anchor" aria-label="anchor" href="#returns-18"></a></h4>
+<p>A data.table of stored query records.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_files"></a><div class="section">
+<h3 id="method-query-files-">Method <code>query_files()</code><a class="anchor" aria-label="anchor" href="#method-query-files-"></a></h3>
+<p>List files linked to a stored ESGF query.</p><div class="section">
+<h4 id="usage-19">Usage<a class="anchor" aria-label="anchor" href="#usage-19"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_files</span><span class="op">(</span><span class="va">query_id</span>, status <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-16">Arguments<a class="anchor" aria-label="anchor" href="#arguments-16"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+<dt><code>status</code></dt>
+<dd><p>Optional query-file status filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-19">Returns<a class="anchor" aria-label="anchor" href="#returns-19"></a></h4>
+<p>A data.table of linked file records.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-preview_update_queries"></a><div class="section">
+<h3 id="method-preview-update-queries-">Method <code>preview_update_queries()</code><a class="anchor" aria-label="anchor" href="#method-preview-update-queries-"></a></h3>
+<p>Preview tracked ESGF query updates without changing the store.</p><div class="section">
+<h4 id="usage-20">Usage<a class="anchor" aria-label="anchor" href="#usage-20"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">preview_update_queries</span><span class="op">(</span></span>
+<span>  query_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tracked <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  tag <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  children <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  detail <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  limit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  fields <span class="op">=</span> <span class="st">"*"</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-17">Arguments<a class="anchor" aria-label="anchor" href="#arguments-17"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional query ID. If <code>NULL</code>, tracked queries are
+previewed by default.</p></dd>
+
+
+<dt><code>tracked</code></dt>
+<dd><p>Tracked-state filter used when <code>query_id</code> is <code>NULL</code>.</p></dd>
+
+
+<dt><code>tag</code></dt>
+<dd><p>Optional query tag filter used when <code>query_id</code> is <code>NULL</code>.</p></dd>
+
+
+<dt><code>children</code></dt>
+<dd><p>Whether to include dependency children of selected
+queries.</p></dd>
+
+
+<dt><code>detail</code></dt>
+<dd><p>Whether to return per-file changes together with the
+summary. Default: <code>FALSE</code>.</p></dd>
+
+
+<dt><code>all, limit, fields</code></dt>
+<dd><p>Arguments passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional File query filters passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-20">Returns<a class="anchor" aria-label="anchor" href="#returns-20"></a></h4>
+<p>A data.table summary, or a list with <code>summary</code> and <code>changes</code>
+when <code>detail = TRUE</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-update_queries"></a><div class="section">
+<h3 id="method-update-queries-">Method <code>update_queries()</code><a class="anchor" aria-label="anchor" href="#method-update-queries-"></a></h3>
+<p>Refresh stored ESGF queries and link their current File records.</p><div class="section">
+<h4 id="usage-21">Usage<a class="anchor" aria-label="anchor" href="#usage-21"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">update_queries</span><span class="op">(</span></span>
+<span>  query_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tracked <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  tag <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  children <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  enqueue <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  replica <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  session_label <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  limit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  fields <span class="op">=</span> <span class="st">"*"</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-18">Arguments<a class="anchor" aria-label="anchor" href="#arguments-18"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional query ID. If <code>NULL</code>, tracked queries are
+updated by default.</p></dd>
+
+
+<dt><code>tracked</code></dt>
+<dd><p>Tracked-state filter used when <code>query_id</code> is <code>NULL</code>.</p></dd>
+
+
+<dt><code>tag</code></dt>
+<dd><p>Optional query tag filter used when <code>query_id</code> is <code>NULL</code>.</p></dd>
+
+
+<dt><code>children</code></dt>
+<dd><p>Whether to include dependency children of selected
+queries.</p></dd>
+
+
+<dt><code>enqueue</code></dt>
+<dd><p>Whether to enqueue current files after updating.
+Default: <code>FALSE</code>.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a> used when <code>enqueue = TRUE</code>.</p></dd>
+
+
+<dt><code>replica</code></dt>
+<dd><p>Replica policy passed to <code>$download_plan()</code> when
+enqueuing.</p></dd>
+
+
+<dt><code>session_label</code></dt>
+<dd><p>Optional download session label.</p></dd>
+
+
+<dt><code>service</code></dt>
+<dd><p>ESGF URL service used for the download plan.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Whether to probe candidate URLs before ranking.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes when
+<code>probe = TRUE</code>. Default comes from the downloader worker count
+when <code>enqueue = TRUE</code>.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+<dt><code>strategy</code></dt>
+<dd><p>Candidate ranking strategy.</p></dd>
+
+
+<dt><code>all, limit, fields</code></dt>
+<dd><p>Arguments passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional File query filters passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-21">Returns<a class="anchor" aria-label="anchor" href="#returns-21"></a></h4>
+<p>A data.table of query-file links touched by the update.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-download_preflight"></a><div class="section">
+<h3 id="method-download-preflight-">Method <code>download_preflight()</code><a class="anchor" aria-label="anchor" href="#method-download-preflight-"></a></h3>
+<p>Preview a tracked query download without changing the store.</p><div class="section">
+<h4 id="usage-22">Usage<a class="anchor" aria-label="anchor" href="#usage-22"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">download_preflight</span><span class="op">(</span></span>
+<span>  <span class="va">query_id</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  replica <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  limit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  fields <span class="op">=</span> <span class="st">"*"</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-19">Arguments<a class="anchor" aria-label="anchor" href="#arguments-19"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a> used only for node
+history, network policy, and cooldown policy.</p></dd>
+
+
+<dt><code>replica</code></dt>
+<dd><p>Replica policy passed to <code>$download_plan()</code>.</p></dd>
+
+
+<dt><code>service, probe, strategy</code></dt>
+<dd><p>Download plan arguments.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes when
+<code>probe = TRUE</code>. Default comes from <code>downloader</code> when supplied.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+<dt><code>all, limit, fields</code></dt>
+<dd><p>Arguments passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional File query filters passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-22">Returns<a class="anchor" aria-label="anchor" href="#returns-22"></a></h4>
+<p>A list with <code>summary</code>, <code>changes</code>, <code>files</code>, and <code>candidates</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-download_query"></a><div class="section">
+<h3 id="method-download-query-">Method <code>download_query()</code><a class="anchor" aria-label="anchor" href="#method-download-query-"></a></h3>
+<p>Refresh, enqueue, and optionally run downloads for a stored ESGF query.</p><div class="section">
+<h4 id="usage-23">Usage<a class="anchor" aria-label="anchor" href="#usage-23"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">download_query</span><span class="op">(</span></span>
+<span>  <span class="va">query_id</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  replica <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  session_label <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  progress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  all <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  limit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  fields <span class="op">=</span> <span class="st">"*"</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-20">Arguments<a class="anchor" aria-label="anchor" href="#arguments-20"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Query ID returned by <code>$add_query()</code>.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+<dt><code>replica</code></dt>
+<dd><p>Replica policy passed to <code>$download_plan()</code>.</p></dd>
+
+
+<dt><code>dry_run</code></dt>
+<dd><p>Whether to return a download preflight without
+changing the store, enqueueing, or downloading. Default:
+<code>FALSE</code>.</p></dd>
+
+
+<dt><code>run</code></dt>
+<dd><p>Whether to run the queued session immediately. Default:
+<code>TRUE</code>.</p></dd>
+
+
+<dt><code>session_label</code></dt>
+<dd><p>Optional download session label.</p></dd>
+
+
+<dt><code>service, probe, strategy</code></dt>
+<dd><p>Download plan arguments.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes when
+<code>probe = TRUE</code>. Default comes from the downloader worker count.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+<dt><code>progress, overwrite, resume</code></dt>
+<dd><p>Run arguments.</p></dd>
+
+
+<dt><code>all, limit, fields</code></dt>
+<dd><p>Arguments passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional File query filters passed to <code>EsgQuery$collect()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-23">Returns<a class="anchor" aria-label="anchor" href="#returns-23"></a></h4>
+<p>The created downloader session ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-download_status"></a><div class="section">
+<h3 id="method-download-status-">Method <code>download_status()</code><a class="anchor" aria-label="anchor" href="#method-download-status-"></a></h3>
+<p>Return downloader tasks linked to stored query files.</p><div class="section">
+<h4 id="usage-24">Usage<a class="anchor" aria-label="anchor" href="#usage-24"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">download_status</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, session_id <span class="op">=</span> <span class="cn">NULL</span>, downloader <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-21">Arguments<a class="anchor" aria-label="anchor" href="#arguments-21"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID.</p></dd>
+
+
+<dt><code>session_id</code></dt>
+<dd><p>Optional downloader session ID.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-24">Returns<a class="anchor" aria-label="anchor" href="#returns-24"></a></h4>
+<p>A data.table of downloader task rows.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_status"></a><div class="section">
+<h3 id="method-query-status-">Method <code>query_status()</code><a class="anchor" aria-label="anchor" href="#method-query-status-"></a></h3>
+<p>Summarise tracked ESGF query file and download status.</p><div class="section">
+<h4 id="usage-25">Usage<a class="anchor" aria-label="anchor" href="#usage-25"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_status</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, downloader <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-22">Arguments<a class="anchor" aria-label="anchor" href="#arguments-22"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID vector. If <code>NULL</code>, all
+stored ESGF queries are summarised.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-25">Returns<a class="anchor" aria-label="anchor" href="#returns-25"></a></h4>
+<p>A data.table with one row per stored query.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_updates"></a><div class="section">
+<h3 id="method-query-updates-">Method <code>query_updates()</code><a class="anchor" aria-label="anchor" href="#method-query-updates-"></a></h3>
+<p>List tracked query update runs.</p><div class="section">
+<h4 id="usage-26">Usage<a class="anchor" aria-label="anchor" href="#usage-26"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_updates</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, latest <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-23">Arguments<a class="anchor" aria-label="anchor" href="#arguments-23"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID filter.</p></dd>
+
+
+<dt><code>latest</code></dt>
+<dd><p>Whether to return only the latest update per query.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-26">Returns<a class="anchor" aria-label="anchor" href="#returns-26"></a></h4>
+<p>A data.table of update run summaries.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-query_changes"></a><div class="section">
+<h3 id="method-query-changes-">Method <code>query_changes()</code><a class="anchor" aria-label="anchor" href="#method-query-changes-"></a></h3>
+<p>List per-file changes recorded by tracked query updates.</p><div class="section">
+<h4 id="usage-27">Usage<a class="anchor" aria-label="anchor" href="#usage-27"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query_changes</span><span class="op">(</span>update_id <span class="op">=</span> <span class="cn">NULL</span>, query_id <span class="op">=</span> <span class="cn">NULL</span>, change_type <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-24">Arguments<a class="anchor" aria-label="anchor" href="#arguments-24"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>update_id</code></dt>
+<dd><p>Optional update run ID filter.</p></dd>
+
+
+<dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID filter.</p></dd>
+
+
+<dt><code>change_type</code></dt>
+<dd><p>Optional change type filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-27">Returns<a class="anchor" aria-label="anchor" href="#returns-27"></a></h4>
+<p>A data.table of per-file query update changes.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-workflow_status"></a><div class="section">
+<h3 id="method-workflow-status-">Method <code>workflow_status()</code><a class="anchor" aria-label="anchor" href="#method-workflow-status-"></a></h3>
+<p>Summarise query, download, local, and extraction status together.</p><div class="section">
+<h4 id="usage-28">Usage<a class="anchor" aria-label="anchor" href="#usage-28"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">workflow_status</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, downloader <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-25">Arguments<a class="anchor" aria-label="anchor" href="#arguments-25"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID filter.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-28">Returns<a class="anchor" aria-label="anchor" href="#returns-28"></a></h4>
+<p>A data.table with one row per stored query.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-workflow_report"></a><div class="section">
+<h3 id="method-workflow-report-">Method <code>workflow_report()</code><a class="anchor" aria-label="anchor" href="#method-workflow-report-"></a></h3>
+<p>Return a compact ESGF query workflow health report.</p><div class="section">
+<h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">workflow_report</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, downloader <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-26">Arguments<a class="anchor" aria-label="anchor" href="#arguments-26"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID filter.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-29">Returns<a class="anchor" aria-label="anchor" href="#returns-29"></a></h4>
+<p>A list with <code>summary</code>, <code>updates</code>, <code>changes</code>, <code>downloads</code>,
+and <code>nodes</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-remove_query"></a><div class="section">
+<h3 id="method-remove-query-">Method <code>remove_query()</code><a class="anchor" aria-label="anchor" href="#method-remove-query-"></a></h3>
+<p>Remove stored ESGF queries and optionally delete orphaned local files.</p><div class="section">
+<h4 id="usage-30">Usage<a class="anchor" aria-label="anchor" href="#usage-30"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">remove_query</span><span class="op">(</span><span class="va">query_id</span>, delete <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"orphaned"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-27">Arguments<a class="anchor" aria-label="anchor" href="#arguments-27"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Stored query ID vector.</p></dd>
+
+
+<dt><code>delete</code></dt>
+<dd><p>Whether to leave local files untouched (<code>"none"</code>) or
+delete files orphaned by the removal (<code>"orphaned"</code>).</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-30">Returns<a class="anchor" aria-label="anchor" href="#returns-30"></a></h4>
+<p>A data.table describing removed queries.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-remove_files"></a><div class="section">
+<h3 id="method-remove-files-">Method <code>remove_files()</code><a class="anchor" aria-label="anchor" href="#method-remove-files-"></a></h3>
+<p>Remove ESGF file records and optionally delete local artifacts.</p><div class="section">
+<h4 id="usage-31">Usage<a class="anchor" aria-label="anchor" href="#usage-31"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">remove_files</span><span class="op">(</span><span class="va">file_key</span>, delete_local <span class="op">=</span> <span class="cn">FALSE</span>, force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-28">Arguments<a class="anchor" aria-label="anchor" href="#arguments-28"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>file_key</code></dt>
+<dd><p>File key vector.</p></dd>
+
+
+<dt><code>delete_local</code></dt>
+<dd><p>Whether to delete local NetCDF files. Default:
+<code>FALSE</code>.</p></dd>
+
+
+<dt><code>force</code></dt>
+<dd><p>Whether to remove files still linked to queries.
+Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-31">Returns<a class="anchor" aria-label="anchor" href="#returns-31"></a></h4>
+<p>A data.table describing removed file records.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-prune_orphans"></a><div class="section">
+<h3 id="method-prune-orphans-">Method <code>prune_orphans()</code><a class="anchor" aria-label="anchor" href="#method-prune-orphans-"></a></h3>
+<p>Report or remove file records no longer linked to any query.</p><div class="section">
+<h4 id="usage-32">Usage<a class="anchor" aria-label="anchor" href="#usage-32"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">prune_orphans</span><span class="op">(</span>delete_local <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-29">Arguments<a class="anchor" aria-label="anchor" href="#arguments-29"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>delete_local</code></dt>
+<dd><p>Whether to delete local NetCDF files and remove
+orphaned registry records. Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-32">Returns<a class="anchor" aria-label="anchor" href="#returns-32"></a></h4>
+<p>A data.table of orphaned file records.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-storage_report"></a><div class="section">
+<h3 id="method-storage-report-">Method <code>storage_report()</code><a class="anchor" aria-label="anchor" href="#method-storage-report-"></a></h3>
+<p>Summarise store download storage, registered local assets, temporary
+files, and cleanup candidates.</p><div class="section">
+<h4 id="usage-33">Usage<a class="anchor" aria-label="anchor" href="#usage-33"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">storage_report</span><span class="op">(</span>detail <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-30">Arguments<a class="anchor" aria-label="anchor" href="#arguments-30"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>detail</code></dt>
+<dd><p>Whether to return detailed file tables. Default:
+<code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-33">Returns<a class="anchor" aria-label="anchor" href="#returns-33"></a></h4>
+<p>A summary data.table, or a list when <code>detail = TRUE</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-validate_files"></a><div class="section">
+<h3 id="method-validate-files-">Method <code>validate_files()</code><a class="anchor" aria-label="anchor" href="#method-validate-files-"></a></h3>
+<p>Validate store-managed NetCDF downloads against the manifest.</p><div class="section">
+<h4 id="usage-34">Usage<a class="anchor" aria-label="anchor" href="#usage-34"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">validate_files</span><span class="op">(</span>query_id <span class="op">=</span> <span class="cn">NULL</span>, checksum <span class="op">=</span> <span class="cn">FALSE</span>, layout <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-31">Arguments<a class="anchor" aria-label="anchor" href="#arguments-31"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query IDs to validate. When <code>NULL</code>,
+all known downloaded ESGF files are checked.</p></dd>
+
+
+<dt><code>checksum</code></dt>
+<dd><p>Whether to compute file checksums. Default: <code>FALSE</code>.</p></dd>
+
+
+<dt><code>layout</code></dt>
+<dd><p>Whether to compare registered files with the current
+download layout policy. Default: <code>TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-34">Returns<a class="anchor" aria-label="anchor" href="#returns-34"></a></h4>
+<p>A list with <code>summary</code>, <code>files</code>, <code>artifacts</code>, <code>untracked</code>, and
+<code>actions</code> data.tables. The method is read-only.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-repair_files"></a><div class="section">
+<h3 id="method-repair-files-">Method <code>repair_files()</code><a class="anchor" aria-label="anchor" href="#method-repair-files-"></a></h3>
+<p>Repair safe store download inconsistencies reported by
+<code>$validate_files()</code>.</p><div class="section">
+<h4 id="usage-35">Usage<a class="anchor" aria-label="anchor" href="#usage-35"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">repair_files</span><span class="op">(</span>actions <span class="op">=</span> <span class="cn">NULL</span>, dry_run <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-32">Arguments<a class="anchor" aria-label="anchor" href="#arguments-32"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>actions</code></dt>
+<dd><p>Optional action table from <code>$validate_files()$actions</code>.
+When <code>NULL</code>, actions are generated from <code>$validate_files()</code>.</p></dd>
+
+
+<dt><code>dry_run</code></dt>
+<dd><p>Whether to only report planned repairs. Default:
+<code>TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-35">Returns<a class="anchor" aria-label="anchor" href="#returns-35"></a></h4>
+<p>A data.table describing attempted repairs.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-cleanup_downloads"></a><div class="section">
+<h3 id="method-cleanup-downloads-">Method <code>cleanup_downloads()</code><a class="anchor" aria-label="anchor" href="#method-cleanup-downloads-"></a></h3>
+<p>Report or remove download cleanup candidates.</p><div class="section">
+<h4 id="usage-36">Usage<a class="anchor" aria-label="anchor" href="#usage-36"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">cleanup_downloads</span><span class="op">(</span></span>
+<span>  scope <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tmp"</span>, <span class="st">"orphan_records"</span>, <span class="st">"untracked_files"</span>, <span class="st">"missing_records"</span><span class="op">)</span>,</span>
+<span>  dry_run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  older_than <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-33">Arguments<a class="anchor" aria-label="anchor" href="#arguments-33"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>scope</code></dt>
+<dd><p>Cleanup scopes. Supported values are <code>"tmp"</code>,
+<code>"orphan_records"</code>, <code>"untracked_files"</code>, and
+<code>"missing_records"</code>.</p></dd>
+
+
+<dt><code>dry_run</code></dt>
+<dd><p>Whether to only report cleanup candidates. Default:
+<code>TRUE</code>.</p></dd>
+
+
+<dt><code>older_than</code></dt>
+<dd><p>Optional age filter for file scopes. A numeric value
+is interpreted as seconds before now; a <code>POSIXct</code> value is used
+as an absolute mtime cutoff.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-36">Returns<a class="anchor" aria-label="anchor" href="#returns-36"></a></h4>
+<p>A data.table describing cleanup candidates or removals.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-retry_downloads"></a><div class="section">
+<h3 id="method-retry-downloads-">Method <code>retry_downloads()</code><a class="anchor" aria-label="anchor" href="#method-retry-downloads-"></a></h3>
+<p>Requeue retryable downloader tasks linked to stored query files.</p><div class="section">
+<h4 id="usage-37">Usage<a class="anchor" aria-label="anchor" href="#usage-37"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">retry_downloads</span><span class="op">(</span></span>
+<span>  query_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  session_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"cancelled"</span><span class="op">)</span>,</span>
+<span>  run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-34">Arguments<a class="anchor" aria-label="anchor" href="#arguments-34"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
+<dd><p>Optional stored query ID.</p></dd>
+
+
+<dt><code>session_id</code></dt>
+<dd><p>Optional downloader session ID.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+<dt><code>status</code></dt>
+<dd><p>Retryable statuses. Default: <code>c("error", "cancelled")</code>.</p></dd>
+
+
+<dt><code>run</code></dt>
+<dd><p>Whether to run requeued tasks immediately. Default: <code>TRUE</code>.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional arguments passed to <code>FileDownloader$run()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-37">Returns<a class="anchor" aria-label="anchor" href="#returns-37"></a></h4>
+<p>A data.table of matching task rows after retry handling.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-add_files"></a><div class="section">
 <h3 id="method-add-files-">Method <code>add_files()</code><a class="anchor" aria-label="anchor" href="#method-add-files-"></a></h3>
 <p>Add File or Aggregation query results to the local file catalog.</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<h4 id="usage-38">Usage<a class="anchor" aria-label="anchor" href="#usage-38"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">add_files</span><span class="op">(</span><span class="va">files</span>, label <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+<h4 id="arguments-35">Arguments<a class="anchor" aria-label="anchor" href="#arguments-35"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>files</code></dt>
 <dd><p>An <code>EsgResultFile</code> or <code>EsgResultAggregation</code> object.</p></dd>
 
@@ -336,14 +1401,146 @@ provenance.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+<h4 id="returns-38">Returns<a class="anchor" aria-label="anchor" href="#returns-38"></a></h4>
 <p>The created or updated query ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-downloader"></a><div class="section">
+<h3 id="method-downloader-">Method <code>downloader()</code><a class="anchor" aria-label="anchor" href="#method-downloader-"></a></h3>
+<p>Return a FileDownloader bound to this store.</p><div class="section">
+<h4 id="usage-39">Usage<a class="anchor" aria-label="anchor" href="#usage-39"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">downloader</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-36">Arguments<a class="anchor" aria-label="anchor" href="#arguments-36"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>...</code></dt>
+<dd><p>Additional arguments passed to <code>FileDownloader$new()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-39">Returns<a class="anchor" aria-label="anchor" href="#returns-39"></a></h4>
+<p>A <a href="FileDownloader.html">FileDownloader</a> object.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-download_files"></a><div class="section">
+<h3 id="method-download-files-">Method <code>download_files()</code><a class="anchor" aria-label="anchor" href="#method-download-files-"></a></h3>
+<p>Enqueue and optionally download ESGF file records through the store downloader.</p><div class="section">
+<h4 id="usage-40">Usage<a class="anchor" aria-label="anchor" href="#usage-40"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">download_files</span><span class="op">(</span></span>
+<span>  files <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  replica <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  session_label <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
+<span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  probe_concurrency <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
+<span>  progress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-37">Arguments<a class="anchor" aria-label="anchor" href="#arguments-37"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>files</code></dt>
+<dd><p>Optional <a href="EsgResultFile.html">EsgResultFile</a> or <a href="EsgResultAggregation.html">EsgResultAggregation</a> object.
+If supplied, it is cataloged before the download plan is created.</p></dd>
+
+
+<dt><code>replica</code></dt>
+<dd><p>Replica policy passed to <code>$download_plan()</code>.</p></dd>
+
+
+<dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+<dt><code>run</code></dt>
+<dd><p>Whether to run the queued session immediately. Default: <code>TRUE</code>.</p></dd>
+
+
+<dt><code>session_label</code></dt>
+<dd><p>Optional download session label.</p></dd>
+
+
+<dt><code>service</code></dt>
+<dd><p>ESGF URL service to download from. Default:
+<code>"HTTPServer"</code>.</p></dd>
+
+
+<dt><code>probe</code></dt>
+<dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
+
+
+<dt><code>probe_concurrency</code></dt>
+<dd><p>Maximum concurrent URL probes when
+<code>probe = TRUE</code>. Default comes from the downloader worker count.</p></dd>
+
+
+<dt><code>probe_cache_seconds</code></dt>
+<dd><p>Seconds to reuse fresh data-node probe
+history before probing a URL again. Default: <code>3600</code>.</p></dd>
+
+
+<dt><code>strategy</code></dt>
+<dd><p>Candidate ranking strategy.</p></dd>
+
+
+<dt><code>progress</code></dt>
+<dd><p>Whether to show per-file download progress.</p></dd>
+
+
+<dt><code>overwrite</code></dt>
+<dd><p>Whether to overwrite existing final files.</p></dd>
+
+
+<dt><code>resume</code></dt>
+<dd><p>Whether to resume interrupted <code>.part</code> files.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional arguments passed to <code>$download_plan()</code> and
+<code>FileDownloader$run()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-40">Returns<a class="anchor" aria-label="anchor" href="#returns-40"></a></h4>
+<p>The created downloader session ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgStore-sync_downloads"></a><div class="section">
+<h3 id="method-sync-downloads-">Method <code>sync_downloads()</code><a class="anchor" aria-label="anchor" href="#method-sync-downloads-"></a></h3>
+<p>Register completed downloader tasks as local store artifacts.</p><div class="section">
+<h4 id="usage-41">Usage<a class="anchor" aria-label="anchor" href="#usage-41"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">sync_downloads</span><span class="op">(</span>downloader <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-38">Arguments<a class="anchor" aria-label="anchor" href="#arguments-38"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
+<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-41">Returns<a class="anchor" aria-label="anchor" href="#returns-41"></a></h4>
+<p>A data.table of completed tasks.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-plan_region"></a><div class="section">
 <h3 id="method-plan-region-">Method <code>plan_region()</code><a class="anchor" aria-label="anchor" href="#method-plan-region-"></a></h3>
 <p>Plan regional extraction jobs from cataloged files.</p><div class="section">
-<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<h4 id="usage-42">Usage<a class="anchor" aria-label="anchor" href="#usage-42"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">plan_region</span><span class="op">(</span></span>
 <span>  <span class="va">query_id</span>,</span>
 <span>  <span class="va">lon</span>,</span>
@@ -357,7 +1554,7 @@ provenance.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<h4 id="arguments-39">Arguments<a class="anchor" aria-label="anchor" href="#arguments-39"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>query_id</code></dt>
 <dd><p>Query ID returned by <code>$add_files()</code>.</p></dd>
 
@@ -390,14 +1587,14 @@ variables in the query are used.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+<h4 id="returns-42">Returns<a class="anchor" aria-label="anchor" href="#returns-42"></a></h4>
 <p>A data.table of extraction plan rows.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-extract"></a><div class="section">
 <h3 id="method-extract-">Method <code>extract()</code><a class="anchor" aria-label="anchor" href="#method-extract-"></a></h3>
 <p>Execute pending or failed regional extraction plans.</p><div class="section">
-<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<h4 id="usage-43">Usage<a class="anchor" aria-label="anchor" href="#usage-43"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">extract</span><span class="op">(</span></span>
 <span>  plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pending"</span>, <span class="st">"failed"</span><span class="op">)</span>,</span>
@@ -407,7 +1604,7 @@ variables in the query are used.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<h4 id="arguments-40">Arguments<a class="anchor" aria-label="anchor" href="#arguments-40"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>plan_id</code></dt>
 <dd><p>Optional plan IDs to run.</p></dd>
 
@@ -431,19 +1628,19 @@ Default: <code>FALSE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<h4 id="returns-43">Returns<a class="anchor" aria-label="anchor" href="#returns-43"></a></h4>
 <p>A data.table of processed extraction plan rows.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-query"></a><div class="section">
 <h3 id="method-query-">Method <code>query()</code><a class="anchor" aria-label="anchor" href="#method-query-"></a></h3>
 <p>Run a DuckDB SQL query against the extraction manifest.</p><div class="section">
-<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<h4 id="usage-44">Usage<a class="anchor" aria-label="anchor" href="#usage-44"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">query</span><span class="op">(</span><span class="va">sql</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+<h4 id="arguments-41">Arguments<a class="anchor" aria-label="anchor" href="#arguments-41"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>sql</code></dt>
 <dd><p>SQL query.</p></dd>
 
@@ -451,14 +1648,14 @@ Default: <code>FALSE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
+<h4 id="returns-44">Returns<a class="anchor" aria-label="anchor" href="#returns-44"></a></h4>
 <p>A data.table.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-summarise"></a><div class="section">
 <h3 id="method-summarise-">Method <code>summarise()</code><a class="anchor" aria-label="anchor" href="#method-summarise-"></a></h3>
 <p>Summarise extracted Parquet outputs by manifest columns.</p><div class="section">
-<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<h4 id="usage-45">Usage<a class="anchor" aria-label="anchor" href="#usage-45"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">summarise</span><span class="op">(</span></span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"frequency"</span>, <span class="st">"variable_id"</span>,</span>
 <span>    <span class="st">"site_id"</span>, <span class="st">"year"</span><span class="op">)</span></span>
@@ -466,7 +1663,7 @@ Default: <code>FALSE</code>.</p></dd>
 </div>
 
 <div class="section">
-<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
+<h4 id="arguments-42">Arguments<a class="anchor" aria-label="anchor" href="#arguments-42"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>by</code></dt>
 <dd><p>Character vector of grouping columns. Default groups by
 source, experiment, variant, frequency, variable, site and
@@ -476,19 +1673,19 @@ year.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
+<h4 id="returns-45">Returns<a class="anchor" aria-label="anchor" href="#returns-45"></a></h4>
 <p>A data.table.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-coverage"></a><div class="section">
 <h3 id="method-coverage-">Method <code>coverage()</code><a class="anchor" aria-label="anchor" href="#method-coverage-"></a></h3>
 <p>Check extraction coverage for planned jobs.</p><div class="section">
-<h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
+<h4 id="usage-46">Usage<a class="anchor" aria-label="anchor" href="#usage-46"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">coverage</span><span class="op">(</span>plan_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
+<h4 id="arguments-43">Arguments<a class="anchor" aria-label="anchor" href="#arguments-43"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>plan_id</code></dt>
 <dd><p>Optional plan IDs to check.</p></dd>
 
@@ -496,19 +1693,19 @@ year.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
+<h4 id="returns-46">Returns<a class="anchor" aria-label="anchor" href="#returns-46"></a></h4>
 <p>A data.table with one row per plan.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-assert_complete"></a><div class="section">
 <h3 id="method-assert-complete-">Method <code>assert_complete()</code><a class="anchor" aria-label="anchor" href="#method-assert-complete-"></a></h3>
 <p>Assert that selected extraction plans are complete.</p><div class="section">
-<h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
+<h4 id="usage-47">Usage<a class="anchor" aria-label="anchor" href="#usage-47"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">assert_complete</span><span class="op">(</span>plan_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
+<h4 id="arguments-44">Arguments<a class="anchor" aria-label="anchor" href="#arguments-44"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>plan_id</code></dt>
 <dd><p>Optional plan IDs to check.</p></dd>
 
@@ -516,19 +1713,19 @@ year.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
+<h4 id="returns-47">Returns<a class="anchor" aria-label="anchor" href="#returns-47"></a></h4>
 <p>The store object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<h4 id="usage-48">Usage<a class="anchor" aria-label="anchor" href="#usage-48"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
+<h4 id="arguments-45">Arguments<a class="anchor" aria-label="anchor" href="#arguments-45"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

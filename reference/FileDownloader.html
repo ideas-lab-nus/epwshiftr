@@ -104,8 +104,32 @@ Error handling and retry logic
 <dd><p>Download timeout in seconds</p></dd>
 
 
+<dt><code>network_policy</code></dt>
+<dd><p>Network options passed to libcurl.</p></dd>
+
+
+<dt><code>node_policy</code></dt>
+<dd><p>Data-node cooldown and ranking policy.</p></dd>
+
+
+<dt><code>transfer_policy</code></dt>
+<dd><p>Curl transfer policy.</p></dd>
+
+
+<dt><code>resource_policy</code></dt>
+<dd><p>Local resource and scheduling policy.</p></dd>
+
+
 <dt><code>n_workers</code></dt>
 <dd><p>Number of parallel workers</p></dd>
+
+
+<dt><code>manifest</code></dt>
+<dd><p>Persistent download manifest path, or <code>NULL</code>.</p></dd>
+
+
+<dt><code>config_file</code></dt>
+<dd><p>Downloader config path, or <code>NULL</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -118,6 +142,25 @@ Error handling and retry logic
 
 <ul><li><p><a href="#method-FileDownloader-new"><code>FileDownloader$new()</code></a></p></li>
 <li><p><a href="#method-FileDownloader-download"><code>FileDownloader$download()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-save_config"><code>FileDownloader$save_config()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-export_manifest"><code>FileDownloader$export_manifest()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-import_manifest"><code>FileDownloader$import_manifest()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-enqueue"><code>FileDownloader$enqueue()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-preflight"><code>FileDownloader$preflight()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-run"><code>FileDownloader$run()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-sessions"><code>FileDownloader$sessions()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-tasks"><code>FileDownloader$tasks()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-status"><code>FileDownloader$status()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-events"><code>FileDownloader$events()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-on"><code>FileDownloader$on()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-off"><code>FileDownloader$off()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-data_nodes"><code>FileDownloader$data_nodes()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-reset_data_nodes"><code>FileDownloader$reset_data_nodes()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-record_probes"><code>FileDownloader$record_probes()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-retry"><code>FileDownloader$retry()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-cancel"><code>FileDownloader$cancel()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-resume"><code>FileDownloader$resume()</code></a></p></li>
+<li><p><a href="#method-FileDownloader-verify"><code>FileDownloader$verify()</code></a></p></li>
 <li><p><a href="#method-FileDownloader-cleanup_tmp"><code>FileDownloader$cleanup_tmp()</code></a></p></li>
 <li><p><a href="#method-FileDownloader-get_tasks"><code>FileDownloader$get_tasks()</code></a></p></li>
 <li><p><a href="#method-FileDownloader-get_task_status"><code>FileDownloader$get_task_status()</code></a></p></li>
@@ -136,8 +179,17 @@ Error handling and retry logic
 <span>  temp <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  retries <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  timeout <span class="op">=</span> <span class="fl">3600L</span>,</span>
+<span>  ssl_verifypeer <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  proxy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  connect_timeout <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  useragent <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cleanup <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  n_workers <span class="op">=</span> <span class="fl">4L</span></span>
+<span>  n_workers <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>  node_policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  transfer_policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  resource_policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  manifest <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  config <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -165,6 +217,25 @@ retry attempts for failed downloads. Default: <code>3L</code>.</p></dd>
 each download. Default: <code>3600L</code> (1 hour).</p></dd>
 
 
+<dt><code>ssl_verifypeer</code></dt>
+<dd><p>Whether to verify HTTPS certificates. Default:
+<code>TRUE</code>.</p></dd>
+
+
+<dt><code>proxy</code></dt>
+<dd><p>Optional proxy URL passed to libcurl. Default: <code>NULL</code>.</p></dd>
+
+
+<dt><code>connect_timeout</code></dt>
+<dd><p>Optional connection timeout in seconds passed
+to libcurl. Default: <code>NULL</code>.</p></dd>
+
+
+<dt><code>useragent</code></dt>
+<dd><p>Optional HTTP user agent passed to libcurl.
+Default: <code>NULL</code>.</p></dd>
+
+
 <dt><code>cleanup</code></dt>
 <dd><p>A logical value specifying whether to automatically clean up failed temporary
 files. Default: <code>TRUE</code>.</p></dd>
@@ -174,6 +245,37 @@ files. Default: <code>TRUE</code>.</p></dd>
 <dd><p>A non-negative integer specifying the number of parallel workers
 for async downloads. If <code>0</code>, async downloads will fallback to synchronous mode.
 Default: <code>4L</code>.</p></dd>
+
+
+<dt><code>node_policy</code></dt>
+<dd><p>A list controlling historical data-node cooldown
+and ranking. Missing fields use conservative defaults.</p></dd>
+
+
+<dt><code>transfer_policy</code></dt>
+<dd><p>A list controlling curl transfer options.
+Supported fields are <code>chunk_size</code>, <code>bandwidth_limit</code>,
+<code>low_speed_limit</code>, and <code>low_speed_time</code>. Use <code>NULL</code> values
+to keep libcurl defaults.</p></dd>
+
+
+<dt><code>resource_policy</code></dt>
+<dd><p>A list controlling local resource checks and
+scheduling. Supported fields are <code>host_concurrency</code>,
+<code>disk_preflight</code>, and <code>min_free_space</code>.</p></dd>
+
+
+<dt><code>manifest</code></dt>
+<dd><p>Optional DuckDB manifest path for persistent
+sessions, tasks, candidate URLs, and events. If <code>NULL</code>, only
+the single-file shortcut API is available. Default: <code>NULL</code>.</p></dd>
+
+
+<dt><code>config</code></dt>
+<dd><p>Optional downloader config, either a JSON file path
+created by <code>$save_config()</code> or a validated config list.
+Explicit constructor arguments override config values.
+Default: <code>NULL</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -210,7 +312,8 @@ dl &lt;- FileDownloader$new(
 <span>  checksum <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  checksum_type <span class="op">=</span> <span class="st">"sha256"</span>,</span>
 <span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  block <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  block <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  .tmp_id <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -257,6 +360,11 @@ Default: <code>TRUE</code>.</p></dd>
 If <code>FALSE</code>, downloads asynchronously in background. Default: <code>TRUE</code>.</p></dd>
 
 
+<dt><code>.tmp_id</code></dt>
+<dd><p>Internal temporary file ID used by persistent
+download tasks. Default: <code>NULL</code>.</p></dd>
+
+
 </dl><p></p></div>
 </div>
 <div class="section">
@@ -288,15 +396,508 @@ results &lt;- dl$wait_for_tasks(task_ids)
 </div>
 
 
-</div><p></p><hr><a id="method-FileDownloader-cleanup_tmp"></a><div class="section">
-<h3 id="method-cleanup-tmp-">Method <code>cleanup_tmp()</code><a class="anchor" aria-label="anchor" href="#method-cleanup-tmp-"></a></h3>
-<p>Clean up temporary files (.part and .done files)</p><div class="section">
+</div><p></p><hr><a id="method-FileDownloader-save_config"></a><div class="section">
+<h3 id="method-save-config-">Method <code>save_config()</code><a class="anchor" aria-label="anchor" href="#method-save-config-"></a></h3>
+<p>Save downloader construction config as schema-validated JSON.</p><div class="section">
 <h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">cleanup_tmp</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">save_config</span><span class="op">(</span>file <span class="op">=</span> <span class="cn">NULL</span>, pretty <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>file</code></dt>
+<dd><p>Output JSON path. If <code>NULL</code>, uses the config path next to
+the persistent manifest.</p></dd>
+
+
+<dt><code>pretty</code></dt>
+<dd><p>Whether to add indentation whitespace. Default: <code>TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<p>The normalized output path.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-export_manifest"></a><div class="section">
+<h3 id="method-export-manifest-">Method <code>export_manifest()</code><a class="anchor" aria-label="anchor" href="#method-export-manifest-"></a></h3>
+<p>Export persistent manifest state to a portable JSON file.</p><div class="section">
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">export_manifest</span><span class="op">(</span><span class="va">file</span>, pretty <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>file</code></dt>
+<dd><p>Output JSON path.</p></dd>
+
+
+<dt><code>pretty</code></dt>
+<dd><p>Whether to add indentation whitespace. Default: <code>TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p>The normalized output path.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-import_manifest"></a><div class="section">
+<h3 id="method-import-manifest-">Method <code>import_manifest()</code><a class="anchor" aria-label="anchor" href="#method-import-manifest-"></a></h3>
+<p>Import persistent manifest state from <code>$export_manifest()</code>.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">import_manifest</span><span class="op">(</span><span class="va">file</span>, mode <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"append"</span>, <span class="st">"replace"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>file</code></dt>
+<dd><p>JSON manifest export path.</p></dd>
+
+
+<dt><code>mode</code></dt>
+<dd><p>Import mode. <code>"append"</code> upserts imported rows by manifest
+primary key. <code>"replace"</code> clears known manifest tables first.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<p>A data.table with imported row counts.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-enqueue"></a><div class="section">
+<h3 id="method-enqueue-">Method <code>enqueue()</code><a class="anchor" aria-label="anchor" href="#method-enqueue-"></a></h3>
+<p>Add a download plan to the persistent manifest.</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">enqueue</span><span class="op">(</span><span class="va">plan</span>, session_label <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>plan</code></dt>
+<dd><p>A data frame with at least <code>logical_file_id</code>, <code>filename</code>,
+and <code>url</code> columns.</p></dd>
+
+
+<dt><code>session_label</code></dt>
+<dd><p>Optional label for this download session.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<p>The created session ID.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-preflight"></a><div class="section">
+<h3 id="method-preflight-">Method <code>preflight()</code><a class="anchor" aria-label="anchor" href="#method-preflight-"></a></h3>
+<p>Check local resource requirements before downloading.</p><div class="section">
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
+<span>  plan <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  session_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  task_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>plan</code></dt>
+<dd><p>Optional download plan. If supplied, preflight is
+calculated without writing to the persistent manifest.</p></dd>
+
+
+<dt><code>session_id</code></dt>
+<dd><p>Optional persistent session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional persistent task ID vector.</p></dd>
+
+
+<dt><code>overwrite</code></dt>
+<dd><p>Whether existing final files would be overwritten.
+Default: <code>FALSE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+<p>A one-row data.table with byte and disk-space summary.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-run"></a><div class="section">
+<h3 id="method-run-">Method <code>run()</code><a class="anchor" aria-label="anchor" href="#method-run-"></a></h3>
+<p>Run queued persistent download tasks.</p><div class="section">
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">run</span><span class="op">(</span></span>
+<span>  session_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  task_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  block <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  progress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  resume <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+<dt><code>block</code></dt>
+<dd><p>Whether to block until completion. Persistent runs are
+currently synchronous.</p></dd>
+
+
+<dt><code>progress</code></dt>
+<dd><p>Whether to show per-file progress.</p></dd>
+
+
+<dt><code>overwrite</code></dt>
+<dd><p>Whether to overwrite existing final files.</p></dd>
+
+
+<dt><code>resume</code></dt>
+<dd><p>Whether to resume <code>.part</code> files.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+<p>A data.table of selected task records after the run.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-sessions"></a><div class="section">
+<h3 id="method-sessions-">Method <code>sessions()</code><a class="anchor" aria-label="anchor" href="#method-sessions-"></a></h3>
+<p>List persistent download sessions.</p><div class="section">
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">sessions</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+
+</div><p></p><hr><a id="method-FileDownloader-tasks"></a><div class="section">
+<h3 id="method-tasks-">Method <code>tasks()</code><a class="anchor" aria-label="anchor" href="#method-tasks-"></a></h3>
+<p>List persistent download tasks.</p><div class="section">
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">tasks</span><span class="op">(</span>session_id <span class="op">=</span> <span class="cn">NULL</span>, status <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>status</code></dt>
+<dd><p>Optional task status filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-status"></a><div class="section">
+<h3 id="method-status-">Method <code>status()</code><a class="anchor" aria-label="anchor" href="#method-status-"></a></h3>
+<p>Return persistent download task status.</p><div class="section">
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">status</span><span class="op">(</span>session_id <span class="op">=</span> <span class="cn">NULL</span>, task_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+<p>A data.table of matching task records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-events"></a><div class="section">
+<h3 id="method-events-">Method <code>events()</code><a class="anchor" aria-label="anchor" href="#method-events-"></a></h3>
+<p>Return persistent downloader event logs.</p><div class="section">
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">events</span><span class="op">(</span>session_id <span class="op">=</span> <span class="cn">NULL</span>, task_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<p>A data.table of event records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-on"></a><div class="section">
+<h3 id="method-on-">Method <code>on()</code><a class="anchor" aria-label="anchor" href="#method-on-"></a></h3>
+<p>Register an in-session downloader event callback.</p><div class="section">
+<h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">on</span><span class="op">(</span><span class="va">event</span>, <span class="va">fun</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>event</code></dt>
+<dd><p>Event name.</p></dd>
+
+
+<dt><code>fun</code></dt>
+<dd><p>Callback function called with <code>(event, downloader)</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
+<p>A callback token for <code>$off()</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-off"></a><div class="section">
+<h3 id="method-off-">Method <code>off()</code><a class="anchor" aria-label="anchor" href="#method-off-"></a></h3>
+<p>Remove a downloader event callback.</p><div class="section">
+<h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">off</span><span class="op">(</span><span class="va">token</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>token</code></dt>
+<dd><p>Callback token returned by <code>$on()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
+<p><code>TRUE</code> when a callback was removed.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-data_nodes"></a><div class="section">
+<h3 id="method-data-nodes-">Method <code>data_nodes()</code><a class="anchor" aria-label="anchor" href="#method-data-nodes-"></a></h3>
+<p>Return historical data node download performance.</p><div class="section">
+<h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">data_nodes</span><span class="op">(</span>service <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>service</code></dt>
+<dd><p>Optional ESGF service filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
+<p>A data.table of data node performance records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-reset_data_nodes"></a><div class="section">
+<h3 id="method-reset-data-nodes-">Method <code>reset_data_nodes()</code><a class="anchor" aria-label="anchor" href="#method-reset-data-nodes-"></a></h3>
+<p>Reset historical data-node health records.</p><div class="section">
+<h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">reset_data_nodes</span><span class="op">(</span>data_node <span class="op">=</span> <span class="cn">NULL</span>, service <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>data_node</code></dt>
+<dd><p>Optional data-node host to reset.</p></dd>
+
+
+<dt><code>service</code></dt>
+<dd><p>Optional ESGF service filter.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
+<p>The remaining data-node records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-record_probes"></a><div class="section">
+<h3 id="method-record-probes-">Method <code>record_probes()</code><a class="anchor" aria-label="anchor" href="#method-record-probes-"></a></h3>
+<p>Record URL probe outcomes from a download plan into node history.</p><div class="section">
+<h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">record_probes</span><span class="op">(</span><span class="va">plan</span>, probed <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-15">Arguments<a class="anchor" aria-label="anchor" href="#arguments-15"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>plan</code></dt>
+<dd><p>A download plan returned by <code>$download_plan()</code>.</p></dd>
+
+
+<dt><code>probed</code></dt>
+<dd><p>Whether <code>probe = TRUE</code> was used to create the plan.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
+<p>The current data-node records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-retry"></a><div class="section">
+<h3 id="method-retry-">Method <code>retry()</code><a class="anchor" aria-label="anchor" href="#method-retry-"></a></h3>
+<p>Requeue failed or cancelled persistent tasks.</p><div class="section">
+<h4 id="usage-17">Usage<a class="anchor" aria-label="anchor" href="#usage-17"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">retry</span><span class="op">(</span></span>
+<span>  session_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  task_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"cancelled"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-16">Arguments<a class="anchor" aria-label="anchor" href="#arguments-16"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+<dt><code>status</code></dt>
+<dd><p>Task statuses to requeue. Default:
+<code>c("error", "cancelled")</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
+<p>A data.table of requeued task records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-cancel"></a><div class="section">
+<h3 id="method-cancel-">Method <code>cancel()</code><a class="anchor" aria-label="anchor" href="#method-cancel-"></a></h3>
+<p>Cancel queued or in-progress persistent download tasks.</p><div class="section">
+<h4 id="usage-18">Usage<a class="anchor" aria-label="anchor" href="#usage-18"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">cancel</span><span class="op">(</span></span>
+<span>  session_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  task_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"queued"</span>, <span class="st">"downloading"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-17">Arguments<a class="anchor" aria-label="anchor" href="#arguments-17"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+<dt><code>status</code></dt>
+<dd><p>Task statuses to cancel. Default:
+<code>c("queued", "downloading")</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
+<p>A data.table of cancelled task records.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-resume"></a><div class="section">
+<h3 id="method-resume-">Method <code>resume()</code><a class="anchor" aria-label="anchor" href="#method-resume-"></a></h3>
+<p>Resume queued or interrupted persistent tasks.</p><div class="section">
+<h4 id="usage-19">Usage<a class="anchor" aria-label="anchor" href="#usage-19"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">resume</span><span class="op">(</span>session_id <span class="op">=</span> <span class="cn">NULL</span>, task_id <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-18">Arguments<a class="anchor" aria-label="anchor" href="#arguments-18"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+<dt><code>...</code></dt>
+<dd><p>Additional arguments passed to <code>$run()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-17">Returns<a class="anchor" aria-label="anchor" href="#returns-17"></a></h4>
+<p>A data.table of selected task records after the run.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-verify"></a><div class="section">
+<h3 id="method-verify-">Method <code>verify()</code><a class="anchor" aria-label="anchor" href="#method-verify-"></a></h3>
+<p>Verify checksums for completed persistent tasks.</p><div class="section">
+<h4 id="usage-20">Usage<a class="anchor" aria-label="anchor" href="#usage-20"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">verify</span><span class="op">(</span>session_id <span class="op">=</span> <span class="cn">NULL</span>, task_id <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-19">Arguments<a class="anchor" aria-label="anchor" href="#arguments-19"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>session_id</code></dt>
+<dd><p>Optional session ID.</p></dd>
+
+
+<dt><code>task_id</code></dt>
+<dd><p>Optional task ID vector.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-18">Returns<a class="anchor" aria-label="anchor" href="#returns-18"></a></h4>
+<p>A data.table of completed task records with a
+<code>checksum_ok</code> column.</p>
+</div>
+
+</div><p></p><hr><a id="method-FileDownloader-cleanup_tmp"></a><div class="section">
+<h3 id="method-cleanup-tmp-">Method <code>cleanup_tmp()</code><a class="anchor" aria-label="anchor" href="#method-cleanup-tmp-"></a></h3>
+<p>Clean up temporary files (.part and .done files)</p><div class="section">
+<h4 id="usage-21">Usage<a class="anchor" aria-label="anchor" href="#usage-21"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">cleanup_tmp</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-20">Arguments<a class="anchor" aria-label="anchor" href="#arguments-20"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>all</code></dt>
 <dd><p>If <code>TRUE</code>, removes all temporary files. If <code>FALSE</code>,
 only removes orphaned files (no corresponding final file).
@@ -306,7 +907,7 @@ Default: <code>FALSE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<h4 id="returns-19">Returns<a class="anchor" aria-label="anchor" href="#returns-19"></a></h4>
 <p>Number of files removed.</p>
 </div>
 <div class="section">
@@ -322,12 +923,12 @@ n_removed &lt;- downloader$cleanup_tmp(all = TRUE)
 </div><p></p><hr><a id="method-FileDownloader-get_tasks"></a><div class="section">
 <h3 id="method-get-tasks-">Method <code>get_tasks()</code><a class="anchor" aria-label="anchor" href="#method-get-tasks-"></a></h3>
 <p>Get all async download tasks</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-22">Usage<a class="anchor" aria-label="anchor" href="#usage-22"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">get_tasks</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<h4 id="returns-20">Returns<a class="anchor" aria-label="anchor" href="#returns-20"></a></h4>
 <p>A list of DownloadTask objects.</p>
 </div>
 <div class="section">
@@ -342,12 +943,12 @@ tasks &lt;- downloader$get_tasks()
 </div><p></p><hr><a id="method-FileDownloader-get_task_status"></a><div class="section">
 <h3 id="method-get-task-status-">Method <code>get_task_status()</code><a class="anchor" aria-label="anchor" href="#method-get-task-status-"></a></h3>
 <p>Get status of an async download task</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-23">Usage<a class="anchor" aria-label="anchor" href="#usage-23"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">get_task_status</span><span class="op">(</span><span class="va">task_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-21">Arguments<a class="anchor" aria-label="anchor" href="#arguments-21"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>task_id</code></dt>
 <dd><p>Task ID returned by <code>download(block = FALSE)</code>.</p></dd>
 
@@ -355,7 +956,7 @@ tasks &lt;- downloader$get_tasks()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+<h4 id="returns-21">Returns<a class="anchor" aria-label="anchor" href="#returns-21"></a></h4>
 <p>A list with task information including status, progress, etc.</p>
 </div>
 <div class="section">
@@ -371,12 +972,12 @@ status &lt;- dl$get_task_status(task_id)
 </div><p></p><hr><a id="method-FileDownloader-wait_for_tasks"></a><div class="section">
 <h3 id="method-wait-for-tasks-">Method <code>wait_for_tasks()</code><a class="anchor" aria-label="anchor" href="#method-wait-for-tasks-"></a></h3>
 <p>Wait for all async download tasks to complete</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-24">Usage<a class="anchor" aria-label="anchor" href="#usage-24"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">wait_for_tasks</span><span class="op">(</span>task_ids <span class="op">=</span> <span class="cn">NULL</span>, progress <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-22">Arguments<a class="anchor" aria-label="anchor" href="#arguments-22"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>task_ids</code></dt>
 <dd><p>Optional vector of task IDs to wait for. If <code>NULL</code>,
 waits for all tasks. Default: <code>NULL</code>.</p></dd>
@@ -389,7 +990,7 @@ waits for all tasks. Default: <code>NULL</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<h4 id="returns-22">Returns<a class="anchor" aria-label="anchor" href="#returns-22"></a></h4>
 <p>A list of completed task statuses.</p>
 </div>
 <div class="section">
@@ -406,12 +1007,12 @@ results &lt;- dl$wait_for_tasks()
 </div><p></p><hr><a id="method-FileDownloader-cancel_task"></a><div class="section">
 <h3 id="method-cancel-task-">Method <code>cancel_task()</code><a class="anchor" aria-label="anchor" href="#method-cancel-task-"></a></h3>
 <p>Cancel an async download task</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-25">Usage<a class="anchor" aria-label="anchor" href="#usage-25"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">cancel_task</span><span class="op">(</span><span class="va">task_id</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+<h4 id="arguments-23">Arguments<a class="anchor" aria-label="anchor" href="#arguments-23"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>task_id</code></dt>
 <dd><p>Task ID returned by <code>download(block = FALSE)</code>.</p></dd>
 
@@ -419,7 +1020,7 @@ results &lt;- dl$wait_for_tasks()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+<h4 id="returns-23">Returns<a class="anchor" aria-label="anchor" href="#returns-23"></a></h4>
 <p>Logical TRUE if cancellation was successful, FALSE otherwise.</p>
 </div>
 <div class="section">
@@ -436,12 +1037,12 @@ dl$cancel_task(task_id)
 </div><p></p><hr><a id="method-FileDownloader-list_incomplete"></a><div class="section">
 <h3 id="method-list-incomplete-">Method <code>list_incomplete()</code><a class="anchor" aria-label="anchor" href="#method-list-incomplete-"></a></h3>
 <p>List incomplete downloads</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<h4 id="usage-26">Usage<a class="anchor" aria-label="anchor" href="#usage-26"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">list_incomplete</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+<h4 id="returns-24">Returns<a class="anchor" aria-label="anchor" href="#returns-24"></a></h4>
 <p>A data.frame with information about incomplete downloads.</p>
 </div>
 <div class="section">
@@ -456,12 +1057,12 @@ incomplete &lt;- downloader$list_incomplete()
 </div><p></p><hr><a id="method-FileDownloader-verify_checksum"></a><div class="section">
 <h3 id="method-verify-checksum-">Method <code>verify_checksum()</code><a class="anchor" aria-label="anchor" href="#method-verify-checksum-"></a></h3>
 <p>Verify file checksum</p><div class="section">
-<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<h4 id="usage-27">Usage<a class="anchor" aria-label="anchor" href="#usage-27"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">verify_checksum</span><span class="op">(</span><span class="va">file</span>, <span class="va">expected</span>, type <span class="op">=</span> <span class="st">"sha256"</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+<h4 id="arguments-24">Arguments<a class="anchor" aria-label="anchor" href="#arguments-24"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>file</code></dt>
 <dd><p>Path to file to verify.</p></dd>
 
@@ -477,7 +1078,7 @@ incomplete &lt;- downloader$list_incomplete()
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+<h4 id="returns-25">Returns<a class="anchor" aria-label="anchor" href="#returns-25"></a></h4>
 <p><code>TRUE</code> if checksum matches, <code>FALSE</code> otherwise.</p>
 </div>
 <div class="section">
@@ -492,24 +1093,24 @@ valid &lt;- downloader$verify_checksum("data.nc", "abc123", "sha256")
 </div><p></p><hr><a id="method-FileDownloader-print"></a><div class="section">
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print downloader summary</p><div class="section">
-<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<h4 id="usage-28">Usage<a class="anchor" aria-label="anchor" href="#usage-28"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
+<h4 id="returns-26">Returns<a class="anchor" aria-label="anchor" href="#returns-26"></a></h4>
 <p>The <code>FileDownloader</code> object itself, invisibly.</p>
 </div>
 
 </div><p></p><hr><a id="method-FileDownloader-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
+<h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">FileDownloader</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<h4 id="arguments-25">Arguments<a class="anchor" aria-label="anchor" href="#arguments-25"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

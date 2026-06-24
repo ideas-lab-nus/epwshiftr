@@ -172,11 +172,8 @@ together.</p>
 output file index. So the names of NetCDF files do not necessarily follow the
 CMIP6 file name encoding.</p>
 <p><code>summary_database()</code> will append 5 columns in the CMIP6 output file index:</p><ul><li><p><code>file_path</code>: the full path of matched NetCDF file for every case.</p></li>
-</ul><p><code>summary_database()</code> uses <a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply</a>
-underneath to speed up the data processing if applicable. You can use your
-preferable future backend to speed up data extraction in parallel. By default,
-<code>summary_database()</code> uses <code><a href="https://future.futureverse.org/reference/sequential.html" class="external-link">future::sequential</a></code> backend, which runs things in
-sequential.</p>
+</ul><p><code>summary_database()</code> uses <a href="https://mirai.r-lib.org/reference/mirai.html" class="external-link">mirai</a> internally for parallel
+NetCDF metadata scanning when there is more than one file to inspect.</p>
     </div>
 
     <div id="ref-examples">

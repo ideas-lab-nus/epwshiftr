@@ -127,10 +127,8 @@ input EPW</p></li>
 </ul></div>
     <div id="details">
     <h2>Details</h2>
-    <p><code>match_coord()</code> uses <a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply</a>
-underneath. You can use your preferable future backend to
-speed up data extraction in parallel. By default, <code>match_coord()</code> uses
-<code><a href="https://future.futureverse.org/reference/sequential.html" class="external-link">future::sequential</a></code> backend, which runs things in sequential.</p>
+    <p><code>match_coord()</code> uses <a href="https://mirai.r-lib.org/reference/mirai.html" class="external-link">mirai</a> internally for parallel
+coordinate matching when there is more than one NetCDF file to inspect.</p>
     </div>
     <div id="geographical-distance-calculation">
     <h2>Geographical distance calculation</h2>
