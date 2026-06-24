@@ -39,9 +39,30 @@ reference:
 
   - title: ESGF search services
     contents:
-      - EsgfQuery
-      - query_esgf
-      - result_esgf
+      - esg_query
+      - esgf_query
+      - esg_result
+
+  - title: Remote ESGF data access
+    contents:
+      - EsgDataset
+      - FileDownloader
+
+  - title: Solr DateTime helpers
+    contents:
+      - is.solrdt
+      - is_solrdt_range
+      - is_solrdt_start_unbounded
+      - is_solrdt_end_unbounded
+      - solrdt_start
+      - solrdt_end
+      - "as.POSIXct.SolrDateTime"
+      - "as.character.SolrDateTime"
+      - "c.SolrDateTime"
+      - "format.SolrDateTime"
+      - "length.SolrDateTime"
+      - "print.SolrDateTime"
+      - "[.SolrDateTime"
 
   - title: CMIP6 Index
     desc: Build CMIP6 output index
@@ -50,7 +71,7 @@ reference:
       - init_cmip6_index
       - load_cmip6_index
       - set_cmip6_index
-      - get_data_node
+      - data_node_status
 
   - title: CMIP6 Output
     desc: Manage CMIP6 output files

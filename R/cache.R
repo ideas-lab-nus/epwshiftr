@@ -444,7 +444,8 @@ DiskCache <- R6::R6Class(
             }
 
             # convert to bytes
-            multiplier <- switch(unit,
+            multiplier <- switch(
+                unit,
                 "b" = 1,
                 "kb" = 1024,
                 "mb" = 1024^2,
@@ -510,4 +511,188 @@ as.character.DiskCache <- function(x, ...) {
 
 is.key_missing <- function(x) {
     inherits(x, "key_missing")
+}
+
+
+#' Get the current cache mode
+#'
+#' Reads `getOption("epwshiftr.cache", TRUE)` and returns a string:
+#' - `"normal"` when `TRUE`
+#' - `"off"` when `FALSE`
+#' - `"offline"` when `"offline"`
+#'
+#' @return A single string: `"normal"`, `"off"`, or `"offline"`.
+#' @noRd
+cache_mode <- function() {
+    val <- getOption("epwshiftr.cache", TRUE)
+    if (isTRUE(val)) {
+        "normal"
+    } else if (isFALSE(val)) {
+        "off"
+    } else if (identical(val, "offline")) {
+        "offline"
+    } else {
+        warning(sprintf(
+            "Unknown value for option 'epwshiftr.cache': %s. Treating as TRUE.",
+            deparse(val)
+        ))
+        "normal"
+    }
+}
+
+#' Check if caching is enabled
+#'
+#' @return `TRUE` if cache mode is not `"off"`.
+#' @noRd
+is_cache_enabled <- function() {
+    cache_mode() != "off"
+}
+
+#' Check if cache is in offline mode
+#'
+#' @return `TRUE` if cache mode is `"offline"`.
+#' @noRd
+is_cache_offline <- function() {
+    cache_mode() == "offline"
+}
+
+#' Temporarily set cache mode
+#'
+#' @param mode A string: `"normal"`, `"off"`, or `"offline"`.
+#'   Alternatively, `TRUE` (for `"normal"`) or `FALSE` (for `"off"`).
+#' @param expr An expression to evaluate with the temporary cache mode.
+#'
+#' @return The result of evaluating `expr`.
+#' @noRd
+with_cache_mode <- function(mode, expr) {
+    # Convert string mode to option value
+    opt_val <- switch(
+        mode,
+        "normal" = TRUE,
+        "off" = FALSE,
+        "offline" = "offline",
+        stop(sprintf("Unknown cache mode: '%s'. Use 'normal', 'off', or 'offline'.", mode))
+    )
+    old <- options(epwshiftr.cache = opt_val)
+    on.exit(options(old), add = TRUE)
+    force(expr)
+}
+
+#' Generate a deterministic cache key
+#'
+#' Combines a prefix with a hash of the provided arguments.
+#'
+#' @param prefix A string prefix for the cache key (e.g., `"gh"`, `"esgf"`).
+#' @param ... Arguments to hash. Passed to `fast_hash`.
+#'
+#' @return A string in the format `"prefix-xxxxxxxx"` where `xxxxxxxx` is an
+#'   8-character hex hash.
+#' @noRd
+make_cache_key <- function(prefix, ...) {
+    paste0(prefix, "-", fast_hash(list(...)))
+}
+
+#' Cache wrapper for URL-based operations
+#'
+#' Wraps a function that fetches data from a URL, caching the result.
+#' Behavior depends on the current cache mode:
+#' - `"off"`: calls `fn()` directly, no caching
+#' - `"normal"`: checks cache first; on miss, calls `fn()` and caches result
+#' - `"offline"`: returns cached value; on miss, stops with error
+#'
+#' @param key_prefix A string prefix for the cache key.
+#' @param key_data Data to include in the cache key hash.
+#' @param fn A function (no arguments) that fetches the data.
+#' @param validate Optional function taking the result and returning TRUE if
+#'   it should be cached. If NULL (default), all results are cached.
+#'
+#' @return The result of `fn()` (possibly from cache).
+#' @noRd
+with_url_cache <- function(key_prefix, key_data, fn, validate = NULL) {
+    mode <- cache_mode()
+
+    # Off mode: bypass cache entirely
+    if (mode == "off") {
+        return(fn())
+    }
+
+    # Normal or offline: check cache
+    cache <- get_cache()
+    key <- make_cache_key(key_prefix, key_data)
+    value <- cache$get(key)
+
+    if (!is.key_missing(value)) {
+        return(value)
+    }
+
+    # Cache miss in offline mode: error
+    if (mode == "offline") {
+        stop(
+            "Cache miss in offline mode for key '",
+            key,
+            "'. ",
+            "Cannot fetch data while offline.",
+            call. = FALSE
+        )
+    }
+
+    # Normal mode: fetch, conditionally cache, return
+    value <- fn()
+    if (is.null(validate) || isTRUE(validate(value))) {
+        cache$set(key, value)
+    }
+    value
+}
+
+#' Cache wrapper for file downloads
+#'
+#' Wraps a function that downloads a file, caching the raw bytes.
+#' Behavior depends on the current cache mode:
+#' - `"off"`: calls `fn()` directly, no caching
+#' - `"normal"`: checks cache first; on hit, writes cached bytes to `destfile`;
+#'   on miss, calls `fn()`, reads the downloaded file, and caches the bytes
+#' - `"offline"`: returns cached value; on miss, stops with error
+#'
+#' @param url The URL being downloaded (used for cache key).
+#' @param destfile The destination file path.
+#' @param fn A function (no arguments) that performs the actual download.
+#'   It should write to `destfile` and return `destfile`.
+#'
+#' @return The `destfile` path.
+#' @noRd
+with_download_cache <- function(url, destfile, fn) {
+    mode <- cache_mode()
+
+    # Off mode: bypass cache entirely
+    if (mode == "off") {
+        return(fn())
+    }
+
+    # Normal or offline: check cache
+    cache <- get_cache()
+    key <- make_cache_key("dl", url)
+    value <- cache$get(key)
+
+    if (!is.key_missing(value)) {
+        # Cache hit: write cached bytes to destfile
+        writeBin(value, destfile)
+        return(destfile)
+    }
+
+    # Cache miss in offline mode: error
+    if (mode == "offline") {
+        stop(
+            "Cache miss in offline mode for download '",
+            url,
+            "'. ",
+            "Cannot download files while offline.",
+            call. = FALSE
+        )
+    }
+
+    # Normal mode: download, cache raw bytes, return
+    fn()
+    raw_bytes <- readBin(destfile, "raw", file.info(destfile)$size)
+    cache$set(key, raw_bytes)
+    destfile
 }

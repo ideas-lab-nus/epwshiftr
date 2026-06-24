@@ -1,34 +1,35 @@
-# EsgfQueryResult {{{
+# EsgResult {{{
 #' Base class for results for ESGF query
 #'
 #' @description
 #'
-#' `EsgfQueryResult` is a base class that represents basic query results from
+#' `EsgResult` is a base class that represents basic query results from
 #' ESGF search RESTful API. It defines common fields and methods for results
 #' from all query types, including `Dataset`, `File` and `Aggregation`. Results
 #' from the three types are
 #'
-#' In general, there is no need to create an `EsgfQueryResult` manually.
+#' In general, there is no need to create an `EsgResult` manually.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResult
+#' @name EsgResult
 #' @keywords internal
-EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
+EsgResult <- R6::R6Class(
+    "EsgResult",
     lock_class = TRUE,
     public = list(
         # initialize {{{
         #' @description
-        #' Create a new EsgfQueryResult object
+        #' Create a new EsgResult object
         #'
         #' @param index_node The URL to the ESGF Index Node. It should be the
-        #'        same as the `index_node` for an [EsgfQuery] object that
+        #'        same as the `index_node` for an [EsgQuery] object that
         #'        collects the query results.
         #'
         #' @param params A list of query parameters.
         #'
         #' @param response The result of an query response.
         #'
-        #' @return An `EsgfQueryResult` object.
+        #' @return An `EsgResult` object.
         #'
         initialize = function(index_node, params, response) {
             private$index_node <- index_node
@@ -64,7 +65,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             if (!is.null(formatted)) {
                 for (field in formatted) {
                     # nocov start
-                    if (is.null(docs[[field]])) next
+                    if (is.null(docs[[field]])) {
+                        next
+                    }
                     # nocov end
                     docs[[field]] <- self[[field]]
                 }
@@ -102,9 +105,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @description
         #' Save the result into a JSON file
         #'
-        #' `$save()` puts main data of an `EsgfQueryResult` object into a JSON file
+        #' `$save()` puts main data of an `EsgResult` object into a JSON file
         #' which can be loaded to restore the current state of result using
-        #' \href{#method-EsgfQueryResult-load}{\code{EsgfQueryResult$load()}}.
+        #' \href{#method-EsgResult-load}{\code{EsgResult$load()}}.
         #'
         #' @param file A string indicating the JSON file path to save the data
         #'        to.
@@ -119,7 +122,8 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                 index_node = private$index_node,
                 parameter = private$parameter,
                 response = private$response,
-                file = file, pretty = pretty
+                file = file,
+                pretty = pretty
             )
         },
         # }}}
@@ -128,14 +132,14 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @description
         #' Restore the result state from an JSON file
         #'
-        #' `$load()` reads data of an `EsgfQueryResult` object from a JSON file
+        #' `$load()` reads data of an `EsgResult` object from a JSON file
         #' created using
-        #' \href{#method-EsgfQueryResult-save}{\code{EsgfQueryResult$save()}}.
+        #' \href{#method-EsgResult-save}{\code{EsgResult$save()}}.
         #'
         #' @param file A string indicating the JSON file path to read the data
         #'        from.
         #'
-        #' @return The modified `EsgfQueryResult` object itself.
+        #' @return The modified `EsgResult` object itself.
         #'
         load = function(file) {
             q <- query_load(file, SCHEMA_RESULT_DATASET)
@@ -170,17 +174,23 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #'    URLs.
         url = function() {
             urls <- private$get_field("url")
-            # nocov start
-            if (!length(urls)) return(NULL)
-            # nocov end
+            if (!length(urls)) {
+                return(NULL)
+            }
 
             lapply(urls, function(url) {
-                if (!length(url)) return(NULL) # nocov
+                if (!length(url)) {
+                    return(NULL)
+                } # nocov
 
                 s <- strsplit(url, "|", fixed = TRUE)
                 # nocov start
-                if (any(unreco <- lengths(s) != 3L)) s[unreco] <- NULL
-                if (!length(s)) return(NULL)
+                if (any(unreco <- lengths(s) != 3L)) {
+                    s[unreco] <- NULL
+                }
+                if (!length(s)) {
+                    return(NULL)
+                }
                 # nocov end
 
                 res <- data.table::setDT(data.table::transpose(s))
@@ -204,7 +214,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(names(private$get_docs()))
         }
@@ -230,22 +242,30 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
         # get_url {{{
         get_url = function(type, name = type) {
-            vapply(self$url, function(dt_url) {
-                # nocov start
-                if (!length(dt_url)) return(NA_character_)
-                # nocov end
+            vapply(
+                self$url,
+                function(dt_url) {
+                    # nocov start
+                    if (!length(dt_url)) {
+                        return(NA_character_)
+                    }
+                    # nocov end
 
-                res <- dt_url$url[dt_url$service == type]
-                if (!length(res)) return(NA_character_)
-                # nocov start
-                if (length(res) > 1L) {
-                    warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
-                    res <- res[[1L]]
-                }
-                # nocov end
+                    res <- dt_url$url[dt_url$service == type]
+                    if (!length(res)) {
+                        return(NA_character_)
+                    }
+                    # nocov start
+                    if (length(res) > 1L) {
+                        warning(sprintf("Multiple %s URL found. Only the first is returned.", name))
+                        res <- res[[1L]]
+                    }
+                    # nocov end
 
-                res
-            }, character(1L))
+                    res
+                },
+                character(1L)
+            )
         },
         # }}}
 
@@ -295,7 +315,9 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 
             if (self$count() == 0L) {
                 cli::cli_bullets(c(" " = "{.strong <Empty>}"))
-                cli::cli_bullets(c(" " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"))
+                cli::cli_bullets(c(
+                    " " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"
+                ))
                 return()
             }
 
@@ -309,17 +331,18 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
             spc <- strrep(" ", nchar(pre[1L], "width"))
 
             if (type == "Dataset") {
-                size <- sprintf("%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
-                    spc, private$get_field("number_of_files")[ind],
-                    round(self$size[ind], 2), units(self$size)$numerator,
+                size <- sprintf(
+                    "%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
+                    spc,
+                    private$get_field("number_of_files")[ind],
+                    round(self$size[ind], 2),
+                    units(self$size)$numerator,
                     if (is.null(private$get_field("number_of_aggregations"))) {
                         "No Aggregations"
                     } else {
                         agg <- private$get_field("number_of_aggregations")[ind]
                         agg[is.na(agg)] <- 0L
-                        paste(agg,
-                            vapply(agg, ngettext, "", "Aggregation", "Aggregations")
-                        )
+                        paste(agg, vapply(agg, ngettext, "", "Aggregation", "Aggregations"))
                     },
                     spc,
                     if (is.null(private$get_field("access"))) {
@@ -329,16 +352,17 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
                     }
                 )
             } else {
-                size <- sprintf("%s   [ %s %s | Access: <%s> ]",
+                size <- sprintf(
+                    "%s   [ %s %s | Access: <%s> ]",
                     spc,
                     if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
                     units(self$size)$numerator,
                     if (is.null(self$url)) {
                         "NONE"
                     } else {
-                        vapply(self$url[ind], FUN.VALUE = character(1),
-                            function(url) paste0(url$service, collapse = ", ")
-                        )
+                        vapply(self$url[ind], FUN.VALUE = character(1), function(url) {
+                            paste0(url$service, collapse = ", ")
+                        })
                     }
                 )
             }
@@ -355,23 +379,25 @@ EsgfQueryResult <- R6::R6Class("EsgfQueryResult",
 )
 # }}}
 
-# EsgfQueryResultDataset {{{
+# EsgResultDataset {{{
 #' ESGF Query results for `Dataset` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultDataset` is a class that represents query results for
+#' `EsgResultDataset` is a class that represents query results for
 #' `Dataset` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' In general, there is no need to create an `EsgResultDataset` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQuery-collect}{\code{EsgfQuery$collect()}}.
+#' \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultDataset
+#' @name EsgResultDataset
 #' @keywords internal
-EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultDataset <- R6::R6Class(
+    "EsgResultDataset",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -421,14 +447,14 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' `$collect()` sends a query with **`type=File`** or
         #' **`type=aggregation` (based on the specified `type`) for current
         #' datasets and returns an
-        #' [EsgfQueryResultFile] or
-        #' [EsgfQueryResultAggregation] object, respectively.
+        #' [EsgResultFile] or
+        #' [EsgResultAggregation] object, respectively.
         #'
         #' The following fields are always included in the results:
         #'
-        #' - For `File` query: `r paste0("\\verb{", EsgfQueryResultFile$private_fields$required_fields, "}", collapse = ", ")`.
+        #' - For `File` query: `r paste0("\\verb{", EsgResultFile$private_fields$required_fields, "}", collapse = ", ")`.
         #'
-        #' - For `Aggregation` query: `r paste0("\\verb{", EsgfQueryResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
+        #' - For `Aggregation` query: `r paste0("\\verb{", EsgResultAggregation$private_fields$required_fields, "}", collapse = ", ")`.
         #'
         #' @param which A character vector giving the value of dataset ID or an
         #'        integer vector giving the indices of the dataset. If `NULL`,
@@ -449,12 +475,12 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #'
         #' @param ... Other parameters to set. Currently, there are 4 parameters
         #'        supported, including `replica`, `distrib`, `latest`, `shards`.
-        #'        For details on possible parameters, please see [query_esgf()].
+        #'        For details on possible parameters, please see [esg_query()].
         #'
         #' @return
         #'
-        #' - If `type="File"`, an [EsgfQueryResultFile] object
-        #' - If `type="Aggregation"`, an [EsgfQueryResultAggregation] object
+        #' - If `type="File"`, an [EsgResultFile] object
+        #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
         collect = function(which = NULL, fields = NULL, all = FALSE, limit = 100L, type = "File", ...) {
             if (!is.null(which)) {
@@ -463,8 +489,11 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 } else {
                     checkmate::assert(
                         checkmate::check_subset(which, self$id),
-                        checkmate::check_integerish(which,
-                            lower = 1L, upper = self$count(), any.missing = FALSE,
+                        checkmate::check_integerish(
+                            which,
+                            lower = 1L,
+                            upper = self$count(),
+                            any.missing = FALSE,
                             unique = TRUE
                         )
                     )
@@ -474,18 +503,26 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             }
 
             params <- private$build_params(
-                fields = fields, limit = limit, type = type, index = which, ...
+                fields = fields,
+                limit = limit,
+                type = type,
+                index = which,
+                ...
             )
 
             req_fld <- if (type == "File") {
-                EsgfQueryResultFile$private_fields$required_fields
+                EsgResultFile$private_fields$required_fields
             } else if (type == "Aggregation") {
-                EsgfQueryResultAggregation$private_fields$required_fields
+                EsgResultAggregation$private_fields$required_fields
             }
 
             result <- query_collect(
-                private$index_node, params, required_fields = req_fld,
-                all = all, limit = limit, constraints = FALSE
+                private$index_node,
+                params,
+                required_fields = req_fld,
+                all = all,
+                limit = limit,
+                constraints = FALSE
             )
 
             # replace docs in the last response
@@ -494,13 +531,17 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             # create new results
             if (type == "File") {
                 new_query_result(
-                    EsgfQueryResultFile,
-                    private$index_node, params, result$response
+                    EsgResultFile,
+                    private$index_node,
+                    params,
+                    result$response
                 )
             } else if (type == "Aggregation") {
                 new_query_result(
-                    EsgfQueryResultAggregation,
-                    private$index_node, params, result$response
+                    EsgResultAggregation,
+                    private$index_node,
+                    params,
+                    result$response
                 )
             }
         },
@@ -513,7 +554,7 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultDataset` object itself, invisibly.
+        #' @return The `EsgResultDataset` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Dataset")
             private$print_summary("Dataset")
@@ -527,8 +568,11 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
-            "index_node", "number_of_files", "number_of_aggregations", "access"
+            EsgResult$private_fields$required_fields,
+            "index_node",
+            "number_of_files",
+            "number_of_aggregations",
+            "access"
         ))),
 
         # build_params {{{
@@ -536,7 +580,9 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
             checkmate::assert_choice(type, c("File", "Aggregation"))
 
             checkmate::assert_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L, null.ok = TRUE)
-            if (is.null(limit)) limit <- this$data_max_limit
+            if (is.null(limit)) {
+                limit <- this$data_max_limit
+            }
 
             params <- eval(substitute(alist(...)))
             if (length(params)) {
@@ -549,17 +595,22 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
                 if (any(invld <- !names_params %in% names_supp)) {
                     stop(sprintf(
                         "Unsupported query parameter found: [%s]. Should be subset of [%s].",
-                        names_params[invld], paste(names_supp, collapse = ", ")
+                        names_params[invld],
+                        paste(names_supp, collapse = ", ")
                     ))
                 }
             }
 
             # assign default values for distrib and latest
-            if (is.null(params$distrib)) params$distrib <- new_query_param("distrib", TRUE)
-            if (is.null(params$latest)) params$latest <- new_query_param("latest", TRUE)
+            if (is.null(params$distrib)) {
+                params$distrib <- new_query_param("distrib", TRUE)
+            }
+            if (is.null(params$latest)) {
+                params$latest <- new_query_param("latest", TRUE)
+            }
 
             # create a new query to validate params
-            query <- query_esgf(private$index_node)
+            query <- esg_query(private$index_node)
 
             params <- list(
                 dataset_id = if (is.null(index)) self$id else self$id[index],
@@ -584,23 +635,25 @@ EsgfQueryResultDataset <- R6::R6Class("EsgfQueryResultDataset",
 )
 # }}}
 
-# EsgfQueryResultFile {{{
+# EsgResultFile {{{
 #' ESGF Query results for `File` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultFile` is a class that represents query results for
+#' `EsgResultFile` is a class that represents query results for
 #' `File` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultDataset` manually.
+#' In general, there is no need to create an `EsgResultDataset` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#' \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultFile
+#' @name EsgResultFile
 #' @keywords internal
-EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultFile <- R6::R6Class(
+    "EsgResultFile",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -628,7 +681,7 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultFile` object itself, invisibly.
+        #' @return The `EsgResultFile` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("File")
             private$print_summary("File")
@@ -636,11 +689,80 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
             cli::cat_line()
             private$print_contents("File", n)
             invisible(self)
+        },
+        # }}}
+
+        # open_dataset {{{
+        #' @description
+        #' Open a file as an EsgDataset for remote data access via OPeNDAP
+        #'
+        #' @param index Integer index of the file to open. Default: `1L`.
+        #' @param fallback What to do if OPeNDAP is unavailable. One of:
+        #'   - `"ask"`: Interactively ask the user (default)
+        #'   - `"auto"`: Automatically download the file
+        #'   - `"error"`: Raise an error
+        #'
+        #' @return An `EsgDataset` object with the connection already opened.
+        open_dataset = function(index = 1L, fallback = c("ask", "auto", "error")) {
+            checkmate::assert_int(index, lower = 1L, upper = self$count())
+            fallback <- match.arg(fallback)
+
+            url <- self$url_opendap[index]
+
+            # Try OPeNDAP first
+            ds <- tryCatch(
+                {
+                    d <- EsgDataset$new(url)
+                    d$open()
+                    d
+                },
+                error = function(e) NULL
+            )
+
+            if (!is.null(ds)) {
+                return(ds)
+            }
+
+            # OPeNDAP failed — handle fallback
+            cli::cli_alert_warning("OPeNDAP connection failed for: {.url {url}}")
+
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for this file.")
+            }
+
+            if (fallback == "ask" && interactive()) {
+                answer <- utils::menu(
+                    choices = c("Download via HTTP", "Cancel"),
+                    title = "OPeNDAP is not available. What would you like to do?"
+                )
+                if (answer != 1L) {
+                    cli::cli_abort("Operation cancelled by user.")
+                }
+            }
+
+            # Download as fallback
+            cli::cli_alert_info("Downloading file via HTTP as fallback...")
+            dl <- FileDownloader$new()
+
+            # Get file info
+            file_url <- self$url_download[index]
+            dt <- self$to_data_table()
+            checksum <- if ("checksum" %in% names(dt)) dt$checksum[index] else NULL
+            checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[index]) else NULL
+
+            local_path <- dl$download(
+                url = file_url,
+                checksum = checksum,
+                checksum_type = checksum_type
+            )
+
+            ds <- EsgDataset$new(local_path)
+            ds$open()
+            ds
         }
         # }}}
     ),
     active = list(
-
         # filename {{{
         #' @field filename A character vector indicating file names on the
         #'        sever.
@@ -654,7 +776,8 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #'        files.
         url_opendap = function() {
             url <- private$get_url("OPENDAP", "OPeNDAP")
-            has_html <- tools::file_ext(url) == "html"
+
+            has_html <- !is.na(url) & tools::file_ext(url) == "html"
             if (any(has_html)) {
                 url[has_html] <- tools::file_path_sans_ext(url[has_html])
             }
@@ -674,7 +797,9 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(c("filename", "url_opendap", "url_download", super$fields))
         }
@@ -682,31 +807,37 @@ EsgfQueryResultFile <- R6::R6Class("EsgfQueryResultFile",
     ),
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
-            "dataset_id", "checksum", "checksum_type", "tracking_id", "title",
+            EsgResult$private_fields$required_fields,
+            "dataset_id",
+            "checksum",
+            "checksum_type",
+            "tracking_id",
+            "title",
             "data_node"
         )))
     )
 )
 # }}}
 
-# EsgfQueryResultAggregation {{{
+# EsgResultAggregation {{{
 #' ESGF Query results for `Aggregation` type
 #'
 #' @description
 #'
-#' `EsgfQueryResultAggregation` is a class that represents query results for
+#' `EsgResultAggregation` is a class that represents query results for
 #' `Aggregation` type from ESGF search RESTful API.
 #'
-#' In general, there is no need to create an `EsgfQueryResultAggregation` manually.
+#' In general, there is no need to create an `EsgResultAggregation` manually.
 #' Usually, it is created by calling
-#' \href{#method-EsgfQueryResultDataset-collect}{\code{EsgfQueryResultDataset$collect()}}.
+#' \href{#method-EsgResultDataset-collect}{\code{EsgResultDataset$collect()}}.
 #'
 #' @author Hongyuan Jia
-#' @name EsgfQueryResultAggregation
+#' @name EsgResultAggregation
 #' @keywords internal
-EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
-    inherit = EsgfQueryResult, lock_class = TRUE,
+EsgResultAggregation <- R6::R6Class(
+    "EsgResultAggregation",
+    inherit = EsgResult,
+    lock_class = TRUE,
     public = list(
         # to_data_table {{{
         #' @description
@@ -734,7 +865,7 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #' @param n An integer indicating how many items to print. If `NULL`,
         #'        all items will be printed. Default: `10L`.
         #'
-        #' @return The `EsgfQueryResultAggregation` object itself, invisibly.
+        #' @return The `EsgResultAggregation` object itself, invisibly.
         print = function(n = 10L) {
             private$print_header("Aggregation")
             private$print_summary("Aggregation")
@@ -742,6 +873,89 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
             cli::cat_line()
             private$print_contents("Aggregation", n)
             invisible(self)
+        },
+        # }}}
+
+        # open_dataset {{{
+        #' @description
+        #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
+        #'
+	        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
+	        #'   If `FALSE`, open only the first file.
+        #' @param fallback What to do if OPeNDAP is unavailable. One of:
+        #'   - `"ask"`: Interactively ask the user (default)
+        #'   - `"auto"`: Automatically download files
+        #'   - `"error"`: Raise an error
+        #'
+        #' @return An `EsgDataset` object with the connection already opened.
+        open_dataset = function(aggregate = TRUE, fallback = c("ask", "auto", "error")) {
+            checkmate::assert_flag(aggregate)
+            fallback <- match.arg(fallback)
+
+            urls <- self$url_opendap
+
+            if (!aggregate) {
+                urls <- urls[1L]
+            }
+
+            # Try OPeNDAP
+            ds <- tryCatch(
+                {
+	                    d <- EsgDataset$new(urls)
+                    d$open()
+                    d
+                },
+                error = function(e) NULL
+            )
+
+            if (!is.null(ds)) {
+                return(ds)
+            }
+
+            # OPeNDAP failed
+            cli::cli_alert_warning("OPeNDAP connection failed.")
+
+            if (fallback == "error") {
+                cli::cli_abort("OPeNDAP is not available for these files.")
+            }
+
+            if (fallback == "ask" && interactive()) {
+                answer <- utils::menu(
+                    choices = c(
+                        sprintf("Download %d file(s) via HTTP", length(urls)),
+                        "Cancel"
+                    ),
+                    title = "OPeNDAP is not available. What would you like to do?"
+                )
+                if (answer != 1L) {
+                    cli::cli_abort("Operation cancelled by user.")
+                }
+            }
+
+            # Download as fallback
+            cli::cli_alert_info("Downloading {length(urls)} file(s) via HTTP as fallback...")
+            dl <- FileDownloader$new()
+
+            local_paths <- vapply(
+                seq_along(urls),
+                function(i) {
+                    file_url <- self$url_download[i]
+                    dt <- self$to_data_table()
+                    checksum <- if ("checksum" %in% names(dt)) dt$checksum[i] else NULL
+                    checksum_type <- if ("checksum_type" %in% names(dt)) tolower(dt$checksum_type[i]) else NULL
+
+                    dl$download(
+                        url = file_url,
+                        checksum = checksum,
+                        checksum_type = checksum_type
+                    )
+                },
+                character(1L)
+            )
+
+	            ds <- EsgDataset$new(local_paths)
+            ds$open()
+            ds
         }
         # }}}
     ),
@@ -772,7 +986,9 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
         #' @field fields A character vector indicating all fields in the results.
         fields = function() {
             # nocov start
-            if (!self$count()) return(NULL)
+            if (!self$count()) {
+                return(NULL)
+            }
             # nocov end
             sort(c("url_opendap", "url_download", super$fields))
         }
@@ -781,8 +997,10 @@ EsgfQueryResultAggregation <- R6::R6Class("EsgfQueryResultAggregation",
 
     private = list(
         required_fields = sort(unique(c(
-            EsgfQueryResult$private_fields$required_fields,
-            "dataset_id", "title", "data_node"
+            EsgResult$private_fields$required_fields,
+            "dataset_id",
+            "title",
+            "data_node"
         )))
     )
 )
@@ -809,7 +1027,8 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
         for (field in fld_miss) {
             eval(substitute(
                 generator$set(
-                    "active", field,
+                    "active",
+                    field,
                     function() {
                         private$get_field(field)
                     }
@@ -818,40 +1037,41 @@ new_query_result <- function(generator, index_node = NULL, params = NULL, result
             ))
         }
 
-        on.exit({
-            for (field in fld_miss) {
-                generator$active[[field]] <- NULL
-            }
-        }, add = TRUE)
+        on.exit(
+            {
+                for (field in fld_miss) {
+                    generator$active[[field]] <- NULL
+                }
+            },
+            add = TRUE
+        )
     }
     generator$new(index_node, params, result, ...)
 }
 # }}}
 
-# result_esgf {{{
+# esg_result {{{
 
 #' Create empty query result object
 #'
 #' @description
-#' `result_esgf()` creates an empty query result object of input type, so that
-#' you can load the saved JSON file via `EsgfQueryResult$load()`.
+#' `esg_result()` creates an empty query result object of input type, so that
+#' you can load the saved JSON file via `EsgResult$load()`.
 #'
 #' @param type A string indicating what type of ESGF query result should be
 #'        created. Should be one of `"dataset"`, `"file"` or "aggregation"`.
 #'
-#' @return An empty [EsgfQueryResult] object of given type.
+#' @return An empty [EsgResult] object of given type.
 #'
 #' @export
-result_esgf <- function(type = c("dataset", "file", "aggregation")) {
+esg_result <- function(type = c("dataset", "file", "aggregation")) {
     type <- match.arg(type)
 
     new_query_result(
-        switch(type,
-            "dataset" = EsgfQueryResultDataset,
-            "file" = EsgfQueryResultFile,
-            "aggregation" = EsgfQueryResultAggregation
-        ),
-        index_node = NULL, params = NULL, result = NULL
+        switch(type, "dataset" = EsgResultDataset, "file" = EsgResultFile, "aggregation" = EsgResultAggregation),
+        index_node = NULL,
+        params = NULL,
+        result = NULL
     )
 }
 # }}}

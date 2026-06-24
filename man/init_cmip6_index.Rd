@@ -147,9 +147,12 @@ Default: \code{FALSE}.}
 
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
 the ESGF search service excluding the final endpoint name. Usually
-this is \verb{http://<hostname>/esg-search}. Default is set to the
+this is \verb{http://<hostname>/esg-search}. This legacy \code{host} argument is
+preserved for compatibility and keeps the legacy LLNL Search API
+semantics. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
-which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+which is \code{"https://esgf-node.llnl.gov/esg-search"}. For new code,
+prefer \code{esg_query(index_node = ...)}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with 22 columns:\tabular{rlll}{
@@ -179,9 +182,12 @@ A \link[data.table:data.table]{data.table::data.table} with 22 columns:\tabular{
 }
 }
 \description{
-\code{init_cmip6_index()} will search the CMIP6 model output file using \code{\link[=esgf_query]{esgf_query()}}
-, return a \code{\link[data.table:data.table]{data.table::data.table()}} containing the actual NetCDF file url
-to download, and store it into user data directory for future use.
+\code{init_cmip6_index()} builds a CMIP6 file index by issuing Dataset/File
+lookups through the legacy-compatible \code{\link[=esgf_query]{esgf_query()}} wrapper so existing
+host-based workflows keep working. For new direct ESGF searches, start with
+\code{\link[=esg_query]{esg_query()}} / \link{EsgQuery}. It returns a
+\code{\link[data.table:data.table]{data.table::data.table()}} containing the actual NetCDF file url to
+download, and stores it into user data directory for future use.
 }
 \details{
 For details on where the file index is stored, see \code{\link[rappdirs:user_data_dir]{rappdirs::user_data_dir()}}.
@@ -189,6 +195,10 @@ For details on where the file index is stored, see \code{\link[rappdirs:user_dat
 \note{
 Argument \code{limit} will only apply to \code{Dataset} query. \code{init_cmip6_index()} will
 try to get all model output files which match the dataset id.
+
+The inherited \code{host} argument keeps the legacy LLNL Search API semantics from
+\code{\link[=esgf_query]{esgf_query()}}, so its default is not the same as \code{esg_query()}'s ORNL
+\code{index_node} default.
 }
 \examples{
 \dontrun{

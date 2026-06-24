@@ -2,34 +2,33 @@ test_that("extract_location_dict()", {
     skip_on_cran()
     expect_null(extract_location_dict("abcdefghijk"))
 
-    mockery::stub(extract_location_dict, "utils::menu", 1L)
-    expect_s3_class(res <- extract_location_dict("Singapore"), class = "data.table")
-    expect_named(res,
-        c("title", "location", "state_province", "country", "wmo_region",
-            "wmo_number", "source_type", "longitude", "latitude", "epw_url",
-            "ddy_url", "stat_url", "zip_url", "provider", "index")
-    )
-    expect_identical(nrow(res), 1L)
+    testthat::with_mocked_bindings({
+        expect_s3_class(res <- extract_location_dict("Singapore"), class = "data.table")
+        expect_named(res,
+            c("title", "location", "state_province", "country", "wmo_region",
+                "wmo_number", "source_type", "longitude", "latitude", "epw_url",
+                "ddy_url", "stat_url", "zip_url", "provider", "index")
+        )
+        expect_identical(nrow(res), 1L)
 
-    mockery::stub(extract_location_dict, "utils::menu", 1L)
-    expect_s3_class(res <- extract_location_dict("China"), class = "data.table")
-    expect_named(res,
-        c("title", "location", "state_province", "country", "wmo_region",
-            "wmo_number", "source_type", "longitude", "latitude", "epw_url",
-            "ddy_url", "stat_url", "zip_url", "provider", "index")
-    )
-    expect_identical(nrow(res), 1L)
+        expect_s3_class(res <- extract_location_dict("China"), class = "data.table")
+        expect_named(res,
+            c("title", "location", "state_province", "country", "wmo_region",
+                "wmo_number", "source_type", "longitude", "latitude", "epw_url",
+                "ddy_url", "stat_url", "zip_url", "provider", "index")
+        )
+        expect_identical(nrow(res), 1L)
+    }, menu = function(...) 1L, .package = "utils")
 
-    mockery::stub(extract_location_dict, "utils::menu", 0L)
-    expect_null(extract_location_dict("Singapore"))
-
-    mockery::stub(extract_location_dict, "utils::menu", 0L)
-    expect_null(extract_location_dict("China"))
+    testthat::with_mocked_bindings({
+        expect_null(extract_location_dict("Singapore"))
+        expect_null(extract_location_dict("China"))
+    }, menu = function(...) 0L, .package = "utils")
 })
 
 test_that("match_nc_coord()", {
     skip_on_cran()
-    cache <- get_cache()
+    cache <- test_data_dir()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -65,7 +64,7 @@ test_that("match_nc_coord()", {
 
 test_that("match_location_coord()", {
     skip_on_cran()
-    cache <- get_cache()
+    cache <- test_data_dir()
     file <- "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
     path <- file.path(cache, file)
 
@@ -81,12 +80,12 @@ test_that("match_location_coord()", {
 test_that("match_coord()", {
     skip_on_cran()
 
-    cache <- get_cache()
+    cache <- get_cache_nc()
     file <- "SGP_Singapore.486980_IWEC.epw"
-    path <- file.path(cache, file)
+    path <- get_cache_epw()
 
     if (file.exists(path)) {
-        options(epwshiftr.dir = tempdir())
+        withr::local_options(list(epwshiftr.dir = tempdir()))
         summary_database(cache, update = TRUE)
 
         idx <- load_cmip6_index()
@@ -132,10 +131,16 @@ test_that("match_coord()", {
         expect_identical(res2$coord, res1$coord)
 
         # can select the location interactively
-        mockery::stub(match_coord, "extract_location_dict", eplusr:::WEATHER_DB[grepl("Singapore", title)][1L])
-        expect_s3_class(res3 <- match_coord("Singapore"), "epw_cmip6_coord")
+        testthat::with_mocked_bindings(
+            expect_s3_class(res3 <- match_coord("Singapore"), "epw_cmip6_coord"),
+            extract_location_dict = function(...) eplusr:::WEATHER_DB[grepl("Singapore", title)][1L],
+            .package = "epwshiftr"
+        )
 
-        mockery::stub(match_coord, "extract_location_dict", NULL)
-        expect_null(match_coord("abcdefghijk"))
+        testthat::with_mocked_bindings(
+            expect_null(match_coord("abcdefghijk")),
+            extract_location_dict = function(...) NULL,
+            .package = "epwshiftr"
+        )
     }
 })

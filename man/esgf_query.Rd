@@ -2,7 +2,7 @@
 % Please edit documentation in R/esgf.R
 \name{esgf_query}
 \alias{esgf_query}
-\title{Query CMIP6 data using ESGF search RESTful API}
+\title{Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API}
 \usage{
 esgf_query(
   activity = "ScenarioMIP",
@@ -142,9 +142,12 @@ Default to \code{NULL}, which means all possible data nodes.}
 
 \item{host}{The URL to the ESGF Search API service. This should be the URL of
 the ESGF search service excluding the final endpoint name. Usually
-this is \verb{http://<hostname>/esg-search}. Default is set to the
+this is \verb{http://<hostname>/esg-search}. This legacy \code{host} argument is
+preserved for compatibility and keeps the legacy LLNL Search API
+semantics. Default is set to the
 \href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node},
-which is \code{"https://esgf-node.llnl.gov/esg-search"}.}
+which is \code{"https://esgf-node.llnl.gov/esg-search"}. For new code,
+prefer \code{esg_query(index_node = ...)}.}
 }
 \value{
 A \link[data.table:data.table]{data.table::data.table} with an attribute named \code{response} which
@@ -202,9 +205,15 @@ on the \code{type}:
 }
 }
 \description{
-Query CMIP6 data using ESGF search RESTful API
+\code{esgf_query()} is a compatibility wrapper around \code{\link[=esg_query]{esg_query()}} for the legacy
+data.table-oriented CMIP6 query workflow.
 }
 \details{
+For new code, start with \code{\link[=esg_query]{esg_query()}} / \link{EsgQuery}. \code{esgf_query()} emits a
+gentle deprecation warning and preserves the historical \code{host} interface,
+including the default LLNL search host instead of \code{esg_query()}'s ORNL
+\code{index_node} default.
+
 The Earth System Grid Federation (ESGF) is an international collaboration for
 the software that powers most global climate change research, notably
 assessments by the Intergovernmental Panel on Climate Change (IPCC).
@@ -213,8 +222,9 @@ The ESGF search service exposes a RESTful URL that can be used by clients to
 query the contents of the underlying search index, and return results
 matching the given constraints. With the distributed capabilities of the ESGF
 search, the URL at any Index Node can be used to query that Node only, or all
-Nodes in the ESGF system. \code{esgf_query()} uses the
-\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node}.
+Nodes in the ESGF system. For compatibility, \code{esgf_query()} keeps the legacy
+\href{http://esgf-node.llnl.gov}{LLNL (Lawrence Livermore National Laboratory) Index Node}
+\code{host} default instead of \code{esg_query()}'s ORNL \code{index_node} default.
 
 The core Controlled Vocabularies (CVs) for use in CMIP6, including all
 activities, experiment, sources (GCMs), frequencies can be found at the
@@ -230,4 +240,7 @@ esgf_query(variable = "rss", experiment = "ssp126", type = "File", limit = 1)
 }
 \references{
 https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
+}
+\seealso{
+\code{\link[=esg_query]{esg_query()}}, \link{EsgQuery}
 }

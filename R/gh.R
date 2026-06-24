@@ -31,14 +31,16 @@ gh <- function(path, token = NULL) {
     base_url <- "https://api.github.com"
     link <- file.path(base_url, path)
 
-    # use GitHub token if possible
-    headers <- c("Accept" = "application/vnd.github+json")
+    with_url_cache("gh", link, function() {
+        # use GitHub token if possible
+        headers <- c("Accept" = "application/vnd.github+json")
 
-    if (!is.null(token <- gh_token(token))) {
-        headers <- c(headers, token)
-    }
+        if (!is.null(token <- gh_token(token))) {
+            headers <- c(headers, token)
+        }
 
-    jsonlite::fromJSON(base::url(link, headers = headers))
+        jsonlite::fromJSON(base::url(link, headers = headers))
+    })
 }
 
 # TODO: pagination for tags
@@ -50,16 +52,18 @@ download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
     url <- sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, tag, file)
     dest <- file.path(dir, file)
 
-    utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
-
-    normalizePath(dest, mustWork = TRUE)
+    with_download_cache(url, dest, function() {
+        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        dest
+    })
 }
 
 download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
     url <- sprintf("https://api.github.com/repos/%s/zipball/refs/tags/%s", repo, tag)
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), tag))
 
-    utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
-
-    normalizePath(dest, mustWork = TRUE)
+    with_download_cache(url, dest, function() {
+        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        dest
+    })
 }

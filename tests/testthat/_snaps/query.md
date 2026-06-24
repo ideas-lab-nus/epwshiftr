@@ -61,10 +61,10 @@
     Output
       x != solr+json
 
-# EsgfQuery$print()
+# EsgQuery$print()
 
     Code
-      EsgfQuery$new("a")$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
+      EsgQuery$new("a")$params(table_id = "Amon", member_id = "r1i1p1f1")$print()
     Message
       == ESGF Query ==================================================================
       * Index Node: https://a

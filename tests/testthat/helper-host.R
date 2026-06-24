@@ -1,5 +1,5 @@
 get_fast_index_node <- function(force = FALSE) {
-    cache <- get_test_cache()
+    cache <- get_cache()
     cache_key <- "fast_index_node"
 
     if (!force) {
