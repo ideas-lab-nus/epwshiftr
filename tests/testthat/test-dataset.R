@@ -140,6 +140,12 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     lapply(tasks, mirai::collect_mirai)
 }
 
+skip_dataset_async_on_covr <- function() {
+    # covr cannot reliably merge coverage traces emitted by these mirai worker
+    # processes. The async paths still run in normal R CMD check jobs.
+    skip_on_covr()
+}
+
 test_that("EsgDataset can work with a single file", {
     skip_on_cran()
     skip_if_offline()
@@ -370,6 +376,8 @@ test_that("EsgDataset read_data_table() returns UTC POSIXct time for CMIP6-like 
 })
 
 test_that("EsgDataset public async open keeps the dataset opened after return", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -394,6 +402,8 @@ test_that("EsgDataset public async open keeps the dataset opened after return", 
 })
 
 test_that("EsgDataset public async reads match sync results and keep open-state checks", {
+    skip_dataset_async_on_covr()
+
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -437,6 +447,7 @@ test_that("EsgDataset public async reads match sync results and keep open-state 
 
 test_that("EsgDataset public async open supports concurrent local datasets", {
     skip_on_cran()
+    skip_dataset_async_on_covr()
 
     paths <- c(
         local_dataset_table_file(
@@ -479,6 +490,7 @@ test_that("EsgDataset public async open supports concurrent local datasets", {
 
 test_that("EsgDataset public async reads support concurrent local datasets", {
     skip_on_cran()
+    skip_dataset_async_on_covr()
 
     paths <- c(
         local_dataset_table_file(
@@ -540,6 +552,8 @@ test_that("EsgDataset public async reads support concurrent local datasets", {
 })
 
 test_that("EsgDataset public async open failures leave the dataset closed and clean", {
+    skip_dataset_async_on_covr()
+
     path <- tempfile(fileext = ".nc")
     if (file.exists(path)) {
         unlink(path)
@@ -557,6 +571,8 @@ test_that("EsgDataset public async open failures leave the dataset closed and cl
 })
 
 test_that("EsgDataset public async read failures clear task state and keep sync handles usable", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -604,6 +620,8 @@ test_that("EsgDataset print works", {
 })
 
 test_that("EsgDataset internal async tasks keep sync handle state separate", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -641,6 +659,8 @@ test_that("EsgDataset internal async tasks keep sync handle state separate", {
 })
 
 test_that("EsgDataset internal async tasks surface timeout errors and clear lifecycle state", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -666,6 +686,8 @@ test_that("EsgDataset internal async tasks surface timeout errors and clear life
 })
 
 test_that("EsgDataset close() best-effort cancels pending internal async work", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -695,6 +717,8 @@ test_that("EsgDataset close() best-effort cancels pending internal async work", 
 })
 
 test_that("EsgDataset internal async cancel race keeps cancelled terminal state", {
+    skip_dataset_async_on_covr()
+
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"

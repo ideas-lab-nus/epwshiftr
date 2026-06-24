@@ -78,8 +78,8 @@
   . This is because using data that only covers a short period of time may not
   be able to capture the average of future climate (#41).
 * Now epwshiftr is able to download, parse and store CMIP6 Controlled
-  Vocabularies (CVs) and Data Request data using the newly introduced class
-  `Cmip6Dict`. Please see `?Cmip6Dict` for details (#53).
+  Vocabularies (CVs) and Data Request data using the `EsgDict` class. Please
+  see `?EsgDict` for details (#53).
 * A new option `epwshiftr.threshold_alpha` has been added to set the threshold
   of the absolute value for alpha, i.e. monthly-mean fractional change when
   performing morphing operations. The default value is set to `3`. If the

@@ -1,3 +1,13 @@
+print_trunc <- function(x, n) {
+    total <- length(x)
+    if (is.null(n) || n >= total) {
+        return(invisible(FALSE))
+    }
+
+    cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
+    invisible(TRUE)
+}
+
 # EsgResult {{{
 #' Base class for results for ESGF query
 #'
@@ -33,7 +43,7 @@ EsgResult <- R6::R6Class(
         #'
         initialize = function(index_node, params, response) {
             private$index_node <- index_node
-            private$parameter <- params
+            private$parameter <- query_param_clone(params)
             private$response <- response
             self
         },
@@ -123,7 +133,8 @@ EsgResult <- R6::R6Class(
                 parameter = private$parameter,
                 response = private$response,
                 file = file,
-                pretty = pretty
+                pretty = pretty,
+                schema = SCHEMA_RESULT_DATASET
             )
         },
         # }}}
@@ -603,10 +614,21 @@ EsgResultDataset <- R6::R6Class(
 
             # assign default values for distrib and latest
             if (is.null(params$distrib)) {
-                params$distrib <- new_query_param("distrib", TRUE)
+                params$distrib <- as_query_param("distrib", TRUE)
             }
             if (is.null(params$latest)) {
-                params$latest <- new_query_param("latest", TRUE)
+                params$latest <- as_query_param("latest", TRUE)
+            }
+
+            param_value <- function(name) {
+                param <- params[[name]]
+                if (is.null(param)) {
+                    return(NULL)
+                }
+                if (S7::S7_inherits(param, QueryParam)) {
+                    return(query_param_value(param))
+                }
+                param$value
             }
 
             # create a new query to validate params
@@ -617,18 +639,17 @@ EsgResultDataset <- R6::R6Class(
 
                 # use query object to validate params
                 fields = query$fields(fields)$fields(),
-                shards = query$shards(params$shards$value)$shards(),
-                replica = query$replica(params$replica$value)$replica(),
-                latest = query$latest(params$latest$value)$latest(),
-                distrib = query$distrib(params$distrib$value)$distrib(),
+                shards = query$shards(param_value("shards"))$shards(),
+                replica = query$replica(param_value("replica"))$replica(),
+                latest = query$latest(param_value("latest"))$latest(),
+                distrib = query$distrib(param_value("distrib"))$distrib(),
 
                 limit = limit,
                 type = type,
                 format = FORMAT_JSON
             )
 
-            # convert all inputs into query params and remove empty one
-            query_param_flat(params)
+            query_param_as_store(params)
         }
         # }}}
     )
@@ -880,8 +901,8 @@ EsgResultAggregation <- R6::R6Class(
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
         #'
-	        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
-	        #'   If `FALSE`, open only the first file.
+        #' @param aggregate If `TRUE` (default), open all files as a multi-file dataset.
+        #'   If `FALSE`, open only the first file.
         #' @param fallback What to do if OPeNDAP is unavailable. One of:
         #'   - `"ask"`: Interactively ask the user (default)
         #'   - `"auto"`: Automatically download files
@@ -901,7 +922,7 @@ EsgResultAggregation <- R6::R6Class(
             # Try OPeNDAP
             ds <- tryCatch(
                 {
-	                    d <- EsgDataset$new(urls)
+                    d <- EsgDataset$new(urls)
                     d$open()
                     d
                 },
@@ -953,7 +974,7 @@ EsgResultAggregation <- R6::R6Class(
                 character(1L)
             )
 
-	            ds <- EsgDataset$new(local_paths)
+            ds <- EsgDataset$new(local_paths)
             ds$open()
             ds
         }
