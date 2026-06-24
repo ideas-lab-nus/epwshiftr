@@ -15,6 +15,12 @@
 <url><loc>/news/index.html</loc></url>
 <url><loc>/reference/CMIP6Dict.html</loc></url>
 <url><loc>/reference/EsgfQuery.html</loc></url>
+<url><loc>/reference/EsgfQueryResult.html</loc></url>
+<url><loc>/reference/EsgfQueryResultAggregation.html</loc></url>
+<url><loc>/reference/EsgfQueryResultDataset.html</loc></url>
+<url><loc>/reference/EsgfQueryResultFile.html</loc></url>
+<url><loc>/reference/as.character.DiskCache.html</loc></url>
+<url><loc>/reference/as.data.frame.schema.html</loc></url>
 <url><loc>/reference/epwshiftr-package.html</loc></url>
 <url><loc>/reference/esgf_query.html</loc></url>
 <url><loc>/reference/extract_data.html</loc></url>
@@ -26,7 +32,11 @@
 <url><loc>/reference/load_cmip6_index.html</loc></url>
 <url><loc>/reference/match_coord.html</loc></url>
 <url><loc>/reference/morphing_epw.html</loc></url>
+<url><loc>/reference/print.schema.html</loc></url>
+<url><loc>/reference/result_esgf.html</loc></url>
 <url><loc>/reference/set_cmip6_index.html</loc></url>
+<url><loc>/reference/str.schema.html</loc></url>
+<url><loc>/reference/summary.schema.html</loc></url>
 <url><loc>/reference/summary_database.html</loc></url>
 </urlset>
 

@@ -145,13 +145,13 @@ the <code>$method_name()</code> style.</p>
 <code class="sourceCode R"><span><span class="va">dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">dict</span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: &lt;Empty&gt;</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: &lt;NONE&gt;</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: &lt;Empty&gt;</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">CV Version</span>: &lt;Empty&gt;</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;   <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: &lt;Empty&gt;</span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">DReq Version</span>: &lt;Empty&gt;</span></span></code></pre></div>
 <p>You can use <code>$is_empty()</code> to check if there are any
 contents in current <code>Cmip6Dict</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
@@ -213,43 +213,43 @@ e.g. <code>none</code>, <code>s1960</code>.</li>
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">build</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...</span></span>
 <span><span class="co">#&gt; ⠙ Fetching latest tag of <span style="font-weight: bold;">CMIP6 CVs</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[262ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[430ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> []...</span></span>
-<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_sub_experiment_id.json</span>]...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[1.1s]</span></span></span>
+<span><span class="co">#&gt; ⠹ Downloading data of <span style="font-weight: bold;">CMIP6 CVs</span> [<span style="color: #0000BB;">CMIP6_institution_id.json</span>]...</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 CVs</span> successfully. <span style="color: #B2B2B2;">[2.4s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Fetching latest tag of <span style="font-weight: bold;">CMIP6 DReq</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[246ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Fetched latest tag of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[370ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...⠙ Downloading data of <span style="font-weight: bold;">CMIP6 DReq</span>...</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[392ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Downloaded data of <span style="font-weight: bold;">CMIP6 DReq</span> successfully. <span style="color: #B2B2B2;">[789ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 Dictionary</span> successfully at 2026-06-23 23:54:47.639629 <span style="color: #B2B2B2;">[2.2s]</span></span></span>
+<span><span class="co">#&gt; ⠙ Fetching <span style="font-weight: bold;">CMIP6 Dictionary</span>...<span style="color: #00BB00;">✔</span> Fetched <span style="font-weight: bold;">CMIP6 Dictionary</span> successfully at 2026-06-24 12:04:38.049323 <span style="color: #B2B2B2;">[4.3s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2026-06-23 23:54:47.639112</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 12:04:38 UTC</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Contents</span> [13 types]:</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">drs</span> [6 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">activity_id</span> [24 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">experiment_id</span> [322 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">frequency</span> [16 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">grid_label</span> [45 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">institution_id</span> [49 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">nominal_resolution</span> [15 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">realm</span> [8 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">required_global_attributes</span> [30 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_id</span> [132 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_type</span> [10 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">sub_experiment_id</span> [74 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">table_id</span> [43 items]</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">CV Contents</span> [13 types]:</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">drs</span> [6 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">activity_id</span> [24 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">experiment_id</span> [322 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">frequency</span> [16 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">grid_label</span> [45 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">institution_id</span> [49 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">nominal_resolution</span> [15 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">realm</span> [8 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">required_global_attributes</span> [30 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">source_id</span> [132 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">source_type</span> [10 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">sub_experiment_id</span> [74 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">table_id</span> [43 items]</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;   <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: `1.0.33`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Contents</span>: 2062 Variables from 43 Tables and 9 Realms</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">DReq Version</span>: `1.0.33`</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">DReq Contents</span>: 2062 Variables from 43 Tables and 9 Realms</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">is_empty</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
 <p>You can get the version of the CV collection and Data Request using
@@ -269,7 +269,7 @@ CV collection (<code>cvs</code>) and Data Request
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">last_built</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">last_built</span></span>
-<span><span class="co">#&gt; [1] "2026-06-23 23:54:47 UTC"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "2026-06-24 12:04:38 UTC"</span></span></code></pre></div>
 <p>The last modified time of the CV collection and each CV can be
 retrieved using the <code>$timestamp()</code> method:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
@@ -339,7 +339,7 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"dreq"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6 Data Request</span> ══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;HEADER METADATA&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;Header Metadata&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: `1.0.33`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CMOR Version</span>: `3.5`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">MIP Era</span>: `CMIP6`</span></span>
@@ -349,95 +349,85 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Conventions</span>: `CF-1.7 CMIP-6.2`</span></span>
 <span><span class="co">#&gt; • `2062` Variables from `43` Tables and `9` Realms</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • Stored type: <span style="color: #0000BB;">&lt;data.table&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;data.table&gt;</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Variable: </span><span style="color: #0000BB; font-weight: bold;">"clt"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"cloud_area_fraction"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Total Cloud Cover Percentage"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"%"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"Total cloud area fraction (reported as a percentage) for the</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">whole atmospheric column, as seen from the surface or the top of the</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">atmosphere. Includes both large-scale and convective cloud."</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"clt"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"cloud_area_fraction"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Total Cloud Cover Percentage"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"%"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"Total cloud area fraction (reported as a percentage) for the</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">whole atmospheric column, as seen from the surface or the top of the</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">atmosphere. Includes both large-scale and convective cloud."</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"clt"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Variable: </span><span style="color: #0000BB; font-weight: bold;">"hfls"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"surface_upward_latent_heat_flux"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Surface Upward Latent Heat Flux"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"W m-2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"The surface called 'surface' means the lower boundary of the</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">atmosphere. 'Upward' indicates a vector component which is positive when</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">directed upward (negative downward). The surface latent heat flux is the</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">exchange of heat between the surface and the air on account of evaporation</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">(including sublimation). In accordance with common usage in geophysical</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">disciplines, 'flux' implies per unit area, called 'flux density' in</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">physics."</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"hfls"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">"up"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"surface_upward_latent_heat_flux"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Surface Upward Latent Heat Flux"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"W m-2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"The surface called 'surface' means the lower boundary of the</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">atmosphere. 'Upward' indicates a vector component which is positive when</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">directed upward (negative downward). The surface latent heat flux is the</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">exchange of heat between the surface and the air on account of evaporation</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">(including sublimation). In accordance with common usage in geophysical</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">disciplines, 'flux' implies per unit area, called 'flux density' in physics."</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"hfls"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">"up"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Variable: </span><span style="color: #0000BB; font-weight: bold;">"hfss"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"surface_upward_sensible_heat_flux"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Surface Upward Sensible Heat Flux"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"W m-2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"The surface sensible heat flux, also called turbulent heat</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">flux, is the exchange of heat between the surface and the air by motion of</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">air."</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"hfss"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">"up"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Table id</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Modeling realm</span>: <span style="color: #0000BB;">"atmos"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Standard name</span>: <span style="color: #0000BB;">"surface_upward_sensible_heat_flux"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Long name</span>: <span style="color: #0000BB;">"Surface Upward Sensible Heat Flux"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency</span>: <span style="color: #0000BB;">"3hr"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Units</span>: <span style="color: #0000BB;">"W m-2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell methods</span>: <span style="color: #0000BB;">"area: time: mean"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cell measures</span>: <span style="color: #0000BB;">"area: areacella"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Comment</span>: <span style="color: #0000BB;">"The surface sensible heat flux, also called turbulent heat flux,</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">is the exchange of heat between the surface and the air by motion of air."</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Dimensions</span>: <span style="color: #0000BB;">"longitude latitude time"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Out name</span>: <span style="color: #0000BB;">"hfss"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Type</span>: <span style="color: #0000BB;">"real"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Positive</span>: <span style="color: #0000BB;">"up"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid min</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Valid max</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok min mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Ok max mean abs</span>: <span style="color: #0000BB;">NA</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 2059 more items</span></span></span>
 <span></span>
 <span><span class="co"># DRS</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"drs"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Data Reference Syntax (DRS)</span> ═════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Data Reference Syntax (DRS)</span> ═════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DRS Modified</span>: 2025-09-02 22:42:23 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">DRS Note</span>: <span style="color: #0000BB;">"Revised CMIP6_DRS directory and filename templates for CMOR</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">3.12"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Directory path example</span>:</span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">"CMIP6/CMIP/MOHC/HadGEM3-GC31-MM/historical/r1i1p1f3/Amon/tas/gn/v20191207/"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Directory path sub experiment example</span>:</span></span>
@@ -452,18 +442,13 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># activity_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"activity_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Activity ID</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Activity ID</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ActivityId Modified</span>: 2018-03-06 00:39:09 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ActivityId Note</span>: <span style="color: #0000BB;">"Update activity_id to include CDRMIP and PAMIP"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">AerChemMIP</span>: <span style="color: #0000BB;">"Aerosols and Chemistry Model Intercomparison Project"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">C4MIP</span>: <span style="color: #0000BB;">"Coupled Climate Carbon Cycle Model Intercomparison Project"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CDRMIP</span>: <span style="color: #0000BB;">"Carbon Dioxide Removal Model Intercomparison Project"</span></span></span>
@@ -474,80 +459,70 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># experiment_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"experiment_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Experiment ID</span> ═══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Experiment ID</span> ═══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ExperimentId Modified</span>: 2020-12-15 20:25:59 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ExperimentId Note</span>: <span style="color: #0000BB;">"Revise experiment_id historical parent experiments"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • Stored type: <span style="color: #0000BB;">&lt;data.table&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;data.table&gt;</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Experiment id: </span><span style="color: #0000BB; font-weight: bold;">"1pctCO2"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"1 percent per year increase in CO2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"DECK: 1pctCO2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">150</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"piControl"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span>, <span style="color: #0000BB;">"CHEM"</span>, and <span style="color: #0000BB;">"BGC"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"1 percent per year increase in CO2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"DECK: 1pctCO2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">150</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"piControl"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span>, <span style="color: #0000BB;">"CHEM"</span>, and <span style="color: #0000BB;">"BGC"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Experiment id: </span><span style="color: #0000BB; font-weight: bold;">"1pctCO2-4xext"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"extension from year 140 of 1pctCO2 with 4xCO2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"branched from 1pctCO2 run at year 140 and run with CO2</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">fixed at 4x pre-industrial concentration"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">210</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"1pctCO2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"ISMIP6"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span>, <span style="color: #0000BB;">"CHEM"</span>, and <span style="color: #0000BB;">"BGC"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"extension from year 140 of 1pctCO2 with 4xCO2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"branched from 1pctCO2 run at year 140 and run with CO2 fixed</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">at 4x pre-industrial concentration"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">210</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"1pctCO2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"ISMIP6"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span>, <span style="color: #0000BB;">"CHEM"</span>, and <span style="color: #0000BB;">"BGC"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Experiment id: </span><span style="color: #0000BB; font-weight: bold;">"1pctCO2-bgc"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"biogeochemically-coupled version of 1 percent per year</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">increasing CO2 experiment"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"Biogeochemically-coupled specified concentration simulation</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">in which CO2 increases at a rate of 1% per year until quadrupling"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">150</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span> and <span style="color: #0000BB;">"BGC"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"piControl"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"C4MIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span> and <span style="color: #0000BB;">"CHEM"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Experiment</span>: <span style="color: #0000BB;">"biogeochemically-coupled version of 1 percent per year</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">increasing CO2 experiment"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"Biogeochemically-coupled specified concentration simulation</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">in which CO2 increases at a rate of 1% per year until quadrupling"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Tier</span>: <span style="color: #0000BB;">1</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Start year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">End year</span>: <span style="color: #0000BB;">NA</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Min number yrs per sim</span>: <span style="color: #0000BB;">150</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Required model components</span>: <span style="color: #0000BB;">"AOGCM"</span> and <span style="color: #0000BB;">"BGC"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent experiment id</span>: <span style="color: #0000BB;">"piControl"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Sub experiment id</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity id</span>: <span style="color: #0000BB;">"C4MIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Parent activity id</span>: <span style="color: #0000BB;">"CMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Additional allowed model components</span>: <span style="color: #0000BB;">"AER"</span> and <span style="color: #0000BB;">"CHEM"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 319 more items</span></span></span>
 <span></span>
 <span><span class="co"># frequency</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"frequency"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Frequency</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Frequency</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency Modified</span>: 2021-05-24 14:48:15 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Frequency Note</span>: <span style="color: #0000BB;">"Update description of 3hr and 6hr frequencies"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">1hr</span>: <span style="color: #0000BB;">"sampled hourly"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">1hrCM</span>: <span style="color: #0000BB;">"monthly-mean diurnal cycle resolving each day into 1-hour means"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">1hrPt</span>: <span style="color: #0000BB;">"sampled hourly, at specified time point within an hour"</span></span></span>
@@ -557,19 +532,14 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># grid_label</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"grid_label"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Grid Label</span> ══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Grid Label</span> ══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">GridLabel Modified</span>: 2017-09-09 01:12:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">GridLabel Note</span>: <span style="color: #0000BB;">"Issue395 durack1 augment grid_label with description</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#401)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">gm</span>: <span style="color: #0000BB;">"global mean data"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">gn</span>: <span style="color: #0000BB;">"data reported on a model's native grid"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">gna</span>: <span style="color: #0000BB;">"data reported on a native grid in the region of Antarctica"</span></span></span>
@@ -579,18 +549,13 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># institution_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"institution_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Institution ID</span> ══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Institution ID</span> ══════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">InstitutionId Modified</span>: 2022-08-16 04:41:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">InstitutionId Note</span>: <span style="color: #0000BB;">"Register institution_id UCSB for E3SM-1-0"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">AER</span>: <span style="color: #0000BB;">"Research and Climate Group, Atmospheric and Environmental Research,</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">131 Hartwell Avenue, Lexington, MA 02421, USA"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">AS-RCEC</span>: <span style="color: #0000BB;">"Research Center for Environmental Changes, Academia Sinica,</span></span></span>
@@ -603,37 +568,27 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># nominal_resolution</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"nominal_resolution"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Nominal Resolution</span> ══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Nominal Resolution</span> ══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">NominalResolution Modified</span>: 2016-11-15 23:04:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">NominalResolution Note</span>: <span style="color: #0000BB;">"Issue141 durack1 update grid_resolution to</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">nominal_resolution (#143)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;character&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;character&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">"0.5 km"</span>, <span style="color: #0000BB;">"1 km"</span>, <span style="color: #0000BB;">"10 km"</span>, <span style="color: #0000BB;">"100 km"</span>, <span style="color: #0000BB;">"1000 km"</span>, <span style="color: #0000BB;">"10000 km"</span>, <span style="color: #0000BB;">"1x1 degree"</span>, <span style="color: #0000BB;">"2.5</span></span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">km"</span>, …, <span style="color: #0000BB;">"500 km"</span>, and <span style="color: #0000BB;">"5000 km"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 5 more items</span></span></span>
 <span></span>
 <span><span class="co"># realm</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"realm"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Realm</span> ═══════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Realm</span> ═══════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Realm Modified</span>: 2017-04-18 19:03:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">Realm Note</span>: <span style="color: #0000BB;">"Issue285 durack1 update realm format (#290)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">aerosol</span>: <span style="color: #0000BB;">"Aerosol"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">atmos</span>: <span style="color: #0000BB;">"Atmosphere"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">atmosChem</span>: <span style="color: #0000BB;">"Atmospheric Chemistry"</span></span></span>
@@ -643,19 +598,14 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># required_global_attributes</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"required_global_attributes"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Required Global Attributes</span> ══════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Required Global Attributes</span> ══════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ReqGlobAttr Modified</span>: 2019-12-19 23:32:17 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">ReqGlobAttr Note</span>: <span style="color: #0000BB;">"Reverting addition of external_variables to</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">required_global_attributes"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;character&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;character&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">"Conventions"</span>, <span style="color: #0000BB;">"activity_id"</span>, <span style="color: #0000BB;">"creation_date"</span>, <span style="color: #0000BB;">"data_specs_version"</span>,</span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">"experiment"</span>, <span style="color: #0000BB;">"experiment_id"</span>, <span style="color: #0000BB;">"forcing_index"</span>, <span style="color: #0000BB;">"frequency"</span>, …, <span style="color: #0000BB;">"variable_id"</span>,</span></span>
 <span><span class="co">#&gt; and <span style="color: #0000BB;">"variant_label"</span></span></span>
@@ -663,171 +613,161 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># source_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"source_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Source ID</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Source ID</span> ═══════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Modified</span>: 2025-04-18 23:28:35 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceId Note</span>: <span style="color: #0000BB;">"Revised IPSL-CM6A-ATM-LR-REPROBUS source_id entry"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • Stored type: <span style="color: #0000BB;">&lt;data.table&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;data.table&gt;</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Source id: </span><span style="color: #0000BB; font-weight: bold;">"4AOP-v1-5"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"IPSL"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"4AOP-v1-5"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Line-By-Line Radiative Transfer Model v1.5, Laboratoire</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">Meteorologie Dynamique, GEISA spectroscopic database"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"RFMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Model component</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Aerosol</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Atmos</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Land</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">LandIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Ocean</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">SeaIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">License info</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@listes.ipsl.fr &lt;- ipsl-cmip6"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2020-06-11: initially published under CC BY-NC-SA 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">2022-06-03: relaxed to CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"IPSL"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"4AOP-v1-5"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Line-By-Line Radiative Transfer Model v1.5, Laboratoire</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">Meteorologie Dynamique, GEISA spectroscopic database"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"RFMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Model component</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Aerosol</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Atmos</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Land</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">LandIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Ocean</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">SeaIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">License info</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@listes.ipsl.fr &lt;- ipsl-cmip6"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2020-06-11: initially published under CC BY-NC-SA 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">2022-06-03: relaxed to CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Source id: </span><span style="color: #0000BB; font-weight: bold;">"ACCESS-CM2"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"CSIRO-ARCCSS"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"ACCESS-CM2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Australian Community Climate and Earth System Simulator</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">Climate Model Version 2"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"CMIP"</span>, <span style="color: #0000BB;">"DAMIP"</span>, <span style="color: #0000BB;">"FAFMIP"</span>, <span style="color: #0000BB;">"OMIP"</span>, <span style="color: #0000BB;">"RFMIP"</span>,</span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">"SIMIP"</span>, and <span style="color: #0000BB;">"ScenarioMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Model component</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Aerosol</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"UKCA-GLOMAP-mode"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Atmos</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"MetUM-HadGEM3-GA7.1 (N96; 192 x 144</span></span></span>
-<span><span class="co">#&gt;           <span style="color: #0000BB;">longitude/latitude; 85 levels; top level 85 km)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Land</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CABLE2.5"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">LandIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Ocean</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"ACCESS-OM2 (GFDL-MOM5, tripolar primarily 1deg; 360 x</span></span></span>
-<span><span class="co">#&gt;           <span style="color: #0000BB;">300 longitude/latitude; 50 levels; top grid cell 0-10 m)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">SeaIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CICE5.1.2 (same grid as ocean)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">License info</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@csiro.au &lt;- access_csiro"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2019-11-08: initially published under CC BY-SA 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">2022-06-10: relaxed to CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"CSIRO-ARCCSS"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"ACCESS-CM2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Australian Community Climate and Earth System Simulator</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">Climate Model Version 2"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"CMIP"</span>, <span style="color: #0000BB;">"DAMIP"</span>, <span style="color: #0000BB;">"FAFMIP"</span>, <span style="color: #0000BB;">"OMIP"</span>, <span style="color: #0000BB;">"RFMIP"</span>,</span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">"SIMIP"</span>, and <span style="color: #0000BB;">"ScenarioMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Model component</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Aerosol</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"UKCA-GLOMAP-mode"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Atmos</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"MetUM-HadGEM3-GA7.1 (N96; 192 x 144 longitude/latitude;</span></span></span>
+<span><span class="co">#&gt;         <span style="color: #0000BB;">85 levels; top level 85 km)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Land</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CABLE2.5"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">LandIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Ocean</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"ACCESS-OM2 (GFDL-MOM5, tripolar primarily 1deg; 360 x</span></span></span>
+<span><span class="co">#&gt;         <span style="color: #0000BB;">300 longitude/latitude; 50 levels; top grid cell 0-10 m)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">SeaIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CICE5.1.2 (same grid as ocean)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">License info</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@csiro.au &lt;- access_csiro"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2019-11-08: initially published under CC BY-SA 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">2022-06-10: relaxed to CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   ── <span style="font-weight: bold;">[Source id: </span><span style="color: #0000BB; font-weight: bold;">"ACCESS-ESM1-5"</span><span style="font-weight: bold;">]</span> ──</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"CSIRO"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"ACCESS-ESM1.5"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Australian Community Climate and Earth System Simulator</span></span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">Earth System Model Version 1.5"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"C4MIP"</span>, <span style="color: #0000BB;">"CDRMIP"</span>, <span style="color: #0000BB;">"CMIP"</span>, <span style="color: #0000BB;">"DAMIP"</span>, <span style="color: #0000BB;">"LUMIP"</span>,</span></span>
-<span><span class="co">#&gt;     <span style="color: #0000BB;">"OMIP"</span>, <span style="color: #0000BB;">"PMIP"</span>, <span style="color: #0000BB;">"RFMIP"</span>, and <span style="color: #0000BB;">"ScenarioMIP"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">Model component</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Aerosol</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CLASSIC (v1.0)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Atmos</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"HadGAM2 (r1.1, N96; 192 x 145 longitude/latitude; 38</span></span></span>
-<span><span class="co">#&gt;           <span style="color: #0000BB;">levels; top level 39255 m)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Land</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CABLE2.4"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">LandIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Ocean</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"ACCESS-OM2 (MOM5, tripolar primarily 1deg; 360 x 300</span></span></span>
-<span><span class="co">#&gt;           <span style="color: #0000BB;">longitude/latitude; 50 levels; top grid cell 0-10 m)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"WOMBAT (same grid as ocean)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">SeaIce</span>:</span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CICE4.1 (same grid as ocean)"</span></span></span>
-<span><span class="co">#&gt;         • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">License info</span>:</span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@csiro.au &lt;- access_csiro"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2019-11-12: initially published under CC BY-SA 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">2022-06-10: relaxed to CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
-<span><span class="co">#&gt;         <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
-<span><span class="co">#&gt;       • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Release year</span>: <span style="color: #0000BB;">2019</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Institution id</span>: <span style="color: #0000BB;">"CSIRO"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label</span>: <span style="color: #0000BB;">"ACCESS-ESM1.5"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Label extended</span>: <span style="color: #0000BB;">"Australian Community Climate and Earth System Simulator</span></span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">Earth System Model Version 1.5"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Cohort</span>: <span style="color: #0000BB;">"Published"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Activity participation</span>: <span style="color: #0000BB;">"C4MIP"</span>, <span style="color: #0000BB;">"CDRMIP"</span>, <span style="color: #0000BB;">"CMIP"</span>, <span style="color: #0000BB;">"DAMIP"</span>, <span style="color: #0000BB;">"LUMIP"</span>,</span></span>
+<span><span class="co">#&gt;   <span style="color: #0000BB;">"OMIP"</span>, <span style="color: #0000BB;">"PMIP"</span>, <span style="color: #0000BB;">"RFMIP"</span>, and <span style="color: #0000BB;">"ScenarioMIP"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">Model component</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Aerosol</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CLASSIC (v1.0)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Atmos</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"HadGAM2 (r1.1, N96; 192 x 145 longitude/latitude; 38</span></span></span>
+<span><span class="co">#&gt;         <span style="color: #0000BB;">levels; top level 39255 m)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">AtmosChem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Land</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CABLE2.4"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"250 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">LandIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"none"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Ocean</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"ACCESS-OM2 (MOM5, tripolar primarily 1deg; 360 x 300</span></span></span>
+<span><span class="co">#&gt;         <span style="color: #0000BB;">longitude/latitude; 50 levels; top grid cell 0-10 m)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">OcnBgchem</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"WOMBAT (same grid as ocean)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">SeaIce</span>:</span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Description</span>: <span style="color: #0000BB;">"CICE4.1 (same grid as ocean)"</span></span></span>
+<span><span class="co">#&gt;       • <span style="font-weight: bold;">Native nominal resolution</span>: <span style="color: #0000BB;">"100 km"</span></span></span>
+<span><span class="co">#&gt; • <span style="font-weight: bold;">License info</span>:</span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Exceptions contact</span>: <span style="color: #0000BB;">"@csiro.au &lt;- access_csiro"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">History</span>: <span style="color: #0000BB;">"2019-11-12: initially published under CC BY-SA 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">2022-06-10: relaxed to CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Id</span>: <span style="color: #0000BB;">"CC BY 4.0"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">License</span>: <span style="color: #0000BB;">"Creative Commons Attribution 4.0 International (CC BY 4.0;</span></span></span>
+<span><span class="co">#&gt;       <span style="color: #0000BB;">https://creativecommons.org/licenses/by/4.0/)"</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Source specific info</span>: <span style="color: #0000BB;">""</span></span></span>
+<span><span class="co">#&gt;     • <span style="font-weight: bold;">Url</span>: <span style="color: #0000BB;">"https://creativecommons.org/licenses/by/4.0/"</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 129 more items</span></span></span>
 <span></span>
 <span><span class="co"># source_type</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"source_type"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Source Type</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Source Type</span> ═════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceType Modified</span>: 2017-09-09 00:57:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SourceType Note</span>: <span style="color: #0000BB;">"Issue396 durack1 augment source_type with description</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#399)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">AER</span>: <span style="color: #0000BB;">"aerosol treatment in an atmospheric model where concentrations are</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">calculated based on emissions, transformation, and removal processes (rather</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">than being prescribed or omitted entirely)"</span></span></span>
@@ -845,18 +785,13 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># sub_experiment_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"sub_experiment_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Sub Experiment ID</span> ═══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Sub Experiment ID</span> ═══════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SubExperimentId Modified</span>: 2019-06-17 18:01:51 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">SubExperimentId Note</span>: <span style="color: #0000BB;">"Revise sub_experiment_id values"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;list&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;list&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">none</span>: <span style="color: #0000BB;">"none"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">s1910</span>: <span style="color: #0000BB;">"initialized near end of year 1910"</span></span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">s1920</span>: <span style="color: #0000BB;">"initialized near end of year 1920"</span></span></span>
@@ -866,19 +801,14 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 <span></span>
 <span><span class="co"># table_id</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">get</span><span class="op">(</span><span class="st">"table_id"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ══ <span style="font-weight: bold;">CMIP6CV Table ID</span> ════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VERSION METADATA&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; ══ <span style="font-weight: bold;">Cmip6CV Table ID</span> ════════════════════════════════════════ <span style="font-weight: bold;">CMIP6 Dictionary</span> ══</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">CV Modified</span>: 2025-09-04 23:01:22 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">TableId Modified</span>: 2017-01-13 16:27:00 UTC</span></span>
 <span><span class="co">#&gt; • <span style="font-weight: bold;">TableId Note</span>: <span style="color: #0000BB;">"Issue199 durack1 update table_id to Data Request v1.0</span></span></span>
 <span><span class="co">#&gt;   <span style="color: #0000BB;">(#200)"</span></span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;STORED TYPE&gt;</span> <span style="color: #00BBBB;">───────────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">Stored type</span>: <span style="color: #0000BB;">&lt;character&gt;</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">&lt;VALUES&gt;</span> <span style="color: #00BBBB;">────────────────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Values </span><span style="color: #0000BB; font-weight: bold;">&lt;character&gt;</span> <span style="color: #00BBBB;">──────────────────────────────────────────────────────────</span></span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">"3hr"</span>, <span style="color: #0000BB;">"6hrLev"</span>, <span style="color: #0000BB;">"6hrPlev"</span>, <span style="color: #0000BB;">"6hrPlevPt"</span>, <span style="color: #0000BB;">"AERday"</span>, <span style="color: #0000BB;">"AERhr"</span>, <span style="color: #0000BB;">"AERmon"</span>,</span></span>
 <span><span class="co">#&gt; <span style="color: #0000BB;">"AERmonZ"</span>, …, <span style="color: #0000BB;">"day"</span>, and <span style="color: #0000BB;">"fx"</span></span></span>
 <span><span class="co">#&gt; <span style="color: #555555;"># ... with 33 more items</span></span></span></code></pre></div>
@@ -892,7 +822,7 @@ and <code>"dreq"</code>, a [data.table].</p></li>
 of the saved RDS file.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpvQqImV/CMIP6DICT"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "/tmp/RtmpirFLr2/CMIP6DICT"</span></span></code></pre></div>
 <p>This file can be reloaded via <code>$load()</code> method to restore
 the last state of current <code>Cmip6Dict</code> object. It reads the
 RDS file named <code>CMIP6DICT</code> and loads the CVs and Data Request
@@ -900,30 +830,30 @@ data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">new_dict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/CMIP6Dict.html">cmip6_dict</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">new_dict</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2026-06-23 23:54:47.639112.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Loaded CMIP6 Dictionary that was built at 2026-06-24 12:04:38 UTC.</span></span>
 <span><span class="co">#&gt; ══ CMIP6 Dictionary ════════════════════════════════════════════════════════════</span></span>
-<span><span class="co">#&gt; • Built at: 2026-06-23 23:54:47.639112</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> Built at: 2026-06-24 12:04:38 UTC</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Controlled Vocabularies (CVs)</span> <span style="color: #00BBBB;">───────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">CV Contents</span> [13 types]:</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">drs</span> [6 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">activity_id</span> [24 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">experiment_id</span> [322 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">frequency</span> [16 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">grid_label</span> [45 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">institution_id</span> [49 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">nominal_resolution</span> [15 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">realm</span> [8 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">required_global_attributes</span> [30 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_id</span> [132 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">source_type</span> [10 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">sub_experiment_id</span> [74 items]</span></span>
-<span><span class="co">#&gt;   • <span style="font-weight: bold;">table_id</span> [43 items]</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">CV Version</span>: `6.2.60.0`</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">CV Contents</span> [13 types]:</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">drs</span> [6 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">activity_id</span> [24 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">experiment_id</span> [322 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">frequency</span> [16 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">grid_label</span> [45 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">institution_id</span> [49 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">nominal_resolution</span> [15 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">realm</span> [8 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">required_global_attributes</span> [30 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">source_id</span> [132 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">source_type</span> [10 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">sub_experiment_id</span> [74 items]</span></span>
+<span><span class="co">#&gt;   <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">table_id</span> [43 items]</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;   <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Version</span>: `1.0.33`</span></span>
-<span><span class="co">#&gt; • <span style="font-weight: bold;">DReq Contents</span>: 2062 Variables from 43 Tables and 9 Realms</span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">Data Request (DReq)</span> <span style="color: #00BBBB;">─────────────────────────────────────────────────────────</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">DReq Version</span>: `1.0.33`</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">•</span> <span style="font-weight: bold;">DReq Contents</span>: 2062 Variables from 43 Tables and 9 Realms</span></span></code></pre></div>
 </div>
 </div>
   </div>

@@ -84,7 +84,8 @@
 <span>  resolution <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100 km"</span>, <span class="st">"50 km"</span><span class="op">)</span>,</span>
 <span>  type <span class="op">=</span> <span class="st">"Dataset"</span>,</span>
 <span>  limit <span class="op">=</span> <span class="fl">10000L</span>,</span>
-<span>  data_node <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  data_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  host <span class="op">=</span> <span class="st">"http://esgf-node.llnl.gov/esg-search"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -222,6 +223,14 @@ Should be &lt;= 10,000. Default: <code>10000</code>.</p></dd>
 <dt id="arg-data-node">data_node<a class="anchor" aria-label="anchor" href="#arg-data-node"></a></dt>
 <dd><p>A character vector indicating data nodes to be queried.
 Default to <code>NULL</code>, which means all possible data nodes.</p></dd>
+
+
+<dt id="arg-host">host<a class="anchor" aria-label="anchor" href="#arg-host"></a></dt>
+<dd><p>The URL to the ESGF Search API service. This should be the URL of
+the ESGF search service excluding the final endpoint name. Usually
+this is <code>http://&lt;hostname&gt;/esg-search</code>. Default is set to the
+<a href="http://esgf-node.llnl.gov" class="external-link">LLNL (Lawrence Livermore National Laboratory) Index Node</a>,
+which is <code>"https://esgf-node.llnl.gov/esg-search"</code>.</p></dd>
 
 </dl></div>
     <div id="value">
