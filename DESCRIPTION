@@ -54,7 +54,7 @@ Collate:
     'cli-render.R'
     'cli-storage.R'
     'cli.R'
-    'coord.R'
+    'data-node.R'
     'dataset.R'
     'dict-check.R'
     'dict-fetch.R'
@@ -65,11 +65,11 @@ Collate:
     'dict.R'
     'downloader.R'
     'utils.R'
-    'morph.R'
     'store.R'
     'epw-morpher.R'
+    'epw-output.R'
     'epwshiftr-package.R'
-    'esgf.R'
+    'geo.R'
     'gh.R'
     'import-standalone-schema.R'
     'netcdf.R'
@@ -81,5 +81,5 @@ Collate:
     'shift-stage.R'
     'standalone-cache.R'
     'zzz.R'
-Config/testthat/start-first: utils, esgf, coord, netcdf, morph
+Config/testthat/start-first: utils, esgf, netcdf
 Config/testthat/edition: 3

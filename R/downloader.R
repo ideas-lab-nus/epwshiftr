@@ -2959,7 +2959,7 @@ Downloader <- R6::R6Class("Downloader",
         #'
         #' @return The `Downloader` object itself, invisibly.
         print = function() {
-            cli::cli_h1("ESGF File Downloader")
+            cli::cli_h1("File Downloader")
             cli::cli_li("Data directory: {private$dest}")
             cli::cli_li("Temporary directory: {private$temp}")
             cli::cli_li("Max retries: {private$retries}")

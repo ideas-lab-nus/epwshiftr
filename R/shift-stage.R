@@ -1315,7 +1315,7 @@ shift_as_query <- function(x) {
     provider <- x@meta$provider
     switch(
         provider,
-        esgf = shift_as_esgf_query(x),
+        esgf = shift_as_esg_query(x),
         cli::cli_abort("Unsupported shift provider: {.val {provider}}.")
     )
 }
@@ -1329,7 +1329,7 @@ shift_query_set <- function(query, name, value) {
     invisible(query)
 }
 
-shift_as_esgf_query <- function(x) {
+shift_as_esg_query <- function(x) {
     options <- x@meta$options
     query <- if (!is.null(options$index_node)) {
         esg_query(index_node = options$index_node)

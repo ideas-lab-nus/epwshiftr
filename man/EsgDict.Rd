@@ -45,8 +45,8 @@ registered.
 Building a dictionary may download upstream vocabulary/request sources when
 the parsed dictionary cache and raw source cache are missing. Most examples
 load a small installed CMIP6 example dictionary and run without network
-access. The example that calls \verb{$build()} is guarded so CRAN checks do not
-perform network downloads.
+access. The example that calls \verb{$build()} is wrapped in \verb{\dontrun{}} so
+package checks do not depend on GitHub or upstream CV availability.
 }
 
 \examples{
@@ -142,9 +142,9 @@ dict$is_empty()
 ## Method `EsgDict$build`
 ## ------------------------------------------------
 
-if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+\dontrun{
     dict <- EsgDict$new(project = "CMIP6")
-    dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+    dict$build()
     dict$has_data()
 }
 
@@ -592,9 +592,9 @@ The modified \code{EsgDict} object itself.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
-\preformatted{if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+\preformatted{\dontrun{
     dict <- EsgDict$new(project = "CMIP6")
-    dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+    dict$build()
     dict$has_data()
 }
 }

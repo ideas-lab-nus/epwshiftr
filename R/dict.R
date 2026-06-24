@@ -206,8 +206,8 @@ dict__cache <- function(use_cache = TRUE) {
 #' Building a dictionary may download upstream vocabulary/request sources when
 #' the parsed dictionary cache and raw source cache are missing. Most examples
 #' load a small installed CMIP6 example dictionary and run without network
-#' access. The example that calls `$build()` is guarded so CRAN checks do not
-#' perform network downloads.
+#' access. The example that calls `$build()` is wrapped in `\dontrun{}` so
+#' package checks do not depend on GitHub or upstream CV availability.
 #'
 #' @param project ESG project identifier, such as `"CMIP6"` or `"CMIP6PLUS"`.
 #'
@@ -464,9 +464,9 @@ EsgDict <- R6::R6Class("EsgDict",
         #' @return The modified `EsgDict` object itself.
         #'
         #' @examples
-        #' if (identical(Sys.getenv("NOT_CRAN"), "true") && curl::has_internet()) {
+        #' \dontrun{
         #'     dict <- EsgDict$new(project = "CMIP6")
-        #'     dict$build(cv_tag = "6.2.58", request_tag = "01.00.33")
+        #'     dict$build()
         #'     dict$has_data()
         #' }
         build = function(
