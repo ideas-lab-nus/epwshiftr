@@ -48,7 +48,7 @@ reference:
   - title: Remote ESGF data access
     contents:
       - EsgDataset
-      - FileDownloader
+      - Downloader
 
   - title: Solr date helpers
     contents:
@@ -80,6 +80,12 @@ reference:
     contents:
       - morphing_epw
       - future_epw
+
+  - title: Command line interface
+    contents:
+      - epwshiftr_cli
+      - install_cli
+      - uninstall_cli
 
   - title: epwshiftr Options
     contents:

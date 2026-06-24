@@ -895,8 +895,8 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
             opened = FALSE
         )
     )
-    FakeFileDownloader <- R6::R6Class(
-        "FakeFileDownloader",
+    FakeDownloader <- R6::R6Class(
+        "FakeDownloader",
         public = list(
             plan = NULL,
             enqueue = function(plan, session_label = NULL) {
@@ -924,7 +924,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
 
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
-        FileDownloader = FakeFileDownloader,
+        Downloader = FakeDownloader,
         .package = "epwshiftr"
     )
 
@@ -944,7 +944,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     expect_error(file_result$open_dataset(fallback = "ask"), "non-interactive")
 
     ds <- expect_s3_class(
-        file_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+        file_result$open_dataset(fallback = "auto", downloader = FakeDownloader$new()),
         "FakeEsgDataset"
     )
     expect_true(file.exists(ds$target))
@@ -1006,7 +1006,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     downloads_before <- calls$downloads
     expect_message(
         agg_ds <- expect_s3_class(
-            agg_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+            agg_result$open_dataset(fallback = "auto", downloader = FakeDownloader$new()),
             "FakeEsgDataset"
         ),
         "record 2 \\(id: file-2\\)"
@@ -1044,7 +1044,7 @@ test_that("open_dataset falls back to HTTP after OPeNDAP open failures", {
     downloads_before <- calls$downloads
     expect_message(
         agg_fail_ds <- expect_s3_class(
-            agg_fail_result$open_dataset(fallback = "auto", downloader = FakeFileDownloader$new()),
+            agg_fail_result$open_dataset(fallback = "auto", downloader = FakeDownloader$new()),
             "FakeEsgDataset"
         ),
         "record 2 \\(id: file-2\\)"

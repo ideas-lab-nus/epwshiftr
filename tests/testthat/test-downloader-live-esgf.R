@@ -63,7 +63,7 @@ capture_live_warnings <- function(expr) {
     list(value = value, warnings = warnings)
 }
 
-test_that("FileDownloader live ESGF workflow covers persistent methods and resume", {
+test_that("Downloader live ESGF workflow covers persistent methods and resume", {
     skip_live_esgf_downloader()
 
     live <- tryCatch(live_esgf_files(), error = function(e) skip(conditionMessage(e)))
@@ -77,7 +77,7 @@ test_that("FileDownloader live ESGF workflow covers persistent methods and resum
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    dl <- FileDownloader$new(
+    dl <- Downloader$new(
         dest = dest,
         temp = temp,
         manifest = manifest,
@@ -86,19 +86,18 @@ test_that("FileDownloader live ESGF workflow covers persistent methods and resum
         n_workers = 0L
     )
 
-    expect_s3_class(dl, "FileDownloader")
-    expect_s3_class(dl$clone(deep = FALSE), "FileDownloader")
-    expect_s3_class(print(dl), "FileDownloader")
+    expect_s3_class(dl, "Downloader")
+    expect_s3_class(dl$clone(deep = FALSE), "Downloader")
+    expect_s3_class(print(dl), "Downloader")
     expect_identical(dl$get_tasks(), list())
     expect_identical(dl$wait_for_tasks(), list())
     expect_error(dl$get_task_status("missing-task"), "not found")
     expect_error(dl$cancel_task("missing-task"), "not found")
 
-    config_file <- dl$save_config()
-    expect_true(file.exists(config_file))
+    expect_true(file.exists(dl$manifest))
 
     shortcut_dir <- file.path(root, "shortcut")
-    shortcut <- FileDownloader$new(dest = shortcut_dir, temp = file.path(root, "shortcut-tmp"), retries = 2L, timeout = 240L, n_workers = 0L)
+    shortcut <- Downloader$new(dest = shortcut_dir, temp = file.path(root, "shortcut-tmp"), retries = 2L, timeout = 240L, n_workers = 0L)
     shortcut_path <- shortcut$download(
         url = plan$url[[1L]],
         filename = plan$filename[[1L]],
@@ -176,7 +175,7 @@ test_that("FileDownloader live ESGF workflow covers persistent methods and resum
     expect_equal(failed_candidate$failed_count, 1L)
     ddb_disconnect(conn, shutdown = TRUE)
 
-    restored <- FileDownloader$load_config(config_file)
+    restored <- Downloader$new(manifest = manifest)
     expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
     expect_true(all(c(resume_session, fallback_session, error_session) %in% restored$sessions()$session_id))
     expect_true(restored$verify(session_id = resume_session)$checksum_ok)
