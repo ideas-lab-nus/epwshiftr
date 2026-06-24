@@ -164,7 +164,6 @@ contains dedicated methods to set values for most of them, including:</p><ul><li
 <a href="#method-EsgQuery-offset"><code>offset</code></a>,
 <a href="#method-EsgQuery-limit"><code>limit</code></a>,
 <a href="#method-EsgQuery-fields"><code>fields</code></a>,
-<a href="#method-EsgQuery-type"><code>type</code></a>,
 <a href="#method-EsgQuery-replica"><code>replica</code></a>,
 <a href="#method-EsgQuery-latest"><code>latest</code></a>,
 <a href="#method-EsgQuery-distrib"><code>distrib</code></a>
@@ -178,8 +177,10 @@ and
 <a href="#method-EsgQuery-variable_id"><code>variable_id</code></a>,
 <a href="#method-EsgQuery-frequency"><code>frequency</code></a>,
 <a href="#method-EsgQuery-variant_label"><code>variant_label</code></a>,
-<a href="#method-EsgQuery-date_range"><code>date_range</code></a>,
-<a href="#method-EsgQuery-nominal_resolution"><code>nominal_resolution</code></a>
+<a href="#method-EsgQuery-nominal_resolution"><code>nominal_resolution</code></a>,
+<a href="#method-EsgQuery-datetime_range"><code>datetime_range</code></a>,
+<a href="#method-EsgQuery-timestamp_range"><code>timestamp_range</code></a>,
+<a href="#method-EsgQuery-version_range"><code>version_range</code></a>
 and
 <a href="#method-EsgQuery-data_node"><code>data_node</code></a>.</p></li>
 </ul><p>All methods act in a similar way:</p><ul><li><p>If input is given, the corresponding parameter is set and the updated
@@ -193,10 +194,8 @@ all projects except for <code>CMIP6</code>.</p></li>
 <li><p>If no input is given, the current parameter value is returned. For example,
 directly calling <code>EsgQuery$project()</code> returns the current value of the
 <code>project</code> parameter. The returned value can be two types:</p><ul><li><p><code>NULL</code>, i.e. there is no constraint on the corresponding parameter</p></li>
-<li><p>An <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: The input values</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> in the input</p></li>
-<li><p><code>name</code>: The parameter name</p></li>
-</ul></li>
+<li><p>A <code>QueryParam</code> object. Use <code>query_param_value()</code>, <code>query_param_negate()</code>,
+<code>query_param_name()</code> and <code>query_param_kind()</code> to inspect it.</p></li>
 </ul></li>
 </ul><p>Despite methods for specific keywords and facets, you can specify arbitrary
 query parameters using
@@ -250,8 +249,8 @@ state to a JSON file for later use.</p></li>
 query state from a JSON file created by <code>$save()</code>.</p></li>
 </ul></li>
 <li><p><strong>Display</strong>:</p><ul><li><p><a href="#method-EsgQuery-print"><code>EsgQuery$print()</code></a>: Print a
-summary of the current <code>EsgQuery</code> object including the index node URL,
-the last query timestamp, and all query parameters.</p></li>
+summary of the current <code>EsgQuery</code> object including the index node URL
+and all query parameters.</p></li>
 </ul></li>
 </ul></div>
 
@@ -267,6 +266,7 @@ the last query timestamp, and all query parameters.</p></li>
 <h3 id="public-methods">Public methods<a class="anchor" aria-label="anchor" href="#public-methods"></a></h3>
 
 <ul><li><p><a href="#method-EsgQuery-new"><code>EsgQuery$new()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-index_node"><code>EsgQuery$index_node()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-list_facets"><code>EsgQuery$list_facets()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-list_fields"><code>EsgQuery$list_fields()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-list_shards"><code>EsgQuery$list_shards()</code></a></p></li>
@@ -283,6 +283,9 @@ the last query timestamp, and all query parameters.</p></li>
 <li><p><a href="#method-EsgQuery-facets"><code>EsgQuery$facets()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-fields"><code>EsgQuery$fields()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-shards"><code>EsgQuery$shards()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-datetime_range"><code>EsgQuery$datetime_range()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-timestamp_range"><code>EsgQuery$timestamp_range()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-version_range"><code>EsgQuery$version_range()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-replica"><code>EsgQuery$replica()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-latest"><code>EsgQuery$latest()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-limit"><code>EsgQuery$limit()</code></a></p></li>
@@ -292,6 +295,8 @@ the last query timestamp, and all query parameters.</p></li>
 <li><p><a href="#method-EsgQuery-url"><code>EsgQuery$url()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-count"><code>EsgQuery$count()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-collect"><code>EsgQuery$collect()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-state"><code>EsgQuery$state()</code></a></p></li>
+<li><p><a href="#method-EsgQuery-reset"><code>EsgQuery$reset()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-save"><code>EsgQuery$save()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-load"><code>EsgQuery$load()</code></a></p></li>
 <li><p><a href="#method-EsgQuery-print"><code>EsgQuery$print()</code></a></p></li>
@@ -341,15 +346,50 @@ q
 </div>
 
 
-</div><p></p><hr><a id="method-EsgQuery-list_facets"></a><div class="section">
-<h3 id="method-list-facets-">Method <code>list_facets()</code><a class="anchor" aria-label="anchor" href="#method-list-facets-"></a></h3>
-<p>List all available facet names</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-index_node"></a><div class="section">
+<h3 id="method-index-node-">Method <code>index_node()</code><a class="anchor" aria-label="anchor" href="#method-index-node-"></a></h3>
+<p>Get or set the ESGF index node.</p>
+<p><code>$index_node()</code> returns the current normalized index node URL.
+<code>$index_node(value)</code> updates the index node after applying the same
+normalization used by <a href="#method-EsgQuery-new"><code>EsgQuery$new()</code></a>.
+Existing query parameters are kept unchanged.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">list_facets</span><span class="op">(</span>force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">index_node</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>value</code></dt>
+<dd><p>A string giving the new index node URL. If omitted, the
+current index node is returned.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a string.</p>
+</div>
+<div class="section">
+<h4 id="examples-1">Examples<a class="anchor" aria-label="anchor" href="#examples-1"></a></h4>
+<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
+q$index_node()
+q$index_node("https://esgf.ceda.ac.uk")
+}
+</code></pre></div><p></p></div>
+</div>
+
+
+</div><p></p><hr><a id="method-EsgQuery-list_facets"></a><div class="section">
+<h3 id="method-list-facets-">Method <code>list_facets()</code><a class="anchor" aria-label="anchor" href="#method-list-facets-"></a></h3>
+<p>List all available facet names</p><div class="section">
+<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">list_facets</span><span class="op">(</span>force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>force</code></dt>
 <dd><p>By default, every facet listing query is cached and
 reused when possible. If <code>TRUE</code>, the previous cache is
@@ -360,11 +400,11 @@ abandoned and a new query is re-sent and cached. Default:
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
 <p>A character vector.</p>
 </div>
 <div class="section">
-<h4 id="examples-1">Examples<a class="anchor" aria-label="anchor" href="#examples-1"></a></h4>
+<h4 id="examples-2">Examples<a class="anchor" aria-label="anchor" href="#examples-2"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$list_facets()
 }
@@ -375,12 +415,12 @@ q$list_facets()
 </div><p></p><hr><a id="method-EsgQuery-list_fields"></a><div class="section">
 <h3 id="method-list-fields-">Method <code>list_fields()</code><a class="anchor" aria-label="anchor" href="#method-list-fields-"></a></h3>
 <p>List all available field names</p><div class="section">
-<h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">list_fields</span><span class="op">(</span>force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>force</code></dt>
 <dd><p>By default, every field listing query is cached and
 reused when possible. If <code>TRUE</code>, the previous cache is
@@ -391,11 +431,11 @@ abandoned and a new query is re-sent and cached. Default:
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
 <p>A character vector or <code>NULL</code> if no facet listing is found.</p>
 </div>
 <div class="section">
-<h4 id="examples-2">Examples<a class="anchor" aria-label="anchor" href="#examples-2"></a></h4>
+<h4 id="examples-3">Examples<a class="anchor" aria-label="anchor" href="#examples-3"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$list_fields()
 }
@@ -406,12 +446,12 @@ q$list_fields()
 </div><p></p><hr><a id="method-EsgQuery-list_shards"></a><div class="section">
 <h3 id="method-list-shards-">Method <code>list_shards()</code><a class="anchor" aria-label="anchor" href="#method-list-shards-"></a></h3>
 <p>List all available shards.</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">list_shards</span><span class="op">(</span>force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>force</code></dt>
 <dd><p>By default, every shard listing query is cached and
 reused when possible. If <code>TRUE</code>, the previous cache is
@@ -422,11 +462,11 @@ abandoned and a new query is re-sent and cached. Default:
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
 <p>A character vector or <code>NULL</code> if no shard listing is found.</p>
 </div>
 <div class="section">
-<h4 id="examples-3">Examples<a class="anchor" aria-label="anchor" href="#examples-3"></a></h4>
+<h4 id="examples-4">Examples<a class="anchor" aria-label="anchor" href="#examples-4"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$list_shards()
 }
@@ -437,12 +477,12 @@ q$list_shards()
 </div><p></p><hr><a id="method-EsgQuery-list_values"></a><div class="section">
 <h3 id="method-list-values-">Method <code>list_values()</code><a class="anchor" aria-label="anchor" href="#method-list-values-"></a></h3>
 <p>List all available values of specific facets.</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">list_values</span><span class="op">(</span><span class="va">facets</span>, force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>facets</code></dt>
 <dd><p>A character vector giving the facet names.</p></dd>
 
@@ -457,13 +497,13 @@ abandoned and a new query is re-sent and cached. Default:
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
-<p>If <code>length(facets) == 1</code>, a named character vector giving
-the facet value counts. Otherwise, a list of named character
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+<p>If <code>length(facets) == 1</code>, a named integer vector giving
+the facet value counts. Otherwise, a list of named integer
 vectors of the same length as <code>facets</code>.</p>
 </div>
 <div class="section">
-<h4 id="examples-4">Examples<a class="anchor" aria-label="anchor" href="#examples-4"></a></h4>
+<h4 id="examples-5">Examples<a class="anchor" aria-label="anchor" href="#examples-5"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$list_values(c("activity_id", "experiment_id"))
 }
@@ -474,850 +514,481 @@ q$list_values(c("activity_id", "experiment_id"))
 </div><p></p><hr><a id="method-EsgQuery-project"></a><div class="section">
 <h3 id="method-project-">Method <code>project()</code><a class="anchor" aria-label="anchor" href="#method-project-"></a></h3>
 <p>Get or set the <code>project</code> facet parameter.</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">project</span><span class="op">(</span>value <span class="op">=</span> <span class="st">"CMIP6"</span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>"CMIP6"</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$project(!c("CMIP6"))</code> and <code>$project(-c("CMIP6"))</code> search for all <code>project</code>s except for <code>CMIP6</code>.</p></li>
-</ul></dd>
-
-
-</dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-5">Examples<a class="anchor" aria-label="anchor" href="#examples-5"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$project()
-
-# set the parameter
-q$project("CMIP6")
-
-# remove the parameter
-q$project(NULL)
-}
-</code></pre></div><p></p></div>
-</div>
-
-
-</div><p></p><hr><a id="method-EsgQuery-activity_id"></a><div class="section">
-<h3 id="method-activity-id-">Method <code>activity_id()</code><a class="anchor" aria-label="anchor" href="#method-activity-id-"></a></h3>
-<p>Get or set the <code>activity_id</code> facet parameter.</p><div class="section">
 <h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">project</span><span class="op">(</span>value <span class="op">=</span> <span class="st">"CMIP6"</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$activity_id(!c("C4MIP", "GeoMIP"))</code> and <code>$activity_id(-c("C4MIP", "GeoMIP"))</code> search for all <code>activity_id</code>s except for <code>C4MIP</code> and <code>GeoMIP</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression such as <code>!"CMIP6"</code>. If omitted, the current value is
+returned. Default when setting without an explicit value:
+<code>"CMIP6"</code>.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-6">Examples<a class="anchor" aria-label="anchor" href="#examples-6"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$activity_id()
-
-# set the parameter
-q$activity_id("ScenarioMIP")
-
-# negate the constraints
-q$activity_id(!c("CFMIP", "ScenarioMIP"))
-
-# remove the parameter
-q$activity_id(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-experiment_id"></a><div class="section">
-<h3 id="method-experiment-id-">Method <code>experiment_id()</code><a class="anchor" aria-label="anchor" href="#method-experiment-id-"></a></h3>
-<p>Get or set the <code>experiment_id</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-activity_id"></a><div class="section">
+<h3 id="method-activity-id-">Method <code>activity_id()</code><a class="anchor" aria-label="anchor" href="#method-activity-id-"></a></h3>
+<p>Get or set the <code>activity_id</code> facet parameter.</p><div class="section">
 <h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$experiment_id(!c("ssp126", "ssp245"))</code> and <code>$experiment_id(-c("ssp126", "ssp245"))</code> search for all <code>experiment_id</code>s except for <code>ssp126</code> and <code>ssp245</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression such as <code>!c("CFMIP", "ScenarioMIP")</code>. If omitted,
+the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-7">Examples<a class="anchor" aria-label="anchor" href="#examples-7"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$experiment_id()
-
-# set the parameter
-q$experiment_id(c("ssp126", "ssp585"))
-
-# negate the constraints
-q$experiment_id(!c("ssp126", "ssp585"))
-
-# remove the parameter
-q$experiment_id(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-source_id"></a><div class="section">
-<h3 id="method-source-id-">Method <code>source_id()</code><a class="anchor" aria-label="anchor" href="#method-source-id-"></a></h3>
-<p>Get or set the <code>source_id</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-experiment_id"></a><div class="section">
+<h3 id="method-experiment-id-">Method <code>experiment_id()</code><a class="anchor" aria-label="anchor" href="#method-experiment-id-"></a></h3>
+<p>Get or set the <code>experiment_id</code> facet parameter.</p><div class="section">
 <h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$source_id(!c("CESM2", "CESM2-FV2"))</code> and <code>$source_id(-c("CESM2", "CESM2-FV2"))</code> search for all <code>source_id</code>s except for <code>CESM2</code> and <code>CESM2-FV2</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression such as <code>!c("ssp126", "ssp585")</code>. If omitted, the
+current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-8">Examples<a class="anchor" aria-label="anchor" href="#examples-8"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$source_id()
-
-# set the parameter
-q$source_id(c("BCC-CSM2-MR", "CESM2"))
-
-# negate the constraints
-q$source_id(!c("BCC-CSM2-MR", "CESM2"))
-
-# remove the parameter
-q$source_id(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-variable_id"></a><div class="section">
-<h3 id="method-variable-id-">Method <code>variable_id()</code><a class="anchor" aria-label="anchor" href="#method-variable-id-"></a></h3>
-<p>Get or set the <code>variable_id</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-source_id"></a><div class="section">
+<h3 id="method-source-id-">Method <code>source_id()</code><a class="anchor" aria-label="anchor" href="#method-source-id-"></a></h3>
+<p>Get or set the <code>source_id</code> facet parameter.</p><div class="section">
 <h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$variable_id(!c("tas", "pr"))</code> and <code>$variable_id(-c("tas", "pr"))</code> search for all <code>variable_id</code>s except for <code>tas</code> and <code>pr</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-9">Examples<a class="anchor" aria-label="anchor" href="#examples-9"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$variable_id()
-
-# set the parameter
-q$variable_id(c("tas", "pr"))
-
-# negate the constraints
-q$variable_id(!c("tas", "pr"))
-
-# remove the parameter
-q$variable_id(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-frequency"></a><div class="section">
-<h3 id="method-frequency-">Method <code><a href="https://rdrr.io/r/stats/time.html" class="external-link">frequency()</a></code><a class="anchor" aria-label="anchor" href="#method-frequency-"></a></h3>
-<p>Get or set the <code>frequency</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-variable_id"></a><div class="section">
+<h3 id="method-variable-id-">Method <code>variable_id()</code><a class="anchor" aria-label="anchor" href="#method-variable-id-"></a></h3>
+<p>Get or set the <code>variable_id</code> facet parameter.</p><div class="section">
 <h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$frequency(!c("day", "mon"))</code> and <code>$frequency(-c("day", "mon"))</code> search for all <code>frequency</code>s except for <code>day</code> and <code>mon</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-10">Examples<a class="anchor" aria-label="anchor" href="#examples-10"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$frequency()
-
-# set the parameter
-q$frequency(c("1hr", "day"))
-
-# negate the constraints
-q$frequency(!c("1hr", "day"))
-
-# remove the parameter
-q$frequency(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-variant_label"></a><div class="section">
-<h3 id="method-variant-label-">Method <code>variant_label()</code><a class="anchor" aria-label="anchor" href="#method-variant-label-"></a></h3>
-<p>Get or set the <code>variant_label</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-frequency"></a><div class="section">
+<h3 id="method-frequency-">Method <code><a href="https://rdrr.io/r/stats/time.html" class="external-link">frequency()</a></code><a class="anchor" aria-label="anchor" href="#method-frequency-"></a></h3>
+<p>Get or set the <code>frequency</code> facet parameter.</p><div class="section">
 <h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$variant_label(!c("r1i1p1f1", "r2i1p1f1"))</code> and <code>$variant_label(-c("r1i1p1f1", "r2i1p1f1"))</code> search for all <code>variant_label</code>s except for <code>r1i1p1f1</code> and <code>r2i1p1f1</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-11">Returns<a class="anchor" aria-label="anchor" href="#returns-11"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-11">Examples<a class="anchor" aria-label="anchor" href="#examples-11"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$variant_label()
-
-# set the parameter
-q$variant_label(c("r1i1p1f1", "r1i2p1f1"))
-
-# negate the constraints
-q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))
-
-# remove the parameter
-q$variant_label(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-nominal_resolution"></a><div class="section">
-<h3 id="method-nominal-resolution-">Method <code>nominal_resolution()</code><a class="anchor" aria-label="anchor" href="#method-nominal-resolution-"></a></h3>
-<p>Get or set the <code>nominal_resolution</code> facet parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-variant_label"></a><div class="section">
+<h3 id="method-variant-label-">Method <code>variant_label()</code><a class="anchor" aria-label="anchor" href="#method-variant-label-"></a></h3>
+<p>Get or set the <code>variant_label</code> facet parameter.</p><div class="section">
 <h4 id="usage-12">Usage<a class="anchor" aria-label="anchor" href="#usage-12"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-12">Arguments<a class="anchor" aria-label="anchor" href="#arguments-12"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$nominal_resolution(!c("50 km", "1x1 degree"))</code> and <code>$nominal_resolution(-c("50 km", "1x1 degree"))</code> search for all <code>nominal_resolution</code>s except for <code>50 km</code> and <code>1x1 degree</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-12">Examples<a class="anchor" aria-label="anchor" href="#examples-12"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$nominal_resolution()
-
-# set the parameter
-q$nominal_resolution(c("100 km", "1x1 degree"))
-
-# negate the constraints
-q$nominal_resolution(!c("100 km", "1x1 degree"))
-
-# remove the parameter
-q$nominal_resolution(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-data_node"></a><div class="section">
-<h3 id="method-data-node-">Method <code>data_node()</code><a class="anchor" aria-label="anchor" href="#method-data-node-"></a></h3>
-<p>Get or set the <code>data_node</code> parameter.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-nominal_resolution"></a><div class="section">
+<h3 id="method-nominal-resolution-">Method <code>nominal_resolution()</code><a class="anchor" aria-label="anchor" href="#method-nominal-resolution-"></a></h3>
+<p>Get or set the <code>nominal_resolution</code> facet parameter.</p><div class="section">
 <h4 id="usage-13">Usage<a class="anchor" aria-label="anchor" href="#usage-13"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-13">Arguments<a class="anchor" aria-label="anchor" href="#arguments-13"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The  parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.  Note that you can put a preceding <code>!</code> or <code>-</code> to negate the facet constraints. For example, <code>$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))</code> and <code>$data_node(-c("cmip.bcc.cma.cn", "esg.camscma.cn"))</code> search for all <code>data_node</code>s except for <code>cmip.bcc.cma.cn</code> and <code>esg.camscma.cn</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-13">Returns<a class="anchor" aria-label="anchor" href="#returns-13"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-13">Examples<a class="anchor" aria-label="anchor" href="#examples-13"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$data_node()
-
-# set the parameter
-q$data_node("esg.lasg.ac.cn")
-
-# negate the constraints
-q$data_node(!"esg.lasg.ac.cn")
-
-# remove the parameter
-q$data_node(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-facets"></a><div class="section">
-<h3 id="method-facets-">Method <code>facets()</code><a class="anchor" aria-label="anchor" href="#method-facets-"></a></h3>
-<p>Get or set the <code>facets</code> parameter for facet counting query.</p>
-<p>Note that <code>$facets()</code> only affects
-<a href="#method-EsgQuery-count"><code>$count()</code></a>
-method when sending a query of facet counting.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-data_node"></a><div class="section">
+<h3 id="method-data-node-">Method <code>data_node()</code><a class="anchor" aria-label="anchor" href="#method-data-node-"></a></h3>
+<p>Get or set the <code>data_node</code> facet parameter.</p><div class="section">
 <h4 id="usage-14">Usage<a class="anchor" aria-label="anchor" href="#usage-14"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">facets</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-14">Arguments<a class="anchor" aria-label="anchor" href="#arguments-14"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>. The special notation <code>"*"</code> can be used to indicate that all available facets should be considered.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>NULL</code>, or a negated character
+expression. If omitted, the current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-14">Returns<a class="anchor" aria-label="anchor" href="#returns-14"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-14">Examples<a class="anchor" aria-label="anchor" href="#examples-14"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$facets()
-
-# set the facets
-q$facets(c("activity_id", "source_id"))
-
-# use all available facets
-q$facets("*")
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-fields"></a><div class="section">
-<h3 id="method-fields-">Method <code>fields()</code><a class="anchor" aria-label="anchor" href="#method-fields-"></a></h3>
-<p>Get or set the <code>fields</code> parameter.</p>
-<p>By default, all available metadata fields are returned for each
-query. <code>$fields()</code> can be used to limit the number of fields returned
-in the query response. However, the following fields are always
-included in the results:
-<code>access</code>, <code>id</code>, <code>index_node</code>, <code>number_of_aggregations</code>, <code>number_of_files</code>, <code>size</code>, <code>url</code>.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-facets"></a><div class="section">
+<h3 id="method-facets-">Method <code>facets()</code><a class="anchor" aria-label="anchor" href="#method-facets-"></a></h3>
+<p>Get or set the <code>facets</code> parameter used by <code>$count()</code>.</p><div class="section">
 <h4 id="usage-15">Usage<a class="anchor" aria-label="anchor" href="#usage-15"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span>value <span class="op">=</span> <span class="st">"*"</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">facets</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-15">Arguments<a class="anchor" aria-label="anchor" href="#arguments-15"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>"*"</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>. The special notation <code>"*"</code> can be used to indicate that all available fields should be considered.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>"*"</code>, or <code>NULL</code>. If omitted, the
+current value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-15">Returns<a class="anchor" aria-label="anchor" href="#returns-15"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-15">Examples<a class="anchor" aria-label="anchor" href="#examples-15"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$fields()
-
-# set the fields
-q$fields(c("activity_id", "source_id"))
-
-# use all available fields
-q$fields("*")
-
-# remove the parameter
-# act the same as above because the default `fields` in ESGF search
-# services is `*` if `fields` is not specified
-q$fields(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-shards"></a><div class="section">
-<h3 id="method-shards-">Method <code>shards()</code><a class="anchor" aria-label="anchor" href="#method-shards-"></a></h3>
-<p>Get or set the <code>shards</code> parameter.</p>
-<p>By default, a distributed query targets all ESGF Nodes. <code>$shards()</code>
-can be used to execute a distributed search that targets only one or
-more specific nodes.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-fields"></a><div class="section">
+<h3 id="method-fields-">Method <code>fields()</code><a class="anchor" aria-label="anchor" href="#method-fields-"></a></h3>
+<p>Get or set the <code>fields</code> parameter.</p><div class="section">
 <h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span>value <span class="op">=</span> <span class="st">"*"</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-16">Arguments<a class="anchor" aria-label="anchor" href="#arguments-16"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A character vector or <code>NULL</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector, <code>"*"</code>, or <code>NULL</code>. If omitted, the
+current value is returned. Default when setting without an
+explicit value: <code>"*"</code>.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-16">Examples<a class="anchor" aria-label="anchor" href="#examples-16"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$shards()
-
-# set the parameter
-q$shards("localhost:8983/solr/datasets")
-
-# negate the constraints
-q$shards(!"localhost:8983/solr/datasets")
-
-# only applicable for distributed queries
-q$distrib(FALSE)$shards("localhost:8983/solr/datasets") # Error
-
-# remove the parameter
-q$shards(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-replica"></a><div class="section">
-<h3 id="method-replica-">Method <code>replica()</code><a class="anchor" aria-label="anchor" href="#method-replica-"></a></h3>
-<p>Get or set the <code>replica</code> parameter.</p>
-<p>By default, a query returns all records (masters and replicas)
-matching the search criteria, i.e. <code>$replica(NULL)</code>.
-To return only master records, use <code>$replica(FALSE)</code>; to return only
-replicas, use <code>$replica(TRUE)</code>.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-shards"></a><div class="section">
+<h3 id="method-shards-">Method <code>shards()</code><a class="anchor" aria-label="anchor" href="#method-shards-"></a></h3>
+<p>Get or set the <code>shards</code> parameter for distributed searches.</p><div class="section">
 <h4 id="usage-17">Usage<a class="anchor" aria-label="anchor" href="#usage-17"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">replica</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-17">Arguments<a class="anchor" aria-label="anchor" href="#arguments-17"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>NULL</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A flag or <code>NULL</code>.</p></li>
-</ul></dd>
+<dd><p>A character vector or <code>NULL</code>. If omitted, the current
+value is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-17">Returns<a class="anchor" aria-label="anchor" href="#returns-17"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-17">Examples<a class="anchor" aria-label="anchor" href="#examples-17"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$replica()
-
-# set the parameter
-q$replica(TRUE)
-
-# remove the parameter
-q$replica(NULL)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-latest"></a><div class="section">
-<h3 id="method-latest-">Method <code>latest()</code><a class="anchor" aria-label="anchor" href="#method-latest-"></a></h3>
-<p>Get or set the <code>latest</code> parameter.</p>
-<p>By default, a query to the ESGF search services returns only the very
-last, up-to-date version of the matching records, i.e.
-<code>$latest(TRUE)</code>. You can use <code>$latest(FALSE)</code> to return all versions.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-datetime_range"></a><div class="section">
+<h3 id="method-datetime-range-">Method <code>datetime_range()</code><a class="anchor" aria-label="anchor" href="#method-datetime-range-"></a></h3>
+<p>Get or set temporal coverage overlap constraints.</p><div class="section">
 <h4 id="usage-18">Usage<a class="anchor" aria-label="anchor" href="#usage-18"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">datetime_range</span><span class="op">(</span><span class="va">start</span>, <span class="va">stop</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-18">Arguments<a class="anchor" aria-label="anchor" href="#arguments-18"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>TRUE</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A flag.</p></li>
-</ul></dd>
+<p></p><div class="arguments"><dl><dt><code>start, stop</code></dt>
+<dd><p>Temporal boundary strings accepted by <code><a href="solr_date.html">solr_date()</a></code>,
+complete Solr range expressions, <code>"*"</code>, or <code>NULL</code>. If both are
+omitted, the current range state is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-18">Returns<a class="anchor" aria-label="anchor" href="#returns-18"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-18">Examples<a class="anchor" aria-label="anchor" href="#examples-18"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$latest()
-
-# set the parameter
-q$latest(TRUE)
-}
-</code></pre></div><p></p></div>
+<p>If either boundary is supplied, the modified <code>EsgQuery</code>
+object. Otherwise, a list with <code>start</code> and <code>stop</code> elements.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-limit"></a><div class="section">
-<h3 id="method-limit-">Method <code>limit()</code><a class="anchor" aria-label="anchor" href="#method-limit-"></a></h3>
-<p>Get or set the <code>limit</code> parameter.</p>
-<p><code>$limit()</code> can be used to limit the number of records to return.
-Note that the maximum number of records to return per query for ESGF
-search services is 10,000.
-A warning is issued if input value is greater than that. In this
-case, <code>limit</code> will be reset to 10,000.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-timestamp_range"></a><div class="section">
+<h3 id="method-timestamp-range-">Method <code>timestamp_range()</code><a class="anchor" aria-label="anchor" href="#method-timestamp-range-"></a></h3>
+<p>Get or set Solr index timestamp range constraints.</p><div class="section">
 <h4 id="usage-19">Usage<a class="anchor" aria-label="anchor" href="#usage-19"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">limit</span><span class="op">(</span>value <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">timestamp_range</span><span class="op">(</span><span class="va">from</span>, <span class="va">to</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-19">Arguments<a class="anchor" aria-label="anchor" href="#arguments-19"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>10</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>An integer.</p></li>
-</ul></dd>
+<p></p><div class="arguments"><dl><dt><code>from, to</code></dt>
+<dd><p>Timestamp boundary strings accepted by <code><a href="solr_date.html">solr_date()</a></code>,
+<code>"*"</code>, or <code>NULL</code>. Complete Solr range expressions are not
+accepted here. If both are omitted, the current range state is
+returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-19">Returns<a class="anchor" aria-label="anchor" href="#returns-19"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-19">Examples<a class="anchor" aria-label="anchor" href="#examples-19"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$limit()
-
-# set the parameter
-q$limit(10L)
-
-# `limit` is reset to the allowed maximum query limit if input is greater than that
-q$limit(12000L) # warning
-}
-</code></pre></div><p></p></div>
+<p>If either boundary is supplied, the modified <code>EsgQuery</code>
+object. Otherwise, a list with <code>from</code> and <code>to</code> elements.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-offset"></a><div class="section">
-<h3 id="method-offset-">Method <code><a href="https://rdrr.io/r/stats/offset.html" class="external-link">offset()</a></code><a class="anchor" aria-label="anchor" href="#method-offset-"></a></h3>
-<p>Get or set the <code>offset</code> parameter.</p>
-<p>If the query returns records that exceed the
-<a href="#method-EsgQuery-limit"><code>limit</code></a> number,
-<code>$offset()</code> can be used to paginate through the available results.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-version_range"></a><div class="section">
+<h3 id="method-version-range-">Method <code>version_range()</code><a class="anchor" aria-label="anchor" href="#method-version-range-"></a></h3>
+<p>Get or set version range constraints.</p><div class="section">
 <h4 id="usage-20">Usage<a class="anchor" aria-label="anchor" href="#usage-20"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">offset</span><span class="op">(</span>value <span class="op">=</span> <span class="fl">0L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">version_range</span><span class="op">(</span><span class="va">min</span>, <span class="va">max</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-20">Arguments<a class="anchor" aria-label="anchor" href="#arguments-20"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>0</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>An integer.</p></li>
-</ul></dd>
+<p></p><div class="arguments"><dl><dt><code>min, max</code></dt>
+<dd><p>Version boundary strings such as <code>"20200101"</code>,
+simplified dates, <code>"*"</code>, or <code>NULL</code>. Solr Date Math and complete
+range expressions are not accepted here. If both are omitted,
+the current range state is returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-20">Returns<a class="anchor" aria-label="anchor" href="#returns-20"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-20">Examples<a class="anchor" aria-label="anchor" href="#examples-20"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$offset()
-
-# set the parameter
-q$offset(0L)
-}
-</code></pre></div><p></p></div>
+<p>If either boundary is supplied, the modified <code>EsgQuery</code>
+object. Otherwise, a list with <code>min</code> and <code>max</code> elements.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-distrib"></a><div class="section">
-<h3 id="method-distrib-">Method <code>distrib()</code><a class="anchor" aria-label="anchor" href="#method-distrib-"></a></h3>
-<p>Get or set the <code>distrib</code> facet</p>
-<p>By default, the query is sent to all ESGF Nodes, i.e.
-<code>$distrib(TRUE)</code>.
-<code>$distrib(FALSE)</code> can be used to execute the query only on the
-target node.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-replica"></a><div class="section">
+<h3 id="method-replica-">Method <code>replica()</code><a class="anchor" aria-label="anchor" href="#method-replica-"></a></h3>
+<p>Get or set the <code>replica</code> parameter.</p><div class="section">
 <h4 id="usage-21">Usage<a class="anchor" aria-label="anchor" href="#usage-21"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">distrib</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">replica</span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-21">Arguments<a class="anchor" aria-label="anchor" href="#arguments-21"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>value</code></dt>
-<dd><p>The facet parameter value. Default: <code>TRUE</code>.
-There are two options:</p><ul><li><p>If <code>value</code> is not given, current value is returned.</p></li>
-<li><p>A flag.</p></li>
-</ul></dd>
+<dd><p>A flag or <code>NULL</code>. If omitted, the current value is
+returned.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-21">Returns<a class="anchor" aria-label="anchor" href="#returns-21"></a></h4>
-
-<ul><li><p>If <code>value</code> is given, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an <code>EsgQueryParam</code> object which is essentially a list of three elements:</p><ul><li><p><code>value</code>: input values.</p></li>
-<li><p><code>negate</code>: Whether there is a preceding <code>!</code> or <code>-</code>.</p></li>
-<li><p><code>name</code>: Parameter name.</p></li>
-</ul></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-21">Examples<a class="anchor" aria-label="anchor" href="#examples-21"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current value
-q$distrib()
-
-# set the parameter
-q$distrib(TRUE)
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
-
-</div><p></p><hr><a id="method-EsgQuery-params"></a><div class="section">
-<h3 id="method-params-">Method <code>params()</code><a class="anchor" aria-label="anchor" href="#method-params-"></a></h3>
-<p>Get or set other parameters.</p>
-<p><code>$params()</code> can be used to specify other parameters that do not have
-a dedicated method, e.g. <code>version</code>, <code>master_id</code>, etc. It can also be
-used to overwrite existing parameter values specified using methods
-like <a href="#method-EsgQuery-activity_id"><code>$activity_id()</code></a>.</p><div class="section">
+</div><p></p><hr><a id="method-EsgQuery-latest"></a><div class="section">
+<h3 id="method-latest-">Method <code>latest()</code><a class="anchor" aria-label="anchor" href="#method-latest-"></a></h3>
+<p>Get or set the <code>latest</code> parameter.</p><div class="section">
 <h4 id="usage-22">Usage<a class="anchor" aria-label="anchor" href="#usage-22"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
 <h4 id="arguments-22">Arguments<a class="anchor" aria-label="anchor" href="#arguments-22"></a></h4>
-<p></p><div class="arguments"><dl><dt><code>...</code></dt>
-<dd><p>Parameter values to set. There are three options:</p><ul><li><p>If not given, existing parameters that do not have a dedicated
-method are returned.</p></li>
-<li><p>If <code>NULL</code>, all existing parameters that do not have a dedicated
-method are removed.</p></li>
-<li><p>A named vector, e.g. <code>$params(score = 1, table_id = "day")</code> will
-set <code>score</code> to <code>1</code> and <code>table_id</code> to <code>day</code>.
-The <code>!</code> notation can still be used to negate the constraints, e.g.
-<code>$params(table_id = !c("3hr", "day"))</code> searches for all <code>table_id</code>
-except for <code>3hr</code> and <code>day</code>.</p></li>
-</ul></dd>
+<p></p><div class="arguments"><dl><dt><code>value</code></dt>
+<dd><p>A flag. If omitted, the current value is returned.
+Default when setting without an explicit value: <code>TRUE</code>.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-22">Returns<a class="anchor" aria-label="anchor" href="#returns-22"></a></h4>
-
-<ul><li><p>If parameters are specified, the modified <code>EsgQuery</code> object.</p></li>
-<li><p>Otherwise, an empty list for <code>$params(NULL)</code> or a list of
-<code>EsgQueryParam</code> objects.</p></li>
-</ul></div>
-<div class="section">
-<h4 id="examples-22">Examples<a class="anchor" aria-label="anchor" href="#examples-22"></a></h4>
-<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
-# get current values
-# default is an empty list (`list()`)
-q$params()
-
-# set the parameter
-q$params(table_id = c("3hr", "day"), member_id = "00")
-q$params()
-
-# reset existing parameters
-q$frequency("day")
-q$params(frequency = "mon")
-q$frequency() # frequency value has been changed using $params()
-
-# negating the constraints is also supported
-q$params(table_id = !c("3hr", "day"))
-
-# use NULL to remove all parameters
-q$params(NULL)$params()
-}
-</code></pre></div><p></p></div>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
 </div>
 
+</div><p></p><hr><a id="method-EsgQuery-limit"></a><div class="section">
+<h3 id="method-limit-">Method <code>limit()</code><a class="anchor" aria-label="anchor" href="#method-limit-"></a></h3>
+<p>Get or set the <code>limit</code> parameter.</p><div class="section">
+<h4 id="usage-23">Usage<a class="anchor" aria-label="anchor" href="#usage-23"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">limit</span><span class="op">(</span>value <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-23">Arguments<a class="anchor" aria-label="anchor" href="#arguments-23"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>value</code></dt>
+<dd><p>A positive integer. If omitted, the current value is
+returned. Default when setting without an explicit value: <code>10L</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-23">Returns<a class="anchor" aria-label="anchor" href="#returns-23"></a></h4>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgQuery-offset"></a><div class="section">
+<h3 id="method-offset-">Method <code><a href="https://rdrr.io/r/stats/offset.html" class="external-link">offset()</a></code><a class="anchor" aria-label="anchor" href="#method-offset-"></a></h3>
+<p>Get or set the <code>offset</code> parameter.</p><div class="section">
+<h4 id="usage-24">Usage<a class="anchor" aria-label="anchor" href="#usage-24"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">offset</span><span class="op">(</span>value <span class="op">=</span> <span class="fl">0L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-24">Arguments<a class="anchor" aria-label="anchor" href="#arguments-24"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>value</code></dt>
+<dd><p>A non-negative integer. If omitted, the current value is
+returned. Default when setting without an explicit value: <code>0L</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-24">Returns<a class="anchor" aria-label="anchor" href="#returns-24"></a></h4>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgQuery-distrib"></a><div class="section">
+<h3 id="method-distrib-">Method <code>distrib()</code><a class="anchor" aria-label="anchor" href="#method-distrib-"></a></h3>
+<p>Get or set the <code>distrib</code> parameter.</p><div class="section">
+<h4 id="usage-25">Usage<a class="anchor" aria-label="anchor" href="#usage-25"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">distrib</span><span class="op">(</span>value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-25">Arguments<a class="anchor" aria-label="anchor" href="#arguments-25"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>value</code></dt>
+<dd><p>A flag. If omitted, the current value is returned.
+Default when setting without an explicit value: <code>TRUE</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-25">Returns<a class="anchor" aria-label="anchor" href="#returns-25"></a></h4>
+<p>If <code>value</code> is supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a <code>QueryParam</code> object or <code>NULL</code>.</p>
+</div>
+
+</div><p></p><hr><a id="method-EsgQuery-params"></a><div class="section">
+<h3 id="method-params-">Method <code>params()</code><a class="anchor" aria-label="anchor" href="#method-params-"></a></h3>
+<p>Get or set ad hoc query parameters.</p>
+<p><code>$params()</code> handles parameters without dedicated methods and can also
+update supported dedicated parameters by name.
+The <code>type</code> and <code>format</code> control parameters cannot be changed here:
+<code>EsgQuery</code> always performs Dataset queries and always parses JSON
+responses. Use <code>EsgResultDataset$collect()</code> to collect File or
+Aggregation records from Dataset results.</p><div class="section">
+<h4 id="usage-26">Usage<a class="anchor" aria-label="anchor" href="#usage-26"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-26">Arguments<a class="anchor" aria-label="anchor" href="#arguments-26"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>...</code></dt>
+<dd><p>Named parameter values. If omitted, existing ad hoc
+parameters are returned. If a single unnamed <code>NULL</code> is supplied,
+all ad hoc parameters are removed.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-26">Returns<a class="anchor" aria-label="anchor" href="#returns-26"></a></h4>
+<p>If parameters are supplied, the modified <code>EsgQuery</code> object.
+Otherwise, a named list of <code>QueryParam</code> objects.</p>
+</div>
 
 </div><p></p><hr><a id="method-EsgQuery-url"></a><div class="section">
 <h3 id="method-url-">Method <code><a href="https://rdrr.io/r/base/connections.html" class="external-link">url()</a></code><a class="anchor" aria-label="anchor" href="#method-url-"></a></h3>
@@ -1326,12 +997,12 @@ q$params(NULL)$params()
 contains wget commands for downloading all files matching the query
 constraints. This is useful for batch downloading large amounts of
 data.</p><div class="section">
-<h4 id="usage-23">Usage<a class="anchor" aria-label="anchor" href="#usage-23"></a></h4>
+<h4 id="usage-27">Usage<a class="anchor" aria-label="anchor" href="#usage-27"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">url</span><span class="op">(</span>wget <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-23">Arguments<a class="anchor" aria-label="anchor" href="#arguments-23"></a></h4>
+<h4 id="arguments-27">Arguments<a class="anchor" aria-label="anchor" href="#arguments-27"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>wget</code></dt>
 <dd><p>Whether to return the URL of the wget script that can be
 used to download all files matching the given constraints.
@@ -1341,11 +1012,11 @@ Default: <code>FALSE</code>.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-23">Returns<a class="anchor" aria-label="anchor" href="#returns-23"></a></h4>
+<h4 id="returns-27">Returns<a class="anchor" aria-label="anchor" href="#returns-27"></a></h4>
 <p>A single string.</p>
 </div>
 <div class="section">
-<h4 id="examples-23">Examples<a class="anchor" aria-label="anchor" href="#examples-23"></a></h4>
+<h4 id="examples-6">Examples<a class="anchor" aria-label="anchor" href="#examples-6"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$url()
 
@@ -1365,12 +1036,12 @@ download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
 </div><p></p><hr><a id="method-EsgQuery-count"></a><div class="section">
 <h3 id="method-count-">Method <code>count()</code><a class="anchor" aria-label="anchor" href="#method-count-"></a></h3>
 <p>Send a query of facet counting and fetch the results</p><div class="section">
-<h4 id="usage-24">Usage<a class="anchor" aria-label="anchor" href="#usage-24"></a></h4>
+<h4 id="usage-28">Usage<a class="anchor" aria-label="anchor" href="#usage-28"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">count</span><span class="op">(</span>facets <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-24">Arguments<a class="anchor" aria-label="anchor" href="#arguments-24"></a></h4>
+<h4 id="arguments-28">Arguments<a class="anchor" aria-label="anchor" href="#arguments-28"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>facets</code></dt>
 <dd><p><code>NULL</code>, a flag or a character vector. There are three
 options:</p><ul><li><p>If <code>NULL</code> or <code>FALSE</code>, only the total number of matched records is
@@ -1385,7 +1056,7 @@ total count is returned. This is the default value.</p></li>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-24">Returns<a class="anchor" aria-label="anchor" href="#returns-24"></a></h4>
+<h4 id="returns-28">Returns<a class="anchor" aria-label="anchor" href="#returns-28"></a></h4>
 
 <ul><li><p>If <code>facets</code> equals <code>NULL</code> or <code>FALSE</code>, or <code>$facets()</code> returns <code>NULL</code>,
 an integer.</p></li>
@@ -1394,7 +1065,7 @@ which is the total number of matched records. Other elements have
 the same length as input facets and are all named integer vectors.</p></li>
 </ul></div>
 <div class="section">
-<h4 id="examples-24">Examples<a class="anchor" aria-label="anchor" href="#examples-24"></a></h4>
+<h4 id="examples-7">Examples<a class="anchor" aria-label="anchor" href="#examples-7"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 # get the total number of matched records
 q$count(NULL) # or q$count(facets = FALSE)
@@ -1418,12 +1089,12 @@ ESGF search services and returns the results as an
 The fields included depend on <code>fields</code> parameter.
 However, the following fields are always included in the results:
 <code>access</code>, <code>id</code>, <code>index_node</code>, <code>number_of_aggregations</code>, <code>number_of_files</code>, <code>size</code>, <code>url</code>.</p><div class="section">
-<h4 id="usage-25">Usage<a class="anchor" aria-label="anchor" href="#usage-25"></a></h4>
+<h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">FALSE</span>, limit <span class="op">=</span> <span class="cn">TRUE</span>, params <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-25">Arguments<a class="anchor" aria-label="anchor" href="#arguments-25"></a></h4>
+<h4 id="arguments-29">Arguments<a class="anchor" aria-label="anchor" href="#arguments-29"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>all</code></dt>
 <dd><p>Whether to collect all results despite of the value of
 <code>offset</code>. Default: <code>FALSE</code>.</p></dd>
@@ -1435,7 +1106,7 @@ respect the current value of <code>limit</code> when collecting all
 matched records. If <code>FALSE</code>, the allowed maximum limit number
 10000 is used. It can also be a positive
 integer which will be used as a temporary limit per query.
-Default: <code>FALSE</code>.</p></dd>
+Default: <code>TRUE</code>.</p></dd>
 
 
 <dt><code>params</code></dt>
@@ -1450,11 +1121,11 @@ the <code>experiment_id</code> field will be included in the results when
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-25">Returns<a class="anchor" aria-label="anchor" href="#returns-25"></a></h4>
+<h4 id="returns-29">Returns<a class="anchor" aria-label="anchor" href="#returns-29"></a></h4>
 <p>An <a href="EsgResultDataset.html">EsgResultDataset</a> object.</p>
 </div>
 <div class="section">
-<h4 id="examples-25">Examples<a class="anchor" aria-label="anchor" href="#examples-25"></a></h4>
+<h4 id="examples-8">Examples<a class="anchor" aria-label="anchor" href="#examples-8"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 # by default, all fields with constrains are included in the results
 query &lt;- esg_query()$experiment_id("ssp585")$frequency("1hr")$fields("source_id")
@@ -1482,18 +1153,77 @@ identical(res2$count(), res4$count())
 </div>
 
 
+</div><p></p><hr><a id="method-EsgQuery-state"></a><div class="section">
+<h3 id="method-state-">Method <code>state()</code><a class="anchor" aria-label="anchor" href="#method-state-"></a></h3>
+<p>Get the current query state.</p>
+<p><code>$state()</code> returns a read-only snapshot containing the current index
+node and the current parameter state.</p><div class="section">
+<h4 id="usage-30">Usage<a class="anchor" aria-label="anchor" href="#usage-30"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">state</span><span class="op">(</span>name <span class="op">=</span> <span class="cn">NULL</span>, null <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-30">Arguments<a class="anchor" aria-label="anchor" href="#arguments-30"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>name</code></dt>
+<dd><p>A character vector of parameter names to include, or
+<code>NULL</code> to include all parameters.</p></dd>
+
+
+<dt><code>null</code></dt>
+<dd><p>If <code>TRUE</code>, include parameters whose current value is
+<code>NULL</code>. Otherwise, omit unset parameters.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+<div class="section">
+<h4 id="returns-30">Returns<a class="anchor" aria-label="anchor" href="#returns-30"></a></h4>
+<p>A named list with elements <code>index_node</code> and <code>parameter</code>.</p>
+</div>
+<div class="section">
+<h4 id="examples-9">Examples<a class="anchor" aria-label="anchor" href="#examples-9"></a></h4>
+<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
+q$state()
+q$state(null = TRUE)
+}
+</code></pre></div><p></p></div>
+</div>
+
+
+</div><p></p><hr><a id="method-EsgQuery-reset"></a><div class="section">
+<h3 id="method-reset-">Method <code>reset()</code><a class="anchor" aria-label="anchor" href="#method-reset-"></a></h3>
+<p>Reset query parameters to their defaults.</p>
+<p><code>$reset()</code> clears the current parameter store and restores the default
+query parameters. The current index node is kept unchanged.</p><div class="section">
+<h4 id="usage-31">Usage<a class="anchor" aria-label="anchor" href="#usage-31"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">reset</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="returns-31">Returns<a class="anchor" aria-label="anchor" href="#returns-31"></a></h4>
+<p>The modified <code>EsgQuery</code> object itself.</p>
+</div>
+<div class="section">
+<h4 id="examples-10">Examples<a class="anchor" aria-label="anchor" href="#examples-10"></a></h4>
+<p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
+q$experiment_id("ssp585")$reset()
+}
+</code></pre></div><p></p></div>
+</div>
+
+
 </div><p></p><hr><a id="method-EsgQuery-save"></a><div class="section">
 <h3 id="method-save-">Method <code><a href="https://rdrr.io/r/base/save.html" class="external-link">save()</a></code><a class="anchor" aria-label="anchor" href="#method-save-"></a></h3>
 <p>Save the query into a JSON file</p>
 <p><code>$save()</code> puts main data of an <code>EsgQuery</code> object into a JSON file
 which can be loaded to restore the current state of query using
 <a href="#method-EsgQuery-load"><code>EsgQuery$load()</code></a>.</p><div class="section">
-<h4 id="usage-26">Usage<a class="anchor" aria-label="anchor" href="#usage-26"></a></h4>
+<h4 id="usage-32">Usage<a class="anchor" aria-label="anchor" href="#usage-32"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span>file <span class="op">=</span> <span class="st">"query.json"</span>, pretty <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-26">Arguments<a class="anchor" aria-label="anchor" href="#arguments-26"></a></h4>
+<h4 id="arguments-31">Arguments<a class="anchor" aria-label="anchor" href="#arguments-31"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>file</code></dt>
 <dd><p>A string indicating the JSON file path to save the data
 to.</p></dd>
@@ -1507,11 +1237,11 @@ For details, please see <code><a href="https://jeroen.r-universe.dev/jsonlite/re
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-26">Returns<a class="anchor" aria-label="anchor" href="#returns-26"></a></h4>
+<h4 id="returns-32">Returns<a class="anchor" aria-label="anchor" href="#returns-32"></a></h4>
 <p>The full path of the output JSON file.</p>
 </div>
 <div class="section">
-<h4 id="examples-26">Examples<a class="anchor" aria-label="anchor" href="#examples-26"></a></h4>
+<h4 id="examples-11">Examples<a class="anchor" aria-label="anchor" href="#examples-11"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$save(tempfile(fileext = ".json"))
 }
@@ -1525,12 +1255,12 @@ q$save(tempfile(fileext = ".json"))
 <p><code>$load()</code> reads data of an <code>EsgQuery</code> object from a JSON file
 created using
 <a href="#method-EsgQuery-save"><code>EsgQuery$save()</code></a>.</p><div class="section">
-<h4 id="usage-27">Usage<a class="anchor" aria-label="anchor" href="#usage-27"></a></h4>
+<h4 id="usage-33">Usage<a class="anchor" aria-label="anchor" href="#usage-33"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="va">file</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-27">Arguments<a class="anchor" aria-label="anchor" href="#arguments-27"></a></h4>
+<h4 id="arguments-32">Arguments<a class="anchor" aria-label="anchor" href="#arguments-32"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>file</code></dt>
 <dd><p>A string indicating the JSON file path to read the data
 from.</p></dd>
@@ -1539,11 +1269,11 @@ from.</p></dd>
 </dl><p></p></div>
 </div>
 <div class="section">
-<h4 id="returns-27">Returns<a class="anchor" aria-label="anchor" href="#returns-27"></a></h4>
+<h4 id="returns-33">Returns<a class="anchor" aria-label="anchor" href="#returns-33"></a></h4>
 <p>The modified <code>EsgQuery</code> object itself.</p>
 </div>
 <div class="section">
-<h4 id="examples-27">Examples<a class="anchor" aria-label="anchor" href="#examples-27"></a></h4>
+<h4 id="examples-12">Examples<a class="anchor" aria-label="anchor" href="#examples-12"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 f &lt;- tempfile(fileext = "json")
 
@@ -1559,17 +1289,17 @@ q$load(f)
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print a summary of the current <code>EsgQuery</code> object</p>
 <p><code>$print()</code> gives the summary of current <code>EsgQuery</code> object including
-the index node URL, the last query timestamp, and all query parameters.</p><div class="section">
-<h4 id="usage-28">Usage<a class="anchor" aria-label="anchor" href="#usage-28"></a></h4>
+the index node URL and all query parameters.</p><div class="section">
+<h4 id="usage-34">Usage<a class="anchor" aria-label="anchor" href="#usage-34"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="returns-28">Returns<a class="anchor" aria-label="anchor" href="#returns-28"></a></h4>
+<h4 id="returns-34">Returns<a class="anchor" aria-label="anchor" href="#returns-34"></a></h4>
 <p>The <code>EsgQuery</code> object itself, invisibly.</p>
 </div>
 <div class="section">
-<h4 id="examples-28">Examples<a class="anchor" aria-label="anchor" href="#examples-28"></a></h4>
+<h4 id="examples-13">Examples<a class="anchor" aria-label="anchor" href="#examples-13"></a></h4>
 <p></p><div class="r example copy"><div class="sourceCode"><pre><code>\dontrun{
 q$print()
 }
@@ -1580,12 +1310,12 @@ q$print()
 </div><p></p><hr><a id="method-EsgQuery-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-29">Usage<a class="anchor" aria-label="anchor" href="#usage-29"></a></h4>
+<h4 id="usage-35">Usage<a class="anchor" aria-label="anchor" href="#usage-35"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgQuery</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-28">Arguments<a class="anchor" aria-label="anchor" href="#arguments-28"></a></h4>
+<h4 id="arguments-33">Arguments<a class="anchor" aria-label="anchor" href="#arguments-33"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 
@@ -1607,6 +1337,15 @@ q$print()
 <span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
 <span class="r-in"><span><span class="va">q</span> <span class="op">&lt;-</span> <span class="va">EsgQuery</span><span class="op">$</span><span class="fu">new</span><span class="op">(</span>index_node <span class="op">=</span> <span class="st">"https://esgf-node.ornl.gov"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">q</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span><span class="co">## Method `EsgQuery$index_node`</span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">index_node</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">index_node</span><span class="op">(</span><span class="st">"https://esgf.ceda.ac.uk"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
@@ -1639,312 +1378,6 @@ q$print()
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
 <span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">list_values</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"activity_id"</span>, <span class="st">"experiment_id"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$project`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">project</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">project</span><span class="op">(</span><span class="st">"CMIP6"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">project</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$activity_id`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="st">"ScenarioMIP"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"CFMIP"</span>, <span class="st">"ScenarioMIP"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">activity_id</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$experiment_id`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$source_id`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"CESM2"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"CESM2"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">source_id</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$variable_id`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"pr"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"pr"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variable_id</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$frequency`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1hr"</span>, <span class="st">"day"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1hr"</span>, <span class="st">"day"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$variant_label`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r1i1p1f1"</span>, <span class="st">"r1i2p1f1"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r1i1p1f1"</span>, <span class="st">"r1i2p1f1"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">variant_label</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$nominal_resolution`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100 km"</span>, <span class="st">"1x1 degree"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100 km"</span>, <span class="st">"1x1 degree"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">nominal_resolution</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$data_node`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="st">"esg.lasg.ac.cn"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="op">!</span><span class="st">"esg.lasg.ac.cn"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">data_node</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$facets`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">facets</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the facets</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">facets</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"activity_id"</span>, <span class="st">"source_id"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># use all available facets</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">facets</span><span class="op">(</span><span class="st">"*"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$fields`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the fields</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"activity_id"</span>, <span class="st">"source_id"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># use all available fields</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span><span class="st">"*"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="co"># act the same as above because the default `fields` in ESGF search</span></span></span>
-<span class="r-in"><span><span class="co"># services is `*` if `fields` is not specified</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">fields</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$shards`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="st">"localhost:8983/solr/datasets"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negate the constraints</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="op">!</span><span class="st">"localhost:8983/solr/datasets"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># only applicable for distributed queries</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">distrib</span><span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="st">"localhost:8983/solr/datasets"</span><span class="op">)</span> <span class="co"># Error</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">shards</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$replica`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">replica</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">replica</span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># remove the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">replica</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$latest`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">latest</span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$limit`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">limit</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">limit</span><span class="op">(</span><span class="fl">10L</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># `limit` is reset to the allowed maximum query limit if input is greater than that</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">limit</span><span class="op">(</span><span class="fl">12000L</span><span class="op">)</span> <span class="co"># warning</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$offset`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">offset</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">offset</span><span class="op">(</span><span class="fl">0L</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$distrib`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current value</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">distrib</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">distrib</span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Method `EsgQuery$params`</span></span></span>
-<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># get current values</span></span></span>
-<span class="r-in"><span><span class="co"># default is an empty list (`list()`)</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># set the parameter</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span>table_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"3hr"</span>, <span class="st">"day"</span><span class="op">)</span>, member_id <span class="op">=</span> <span class="st">"00"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># reset existing parameters</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="st">"day"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span>frequency <span class="op">=</span> <span class="st">"mon"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">frequency</span><span class="op">(</span><span class="op">)</span> <span class="co"># frequency value has been changed using $params()</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># negating the constraints is also supported</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span>table_id <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"3hr"</span>, <span class="st">"day"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># use NULL to remove all parameters</span></span></span>
-<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="cn">NULL</span><span class="op">)</span><span class="op">$</span><span class="fu">params</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
@@ -2005,6 +1438,23 @@ q$print()
 <span class="r-in"><span><span class="co"># per query</span></span></span>
 <span class="r-in"><span><span class="va">res4</span> <span class="op">&lt;-</span> <span class="va">query</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">TRUE</span>, limit <span class="op">=</span> <span class="fl">30</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">res2</span><span class="op">$</span><span class="fu">count</span><span class="op">(</span><span class="op">)</span>, <span class="va">res4</span><span class="op">$</span><span class="fu">count</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span><span class="co">## Method `EsgQuery$state`</span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">state</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">state</span><span class="op">(</span>null <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span><span class="co">## Method `EsgQuery$reset`</span></span></span>
+<span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="va">q</span><span class="op">$</span><span class="fu">experiment_id</span><span class="op">(</span><span class="st">"ssp585"</span><span class="op">)</span><span class="op">$</span><span class="fu">reset</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## ------------------------------------------------</span></span></span>

@@ -63,13 +63,21 @@
     </div>
 
     <table class="ref-index"><colgroup><col class="alias"><col class="title"></colgroup><tbody><tr><th colspan="2">
-          <h2 id="cmip-controlled-vocabularies-cvs-and-data-request">CMIP6 Controlled Vocabularies (CVs) and Data Request <a href="#cmip-controlled-vocabularies-cvs-and-data-request" class="anchor" aria-hidden="true"></a></h2>
+          <h2 id="esg-dictionaries">ESG dictionaries <a href="#esg-dictionaries" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
         </th>
       </tr></tbody><tbody><tr><td>
-          <p><code><a href="CMIP6Dict.html">cmip6_dict()</a></code> </p>
+          <p><code><a href="EsgDict.html">esgdict()</a></code> <code><a href="EsgDict.html">esgdict_set_default()</a></code> <code><a href="EsgDict.html">esgdict_get_default()</a></code> </p>
         </td>
-        <td><p>CMIP6 Controlled Vocabularies (CVs) and Data Request Dictionary</p></td>
+        <td><p>ESG Project Dictionary</p></td>
+      </tr><tr><td>
+          <p><code><a href="esgdict_option.html">esgdict_option()</a></code> </p>
+        </td>
+        <td><p>Discover Valid ESG Dictionary Options</p></td>
+      </tr><tr><td>
+          <p><code><a href="esgdict_check.html">esgdict_check()</a></code> </p>
+        </td>
+        <td><p>Check ESG Dictionary Parameter Values</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="esgf-search-services">ESGF search services <a href="#esgf-search-services" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
@@ -99,61 +107,17 @@
         </td>
         <td><p>General Purpose File Downloader</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="solr-datetime-helpers">Solr DateTime helpers <a href="#solr-datetime-helpers" class="anchor" aria-hidden="true"></a></h2>
+          <h2 id="solr-date-helpers">Solr date helpers <a href="#solr-date-helpers" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
         </th>
       </tr></tbody><tbody><tr><td>
-          <p><code><a href="is.solrdt.html">is.solrdt()</a></code> </p>
+          <p><code><a href="solr_date.html">solr_date()</a></code> </p>
         </td>
-        <td><p>Check if object is SolrDateTime</p></td>
+        <td><p>Parse a Solr date, Date Math expression, or range</p></td>
       </tr><tr><td>
-          <p><code><a href="is_solrdt_range.html">is_solrdt_range()</a></code> </p>
+          <p><code><a href="is.solr_date.html">is.solr_date()</a></code> </p>
         </td>
-        <td><p>Check if SolrDateTime object represents a range</p></td>
-      </tr><tr><td>
-          <p><code><a href="is_solrdt_start_unbounded.html">is_solrdt_start_unbounded()</a></code> </p>
-        </td>
-        <td><p>Check if SolrDateTime has unbounded start</p></td>
-      </tr><tr><td>
-          <p><code><a href="is_solrdt_end_unbounded.html">is_solrdt_end_unbounded()</a></code> </p>
-        </td>
-        <td><p>Check if SolrDateTime has unbounded end</p></td>
-      </tr><tr><td>
-          <p><code><a href="solrdt_start.html">solrdt_start()</a></code> </p>
-        </td>
-        <td><p>Extract start datetime from SolrDateTime</p></td>
-      </tr><tr><td>
-          <p><code><a href="solrdt_end.html">solrdt_end()</a></code> </p>
-        </td>
-        <td><p>Extract end datetime from SolrDateTime</p></td>
-      </tr><tr><td>
-          <p><code><a href="as.POSIXct.SolrDateTime.html">as.POSIXct(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Convert SolrDateTime to POSIXct</p></td>
-      </tr><tr><td>
-          <p><code><a href="as.character.SolrDateTime.html">as.character(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Convert SolrDateTime to character</p></td>
-      </tr><tr><td>
-          <p><code><a href="c.SolrDateTime.html">c(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Combine SolrDateTime objects</p></td>
-      </tr><tr><td>
-          <p><code><a href="format.SolrDateTime.html">format(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Format method for SolrDateTime</p></td>
-      </tr><tr><td>
-          <p><code><a href="length.SolrDateTime.html">length(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Length method for SolrDateTime</p></td>
-      </tr><tr><td>
-          <p><code><a href="print.SolrDateTime.html">print(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Print method for SolrDateTime</p></td>
-      </tr><tr><td>
-          <p><code><a href="sub-.SolrDateTime.html">`[`(<i>&lt;SolrDateTime&gt;</i>)</a></code> </p>
-        </td>
-        <td><p>Subsetting method for SolrDateTime</p></td>
+        <td><p>Check whether an object is a parsed Solr date</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="cmip-index">CMIP6 Index <a href="#cmip-index" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p><p>Build CMIP6 output index</p>
