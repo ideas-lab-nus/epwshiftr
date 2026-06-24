@@ -495,7 +495,7 @@ test_that("summary_database() matches temporary NetCDF files self-contained", {
     dir.create(data_dir)
     on.exit(unlink(data_dir, recursive = TRUE), add = TRUE)
 
-    withr::local_options(list(epwshiftr.dir = data_dir, epwshiftr.verbose = FALSE))
+    withr::local_options(list(epwshiftr.dir_store = data_dir, epwshiftr.verbose = FALSE))
     set_cmip6_index(fixture$index)
 
     expect_s3_class(db <- summary_database(fixture$dir), "data.table")
@@ -521,7 +521,7 @@ test_that("summary_database() append mode works with temporary NetCDF files", {
     dir.create(data_dir)
     on.exit(unlink(data_dir, recursive = TRUE), add = TRUE)
 
-    withr::local_options(list(epwshiftr.dir = data_dir, epwshiftr.verbose = FALSE))
+    withr::local_options(list(epwshiftr.dir_store = data_dir, epwshiftr.verbose = FALSE))
     set_cmip6_index(fixture$index)
 
     expect_s3_class(db <- summary_database(fixture$dir, append = TRUE), "data.table")
@@ -540,7 +540,7 @@ test_that("summary_database() handles lost and missing temporary NetCDF files", 
     dir.create(data_dir)
     on.exit(unlink(data_dir, recursive = TRUE), add = TRUE)
 
-    withr::local_options(list(epwshiftr.dir = data_dir, epwshiftr.verbose = FALSE))
+    withr::local_options(list(epwshiftr.dir_store = data_dir, epwshiftr.verbose = FALSE))
     set_cmip6_index(fixture$index)
     summary_database(fixture$dir)
 
@@ -587,7 +587,7 @@ test_that("summary_database() handles empty directories and update self-containe
     on.exit(unlink(data_dir, recursive = TRUE), add = TRUE)
     on.exit(unlink(empty_dir, recursive = TRUE), add = TRUE)
 
-    withr::local_options(list(epwshiftr.dir = data_dir, epwshiftr.verbose = FALSE))
+    withr::local_options(list(epwshiftr.dir_store = data_dir, epwshiftr.verbose = FALSE))
     set_cmip6_index(fixture$index)
 
     expect_s3_class(db <- summary_database(empty_dir), "data.table")
@@ -610,11 +610,11 @@ test_that("summary_database() handles empty directories and update self-containe
     expect_true(all(is.na(idx$time_calendar)))
 
     set_cmip6_index(fixture$index)
-    index_path <- file.path(data_dir, "cmip6_index.csv")
     suppressMessages(trace(summary_database, tracer = quote(verbose <- function(...) NULL), print = FALSE))
     on.exit(suppressMessages(untrace(summary_database)), add = TRUE)
 
     expect_s3_class(db <- summary_database(empty_dir, update = TRUE), "data.table")
+    index_path <- store_cmip6_index_active_path()
     expect_true(file.exists(index_path))
     expect_equal(names(data.table::fread(index_path)),
         c("file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
@@ -635,7 +635,7 @@ test_that("summary_database() handles duplicate temporary NetCDF matches", {
     dir.create(data_dir)
     on.exit(unlink(data_dir, recursive = TRUE), add = TRUE)
 
-    withr::local_options(list(epwshiftr.dir = data_dir, epwshiftr.verbose = FALSE))
+    withr::local_options(list(epwshiftr.dir_store = data_dir, epwshiftr.verbose = FALSE))
     dup <- file.path(fixture$dir, "tas_2059_dup.nc")
     file.copy(fixture$paths[1], dup)
     Sys.setFileTime(dup, file.info(fixture$paths[1])$mtime + 60)
@@ -697,7 +697,7 @@ test_that("extract_data()", {
     epw <- file.path(cache, "SGP_Singapore.486980_IWEC.epw")
 
     if (file.exists(path) && file.exists(epw)) {
-        options(epwshiftr.dir = tempdir())
+        options(epwshiftr.dir_store = tempdir())
         get_cache_nc()
         summary_database(cache)
         idx <- load_cmip6_index()

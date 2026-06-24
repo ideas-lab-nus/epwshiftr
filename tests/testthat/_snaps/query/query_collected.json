@@ -1,47 +1,54 @@
 {
   "index_node": ["..."],
   "parameter": {
-    "project": {
-      "value": ["CMIP6"],
-      "negate": [false]
+    "facet": {
+      "project": {
+        "value": ["CMIP6"],
+        "negate": [false]
+      },
+      "activity_id": {
+        "value": ["ScenarioMIP"],
+        "negate": [false]
+      },
+      "experiment_id": {
+        "value": ["ssp585"],
+        "negate": [false]
+      },
+      "variable_id": {
+        "value": ["tas"],
+        "negate": [false]
+      },
+      "fields": {
+        "value": ["*"],
+        "negate": [false]
+      }
     },
-    "activity_id": {
-      "value": ["ScenarioMIP"],
-      "negate": [false]
+    "query": [],
+    "control": {
+      "latest": {
+        "value": [true]
+      },
+      "type": {
+        "value": ["Dataset"]
+      },
+      "offset": {
+        "value": [0]
+      },
+      "distrib": {
+        "value": [true]
+      },
+      "limit": {
+        "value": [2]
+      },
+      "format": {
+        "value": ["application/solr+json"]
+      }
     },
-    "experiment_id": {
-      "value": ["ssp585"],
-      "negate": [false]
-    },
-    "variable_id": {
-      "value": ["tas"],
-      "negate": [false]
-    },
-    "fields": {
-      "value": ["*"],
-      "negate": [false]
-    },
-    "latest": {
-      "value": [true]
-    },
-    "type": {
-      "value": ["Dataset"]
-    },
-    "offset": {
-      "value": [0]
-    },
-    "distrib": {
-      "value": [true]
-    },
-    "limit": {
-      "value": [2]
-    },
-    "format": {
-      "value": ["application/solr+json"]
-    },
-    "table_id": {
-      "value": ["Amon", "day"],
-      "negate": [false]
+    "others": {
+      "table_id": {
+        "value": ["Amon", "day"],
+        "negate": [false]
+      }
     }
   }
 }

@@ -192,18 +192,18 @@ dict$get("table_id")
 ## Store and reuse the `EsgDict` object
 
 `$save()` method stores all the core data of current `EsgDict` object into a
-JSON file named `CMIP6DICT.json` in the specified folder. It returns the full
-path of the saved JSON file.
+JSON file. It returns the full path of the saved JSON file.
 
 ```{r}
-dict$save(tempdir())
+dict_file <- file.path(tempdir(), "CMIP6DICT.json")
+dict$save(dict_file)
 ```
 
 This file can be reloaded via `$load()` method to restore the last state of
-current `EsgDict` object. It reads the JSON file named `CMIP6DICT.json` and loads
-the CVs and Data Request data.
+current `EsgDict` object. It reads the JSON file and loads the CVs and Data
+Request data.
 
 ```{r}
 new_dict <- esgdict(project = "CMIP6")
-new_dict$load(tempdir())
+new_dict$load(dict_file)
 ```
