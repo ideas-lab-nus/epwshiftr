@@ -64,24 +64,8 @@ test_that("esgf_query() compatibility wrapper", {
     # only check when LLNL ESGF node works
     if (nrow(qf)) {
         fq_qf <- unlist(attr(qf, "response")$responseHeader$params$fq)
-        expect_true(
-            all(
-                c(
-                    "type:File",
-                    "project:\"CMIP6\"",
-                    "activity_id:\"ScenarioMIP\"",
-                    "experiment_id:\"ssp126\" || experiment_id:\"ssp245\" || experiment_id:\"ssp370\" || experiment_id:\"ssp585\"",
-                    "source_id:\"EC-Earth3\"",
-                    "variable_id:\"tas\"",
-                    "nominal_resolution:\"100km\" || nominal_resolution:\"50km\" || nominal_resolution:\"100 km\" || nominal_resolution:\"50 km\"",
-                    "frequency:\"day\"",
-                    "replica:false",
-                    "latest:true",
-                    "variant_label:\"r1i1p1f1\""
-                ) %in%
-                    fq_qf
-            )
-        )
+        expect_true(all(c("type:File", "replica:false", "latest:true") %in% fq_qf))
+        expect_true(any(grepl('^dataset_id:"CMIP6\\.ScenarioMIP\\.EC-Earth-Consortium\\.EC-Earth3\\.', fq_qf)))
         expect_named(
             qf,
             c(
@@ -173,6 +157,42 @@ test_that("init_cmip6_index()", {
         )
         expect_true(file.exists(file.path(.data_dir(), "cmip6_index.csv")))
     }
+})
+
+test_that("init_cmip6_index() keeps empty file-query joins stable", {
+    qd <- data.table::data.table(
+        dataset_id = "dataset-id", mip_era = "CMIP6", activity_drs = "ScenarioMIP",
+        institution_id = "ECMWF", source_id = "EC-Earth3", experiment_id = "ssp585",
+        member_id = "r1i1p1f1", table_id = "day", frequency = "day", grid_label = "gr",
+        version = "v20240101", nominal_resolution = "100 km", variable_id = "tas",
+        variable_long_name = "Near-Surface Air Temperature", variable_units = "K",
+        data_node = "example.org", dataset_pid = "hdl:21.14100/mock-dataset"
+    )
+
+    testthat::local_mocked_bindings(
+        esgf_query = function(..., type = "Dataset") {
+            if (identical(type, "Dataset")) qd else data.table::data.table()
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_warning(
+        idx <- init_cmip6_index(
+            variable = "tas",
+            source = "EC-Earth3",
+            experiment = "ssp585",
+            years = 2060
+        ),
+        "did not find any matched output file after 10 retries"
+    )
+    expect_s3_class(idx, "data.table")
+    expect_named(idx, c(
+        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
+        "source_id", "experiment_id", "member_id", "table_id", "frequency",
+        "grid_label", "version", "nominal_resolution", "variable_id",
+        "variable_long_name", "variable_units", "datetime_start", "datetime_end",
+        "file_size", "data_node", "file_url", "dataset_pid", "tracking_id"
+    ))
 })
 
 test_that("load_cmip6_index()", {

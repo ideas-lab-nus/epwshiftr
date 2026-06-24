@@ -67,6 +67,158 @@ with_timeout <- function(secs = 300, expr) {
     force(expr)
 }
 
+# Convert `checkmate::check_*()` results into the return contract expected by
+# S7 property/class validators: `NULL` on success, a single message on failure.
+checkmate_result <- function(result, label = NULL) {
+    if (isTRUE(result)) {
+        return(NULL)
+    }
+
+    if (!is.null(label)) {
+        return(sprintf("`%s` validation failed: %s", label, result))
+    }
+
+    result
+}
+
+checkmate_validator <- function(check, ..., label = NULL) {
+    checkmate::assert_function(check)
+
+    args <- list(...)
+    force(label)
+
+    function(value) {
+        checkmate_result(do.call(check, c(list(value), args)), label = label)
+    }
+}
+
+checkmate_rule <- function(class, check, ..., label = NULL, branch = NULL) {
+    checkmate::assert_function(check)
+    checkmate::assert_string(label, null.ok = TRUE)
+    checkmate::assert_string(branch, null.ok = TRUE)
+
+    if (!isS4(class)) {
+        checkmate::assert_multi_class(
+            class,
+            c("S7_class", "S7_base_class", "S7_S3_class", "S7_missing", "S7_any"),
+            null.ok = TRUE
+        )
+    }
+
+    structure(
+        list(
+            class = class,
+            check = check,
+            args = list(...),
+            label = label,
+            branch = branch
+        ),
+        class = "CheckmateRule"
+    )
+}
+
+checkmate_any <- function(...) {
+    rules <- list(...)
+    checkmate::assert_list(rules, "CheckmateRule", any.missing = FALSE, min.len = 1L, null.ok = FALSE)
+
+    structure(
+        list(
+            mode = "any",
+            rules = rules,
+            class = Reduce(`|`, lapply(rules, `[[`, "class"))
+        ),
+        class = c("CheckmateSpecAny", "CheckmateSpec")
+    )
+}
+
+checkmate_match_rule <- function(value, rules) {
+    for (i in seq_along(rules)) {
+        rule_class <- rules[[i]]$class
+
+        if (is.null(rule_class)) {
+            if (is.null(value)) {
+                return(i)
+            }
+        } else if (inherits(value, rule_class)) {
+            return(i)
+        }
+    }
+
+    NA_integer_
+}
+
+checkmate_validate_rule <- function(value, rule) {
+    msg <- checkmate_result(
+        do.call(rule$check, c(list(value), rule$args)),
+        label = rule$label
+    )
+
+    if (!is.null(msg) && !is.null(rule$branch)) {
+        msg <- sprintf("[%s] %s", rule$branch, msg)
+    }
+
+    msg
+}
+
+checkmate_property <- function(
+    class = S7::class_any,
+    check,
+    ...,
+    getter = NULL,
+    setter = NULL,
+    default = NULL,
+    name = NULL,
+    label = NULL
+) {
+    if (inherits(class, "CheckmateSpec")) {
+        spec <- class
+        extra_args <- list(...)
+
+        if (!missing(check)) {
+            stop("When `class` is a `CheckmateSpec`, `check` must be omitted.", call. = FALSE)
+        }
+        if (length(extra_args)) {
+            stop(
+                "When `class` is a `CheckmateSpec`, checker arguments must be supplied in `checkmate_rule()`.",
+                call. = FALSE
+            )
+        }
+        if (!is.null(label)) {
+            stop("When `class` is a `CheckmateSpec`, `label` must be supplied in `checkmate_rule()`.", call. = FALSE)
+        }
+
+        return(S7::new_property(
+            class = spec$class,
+            getter = getter,
+            setter = setter,
+            validator = function(value) {
+                idx <- checkmate_match_rule(value, spec$rules)
+
+                if (is.na(idx)) {
+                    return("No matching validation branch found.")
+                }
+
+                checkmate_validate_rule(value, spec$rules[[idx]])
+            },
+            default = default,
+            name = name
+        ))
+    }
+
+    if (missing(check)) {
+        stop("`check` must be supplied unless `class` is a `CheckmateSpec`.")
+    }
+
+    S7::new_property(
+        class = class,
+        getter = getter,
+        setter = setter,
+        validator = checkmate_validator(check, ..., label = label),
+        default = default,
+        name = name
+    )
+}
+
 fast_hash <- function(x) {
     # FNV-1a hash algorithm
     FNV_PRIME <- 16777619 # 0x01000193
@@ -191,11 +343,11 @@ rd_query_method_return <- function() {
         "\\itemize{",
         "\\item If \\code{value} is given, the modified \\code{EsgQuery} object.",
         paste(
-            "\\item Otherwise, an \\code{EsgQueryParam} object which is essentially a list of three elements:",
+            "\\item Otherwise, a \\code{QueryParam} object:",
             "\\itemize{",
-            "\\item \\code{value}: input values.",
-            "\\item \\code{negate}: Whether there is a preceding \\code{!} or \\code{-}.",
-            "\\item \\code{name}: Parameter name.",
+            "\\item Use \\code{query_param_value()} to read the stored value.",
+            "\\item Use \\code{query_param_negate()} to read whether the facet is negated.",
+            "\\item Use \\code{query_param_name()} and \\code{query_param_kind()} to inspect metadata.",
             "}"
         ),
         "}"
@@ -327,6 +479,7 @@ utils::globalVariables(c(
     "natts",
     "opaque_sky_cover",
     "ping",
+    "properties",
     "relative_humidity",
     "source_id",
     "source_type",

@@ -1,6 +1,8 @@
 # nocov start
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
 .onLoad <- function(libname, pkgname) {
+    S7::methods_register()
+
     # set package options
     .opts <- list(
         "epwshiftr.verbose" = FALSE,

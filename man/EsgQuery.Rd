@@ -91,7 +91,6 @@ contains dedicated methods to set values for most of them, including:
 \href{#method-EsgQuery-offset}{\code{offset}},
 \href{#method-EsgQuery-limit}{\code{limit}},
 \href{#method-EsgQuery-fields}{\code{fields}},
-\href{#method-EsgQuery-type}{\code{type}},
 \href{#method-EsgQuery-replica}{\code{replica}},
 \href{#method-EsgQuery-latest}{\code{latest}},
 \href{#method-EsgQuery-distrib}{\code{distrib}}
@@ -105,8 +104,10 @@ and
 \href{#method-EsgQuery-variable_id}{\code{variable_id}},
 \href{#method-EsgQuery-frequency}{\code{frequency}},
 \href{#method-EsgQuery-variant_label}{\code{variant_label}},
-\href{#method-EsgQuery-date_range}{\code{date_range}},
-\href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}}
+\href{#method-EsgQuery-nominal_resolution}{\code{nominal_resolution}},
+\href{#method-EsgQuery-datetime_range}{\code{datetime_range}},
+\href{#method-EsgQuery-timestamp_range}{\code{timestamp_range}},
+\href{#method-EsgQuery-version_range}{\code{version_range}}
 and
 \href{#method-EsgQuery-data_node}{\code{data_node}}.
 }
@@ -128,12 +129,8 @@ directly calling \code{EsgQuery$project()} returns the current value of the
 \code{project} parameter. The returned value can be two types:
 \itemize{
 \item \code{NULL}, i.e. there is no constraint on the corresponding parameter
-\item An \code{EsgQueryParam} object which is essentially a list of three elements:
-\itemize{
-\item \code{value}: The input values
-\item \code{negate}: Whether there is a preceding \code{!} in the input
-\item \code{name}: The parameter name
-}
+\item A \code{QueryParam} object. Use \code{query_param_value()}, \code{query_param_negate()},
+\code{query_param_name()} and \code{query_param_kind()} to inspect it.
 }
 }
 
@@ -199,8 +196,8 @@ query state from a JSON file created by \verb{$save()}.
 \item \strong{Display}:
 \itemize{
 \item \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}: Print a
-summary of the current \code{EsgQuery} object including the index node URL,
-the last query timestamp, and all query parameters.
+summary of the current \code{EsgQuery} object including the index node URL
+and all query parameters.
 }
 }
 }
@@ -215,6 +212,15 @@ the last query timestamp, and all query parameters.
 \dontrun{
 q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
+}
+
+## ------------------------------------------------
+## Method `EsgQuery$index_node`
+## ------------------------------------------------
+
+\dontrun{
+q$index_node()
+q$index_node("https://esgf.ceda.ac.uk")
 }
 
 ## ------------------------------------------------
@@ -247,312 +253,6 @@ q$list_shards()
 
 \dontrun{
 q$list_values(c("activity_id", "experiment_id"))
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$project`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$project()
-
-# set the parameter
-q$project("CMIP6")
-
-# remove the parameter
-q$project(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$activity_id`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$activity_id()
-
-# set the parameter
-q$activity_id("ScenarioMIP")
-
-# negate the constraints
-q$activity_id(!c("CFMIP", "ScenarioMIP"))
-
-# remove the parameter
-q$activity_id(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$experiment_id`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$experiment_id()
-
-# set the parameter
-q$experiment_id(c("ssp126", "ssp585"))
-
-# negate the constraints
-q$experiment_id(!c("ssp126", "ssp585"))
-
-# remove the parameter
-q$experiment_id(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$source_id`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$source_id()
-
-# set the parameter
-q$source_id(c("BCC-CSM2-MR", "CESM2"))
-
-# negate the constraints
-q$source_id(!c("BCC-CSM2-MR", "CESM2"))
-
-# remove the parameter
-q$source_id(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$variable_id`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$variable_id()
-
-# set the parameter
-q$variable_id(c("tas", "pr"))
-
-# negate the constraints
-q$variable_id(!c("tas", "pr"))
-
-# remove the parameter
-q$variable_id(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$frequency`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$frequency()
-
-# set the parameter
-q$frequency(c("1hr", "day"))
-
-# negate the constraints
-q$frequency(!c("1hr", "day"))
-
-# remove the parameter
-q$frequency(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$variant_label`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$variant_label()
-
-# set the parameter
-q$variant_label(c("r1i1p1f1", "r1i2p1f1"))
-
-# negate the constraints
-q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))
-
-# remove the parameter
-q$variant_label(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$nominal_resolution`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$nominal_resolution()
-
-# set the parameter
-q$nominal_resolution(c("100 km", "1x1 degree"))
-
-# negate the constraints
-q$nominal_resolution(!c("100 km", "1x1 degree"))
-
-# remove the parameter
-q$nominal_resolution(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$data_node`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$data_node()
-
-# set the parameter
-q$data_node("esg.lasg.ac.cn")
-
-# negate the constraints
-q$data_node(!"esg.lasg.ac.cn")
-
-# remove the parameter
-q$data_node(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$facets`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$facets()
-
-# set the facets
-q$facets(c("activity_id", "source_id"))
-
-# use all available facets
-q$facets("*")
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$fields`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$fields()
-
-# set the fields
-q$fields(c("activity_id", "source_id"))
-
-# use all available fields
-q$fields("*")
-
-# remove the parameter
-# act the same as above because the default `fields` in ESGF search
-# services is `*` if `fields` is not specified
-q$fields(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$shards`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$shards()
-
-# set the parameter
-q$shards("localhost:8983/solr/datasets")
-
-# negate the constraints
-q$shards(!"localhost:8983/solr/datasets")
-
-# only applicable for distributed queries
-q$distrib(FALSE)$shards("localhost:8983/solr/datasets") # Error
-
-# remove the parameter
-q$shards(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$replica`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$replica()
-
-# set the parameter
-q$replica(TRUE)
-
-# remove the parameter
-q$replica(NULL)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$latest`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$latest()
-
-# set the parameter
-q$latest(TRUE)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$limit`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$limit()
-
-# set the parameter
-q$limit(10L)
-
-# `limit` is reset to the allowed maximum query limit if input is greater than that
-q$limit(12000L) # warning
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$offset`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$offset()
-
-# set the parameter
-q$offset(0L)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$distrib`
-## ------------------------------------------------
-
-\dontrun{
-# get current value
-q$distrib()
-
-# set the parameter
-q$distrib(TRUE)
-}
-
-## ------------------------------------------------
-## Method `EsgQuery$params`
-## ------------------------------------------------
-
-\dontrun{
-# get current values
-# default is an empty list (`list()`)
-q$params()
-
-# set the parameter
-q$params(table_id = c("3hr", "day"), member_id = "00")
-q$params()
-
-# reset existing parameters
-q$frequency("day")
-q$params(frequency = "mon")
-q$frequency() # frequency value has been changed using $params()
-
-# negating the constraints is also supported
-q$params(table_id = !c("3hr", "day"))
-
-# use NULL to remove all parameters
-q$params(NULL)$params()
 }
 
 ## ------------------------------------------------
@@ -616,6 +316,23 @@ identical(res2$count(), res4$count())
 }
 
 ## ------------------------------------------------
+## Method `EsgQuery$state`
+## ------------------------------------------------
+
+\dontrun{
+q$state()
+q$state(null = TRUE)
+}
+
+## ------------------------------------------------
+## Method `EsgQuery$reset`
+## ------------------------------------------------
+
+\dontrun{
+q$experiment_id("ssp585")$reset()
+}
+
+## ------------------------------------------------
 ## Method `EsgQuery$save`
 ## ------------------------------------------------
 
@@ -650,6 +367,7 @@ Hongyuan Jia
 \subsection{Public methods}{
 \itemize{
 \item \href{#method-EsgQuery-new}{\code{EsgQuery$new()}}
+\item \href{#method-EsgQuery-index_node}{\code{EsgQuery$index_node()}}
 \item \href{#method-EsgQuery-list_facets}{\code{EsgQuery$list_facets()}}
 \item \href{#method-EsgQuery-list_fields}{\code{EsgQuery$list_fields()}}
 \item \href{#method-EsgQuery-list_shards}{\code{EsgQuery$list_shards()}}
@@ -666,6 +384,9 @@ Hongyuan Jia
 \item \href{#method-EsgQuery-facets}{\code{EsgQuery$facets()}}
 \item \href{#method-EsgQuery-fields}{\code{EsgQuery$fields()}}
 \item \href{#method-EsgQuery-shards}{\code{EsgQuery$shards()}}
+\item \href{#method-EsgQuery-datetime_range}{\code{EsgQuery$datetime_range()}}
+\item \href{#method-EsgQuery-timestamp_range}{\code{EsgQuery$timestamp_range()}}
+\item \href{#method-EsgQuery-version_range}{\code{EsgQuery$version_range()}}
 \item \href{#method-EsgQuery-replica}{\code{EsgQuery$replica()}}
 \item \href{#method-EsgQuery-latest}{\code{EsgQuery$latest()}}
 \item \href{#method-EsgQuery-limit}{\code{EsgQuery$limit()}}
@@ -675,6 +396,8 @@ Hongyuan Jia
 \item \href{#method-EsgQuery-url}{\code{EsgQuery$url()}}
 \item \href{#method-EsgQuery-count}{\code{EsgQuery$count()}}
 \item \href{#method-EsgQuery-collect}{\code{EsgQuery$collect()}}
+\item \href{#method-EsgQuery-state}{\code{EsgQuery$state()}}
+\item \href{#method-EsgQuery-reset}{\code{EsgQuery$reset()}}
 \item \href{#method-EsgQuery-save}{\code{EsgQuery$save()}}
 \item \href{#method-EsgQuery-load}{\code{EsgQuery$load()}}
 \item \href{#method-EsgQuery-print}{\code{EsgQuery$print()}}
@@ -723,6 +446,44 @@ An \code{EsgQuery} object.
 \preformatted{\dontrun{
 q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
 q
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-index_node"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-index_node}{}}}
+\subsection{Method \code{index_node()}}{
+Get or set the ESGF index node.
+
+\verb{$index_node()} returns the current normalized index node URL.
+\verb{$index_node(value)} updates the index node after applying the same
+normalization used by \href{#method-EsgQuery-new}{\code{EsgQuery$new()}}.
+Existing query parameters are kept unchanged.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$index_node(value)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{value}}{A string giving the new index node URL. If omitted, the
+current index node is returned.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a string.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$index_node()
+q$index_node("https://esgf.ceda.ac.uk")
 }
 }
 \if{html}{\out{</div>}}
@@ -851,8 +612,8 @@ abandoned and a new query is re-sent and cached. Default:
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-If \code{length(facets) == 1}, a named character vector giving
-the facet value counts. Otherwise, a list of named character
+If \code{length(facets) == 1}, a named integer vector giving
+the facet value counts. Otherwise, a list of named integer
 vectors of the same length as \code{facets}.
 }
 \subsection{Examples}{
@@ -878,35 +639,17 @@ Get or set the \code{project} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{"CMIP6"}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$project(!c("CMIP6"))} and \code{$project(-c("CMIP6"))} search for all \code{project}s except for \code{CMIP6}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression such as \code{!"CMIP6"}. If omitted, the current value is
+returned. Default when setting without an explicit value:
+\code{"CMIP6"}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$project()
-
-# set the parameter
-q$project("CMIP6")
-
-# remove the parameter
-q$project(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-activity_id"></a>}}
@@ -920,38 +663,16 @@ Get or set the \code{activity_id} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$activity_id(!c("C4MIP", "GeoMIP"))} and \code{$activity_id(-c("C4MIP", "GeoMIP"))} search for all \code{activity_id}s except for \code{C4MIP} and \code{GeoMIP}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression such as \code{!c("CFMIP", "ScenarioMIP")}. If omitted,
+the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$activity_id()
-
-# set the parameter
-q$activity_id("ScenarioMIP")
-
-# negate the constraints
-q$activity_id(!c("CFMIP", "ScenarioMIP"))
-
-# remove the parameter
-q$activity_id(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-experiment_id"></a>}}
@@ -965,38 +686,16 @@ Get or set the \code{experiment_id} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$experiment_id(!c("ssp126", "ssp245"))} and \code{$experiment_id(-c("ssp126", "ssp245"))} search for all \code{experiment_id}s except for \code{ssp126} and \code{ssp245}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression such as \code{!c("ssp126", "ssp585")}. If omitted, the
+current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$experiment_id()
-
-# set the parameter
-q$experiment_id(c("ssp126", "ssp585"))
-
-# negate the constraints
-q$experiment_id(!c("ssp126", "ssp585"))
-
-# remove the parameter
-q$experiment_id(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-source_id"></a>}}
@@ -1010,38 +709,15 @@ Get or set the \code{source_id} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$source_id(!c("CESM2", "CESM2-FV2"))} and \code{$source_id(-c("CESM2", "CESM2-FV2"))} search for all \code{source_id}s except for \code{CESM2} and \code{CESM2-FV2}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$source_id()
-
-# set the parameter
-q$source_id(c("BCC-CSM2-MR", "CESM2"))
-
-# negate the constraints
-q$source_id(!c("BCC-CSM2-MR", "CESM2"))
-
-# remove the parameter
-q$source_id(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-variable_id"></a>}}
@@ -1055,38 +731,15 @@ Get or set the \code{variable_id} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variable_id(!c("tas", "pr"))} and \code{$variable_id(-c("tas", "pr"))} search for all \code{variable_id}s except for \code{tas} and \code{pr}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$variable_id()
-
-# set the parameter
-q$variable_id(c("tas", "pr"))
-
-# negate the constraints
-q$variable_id(!c("tas", "pr"))
-
-# remove the parameter
-q$variable_id(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-frequency"></a>}}
@@ -1100,38 +753,15 @@ Get or set the \code{frequency} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$frequency(!c("day", "mon"))} and \code{$frequency(-c("day", "mon"))} search for all \code{frequency}s except for \code{day} and \code{mon}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$frequency()
-
-# set the parameter
-q$frequency(c("1hr", "day"))
-
-# negate the constraints
-q$frequency(!c("1hr", "day"))
-
-# remove the parameter
-q$frequency(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-variant_label"></a>}}
@@ -1145,38 +775,15 @@ Get or set the \code{variant_label} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$variant_label(!c("r1i1p1f1", "r2i1p1f1"))} and \code{$variant_label(-c("r1i1p1f1", "r2i1p1f1"))} search for all \code{variant_label}s except for \code{r1i1p1f1} and \code{r2i1p1f1}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$variant_label()
-
-# set the parameter
-q$variant_label(c("r1i1p1f1", "r1i2p1f1"))
-
-# negate the constraints
-q$variant_label(!c("r1i1p1f1", "r1i2p1f1"))
-
-# remove the parameter
-q$variant_label(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-nominal_resolution"></a>}}
@@ -1190,44 +797,21 @@ Get or set the \code{nominal_resolution} facet parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$nominal_resolution(!c("50 km", "1x1 degree"))} and \code{$nominal_resolution(-c("50 km", "1x1 degree"))} search for all \code{nominal_resolution}s except for \code{50 km} and \code{1x1 degree}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$nominal_resolution()
-
-# set the parameter
-q$nominal_resolution(c("100 km", "1x1 degree"))
-
-# negate the constraints
-q$nominal_resolution(!c("100 km", "1x1 degree"))
-
-# remove the parameter
-q$nominal_resolution(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-data_node"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-data_node}{}}}
 \subsection{Method \code{data_node()}}{
-Get or set the \code{data_node} parameter.
+Get or set the \code{data_node} facet parameter.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$data_node(value)}\if{html}{\out{</div>}}
 }
@@ -1235,48 +819,21 @@ Get or set the \code{data_node} parameter.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The  parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.  Note that you can put a preceding \code{!} or \code{-} to negate the facet constraints. For example, \code{$data_node(!c("cmip.bcc.cma.cn", "esg.camscma.cn"))} and \code{$data_node(-c("cmip.bcc.cma.cn", "esg.camscma.cn"))} search for all \code{data_node}s except for \code{cmip.bcc.cma.cn} and \code{esg.camscma.cn}.
-}}
+\item{\code{value}}{A character vector, \code{NULL}, or a negated character
+expression. If omitted, the current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$data_node()
-
-# set the parameter
-q$data_node("esg.lasg.ac.cn")
-
-# negate the constraints
-q$data_node(!"esg.lasg.ac.cn")
-
-# remove the parameter
-q$data_node(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-facets"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-facets}{}}}
 \subsection{Method \code{facets()}}{
-Get or set the \code{facets} parameter for facet counting query.
-
-Note that \verb{$facets()} only affects
-\href{#method-EsgQuery-count}{\code{$count()}}
-method when sending a query of facet counting.
+Get or set the \code{facets} parameter used by \verb{$count()}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$facets(value)}\if{html}{\out{</div>}}
 }
@@ -1284,47 +841,21 @@ method when sending a query of facet counting.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}. The special notation \code{"*"} can be used to indicate that all available facets should be considered.
-}}
+\item{\code{value}}{A character vector, \code{"*"}, or \code{NULL}. If omitted, the
+current value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$facets()
-
-# set the facets
-q$facets(c("activity_id", "source_id"))
-
-# use all available facets
-q$facets("*")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-fields"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-fields}{}}}
 \subsection{Method \code{fields()}}{
 Get or set the \code{fields} parameter.
-
-By default, all available metadata fields are returned for each
-query. \verb{$fields()} can be used to limit the number of fields returned
-in the query response. However, the following fields are always
-included in the results:
-\verb{access}, \verb{id}, \verb{index_node}, \verb{number_of_aggregations}, \verb{number_of_files}, \verb{size}, \verb{url}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$fields(value = "*")}\if{html}{\out{</div>}}
 }
@@ -1332,50 +863,22 @@ included in the results:
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{"*"}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}. The special notation \code{"*"} can be used to indicate that all available fields should be considered.
-}}
+\item{\code{value}}{A character vector, \code{"*"}, or \code{NULL}. If omitted, the
+current value is returned. Default when setting without an
+explicit value: \code{"*"}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$fields()
-
-# set the fields
-q$fields(c("activity_id", "source_id"))
-
-# use all available fields
-q$fields("*")
-
-# remove the parameter
-# act the same as above because the default `fields` in ESGF search
-# services is `*` if `fields` is not specified
-q$fields(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-shards"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-shards}{}}}
 \subsection{Method \code{shards()}}{
-Get or set the \code{shards} parameter.
-
-By default, a distributed query targets all ESGF Nodes. \verb{$shards()}
-can be used to execute a distributed search that targets only one or
-more specific nodes.
+Get or set the \code{shards} parameter for distributed searches.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$shards(value)}\if{html}{\out{</div>}}
 }
@@ -1383,52 +886,92 @@ more specific nodes.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A character vector or \code{NULL}.
-}}
+\item{\code{value}}{A character vector or \code{NULL}. If omitted, the current
+value is returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$shards()
-
-# set the parameter
-q$shards("localhost:8983/solr/datasets")
-
-# negate the constraints
-q$shards(!"localhost:8983/solr/datasets")
-
-# only applicable for distributed queries
-q$distrib(FALSE)$shards("localhost:8983/solr/datasets") # Error
-
-# remove the parameter
-q$shards(NULL)
 }
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-datetime_range"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-datetime_range}{}}}
+\subsection{Method \code{datetime_range()}}{
+Get or set temporal coverage overlap constraints.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$datetime_range(start, stop)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{start, stop}}{Temporal boundary strings accepted by \code{solr_date()},
+complete Solr range expressions, \code{"*"}, or \code{NULL}. If both are
+omitted, the current range state is returned.}
 }
 \if{html}{\out{</div>}}
-
+}
+\subsection{Returns}{
+If either boundary is supplied, the modified \code{EsgQuery}
+object. Otherwise, a list with \code{start} and \code{stop} elements.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-timestamp_range"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-timestamp_range}{}}}
+\subsection{Method \code{timestamp_range()}}{
+Get or set Solr index timestamp range constraints.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$timestamp_range(from, to)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{from, to}}{Timestamp boundary strings accepted by \code{solr_date()},
+\code{"*"}, or \code{NULL}. Complete Solr range expressions are not
+accepted here. If both are omitted, the current range state is
+returned.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If either boundary is supplied, the modified \code{EsgQuery}
+object. Otherwise, a list with \code{from} and \code{to} elements.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-version_range"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-version_range}{}}}
+\subsection{Method \code{version_range()}}{
+Get or set version range constraints.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$version_range(min, max)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{min, max}}{Version boundary strings such as \code{"20200101"},
+simplified dates, \code{"*"}, or \code{NULL}. Solr Date Math and complete
+range expressions are not accepted here. If both are omitted,
+the current range state is returned.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If either boundary is supplied, the modified \code{EsgQuery}
+object. Otherwise, a list with \code{min} and \code{max} elements.
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-replica"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-replica}{}}}
 \subsection{Method \code{replica()}}{
 Get or set the \code{replica} parameter.
-
-By default, a query returns all records (masters and replicas)
-matching the search criteria, i.e. \verb{$replica(NULL)}.
-To return only master records, use \verb{$replica(FALSE)}; to return only
-replicas, use \verb{$replica(TRUE)}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$replica(value)}\if{html}{\out{</div>}}
 }
@@ -1436,45 +979,21 @@ replicas, use \verb{$replica(TRUE)}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{NULL}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A flag or \code{NULL}.
-}}
+\item{\code{value}}{A flag or \code{NULL}. If omitted, the current value is
+returned.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$replica()
-
-# set the parameter
-q$replica(TRUE)
-
-# remove the parameter
-q$replica(NULL)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-latest"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-latest}{}}}
 \subsection{Method \code{latest()}}{
 Get or set the \code{latest} parameter.
-
-By default, a query to the ESGF search services returns only the very
-last, up-to-date version of the matching records, i.e.
-\verb{$latest(TRUE)}. You can use \verb{$latest(FALSE)} to return all versions.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$latest(value = TRUE)}\if{html}{\out{</div>}}
 }
@@ -1482,44 +1001,21 @@ last, up-to-date version of the matching records, i.e.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{TRUE}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A flag.
-}}
+\item{\code{value}}{A flag. If omitted, the current value is returned.
+Default when setting without an explicit value: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$latest()
-
-# set the parameter
-q$latest(TRUE)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-limit"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-limit}{}}}
 \subsection{Method \code{limit()}}{
 Get or set the \code{limit} parameter.
-
-\verb{$limit()} can be used to limit the number of records to return.
-Note that the maximum number of records to return per query for ESGF
-search services is 10,000.
-A warning is issued if input value is greater than that. In this
-case, \code{limit} will be reset to 10,000.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$limit(value = 10L)}\if{html}{\out{</div>}}
 }
@@ -1527,45 +1023,21 @@ case, \code{limit} will be reset to 10,000.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{10}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item An integer.
-}}
+\item{\code{value}}{A positive integer. If omitted, the current value is
+returned. Default when setting without an explicit value: \code{10L}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$limit()
-
-# set the parameter
-q$limit(10L)
-
-# `limit` is reset to the allowed maximum query limit if input is greater than that
-q$limit(12000L) # warning
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-offset"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-offset}{}}}
 \subsection{Method \code{offset()}}{
 Get or set the \code{offset} parameter.
-
-If the query returns records that exceed the
-\href{#method-EsgQuery-limit}{\code{limit}} number,
-\verb{$offset()} can be used to paginate through the available results.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$offset(value = 0L)}\if{html}{\out{</div>}}
 }
@@ -1573,43 +1045,21 @@ If the query returns records that exceed the
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{0}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item An integer.
-}}
+\item{\code{value}}{A non-negative integer. If omitted, the current value is
+returned. Default when setting without an explicit value: \code{0L}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$offset()
-
-# set the parameter
-q$offset(0L)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-distrib"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-distrib}{}}}
 \subsection{Method \code{distrib()}}{
-Get or set the \code{distrib} facet
-
-By default, the query is sent to all ESGF Nodes, i.e.
-\verb{$distrib(TRUE)}.
-\verb{$distrib(FALSE)} can be used to execute the query only on the
-target node.
+Get or set the \code{distrib} parameter.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$distrib(value = TRUE)}\if{html}{\out{</div>}}
 }
@@ -1617,43 +1067,28 @@ target node.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{The facet parameter value. Default: \code{TRUE}.
-There are two options:
-\itemize{
-\item If \code{value} is not given, current value is returned.
-\item A flag.
-}}
+\item{\code{value}}{A flag. If omitted, the current value is returned.
+Default when setting without an explicit value: \code{TRUE}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{ \item If \code{value} is given, the modified \code{EsgQuery} object. \item Otherwise, an \code{EsgQueryParam} object which is essentially a list of three elements: \itemize{ \item \code{value}: input values. \item \code{negate}: Whether there is a preceding \code{!} or \code{-}. \item \code{name}: Parameter name. } }
+If \code{value} is supplied, the modified \code{EsgQuery} object.
+Otherwise, a \code{QueryParam} object or \code{NULL}.
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current value
-q$distrib()
-
-# set the parameter
-q$distrib(TRUE)
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-params"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgQuery-params}{}}}
 \subsection{Method \code{params()}}{
-Get or set other parameters.
+Get or set ad hoc query parameters.
 
-\verb{$params()} can be used to specify other parameters that do not have
-a dedicated method, e.g. \code{version}, \code{master_id}, etc. It can also be
-used to overwrite existing parameter values specified using methods
-like \href{#method-EsgQuery-activity_id}{\code{$activity_id()}}.
+\verb{$params()} handles parameters without dedicated methods and can also
+update supported dedicated parameters by name.
+The \code{type} and \code{format} control parameters cannot be changed here:
+\code{EsgQuery} always performs Dataset queries and always parses JSON
+responses. Use \code{EsgResultDataset$collect()} to collect File or
+Aggregation records from Dataset results.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$params(...)}\if{html}{\out{</div>}}
 }
@@ -1661,55 +1096,16 @@ like \href{#method-EsgQuery-activity_id}{\code{$activity_id()}}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{...}}{Parameter values to set. There are three options:
-\itemize{
-\item If not given, existing parameters that do not have a dedicated
-method are returned.
-\item If \code{NULL}, all existing parameters that do not have a dedicated
-method are removed.
-\item A named vector, e.g. \verb{$params(score = 1, table_id = "day")} will
-set \code{score} to \code{1} and \code{table_id} to \code{day}.
-The \code{!} notation can still be used to negate the constraints, e.g.
-\verb{$params(table_id = !c("3hr", "day"))} searches for all \code{table_id}
-except for \verb{3hr} and \code{day}.
-}}
+\item{\code{...}}{Named parameter values. If omitted, existing ad hoc
+parameters are returned. If a single unnamed \code{NULL} is supplied,
+all ad hoc parameters are removed.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-\itemize{
-\item If parameters are specified, the modified \code{EsgQuery} object.
-\item Otherwise, an empty list for \verb{$params(NULL)} or a list of
-\code{EsgQueryParam} objects.
+If parameters are supplied, the modified \code{EsgQuery} object.
+Otherwise, a named list of \code{QueryParam} objects.
 }
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# get current values
-# default is an empty list (`list()`)
-q$params()
-
-# set the parameter
-q$params(table_id = c("3hr", "day"), member_id = "00")
-q$params()
-
-# reset existing parameters
-q$frequency("day")
-q$params(frequency = "mon")
-q$frequency() # frequency value has been changed using $params()
-
-# negating the constraints is also supported
-q$params(table_id = !c("3hr", "day"))
-
-# use NULL to remove all parameters
-q$params(NULL)$params()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgQuery-url"></a>}}
@@ -1836,7 +1232,7 @@ respect the current value of \code{limit} when collecting all
 matched records. If \code{FALSE}, the allowed maximum limit number
 10000 is used. It can also be a positive
 integer which will be used as a temporary limit per query.
-Default: \code{FALSE}.}
+Default: \code{TRUE}.}
 
 \item{\code{params}}{Whether to include facet fields that have parameter
 constraints explicitly set using \code{EsgQuery$project()},
@@ -1874,6 +1270,70 @@ identical(res2$count(), res3$count())
 # per query
 res4 <- query$collect(all = TRUE, limit = 30)
 identical(res2$count(), res4$count())
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-state"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-state}{}}}
+\subsection{Method \code{state()}}{
+Get the current query state.
+
+\verb{$state()} returns a read-only snapshot containing the current index
+node and the current parameter state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$state(name = NULL, null = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{name}}{A character vector of parameter names to include, or
+\code{NULL} to include all parameters.}
+
+\item{\code{null}}{If \code{TRUE}, include parameters whose current value is
+\code{NULL}. Otherwise, omit unset parameters.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named list with elements \code{index_node} and \code{parameter}.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$state()
+q$state(null = TRUE)
+}
+}
+\if{html}{\out{</div>}}
+
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgQuery-reset"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgQuery-reset}{}}}
+\subsection{Method \code{reset()}}{
+Reset query parameters to their defaults.
+
+\verb{$reset()} clears the current parameter store and restores the default
+query parameters. The current index node is kept unchanged.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EsgQuery$reset()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+The modified \code{EsgQuery} object itself.
+}
+\subsection{Examples}{
+\if{html}{\out{<div class="r example copy">}}
+\preformatted{\dontrun{
+q$experiment_id("ssp585")$reset()
 }
 }
 \if{html}{\out{</div>}}
@@ -1965,7 +1425,7 @@ q$load(f)
 Print a summary of the current \code{EsgQuery} object
 
 \verb{$print()} gives the summary of current \code{EsgQuery} object including
-the index node URL, the last query timestamp, and all query parameters.
+the index node URL and all query parameters.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgQuery$print()}\if{html}{\out{</div>}}
 }

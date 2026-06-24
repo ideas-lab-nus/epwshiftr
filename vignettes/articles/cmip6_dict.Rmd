@@ -52,26 +52,25 @@ For more information, please see:
 - [CMIP6 Global Attributes, DRS, Filenames, Directory Structure, and CVs](https://docs.google.com/document/d/1h0r8RZr_f3-8egBMMh7aqLwy3snpD6_MrDz1q8n5XUk/edit)
 - [CMIP6 Data Request](https://wcrp-cmip.github.io/WGCM_Infrastructure_Panel/CMIP6/data_request.html)
 
-# Introduce the `Cmip6Dict` class
+# Introduce the `EsgDict` class
 
-{epwshiftr} provides a `Cmip6Dict` class to help you fetch, parse and store
+{epwshiftr} provides an `EsgDict` class to help you fetch, parse and store
 CMIP6 CVs and Data Request.
 
-## Create a `Cmip6Dict` object
+## Create an `EsgDict` object
 
-You can create a new `Cmip6Dict` object using the `cmip6_dict()` function. It
-takes no argument and simply returns an empty `Cmip6Dict` object.
+You can create a new CMIP6 `EsgDict` object using the `esgdict()` function.
 
 > It is an [R6](https://r6.r-lib.org/) object with reference semantics. All
 > methods in an `R6` object can be invoked using the `$method_name()` style.
 
 ```{r}
-dict <- cmip6_dict()
+dict <- esgdict(project = "CMIP6")
 dict
 ```
 
 You can use `$is_empty()` to check if there are any contents in current
-`Cmip6Dict`.
+`EsgDict`.
 
 ```{r}
 dict$is_empty()
@@ -190,21 +189,21 @@ dict$get("sub_experiment_id")
 dict$get("table_id")
 ```
 
-## Store and reuse the `Cmip6Dict` object
+## Store and reuse the `EsgDict` object
 
-`$save()` method stores all the core data of current `Cmip6Dict` object into an
-RDS file named `CMIP6DICT` in the specified folder. It returns the full path of
-the saved RDS file.
+`$save()` method stores all the core data of current `EsgDict` object into a
+JSON file named `CMIP6DICT.json` in the specified folder. It returns the full
+path of the saved JSON file.
 
 ```{r}
 dict$save(tempdir())
 ```
 
 This file can be reloaded via `$load()` method to restore the last state of
-current `Cmip6Dict` object. It reads the RDS file named `CMIP6DICT` and loads
+current `EsgDict` object. It reads the JSON file named `CMIP6DICT.json` and loads
 the CVs and Data Request data.
 
 ```{r}
-new_dict <- cmip6_dict()
+new_dict <- esgdict(project = "CMIP6")
 new_dict$load(tempdir())
 ```

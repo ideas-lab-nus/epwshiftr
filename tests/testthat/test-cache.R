@@ -358,6 +358,7 @@ test_that("DiskCache: pruning throttling with prune_rate", {
 
     cache_dir <- tempfile("cache-throttle-rate-")
     cache <- cache_disk_deterministic(cache_dir, max_n = 2, prune_rate = 20)
+    priv(cache)$set_count <- 0L
 
     # Pruning won't happen when set_count < prune_rate
     cache$set("a", 1); Sys.sleep(delay)
@@ -370,13 +371,16 @@ test_that("DiskCache: pruning throttling with prune_rate", {
     # Pruning will happen with lower prune_rate
     cache$destroy()
     cache <- cache_disk_deterministic(cache_dir, max_n = 2, prune_rate = 2)
+    priv(cache)$set_count <- 0L
 
     cache$set("a", 1); Sys.sleep(delay)
     cache$set("b", 1); Sys.sleep(delay)
     cache$set("c", 1); Sys.sleep(delay)
+    cache$set("d", 1); Sys.sleep(delay)
 
-    # After 3 sets with prune_rate=2, should have pruned
-    expect_equal(sort(cache$keys()), c("b", "c"))
+    # With prune_rate = 2, pruning happens on the 2nd and 4th sets.
+    # The 4th set is the first throttled prune where max_n pruning removes keys.
+    expect_equal(sort(cache$keys()), c("c", "d"))
 
     cache$destroy()
 })

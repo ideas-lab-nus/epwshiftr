@@ -183,7 +183,7 @@ summary_database <- function (
     # find all nc files in specified directory
     ncfiles <- list.files(dir, "[.](nc)|(hdf)$", full.names = TRUE, recursive = recursive)
 
-    verbose(paste0("", length(ncfiles), " NetCDF files found."))
+    vmsg(sprintf("%s NetCDF files found.", length(ncfiles)))
 
     # columns to be added
     cols <- c("file_path", "file_realsize", "file_mtime", "time_units", "time_calendar")
@@ -432,7 +432,10 @@ summary_database <- function (
     if (update) {
         # save database into the app data directory
         fwrite(idx, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index updated and saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        vmsg(sprintf(
+            "Data file index updated and saved to '%s'",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        ))
     }
 
     by_cols <- names(dict)[which(dict %in% by)]
@@ -684,7 +687,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
     }
 
     # initial progress bar
-    verbose("Start to extract CMIP6 data according to matched coordinates...")
+    vmsg("Start to extract CMIP6 data according to matched coordinates...")
 
     data <- data.table::data.table()
 
@@ -692,7 +695,7 @@ extract_data <- function (coord, years = NULL, unit = FALSE, out_dir = NULL,
         co <- m_coord[[i]]
 
         if (!is.null(out_dir) && length(by_cols)) {
-            verbose("Extracting data for case '", names(m_coord)[[i]], "'...")
+            vmsg(sprintf("Extracting data for case '%s'...", names(m_coord)[[i]]))
         }
         progressr::with_progress({
             p <- progressr::progressor(nrow(co))

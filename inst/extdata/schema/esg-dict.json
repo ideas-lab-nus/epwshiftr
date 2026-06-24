@@ -1,0 +1,254 @@
+{
+  "check": {
+    "kind": "list"
+  },
+  "keys": {
+    "type": "named",
+    "subset.of": ["format", "format_version", "project", "profile", "built_time", "version", "timestamps", "sources", "payload"],
+    "must.include": ["format", "format_version", "project", "profile", "built_time", "version", "timestamps", "sources", "payload"]
+  },
+  "fields": {
+    "format": {
+      "check": {
+        "kind": "choice",
+        "choices": ["epwshiftr_esg_dict"]
+      }
+    },
+    "format_version": {
+      "check": {
+        "kind": "choice",
+        "choices": ["2"]
+      }
+    },
+    "project": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "profile": {
+      "check": {
+        "kind": "string"
+      }
+    },
+    "built_time": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "version": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "list"
+          },
+          "keys": {
+            "type": "named"
+          },
+          "rest": {
+            "any": [
+              {
+                "check": {
+                  "kind": "null"
+                }
+              },
+              {
+                "check": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamps": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "list"
+          },
+          "keys": {
+            "type": "named"
+          },
+          "rest": {
+            "any": [
+              {
+                "check": {
+                  "kind": "null"
+                }
+              },
+              {
+                "check": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "sources": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "list"
+          },
+          "keys": {
+            "type": "named"
+          }
+        }
+      ]
+    },
+    "payload": {
+      "any": [
+        {
+          "check": {
+            "kind": "null"
+          }
+        },
+        {
+          "check": {
+            "kind": "list"
+          },
+          "keys": {
+            "type": "named",
+            "subset.of": ["vocab", "request", "request_metadata", "indices"],
+            "must.include": ["vocab", "request", "request_metadata", "indices"]
+          },
+          "fields": {
+            "vocab": {
+              "any": [
+                {
+                  "check": {
+                    "kind": "null"
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "list"
+                  },
+                  "keys": {
+                    "type": "named"
+                  },
+                  "rest": {
+                    "check": {
+                      "kind": "list"
+                    },
+                    "keys": {
+                      "type": "named",
+                      "subset.of": ["kind", "class", "version", "values", "columns", "rows"],
+                      "must.include": ["kind", "class", "version"]
+                    }
+                  }
+                }
+              ]
+            },
+            "request": {
+              "any": [
+                {
+                  "check": {
+                    "kind": "null"
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "list"
+                  },
+                  "keys": {
+                    "type": "named",
+                    "subset.of": ["class", "columns", "rows"],
+                    "must.include": ["class", "columns", "rows"]
+                  },
+                  "fields": {
+                    "rows": {
+                      "check": {
+                        "kind": "list"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "request_metadata": {
+              "any": [
+                {
+                  "check": {
+                    "kind": "null"
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "list"
+                  },
+                  "keys": {
+                    "type": "named",
+                    "subset.of": ["columns", "rows"],
+                    "must.include": ["columns", "rows"]
+                  },
+                  "fields": {
+                    "rows": {
+                      "check": {
+                        "kind": "list"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "indices": {
+              "any": [
+                {
+                  "check": {
+                    "kind": "null"
+                  }
+                },
+                {
+                  "check": {
+                    "kind": "list"
+                  },
+                  "keys": {
+                    "type": "named"
+                  },
+                  "rest": {
+                    "check": {
+                      "kind": "list"
+                    },
+                    "keys": {
+                      "type": "named",
+                      "subset.of": ["class", "columns", "rows"],
+                      "must.include": ["class", "columns", "rows"]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
