@@ -77,25 +77,13 @@ CMIP6DICT_FIELDS <- c(
     "variant_label"
 )
 
-CMIP6DICT_FIELD_ALIASES <- c(
-    activity = "activity_id",
-    activity_drs = "activity_id",
-    experiment = "experiment_id",
-    source = "source_id",
-    variable = "variable_id",
-    variant = "variant_label",
-    member_id = "variant_label",
-    resolution = "nominal_resolution",
-    modeling_realm = "realm"
-)
-
-esgdict__normalize_project <- function(project = "CMIP6") {
+dict__project <- function(project = "CMIP6") {
     checkmate::assert_string(project, min.chars = 1L)
     toupper(project)
 }
 
-esgdict__project_spec <- function(project = "CMIP6") {
-    project <- esgdict__normalize_project(project)
+dict__spec <- function(project = "CMIP6") {
+    project <- dict__project(project)
     spec <- ESGDICT_PROJECTS[[project]]
     if (is.null(spec)) {
         stop(
@@ -111,27 +99,23 @@ esgdict__project_spec <- function(project = "CMIP6") {
     spec
 }
 
-esgdict__profile <- function(project = "CMIP6") {
-    esgdict__project_spec(project)$profile
+dict__profile <- function(project = "CMIP6") {
+    dict__spec(project)$profile
 }
 
-esgdict__default_file <- function(project = "CMIP6") {
-    sprintf("%sDICT.json", esgdict__normalize_project(project))
-}
-
-esgdict__default_store_path <- function(project = "CMIP6", dict_id = NULL) {
-    project <- esgdict__normalize_project(project)
+dict__path <- function(project = "CMIP6", dict_id = NULL) {
+    project <- dict__project(project)
     checkmate::assert_string(dict_id, min.chars = 1L, null.ok = TRUE)
 
     file <- if (is.null(dict_id)) {
-        esgdict__default_file(project)
+        sprintf("%sDICT.json", project)
     } else {
         sprintf("%s.json", dict_id)
     }
     store_path("dicts", tolower(project), file)
 }
 
-esgdict__hashable <- function(x) {
+dict__hashable <- function(x) {
     if (inherits(x, "numeric_version")) {
         return(as.character(x))
     }
@@ -139,23 +123,23 @@ esgdict__hashable <- function(x) {
         return(format(x, usetz = TRUE))
     }
     if (is.list(x)) {
-        return(lapply(x, esgdict__hashable))
+        return(lapply(x, dict__hashable))
     }
     x
 }
 
-esgdict__dict_id <- function(project, version, sources, built_time = NULL) {
-    extract_store_hash(
-        esgdict__normalize_project(project),
+dict__id <- function(project, version, sources, built_time = NULL) {
+    store__hash(
+        dict__project(project),
         ESGDICT_FORMAT_VERSION,
-        jsonlite::toJSON(esgdict__hashable(version), auto_unbox = TRUE, null = "null"),
-        jsonlite::toJSON(esgdict__hashable(sources), auto_unbox = TRUE, null = "null"),
-        esgdict__hashable(built_time)
+        jsonlite::toJSON(dict__hashable(version), auto_unbox = TRUE, null = "null"),
+        jsonlite::toJSON(dict__hashable(sources), auto_unbox = TRUE, null = "null"),
+        dict__hashable(built_time)
     )
 }
 
-esgdict__latest_store_path <- function(project = "CMIP6") {
-    target_project <- esgdict__normalize_project(project)
+dict__latest <- function(project = "CMIP6") {
+    target_project <- dict__project(project)
     root <- store_dir(init = FALSE)
     if (!dir.exists(root)) {
         return(NULL)
@@ -172,22 +156,22 @@ esgdict__latest_store_path <- function(project = "CMIP6") {
     store$artifact_path(artifacts$artifact_id[[1L]])
 }
 
-esgdict__default_env <- function() {
+dict__env <- function() {
     if (is.null(this$dicts)) {
         this$dicts <- new.env(parent = emptyenv())
     }
     this$dicts
 }
 
-esgdict__assert_implemented <- function(project) {
-    esgdict__project_spec(project)
+dict__assert_project <- function(project) {
+    dict__spec(project)
     invisible(TRUE)
 }
 
-esgdict__cache_policy <- function(use_cache = TRUE) {
+dict__cache <- function(use_cache = TRUE) {
     checkmate::assert_flag(use_cache)
 
-    mode <- cache_mode()
+    mode <- cache__mode()
     enabled <- isTRUE(use_cache) && !identical(mode, "off")
     list(
         mode = mode,
@@ -262,15 +246,15 @@ esgdict_set_default <- function(dict) {
         stop("`dict` must be an `EsgDict` object.", call. = FALSE)
     }
 
-    assign(dict$project(), dict, envir = esgdict__default_env())
+    assign(dict$project(), dict, envir = dict__env())
     invisible(dict)
 }
 
 #' @rdname EsgDict
 #' @export
 esgdict_get_default <- function(project = "CMIP6") {
-    project <- esgdict__normalize_project(project)
-    env <- esgdict__default_env()
+    project <- dict__project(project)
+    env <- dict__env()
     if (exists(project, envir = env, inherits = FALSE)) {
         get(project, envir = env, inherits = FALSE)
     } else {
@@ -300,8 +284,8 @@ EsgDict <- R6::R6Class("EsgDict",
         #' dict <- EsgDict$new(project = "CMIP6")
         #' dict$status()
         initialize = function(project = "CMIP6") {
-            private$m_project <- esgdict__normalize_project(project)
-            private$m_profile <- esgdict__profile(private$m_project)
+            private$m_project <- dict__project(project)
+            private$m_profile <- dict__profile(private$m_project)
         },
 
         #' @description
@@ -413,7 +397,7 @@ EsgDict <- R6::R6Class("EsgDict",
         status = function() {
             has_vocab <- !is.null(private$m_data$vocab) && length(private$m_data$vocab) > 0L
             has_request <- !is.null(private$m_data$request) && NROW(private$m_data$request) > 0L
-            needs_request <- !is.null(esgdict__project_spec(private$m_project)$request)
+            needs_request <- !is.null(dict__spec(private$m_project)$request)
 
             if (!has_vocab && !has_request) {
                 "empty"
@@ -492,9 +476,9 @@ EsgDict <- R6::R6Class("EsgDict",
             request_tag = NULL,
             dreq_tag = NULL,
             use_cache = TRUE,
-            source_dir = esgdict__source_dir(project = private$m_project)
+            source_dir = dict__source_dir(project = private$m_project)
         ) {
-            esgdict__assert_implemented(private$m_project)
+            dict__assert_project(private$m_project)
             checkmate::assert_flag(force)
             checkmate::assert_flag(use_cache)
             checkmate::assert_string(cv_tag, null.ok = TRUE)
@@ -509,12 +493,12 @@ EsgDict <- R6::R6Class("EsgDict",
             rebuild <- force || self$is_empty()
             if (!rebuild) return(self)
 
-            dict <- esgdict__build(esgdict__fetch_cached(
+            dict <- dict__build(dict__fetch(
                 project = private$m_project,
                 token = token,
                 cv_tag = cv_tag,
                 request_tag = request_tag,
-                policy = esgdict__cache_policy(use_cache),
+                policy = dict__cache(use_cache),
                 source_dir = source_dir,
                 force = force
             ))
@@ -592,7 +576,7 @@ EsgDict <- R6::R6Class("EsgDict",
         #' dict <- EsgDict$new(project = "CMIP6")
         #' dict$relation_fields()
         relation_fields = function() {
-            esgdict__relation_fields(private$m_project)
+            dict__relations(private$m_project)
         },
 
         #' @description
@@ -666,7 +650,7 @@ EsgDict <- R6::R6Class("EsgDict",
         #' dict$options("experiment_id", activity_id = "CMIP")
         options = function(field, ...) {
             private$assert_has_data("discover ESG dictionary options")
-            esgdict__options(self, field, list(...))
+            dict__options(self, field, list(...))
         },
 
         #' @description
@@ -703,7 +687,7 @@ EsgDict <- R6::R6Class("EsgDict",
             relationship = c("any", "all_pairs")
         ) {
             private$assert_has_data("check ESG dictionary values")
-            esgdict__check(
+            dict__check(
                 self,
                 list(...),
                 error = error,
@@ -743,10 +727,10 @@ EsgDict <- R6::R6Class("EsgDict",
                     call. = FALSE
                 )
             }
-            dict_id <- esgdict__dict_id(private$m_project, private$m_version, private$m_sources, private$m_built_time)
-            if (is.null(path)) path <- esgdict__default_store_path(private$m_project, dict_id = dict_id)
+            dict_id <- dict__id(private$m_project, private$m_version, private$m_sources, private$m_built_time)
+            if (is.null(path)) path <- dict__path(private$m_project, dict_id = dict_id)
 
-            esgdict__save(
+            dict__save(
                 private$m_project,
                 private$m_profile,
                 private$m_built_time,
@@ -768,7 +752,7 @@ EsgDict <- R6::R6Class("EsgDict",
                     dict_id = dict_id,
                     metadata = list(
                         profile = private$m_profile,
-                        version = esgdict__hashable(private$m_version),
+                        version = dict__hashable(private$m_version),
                         built_time = if (is.null(private$m_built_time)) NULL else format(private$m_built_time, usetz = TRUE)
                     )
                 )
@@ -794,7 +778,7 @@ EsgDict <- R6::R6Class("EsgDict",
         #' restored$has_data()
         load = function(path = NULL) {
             if (is.null(path)) {
-                path <- esgdict__latest_store_path(private$m_project)
+                path <- dict__latest(private$m_project)
             }
 
             if (is.null(path)) {
@@ -802,14 +786,14 @@ EsgDict <- R6::R6Class("EsgDict",
                 return(self)
             }
 
-            dict <- esgdict__load(path, project = private$m_project)
+            dict <- dict__load(path, project = private$m_project)
 
             if (is.null(dict)) {
                 cli::cli_alert_info("Failed to find ESG Dictionary at {.path {normalizePath(path, mustWork = FALSE)}}. Skip loading.")
                 return(self)
             }
 
-            dict <- esgdict__build(dict)
+            dict <- dict__build(dict)
             if (is.null(dict$built_time)) {
                 cli::cli_alert_success("Loaded empty ESG Dictionary.")
             } else {
@@ -896,7 +880,7 @@ EsgDict <- R6::R6Class("EsgDict",
             }
             private$m_status <- status
             if (is.null(private$m_indices) && self$has_data()) {
-                private$m_indices <- esgdict__indices(private$m_project, private$m_data)
+                private$m_indices <- dict__make_indices(private$m_project, private$m_data)
             }
             invisible(self)
         },

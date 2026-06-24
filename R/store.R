@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.1.0"
+STORE_SCHEMA_VERSION <- "2.2.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -145,8 +145,8 @@ EsgStore <- R6::R6Class(
                 "store_meta",
                 data.frame(
                     key = key,
-                    value = extract_store_na_character(value),
-                    updated_at = extract_store_now(),
+                    value = store__chr1(value),
+                    updated_at = store__now(),
                     stringsAsFactors = FALSE
                 ),
                 "key"
@@ -207,7 +207,7 @@ EsgStore <- R6::R6Class(
                 data.frame(
                     key = "download_layout",
                     value = jsonlite::toJSON(policy, auto_unbox = TRUE, null = "null"),
-                    updated_at = extract_store_now(),
+                    updated_at = store__now(),
                     stringsAsFactors = FALSE
                 ),
                 "key"
@@ -296,25 +296,25 @@ EsgStore <- R6::R6Class(
                 metadata <- list()
             }
 
-            artifact_id <- extract_store_hash(kind, rel_path, checksum, file_key, dict_id, source_commit)
-            now <- extract_store_now()
+            artifact_id <- store__hash(kind, rel_path, checksum, file_key, dict_id, source_commit)
+            now <- store__now()
             row <- data.frame(
                 artifact_id = artifact_id,
                 kind = kind,
                 role = role,
-                project = extract_store_na_character(project),
+                project = store__chr1(project),
                 relative_path = rel_path,
-                checksum = extract_store_na_character(checksum),
+                checksum = store__chr1(checksum),
                 checksum_type = checksum_type,
                 size = as.numeric(size),
                 status = status,
-                query_id = extract_store_na_character(query_id),
-                file_key = extract_store_na_character(file_key),
-                dict_id = extract_store_na_character(dict_id),
-                source_url = extract_store_na_character(source_url),
-                source_repo = extract_store_na_character(source_repo),
-                source_tag = extract_store_na_character(source_tag),
-                source_commit = extract_store_na_character(source_commit),
+                query_id = store__chr1(query_id),
+                file_key = store__chr1(file_key),
+                dict_id = store__chr1(dict_id),
+                source_url = store__chr1(source_url),
+                source_repo = store__chr1(source_repo),
+                source_tag = store__chr1(source_tag),
+                source_commit = store__chr1(source_commit),
                 metadata_json = jsonlite::toJSON(metadata, auto_unbox = TRUE, null = "null"),
                 created_at = now,
                 updated_at = now,
@@ -436,25 +436,25 @@ EsgStore <- R6::R6Class(
             query_file <- file.path(private$query_dir, sprintf("query-%s.json", query_id))
             query$save(query_file)
 
-            now <- extract_store_now()
+            now <- store__now()
             queries <- private$read_table("esg_query")
             existing <- queries[queries[["query_id"]] == qid]
             created_at <- if (nrow(existing)) existing$created_at[[1L]] else now
             tracked <- if (nrow(existing)) {
-                extract_store_is_true(existing$tracked[[1L]]) || isTRUE(track)
+                store__flag(existing$tracked[[1L]]) || isTRUE(track)
             } else {
                 isTRUE(track)
             }
             if (is.null(label) && nrow(existing)) {
-                label <- extract_store_na_character(existing$label[[1L]])
+                label <- store__chr1(existing$label[[1L]])
                 if (is.na(label)) label <- NULL
             }
 
             row <- data.frame(
                 query_id = query_id,
-                label = extract_store_na_character(label),
+                label = store__chr1(label),
                 index_node = payload$index_node,
-                query_file = extract_store_rel_path(query_file, private$store_path),
+                query_file = store_rel_path(query_file, private$store_path),
                 parameter_json = payload$parameter_json,
                 tracked = tracked,
                 created_at = created_at,
@@ -522,9 +522,9 @@ EsgStore <- R6::R6Class(
                 if (isTRUE(replace)) {
                     private$delete_by_key("esg_query_tag", "query_id", query_id)
                 }
-                now <- extract_store_now()
+                now <- store__now()
                 rows <- data.frame(
-                    tag_id = vapply(tag, function(value) extract_store_hash(query_id, value), character(1L)),
+                    tag_id = vapply(tag, function(value) store__hash(query_id, value), character(1L)),
                     query_id = query_id,
                     tag = tag,
                     created_at = now,
@@ -602,9 +602,9 @@ EsgStore <- R6::R6Class(
             private$with_store_lock({
                 private$get_query_row(query_id)
                 private$get_query_row(parent_query_id)
-                now <- extract_store_now()
+                now <- store__now()
                 row <- data.frame(
-                    dependency_id = extract_store_hash(query_id, parent_query_id),
+                    dependency_id = store__hash(query_id, parent_query_id),
                     query_id = query_id,
                     parent_query_id = parent_query_id,
                     created_at = now,
@@ -991,6 +991,11 @@ EsgStore <- R6::R6Class(
         #'        `FALSE`.
         #' @param run Whether to run the queued session immediately. Default:
         #'        `TRUE`.
+        #' @param background Whether to run the queued session in the background.
+        #'        Default: `FALSE`.
+        #' @param mode Background execution mode. `"process"` starts a detached
+        #'        `Rscript`; `"daemon"` submits the job to a running downloader
+        #'        daemon.
         #' @param session_label Optional download session label.
         #' @param service,probe,strategy Download plan arguments.
         #' @param probe_concurrency Maximum concurrent URL probes when
@@ -1001,13 +1006,16 @@ EsgStore <- R6::R6Class(
         #' @param all,limit,fields Arguments passed to `EsgQuery$collect()`.
         #' @param ... Additional File query filters passed to `EsgQuery$collect()`.
         #'
-        #' @return The created downloader session ID.
+        #' @return The created downloader session ID, or a one-row background
+        #'         job record when `run = TRUE` and `background = TRUE`.
         download_query = function(
             query_id,
             downloader = NULL,
             replica = "auto",
             dry_run = FALSE,
             run = TRUE,
+            background = FALSE,
+            mode = c("process", "daemon"),
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
@@ -1026,10 +1034,12 @@ EsgStore <- R6::R6Class(
             checkmate::assert_string(query_id, min.chars = 1L)
             checkmate::assert_flag(dry_run)
             checkmate::assert_flag(run)
+            checkmate::assert_flag(background)
             checkmate::assert_flag(progress)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
             strategy <- match.arg(strategy)
+            mode <- match.arg(mode)
             if (isTRUE(dry_run)) {
                 return(self$download_preflight(
                     query_id = query_id,
@@ -1070,6 +1080,15 @@ EsgStore <- R6::R6Class(
             )
             private$set_query_update_session(links$update_id[[1L]], session_id)
             if (isTRUE(run)) {
+                if (isTRUE(background)) {
+                    return(downloader$start(
+                        session_id = session_id,
+                        overwrite = overwrite,
+                        resume = resume,
+                        mode = mode,
+                        store_path = private$store_path
+                    ))
+                }
                 downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
                 self$sync_downloads(downloader)
             }
@@ -1609,9 +1628,9 @@ EsgStore <- R6::R6Class(
             private$check_open()
 
             private$with_store_lock({
-            result_type <- extract_store_result_type(files)
-            dt <- extract_store_file_table(files)
-            query_id <- extract_store_hash(
+            result_type <- store__result_type(files)
+            dt <- store__file_table(files)
+            query_id <- store__hash(
                 result_type,
                 priv(files)$index_node,
                 jsonlite::toJSON(priv(files)$parameter$serialize(null = TRUE), auto_unbox = TRUE),
@@ -1632,21 +1651,21 @@ EsgStore <- R6::R6Class(
             time_filter <- files$time_filter
             query_run <- data.frame(
                 query_id = query_id,
-                label = extract_store_na_character(label),
+                label = store__chr1(label),
                 result_type = result_type,
-                query_file = extract_store_rel_path(query_file, private$store_path),
+                query_file = store_rel_path(query_file, private$store_path),
                 index_node = priv(files)$index_node,
-                time_filter_start = extract_store_parse_datetime_scalar(extract_store_list_value(time_filter, "start")),
-                time_filter_stop = extract_store_parse_datetime_scalar(extract_store_list_value(time_filter, "stop")),
-                time_filter_method = extract_store_na_character(extract_store_list_value(time_filter, "method")),
-                created_at = extract_store_now(),
+                time_filter_start = store__time1(store__pluck(time_filter, "start")),
+                time_filter_stop = store__time1(store__pluck(time_filter, "stop")),
+                time_filter_method = store__chr1(store__pluck(time_filter, "method")),
+                created_at = store__now(),
                 package_version = as.character(utils::packageVersion("epwshiftr")),
                 stringsAsFactors = FALSE
             )
             private$replace_rows("query_run", query_run, "query_id")
 
             if (nrow(dt)) {
-                now <- extract_store_now()
+                now <- store__now()
                 file_rows <- private$file_rows(dt, now)
                 private$replace_rows("esg_file", as.data.frame(file_rows), "file_key")
                 private$sync_query_file_links(query_id, file_rows, now)
@@ -1685,6 +1704,11 @@ EsgStore <- R6::R6Class(
         #' @param replica Replica policy passed to `$download_plan()`.
         #' @param downloader Optional [Downloader]. Default: `$downloader()`.
         #' @param run Whether to run the queued session immediately. Default: `TRUE`.
+        #' @param background Whether to run the queued session in the background.
+        #'        Default: `FALSE`.
+        #' @param mode Background execution mode. `"process"` starts a detached
+        #'        `Rscript`; `"daemon"` submits the job to a running downloader
+        #'        daemon.
         #' @param session_label Optional download session label.
         #' @param service ESGF URL service to download from. Default:
         #'        `"HTTPServer"`.
@@ -1700,12 +1724,15 @@ EsgStore <- R6::R6Class(
         #' @param ... Additional arguments passed to `$download_plan()` and
         #'        `Downloader$run()`.
         #'
-        #' @return The created downloader session ID.
+        #' @return The created downloader session ID, or a one-row background
+        #'         job record when `run = TRUE` and `background = TRUE`.
         download_files = function(
             files = NULL,
             replica = "auto",
             downloader = NULL,
             run = TRUE,
+            background = FALSE,
+            mode = c("process", "daemon"),
             session_label = NULL,
             service = "HTTPServer",
             probe = TRUE,
@@ -1719,6 +1746,12 @@ EsgStore <- R6::R6Class(
         ) {
             private$check_open()
             strategy <- match.arg(strategy)
+            mode <- match.arg(mode)
+            checkmate::assert_flag(run)
+            checkmate::assert_flag(background)
+            checkmate::assert_flag(progress)
+            checkmate::assert_flag(overwrite)
+            checkmate::assert_flag(resume)
             if (is.null(downloader)) {
                 downloader <- self$downloader()
             }
@@ -1751,6 +1784,15 @@ EsgStore <- R6::R6Class(
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
+                if (isTRUE(background)) {
+                    return(downloader$start(
+                        session_id = session_id,
+                        overwrite = overwrite,
+                        resume = resume,
+                        mode = mode,
+                        store_path = private$store_path
+                    ))
+                }
                 downloader$run(session_id = session_id, progress = progress, overwrite = overwrite, resume = resume)
                 self$sync_downloads(downloader)
             }
@@ -1792,8 +1834,8 @@ EsgStore <- R6::R6Class(
                 }
                 fk <- file_key
                 row <- catalog[catalog[["file_key"]] == fk]
-                checksum <- extract_store_na_character(task$checksum[[1L]])
-                checksum_type <- tolower(extract_store_na_character(task$checksum_type[[1L]]))
+                checksum <- store__chr1(task$checksum[[1L]])
+                checksum_type <- tolower(store__chr1(task$checksum_type[[1L]]))
                 if (is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")) {
                     checksum_type <- "sha256"
                 }
@@ -1809,10 +1851,10 @@ EsgStore <- R6::R6Class(
                     checksum_type = checksum_type,
                     query_id = row$query_id[[1L]],
                     file_key = file_key,
-                    source_url = extract_store_na_character(task$selected_url[[1L]]),
-                    metadata = list(filename = extract_store_na_character(task$filename[[1L]]))
+                    source_url = store__chr1(task$selected_url[[1L]]),
+                    metadata = list(filename = store__chr1(task$filename[[1L]]))
                 )
-                row$local_path <- extract_store_rel_path(local_path, private$store_path)
+                row$local_path <- store_rel_path(local_path, private$store_path)
                 row$local_artifact_id <- artifact_id
                 private$replace_rows("file_catalog", as.data.frame(row), "file_key")
                 private$sync_tracked_file_download(file_key, local_path, artifact_id)
@@ -1855,7 +1897,7 @@ EsgStore <- R6::R6Class(
             checkmate::assert_int(nearest, lower = 1L)
             private$check_open()
 
-            time_range <- extract_store_parse_time_range(time)
+            time_range <- store__time_range(time)
             catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
             catalog <- catalog[catalog$query_id == query_id]
             if (!nrow(catalog)) {
@@ -1916,12 +1958,12 @@ EsgStore <- R6::R6Class(
                 cli::cli_abort("No cataloged file records match the requested variable IDs.")
             }
 
-            now <- extract_store_now()
+            now <- store__now()
             out <- data.frame(
                 plan_id = vapply(
                     seq_len(nrow(plan)),
                     function(i) {
-                        extract_store_hash(
+                        store__hash(
                             plan$file_key[[i]],
                             site_id,
                             plan$variable_id[[i]],
@@ -2045,7 +2087,7 @@ EsgStore <- R6::R6Class(
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             private$check_open()
 
-            map <- extract_store_summary_columns()
+            map <- store__summary_cols()
             unknown <- setdiff(by, names(map))
             if (length(unknown)) {
                 cli::cli_abort("Unknown extraction summary column(s): {.val {unknown}}.")
@@ -2414,7 +2456,7 @@ EsgStore <- R6::R6Class(
             )
             pieces <- pieces[!is.na(pieces) & nzchar(pieces)]
             if (!length(pieces)) {
-                pieces <- paste0("file-", substr(extract_store_hash(row$logical_file_id, row$file_key, row$filename), 1L, 12L))
+                pieces <- paste0("file-", substr(store__hash(row$logical_file_id, row$file_key, row$filename), 1L, 12L))
             }
             private$download_layout_path(c("datasets", pieces))
         },
@@ -2507,7 +2549,7 @@ EsgStore <- R6::R6Class(
                         return(paste0("checksum=", substr(checksum, 1L, 12L)))
                     }
                 }
-                paste0("file=", substr(extract_store_hash(logical_file_id[[i]], file_key[[i]], filename[[i]]), 1L, 12L))
+                paste0("file=", substr(store__hash(logical_file_id[[i]], file_key[[i]], filename[[i]]), 1L, 12L))
             }, character(1L))]
             map <- stats::setNames(disambiguators$disambiguator, disambiguators$logical_file_id)
             hit <- plan$logical_file_id %in% names(map)
@@ -2519,7 +2561,7 @@ EsgStore <- R6::R6Class(
         },
 
         download_layout_component = function(x) {
-            x <- extract_store_na_character(x)
+            x <- store__chr1(x)
             if (is.na(x) || !nzchar(x)) {
                 return(NA_character_)
             }
@@ -2570,10 +2612,10 @@ EsgStore <- R6::R6Class(
                     seq_len(nrow(catalog)),
                     function(i) {
                         pieces <- c(
-                            extract_store_na_character(catalog$tracking_id[[i]]),
-                            extract_store_na_character(catalog$checksum[[i]]),
-                            extract_store_na_character(catalog$filename[[i]]),
-                            extract_store_na_character(catalog$esgf_id[[i]])
+                            store__chr1(catalog$tracking_id[[i]]),
+                            store__chr1(catalog$checksum[[i]]),
+                            store__chr1(catalog$filename[[i]]),
+                            store__chr1(catalog$esgf_id[[i]])
                         )
                         paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
                     },
@@ -2737,7 +2779,7 @@ EsgStore <- R6::R6Class(
             }
             summary <- data.table::data.table(
                 query_id = row$query_id[[1L]],
-                label = extract_store_na_character(row$label[[1L]]),
+                label = store__chr1(row$label[[1L]]),
                 file_total = as.integer(nrow(files)),
                 current_count = as.integer(nrow(current)),
                 candidate_count = as.integer(nrow(candidates)),
@@ -2774,11 +2816,11 @@ EsgStore <- R6::R6Class(
         },
 
         match_download_task = function(task, catalog) {
-            file_key <- extract_store_na_character(task$file_key[[1L]])
+            file_key <- store__chr1(task$file_key[[1L]])
             if (!is.na(file_key) && file_key %in% catalog$file_key) {
                 return(file_key)
             }
-            esgf_id <- extract_store_na_character(task$esgf_id[[1L]])
+            esgf_id <- store__chr1(task$esgf_id[[1L]])
             if (!is.na(esgf_id)) {
                 hit <- catalog[catalog[["esgf_id"]] == esgf_id]
                 if (nrow(hit)) return(hit$file_key[[1L]])
@@ -3087,6 +3129,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
+            private$init_epw_morph_schema()
 
             private$migrate_schema()
 
@@ -3099,6 +3142,7 @@ EsgStore <- R6::R6Class(
             current <- private$store_schema_version()
             private$migrate_schema_to_2(current)
             private$migrate_schema_to_2_1(current)
+            private$migrate_schema_to_2_2(current)
             private$set_store_schema_version(STORE_SCHEMA_VERSION)
             invisible(NULL)
         },
@@ -3122,7 +3166,7 @@ EsgStore <- R6::R6Class(
                 data.frame(
                     key = "schema_version",
                     value = version,
-                    updated_at = extract_store_now(),
+                    updated_at = store__now(),
                     stringsAsFactors = FALSE
                 ),
                 "key"
@@ -3152,6 +3196,140 @@ EsgStore <- R6::R6Class(
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS version VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
             private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
+            invisible(NULL)
+        },
+
+        migrate_schema_to_2_2 = function(current) {
+            private$init_epw_morph_schema()
+            invisible(NULL)
+        },
+        # }}}
+
+        # init_epw_morph_schema {{{
+        init_epw_morph_schema = function() {
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_source (
+                    epw_id VARCHAR PRIMARY KEY,
+                    artifact_id VARCHAR,
+                    label VARCHAR,
+                    site_id VARCHAR,
+                    path VARCHAR,
+                    checksum VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_baseline_summary (
+                    baseline_row_id VARCHAR PRIMARY KEY,
+                    baseline_id VARCHAR,
+                    epw_id VARCHAR,
+                    epw_field VARCHAR,
+                    month INTEGER,
+                    stat VARCHAR,
+                    value DOUBLE,
+                    units VARCHAR,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_climate_summary (
+                    summary_row_id VARCHAR PRIMARY KEY,
+                    summary_id VARCHAR,
+                    plan_id VARCHAR,
+                    site_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    frequency VARCHAR,
+                    table_id VARCHAR,
+                    variable_id VARCHAR,
+                    period VARCHAR,
+                    month INTEGER,
+                    stat VARCHAR,
+                    value DOUBLE,
+                    units VARCHAR,
+                    coverage DOUBLE,
+                    n_records INTEGER,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_plan (
+                    morph_id VARCHAR PRIMARY KEY,
+                    epw_id VARCHAR,
+                    summary_id VARCHAR,
+                    baseline_id VARCHAR,
+                    label VARCHAR,
+                    by_json VARCHAR,
+                    recipe_json VARCHAR,
+                    strict BOOLEAN,
+                    status VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    last_error VARCHAR
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_factor (
+                    factor_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    epw_field VARCHAR,
+                    variable_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    period VARCHAR,
+                    month INTEGER,
+                    method VARCHAR,
+                    baseline DOUBLE,
+                    future DOUBLE,
+                    delta DOUBLE,
+                    alpha DOUBLE,
+                    units VARCHAR,
+                    status VARCHAR
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_result (
+                    result_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    artifact_id VARCHAR,
+                    output_path VARCHAR,
+                    row_count INTEGER,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_output (
+                    output_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    artifact_id VARCHAR,
+                    path VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    period VARCHAR,
+                    created_at TIMESTAMP
+                )
+            "
+            )
             invisible(NULL)
         },
         # }}}
@@ -3198,7 +3376,7 @@ EsgStore <- R6::R6Class(
             parameter <- priv(query)$parameter$serialize(null = TRUE)
             parameter_json <- jsonlite::toJSON(parameter, auto_unbox = TRUE, null = "null", digits = 6)
             list(
-                query_id = extract_store_hash("EsgQuery", state$index_node, parameter_json),
+                query_id = store__hash("EsgQuery", state$index_node, parameter_json),
                 index_node = state$index_node,
                 parameter_json = as.character(parameter_json)
             )
@@ -3218,7 +3396,7 @@ EsgStore <- R6::R6Class(
             }
             private$with_store_lock({
             row$tracked <- isTRUE(tracked)
-            row$updated_at <- extract_store_now()
+            row$updated_at <- store__now()
             private$replace_rows("esg_query", as.data.frame(row), "query_id")
             })
             invisible(NULL)
@@ -3367,8 +3545,8 @@ EsgStore <- R6::R6Class(
                 rows[[i]] <- data.table::as.data.table(c(
                     list(
                         query_id = qid,
-                        label = extract_store_na_character(query$label[[1L]]),
-                        tracked = extract_store_is_true(query$tracked[[1L]]),
+                        label = store__chr1(query$label[[1L]]),
+                        tracked = store__flag(query$tracked[[1L]]),
                         file_total = nrow(q_links),
                         file_current = current_count,
                         file_missing = sum(q_links$status == "missing", na.rm = TRUE),
@@ -3425,9 +3603,9 @@ EsgStore <- R6::R6Class(
 
         # update_query_files {{{
         update_query_files = function(query_id, files, fields = "*", all = TRUE, limit = FALSE) {
-            extract_store_result_type(files)
-            dt <- extract_store_file_table(files)
-            now <- extract_store_now()
+            store__result_type(files)
+            dt <- store__file_table(files)
+            now <- store__now()
             existing_links <- private$read_table("esg_query_file")
             wanted_query_id <- query_id
             existing_links <- existing_links[existing_links[["query_id"]] == wanted_query_id]
@@ -3438,7 +3616,7 @@ EsgStore <- R6::R6Class(
                 existing_files <- existing_files[0]
             }
             file_rows <- private$file_rows(dt, now)
-            update_id <- extract_store_hash(query_id, now, nrow(file_rows), stats::runif(1L))
+            update_id <- store__hash(query_id, now, nrow(file_rows), stats::runif(1L))
             changes <- private$query_update_changes(update_id, query_id, existing_links, existing_files, file_rows, now)
 
             if (nrow(file_rows)) {
@@ -3486,9 +3664,9 @@ EsgStore <- R6::R6Class(
 
         # preview_query_update {{{
         preview_query_update = function(row, files, fields = "*", all = TRUE, limit = FALSE) {
-            extract_store_result_type(files)
-            dt <- extract_store_file_table(files)
-            now <- extract_store_now()
+            store__result_type(files)
+            dt <- store__file_table(files)
+            now <- store__now()
             query_id <- row$query_id[[1L]]
             existing_links <- private$read_table("esg_query_file")
             wanted_query_id <- query_id
@@ -3500,7 +3678,7 @@ EsgStore <- R6::R6Class(
                 existing_files <- existing_files[0]
             }
             file_rows <- private$file_rows(dt, now)
-            update_id <- extract_store_hash("preview", query_id, now, nrow(file_rows), stats::runif(1L))
+            update_id <- store__hash("preview", query_id, now, nrow(file_rows), stats::runif(1L))
             changes <- private$query_update_changes(update_id, query_id, existing_links, existing_files, file_rows, now)
             summary <- private$query_update_preview_summary(row, changes)
             list(summary = summary, changes = changes, files = files, file_rows = file_rows)
@@ -3535,7 +3713,7 @@ EsgStore <- R6::R6Class(
             }
             data.table::data.table(
                 query_id = row$query_id[[1L]],
-                label = extract_store_na_character(row$label[[1L]]),
+                label = store__chr1(row$label[[1L]]),
                 file_total = as.integer(nrow(changes)),
                 current_count = count_type("current"),
                 new_count = count_type("new"),
@@ -3587,7 +3765,7 @@ EsgStore <- R6::R6Class(
                 }
 
                 rows[[i]] <- data.table::data.table(
-                    update_file_id = extract_store_hash(update_id, key),
+                    update_file_id = store__hash(update_id, key),
                     update_id = update_id,
                     query_id = query_id,
                     file_key = key,
@@ -3605,8 +3783,8 @@ EsgStore <- R6::R6Class(
                     size_changed = isTRUE(size_changed),
                     url_changed = isTRUE(url_changed),
                     data_node_changed = isTRUE(data_node_changed),
-                    deprecated = has_current && extract_store_is_true(current_file$deprecated[[1L]]),
-                    retracted = has_current && extract_store_is_true(current_file$retracted[[1L]]),
+                    deprecated = has_current && store__flag(current_file$deprecated[[1L]]),
+                    retracted = has_current && store__flag(current_file$retracted[[1L]]),
                     created_at = now
                 )
             }
@@ -3619,7 +3797,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(row) || !column %in% names(row)) {
                 return(NA_character_)
             }
-            extract_store_na_character(row[[column]][[1L]])
+            store__chr1(row[[column]][[1L]])
         },
         # }}}
 
@@ -3744,12 +3922,12 @@ EsgStore <- R6::R6Class(
                 return(data.table::data.table())
             }
             dt <- data.table::as.data.table(dt)
-            dt[, file_key := extract_store_file_keys(.SD)]
+            dt[, file_key := store__file_keys(.SD)]
             dt[, `:=`(
                 row_order = seq_len(.N),
-                replica_order = data.table::fifelse(extract_store_as_logical(replica) %in% TRUE, 1L, 0L),
-                retracted_order = data.table::fifelse(extract_store_as_logical(retracted) %in% TRUE, 1L, 0L),
-                deprecated_order = data.table::fifelse(extract_store_as_logical(deprecated) %in% TRUE, 1L, 0L)
+                replica_order = data.table::fifelse(store__lgl(replica) %in% TRUE, 1L, 0L),
+                retracted_order = data.table::fifelse(store__lgl(retracted) %in% TRUE, 1L, 0L),
+                deprecated_order = data.table::fifelse(store__lgl(deprecated) %in% TRUE, 1L, 0L)
             )]
             data.table::setorderv(
                 dt,
@@ -3776,10 +3954,10 @@ EsgStore <- R6::R6Class(
                 checksum = dt$checksum,
                 checksum_type = dt$checksum_type,
                 size = suppressWarnings(as.numeric(dt$size)),
-                latest = extract_store_as_logical(dt$latest),
-                replica = extract_store_as_logical(dt$replica),
-                retracted = extract_store_as_logical(dt$retracted),
-                deprecated = extract_store_as_logical(dt$deprecated),
+                latest = store__lgl(dt$latest),
+                replica = store__lgl(dt$replica),
+                retracted = store__lgl(dt$retracted),
+                deprecated = store__lgl(dt$deprecated),
                 data_node = dt$data_node,
                 activity_id = dt$activity_id,
                 institution_id = dt$institution_id,
@@ -3790,13 +3968,13 @@ EsgStore <- R6::R6Class(
                 table_id = dt$table_id,
                 variable_id = dt$variable_id,
                 grid_label = dt$grid_label,
-                datetime_start = extract_store_parse_datetime(dt$datetime_start),
-                datetime_end = extract_store_parse_datetime(dt$datetime_end),
+                datetime_start = store__time(dt$datetime_start),
+                datetime_end = store__time(dt$datetime_end),
                 url_opendap = dt$url_opendap,
                 url_download = dt$url_download,
-                local_path = extract_store_match_named(existing_local_path, dt$file_key),
-                local_artifact_id = extract_store_match_named(existing_artifact, dt$file_key),
-                created_at = extract_store_match_time(existing_created, dt$file_key, now),
+                local_path = store__match_chr(existing_local_path, dt$file_key),
+                local_artifact_id = store__match_chr(existing_artifact, dt$file_key),
+                created_at = store__match_time(existing_created, dt$file_key, now),
                 updated_at = now
             )
         },
@@ -3824,11 +4002,11 @@ EsgStore <- R6::R6Class(
 
             existing_first_seen <- stats::setNames(existing$first_seen_at, existing$file_key)
             rows <- data.table::data.table(
-                link_id = vapply(current_keys, function(file_key) extract_store_hash(qid, file_key), character(1L)),
+                link_id = vapply(current_keys, function(file_key) store__hash(qid, file_key), character(1L)),
                 query_id = qid,
                 file_key = current_keys,
                 status = private$file_link_status(file_rows[match(current_keys, file_rows$file_key)]),
-                first_seen_at = extract_store_match_time(existing_first_seen, current_keys, now),
+                first_seen_at = store__match_time(existing_first_seen, current_keys, now),
                 last_seen_at = now
             )
             private$replace_rows("esg_query_file", as.data.frame(rows), "link_id")
@@ -3839,8 +4017,8 @@ EsgStore <- R6::R6Class(
         # file_link_status {{{
         file_link_status = function(file_rows) {
             status <- rep("current", nrow(file_rows))
-            deprecated <- extract_store_as_logical(file_rows$deprecated)
-            retracted <- extract_store_as_logical(file_rows$retracted)
+            deprecated <- store__lgl(file_rows$deprecated)
+            retracted <- store__lgl(file_rows$retracted)
             status[deprecated %in% TRUE] <- "deprecated"
             status[retracted %in% TRUE] <- "retracted"
             status
@@ -3856,7 +4034,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(active)) {
                 return(invisible(NULL))
             }
-            now <- extract_store_now()
+            now <- store__now()
             catalog <- data.frame(
                 file_key = active$file_key,
                 query_id = query_id,
@@ -3883,8 +4061,8 @@ EsgStore <- R6::R6Class(
                 grid_label = active$grid_label,
                 datetime_start = active$datetime_start,
                 datetime_end = active$datetime_end,
-                actual_time_start = extract_store_parse_datetime(rep(NA_character_, nrow(active))),
-                actual_time_end = extract_store_parse_datetime(rep(NA_character_, nrow(active))),
+                actual_time_start = store__time(rep(NA_character_, nrow(active))),
+                actual_time_end = store__time(rep(NA_character_, nrow(active))),
                 url_opendap = active$url_opendap,
                 url_download = active$url_download,
                 local_path = active$local_path,
@@ -3905,9 +4083,9 @@ EsgStore <- R6::R6Class(
             if (!nrow(hit)) {
                 return(invisible(NULL))
             }
-            hit$local_path <- extract_store_rel_path(local_path, private$store_path)
+            hit$local_path <- store_rel_path(local_path, private$store_path)
             hit$local_artifact_id <- artifact_id
-            hit$updated_at <- extract_store_now()
+            hit$updated_at <- store__now()
             private$replace_rows("esg_file", as.data.frame(hit), "file_key")
             invisible(NULL)
         },
@@ -3997,7 +4175,7 @@ EsgStore <- R6::R6Class(
                 }
             }
 
-            local_path <- extract_store_vector_na_character(catalog$local_path)
+            local_path <- store__chr(catalog$local_path)
             actual_path <- vapply(local_path, function(path) {
                 if (is.na(path) || !nzchar(path)) {
                     return(NA_character_)
@@ -4014,9 +4192,9 @@ EsgStore <- R6::R6Class(
             check_size <- exists & !is.na(size_expected)
             size_ok[check_size] <- size_actual[check_size] == size_expected[check_size]
 
-            checksum_type <- tolower(extract_store_vector_na_character(catalog$checksum_type))
+            checksum_type <- tolower(store__chr(catalog$checksum_type))
             checksum_type[!checksum_type %in% c("md5", "sha256")] <- NA_character_
-            checksum_expected <- extract_store_vector_na_character(catalog$checksum)
+            checksum_expected <- store__chr(catalog$checksum)
             checksum_actual <- rep(NA_character_, nrow(catalog))
             checksum_ok <- rep(NA, nrow(catalog))
             if (isTRUE(checksum)) {
@@ -4054,7 +4232,7 @@ EsgStore <- R6::R6Class(
                 layout_ok[check_layout] <- store_normalize_path(actual_path[check_layout]) == store_normalize_path(expected_path[check_layout])
             }
 
-            artifact_id <- extract_store_vector_na_character(catalog$local_artifact_id)
+            artifact_id <- store__chr(catalog$local_artifact_id)
             artifact_idx <- match(artifact_id, artifacts$artifact_id)
             artifact_record_exists <- !is.na(artifact_id) & !is.na(artifact_idx)
             artifact_relative_path <- rep(NA_character_, nrow(catalog))
@@ -4130,17 +4308,17 @@ EsgStore <- R6::R6Class(
             if (nrow(catalog)) {
                 refs$catalog <- data.table::data.table(
                     source = "catalog",
-                    artifact_id = extract_store_vector_na_character(catalog$local_artifact_id),
+                    artifact_id = store__chr(catalog$local_artifact_id),
                     file_key = catalog$file_key,
-                    relative_path = extract_store_vector_na_character(catalog$local_path)
+                    relative_path = store__chr(catalog$local_path)
                 )
             }
             if (nrow(esg_files)) {
                 refs$esg_file <- data.table::data.table(
                     source = "esg_file",
-                    artifact_id = extract_store_vector_na_character(esg_files$local_artifact_id),
+                    artifact_id = store__chr(esg_files$local_artifact_id),
                     file_key = esg_files$file_key,
-                    relative_path = extract_store_vector_na_character(esg_files$local_path)
+                    relative_path = store__chr(esg_files$local_path)
                 )
             }
             refs <- if (length(refs)) data.table::rbindlist(refs, fill = TRUE) else data.table::data.table()
@@ -4181,8 +4359,8 @@ EsgStore <- R6::R6Class(
                 path = path,
                 exists = exists,
                 size = suppressWarnings(as.numeric(artifacts$size)),
-                checksum = extract_store_vector_na_character(artifacts$checksum),
-                checksum_type = tolower(extract_store_vector_na_character(artifacts$checksum_type)),
+                checksum = store__chr(artifacts$checksum),
+                checksum_type = tolower(store__chr(artifacts$checksum_type)),
                 referenced = referenced,
                 file_key_known = file_key_known,
                 path_matches = path_matches,
@@ -4267,7 +4445,7 @@ EsgStore <- R6::R6Class(
             }
             out <- unique(data.table::rbindlist(actions, fill = TRUE))
             out[, action_id := vapply(seq_len(.N), function(i) {
-                extract_store_hash(action[[i]], file_key[[i]], artifact_id[[i]], from_path[[i]], to_path[[i]], reason[[i]])
+                store__hash(action[[i]], file_key[[i]], artifact_id[[i]], from_path[[i]], to_path[[i]], reason[[i]])
             }, character(1L))]
             data.table::setcolorder(out, c(
                 "action_id", "action", "file_key", "artifact_id", "from_path",
@@ -4286,10 +4464,10 @@ EsgStore <- R6::R6Class(
                     seq_len(nrow(catalog)),
                     function(i) {
                         pieces <- c(
-                            extract_store_na_character(catalog$tracking_id[[i]]),
-                            extract_store_na_character(catalog$checksum[[i]]),
-                            extract_store_na_character(catalog$filename[[i]]),
-                            extract_store_na_character(catalog$esgf_id[[i]])
+                            store__chr1(catalog$tracking_id[[i]]),
+                            store__chr1(catalog$checksum[[i]]),
+                            store__chr1(catalog$filename[[i]]),
+                            store__chr1(catalog$esgf_id[[i]])
                         )
                         paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
                     },
@@ -4416,11 +4594,11 @@ EsgStore <- R6::R6Class(
             base <- data.table::data.table(
                 action_id = action$action_id[[1L]],
                 action = action$action[[1L]],
-                file_key = extract_store_na_character(action$file_key[[1L]]),
-                artifact_id = extract_store_na_character(action$artifact_id[[1L]]),
-                from_path = extract_store_na_character(action$from_path[[1L]]),
-                to_path = extract_store_na_character(action$to_path[[1L]]),
-                relative_path = extract_store_na_character(action$relative_path[[1L]]),
+                file_key = store__chr1(action$file_key[[1L]]),
+                artifact_id = store__chr1(action$artifact_id[[1L]]),
+                from_path = store__chr1(action$from_path[[1L]]),
+                to_path = store__chr1(action$to_path[[1L]]),
+                relative_path = store__chr1(action$relative_path[[1L]]),
                 done = FALSE,
                 dry_run = isTRUE(dry_run),
                 message = NA_character_
@@ -4446,21 +4624,21 @@ EsgStore <- R6::R6Class(
                 error = function(e) list(done = FALSE, message = conditionMessage(e))
             )
             base$done <- isTRUE(result$done)
-            base$message <- extract_store_na_character(result$message)
+            base$message <- store__chr1(result$message)
             base[]
         },
 
         repair_clear_missing_local_ref = function(action) {
-            file_key <- extract_store_na_character(action$file_key[[1L]])
+            file_key <- store__chr1(action$file_key[[1L]])
             if (is.na(file_key) || !nzchar(file_key)) {
                 return(list(done = FALSE, message = "missing file_key"))
             }
-            private$clear_file_local_reference(file_key, artifact_id = extract_store_na_character(action$artifact_id[[1L]]))
+            private$clear_file_local_reference(file_key, artifact_id = store__chr1(action$artifact_id[[1L]]))
             list(done = TRUE, message = "cleared missing local reference")
         },
 
         repair_remove_artifact_record = function(action) {
-            artifact_id <- extract_store_na_character(action$artifact_id[[1L]])
+            artifact_id <- store__chr1(action$artifact_id[[1L]])
             if (is.na(artifact_id) || !nzchar(artifact_id)) {
                 return(list(done = FALSE, message = "missing artifact_id"))
             }
@@ -4470,11 +4648,11 @@ EsgStore <- R6::R6Class(
         },
 
         repair_move_to_layout = function(action) {
-            file_key <- extract_store_na_character(action$file_key[[1L]])
-            artifact_id <- extract_store_na_character(action$artifact_id[[1L]])
-            from_path <- extract_store_na_character(action$from_path[[1L]])
-            to_path <- extract_store_na_character(action$to_path[[1L]])
-            relative_path <- extract_store_na_character(action$relative_path[[1L]])
+            file_key <- store__chr1(action$file_key[[1L]])
+            artifact_id <- store__chr1(action$artifact_id[[1L]])
+            from_path <- store__chr1(action$from_path[[1L]])
+            to_path <- store__chr1(action$to_path[[1L]])
+            relative_path <- store__chr1(action$relative_path[[1L]])
             if (is.na(file_key) || !nzchar(file_key)) {
                 return(list(done = FALSE, message = "missing file_key"))
             }
@@ -4510,7 +4688,7 @@ EsgStore <- R6::R6Class(
                 row <- artifacts[artifacts[["artifact_id"]] == artifact_id]
                 if (nrow(row)) {
                     row$relative_path <- relative_path
-                    row$updated_at <- extract_store_now()
+                    row$updated_at <- store__now()
                     private$replace_rows("artifact", as.data.frame(row), "artifact_id")
                 }
             }
@@ -4528,7 +4706,7 @@ EsgStore <- R6::R6Class(
                 rows$local_path <- NA_character_
                 rows$local_artifact_id <- NA_character_
                 if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- extract_store_now()
+                    rows$updated_at <- store__now()
                 }
                 private$replace_rows(table, as.data.frame(rows), "file_key")
             }
@@ -4547,7 +4725,7 @@ EsgStore <- R6::R6Class(
                 }
                 rows$local_artifact_id <- NA_character_
                 if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- extract_store_now()
+                    rows$updated_at <- store__now()
                 }
                 private$replace_rows(table, as.data.frame(rows), "file_key")
             }
@@ -4564,7 +4742,7 @@ EsgStore <- R6::R6Class(
                 rows$local_path <- relative_path
                 rows$local_artifact_id <- artifact_id
                 if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- extract_store_now()
+                    rows$updated_at <- store__now()
                 }
                 private$replace_rows(table, as.data.frame(rows), "file_key")
             }
@@ -5075,6 +5253,11 @@ EsgStore <- R6::R6Class(
                 time = requested_time,
                 nearest = plan$nearest[[1L]]
             )
+            units <- tryCatch(
+                as.character(ds$att_get(plan$variable_id[[1L]], "units", index = 1L))[[1L]],
+                error = function(e) NA_character_
+            )
+            dt[, units := units]
             if (!nrow(dt)) {
                 return(private$mark_plan_status(
                     plan,
@@ -5102,7 +5285,7 @@ EsgStore <- R6::R6Class(
 
         # open_plan_dataset {{{
         open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE) {
-            opendap <- extract_store_na_character(file$url_opendap)
+            opendap <- store__chr1(file$url_opendap)
             if (!is.na(opendap) && nzchar(opendap)) {
                 ds <- EsgDataset$new(opendap)
                 open_error <- NULL
@@ -5140,13 +5323,13 @@ EsgStore <- R6::R6Class(
 
         # download_plan_file {{{
         download_plan_file = function(file, overwrite = FALSE) {
-            download <- extract_store_na_character(file$url_download)
+            download <- store__chr1(file$url_download)
             if (is.na(download) || !nzchar(download)) {
                 stop("HTTPServer download URL is not available for this file record.", call. = FALSE)
             }
 
-            checksum <- extract_store_na_character(file$checksum)
-            checksum_type <- tolower(extract_store_na_character(file$checksum_type))
+            checksum <- store__chr1(file$checksum)
+            checksum_type <- tolower(store__chr1(file$checksum_type))
             if (is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")) {
                 checksum <- NULL
                 checksum_type <- "sha256"
@@ -5156,15 +5339,15 @@ EsgStore <- R6::R6Class(
             }
 
             downloader <- self$downloader(n_workers = 0L)
-            filename <- extract_store_na_character(file$filename[[1L]])
+            filename <- store__chr1(file$filename[[1L]])
             if (is.na(filename)) {
                 filename <- basename(sub("\\?.*$", "", download))
             }
             logical_parts <- c(
-                extract_store_na_character(file$tracking_id[[1L]]),
+                store__chr1(file$tracking_id[[1L]]),
                 if (is.null(checksum)) NA_character_ else checksum,
                 filename,
-                extract_store_na_character(file$file_key[[1L]])
+                store__chr1(file$file_key[[1L]])
             )
             logical_parts <- logical_parts[!is.na(logical_parts) & nzchar(logical_parts)]
             logical_file_id <- paste(logical_parts, collapse = ":")
@@ -5305,7 +5488,7 @@ EsgStore <- R6::R6Class(
                 variable_id = plan$variable_id[[1L]],
                 year = year
             )
-            dirs <- paste0(names(parts), "=", vapply(parts, extract_store_partition_value, character(1L)))
+            dirs <- paste0(names(parts), "=", vapply(parts, store__partition, character(1L)))
             file.path(
                 private$extract_dir,
                 do.call(file.path, as.list(dirs)),
@@ -5321,7 +5504,7 @@ EsgStore <- R6::R6Class(
             }
             dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
             tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
-            tmp_table <- sprintf("tmp_extract_%s", substr(extract_store_hash(path, Sys.time(), runif(1L)), 1L, 16L))
+            tmp_table <- sprintf("tmp_extract_%s", substr(store__hash(path, Sys.time(), runif(1L)), 1L, 16L))
             on.exit(
                 {
                     try(
@@ -5359,12 +5542,12 @@ EsgStore <- R6::R6Class(
         # extract_result_row {{{
         extract_result_row = function(plan, dt, output_path, year, artifact_id) {
             data.frame(
-                result_id = extract_store_hash(plan$plan_id[[1L]], year, output_path),
+                result_id = store__hash(plan$plan_id[[1L]], year, output_path),
                 plan_id = plan$plan_id[[1L]],
                 file_key = plan$file_key[[1L]],
                 query_id = plan$query_id[[1L]],
                 artifact_id = artifact_id,
-                output_path = extract_store_rel_path(output_path, private$store_path),
+                output_path = store_rel_path(output_path, private$store_path),
                 year = as.integer(year),
                 row_count = nrow(dt),
                 unique_time_count = data.table::uniqueN(dt$time),
@@ -5373,7 +5556,7 @@ EsgStore <- R6::R6Class(
                 lon_actual = dt$lon[[which.min(dt$dist)]],
                 lat_actual = dt$lat[[which.min(dt$dist)]],
                 dist_min = min(dt$dist, na.rm = TRUE),
-                completed_at = extract_store_now(),
+                completed_at = store__now(),
                 stringsAsFactors = FALSE
             )
         },
@@ -5416,8 +5599,8 @@ EsgStore <- R6::R6Class(
             if (isTRUE(increment_attempt)) {
                 plan$attempt_count <- as.integer(plan$attempt_count) + 1L
             }
-            plan$last_error <- extract_store_na_character(last_error)
-            plan$updated_at <- extract_store_now()
+            plan$last_error <- store__chr1(last_error)
+            plan$updated_at <- store__now()
             private$replace_rows("extraction_plan", plan, "plan_id")
             data.table::as.data.table(plan)
         },
@@ -5432,8 +5615,8 @@ EsgStore <- R6::R6Class(
 )
 # }}}
 
-# extract-store helpers {{{
-extract_store_result_type <- function(files) {
+# store helpers {{{
+store__result_type <- function(files) {
     if (inherits(files, "EsgResultFile")) {
         return("File")
     }
@@ -5444,16 +5627,16 @@ extract_store_result_type <- function(files) {
     cli::cli_abort("`files` must be an EsgResultFile or EsgResultAggregation object.")
 }
 
-extract_store_now <- function() {
+store__now <- function() {
     as.POSIXct(Sys.time(), tz = "UTC")
 }
 
-extract_store_hash <- function(...) {
-    text <- paste(vapply(list(...), extract_store_hash_piece, character(1L)), collapse = "\n")
+store__hash <- function(...) {
+    text <- paste(vapply(list(...), store__hash_piece, character(1L)), collapse = "\n")
     checksum_bytes(charToRaw(text), "sha256")
 }
 
-extract_store_hash_piece <- function(x) {
+store__hash_piece <- function(x) {
     if (is.null(x)) {
         return("<NULL>")
     }
@@ -5464,7 +5647,7 @@ extract_store_hash_piece <- function(x) {
     paste(x, collapse = "\r")
 }
 
-extract_store_na_character <- function(x) {
+store__chr1 <- function(x) {
     if (is.null(x) || !length(x) || is.na(x[[1L]])) {
         return(NA_character_)
     }
@@ -5472,7 +5655,7 @@ extract_store_na_character <- function(x) {
     as.character(x[[1L]])
 }
 
-extract_store_vector_na_character <- function(x) {
+store__chr <- function(x) {
     if (is.null(x)) {
         return(character())
     }
@@ -5481,7 +5664,7 @@ extract_store_vector_na_character <- function(x) {
     x
 }
 
-extract_store_is_true <- function(x) {
+store__flag <- function(x) {
     if (is.null(x) || !length(x) || is.na(x[[1L]])) {
         return(FALSE)
     }
@@ -5489,7 +5672,7 @@ extract_store_is_true <- function(x) {
     isTRUE(as.logical(x[[1L]]))
 }
 
-extract_store_list_value <- function(x, name) {
+store__pluck <- function(x, name) {
     if (is.null(x) || !is.list(x) || !name %in% names(x)) {
         return(NA_character_)
     }
@@ -5497,11 +5680,11 @@ extract_store_list_value <- function(x, name) {
     x[[name]]
 }
 
-extract_store_parse_datetime_scalar <- function(x) {
-    extract_store_parse_datetime(extract_store_na_character(x))[[1L]]
+store__time1 <- function(x) {
+    store__time(store__chr1(x))[[1L]]
 }
 
-extract_store_parse_datetime <- function(x) {
+store__time <- function(x) {
     if (inherits(x, "POSIXt")) {
         return(as.POSIXct(x, tz = "UTC"))
     }
@@ -5509,15 +5692,15 @@ extract_store_parse_datetime <- function(x) {
     out <- as.POSIXct(rep(NA_real_, length(x)), origin = "1970-01-01", tz = "UTC")
     ok <- !is.na(x) & nzchar(x)
     if (any(ok)) {
-        out[ok] <- parse_datetime(x[ok], tz = "UTC")
+        out[ok] <- solrdate__parse(x[ok], tz = "UTC")
     }
 
     out
 }
 
-extract_store_parse_time_range <- function(time) {
+store__time_range <- function(time) {
     checkmate::assert_atomic_vector(time, len = 2L, any.missing = FALSE)
-    parsed <- extract_store_parse_datetime(time)
+    parsed <- store__time(time)
     if (any(is.na(parsed))) {
         cli::cli_abort("`time` must be a length-2 parseable datetime range.")
     }
@@ -5528,18 +5711,14 @@ extract_store_parse_time_range <- function(time) {
     list(start = parsed[[1L]], stop = parsed[[2L]])
 }
 
-extract_store_rel_path <- function(path, root) {
-    store_rel_path(path, root = root)
-}
-
-extract_store_scalar_column <- function(dt, name, n = nrow(dt)) {
+store__col <- function(dt, name, n = nrow(dt)) {
     if (!name %in% names(dt)) {
         return(rep(NA_character_, n))
     }
 
     value <- dt[[name]]
     if (is.list(value)) {
-        value <- vapply(value, extract_store_na_character, character(1L))
+        value <- vapply(value, store__chr1, character(1L))
     } else {
         value <- as.character(value)
         value[is.na(value)] <- NA_character_
@@ -5548,15 +5727,15 @@ extract_store_scalar_column <- function(dt, name, n = nrow(dt)) {
     value
 }
 
-extract_store_column_value <- function(dt, name, i) {
+store__cell <- function(dt, name, i) {
     if (!name %in% names(dt)) {
         return(NA_character_)
     }
 
-    extract_store_na_character(dt[[name]][[i]])
+    store__chr1(dt[[name]][[i]])
 }
 
-extract_store_as_logical <- function(x) {
+store__lgl <- function(x) {
     if (is.null(x)) {
         return(logical())
     }
@@ -5570,7 +5749,7 @@ extract_store_as_logical <- function(x) {
     out
 }
 
-extract_store_match_named <- function(values, keys) {
+store__match_chr <- function(values, keys) {
     if (!length(values)) {
         return(rep(NA_character_, length(keys)))
     }
@@ -5579,7 +5758,7 @@ extract_store_match_named <- function(values, keys) {
     as.character(out)
 }
 
-extract_store_match_time <- function(values, keys, default) {
+store__match_time <- function(values, keys, default) {
     if (!length(values)) {
         return(rep(default, length(keys)))
     }
@@ -5588,8 +5767,8 @@ extract_store_match_time <- function(values, keys, default) {
     out
 }
 
-extract_store_file_table <- function(files) {
-    extract_store_result_type(files)
+store__file_table <- function(files) {
+    store__result_type(files)
     dt <- data.table::copy(files$to_data_table())
     n <- nrow(dt)
     columns <- c(
@@ -5628,7 +5807,7 @@ extract_store_file_table <- function(files) {
         stats::setNames(rep(list(rep(NA_character_, n)), length(columns)), columns)
     )
     for (name in columns) {
-        out[[name]] <- extract_store_scalar_column(dt, name, n)
+        out[[name]] <- store__col(dt, name, n)
     }
     if (n && all(is.na(out$filename)) && any(!is.na(out$title))) {
         out$filename <- basename(out$title)
@@ -5637,7 +5816,7 @@ extract_store_file_table <- function(files) {
     out[]
 }
 
-extract_store_file_keys <- function(dt) {
+store__file_keys <- function(dt) {
     if (!nrow(dt)) {
         return(character())
     }
@@ -5645,24 +5824,24 @@ extract_store_file_keys <- function(dt) {
     vapply(
         seq_len(nrow(dt)),
         function(i) {
-            master_id <- extract_store_column_value(dt, "master_id", i)
+            master_id <- store__cell(dt, "master_id", i)
             if (!is.na(master_id) && nzchar(master_id)) {
                 return(paste0("master:", master_id))
             }
 
-            tracking_id <- extract_store_column_value(dt, "tracking_id", i)
+            tracking_id <- store__cell(dt, "tracking_id", i)
             if (!is.na(tracking_id) && nzchar(tracking_id)) {
                 return(paste0("tracking:", tracking_id))
             }
 
-            checksum <- extract_store_column_value(dt, "checksum", i)
-            size <- extract_store_column_value(dt, "size", i)
-            filename <- extract_store_column_value(dt, "filename", i)
+            checksum <- store__cell(dt, "checksum", i)
+            size <- store__cell(dt, "size", i)
+            filename <- store__cell(dt, "filename", i)
             if (!is.na(checksum) && nzchar(checksum) && !is.na(filename) && nzchar(filename)) {
                 return(paste("checksum", checksum, size, filename, sep = ":"))
             }
 
-            id <- extract_store_column_value(dt, "id", i)
+            id <- store__cell(dt, "id", i)
             if (!is.na(id) && nzchar(id)) {
                 return(paste0("id:", id))
             }
@@ -5673,14 +5852,14 @@ extract_store_file_keys <- function(dt) {
                     "Cannot create a stable file key because file record {i} has no master ID, tracking ID, checksum, ID, URL, or title."
                 )
             }
-            paste0("fallback:", extract_store_hash(pieces))
+            paste0("fallback:", store__hash(pieces))
         },
         character(1L)
     )
 }
 
-extract_store_partition_value <- function(x) {
-    x <- extract_store_na_character(x)
+store__partition <- function(x) {
+    x <- store__chr1(x)
     if (is.na(x) || !nzchar(x)) {
         return("__missing__")
     }
@@ -5696,7 +5875,7 @@ extract_store_partition_value <- function(x) {
     x
 }
 
-extract_store_summary_columns <- function() {
+store__summary_cols <- function() {
     c(
         query_id = "p.query_id",
         plan_id = "p.plan_id",

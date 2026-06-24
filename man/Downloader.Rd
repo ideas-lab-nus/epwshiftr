@@ -155,6 +155,14 @@ manifest's \code{download_config} table.}
 \item \href{#method-Downloader-enqueue}{\code{Downloader$enqueue()}}
 \item \href{#method-Downloader-preflight}{\code{Downloader$preflight()}}
 \item \href{#method-Downloader-run}{\code{Downloader$run()}}
+\item \href{#method-Downloader-start}{\code{Downloader$start()}}
+\item \href{#method-Downloader-jobs}{\code{Downloader$jobs()}}
+\item \href{#method-Downloader-job_status}{\code{Downloader$job_status()}}
+\item \href{#method-Downloader-job_logs}{\code{Downloader$job_logs()}}
+\item \href{#method-Downloader-stop_job}{\code{Downloader$stop_job()}}
+\item \href{#method-Downloader-daemon_start}{\code{Downloader$daemon_start()}}
+\item \href{#method-Downloader-daemon_status}{\code{Downloader$daemon_status()}}
+\item \href{#method-Downloader-daemon_stop}{\code{Downloader$daemon_stop()}}
 \item \href{#method-Downloader-sessions}{\code{Downloader$sessions()}}
 \item \href{#method-Downloader-tasks}{\code{Downloader$tasks()}}
 \item \href{#method-Downloader-status}{\code{Downloader$status()}}
@@ -241,10 +249,15 @@ Default: \code{4L}.}
 \item{\code{node_policy}}{A list controlling historical data-node cooldown
 and ranking. Missing fields use conservative defaults.}
 
-\item{\code{transfer_policy}}{A list controlling curl transfer options.
-Supported fields are \code{chunk_size}, \code{bandwidth_limit},
-\code{low_speed_limit}, and \code{low_speed_time}. Use \code{NULL} values
-to keep libcurl defaults.}
+\item{\code{transfer_policy}}{A list controlling curl transfer options and
+optional experimental Range-piece downloads. Supported curl
+fields are \code{chunk_size}, \code{bandwidth_limit}, \code{low_speed_limit},
+and \code{low_speed_time}. Range fields are \code{range_mode}
+(\code{"off"}, \code{"single"}, \code{"multi"}, or \code{"auto"}), \code{piece_size},
+\code{piece_concurrency}, \code{max_sources},
+\code{require_checksum_for_multisource}, and \code{range_probe_timeout}.
+The default \code{range_mode = "off"} keeps the existing streaming
+download behavior.}
 
 \item{\code{resource_policy}}{A list controlling local resource checks and
 scheduling. Supported fields are \code{host_concurrency},
@@ -436,8 +449,8 @@ Run queued persistent download tasks.
 
 \item{\code{task_id}}{Optional task ID vector.}
 
-\item{\code{block}}{Whether to block until completion. Persistent runs are
-currently synchronous.}
+\item{\code{block}}{Whether to block until completion. If \code{FALSE}, creates
+a detached background job via \verb{$start()}.}
 
 \item{\code{progress}}{Whether to show per-file progress.}
 
@@ -448,7 +461,170 @@ currently synchronous.}
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data frame of selected task records after the run.
+If \code{block = TRUE}, a data frame of selected task records
+after the run. If \code{block = FALSE}, a one-row background job
+record.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-start"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-start}{}}}
+\subsection{Method \code{start()}}{
+Start a persistent download session in the background.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$start(
+  session_id = NULL,
+  task_id = NULL,
+  overwrite = FALSE,
+  resume = TRUE,
+  mode = c("process", "daemon"),
+  store_path = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{session_id}}{Optional session ID.}
+
+\item{\code{task_id}}{Optional task ID vector.}
+
+\item{\code{overwrite}}{Whether to overwrite existing final files.}
+
+\item{\code{resume}}{Whether to resume \code{.part} files.}
+
+\item{\code{mode}}{Background execution mode. \code{"process"} starts a detached
+\code{Rscript}; \code{"daemon"} submits the job to a running downloader
+daemon.}
+
+\item{\code{store_path}}{Optional \link{EsgStore} path to sync after completion.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A one-row data frame describing the background job.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-jobs"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-jobs}{}}}
+\subsection{Method \code{jobs()}}{
+List downloader background jobs.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$jobs(status = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{status}}{Optional job status filter.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-job_status"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-job_status}{}}}
+\subsection{Method \code{job_status()}}{
+Return downloader background job status.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$job_status(job_id = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{job_id}}{Optional job ID filter.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-job_logs"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-job_logs}{}}}
+\subsection{Method \code{job_logs()}}{
+Return downloader background job log lines.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$job_logs(job_id, tail = 100L)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{job_id}}{Job ID.}
+
+\item{\code{tail}}{Number of trailing lines to return.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-stop_job"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-stop_job}{}}}
+\subsection{Method \code{stop_job()}}{
+Request cancellation of a background downloader job.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$stop_job(job_id, force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{job_id}}{Job ID.}
+
+\item{\code{force}}{Whether to kill the recorded process immediately.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-daemon_start"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-daemon_start}{}}}
+\subsection{Method \code{daemon_start()}}{
+Start a persistent downloader daemon.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_start(port = NULL, heartbeat_interval = 5)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{port}}{Optional localhost TCP port. If \code{NULL}, a random high
+port is chosen.}
+
+\item{\code{heartbeat_interval}}{Seconds between daemon heartbeat checks.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A one-row data frame describing the daemon.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-daemon_status"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-daemon_status}{}}}
+\subsection{Method \code{daemon_status()}}{
+Return downloader daemon status records.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_status()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Downloader-daemon_stop"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-daemon_stop}{}}}
+\subsection{Method \code{daemon_stop()}}{
+Request the running downloader daemon to stop.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_stop(force = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{force}}{Whether to kill the daemon process immediately.}
+}
+\if{html}{\out{</div>}}
 }
 }
 \if{html}{\out{<hr>}}
@@ -467,13 +643,15 @@ List persistent download sessions.
 \subsection{Method \code{tasks()}}{
 List persistent download tasks.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$tasks(session_id = NULL, status = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$tasks(session_id = NULL, job_id = NULL, status = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{session_id}}{Optional session ID.}
+
+\item{\code{job_id}}{Optional background job ID.}
 
 \item{\code{status}}{Optional task status filter.}
 }
@@ -486,13 +664,15 @@ List persistent download tasks.
 \subsection{Method \code{status()}}{
 Return persistent download task status.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$status(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$status(session_id = NULL, job_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{session_id}}{Optional session ID.}
+
+\item{\code{job_id}}{Optional background job ID.}
 
 \item{\code{task_id}}{Optional task ID vector.}
 }
@@ -508,13 +688,15 @@ A data frame of matching task records.
 \subsection{Method \code{events()}}{
 Return persistent downloader event logs.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$events(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{Downloader$events(session_id = NULL, job_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{session_id}}{Optional session ID.}
+
+\item{\code{job_id}}{Optional background job ID.}
 
 \item{\code{task_id}}{Optional task ID vector.}
 }

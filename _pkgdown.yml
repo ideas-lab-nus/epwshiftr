@@ -44,6 +44,7 @@ reference:
       - esg_query
       - esgf_query
       - esg_result
+      - '[.EsgResult'
 
   - title: Remote ESGF data access
     contents:
@@ -78,6 +79,11 @@ reference:
 
   - title: Create future EPWs
     contents:
+      - EpwMorpher
+      - epw_morpher
+      - epw_morph_periods
+      - epw_morph_recipe
+      - epw_morph_variables
       - morphing_epw
       - future_epw
 

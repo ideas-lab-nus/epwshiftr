@@ -1,54 +1,59 @@
 {
   "index_node": ["https://esgf.ceda.ac.uk"],
   "parameter": {
-    "facet": {
-      "project": {
-        "value": ["CMIP6"],
-        "negate": [false]
-      },
-      "activity_id": {
-        "value": ["ScenarioMIP"],
-        "negate": [false]
-      },
-      "experiment_id": {
-        "value": ["ssp585"],
-        "negate": [false]
-      },
-      "variable_id": {
-        "value": ["tas"],
-        "negate": [false]
-      },
-      "fields": {
-        "value": ["*"],
-        "negate": [false]
-      }
+    "project": {
+      "value": ["CMIP6"],
+      "negate": [false]
     },
-    "query": [],
-    "control": {
-      "latest": {
-        "value": [true]
-      },
-      "type": {
-        "value": ["Dataset"]
-      },
-      "offset": {
-        "value": [0]
-      },
-      "distrib": {
-        "value": [true]
-      },
-      "limit": {
-        "value": [2]
-      },
-      "format": {
-        "value": ["application/solr+json"]
-      }
+    "activity_id": {
+      "value": ["ScenarioMIP"],
+      "negate": [false]
     },
-    "others": {
-      "table_id": {
-        "value": ["Amon", "day"],
-        "negate": [false]
-      }
+    "experiment_id": {
+      "value": ["ssp585"],
+      "negate": [false]
+    },
+    "source_id": null,
+    "variable_id": {
+      "value": ["tas"],
+      "negate": [false]
+    },
+    "frequency": null,
+    "variant_label": null,
+    "nominal_resolution": null,
+    "data_node": null,
+    "facets": null,
+    "fields": {
+      "value": ["*"],
+      "negate": [false]
+    },
+    "shards": null,
+    "datetime_start": null,
+    "datetime_stop": null,
+    "timestamp_from": null,
+    "timestamp_to": null,
+    "version_min": null,
+    "version_max": null,
+    "replica": null,
+    "latest": null,
+    "type": {
+      "value": ["Dataset"]
+    },
+    "offset": {
+      "value": [0]
+    },
+    "distrib": {
+      "value": [true]
+    },
+    "limit": {
+      "value": [2]
+    },
+    "format": {
+      "value": ["application/solr+json"]
+    },
+    "table_id": {
+      "value": ["Amon", "day"],
+      "negate": [false]
     }
   }
 }
