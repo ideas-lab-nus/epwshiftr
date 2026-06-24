@@ -201,7 +201,7 @@ data node to make the download plan predictable.</p>
 <span><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
 <span>    <span class="va">datasets</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/esg_result.html">esg_result</a></span><span class="op">(</span><span class="st">"dataset"</span><span class="op">)</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu">vignette_fixture_json</span><span class="op">(</span><span class="st">"dataset-result.json"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/dataset-result.json"</span></span>
+<span><span class="co">#&gt; [1] "/tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/dataset-result.json"</span></span>
 <span></span>
 <span><span class="va">datasets</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"id"</span>, <span class="st">"variable_id"</span>, <span class="st">"number_of_files"</span>, <span class="st">"access"</span></span>
@@ -215,7 +215,7 @@ covering the 2060 morphing period.</p>
 <span><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
 <span>    <span class="va">files</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/esg_result.html">esg_result</a></span><span class="op">(</span><span class="st">"file"</span><span class="op">)</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="fu">vignette_fixture_json</span><span class="op">(</span><span class="st">"file-result.json"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/file-result.json"</span></span>
+<span><span class="co">#&gt; [1] "/tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/file-result.json"</span></span>
 <span></span>
 <span><span class="va">files_2060</span> <span class="op">&lt;-</span> <span class="va">files</span><span class="op">$</span><span class="fu">filter_time</span><span class="op">(</span><span class="st">"2060-01-01"</span>, <span class="st">"2060-12-31"</span>, method <span class="op">=</span> <span class="st">"drs"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Warning: Time filtering with method = 'drs' uses DRS filename conventions for</span></span>
@@ -271,18 +271,18 @@ downloader.</p>
 <span><span class="op">]</span></span>
 <span><span class="co">#&gt;                                                      filename status</span></span>
 <span><span class="co">#&gt;                                                        &lt;char&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:    rlds_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
-<span><span class="co">#&gt; 2: sfcWind_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
+<span><span class="co">#&gt; 1:     tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
+<span><span class="co">#&gt; 2:    rlds_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
 <span><span class="co">#&gt; 3:     clt_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
 <span><span class="co">#&gt; 4:     psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
-<span><span class="co">#&gt; 5:     tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
+<span><span class="co">#&gt; 5: sfcWind_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc   done</span></span>
 <span><span class="co">#&gt;                                                                                                                                                 target_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                      &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:    /tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/rlds_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
-<span><span class="co">#&gt; 2: /tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/sfcWind_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
-<span><span class="co">#&gt; 3:     /tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/clt_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
-<span><span class="co">#&gt; 4:     /tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
-<span><span class="co">#&gt; 5:     /tmp/RtmpePx9YN/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span></code></pre></div>
+<span><span class="co">#&gt; 1:     /tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/tas_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
+<span><span class="co">#&gt; 2:    /tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/rlds_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
+<span><span class="co">#&gt; 3:     /tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/clt_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
+<span><span class="co">#&gt; 4:     /tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/psl_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span>
+<span><span class="co">#&gt; 5: /tmp/RtmpVYZJ1M/epwshiftr-vignette-cache/future-weather/store-native-morphing-store/downloads/sfcWind_Amon_EC-Earth3_ssp585_r1i1p1f1_gr_206001-206012.nc</span></span></code></pre></div>
 <p>Plan and execute the site-scale extraction for the full 2060
 period.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
@@ -299,21 +299,21 @@ period.</p>
 <span><span class="va">region</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"site_id"</span>, <span class="st">"variable_id"</span>, <span class="st">"status"</span>, <span class="st">"time_start"</span>, <span class="st">"time_stop"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;    site_id variable_id  status time_start           time_stop</span></span>
 <span><span class="co">#&gt;     &lt;char&gt;      &lt;char&gt;  &lt;char&gt;     &lt;POSc&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:     SIN        rlds pending 2060-01-01 2060-12-31 23:59:59</span></span>
-<span><span class="co">#&gt; 2:     SIN     sfcWind pending 2060-01-01 2060-12-31 23:59:59</span></span>
+<span><span class="co">#&gt; 1:     SIN         tas pending 2060-01-01 2060-12-31 23:59:59</span></span>
+<span><span class="co">#&gt; 2:     SIN        rlds pending 2060-01-01 2060-12-31 23:59:59</span></span>
 <span><span class="co">#&gt; 3:     SIN         clt pending 2060-01-01 2060-12-31 23:59:59</span></span>
 <span><span class="co">#&gt; 4:     SIN         psl pending 2060-01-01 2060-12-31 23:59:59</span></span>
-<span><span class="co">#&gt; 5:     SIN         tas pending 2060-01-01 2060-12-31 23:59:59</span></span></code></pre></div>
+<span><span class="co">#&gt; 5:     SIN     sfcWind pending 2060-01-01 2060-12-31 23:59:59</span></span></code></pre></div>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">processed</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">extract</span><span class="op">(</span>plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>, fallback <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span>
 <span><span class="va">processed</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"variable_id"</span>, <span class="st">"status"</span>, <span class="st">"available_time_count"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;    variable_id status available_time_count</span></span>
 <span><span class="co">#&gt;         &lt;char&gt; &lt;char&gt;                &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:        rlds   done                   12</span></span>
-<span><span class="co">#&gt; 2:     sfcWind   done                   12</span></span>
+<span><span class="co">#&gt; 1:         tas   done                   12</span></span>
+<span><span class="co">#&gt; 2:        rlds   done                   12</span></span>
 <span><span class="co">#&gt; 3:         clt   done                   12</span></span>
 <span><span class="co">#&gt; 4:         psl   done                   12</span></span>
-<span><span class="co">#&gt; 5:         tas   done                   12</span></span></code></pre></div>
+<span><span class="co">#&gt; 5:     sfcWind   done                   12</span></span></code></pre></div>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">store</span><span class="op">$</span><span class="fu">coverage</span><span class="op">(</span>plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span><span class="op">)</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"variable_id"</span>, <span class="st">"complete"</span>, <span class="st">"status"</span>, <span class="st">"output_rows"</span>, <span class="st">"output_file_count"</span></span>
@@ -490,7 +490,7 @@ diagnostics rather than blocking the tutorial render.</p>
 <span><span class="co">#&gt; 1: a8ea16112bdebfbc8e373ae528aaf40949ea19fbb2d87bffc597192a9b15d662</span></span>
 <span><span class="co">#&gt;             created_at</span></span>
 <span><span class="co">#&gt;                 &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: 2026-06-24 15:27:37</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: 2026-06-24 16:01:24</span></span></code></pre></div>
 <p>The store now records both the morphing result Parquet and the
 generated EPW files.</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
@@ -508,7 +508,7 @@ generated EPW files.</p>
 <span><span class="co">#&gt; 1: a8ea16112bdebfbc8e373ae528aaf40949ea19fbb2d87bffc597192a9b15d662</span></span>
 <span><span class="co">#&gt;             created_at</span></span>
 <span><span class="co">#&gt;                 &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: 2026-06-24 15:27:37</span></span>
+<span><span class="co">#&gt; 1: 2026-06-24 16:01:24</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">close</span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 </div>
   </div>
