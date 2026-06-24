@@ -12,19 +12,19 @@
         number_of_files, project, size, source_id, variable_id, and variant_label ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * project = CMIP6
-      * activity_id = ScenarioMIP
-      * source_id = AWI-CM-1-1-MR
-      * variable_id = tas
-      * frequency = day
-      * variant_label = r1i1p1f1
-      * fields = source_id, experiment_id, frequency
-      * latest = true
-      * type = Dataset
-      * offset = 0
-      * distrib = true
-      * limit = 2
-      * format = application/solr+json
+      * project=CMIP6
+      * activity_id=ScenarioMIP
+      * source_id=AWI-CM-1-1-MR
+      * variable_id=tas
+      * frequency=day
+      * variant_label=r1i1p1f1
+      * fields=source_id,experiment_id,frequency
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=2
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -54,13 +54,12 @@
         frequency, further_info_url, ..., variant_label, and version ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-      * latest = true
-      * distrib = true
-      * limit = 1
-      * type = File
-      * format = application/solr+json
+      * latest=true
+      * type=File
+      * distrib=true
+      * limit=1
+      * format=application%2Fsolr%2Bjson
+      * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
     Message
@@ -83,14 +82,13 @@
         url_opendap ]
       
       -- <Query Parameter> -----------------------------------------------------------
-      * dataset_id =
-        CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-      * fields = id
-      * latest = true
-      * distrib = true
-      * limit = 2
-      * type = Aggregation
-      * format = application/solr+json
+      * fields=id
+      * latest=true
+      * type=Aggregation
+      * distrib=true
+      * limit=2
+      * format=application%2Fsolr%2Bjson
+      * dataset_id=CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
     Output
       
     Message
@@ -114,6 +112,14 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -134,6 +140,14 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message
@@ -154,6 +168,14 @@
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
+      * project=CMIP6
+      * fields=*
+      * latest=true
+      * type=Dataset
+      * offset=0
+      * distrib=true
+      * limit=10
+      * format=application%2Fsolr%2Bjson
     Output
       
     Message

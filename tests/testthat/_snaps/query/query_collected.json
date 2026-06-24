@@ -13,45 +13,31 @@
       "value": ["ssp585"],
       "negate": [false]
     },
-    "source_id": null,
     "variable_id": {
       "value": ["tas"],
       "negate": [false]
     },
-    "frequency": null,
-    "variant_label": null,
-    "nominal_resolution": null,
-    "data_node": null,
-    "facets": null,
     "fields": {
       "value": ["*"],
       "negate": [false]
     },
-    "shards": null,
-    "replica": null,
     "latest": {
-      "value": [true],
-      "negate": [false]
+      "value": [true]
     },
     "type": {
-      "value": ["Dataset"],
-      "negate": [false]
+      "value": ["Dataset"]
     },
     "offset": {
-      "value": [0],
-      "negate": [false]
+      "value": [0]
     },
     "distrib": {
-      "value": [true],
-      "negate": [false]
+      "value": [true]
     },
     "limit": {
-      "value": [2],
-      "negate": [false]
+      "value": [2]
     },
     "format": {
-      "value": ["application/solr+json"],
-      "negate": [false]
+      "value": ["application/solr+json"]
     },
     "table_id": {
       "value": ["Amon", "day"],

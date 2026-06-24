@@ -33,9 +33,11 @@ navbar:
       href: https://github.com/ideas-lab-nus/epwshiftr
 
 reference:
-  - title: CMIP6 Controlled Vocabularies (CVs) and Data Request
+  - title: ESG dictionaries
     contents:
-      - Cmip6Dict
+      - EsgDict
+      - esgdict_option
+      - esgdict_check
 
   - title: ESGF search services
     contents:
@@ -48,21 +50,10 @@ reference:
       - EsgDataset
       - FileDownloader
 
-  - title: Solr DateTime helpers
+  - title: Solr date helpers
     contents:
-      - is.solrdt
-      - is_solrdt_range
-      - is_solrdt_start_unbounded
-      - is_solrdt_end_unbounded
-      - solrdt_start
-      - solrdt_end
-      - "as.POSIXct.SolrDateTime"
-      - "as.character.SolrDateTime"
-      - "c.SolrDateTime"
-      - "format.SolrDateTime"
-      - "length.SolrDateTime"
-      - "print.SolrDateTime"
-      - "[.SolrDateTime"
+      - solr_date
+      - is.solr_date
 
   - title: CMIP6 Index
     desc: Build CMIP6 output index
