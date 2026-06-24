@@ -69,7 +69,6 @@
 #' }
 #' @author Hongyuan Jia
 #'
-#' @importFrom R6 R6Class
 #' @name Cmip6Dict
 #' @export
 cmip6_dict <- function() {
@@ -148,7 +147,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
         #'
         #' @return The updated `Cmip6Dict` itself.
         build = function(token = NULL, force = FALSE) {
-            assert_flag(force)
+            checkmate::assert_flag(force)
 
             if (self$is_empty()) force <- TRUE
 
@@ -190,7 +189,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
         #' For `"nominal_resolution"`, `"required_global_attributes"` and
         #' `"table_id"`, a [character] vector.
         get = function(type) {
-            assert_subset(type, c(tolower(CV_TYPES), "dreq"))
+            checkmate::assert_subset(type, c(tolower(CV_TYPES), "dreq"))
 
             if (type == "dreq") {
                 data.table::copy(private$m_data$dreq)
@@ -215,7 +214,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
         #' @return A single string giving the full path of the RDS file.
         save = function(dir = getOption("epwshiftr.dir", ".")) {
             if (self$is_empty()) {
-                cli::cli_warn(c("!" = "Saving an empty CMIP6 Dictionary object. You may want to build the dictionary first by running `$build()` and call `$save()` again."))
+                warning("Saving an empty CMIP6 Dictionary object. You may want to build the dictionary first by running `$build()` and call `$save()` again.")
             }
 
             cmip6dict_save(
@@ -249,7 +248,7 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
             }
 
             dict <- cmip6dict_build(dict)
-            cli::cli_alert_success("Loaded CMIP6 Dictionary that was built at {dict$built_time}.")
+            cli::cli_alert_success("Loaded CMIP6 Dictionary that was built at {format(dict$built_time, usetz = TRUE)}.")
 
             for (nm in names(dict)) private[[paste0("m_", nm)]] <- dict[[nm]]
             self
@@ -267,41 +266,36 @@ Cmip6Dict <- R6::R6Class("Cmip6Dict",
                 theme = list(rule = list("line-type" = "double"))
             )
             cli::cli_rule("CMIP6 Dictionary")
-            if (length(private$m_version)) {
-                cli::cli_li("Built at: {private$m_built_time}")
-            } else {
-                cli::cli_li("Built at: {.emph <Empty>}")
-            }
             cli::cli_end(d)
-
-            d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
-            ul <- cli::cli_ul()
+            if (length(private$m_version)) {
+                cli::cli_bullets(c("*" = "Built at: {format(private$m_built_time, usetz = TRUE)}"))
+            } else {
+                cli::cli_bullets(c("*" = "Built at: {.emph <NONE>}"))
+            }
 
             if (!length(private$m_version)) {
                 cli::cli_h1("Controlled Vocabularies (CVs)")
-                cli::cli_li("{.strong CV Version}: {.emph <Empty>}")
+                cli::cli_bullets(c("*" = "{.strong CV Version}: {.emph <Empty>}"))
                 cli::cli_h1("Data Request (DReq)")
-                cli::cli_li("{.strong DReq Version}: {.emph <Empty>}")
+                cli::cli_bullets(c("*" = "{.strong DReq Version}: {.emph <Empty>}"))
             } else {
                 cli::cli_h1("Controlled Vocabularies (CVs)")
-                cli::cli_li("{.strong CV Version}: {.var {private$m_version$cvs}}")
+                cli::cli_bullets(c("*" = "{.strong CV Version}: {.var {private$m_version$cvs}}"))
+
                 cvs <- private$m_data$cvs
-                cli::cli_li("{.strong CV Contents} [{length(cvs)} type{?s}]: ")
-                ul2 <- cli::cli_ul()
-                for (nm in names(cvs)) {
-                    cli::cli_li("{.strong {nm}} [{NROW(cvs[[nm]])} item{?s}]")
-                }
-                cli::cli_end(ul2)
+                cli::cli_bullets(c("*" = "{.strong CV Contents} [{length(cvs)} type{?s}]: "))
+                fmt <- sprintf("{.strong %s} [%s items]", names(cvs), vapply(cvs, NROW, integer(1)))
+                names(fmt) <- rep("*", length(fmt))
+                div <- cli::cli_div(theme = list(".bullets .bullet-*" = list("padding-left" = 2)))
+                cli::cli_bullets(fmt)
+                cli::cli_end(div)
 
                 cli::cli_h1("Data Request (DReq)")
-                cli::cli_li("{.strong DReq Version}: {.var {private$m_version$dreq}}")
+                cli::cli_bullets(c("*" = "{.strong DReq Version}: {.var {private$m_version$dreq}}"))
                 dreq <- private$m_data$dreq
                 meta <- attr(dreq, "metadata", TRUE)
-                cli::cli_li("{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms")
+                cli::cli_bullets(c("*" = "{.strong DReq Contents}: {nrow(dreq)} Variables from {length(unique(meta$table_id))} Tables and {length(unique(meta$realm))} Realms"))
             }
-
-            cli::cli_end(ul)
-            cli::cli_end(d)
 
             invisible(self)
         }
@@ -358,7 +352,7 @@ cmip6dict_build <- function(dict) {
     res$built_time <- dict$built_time
     dict$built_time <- NULL
 
-    res$version = list(
+    res$version <- list(
         cvs = attr(dict$cvs$drs, "version", TRUE)$CV_collection_version,
         dreq = attr(dict$dreq, "metadata", TRUE)$dreq_version[[1L]]
     )
@@ -380,7 +374,7 @@ cmip6dict_fetch_cv_tag_latest <- function(token = NULL) {
         "Failed to fetched latest tag of {.strong CMIP6 CVs}.",
         spinner = TRUE
     )
-    gh_tags(REPO_CV, token)[[1L]]
+    gh_tags(REPO_CV, token)[1L, ]
 }
 
 cmip6dict_download_cv_file <- function(tag, dir = tempdir(), token = NULL) {
@@ -420,7 +414,7 @@ cmip6dict_fetch_cv <- function(tag = NULL, token = NULL) {
 
 cmip6dict_format_cv_nest <- function(json) {
     transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
-    setnames(as.data.table(transposed), names(json[[1L]]))
+    setnames(data.table::as.data.table(transposed), names(json[[1L]]))
 }
 
 cmip6dict_parse_cv_version_metadata <- function(lst) {
@@ -452,29 +446,29 @@ cmip6dict_parse_cv_version_metadata <- function(lst) {
 cmip6dict_parse_cv_vec <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- unlst(json[[1L]])
-    setattr(res, "version",
+    data.table::setattr(res, "version",
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
-    structure(res, class = c(subclass, "CMIP6CV", typeof(res)))
+    structure(res, class = c(subclass, "Cmip6CV", typeof(res)))
 }
 
 cmip6dict_parse_cv_list <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- json[[1L]]
-    setattr(res, "version",
+    data.table::setattr(res, "version",
         cmip6dict_parse_cv_version_metadata(json$version_metadata)
     )
 
-    structure(res, class = c(subclass, "CMIP6CV", "list"))
+    structure(res, class = c(subclass, "Cmip6CV", "list"))
 }
 
 cmip6dict_parse_cv_drs <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_DRS")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_DRS")
 }
 
 cmip6dict_parse_cv_activity_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_ActivityId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_ActivityId")
 }
 
 cmip6dict_parse_cv_experiment_id <- function(file) {
@@ -502,40 +496,40 @@ cmip6dict_parse_cv_experiment_id <- function(file) {
     }
 
     setcolorder(d, c(
-         "experiment_id", "experiment", "description", "tier",
+        "experiment_id", "experiment", "description", "tier",
         "start_year", "end_year", "min_number_yrs_per_sim",
         "required_model_components",
         "parent_experiment_id", "sub_experiment_id",
         "activity_id", "parent_activity_id",
         "additional_allowed_model_components"
     ))
-    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
-    structure(d, class = c("CMIP6CV_ExperimentId", "CMIP6CV", class(d)))
+    structure(d, class = c("Cmip6CV_ExperimentId", "Cmip6CV", class(d)))
 }
 
 cmip6dict_parse_cv_frequency <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_Frequency")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_Frequency")
 }
 
 cmip6dict_parse_cv_grid_label <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_GridLabel")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_GridLabel")
 }
 
 cmip6dict_parse_cv_institution_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_InstitutionId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_InstitutionId")
 }
 
 cmip6dict_parse_cv_nominal_resolution <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_Resolution")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_Resolution")
 }
 
 cmip6dict_parse_cv_realm <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_Realm")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_Realm")
 }
 
 cmip6dict_parse_cv_required_global_attributes <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_ReqGlobAttr")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
 }
 
 cmip6dict_parse_cv_source_id <- function(file) {
@@ -564,36 +558,35 @@ cmip6dict_parse_cv_source_id <- function(file) {
         "source_id", "release_year", "institution_id", "label", "label_extended",
         "cohort", "activity_participation", "model_component", "license_info"
     ))
-    setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
+    data.table::setattr(d, "version", cmip6dict_parse_cv_version_metadata(json$version_metadata))
 
-    structure(d, class = c("CMIP6CV_SourceId", "CMIP6CV", class(d)))
+    structure(d, class = c("Cmip6CV_SourceId", "Cmip6CV", class(d)))
 }
 
 cmip6dict_parse_cv_source_type <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_SourceType")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_SourceType")
 }
 
 cmip6dict_parse_cv_sub_experiment_id <- function(file) {
-    cmip6dict_parse_cv_list(file, "CMIP6CV_SubExperimentId")
+    cmip6dict_parse_cv_list(file, "Cmip6CV_SubExperimentId")
 }
 
 cmip6dict_parse_cv_table_id <- function(file) {
-    cmip6dict_parse_cv_vec(file, "CMIP6CV_TableId")
+    cmip6dict_parse_cv_vec(file, "Cmip6CV_TableId")
 }
 
-print_trunc <- function(x, n) {
-    d <- cli::cli_div(theme = list(
-        body = list(`padding-left` = 0L, `margin-left` = 0L)
-    ))
+print_trunc <- function(x, n, newline_before = is.data.frame(x)) {
+    d <- cli::cli_div(theme = list(body = list(`padding-left` = 0L, `margin-left` = 0L)))
     if (!is.data.frame(x)) {
         total <- length(x)
         if (n < total) {
+            if (newline_before) cli::cli_text()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     } else {
         total <- nrow(x)
         if (n < total) {
-            cli::cli_text()
+            if (newline_before) cli::cli_text()
             cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
         }
     }
@@ -619,14 +612,12 @@ cmip6dict_print_cv_rule <- function(name) {
     d <- cli::cli_div(
         theme = list(rule = list("line-type" = "double"))
     )
-    cli::cli_rule("{.strong CMIP6CV {name}}", right = "{.strong CMIP6 Dictionary}")
+    cli::cli_rule("{.strong Cmip6CV {name}}", right = "{.strong CMIP6 Dictionary}")
     cli::cli_end(d)
 }
 
 cmip6dict_print_cv_version <- function(cv, name = "") {
     ver <- attr(cv, "version", TRUE)
-
-    cli::cli_h1("<VERSION METADATA>")
 
     d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
     ul <- cli::cli_ul()
@@ -641,13 +632,9 @@ cmip6dict_print_cv_version <- function(cv, name = "") {
 }
 
 cmip6dict_print_cv_vec <- function(cv, n = 5L) {
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("{.strong Stored type}: {.cls {typeof(cv)}}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls {typeof(cv)}}")
 
     n <- min(n, length(cv))
-    nms <- to_title_case(names(cv))
 
     txt <- cli::cli_vec(unclass(cv), list(vec_trunc = n))
     cli::cli_text("{.val {txt}}")
@@ -658,10 +645,7 @@ cmip6dict_print_cv_vec <- function(cv, n = 5L) {
 }
 
 cmip6dict_print_cv_list <- function(cv, n = 5L, to_title = FALSE) {
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("{.strong Stored type}: {.cls list}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls list}")
 
     n <- min(n, length(cv))
     nms <- names(cv)
@@ -688,10 +672,7 @@ cmip6dict_print_cv_table <- function(cv, n = 3L) {
     n <- min(n, nrow(cv))
     cols <- names(cv)
 
-    cli::cli_h1("<STORED TYPE>")
-    cli::cli_li("Stored type: {.cls data.table}")
-
-    cli::cli_h1("<VALUES>")
+    cli::cli_h1("Values {.cls data.table}")
     for (i in seq.int(n)) {
         dt <- cv[i]
         d <- cli::cli_div(theme = list(
@@ -716,8 +697,8 @@ cmip6dict_print_cv_table <- function(cv, n = 3L) {
 }
 
 #' @export
-print.CMIP6CV <- function(x, n = NULL, ...) {
-    cls <- sub("CMIP6CV_", "", class(x)[[1L]], fixed = TRUE)
+print.Cmip6CV <- function(x, n = NULL, ...) {
+    cls <- sub("Cmip6CV_", "", class(x)[[1L]], fixed = TRUE)
     if (is.null(n)) {
         n <- if (is.data.frame(x)) 3L else if (is.list(x)) 5L else 10L
     }
@@ -799,7 +780,7 @@ cmip6dict_fetch_dreq_tag_latest <- function(token = NULL) {
         "Failed to fetched latest tag of {.strong CMIP6 DReq}.",
         spinner = TRUE
     )
-    gh_tags(REPO_DREQ, token)[[1L]]
+    gh_tags(REPO_DREQ, token)[1L, ]
 }
 
 cmip6dict_download_dreq_file <- function(tag, dir = tempdir(), token = NULL) {
@@ -855,7 +836,7 @@ cmip6dict_parse_dreq_file <- function(file) {
         set(d, NULL, col, empty_to_na(unlist(d[[col]], FALSE, FALSE)))
     }
 
-    setattr(d, "metadata", header)
+    data.table::setattr(d, "metadata", header)
 
     d
 }
@@ -877,7 +858,7 @@ cmip6dict_fetch_dreq <- function(tag = NULL, token = NULL) {
     setcolorder(dreq, c("variable", "table_id", "modeling_realm", "standard_name", "long_name"))
     structure(dreq,
         metadata = rbindlist(metadata, use.names = TRUE),
-        class = c("CMIP6DReq", class(dreq))
+        class = c("Cmip6DReq", class(dreq))
     )
 }
 
@@ -892,7 +873,7 @@ cmip6dict_print_dreq_rule <- function() {
 cmip6dict_print_dreq_meta <- function(dreq) {
     meta <- attr(dreq, "metadata", TRUE)
 
-    cli::cli_h1("<HEADER METADATA>")
+    cli::cli_h1("<Header Metadata>")
 
     d <- cli::cli_div(theme = list(`li` = list(`margin-left` = 0L, `padding-left` = 2L)))
     ul <- cli::cli_ul()
@@ -915,7 +896,7 @@ cmip6dict_print_dreq_meta <- function(dreq) {
 }
 
 #' @export
-print.CMIP6DReq <- function(x, n = 3L, ...) {
+print.Cmip6DReq <- function(x, n = 3L, ...) {
     cmip6dict_print_dreq_rule()
     cmip6dict_print_dreq_meta(x)
     cmip6dict_print_cv_table(x, n)
@@ -938,17 +919,17 @@ cmip6dict_load <- function(dir = getOption("epwshiftr.dir", ".")) {
     val <- readRDS(path)
 
     if (!identical(names(val), c("cvs", "dreq", "built_time"))) {
-        cli::cli_abort(c(x = "Malformed format of {.file CMIP6DICT} found."))
+        stop(cli::format_inline("Malformed format of {.file CMIP6DICT} found."))
     }
 
     for (nm in names(val$cvs)) {
         cls <- class(val$cvs[[nm]])
-        if (data.table::is.data.table(val$cvs[[nm]])) setDT(val$cvs[[nm]])
-        setattr(val$cvs[[nm]], "class", cls)
+        if (data.table::is.data.table(val$cvs[[nm]])) data.table::setDT(val$cvs[[nm]])
+        data.table::setattr(val$cvs[[nm]], "class", cls)
     }
     cls <- class(val$dreq)
-    setDT(val$dreq)
-    setattr(val$dreq, "class", cls)
+    data.table::setDT(val$dreq)
+    data.table::setattr(val$dreq, "class", cls)
 
     val
 }

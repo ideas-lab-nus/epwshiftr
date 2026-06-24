@@ -69,7 +69,7 @@ test_that("esgf_query()", {
 
     # empty found
     expect_s3_class(q <- esgf_query(variable = "NONSENSE"), "data.table")
-    expect_equal(q, data.table(), ignore_attr = TRUE)
+    expect_equal(q, data.table::data.table(), ignore_attr = TRUE)
 
     # can return if no data has been found
     expect_s3_class(esgf_query(resolution = "1 m"), "data.table")

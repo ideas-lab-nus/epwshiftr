@@ -1,8 +1,6 @@
 # extract_location_dict {{{
-#' @importFrom checkmate assert_string
-#' @importFrom utils menu
 extract_location_dict <- function (pattern) {
-    assert_string(pattern)
+    checkmate::assert_string(pattern)
 
     pattern <- gsub("\\s+", ".", pattern)
     d <- data.table::as.data.table(utils::getFromNamespace("WEATHER_DB", "eplusr"))
@@ -52,12 +50,11 @@ extract_location_dict <- function (pattern) {
 # }}}
 
 # match_location_coord {{{
-#' @importFrom checkmate assert_count assert_list assert_names assert_number
 match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 1.0), max_num = NULL) {
-    assert_list(dict)
-    assert_names(names(dict), must.include = c("longitude", "latitude"))
-    assert_number(dict$longitude, lower = -180.0, upper = 180.0)
-    assert_number(dict$latitude, lower = -90.0, upper = 90.0)
+    checkmate::assert_list(dict)
+    checkmate::assert_names(names(dict), must.include = c("longitude", "latitude"))
+    checkmate::assert_number(dict$longitude, lower = -180.0, upper = 180.0)
+    checkmate::assert_number(dict$latitude, lower = -90.0, upper = 90.0)
 
     match_nc_coord(path, dict$latitude, dict$longitude, threshold, max_num)
 }
@@ -143,10 +140,6 @@ match_location_coord <- function (path, dict, threshold = list(lon = 1.0, lat = 
 #'     * `dist`: the distance in km between the coordinate values in NetCDF and
 #'       input EPW
 #'
-#' @importFrom progressr with_progress
-#' @importFrom checkmate assert_scalar test_file_exists test_r6
-#' @importFrom eplusr read_epw
-#'
 #' @examples
 #' \dontrun{
 #' # download an EPW from EnergyPlus website
@@ -168,11 +161,11 @@ match_coord <- function (epw, threshold = list(lon = 1.0, lat = 1.0), max_num = 
 
     index <- index[!J(NA_character_), on = "file_path"]
 
-    if (test_r6(epw, "Epw")) {
+    if (checkmate::test_r6(epw, "Epw")) {
         epw <- epw
         dict <- epw$location()
     } else {
-        assert_scalar(epw)
+        checkmate::assert_scalar(epw)
         if (tolower(tools::file_ext(epw)) == "epw") {
             epw <- eplusr::read_epw(epw)
             dict <- epw$location()
@@ -228,17 +221,17 @@ tunnel_dist <- function(lat1, lon1, lat2, lon2) {
 
 # match_nc_coord {{{
 match_nc_coord <- function (x, lat, lon, threshold = NULL, max_num = NULL) {
-    assert_number(lat, lower = -90.0, upper = 90.0)
-    assert_number(lon, lower = -180.0, upper = 180.0)
+    checkmate::assert_number(lat, lower = -90.0, upper = 90.0)
+    checkmate::assert_number(lon, lower = -180.0, upper = 180.0)
 
-    assert_list(threshold, null.ok = TRUE)
+    checkmate::assert_list(threshold, null.ok = TRUE)
     if (!is.null(threshold)) {
-        assert_names(names(threshold), must.include = c("lon", "lat"))
-        assert_number(threshold$lon, lower = 0.0, upper = 180.0)
-        assert_number(threshold$lat, lower = 0.0, upper = 90.0)
+        checkmate::assert_names(names(threshold), must.include = c("lon", "lat"))
+        checkmate::assert_number(threshold$lon, lower = 0.0, upper = 180.0)
+        checkmate::assert_number(threshold$lat, lower = 0.0, upper = 90.0)
     }
 
-    assert_count(max_num, positive = TRUE, null.ok = TRUE)
+    checkmate::assert_count(max_num, positive = TRUE, null.ok = TRUE)
 
     if (inherits(x, "NetCDF")) {
         nc <- x

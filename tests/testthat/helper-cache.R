@@ -1,23 +1,36 @@
-get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FALSE) {
-    if (is.na(path)) path <- tools::R_user_dir("epwshiftr", "cache")
-
-    cache <- normalizePath(path, mustWork = FALSE)
-    if (identical(Sys.getenv("NOT_CRAN"), "true") && !dir.exists(cache)) {
-        dir.create(cache, recursive = TRUE)
+get_test_cache <- function(dir = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), max_size = "1 GB", max_age = "24 hours") {
+    if (is.na(dir)) {
+        if (identical(Sys.getenv("TESTTHAT"), "true")) {
+            dir <- tempfile("epwshiftr-test-cache-")
+        } else {
+            dir <- tools::R_user_dir("epwshiftr", "cache")
+        }
     }
 
-    # download weather
+    DiskCache$new(
+        dir = dir,
+        max_size = max_size,
+        max_age = max_age,
+        max_n = Inf
+    )
+}
+
+get_cache_epw <- function() {
+    dir <- get_test_cache()$info()$dir
     file <- "SGP_Singapore.486980_IWEC.epw"
-    epw <- file.path(cache, file)
+    epw <- file.path(dir, file)
     if (!file.exists(epw)) {
-        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = cache, type = "epw", ask = FALSE, max_match = 1L)
+        eplusr::download_weather("SGP_Singapore.486980_IWEC", dir = dir, type = "epw", ask = FALSE, max_match = 1L)
     }
+    normalizePath(epw)
+}
 
-    # download NetCDF
+get_cache_nc <- function(reset = FALSE) {
+    dir <- get_test_cache()$info()$dir
     withr::with_options(
-        list(epwshiftr.dir = cache),
+        list(epwshiftr.dir = dir),
         {
-            if (!reset && file.exists(file.path(cache, "cmip6_index.csv"))) {
+            if (!reset && file.exists(file.path(dir, "cmip6_index.csv"))) {
                 idx <- load_cmip6_index()
             } else {
                 idx <- init_cmip6_index(
@@ -28,16 +41,16 @@ get_cache <- function(path = Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA), reset = FA
 
             # download output files
             for (f in idx$file_url) {
-                dest <- file.path(cache, basename(f))
+                dest <- file.path(dir, basename(f))
                 if (!file.exists(dest)) {
                     old <- getOption("timeout")
                     options(timeout = 60L * 100L)
                     on.exit(options(timeout = old), add = TRUE)
-                    flag <- download.file(f, dest, mode = "wb")
+                    download.file(f, dest, mode = "wb")
                 }
             }
         }
     )
 
-    cache
+    normalizePath(dir)
 }

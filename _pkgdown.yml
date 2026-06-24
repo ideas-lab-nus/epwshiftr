@@ -41,6 +41,7 @@ reference:
     contents:
       - EsgfQuery
       - query_esgf
+      - result_esgf
 
   - title: CMIP6 Index
     desc: Build CMIP6 output index

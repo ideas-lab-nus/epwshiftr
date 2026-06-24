@@ -233,7 +233,7 @@ Should be one of:
 For \code{"drs"}, "activity_id"\verb{, }"frequency"\verb{, }"grid_label"\verb{, }"institution_id"\verb{, }"source_type"\code{and}"sub_experiment_id"`, a
 \link{list}.
 
-For \code{"experiment_id"}, \code{"source_id"} and \code{"dreq"}, a \link{data.table}.
+For \code{"experiment_id"}, \code{"source_id"} and \code{"dreq"}, a \link[data.table:data.table]{data.table::data.table}.
 
 For \code{"nominal_resolution"}, \code{"required_global_attributes"} and
 \code{"table_id"}, a \link{character} vector.
