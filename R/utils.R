@@ -55,14 +55,6 @@ vb <- function(...) {
     paste0(...)
 }
 
-print_trunc <- function(x, n) {
-    if (is.null(n) || length(x) <= n) {
-        return(invisible(NULL))
-    }
-    cli::cat_line(sprintf("... and %i more", length(x) - n))
-    invisible(NULL)
-}
-
 with_silent <- function(expr) {
     old <- options("epwshiftr.verbose" = FALSE)
     on.exit(options(old), add = TRUE)
