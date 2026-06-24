@@ -785,7 +785,7 @@ Default: <code>FALSE</code>.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a> used when <code>enqueue = TRUE</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a> used when <code>enqueue = TRUE</code>.</p></dd>
 
 
 <dt><code>replica</code></dt>
@@ -862,7 +862,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a> used only for node
+<dd><p>Optional <a href="Downloader.html">Downloader</a> used only for node
 history, network policy, and cooldown policy.</p></dd>
 
 
@@ -932,7 +932,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 <dt><code>replica</code></dt>
@@ -1005,7 +1005,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1030,7 +1030,7 @@ stored ESGF queries are summarised.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1106,7 +1106,7 @@ stored ESGF queries are summarised.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1130,7 +1130,7 @@ stored ESGF queries are summarised.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1359,7 +1359,7 @@ as an absolute mtime cutoff.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 <dt><code>status</code></dt>
@@ -1371,7 +1371,7 @@ as an absolute mtime cutoff.</p></dd>
 
 
 <dt><code>...</code></dt>
-<dd><p>Additional arguments passed to <code>FileDownloader$run()</code>.</p></dd>
+<dd><p>Additional arguments passed to <code>Downloader$run()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1407,7 +1407,7 @@ as an absolute mtime cutoff.</p></dd>
 
 </div><p></p><hr><a id="method-EsgStore-downloader"></a><div class="section">
 <h3 id="method-downloader-">Method <code>downloader()</code><a class="anchor" aria-label="anchor" href="#method-downloader-"></a></h3>
-<p>Return a FileDownloader bound to this store.</p><div class="section">
+<p>Return a Downloader bound to this store.</p><div class="section">
 <h4 id="usage-39">Usage<a class="anchor" aria-label="anchor" href="#usage-39"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">downloader</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -1415,14 +1415,14 @@ as an absolute mtime cutoff.</p></dd>
 <div class="section">
 <h4 id="arguments-36">Arguments<a class="anchor" aria-label="anchor" href="#arguments-36"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>...</code></dt>
-<dd><p>Additional arguments passed to <code>FileDownloader$new()</code>.</p></dd>
+<dd><p>Additional arguments passed to <code>Downloader$new()</code>.</p></dd>
 
 
 </dl><p></p></div>
 </div>
 <div class="section">
 <h4 id="returns-39">Returns<a class="anchor" aria-label="anchor" href="#returns-39"></a></h4>
-<p>A <a href="FileDownloader.html">FileDownloader</a> object.</p>
+<p>A <a href="Downloader.html">Downloader</a> object.</p>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-download_files"></a><div class="section">
@@ -1459,7 +1459,7 @@ If supplied, it is cataloged before the download plan is created.</p></dd>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 <dt><code>run</code></dt>
@@ -1507,7 +1507,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 <dt><code>...</code></dt>
 <dd><p>Additional arguments passed to <code>$download_plan()</code> and
-<code>FileDownloader$run()</code>.</p></dd>
+<code>Downloader$run()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -1527,7 +1527,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 <div class="section">
 <h4 id="arguments-38">Arguments<a class="anchor" aria-label="anchor" href="#arguments-38"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
-<dd><p>Optional <a href="FileDownloader.html">FileDownloader</a>. Default: <code>$downloader()</code>.</p></dd>
+<dd><p>Optional <a href="Downloader.html">Downloader</a>. Default: <code>$downloader()</code>.</p></dd>
 
 
 </dl><p></p></div>

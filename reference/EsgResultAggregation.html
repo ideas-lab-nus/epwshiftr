@@ -221,17 +221,17 @@ current records.</p></dd>
 
 <dt><code>node_stats</code></dt>
 <dd><p>Optional data node history from
-<code>FileDownloader$data_nodes()</code>.</p></dd>
+<code>Downloader$data_nodes()</code>.</p></dd>
 
 
 <dt><code>network_policy</code></dt>
 <dd><p>Optional network options from
-<code>FileDownloader$network_policy</code>.</p></dd>
+<code>Downloader$network_policy</code>.</p></dd>
 
 
 <dt><code>node_policy</code></dt>
 <dd><p>Optional data-node cooldown policy from
-<code>FileDownloader$node_policy</code>.</p></dd>
+<code>Downloader$node_policy</code>.</p></dd>
 
 
 <dt><code>probe_concurrency</code></dt>
@@ -252,7 +252,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 </div><p></p><hr><a id="method-EsgResultAggregation-download"></a><div class="section">
 <h3 id="method-download-">Method <code>download()</code><a class="anchor" aria-label="anchor" href="#method-download-"></a></h3>
-<p>Enqueue and run aggregation downloads using a FileDownloader.</p><div class="section">
+<p>Enqueue and run aggregation downloads using a Downloader.</p><div class="section">
 <h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultAggregation</span><span class="op">$</span><span class="fu">download</span><span class="op">(</span></span>
 <span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -272,7 +272,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 <div class="section">
 <h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
-<dd><p>Optional persistent <a href="FileDownloader.html">FileDownloader</a>. If <code>NULL</code>,
+<dd><p>Optional persistent <a href="Downloader.html">Downloader</a>. If <code>NULL</code>,
 <code>store$downloader()</code> is used when <code>store</code> is supplied.</p></dd>
 
 
@@ -318,7 +318,7 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 <dt><code>...</code></dt>
-<dd><p>Additional arguments passed to <code>FileDownloader$run()</code>.</p></dd>
+<dd><p>Additional arguments passed to <code>Downloader$run()</code>.</p></dd>
 
 
 </dl><p></p></div>
@@ -381,7 +381,7 @@ non-interactive session this raises an error.</p></li>
 
 
 <dt><code>downloader</code></dt>
-<dd><p>Optional persistent <a href="FileDownloader.html">FileDownloader</a> used for
+<dd><p>Optional persistent <a href="Downloader.html">Downloader</a> used for
 recoverable HTTP fallback.</p></dd>
 
 
