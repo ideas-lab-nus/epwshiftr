@@ -1,0 +1,162 @@
+---
+title: "Migrate from the Legacy Workflow"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Migrate from the Legacy Workflow}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Map init_cmip6_index(), summary_database(), extract_data(),
+    morphing_epw(), and future_epw() workflows to the store-native API.
+---
+
+epwshiftr's recommended workflow is now
+[Create Future EPW Files](future-epw-workflow.html), built around `shift_*()`,
+`EsgStore`, `Downloader`, and `EpwMorpher`.
+
+The older data.table-oriented workflow remains documented in the reference for
+compatibility, but new work should migrate to the store-native API. This article
+maps old concepts to new ones.
+
+# Concept Map
+
+| Legacy step | Store-native replacement | Why it changed |
+| --- | --- | --- |
+| `init_cmip6_index()` | `shift_request()` plus `shift_datasets()` / `shift_collect()` | Search and file metadata are now query snapshots and result objects instead of one monolithic local index. |
+| `summary_database()` | `EsgStore` file catalog and `storage_report()` | File identity, local paths, checksums, and artifacts live in a durable manifest. |
+| `match_coord()` | `shift_site()` and `EsgStore$plan_region()` | Site metadata and extraction plans are explicit workflow objects. |
+| `extract_data()` | `shift_extract()` or `EsgStore$extract()` | Extraction writes partitioned Parquet artifacts and records coverage. |
+| `morphing_epw()` | `shift_morph()` or `EpwMorpher$run()` | Morphing factors and diagnostics are store-native and resumable. |
+| `future_epw()` | `shift_epw()` or `EpwMorpher$write_epw()` | EPW outputs are registered with case metadata and artifact provenance. |
+
+# Old Shape
+
+A simplified legacy script looked like this:
+
+```r
+index <- init_cmip6_index(...)
+summary <- summary_database(...)
+coord <- match_coord(epw, summary)
+data <- extract_data(coord, years = 2060)
+morphed <- morphing_epw(data, years = 2060)
+future_epw(morphed)
+```
+
+That path assumed a local CMIP6 file index and passed large data objects between
+steps.
+
+# New High-Level Shape
+
+The store-native path keeps durable state in the store and passes small stage
+objects between steps.
+
+```r
+site <- shift_site(
+    id = "SIN",
+    lon = 103.98,
+    lat = 1.37,
+    label = "Singapore",
+    epw = epw
+)
+
+request <- shift_request(
+    project = "CMIP6",
+    time = 2060L,
+    filters = list(
+        activity_id = "ScenarioMIP",
+        source_id = "MPI-ESM1-2-LR",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        frequency = "mon",
+        variable_id = epw_morph_variables("recommended"),
+        data_node = "esgf.ceda.ac.uk",
+        table_id = "Amon"
+    ),
+    options = list(index_node = "https://esgf-data.dkrz.de")
+)
+
+epws <- request |>
+    shift_collect(store = "~/cmip6-singapore-store") |>
+    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
+    shift_morph(baseline = site, strict = TRUE) |>
+    shift_epw()
+```
+
+Use `shift_status()`, `shift_diagnostics()`, `shift_coverage()`,
+`shift_outputs()`, and `shift_data()` to inspect stage state.
+
+# New Lower-Level Shape
+
+If your legacy script needed tight control over indexing, downloads, extraction,
+or morphing, split it into the lower-level engines instead of recreating the old
+global index.
+
+```r
+query <- esg_query("https://esgf-data.dkrz.de")$
+    activity_id("ScenarioMIP")$
+    experiment_id("ssp585")$
+    source_id("MPI-ESM1-2-LR")$
+    variant_label("r1i1p1f1")$
+    frequency("mon")$
+    variable_id(epw_morph_variables("recommended"))$
+    data_node("esgf.ceda.ac.uk")$
+    params(table_id = "Amon")
+
+datasets <- query$collect(type = "Dataset")
+files <- datasets$collect(type = "File", fields = "*")$
+    filter_time("2060-01-01", "2060-12-31", method = "drs")
+
+store <- EsgStore$new("~/cmip6-singapore-store")
+query_id <- store$add_files(files, label = "singapore-ssp585-2060")
+
+plan <- store$plan_region(
+    query_id = query_id,
+    lon = 103.98,
+    lat = 1.37,
+    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+    site_id = "SIN",
+    variable_id = epw_morph_variables("recommended")
+)
+
+store$extract(plan_id = plan$plan_id, fallback = "auto")
+
+morpher <- epw_morpher(store, epw = epw, site_id = "SIN")
+morpher$workflow(
+    plan_id = plan$plan_id,
+    periods = epw_morph_periods(`2060s` = 2060L),
+    strict = TRUE,
+    dir = "outputs/future-epw"
+)
+```
+
+See [ESGF query results](esgf-query-results.html), [ESG stores](esg-store.html),
+and [EpwMorpher](epw-morpher.html) for the details behind each layer.
+
+# Migration Checks
+
+Before replacing a legacy script, make these choices explicit:
+
+- Use `shift_request()` filters that match the old scenario, source, variant,
+  frequency, table, and variables.
+- Decide whether you need full NetCDF downloads. The new default reads OPeNDAP
+  first; insert `shift_download()` only when you intentionally want local source
+  files.
+- Use `epw_morph_variables("recommended")` for strict future EPW generation
+  unless you are intentionally running a relaxed or experimental recipe.
+- Replace file-system scans with store validation and coverage checks.
+- Compare output EPW names and case grouping through `shift_outputs()` rather
+  than relying on legacy directory conventions.
+
+# When to Keep the Legacy Branch
+
+Keep using the legacy branch or epwshiftr `v0.1.4` only when a project depends
+on exact legacy object classes, old file naming, or an already validated
+historical workflow that should not change mid-study.
+
+For new work, use the store-native API. It gives better diagnostics, durable
+metadata, resumable downloads, artifact tracking, and a clearer route from ESGF
+records to generated EPW files.

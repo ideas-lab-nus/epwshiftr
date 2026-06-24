@@ -1,0 +1,266 @@
+---
+title: "Manage ESG Dictionaries"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Manage ESG Dictionaries}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Build, inspect, save, reload, and validate live project-aware ESG
+    dictionaries.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{r setup}
+library(epwshiftr)
+
+workflow_root <- file.path(tempdir(), "epwshiftr-esg-dictionaries")
+if (dir.exists(workflow_root)) {
+    unlink(workflow_root, recursive = TRUE)
+}
+dir.create(workflow_root, recursive = TRUE, showWarnings = FALSE)
+
+options(
+    epwshiftr.dir_cache = file.path(workflow_root, "cache")
+)
+
+show_rows <- function(x, n = 8L) {
+    utils::head(data.table::as.data.table(x), n)
+}
+```
+
+ESG projects describe model output through controlled vocabularies. Some
+projects also publish request-table metadata that describes valid relationships
+between fields such as activities, experiments, variables, tables, and
+frequencies.
+
+`EsgDict` is epwshiftr's project-aware dictionary object. The main
+[future EPW workflow](future-epw-workflow.html) can run without manual
+dictionary code, but dictionaries are the best first check when you want to
+validate request values before sending a live ESGF query.
+
+# Build a CMIP6 Dictionary
+
+`EsgDict$new(project = "CMIP6")` creates an empty dictionary object. `$build()`
+downloads upstream controlled-vocabulary and request-table sources, parses
+them, and builds normalized indices used by `options()` and `check()`.
+
+This article uses a fresh article-local source directory so the output comes
+from a live upstream build.
+
+```{r build-cmip6-dict}
+cmip6_source_dir <- file.path(workflow_root, "sources", "CMIP6")
+
+dict <- EsgDict$new(project = "CMIP6")
+dict$status()
+
+dict$build(
+    source_dir = cmip6_source_dir,
+    use_cache = FALSE
+)
+
+dict$status()
+dict$has_data()
+```
+
+# Inspect Source Metadata
+
+After a build, the dictionary records where its source data came from, which
+versions were used, source timestamps where available, and when the local
+dictionary was built.
+
+```{r source-metadata}
+dict$project()
+dict$profile()
+dict$sources()
+dict$version()
+dict$timestamp()
+dict$built_time()
+```
+
+`capabilities()` is the fastest way to see whether a project dictionary has
+vocabulary data, request metadata, and relation indices.
+
+```{r dict-capabilities}
+dict$capabilities()
+dict$fields()
+dict$relation_fields()
+```
+
+CMIP6 includes request-table metadata, so it can answer both value questions
+and many cross-field legality questions.
+
+# Work with Dictionary Indices
+
+The raw vocabulary payload is available through `$get()`, but most workflows
+should use normalized fields and indices.
+
+```{r dict-indices}
+index_names <- names(dict$indices())
+index_names
+
+show_rows(dict$indices("values"), 12L)
+
+if ("variable" %in% index_names) {
+    show_rows(dict$indices("variable"), 12L)
+}
+```
+
+`$get()` is useful when you need the source-level payload for a specific field
+or request table.
+
+```{r raw-payload}
+show_rows(dict$get("experiment_id"), 8L)
+
+request_payload <- dict$get("request")
+show_rows(request_payload[, c(
+    "variable", "table_id", "frequency", "long_name", "units"
+), with = FALSE], 8L)
+names(request_payload)
+```
+
+# Discover Legal Options
+
+`$options()` lists valid values for a field. Constraints narrow the result when
+a relation index is available.
+
+```{r dict-options}
+show_rows(dict$options("experiment_id", activity_id = "ScenarioMIP"), 12L)
+show_rows(dict$options("variable_id", table_id = "Amon"), 12L)
+show_rows(dict$options("table_id", variable_id = "tas"), 12L)
+```
+
+The top-level helper uses a supplied dictionary or the package-level default
+dictionary. Supplying `dict =` makes the example explicit.
+
+```{r helper-options}
+show_rows(
+    esgdict_option("experiment_id", activity_id = "ScenarioMIP", dict = dict),
+    12L
+)
+```
+
+# Check a Request
+
+`$check()` validates known values and known relationships before the request
+goes to ESGF.
+
+```{r dict-check}
+request_check <- dict$check(
+    activity_id = "ScenarioMIP",
+    experiment_id = "ssp585",
+    source_id = "MPI-ESM1-2-LR",
+    variant_label = "r1i1p1f1",
+    table_id = "Amon",
+    variable_id = epw_morph_variables("recommended")
+)
+
+show_rows(request_check, 20L)
+```
+
+Suggestions are useful for typographical errors or aliases that do not match
+the project vocabulary.
+
+```{r dict-check-suggestions}
+show_rows(
+    dict$check(
+        experiment_id = "ssp58",
+        table_id = "Amon",
+        variable_id = "tas",
+        suggest = TRUE,
+        error = FALSE
+    ),
+    12L
+)
+```
+
+The same check is available through `esgdict_check()`.
+
+```{r helper-check}
+show_rows(
+    esgdict_check(
+        activity_id = "ScenarioMIP",
+        experiment_id = "ssp585",
+        variable_id = "tas",
+        table_id = "Amon",
+        dict = dict
+    )
+)
+```
+
+# Save and Reload
+
+Saved dictionaries are schema-validated JSON files. Use this when you want a
+known dictionary snapshot beside a project store or a reviewable analysis
+artifact.
+
+```{r save-load-dict}
+dict_path <- file.path(workflow_root, "cmip6-dict-live.json")
+dict$save(dict_path)
+
+restored <- EsgDict$new(project = "CMIP6")
+restored$load(dict_path)
+
+restored$status()
+restored$version()
+identical(restored$fields(), dict$fields())
+```
+
+# Build a CV-Only Project
+
+The dictionary object is project-aware. Projects without registered request
+metadata still use the same object shape, but their capabilities and relation
+checks reflect what is available upstream.
+
+```{r build-cmip6plus-dict}
+cmip6plus_source_dir <- file.path(workflow_root, "sources", "CMIP6PLUS")
+
+cmip6plus <- EsgDict$new(project = "CMIP6PLUS")
+cmip6plus$build(
+    source_dir = cmip6plus_source_dir,
+    use_cache = FALSE
+)
+
+cmip6plus$project()
+cmip6plus$sources()
+cmip6plus$capabilities()
+cmip6plus$relation_fields()
+```
+
+CV-only projects can still list fields and validate individual values.
+Relationship checks degrade according to the available indices instead of
+pretending that CMIP6 request metadata applies to every project.
+
+```{r cv-only-options}
+utils::head(cmip6plus$fields(), 20L)
+
+if ("activity_id" %in% cmip6plus$fields()) {
+    show_rows(cmip6plus$options("activity_id"), 12L)
+}
+
+if ("experiment_id" %in% cmip6plus$fields()) {
+    show_rows(cmip6plus$options("experiment_id"), 12L)
+}
+```
+
+# Where Dictionaries Fit
+
+- In the main workflow, dictionary checks protect request construction before
+  `shift_datasets()` contacts ESGF.
+- In [ESGF query results](esgf-query-results.html), dictionary checks
+  complement live index-node metadata such as facets, fields, shards, and
+  values.
+- In [ESGF troubleshooting](esgf-troubleshooting.html), dictionaries are the
+  first local check for invalid values or incompatible request fields.
