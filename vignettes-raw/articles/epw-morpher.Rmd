@@ -1,0 +1,210 @@
+---
+title: "Inspect EPW Morphing"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        df_print: "paged"
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Inspect EPW Morphing}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Use EpwMorpher to inspect climate summaries, baseline summaries,
+    morphing plans, diagnostics, morphed weather, and written EPW files.
+---
+
+`shift_morph()` and `shift_epw()` are the recommended user-facing interface in
+[Create Future EPW Files](future-epw-workflow.html). They wrap `EpwMorpher`, the
+lower-level store-native morphing engine.
+
+Use `EpwMorpher` directly when you need to inspect monthly summaries, preview
+factor calculations, diagnose missing variables, choose morphing case grouping,
+or rerun only the morph/write part of a workflow.
+
+# Inputs
+
+`EpwMorpher` consumes completed extraction outputs in an `EsgStore` and a
+baseline EPW file.
+
+```r
+store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
+
+epw <- system.file(
+    "extdata", "vignettes", "future-weather",
+    "SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+morpher <- epw_morpher(
+    store = store,
+    epw = epw,
+    site_id = "SIN",
+    recipe = epw_morph_recipe("belcher"),
+    label = "Singapore baseline"
+)
+```
+
+The helper functions used by the high-level workflow are available directly:
+
+```r
+epw_morph_variables("minimal")
+epw_morph_variables("recommended")
+epw_morph_variables("extended")
+
+periods <- epw_morph_periods(`2060s` = 2060L)
+```
+
+`"recommended"` is the strict Belcher recipe set used by the main workflow.
+`"minimal"` is useful for relaxed demonstrations, and `"extended"` adds related
+variables for future recipes.
+
+# Preflight Before Writing
+
+Preflight checks extraction coverage and baseline readiness without modifying
+store state.
+
+```r
+diagnostics <- morpher$preflight(
+    plan_id = region$plan_id,
+    periods = periods,
+    strict = TRUE
+)
+
+diagnostics
+```
+
+Blocking diagnostics should be fixed before planning. Common causes are missing
+required variables, incomplete monthly coverage, missing baseline EPW fields, or
+using periods that are not covered by the extracted climate data.
+
+# Summarise Climate and Baseline
+
+Morphing uses monthly summary statistics. The climate summary comes from store
+extraction outputs; the baseline summary comes from the EPW file.
+
+```r
+climate <- morpher$summarise_climate(
+    plan_id = region$plan_id,
+    periods = periods,
+    strict = TRUE,
+    overwrite = FALSE
+)
+
+baseline <- morpher$summarise_baseline(overwrite = FALSE)
+
+unique(climate$summary_id)
+unique(baseline$baseline_id)
+```
+
+The summary IDs are stable for the selected extraction plans, periods, baseline,
+and recipe. Reusing them lets you preview or rerun later stages without
+re-extracting climate data.
+
+# Preview and Create a Morphing Plan
+
+`preview_plan()` calculates plan rows, factor rows, and diagnostics without
+writing them. `plan()` persists the selected plan and factor rows.
+
+```r
+preview <- morpher$preview_plan(
+    summary_id = unique(climate$summary_id),
+    baseline_id = unique(baseline$baseline_id),
+    by = c("source_id", "experiment_id", "variant_label", "period"),
+    strict = TRUE
+)
+
+preview$plan
+preview$factors
+preview$diagnostics
+
+plan <- morpher$plan(
+    summary_id = unique(climate$summary_id),
+    baseline_id = unique(baseline$baseline_id),
+    by = c("source_id", "experiment_id", "variant_label", "period"),
+    strict = TRUE
+)
+```
+
+The `by` columns define morphing cases. The default creates one case per model,
+experiment, member, and period. Add or remove grouping columns only when those
+columns exist in the climate summary and reflect the cases you intend to write.
+
+# Diagnose and Run
+
+Run diagnostics before executing strict plans.
+
+```r
+morph_id <- plan$morph_id[[1L]]
+
+morpher$diagnose(morph_id)
+morpher$check(morph_id)
+
+results <- morpher$run(
+    morph_id,
+    overwrite = FALSE,
+    resume = TRUE
+)
+```
+
+`run()` writes hourly morphed weather as Parquet artifacts under the store. It
+does not write EPW text files yet.
+
+# Write EPW Files
+
+Write EnergyPlus Weather files after morphing succeeds.
+
+```r
+outputs <- morpher$write_epw(
+    morph_id,
+    dir = "outputs/future-epw",
+    separate = TRUE,
+    overwrite = FALSE,
+    resume = TRUE
+)
+
+morpher$status(morph_id)
+morpher$outputs(morph_id)
+```
+
+The high-level `shift_epw()` function wraps this step and returns a
+`ShiftOutputs` stage. Use `shift_outputs()` and `shift_data()` when you do not
+need lower-level manifest IDs.
+
+# One-Call Workflow
+
+For scripts that need the lower-level engine but not every intermediate object,
+use `workflow()`.
+
+```r
+result <- morpher$workflow(
+    plan_id = region$plan_id,
+    periods = periods,
+    by = c("source_id", "experiment_id", "variant_label", "period"),
+    strict = TRUE,
+    dir = "outputs/future-epw",
+    overwrite = FALSE,
+    resume = TRUE
+)
+
+names(result)
+```
+
+For most users, the equivalent high-level path is still clearer:
+
+```r
+epws <- files |>
+    shift_extract(site = site, periods = periods) |>
+    shift_morph(baseline = epw, strict = TRUE) |>
+    shift_epw()
+```
+
+# Relationship to Other Layers
+
+- [ESG stores](esg-store.html) owns extraction results and artifacts consumed by
+  `EpwMorpher`.
+- [ESGF troubleshooting](esgf-troubleshooting.html) explains incomplete
+  coverage and missing variable diagnostics.
+- [Create Future EPW Files](future-epw-workflow.html) shows the recommended
+  high-level path.
