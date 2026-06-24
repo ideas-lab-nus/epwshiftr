@@ -1,21 +1,183 @@
 RES_DATASET <- c(
     "id",
-    "mip_era", "activity_drs", "institution_id", "source_id",
-    "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-    "version", "nominal_resolution", "variable_id", "variable_long_name",
-    "variable_units", "data_node", "pid"
+    "mip_era",
+    "activity_drs",
+    "institution_id",
+    "source_id",
+    "experiment_id",
+    "member_id",
+    "table_id",
+    "frequency",
+    "grid_label",
+    "version",
+    "nominal_resolution",
+    "variable_id",
+    "variable_long_name",
+    "variable_units",
+    "data_node",
+    "pid"
 )
 
 RES_FILE <- c(
-    "id", "dataset_id",
-    "mip_era", "activity_drs", "institution_id", "source_id",
-    "experiment_id", "member_id", "table_id", "frequency", "grid_label",
-    "version", "nominal_resolution", "variable_id", "variable_long_name",
-    "variable_units", "data_node", "size", "url", "tracking_id"
+    "id",
+    "dataset_id",
+    "mip_era",
+    "activity_drs",
+    "institution_id",
+    "source_id",
+    "experiment_id",
+    "member_id",
+    "table_id",
+    "frequency",
+    "grid_label",
+    "version",
+    "nominal_resolution",
+    "variable_id",
+    "variable_long_name",
+    "variable_units",
+    "data_node",
+    "size",
+    "url",
+    "tracking_id"
 )
 
+esgf_query_deprecate <- function() {
+    if (isTRUE(this$esgf_query_deprecated_warned)) {
+        return(invisible(FALSE))
+    }
+
+    this$esgf_query_deprecated_warned <- TRUE
+    warning(
+        "`esgf_query()` is deprecated; please use `esg_query()` / `EsgQuery` for new code. Returning legacy-compatible results for now.",
+        call. = FALSE
+    )
+
+    invisible(TRUE)
+}
+
+esgf_host_to_index_node <- function(host) {
+    checkmate::assert_string(host)
+
+    host <- curl::curl_unescape(host)
+    host <- sub("/search/?$", "", host)
+    host <- sub("/esg-search/?$", "", host)
+    host <- sub("/+$", "", host)
+
+    normalize_index_node(host)
+}
+
+esgf_subset_response_docs <- function(response, fields) {
+    docs <- response$response$docs
+    if (is.null(docs)) {
+        return(response)
+    }
+
+    keep <- intersect(fields, names(docs))
+    if (is.data.frame(docs)) {
+        response$response$docs <- docs[, keep, drop = FALSE]
+    } else if (is.list(docs)) {
+        response$response$docs <- docs[keep]
+    }
+
+    response
+}
+
+esgf_query_normalize_legacy_fq <- function(response, replica, latest) {
+    params <- response$responseHeader$params
+    if (is.null(params) || is.null(params$fq)) {
+        return(response)
+    }
+
+    fq <- unlist(params$fq, use.names = FALSE)
+    set_flag <- function(x, name, value) {
+        x <- x[!grepl(sprintf("^%s:", name), x)]
+        c(x, sprintf("%s:%s", name, tolower(as.character(value))))
+    }
+
+    if (!is.null(replica)) {
+        fq <- set_flag(fq, "replica", replica)
+    }
+    if (!is.null(latest)) {
+        fq <- set_flag(fq, "latest", latest)
+    }
+
+    response$responseHeader$params$fq <- fq
+    response
+}
+
+esgf_query_collect <- function(q) {
+    withCallingHandlers(
+        query_collect(
+            priv(q)$index_node,
+            priv(q)$parameter,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = FALSE
+        ),
+        warning = function(w) {
+            if (grepl("^No matched data\\.", conditionMessage(w))) {
+                invokeRestart("muffleWarning")
+            }
+        }
+    )
+}
+
+esgf_query_empty <- function(response) {
+    dt <- data.table::data.table()
+    data.table::setattr(dt, "response", response)
+    dt
+}
+
+esgf_query_build <- function(host, type, activity, variable, frequency, experiment, source, variant, replica, latest, resolution, limit, data_node) {
+    index_node <- esgf_host_to_index_node(host)
+    q <- esg_query(index_node)
+    resolution_param <- NULL
+
+    if (!is.null(resolution)) {
+        resolution_param <- unique(c(
+            gsub(" ", "", resolution, fixed = TRUE),
+            gsub(" ", "+", resolution, fixed = TRUE)
+        ))
+        attr(resolution_param, "encoded") <- TRUE
+    }
+
+    # keep the legacy host semantics and only reuse the new query stack for
+    # parameter normalization and request execution.
+    priv(q)$index_node <- index_node
+
+    q$project("CMIP6")
+    q$activity_id(activity)
+    q$variable_id(variable)
+    q$frequency(frequency)
+    q$experiment_id(experiment)
+    q$source_id(source)
+    q$variant_label(variant)
+    q$replica(replica)
+    q$latest(latest)
+    q$data_node(data_node)
+
+    priv(q)$parameter$nominal_resolution <- new_query_param("nominal_resolution", resolution_param)
+    priv(q)$parameter$limit <- new_query_param("limit", as.integer(limit))
+    priv(q)$parameter$type <- new_query_param("type", type)
+    priv(q)$parameter$fields <- new_query_param(
+        "fields",
+        if (type == "Dataset") RES_DATASET else RES_FILE
+    )
+
+    q
+}
+
 # esgf_query {{{
-#' Query CMIP6 data using ESGF search RESTful API
+#' Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API
+#'
+#' `esgf_query()` is a compatibility wrapper around [esg_query()] for the legacy
+#' data.table-oriented CMIP6 query workflow.
+#'
+#' For new code, start with [esg_query()] / [EsgQuery]. `esgf_query()` emits a
+#' gentle deprecation warning and preserves the historical `host` interface,
+#' including the default LLNL search host instead of `esg_query()`'s ORNL
+#' `index_node` default.
 #'
 #' @details
 #' The Earth System Grid Federation (ESGF) is an international collaboration for
@@ -26,8 +188,9 @@ RES_FILE <- c(
 #' query the contents of the underlying search index, and return results
 #' matching the given constraints. With the distributed capabilities of the ESGF
 #' search, the URL at any Index Node can be used to query that Node only, or all
-#' Nodes in the ESGF system. `esgf_query()` uses the
-#' [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov).
+#' Nodes in the ESGF system. For compatibility, `esgf_query()` keeps the legacy
+#' [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov)
+#' `host` default instead of `esg_query()`'s ORNL `index_node` default.
 #'
 #' The core Controlled Vocabularies (CVs) for use in CMIP6, including all
 #' activities, experiment, sources (GCMs), frequencies can be found at the
@@ -149,9 +312,12 @@ RES_FILE <- c(
 #'
 #' @param host The URL to the ESGF Search API service. This should be the URL of
 #'        the ESGF search service excluding the final endpoint name. Usually
-#'        this is `http://<hostname>/esg-search`. Default is set to the
+#'        this is `http://<hostname>/esg-search`. This legacy `host` argument is
+#'        preserved for compatibility and keeps the legacy LLNL Search API
+#'        semantics. Default is set to the
 #'        [LLNL (Lawrence Livermore National Laboratory) Index Node](http://esgf-node.llnl.gov),
-#'        which is `"https://esgf-node.llnl.gov/esg-search"`.
+#'        which is `"https://esgf-node.llnl.gov/esg-search"`. For new code,
+#'        prefer `esg_query(index_node = ...)`.
 #'
 #' @return A [data.table::data.table] with an attribute named `response` which
 #' is a list converted from json response. If no matched data is found, an empty
@@ -210,6 +376,8 @@ RES_FILE <- c(
 #' @references
 #' https://github.com/ESGF/esgf.github.io/wiki/ESGF_Search_REST_API
 #'
+#' @seealso [esg_query()], [EsgQuery]
+#'
 #' @examples
 #' \dontrun{
 #' esgf_query(variable = "rss", experiment = "ssp126", resolution = "100 km", limit = 1)
@@ -218,34 +386,99 @@ RES_FILE <- c(
 #' }
 #'
 #' @export
-esgf_query <- function(activity = "ScenarioMIP",
-                       variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
-                       frequency = "day",
-                       experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
-                       source = c(
-                           "AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
-                           "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
-                           "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"
-                       ),
-                       variant = "r1i1p1f1",
-                       replica = FALSE,
-                       latest = TRUE,
-                       resolution = c("100 km", "50 km"),
-                       type = "Dataset",
-                       limit = 10000L,
-                       data_node = NULL,
-                       host = "http://esgf-node.llnl.gov/esg-search") {
-    checkmate::assert_subset(activity, empty.ok = FALSE, choices = c(
-        "AerChemMIP", "C4MIP", "CDRMIP", "CFMIP", "CMIP", "CORDEX", "DAMIP",
-        "DCPP", "DynVarMIP", "FAFMIP", "GMMIP", "GeoMIP", "HighResMIP",
-        "ISMIP6", "LS3MIP", "LUMIP", "OMIP", "PAMIP", "PMIP", "RFMIP", "SIMIP",
-        "ScenarioMIP", "VIACSAB", "VolMIP"
-    ))
+esgf_query <- function(
+    activity = "ScenarioMIP",
+    variable = c(
+        "tas",
+        "tasmax",
+        "tasmin",
+        "hurs",
+        "hursmax",
+        "hursmin",
+        "pr",
+        "rsds",
+        "rlds",
+        "psl",
+        "sfcWind",
+        "clt"
+    ),
+    frequency = "day",
+    experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
+    source = c(
+        "AWI-CM-1-1-MR",
+        "BCC-CSM2-MR",
+        "CESM2",
+        "CESM2-WACCM",
+        "EC-Earth3",
+        "EC-Earth3-Veg",
+        "GFDL-ESM4",
+        "INM-CM4-8",
+        "INM-CM5-0",
+        "MPI-ESM1-2-HR",
+        "MRI-ESM2-0"
+    ),
+    variant = "r1i1p1f1",
+    replica = FALSE,
+    latest = TRUE,
+    resolution = c("100 km", "50 km"),
+    type = "Dataset",
+    limit = 10000L,
+    data_node = NULL,
+    host = "http://esgf-node.llnl.gov/esg-search"
+) {
+    checkmate::assert_subset(
+        activity,
+        empty.ok = FALSE,
+        choices = c(
+            "AerChemMIP",
+            "C4MIP",
+            "CDRMIP",
+            "CFMIP",
+            "CMIP",
+            "CORDEX",
+            "DAMIP",
+            "DCPP",
+            "DynVarMIP",
+            "FAFMIP",
+            "GMMIP",
+            "GeoMIP",
+            "HighResMIP",
+            "ISMIP6",
+            "LS3MIP",
+            "LUMIP",
+            "OMIP",
+            "PAMIP",
+            "PMIP",
+            "RFMIP",
+            "SIMIP",
+            "ScenarioMIP",
+            "VIACSAB",
+            "VolMIP"
+        )
+    )
     checkmate::assert_character(variable, any.missing = FALSE, null.ok = TRUE)
-    checkmate::assert_subset(frequency, empty.ok = TRUE, choices = c(
-        "1hr", "1hrCM", "1hrPt", "3hr", "3hrPt", "6hr", "6hrPt", "day", "dec",
-        "fx", "mon", "monC", "monPt", "subhrPt", "yr", "yrPt"
-    ))
+    checkmate::assert_subset(
+        frequency,
+        empty.ok = TRUE,
+        choices = c(
+            "1hr",
+            "1hrCM",
+            "1hrPt",
+            "3hr",
+            "3hrPt",
+            "6hr",
+            "6hrPt",
+            "day",
+            "dec",
+            "fx",
+            "mon",
+            "monC",
+            "monPt",
+            "subhrPt",
+            "yr",
+            "yrPt"
+        )
+    )
     checkmate::assert_character(experiment, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_character(source, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_character(variant, any.missing = FALSE, pattern = "r\\d+i\\d+p\\d+f\\d+", null.ok = TRUE)
@@ -256,99 +489,59 @@ esgf_query <- function(activity = "ScenarioMIP",
     checkmate::assert_choice(type, choices = c("Dataset", "File"))
     checkmate::assert_character(data_node, any.missing = FALSE, null.ok = TRUE)
 
-    url_base <- file.path(host, "search/?")
+    esgf_query_deprecate()
 
-    dict <- c(
-        activity = "activity_id",
-        experiment = "experiment_id",
-        source = "source_id",
-        variable = "variable_id",
-        resolution = "nominal_resolution",
-        variant = "variant_label"
+    q <- esgf_query_build(
+        host = host,
+        type = type,
+        activity = activity,
+        variable = variable,
+        frequency = frequency,
+        experiment = experiment,
+        source = source,
+        variant = variant,
+        replica = replica,
+        latest = latest,
+        resolution = resolution,
+        limit = limit,
+        data_node = data_node
     )
 
-    pair <- function(x, encode = TRUE) {
-        checkmate::assert_vector(x, TRUE, null.ok = TRUE)
-
-        # get name
-        var <- deparse(substitute(x))
-
-        # skip if empty
-        if (is.null(x) || length(x) == 0) {
-            return()
-        }
-        # get key name
-        key <- dict[names(dict) == var]
-        if (!length(key)) key <- var
-
-        if (is.logical(x)) x <- tolower(x)
-
-        if (encode) x <- query_param_encode(as.character(x))
-
-        paste0(key, "=", paste0(x, collapse = query_param_encode(",")))
-    }
-
-    `%and%` <- function(lhs, rhs) {
-        if (is.null(rhs)) {
-            lhs
-        } else if (lhs == url_base) {
-            paste(lhs, rhs, sep = "", collapse = "")
-        } else {
-            paste(lhs, rhs, sep = "&", collapse = "&")
-        }
-    }
-
-    project <- "CMIP6"
-    format <- "application/solr+json"
-    offset <- 0L
-
-    resolution <- c(
-        gsub(" ", "", resolution, fixed = TRUE),
-        gsub(" ", "+", resolution, fixed = TRUE)
+    response <- tryCatch(
+        {
+            res <- esgf_query_collect(q)
+            res$response$response$docs <- res$docs
+            esgf_query_normalize_legacy_fq(
+                esgf_subset_response_docs(
+                    res$response,
+                    if (type == "Dataset") RES_DATASET else RES_FILE
+                ),
+                replica = replica,
+                latest = latest
+            )
+        },
+        error = function(e) e
     )
-
-    # use `fileds` to directly subset data from responses
-    if (type == "Dataset") {
-        fields <- RES_DATASET
-    } else if (type == "File") {
-        fields <- RES_FILE
-    }
-
-    q <- url_base %and%
-        pair(offset) %and%
-        pair(limit) %and%
-        pair(type) %and%
-        pair(replica) %and%
-        pair(latest) %and%
-        pair(project) %and%
-        pair(activity) %and%
-        pair(experiment) %and%
-        pair(source) %and%
-        pair(variable) %and%
-        pair(resolution, FALSE) %and%
-        pair(variant) %and%
-        pair(data_node) %and%
-        pair(frequency) %and%
-        pair(fields) %and%
-        pair(format)
-
-    q <- tryCatch(jsonlite::fromJSON(q), warning = function(w) w, error = function(e) e)
 
     # nocov start
-    if (inherits(q, "warning") || inherits(q, "error")) {
+    if (inherits(response, "warning") || inherits(response, "error")) {
         message("No matched data. Please check network connection and the availability of LLNL ESGF node.")
-        dt <- data.table::data.table()
-        # nocov end
-    } else if (q$response$numFound == 0L) {
+        return(esgf_query_empty(response))
+    }
+    # nocov end
+
+    if (response$response$numFound == 0L) {
         message("No matched data. Please examine the actual response using 'attr(x, \"response\")'.")
-        dt <- data.table::data.table()
-    } else if (type == "Dataset") {
-        dt <- extract_query_dataset(q)
-    } else if (type == "File") {
-        dt <- extract_query_file(q)
+        return(esgf_query_empty(response))
     }
 
-    data.table::setattr(dt, "response", q)
+    dt <- if (type == "Dataset") {
+        extract_query_dataset(response)
+    } else {
+        extract_query_file(response)
+    }
+
+    data.table::setattr(dt, "response", response)
 
     dt
 }
@@ -366,6 +559,11 @@ extract_query_dataset <- function(q) {
         }
     }
     data.table::setnames(dt, c("id", "pid"), c("dataset_id", "dataset_pid"))
+    if ("version" %in% names(dt)) {
+        data.table::set(dt, NULL, "version", as.character(dt$version))
+    }
+
+    dt
 }
 # }}}
 
@@ -379,7 +577,10 @@ extract_query_file <- function(q) {
     data.table::set(dt, NULL, setdiff(names(dt), RES_FILE), NULL)
     data.table::setcolorder(dt, RES_FILE)
 
-    data.table::set(dt, NULL, "url",
+    data.table::set(
+        dt,
+        NULL,
+        "url",
         vapply(seq_len(nrow(dt)), FUN.VALUE = "", function(i) {
             url <- grep("HTTPServer", .subset2(dt, "url")[[i]], fixed = TRUE, value = TRUE)
 
@@ -403,16 +604,40 @@ extract_query_file <- function(q) {
     dt[, c("datetime_start", "datetime_end") := parse_file_date(id, frequency)]
     dt[, url := gsub("\\|.+$", "", url)]
     data.table::setnames(
-        dt, c("id", "size", "url"),
+        dt,
+        c("id", "size", "url"),
         c("file_id", "file_size", "file_url")
     )
-    data.table::setcolorder(dt, c(
-        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "frequency",
-        "grid_label", "version", "nominal_resolution", "variable_id",
-        "variable_long_name", "variable_units", "datetime_start",
-        "datetime_end", "file_size", "data_node", "file_url", "tracking_id"
-    ))
+    if ("version" %in% names(dt)) {
+        data.table::set(dt, NULL, "version", as.character(dt$version))
+    }
+    data.table::setcolorder(
+        dt,
+        c(
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "tracking_id"
+        )
+    )
 
     dt
 }
@@ -421,15 +646,22 @@ extract_query_file <- function(q) {
 # init_cmip6_index {{{
 #' Build CMIP6 experiment output file index
 #'
-#' `init_cmip6_index()` will search the CMIP6 model output file using [esgf_query()]
-#' , return a [data.table::data.table()] containing the actual NetCDF file url
-#' to download, and store it into user data directory for future use.
+#' `init_cmip6_index()` builds a CMIP6 file index by issuing Dataset/File
+#' lookups through the legacy-compatible [esgf_query()] wrapper so existing
+#' host-based workflows keep working. For new direct ESGF searches, start with
+#' [esg_query()] / [EsgQuery]. It returns a
+#' [data.table::data.table()] containing the actual NetCDF file url to
+#' download, and stores it into user data directory for future use.
 #'
 #' For details on where the file index is stored, see [rappdirs::user_data_dir()].
 #'
 #' @note
 #' Argument `limit` will only apply to `Dataset` query. `init_cmip6_index()` will
 #' try to get all model output files which match the dataset id.
+#'
+#' The inherited `host` argument keeps the legacy LLNL Search API semantics from
+#' [esgf_query()], so its default is not the same as `esg_query()`'s ORNL
+#' `index_node` default.
 #'
 #' @inheritParams esgf_query
 #' @param years An integer vector indicating the target years to be include in
@@ -472,33 +704,65 @@ extract_query_file <- function(q) {
 #'
 #' @importFrom data.table copy fwrite rbindlist set setcolorder
 #' @export
-init_cmip6_index <- function(activity = "ScenarioMIP",
-                             variable = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "pr", "rsds", "rlds", "psl", "sfcWind", "clt"),
-                             frequency = "day",
-                             experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
-                             source = c(
-                                 "AWI-CM-1-1-MR", "BCC-CSM2-MR", "CESM2", "CESM2-WACCM",
-                                 "EC-Earth3", "EC-Earth3-Veg", "GFDL-ESM4", "INM-CM4-8",
-                                 "INM-CM5-0", "MPI-ESM1-2-HR", "MRI-ESM2-0"
-                             ),
-                             variant = "r1i1p1f1",
-                             replica = FALSE,
-                             latest = TRUE,
-                             resolution = c("100 km", "50 km"),
-                             limit = 10000L,
-                             data_node = NULL,
-                             years = NULL,
-                             save = FALSE,
-                             host = "http://esgf-node.llnl.gov/esg-search") {
+init_cmip6_index <- function(
+    activity = "ScenarioMIP",
+    variable = c(
+        "tas",
+        "tasmax",
+        "tasmin",
+        "hurs",
+        "hursmax",
+        "hursmin",
+        "pr",
+        "rsds",
+        "rlds",
+        "psl",
+        "sfcWind",
+        "clt"
+    ),
+    frequency = "day",
+    experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
+    source = c(
+        "AWI-CM-1-1-MR",
+        "BCC-CSM2-MR",
+        "CESM2",
+        "CESM2-WACCM",
+        "EC-Earth3",
+        "EC-Earth3-Veg",
+        "GFDL-ESM4",
+        "INM-CM4-8",
+        "INM-CM5-0",
+        "MPI-ESM1-2-HR",
+        "MRI-ESM2-0"
+    ),
+    variant = "r1i1p1f1",
+    replica = FALSE,
+    latest = TRUE,
+    resolution = c("100 km", "50 km"),
+    limit = 10000L,
+    data_node = NULL,
+    years = NULL,
+    save = FALSE,
+    host = "http://esgf-node.llnl.gov/esg-search"
+) {
     checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
     checkmate::assert_flag(save)
 
-    verbose("Querying CMIP6 Dataset Information")
+    vmsg("Querying CMIP6 Dataset Information")
     qd <- esgf_query(
-        activity = activity, variable = variable, frequency = frequency,
-        experiment = experiment, source = source, replica = replica, latest = latest,
-        variant = variant, resolution = resolution, limit = limit, type = "Dataset",
-        data_node = data_node, host = host
+        activity = activity,
+        variable = variable,
+        frequency = frequency,
+        experiment = experiment,
+        source = source,
+        replica = replica,
+        latest = latest,
+        variant = variant,
+        resolution = resolution,
+        limit = limit,
+        type = "Dataset",
+        data_node = data_node,
+        host = host
     )
 
     if (!nrow(qd)) {
@@ -525,16 +789,25 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
     retry <- 10L
     while (nrow(nf <- dt[is.na(file_url)]) && attempt <= retry) {
         attempt <- attempt + 1L
-        verbose("Querying CMIP6 File Information [Attempt ", attempt, "]")
+        vmsg(sprintf("Querying CMIP6 File Information [Attempt %s]", attempt))
 
         # to avoid No visible binding for global variable check NOTE
         .SD <- NULL
 
         # use qd to construction query for files
-        q <- unique(nf[, .SD, .SDcols = c(
-            "activity_drs", "source_id", "member_id",
-            "experiment_id", "nominal_resolution", "table_id", "frequency", "variable_id"
-        )])
+        q <- unique(nf[,
+            .SD,
+            .SDcols = c(
+                "activity_drs",
+                "source_id",
+                "member_id",
+                "experiment_id",
+                "nominal_resolution",
+                "table_id",
+                "frequency",
+                "variable_id"
+            )
+        ])
 
         qf <- esgf_query(
             activity = unique(q$activity_drs),
@@ -552,38 +825,56 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         )
 
         # remove all common columns in file query except for "dataset_id"
-        data.table::set(qf, NULL,
-            value = NULL,
-            setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url"))
-        )
+        data.table::set(qf, NULL, value = NULL, setdiff(intersect(names(qd), names(qf)), c("dataset_id", "file_url")))
 
         # remove all common column in nf except for "dataset_id"
-        data.table::set(nf, NULL,
-            value = NULL,
-            setdiff(intersect(names(qf), names(nf)), c("dataset_id"))
-        )
+        data.table::set(nf, NULL, value = NULL, setdiff(intersect(names(qf), names(nf)), c("dataset_id")))
 
         dt <- data.table::rbindlist(list(dt[!nf, on = "dataset_id"], qf[nf, on = "dataset_id"]), fill = TRUE)
     }
 
-    verbose("Checking if data is complete")
+    vmsg("Checking if data is complete")
     # nocov start
     if (anyNA(dt$file_url)) {
         warning(
-            "There are still ", length(unique(dt$dataset_id[is.na(dt$file_url)])), " Dataset that ",
-            "did not find any matched output file after ", retry, " retries."
+            "There are still ",
+            length(unique(dt$dataset_id[is.na(dt$file_url)])),
+            " Dataset that ",
+            "did not find any matched output file after ",
+            retry,
+            " retries."
         )
     }
     # nocov end
 
-    data.table::setcolorder(dt, c(
-        "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-        "source_id", "experiment_id", "member_id", "table_id", "frequency",
-        "grid_label", "version", "nominal_resolution", "variable_id",
-        "variable_long_name", "variable_units", "datetime_start",
-        "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
-        "tracking_id"
-    ))
+    data.table::setcolorder(
+        dt,
+        c(
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "dataset_pid",
+            "tracking_id"
+        )
+    )
 
     # use non-equi join to extract matched rows
     # NOTE: CMIP6 output uses temporal amounts for saving date and time, e.g.
@@ -597,8 +888,8 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
         )
 
         dt[, `:=`(expect_start = datetime_start, expect_end = datetime_end)]
-        dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][
-            , `:=`(expect_start = NULL, expect_end = NULL)
+        dt <- dt[exp, on = c("expect_start<=expect_end", "expect_end>=expect_start")][,
+            `:=`(expect_start = NULL, expect_end = NULL)
         ]
     }
 
@@ -608,7 +899,10 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
     if (save) {
         # save database into the app data directory
         data.table::fwrite(dt, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        vmsg(sprintf(
+            "Data file index saved to '%s'",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        ))
 
         this$index_db <- data.table::copy(dt)
     }
@@ -633,14 +927,18 @@ init_cmip6_index <- function(activity = "ScenarioMIP",
 #' @importFrom data.table copy fread
 #' @export
 load_cmip6_index <- function(force = FALSE) {
-    if (is.null(this$index_db)) force <- TRUE
+    if (is.null(this$index_db)) {
+        force <- TRUE
+    }
 
     if (!force) {
         idx <- data.table::copy(this$index_db)
     } else {
         f <- normalizePath(file.path(.data_dir(force = FALSE), "cmip6_index.csv"), mustWork = FALSE)
         if (!file.exists(f)) {
-            stop(sprintf("CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."))
+            stop(
+                "CMIP6 experiment output file index does not exists. You may want to create one using 'init_cmip6_index()'."
+            )
         }
 
         # nocov start
@@ -655,7 +953,10 @@ load_cmip6_index <- function(force = FALSE) {
             }
         )
         # nocov end
-        verbose("Loading CMIP6 experiment output file index created at ", as.character(file.info(f)$mtime), ".")
+        vmsg(sprintf(
+            "Loading CMIP6 experiment output file index created at %s.",
+            as.character(file.info(f)$mtime)
+        ))
     }
 
     # fix column types in case of empty values
@@ -726,12 +1027,33 @@ set_cmip6_index <- function(index, save = FALSE) {
     checkmate::assert_subset(
         names(index),
         c(
-            "file_id", "dataset_id", "mip_era", "activity_drs", "institution_id",
-            "source_id", "experiment_id", "member_id", "table_id", "frequency",
-            "grid_label", "version", "nominal_resolution", "variable_id",
-            "variable_long_name", "variable_units", "datetime_start",
-            "datetime_end", "file_size", "data_node", "file_url", "dataset_pid",
-            "tracking_id", "file_path", "file_realsize", "file_mtime", "time_units",
+            "file_id",
+            "dataset_id",
+            "mip_era",
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "frequency",
+            "grid_label",
+            "version",
+            "nominal_resolution",
+            "variable_id",
+            "variable_long_name",
+            "variable_units",
+            "datetime_start",
+            "datetime_end",
+            "file_size",
+            "data_node",
+            "file_url",
+            "dataset_pid",
+            "tracking_id",
+            "file_path",
+            "file_realsize",
+            "file_mtime",
+            "time_units",
             "time_calendar"
         )
     )
@@ -739,7 +1061,10 @@ set_cmip6_index <- function(index, save = FALSE) {
     # save database into the app data directory
     if (save) {
         data.table::fwrite(index, file.path(.data_dir(TRUE), "cmip6_index.csv"))
-        verbose("Data file index saved to '", normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv")), "'")
+        vmsg(sprintf(
+            "Data file index saved to '%s'",
+            normalizePath(file.path(.data_dir(TRUE), "cmip6_index.csv"))
+        ))
     }
 
     # udpate package internal stored file index
@@ -767,14 +1092,18 @@ get_data_dir <- function() {
 }
 # }}}
 
-# get_data_node {{{
-#' Get data nodes which store CMIP6 output
+# data_node_status {{{
+#' Get status of data nodes which store CMIP6 output
+#'
+#' `data_node_status()` is the user-facing replacement for the legacy
+#' data-node helper name used in earlier releases.
 #'
 #' @param speed_test If `TRUE`, use [pingr::ping()] to perform connection speed
 #'        test on each data node. A `ping` column is appended in returned
 #'        data.table which stores each data node response in milliseconds. This
 #'        feature needs pingr package already installed. Default: `FALSE`.
 #' @param timeout Timeout for a ping response in seconds. Default: `3`.
+#' @param index_node The index node to query the data node status. Default: `INDEX_NODES[["ORNL"]]`.
 #'
 #' @return A [data.table::data.table()] of 2 or 3 (when `speed_test` is `TRUE`)
 #' columns:
@@ -787,11 +1116,11 @@ get_data_dir <- function() {
 #'
 #' @examples
 #' \dontrun{
-#' get_data_node()
+#' data_node_status()
 #' }
 #'
 #' @export
-get_data_node <- function(speed_test = FALSE, timeout = 3) {
+data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX_NODES[["ORNL"]]) {
     empty_nodes <- function() {
         if (speed_test) {
             data.table::data.table(
@@ -810,11 +1139,32 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # use the metagrid-backend to get the data node status
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
     #      https://github.com/ESGF/esgf-utils/blob/master/node_status/query_prom.py
+    path <- "proxy/status"
+    parsed <- normalize_index_node(index_node, raw = TRUE)
+    if (parsed$path == "/esgf-1-5-bridge") {
+        url <- curl::curl_modify_url(parsed$url, path = path)
+    } else {
+        url <- curl::curl_modify_url(parsed$url, path = paste(parsed$path, path, sep = "/"))
+    }
+
     msg <- NULL
-    res <- tryCatch(
-        jsonlite::fromJSON("https://aims2.llnl.gov/metagrid-backend/proxy/status"),
-        warning = function(w) { msg <<- conditionMessage(w); NULL },
-        error   = function(e) { msg <<- conditionMessage(e); NULL }
+    res <- with_url_cache(
+        "datanode",
+        url,
+        function() {
+            tryCatch(
+                jsonlite::fromJSON(url),
+                warning = function(w) {
+                    msg <<- conditionMessage(w)
+                    NULL
+                },
+                error = function(e) {
+                    msg <<- conditionMessage(e)
+                    NULL
+                }
+            )
+        },
+        validate = function(res) !is.null(res)
     )
 
     # nocov start
@@ -828,7 +1178,8 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
         data_node = res$data$result$metric$instance,
         status = data.table::fifelse(
             vapply(res$data$result$value, .subset2, character(1L), 2L) == "1",
-            "UP", "DOWN"
+            "UP",
+            "DOWN"
         )
     )
 
@@ -857,10 +1208,14 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
     # nocov end
 
     # use the pingr package to test the connection speed
-    speed <- vapply(nodes_up, function(node) {
-        message(sprintf("Testing data node '%s'...", node))
-        pingr::ping(node, count = 1, timeout = timeout)
-    }, numeric(1))
+    speed <- vapply(
+        nodes_up,
+        function(node) {
+            message(sprintf("Testing data node '%s'...", node))
+            pingr::ping(node, count = 1, timeout = timeout)
+        },
+        numeric(1)
+    )
 
     res[status == "UP", ping := speed][order(ping)]
 }
@@ -870,13 +1225,17 @@ get_data_node <- function(speed_test = FALSE, timeout = 3) {
 #' @importFrom data.table fifelse
 parse_file_date <- function(id, frequency) {
     dig <- fifelse(
-        grepl("hr", frequency, fixed = TRUE), 12L,
+        grepl("hr", frequency, fixed = TRUE),
+        12L,
         fifelse(
-            frequency == "day", 8L,
+            frequency == "day",
+            8L,
             fifelse(
-                frequency == "dec", 4L,
+                frequency == "dec",
+                4L,
                 fifelse(
-                    grepl("mon", frequency, fixed = TRUE), 6L,
+                    grepl("mon", frequency, fixed = TRUE),
+                    6L,
                     fifelse(grepl("yr", frequency, fixed = TRUE), 4L, 0L)
                 )
             )
@@ -887,21 +1246,27 @@ parse_file_date <- function(id, frequency) {
     reg[dig == 0L] <- NA_character_
 
     suf <- fifelse(
-        dig == 0L, "",
+        dig == 0L,
+        "",
         fifelse(
-            dig == 4L, "0101",
+            dig == 4L,
+            "0101",
             fifelse(dig == 6L, "01", "")
         )
     )
 
     fmt <- fifelse(
-        dig == 0L, NA_character_,
+        dig == 0L,
+        NA_character_,
         fifelse(
-            dig == 4L, "%Y%m%d",
+            dig == 4L,
+            "%Y%m%d",
             fifelse(
-                dig == 6L, "%Y%m%d",
+                dig == 6L,
+                "%Y%m%d",
                 fifelse(
-                    dig == 8L, "%Y%m%d",
+                    dig == 8L,
+                    "%Y%m%d",
                     fifelse(dig == 12L, "%Y%m%d%H%M%s", NA_character_)
                 )
             )
@@ -910,7 +1275,8 @@ parse_file_date <- function(id, frequency) {
 
     data.table::data.table(id, reg, suf, fmt)[
         !J(NA_character_),
-        on = "reg", by = "reg",
+        on = "reg",
+        by = "reg",
         c("datetime_start", "datetime_end") := {
             m <- regexpr(.BY$reg, id)
             s <- data.table::tstrsplit(regmatches(id, m), "-", fixed = TRUE)

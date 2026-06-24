@@ -9,10 +9,7 @@
       "value": ["ScenarioMIP"],
       "negate": [false]
     },
-    "experiment_id": {
-      "value": ["ssp585"],
-      "negate": [false]
-    },
+    "experiment_id": null,
     "source_id": {
       "value": ["AWI-CM-1-1-MR"],
       "negate": [false]
@@ -74,7 +71,7 @@
         "echoParams": ["all"],
         "fl": ["number_of_aggregations,access,experiment_id,number_of_files,project,index_node,url,frequency,variant_label,size,variable_id,activity_id,source_id,id,score"],
         "start": ["0"],
-        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "experiment_id:\"ssp585\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
+        "fq": ["type:Dataset", "project:\"CMIP6\"", "activity_id:\"ScenarioMIP\"", "source_id:\"AWI-CM-1-1-MR\"", "variable_id:\"tas\"", "frequency:\"day\"", "variant_label:\"r1i1p1f1\"", "latest:true"],
         "rows": ["2"],
         "q": ["*:*"],
         "shards": ["..."],
@@ -105,13 +102,11 @@
           "size": -1.5,
           "source_id": ["..."],
           "variable_id": ["..."],
-          "variant_label": ["..."],
-          "url": null,
-          "number_of_aggregations": -1
+          "variant_label": ["..."]
         },
         {
           "id": "...",
-          "access": ["...", "...", "...", "...", "..."],
+          "access": ["...", "..."],
           "activity_id": ["..."],
           "experiment_id": ["..."],
           "frequency": ["..."],
@@ -121,9 +116,7 @@
           "size": -1.5,
           "source_id": ["..."],
           "variable_id": ["..."],
-          "variant_label": ["..."],
-          "url": ["...", "..."],
-          "number_of_aggregations": -1
+          "variant_label": ["..."]
         }
       ]
     },
