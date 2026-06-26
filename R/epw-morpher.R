@@ -1188,6 +1188,153 @@ epw_morph_belcher_monthly_variable <- function(context, variable_id) {
     )
 }
 
+epw_morph_belcher_epw_monthly <- function(data_epw, var, keep_units = TRUE) {
+    monthly <- data_epw[,
+        list(val_mean = mean(get(var)), val_max = max(get(var)), val_min = min(get(var))),
+        by = "month"
+    ]
+
+    if (keep_units && inherits(data_epw[[var]], "units")) {
+        u <- units::deparse_unit(data_epw[[var]])
+        monthly[, `:=`(
+            val_mean = units::set_units(val_mean, u, mode = "standard"),
+            val_max = units::set_units(val_max, u, mode = "standard"),
+            val_min = units::set_units(val_min, u, mode = "standard")
+        )]
+    }
+
+    monthly
+}
+
+epw_morph_belcher_align_units <- function(data, target_units) {
+    data.table::set(data, NULL, "value", units::set_units(data$value, target_units, mode = "standard"))
+    data
+}
+
+epw_morph_belcher_drop_units <- function(data, vars) {
+    for (var in c(vars, "delta", "alpha")) {
+        if (var %in% names(data) && inherits(data[[var]], "units")) {
+            data.table::set(data, NULL, var, units::drop_units(data[[var]]))
+        }
+    }
+    data
+}
+
+epw_morph_belcher_to_radian <- function(degree) {
+    degree * pi / 180
+}
+
+epw_morph_belcher_day_angle <- function(day_of_year) {
+    day_of_year * 360.0 / 365.25
+}
+
+epw_morph_belcher_equation_of_time <- function(day_of_year) {
+    d <- epw_morph_belcher_day_angle(day_of_year)
+    -0.128 * sin(epw_morph_belcher_to_radian(d - 2.8)) -
+        0.165 * sin(epw_morph_belcher_to_radian(2.0 * d + 19.7))
+}
+
+epw_morph_belcher_solar_time <- function(longitude, day_of_year, hour, timezone) {
+    hour + longitude - timezone + epw_morph_belcher_equation_of_time(day_of_year)
+}
+
+epw_morph_belcher_hour_angle <- function(longitude, day_of_year, hour, timezone) {
+    solar_time <- epw_morph_belcher_solar_time(longitude, day_of_year, hour, timezone)
+    360 / 24 * (solar_time - 12)
+}
+
+epw_morph_belcher_declination <- function(day_of_year) {
+    d <- epw_morph_belcher_day_angle(day_of_year)
+    epw_morph_belcher_to_radian(asin(epw_morph_belcher_to_radian(
+        0.3978 * sin(epw_morph_belcher_to_radian(
+            d - 1.4 + 0.0355 * sin(epw_morph_belcher_to_radian(d - 0.0489))
+        ))
+    )))
+}
+
+epw_morph_belcher_solar_angle <- function(latitude, longitude, day_of_year, hour, timezone) {
+    declination <- epw_morph_belcher_declination(day_of_year)
+    hour_angle <- epw_morph_belcher_hour_angle(longitude, day_of_year, hour, timezone)
+    sin(epw_morph_belcher_to_radian(latitude)) * sin(epw_morph_belcher_to_radian(declination)) +
+        cos(epw_morph_belcher_to_radian(latitude)) * cos(epw_morph_belcher_to_radian(declination)) *
+        cos(epw_morph_belcher_to_radian(hour_angle))
+}
+
+epw_morph_belcher_tdew <- function(tdb, rh) {
+    psychrolib::SetUnitSystem("SI")
+
+    tdew <- data.table::copy(tdb)[
+        rh, on = c(setdiff(names(tdb), c("dry_bulb_temperature", "delta", "alpha"))),
+        relative_humidity := i.relative_humidity
+    ]
+
+    tdew[!is.na(dry_bulb_temperature) & !is.na(relative_humidity),
+        dew_point_temperature := units::set_units(
+            psychrolib::GetTDewPointFromRelHum(
+                units::drop_units(dry_bulb_temperature),
+                units::drop_units(relative_humidity) / 100
+            ),
+            "degree_Celsius",
+            mode = "standard"
+        )
+    ]
+
+    data.table::set(tdew, NULL, c("delta", "alpha"), NA_real_)
+    data.table::set(tdew, NULL, c("dry_bulb_temperature", "relative_humidity"), NULL)
+
+    data.table::setcolorder(tdew,
+        c(setdiff(names(tdew), c("dew_point_temperature", "delta", "alpha")),
+          "dew_point_temperature", "delta", "alpha")
+    )
+
+    tdew
+}
+
+epw_morph_belcher_diffuse_radiation <- function(data_epw, glob_rad) {
+    diff_rad <- data.table::copy(glob_rad)
+    if (!nrow(diff_rad)) {
+        return(data.table::data.table())
+    }
+    diff_rad[data_epw[, .SD, .SDcols = c("month", "day", "hour", "diffuse_horizontal_radiation")],
+        on = c("month", "day", "hour"),
+        diffuse_horizontal_radiation := i.diffuse_horizontal_radiation * alpha
+    ]
+    diff_rad[, global_horizontal_radiation := NULL]
+    diff_rad[, diffuse_horizontal_radiation := units::set_units(units::drop_units(
+        diffuse_horizontal_radiation
+    ), "W/m^2")][]
+}
+
+epw_morph_belcher_direct_normal_radiation <- function(glob_rad, diff_rad) {
+    norm_rad <- data.table::copy(glob_rad)
+    if (!nrow(glob_rad) || !nrow(diff_rad)) {
+        return(data.table::data.table())
+    }
+    norm_rad[, diffuse_horizontal_radiation := diff_rad$diffuse_horizontal_radiation]
+    norm_rad[, day_of_year := data.table::yday(datetime)]
+    norm_rad[, solar_angle := epw_morph_belcher_solar_angle(lat, lon, day_of_year, hour, 8)]
+    norm_rad[, direct_normal_radiation := (global_horizontal_radiation - diffuse_horizontal_radiation) * abs(solar_angle)]
+    norm_rad[, c("global_horizontal_radiation", "diffuse_horizontal_radiation", "day_of_year", "solar_angle") := NULL]
+}
+
+epw_morph_belcher_opaque_sky_cover <- function(data_epw, total_sky_cover) {
+    if (!nrow(total_sky_cover)) {
+        return(data.table::data.table())
+    }
+    data <- data.table::copy(total_sky_cover)[
+        data_epw[, .SD, .SDcols = c("month", "day", "hour", "opaque_sky_cover")],
+        on = c("month", "day", "hour"),
+        opaque_sky_cover := as.integer(round(i.opaque_sky_cover * alpha))
+    ][, total_sky_cover := NULL]
+
+    data[, .SD, .SDcols = c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "dist", "interval",
+        "datetime", "year", "month", "day", "hour", "minute",
+        "opaque_sky_cover", "delta", "alpha"
+    )]
+}
+
 epw_morph_belcher_from_monthly <- function(var, data_epw, data_mean, data_max = NULL, data_min = NULL,
                                            type = c("shift", "stretch", "combined")) {
     type <- match.arg(type)
@@ -1195,14 +1342,14 @@ epw_morph_belcher_from_monthly <- function(var, data_epw, data_mean, data_max = 
         return(data.table::data.table())
     }
 
-    monthly <- monthly_mean(data_epw, var)
-    u <- units(data_epw[[var]])
-    data_mean <- align_units(data.table::copy(data_mean), u)
+    monthly <- epw_morph_belcher_epw_monthly(data_epw, var)
+    u <- units::deparse_unit(data_epw[[var]])
+    data_mean <- epw_morph_belcher_align_units(data.table::copy(data_mean), u)
 
     case_fallback <- data.table::data.table()
     if (identical(type, "combined") && !is.null(data_max) && !is.null(data_min)) {
-        data_max <- align_units(data.table::copy(data_max), u)
-        data_min <- align_units(data.table::copy(data_min), u)
+        data_max <- epw_morph_belcher_align_units(data.table::copy(data_max), u)
+        data_min <- epw_morph_belcher_align_units(data.table::copy(data_min), u)
         join_cols <- c(
             "activity_drs", "institution_id", "source_id", "experiment_id",
             "member_id", "table_id", "lat", "lon", "dist", "units", "month",
@@ -1377,7 +1524,7 @@ epw_morph_belcher_run <- function(context, backend = NULL) {
 
     tdb <- epw_morph_belcher_tdb(data_epw, context, methods[["tdb"]])
     rh <- epw_morph_belcher_rh(data_epw, context, methods[["rh"]])
-    tdew <- if (!nrow(tdb) || !nrow(rh)) data.table::data.table() else morphing_tdew(tdb, rh)
+    tdew <- if (!nrow(tdb) || !nrow(rh)) data.table::data.table() else epw_morph_belcher_tdew(tdb, rh)
 
     p <- epw_morph_belcher_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
 
@@ -1390,13 +1537,13 @@ epw_morph_belcher_run <- function(context, backend = NULL) {
         units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
     )]
     glob_rad <- epw_morph_belcher_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
-    diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morphing_diff_rad(data_epw, glob_rad)
-    norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) data.table::data.table() else morphing_norm_rad(glob_rad, diff_rad)
+    diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else epw_morph_belcher_diffuse_radiation(data_epw, glob_rad)
+    norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) data.table::data.table() else epw_morph_belcher_direct_normal_radiation(glob_rad, diff_rad)
 
     wind <- epw_morph_belcher_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
 
     total_cover <- epw_morph_belcher_total_sky_cover(data_epw, context)
-    opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morphing_opaque_sky_cover(data_epw, total_cover)
+    opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else epw_morph_belcher_opaque_sky_cover(data_epw, total_cover)
 
     parts <- list(
         tdb = tdb,
@@ -1413,7 +1560,7 @@ epw_morph_belcher_run <- function(context, backend = NULL) {
     )
     suppressMessages(epw$drop_unit())
     for (name in names(parts)) {
-        remove_units(parts[[name]], intersect(names(parts[[name]]), names(data_epw)))
+        parts[[name]] <- epw_morph_belcher_drop_units(parts[[name]], intersect(names(parts[[name]]), names(data_epw)))
     }
     epw_morph_engine_output(context, epw, parts)
 }
