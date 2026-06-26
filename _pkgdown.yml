@@ -77,10 +77,15 @@ reference:
   - title: Create future EPWs
     contents:
       - EpwMorpher
+      - EpwMorphBackend
       - epw_morpher
       - epw_morph_periods
       - epw_morph_recipe
       - epw_morph_variables
+      - epw_morph_backends
+      - epw_morph_backend
+      - epw_morph_register_backend
+      - epw_morph_result
 
   - title: Store-native shift workflow
     contents:
