@@ -84,7 +84,7 @@ downloader <- Downloader$new(
 
 downloader
 downloader$manifest
-#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmpumWj3I/epwshiftr-downloader/general-downloads/manifest.duckdb"
+#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//Rtmp3Hed7X/epwshiftr-downloader/general-downloads/manifest.duckdb"
 ```
 
 The manifest stores configuration, sessions, tasks, candidate URLs, transfer
@@ -108,12 +108,12 @@ single_path <- downloader$download(
 )
 
 single_path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"
 file.info(single_path)[, c("size", "mtime")]
 #>                                                                                                                                                 size
-#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700
+#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700
 #>                                                                                                                                                               mtime
-#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-06-25 00:28:44
+#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-06-25 02:14:07
 readLines(single_path, n = 6L)
 #> [1] "# GitHub Actions for the R language"
 #> [2] ""
@@ -184,9 +184,9 @@ space, and whether disk preflight would block the run.
 ``` r
 downloader$preflight(plan = small_plan)
 #>   task_count needs_download required_bytes size_unknown_count dest_free_bytes
-#> 1          3              3              0                  3    298749206528
+#> 1          3              3              0                  3    298211315712
 #>   tmp_free_bytes min_free_space dest_disk_ok tmp_disk_ok disk_ok
-#> 1   298749202432              0         TRUE        TRUE      NA
+#> 1   298211315712              0         TRUE        TRUE      NA
 #>   disk_would_block disk_preflight
 #> 1            FALSE           TRUE
 ```
@@ -203,28 +203,28 @@ session_id <- downloader$enqueue(
 
 downloader$sessions()
 #>                 session_id            label status          created_at
-#> 1 20260624-162844-9cf4a2fd small-live-files queued 2026-06-24 16:28:44
+#> 1 20260624-181407-0d0cb568 small-live-files queued 2026-06-24 18:14:07
 #>            updated_at completed_at
-#> 1 2026-06-24 16:28:44         <NA>
+#> 1 2026-06-24 18:14:07         <NA>
 select_cols(downloader$tasks(session_id = session_id), c(
     "task_id", "logical_file_id", "filename", "status",
     "target_path", "size"
 ), n = 6L)
 #>                                                             task_id
 #>                                                              <char>
-#> 1: 3c6056018ef73003d3dfc8e8d3d646925581b918bb5bcc005e4943cd06d28fe6
-#> 2: 9d0fbdbd598b62003bc00e2826faab5751076e958989b6f8f7d513f98ebcf052
-#> 3: db2a94835bde4a16df9f7cbae4a4686afc14b31b054d5f6e82feef915448a3cf
+#> 1: 4daf72ca754d11bc2e55dc3f372d2045b448d358c070b59da56a7e11af457e04
+#> 2: 58534ff425504fe4271b159646fbdb17c4311cc742add3116da3e81656111269
+#> 3: bc9b902b34cf54a38362043d473288417182d98dab7400dbf39ac28908d646e9
 #>               logical_file_id                         filename status
 #>                        <char>                           <char> <char>
-#> 1:              r-lib-setup-r               setup-r-action.yml queued
-#> 2:      r-lib-check-r-package      check-r-package-action.yaml queued
-#> 3: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml queued
+#> 1:      r-lib-check-r-package      check-r-package-action.yaml queued
+#> 2: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml queued
+#> 3:              r-lib-setup-r               setup-r-action.yml queued
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 1:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
 #>     size
 #>    <num>
 #> 1:    NA
@@ -244,24 +244,24 @@ select_cols(run_rows, c(
 ), n = 6L)
 #>               logical_file_id                         filename status
 #>                        <char>                           <char> <char>
-#> 1:              r-lib-setup-r               setup-r-action.yml   done
-#> 2:      r-lib-check-r-package      check-r-package-action.yaml   done
-#> 3: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml   done
+#> 1:      r-lib-check-r-package      check-r-package-action.yaml   done
+#> 2: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml   done
+#> 3:              r-lib-setup-r               setup-r-action.yml   done
 #>    bytes_done
 #>         <num>
-#> 1:       4260
-#> 2:       4031
-#> 3:      15578
+#> 1:       4031
+#> 2:      15578
+#> 3:       4260
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 1:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
 #>                                                                           selected_url
 #>                                                                                 <char>
-#> 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
-#> 2:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 3: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 1:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
+#> 2: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 3:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
 ```
 
 # Inspect Sessions, Tasks, Events, and Files
@@ -273,9 +273,9 @@ away. It records what was queued, what completed, and which URL was selected.
 ``` r
 downloader$sessions()
 #>                 session_id            label status          created_at
-#> 1 20260624-162844-9cf4a2fd small-live-files   done 2026-06-24 16:28:44
+#> 1 20260624-181407-0d0cb568 small-live-files   done 2026-06-24 18:14:07
 #>            updated_at        completed_at
-#> 1 2026-06-24 16:28:48 2026-06-24 16:28:48
+#> 1 2026-06-24 18:14:11 2026-06-24 18:14:11
 
 select_cols(downloader$status(session_id = session_id), c(
     "logical_file_id", "status", "bytes_done", "target_path",
@@ -283,19 +283,19 @@ select_cols(downloader$status(session_id = session_id), c(
 ), n = 10L)
 #>               logical_file_id status bytes_done
 #>                        <char> <char>      <num>
-#> 1:              r-lib-setup-r   done       4260
-#> 2:      r-lib-check-r-package   done       4031
-#> 3: r-lib-setup-r-dependencies   done      15578
+#> 1:      r-lib-check-r-package   done       4031
+#> 2: r-lib-setup-r-dependencies   done      15578
+#> 3:              r-lib-setup-r   done       4260
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 1:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
 #>                                                                           selected_url
 #>                                                                                 <char>
-#> 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
-#> 2:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 3: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 1:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
+#> 2: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 3:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
 #>    last_error
 #>        <char>
 #> 1:       <NA>
@@ -318,33 +318,33 @@ select_cols(downloader$events(session_id = session_id), c(
 #>                                                                                                                                                    message
 #>                                                                                                                                                     <char>
 #> 1:                                                                                                                              Queued 3 download task(s).
-#> 2:                                                                                   https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
-#> 3:                                                                          https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 4:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 5:                                                                     https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
-#> 6:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 2:                                                                          https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
+#> 3:                                                                     https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 4:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 5:                                                                                   https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 6: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
 #> 7:                                                                                                                                                    done
-#> 8: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 8:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
 #>                                                             task_id
 #>                                                              <char>
 #> 1:                                                             <NA>
-#> 2: 3c6056018ef73003d3dfc8e8d3d646925581b918bb5bcc005e4943cd06d28fe6
-#> 3: 9d0fbdbd598b62003bc00e2826faab5751076e958989b6f8f7d513f98ebcf052
-#> 4: 9d0fbdbd598b62003bc00e2826faab5751076e958989b6f8f7d513f98ebcf052
-#> 5: db2a94835bde4a16df9f7cbae4a4686afc14b31b054d5f6e82feef915448a3cf
-#> 6: 3c6056018ef73003d3dfc8e8d3d646925581b918bb5bcc005e4943cd06d28fe6
+#> 2: 4daf72ca754d11bc2e55dc3f372d2045b448d358c070b59da56a7e11af457e04
+#> 3: 58534ff425504fe4271b159646fbdb17c4311cc742add3116da3e81656111269
+#> 4: 4daf72ca754d11bc2e55dc3f372d2045b448d358c070b59da56a7e11af457e04
+#> 5: bc9b902b34cf54a38362043d473288417182d98dab7400dbf39ac28908d646e9
+#> 6: 58534ff425504fe4271b159646fbdb17c4311cc742add3116da3e81656111269
 #> 7:                                                             <NA>
-#> 8: db2a94835bde4a16df9f7cbae4a4686afc14b31b054d5f6e82feef915448a3cf
+#> 8: bc9b902b34cf54a38362043d473288417182d98dab7400dbf39ac28908d646e9
 #>             created_at
 #>                 <POSc>
-#> 1: 2026-06-24 16:28:44
-#> 2: 2026-06-24 16:28:44
-#> 3: 2026-06-24 16:28:44
-#> 4: 2026-06-24 16:28:46
-#> 5: 2026-06-24 16:28:46
-#> 6: 2026-06-24 16:28:46
-#> 7: 2026-06-24 16:28:48
-#> 8: 2026-06-24 16:28:48
+#> 1: 2026-06-24 18:14:07
+#> 2: 2026-06-24 18:14:08
+#> 3: 2026-06-24 18:14:08
+#> 4: 2026-06-24 18:14:10
+#> 5: 2026-06-24 18:14:10
+#> 6: 2026-06-24 18:14:10
+#> 7: 2026-06-24 18:14:11
+#> 8: 2026-06-24 18:14:11
 
 list.files(file.path(download_root, "files"), recursive = TRUE)
 #> [1] "batch/check-r-package-action.yaml"
@@ -363,14 +363,14 @@ select_cols(downloader$verify(session_id = session_id), c(
 ), n = 10L)
 #>               logical_file_id status checksum_ok
 #>                        <char> <char>      <lgcl>
-#> 1:              r-lib-setup-r   done        TRUE
-#> 2:      r-lib-check-r-package   done        TRUE
-#> 3: r-lib-setup-r-dependencies   done        TRUE
+#> 1:      r-lib-check-r-package   done        TRUE
+#> 2: r-lib-setup-r-dependencies   done        TRUE
+#> 3:              r-lib-setup-r   done        TRUE
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 1:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
 
 downloader$cleanup_tmp(all = TRUE)
 #> [1] 0
@@ -547,7 +547,7 @@ preflight$summary
 #> 1:                           0                          0       24059358
 #>    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok
 #>                 <int>           <num>          <num>          <num>  <lgcl>
-#> 1:                  0    298745479168   298745479168              0    TRUE
+#> 1:                  0    298203377664   298203377664              0    TRUE
 #>    disk_would_block disk_preflight
 #>              <lgcl>         <lgcl>
 #> 1:            FALSE           TRUE

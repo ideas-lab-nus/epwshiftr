@@ -56,42 +56,23 @@ reference:
       - esgdict_check
 
   - title: ESGF search services
-    desc: Start with esg_query() / EsgQuery; esgf_query() is a gently deprecated compatibility wrapper with legacy LLNL host semantics.
+    desc: Start with esg_query() / EsgQuery for ESGF search records and result objects.
     contents:
       - esg_query
-      - esgf_query
       - esg_result
       - '[.EsgResult'
+      - data_node_status
 
   - title: Remote ESGF data access
     contents:
       - EsgDataset
       - Downloader
+      - EsgStore
 
   - title: Solr date helpers
     contents:
       - solr_date
       - is.solr_date
-
-  - title: CMIP6 Index
-    desc: Build CMIP6 output index
-    contents:
-      - init_cmip6_index
-      - load_cmip6_index
-      - set_cmip6_index
-      - data_node_status
-
-  - title: CMIP6 Output
-    desc: Manage CMIP6 output files
-    contents:
-      - summary_database
-
-  - title: Data extraction
-    desc: Extract CMIP6 data based on EPW
-    contents:
-      - EsgStore
-      - match_coord
-      - extract_data
 
   - title: Create future EPWs
     contents:
@@ -100,8 +81,6 @@ reference:
       - epw_morph_periods
       - epw_morph_recipe
       - epw_morph_variables
-      - morphing_epw
-      - future_epw
 
   - title: Store-native shift workflow
     contents:

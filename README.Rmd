@@ -173,7 +173,7 @@ for the expanded query/download/extract/morph/write path.
 
 The older workflow based on `init_cmip6_index()`, `summary_database()`,
 `extract_data()`, `morphing_epw()`, and `future_epw()` belongs to the legacy
-implementation. It is no longer the recommended README path.
+implementation. These functions are not exported by the current package.
 
 Use the `legacy` branch on GitHub or epwshiftr `v0.1.4` if you need that
 workflow unchanged while migrating to the store-native API.

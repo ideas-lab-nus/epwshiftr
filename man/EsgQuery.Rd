@@ -40,10 +40,8 @@ using this
 \href{https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html}{link}.
 
 \code{EsgQuery} is the workhorse for dealing with ESGF search services.
-For new code, start with \code{esg_query()} / \code{EsgQuery}. The older \code{\link[=esgf_query]{esgf_query()}}
-wrapper is retained for compatibility with the legacy data.table-oriented API,
-emits a gentle deprecation warning, and preserves its historical LLNL \code{host}
-semantics instead of \code{esg_query()}'s ORNL \code{index_node} default.
+Start with \code{esg_query()} / \code{EsgQuery} for new workflow code. The legacy
+data.table-oriented API is available from the \code{legacy} branch or v0.1.4.
 }
 \note{
 For bridge index nodes, only predefined common facets are returned.

@@ -105,7 +105,7 @@ dict$sources()
 #> [1] "78a465a7dabb01e357928ea223bc5da871a6e6dc"
 #>
 #> $vocab$source_dir
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-dictionaries/sources/CMIP6/vocab/6.2.60.0"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-dictionaries/sources/CMIP6/vocab/6.2.60.0"
 #>
 #>
 #> $request
@@ -119,7 +119,7 @@ dict$sources()
 #> [1] "c8810526268e8cb13f2b37aba6af377e15644561"
 #>
 #> $request$source_dir
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-dictionaries/sources/CMIP6/request/6.9.33"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-dictionaries/sources/CMIP6/request/6.9.33"
 dict$version()
 #> $vocab
 #> [1] '6.2.60.0'
@@ -169,7 +169,7 @@ dict$timestamp()
 #> $table_id
 #> [1] "2017-01-13 16:27:00 UTC"
 dict$built_time()
-#> [1] "2026-06-25 00:29:26 CST"
+#> [1] "2026-06-25 02:14:54 CST"
 ```
 
 `capabilities()` is the fastest way to see whether a project dictionary has
@@ -643,7 +643,7 @@ artifact.
 ``` r
 dict_path <- file.path(workflow_root, "cmip6-dict-live.json")
 dict$save(dict_path)
-#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmpumWj3I/epwshiftr-esg-dictionaries/cmip6-dict-live.json"
+#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//Rtmp3Hed7X/epwshiftr-esg-dictionaries/cmip6-dict-live.json"
 
 restored <- EsgDict$new(project = "CMIP6")
 restored$load(dict_path)
@@ -690,7 +690,7 @@ cmip6plus$sources()
 #> [1] NA
 #>
 #> $vocab$source_dir
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-dictionaries/sources/CMIP6PLUS/vocab/esgvoc"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-dictionaries/sources/CMIP6PLUS/vocab/esgvoc"
 #>
 #>
 #> $request
