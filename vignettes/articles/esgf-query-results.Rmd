@@ -728,9 +728,9 @@ query_path <- file.path(workflow_root, "query.json")
 files_path <- file.path(workflow_root, "files-2060.json")
 
 query$save(query_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esgf-query-results/query.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esgf-query-results/query.json"
 files_2060$save(files_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esgf-query-results/files-2060.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esgf-query-results/files-2060.json"
 
 query_copy <- esg_query()$load(query_path)
 files_copy <- esg_result("file")$load(files_path)

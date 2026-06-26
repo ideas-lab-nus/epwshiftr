@@ -166,40 +166,6 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas") {
     invisible(path)
 }
 
-local_cmip6_index <- function(paths) {
-    data.table::rbindlist(lapply(paths, function(path) {
-        meta <- get_nc_meta(path)
-        time <- get_nc_time(path, range = TRUE)
-        year <- sub(".*_(\\d{4})0101-\\d{4}1231\\.nc$", "\\1", basename(path))
-
-        data.table::data.table(
-            file_id = sprintf("local|%s|%s", meta$variable_id, year),
-            dataset_id = sprintf("local-dataset-%s", year),
-            mip_era = meta$mip_era,
-            activity_drs = meta$activity_id,
-            institution_id = meta$institution_id,
-            source_id = meta$source_id,
-            experiment_id = meta$experiment_id,
-            member_id = meta$variant_label,
-            table_id = meta$table_id,
-            frequency = meta$table_id,
-            grid_label = meta$grid_label,
-            version = "v20240101",
-            nominal_resolution = meta$nominal_resolution,
-            variable_id = meta$variable_id,
-            variable_long_name = meta$standard_name,
-            variable_units = meta$units,
-            datetime_start = time[[1L]],
-            datetime_end = time[[2L]],
-            file_size = unname(file.size(path)),
-            data_node = "example.test",
-            file_url = sprintf("https://example.test/%s", basename(path)),
-            dataset_pid = sprintf("hdl:21.14100/local-dataset-%s", year),
-            tracking_id = meta$tracking_id
-        )
-    }))
-}
-
 write_local_morph_tas_fixture <- function(path, year = 2060L) {
     datetime <- seq.POSIXt(
         as.POSIXct(sprintf("%s-01-01 00:00:00", year), tz = "UTC"),

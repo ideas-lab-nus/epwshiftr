@@ -1990,7 +1990,15 @@ test_that("Downloader$print()", {
     expect_snapshot(
         print(dl),
         transform = function(lines) {
-            gsub("^/.+", "<path>", lines)
+            unlist(lapply(lines, function(line) {
+                inline_path <- regexec("^(\\s*\\* (Data|Temporary) directory:)\\s+/.+", line)
+                match <- regmatches(line, inline_path)[[1]]
+                if (length(match)) {
+                    return(c(match[[2]], "<path>"))
+                }
+
+                gsub("^\\s*/.+", "<path>", line)
+            }), use.names = FALSE)
         }
     )
 })
