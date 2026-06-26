@@ -20,7 +20,8 @@ lower-level store-native morphing engine.
 
 Use `EpwMorpher` directly when you need to inspect monthly summaries, preview
 factor calculations, diagnose missing variables, choose morphing case grouping,
-or rerun only the morph/write part of a workflow.
+change the statistical downscaling backend, or rerun only the morph/write part
+of a workflow.
 
 # Inputs
 
@@ -59,6 +60,137 @@ periods <- epw_morph_periods(`2060s` = 2060L)
 `"recommended"` is the strict Belcher recipe set used by the main workflow.
 `"minimal"` is useful for relaxed demonstrations, and `"extended"` adds related
 variables for future recipes.
+
+# Recipes and Backends
+
+A recipe selects a backend and carries backend-specific method overrides. The
+default recipe is `"belcher"`, which applies the Belcher-style statistical
+downscaling steps used by the high-level workflow.
+
+```r
+epw_morph_backends()
+
+belcher <- epw_morph_backend("belcher")
+belcher$label
+belcher$required_variables()
+belcher$methods()
+belcher$rules()
+```
+
+The backend rules are the contract between planning and execution. Each rule
+declares a backend step, the EPW weather field it produces or checks, the
+required CMIP variable, the default method, and whether the step is derived from
+other backend outputs. `preview_plan()` and `summarise_baseline()` read these
+rules; they do not keep a separate hard-coded list of Belcher fields.
+
+Use method overrides when the algorithm is still Belcher but you want a
+different transformation for selected primary variables:
+
+```r
+belcher_shift_recipe <- epw_morph_recipe(
+    "belcher",
+    methods = c(
+        tdb = "shift",
+        rh = "shift"
+    )
+)
+
+morpher <- epw_morpher(
+    store = store,
+    epw = epw,
+    site_id = "SIN",
+    recipe = belcher_shift_recipe,
+    label = "Singapore baseline"
+)
+```
+
+The override names must be backend step names. For the built-in Belcher backend,
+the primary overrideable steps are `tdb`, `rh`, `p`, `hor_ir`, `glob_rad`, and
+`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`. Derived
+steps such as dew point and direct normal radiation are declared in the rules
+but are not independent method overrides.
+
+## Adding a Backend
+
+Register a new backend when the variable requirements, output fields, or
+execution algorithm change. A backend is an `EpwMorphBackend` R6 object with a
+rule table and a runner function.
+
+The runner receives one canonical context:
+
+- `context$epw`: the baseline `eplusr::Epw` object;
+- `context$climate`: store-native climate rows with `variable_id`, `time`,
+  `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
+- `context$recipe`: the selected recipe, including method overrides and rules;
+- `context$by`, `context$case`, `context$strict`, and `context$warning`.
+
+The runner returns `epw_morph_result()` with complete hourly EPW weather data.
+`EpwMorpher$run()` writes that data as Parquet and adds the case metadata
+columns needed by `write_epw()`.
+
+This minimal backend copies the baseline EPW and offsets dry-bulb temperature.
+It is deliberately simple: a real backend would read `context$climate`, validate
+its required variables, and calculate weather fields from those rows.
+
+```r
+offset_rules <- data.table::data.table(
+    step = "dry",
+    epw_field = "dry_bulb_temperature",
+    variable_id = "tas",
+    optional_variable_id = NA_character_,
+    method = "plus_one",
+    required = TRUE,
+    derived = FALSE
+)
+
+offset_runner <- function(context, backend) {
+    epw <- context$epw$clone()
+    suppressMessages(epw$drop_unit())
+
+    weather <- data.table::as.data.table(epw$data())
+    amount <- switch(
+        context$recipe$methods[["dry"]],
+        plus_two = 2,
+        plus_one = 1
+    )
+    weather[, dry_bulb_temperature := dry_bulb_temperature + amount]
+
+    epw_morph_result(context, epw = epw, data = weather)
+}
+
+offset_backend <- EpwMorphBackend$new(
+    name = "constant_offset",
+    label = "Constant dry-bulb offset",
+    methods = c(dry = "plus_one"),
+    method_choices = c("plus_one", "plus_two"),
+    rules = offset_rules,
+    runner = offset_runner
+)
+
+epw_morph_register_backend("constant_offset", offset_backend)
+
+offset_recipe <- epw_morph_recipe(
+    "constant_offset",
+    backend = "constant_offset",
+    methods = c(dry = "plus_two")
+)
+```
+
+Use the recipe exactly like the built-in one:
+
+```r
+morpher <- epw_morpher(
+    store = store,
+    epw = epw,
+    site_id = "SIN",
+    recipe = offset_recipe,
+    label = "Singapore baseline"
+)
+```
+
+Prefer registering a new backend name over overwriting `"belcher"`. Use
+`overwrite = TRUE` only for interactive experiments where replacing an existing
+registration is intentional.
 
 # Preflight Before Writing
 

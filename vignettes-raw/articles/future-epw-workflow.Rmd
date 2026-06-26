@@ -590,7 +590,24 @@ coverage are blocking errors instead of warnings.
 
 `shift_morph()` wraps the lower-level `EpwMorpher` planning and execution API.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
-factor diagnostics, or case grouping.
+factor diagnostics, case grouping, or custom backend registration.
+
+Pass a recipe when you want to adjust Belcher methods or select another
+registered backend:
+
+```r
+shift_recipe <- epw_morph_recipe(
+    "belcher",
+    methods = c(tdb = "shift", rh = "shift")
+)
+
+shift_morph(
+    extracted,
+    baseline = epw,
+    recipe = shift_recipe,
+    strict = TRUE
+)
+```
 
 ```{r morph}
 morphed <- shift_morph(

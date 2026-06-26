@@ -716,7 +716,24 @@ coverage are blocking errors instead of warnings.
 
 `shift_morph()` wraps the lower-level `EpwMorpher` planning and execution API.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
-factor diagnostics, or case grouping.
+factor diagnostics, case grouping, or custom backend registration.
+
+Pass a recipe when you want to adjust Belcher methods or select another
+registered backend:
+
+```r
+shift_recipe <- epw_morph_recipe(
+    "belcher",
+    methods = c(tdb = "shift", rh = "shift")
+)
+
+shift_morph(
+    extracted,
+    baseline = epw,
+    recipe = shift_recipe,
+    strict = TRUE
+)
+```
 
 
 ``` r
@@ -749,7 +766,7 @@ morph_artifacts[, .(kind, role, relative_path)]
 #> 1: output derived
 #>                                                                                                                                                       relative_path
 #>                                                                                                                                                              <char>
-#> 1: outputs/epw-morph/04b04a2f8bb330953d5701cd25caaf1453d90caf0d8e6eb3e7d5873697688945/case=3a1305236352154a8d570618b42d187e665ca9ead1ab249ece38431bdbfd1270.parquet
+#> 1: outputs/epw-morph/976a52a06e6220d6fafd6ce6a435e8a4a2376636678ac2d494b55e1e4b370bec/case=cf00ce6636ae9046b27f3cb645b2ae33a65ebddc884a822062d4479f563590cb.parquet
 ```
 
 Use the same `shift_data()` helper to preview the hourly morphed weather table.
