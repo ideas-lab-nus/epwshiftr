@@ -55,18 +55,77 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
     derived = c(rep(FALSE, 7L), rep(TRUE, 4L))
 )
 
-epw_morph_normalize_backend_rules <- function(name, rules) {
+epw_morph_split_rule_variables <- function(x) {
+    if (is.list(x) && length(x) == 1L) {
+        x <- x[[1L]]
+    }
+    x <- unlist(x, use.names = FALSE)
+    if (!length(x)) {
+        return(character())
+    }
+    x <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+    x <- trimws(x)
+    x[!is.na(x) & nzchar(x)]
+}
+
+epw_morph_rule_list_column <- function(rules, list_col, scalar_col) {
+    lapply(seq_len(nrow(rules)), function(i) {
+        if (list_col %in% names(rules)) {
+            out <- epw_morph_split_rule_variables(rules[[list_col]][i])
+            if (length(out)) {
+                return(out)
+            }
+        }
+        if (scalar_col %in% names(rules)) {
+            return(epw_morph_split_rule_variables(rules[[scalar_col]][i]))
+        }
+        character()
+    })
+}
+
+epw_morph_rule_method_choices <- function(rule, fallback = character()) {
+    if (!nrow(rule) || !"method_choices" %in% names(rule)) {
+        return(fallback)
+    }
+    choices <- epw_morph_split_rule_variables(rule[["method_choices"]][1L])
+    if (length(choices)) choices else fallback
+}
+
+epw_morph_rules_required_variables <- function(rules) {
+    if (!nrow(rules)) {
+        return(character())
+    }
+    vars <- lapply(seq_len(nrow(rules)), function(i) {
+        epw_morph_split_rule_variables(rules[["required_variables"]][i])
+    })
+    unique(unlist(vars, use.names = FALSE))
+}
+
+epw_morph_rule_primary_variable <- function(rule) {
+    vars <- if ("required_variables" %in% names(rule)) {
+        epw_morph_split_rule_variables(rule[["required_variables"]][1L])
+    } else {
+        character()
+    }
+    if (length(vars)) {
+        return(vars[[1L]])
+    }
+    vars <- epw_morph_split_rule_variables(rule[["variable_id"]][1L])
+    if (length(vars)) vars[[1L]] else NA_character_
+}
+
+epw_morph_normalize_backend_rules <- function(name, rules, method_defaults = NULL, method_choices = NULL) {
     rules <- data.table::as.data.table(rules)
-    required_cols <- c("step", "epw_field", "variable_id", "method", "required")
+    required_cols <- c("step", "epw_field", "method", "required")
     missing_cols <- setdiff(required_cols, names(rules))
     if (length(missing_cols)) {
         cli::cli_abort("EPW morphing backend {.val {name}} rules are missing column(s): {.val {missing_cols}}.")
     }
+    if (!"variable_id" %in% names(rules)) {
+        rules[, variable_id := NA_character_]
+    }
     if (!"optional_variable_id" %in% names(rules)) {
         rules[, optional_variable_id := NA_character_]
-    }
-    if (!"derived" %in% names(rules)) {
-        rules[, derived := is.na(variable_id) | !nzchar(variable_id)]
     }
     rules[, `:=`(
         step = as.character(step),
@@ -74,9 +133,40 @@ epw_morph_normalize_backend_rules <- function(name, rules) {
         variable_id = as.character(variable_id),
         optional_variable_id = as.character(optional_variable_id),
         method = as.character(method),
-        required = as.logical(required),
-        derived = as.logical(derived)
+        required = as.logical(required)
     )]
+    required_variables <- epw_morph_rule_list_column(rules, "required_variables", "variable_id")
+    optional_variables <- epw_morph_rule_list_column(rules, "optional_variables", "optional_variable_id")
+    method_defaults <- if (is.null(method_defaults)) stats::setNames(character(), character()) else method_defaults
+    method_choices <- if (is.null(method_choices)) character() else method_choices
+    rule_method_choices <- lapply(seq_len(nrow(rules)), function(i) {
+        if ("method_choices" %in% names(rules)) {
+            choices <- epw_morph_split_rule_variables(rules[["method_choices"]][i])
+            if (length(choices)) {
+                return(choices)
+            }
+        }
+        if (rules$step[[i]] %in% names(method_defaults)) {
+            return(method_choices)
+        }
+        rules$method[[i]]
+    })
+    data.table::set(rules, j = "required_variables", value = required_variables)
+    data.table::set(rules, j = "optional_variables", value = optional_variables)
+    data.table::set(rules, j = "method_choices", value = rule_method_choices)
+    if (!"derived" %in% names(rules)) {
+        data.table::set(
+            rules,
+            j = "derived",
+            value = vapply(required_variables, function(x) !length(x), logical(1L))
+        )
+    } else {
+        rules[, derived := as.logical(derived)]
+    }
+    missing_required <- rules[required == TRUE & !derived & lengths(required_variables) == 0L, step]
+    if (length(missing_required)) {
+        cli::cli_abort("EPW morphing backend {.val {name}} rule(s) lack required variables: {.val {missing_required}}.")
+    }
     rules[]
 }
 
@@ -123,7 +213,12 @@ EpwMorphBackend <- R6::R6Class(
             self$label <- if (is.null(label)) self$name else label
             private$method_defaults <- methods
             private$allowed_methods <- method_choices
-            private$rule_table <- epw_morph_normalize_backend_rules(self$name, rules)
+            private$rule_table <- epw_morph_normalize_backend_rules(
+                self$name,
+                rules,
+                method_defaults = private$method_defaults,
+                method_choices = private$allowed_methods
+            )
             private$runner <- runner
         },
 
@@ -149,7 +244,7 @@ EpwMorphBackend <- R6::R6Class(
         #' Return required CMIP variable IDs.
         required_variables = function() {
             rules <- private$rule_table
-            unique(rules[required == TRUE & !derived & !is.na(variable_id) & nzchar(variable_id), variable_id])
+            epw_morph_rules_required_variables(rules[required == TRUE & !derived])
         },
 
         #' @description
@@ -166,9 +261,15 @@ EpwMorphBackend <- R6::R6Class(
             if (length(unknown)) {
                 cli::cli_abort("Unknown EPW morphing method override(s): {.val {unknown}}.")
             }
-            bad <- setdiff(unname(methods), private$allowed_methods)
-            if (length(bad)) {
-                cli::cli_abort("Unsupported EPW morphing method value(s): {.val {bad}}.")
+            rules <- private$rule_table
+            for (method_name in names(methods)) {
+                rule <- rules[step == method_name]
+                allowed <- epw_morph_rule_method_choices(rule, private$allowed_methods)
+                if (!methods[[method_name]] %in% allowed) {
+                    cli::cli_abort(
+                        "Unsupported EPW morphing method value {.val {methods[[method_name]]}} for step {.val {method_name}}. Allowed value(s): {.val {allowed}}."
+                    )
+                }
             }
             unlist(utils::modifyList(as.list(defaults), as.list(methods)))
         },
@@ -278,11 +379,21 @@ epw_morph_register_backend <- function(name, backend, overwrite = FALSE) {
 
 #' EPW morphing variable sets
 #'
-#' @param level Variable set level.
+#' @param level Variable set level, an [EpwMorphBackend] object, or an
+#'        [epw_morph_recipe()] object.
 #'
 #' @return A character vector of CMIP variable IDs.
 #' @export
 epw_morph_variables <- function(level = c("recommended", "minimal", "extended")) {
+    if (inherits(level, "epw_morph_recipe")) {
+        return(epw_morph_rules_required_variables(epw_morph_recipe_rules(level)[required == TRUE & !derived]))
+    }
+    if (inherits(level, "EpwMorphBackend")) {
+        return(level$required_variables())
+    }
+    if (is.character(level) && length(level) == 1L && !level %in% names(EPW_MORPH_VARIABLE_LEVELS)) {
+        return(epw_morph_backend(level)$required_variables())
+    }
     level <- match.arg(level)
     EPW_MORPH_VARIABLE_LEVELS[[level]]
 }
@@ -361,11 +472,15 @@ epw_morph_now <- function() {
 
 epw_morph_json <- function(x) {
     if (inherits(x, "epw_morph_recipe")) {
+        rules <- data.table::copy(x$rules)
+        for (col in intersect(c("required_variables", "optional_variables", "method_choices"), names(rules))) {
+            rules[[col]] <- vapply(rules[[col]], paste, character(1L), collapse = ",")
+        }
         x <- list(
             name = x$name,
             backend = x$backend,
             methods = x$methods,
-            rules = as.data.frame(x$rules)
+            rules = as.data.frame(rules)
         )
     }
     jsonlite::toJSON(x, auto_unbox = TRUE, null = "null")
@@ -745,7 +860,7 @@ epw_morph_context <- function(epw, climate, recipe = epw_morph_recipe("belcher")
     if (!"time" %in% names(climate) && "datetime" %in% names(climate)) {
         climate[, time := datetime]
     }
-    if (!"variable_id" %in% names(climate) && "variable" %in% names(climate)) {
+    if ("variable" %in% names(climate)) {
         climate[, variable_id := variable]
     }
     if (!"variant_label" %in% names(climate) && "member_id" %in% names(climate)) {
@@ -768,6 +883,11 @@ epw_morph_context <- function(epw, climate, recipe = epw_morph_recipe("belcher")
     if (!"units" %in% names(climate)) {
         climate[, units := NA_character_]
     }
+    for (col in c("lon", "lat", "dist")) {
+        if (!col %in% names(climate)) {
+            climate[, (col) := NA_real_]
+        }
+    }
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
     structure(
         list(
@@ -783,6 +903,27 @@ epw_morph_context <- function(epw, climate, recipe = epw_morph_recipe("belcher")
         ),
         class = "epw_morph_context"
     )
+}
+
+epw_morph_context_required_columns <- function() {
+    c("variable_id", "time", "period", "year", "lon", "lat", "dist", "units", "value")
+}
+
+epw_morph_validate_context <- function(context) {
+    checkmate::assert_class(context, "epw_morph_context")
+    climate <- context$climate
+    missing <- setdiff(epw_morph_context_required_columns(), names(climate))
+    if (length(missing)) {
+        cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
+    }
+    invisible(context)
+}
+
+epw_morph_context_variable <- function(context, variable_id) {
+    epw_morph_validate_context(context)
+    target_variable_id <- store__chr1(variable_id)
+    climate <- context$climate
+    climate[climate[["variable_id"]] == target_variable_id]
 }
 
 epw_morph_context_year_labels <- function(context) {
@@ -802,54 +943,105 @@ epw_morph_context_year_labels <- function(context) {
     list(years = years, labels = labels)
 }
 
-epw_morph_context_algorithm_climate <- function(context) {
-    climate <- data.table::copy(context$climate)
-    if (!"time" %in% names(climate)) {
-        cli::cli_abort("Canonical EPW morphing climate data must contain `time`.")
+epw_morph_context_pick_column <- function(data, primary, fallback = NULL, default = NA_character_) {
+    if (primary %in% names(data)) {
+        return(data[[primary]])
     }
-    if (!"variable_id" %in% names(climate)) {
-        cli::cli_abort("Canonical EPW morphing climate data must contain `variable_id`.")
+    if (!is.null(fallback) && fallback %in% names(data)) {
+        return(data[[fallback]])
     }
-    if (!"value" %in% names(climate)) {
-        cli::cli_abort("Canonical EPW morphing climate data must contain `value`.")
+    rep(default, nrow(data))
+}
+
+epw_morph_context_identity_rows <- function(data) {
+    data.table::data.table(
+        activity_drs = store__chr(epw_morph_context_pick_column(data, "activity_drs", "activity_id")),
+        institution_id = store__chr(epw_morph_context_pick_column(data, "institution_id")),
+        source_id = store__chr(epw_morph_context_pick_column(data, "source_id")),
+        experiment_id = store__chr(epw_morph_context_pick_column(data, "experiment_id")),
+        member_id = store__chr(epw_morph_context_pick_column(data, "member_id", "variant_label")),
+        table_id = store__chr(epw_morph_context_pick_column(data, "table_id", "frequency")),
+        lon = as.numeric(epw_morph_context_pick_column(data, "lon", default = NA_real_)),
+        lat = as.numeric(epw_morph_context_pick_column(data, "lat", default = NA_real_)),
+        dist = as.numeric(epw_morph_context_pick_column(data, "dist", default = NA_real_))
+    )
+}
+
+epw_morph_monthly_climate <- function(data, years = NULL, labels = NULL, warning = FALSE) {
+    data <- data.table::as.data.table(data.table::copy(data))
+    if (!nrow(data)) {
+        return(data.table::data.table())
     }
-    fill_col <- function(name, value) {
-        if (!name %in% names(climate)) {
-            if (!length(value)) {
-                value <- rep(NA, nrow(climate))
-            } else if (length(value) == 1L) {
-                value <- rep(value, nrow(climate))
+    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat", "dist"), names(data))
+    if (length(missing)) {
+        cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
+    }
+    data[, `:=`(
+        year = as.integer(year),
+        month = data.table::month(time),
+        day = data.table::mday(time)
+    )]
+    data <- data[!(month == 2L & day == 29L)]
+
+    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    if (is.null(years)) {
+        data[, interval := as.factor(period)]
+    } else {
+        years <- as.integer(years)
+        missing_years <- setdiff(years, unique(data$year))
+        if (length(missing_years)) {
+            stop("Input data does not contain any data of year ", paste0("'", missing_years, "'", collapse = ", "), ".")
+        }
+        data <- data[year %in% years]
+        if (is.null(labels)) {
+            data[, interval := as.factor(year)]
+        } else {
+            if (is.factor(labels)) {
+                labels <- as.character(labels)
             }
-            data.table::set(climate, j = name, value = value)
+            checkmate::assert_character(labels, any.missing = FALSE, len = length(years))
+            label_map <- data.table::data.table(year = years, interval = as.factor(labels))
+            data <- label_map[data, on = "year"]
         }
     }
-    fill_col("activity_id", if ("activity_drs" %in% names(climate)) climate$activity_drs else NA_character_)
-    fill_col("institution_id", NA_character_)
-    fill_col("source_id", NA_character_)
-    fill_col("experiment_id", NA_character_)
-    fill_col("variant_label", if ("member_id" %in% names(climate)) climate$member_id else NA_character_)
-    fill_col("table_id", if ("frequency" %in% names(climate)) climate$frequency else NA_character_)
-    fill_col("lon", NA_real_)
-    fill_col("lat", NA_real_)
-    fill_col("dist", NA_real_)
-    fill_col("variable_long_name", if ("description" %in% names(climate)) climate$description else climate$variable_id)
-    fill_col("units", NA_character_)
-    out <- data.table::data.table(
-        activity_drs = store__chr(climate$activity_id),
-        institution_id = store__chr(climate$institution_id),
-        source_id = store__chr(climate$source_id),
-        experiment_id = store__chr(climate$experiment_id),
-        member_id = store__chr(climate$variant_label),
-        table_id = store__chr(climate$table_id),
-        lon = as.numeric(climate$lon),
-        lat = as.numeric(climate$lat),
-        dist = as.numeric(climate$dist),
-        datetime = climate$time,
-        variable = as.character(climate$variable_id),
-        description = ifelse(is.na(climate$variable_long_name) | !nzchar(climate$variable_long_name), as.character(climate$variable_id), as.character(climate$variable_long_name)),
-        units = as.character(climate$units),
-        value = as.numeric(climate$value)
+
+    if (isTRUE(warning)) {
+        by_cols <- intersect(c("variable_id", "table_id", "frequency", "source_id", "experiment_id", "variant_label", "member_id"), names(data))
+        if (length(by_cols)) {
+            rng_year <- data[, list(years = list(sort(unique(year))), num_years = length(unique(year))), by = by_cols][num_years < 10L]
+            if (nrow(rng_year)) {
+                data.table::set(rng_year, NULL, "index_case", seq.int(nrow(rng_year)))
+                mes <- rng_year[, by = "index_case", {
+                    yrs <- paste0("'", years[[1L]], "'", collapse = ", ")
+                    list(message = sprintf("#%i | [%i] %s", .BY$index_case, num_years, yrs))
+                }]$message
+                warning("Case(s) shown below contains CMIP data less than a decade. ",
+                    "The morphed data may not be able to capture average weather of the future climate.\n",
+                    paste0(mes, collapse = "\n"), call. = FALSE)
+            }
+        }
+    }
+
+    identity <- epw_morph_context_identity_rows(data)
+    data <- data.table::data.table(
+        identity,
+        units = as.character(data$units),
+        value = as.numeric(data$value),
+        month = as.integer(data$month),
+        interval = data$interval
     )
+    group_cols <- c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "units", "month", "interval")
+    out <- data[, .(
+        lon = mean(lon, na.rm = TRUE),
+        lat = mean(lat, na.rm = TRUE),
+        dist = mean(dist, na.rm = TRUE),
+        value = mean(value, na.rm = TRUE)
+    ), by = group_cols]
+    unit <- out$units[!is.na(out$units) & nzchar(out$units)][1L]
+    if (length(unit) && !is.na(unit)) {
+        data.table::set(out, NULL, "value", units::set_units(out$value, unit, mode = "standard"))
+    }
+    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month", "interval"))
     out[]
 }
 
@@ -982,81 +1174,228 @@ epw_morph_run_context <- function(context) {
     result
 }
 
+epw_morph_belcher_monthly_variable <- function(context, variable_id) {
+    data <- epw_morph_context_variable(context, variable_id)
+    if (!nrow(data)) {
+        return(data.table::data.table())
+    }
+    year_labels <- epw_morph_context_year_labels(context)
+    epw_morph_monthly_climate(
+        data,
+        years = year_labels$years,
+        labels = year_labels$labels,
+        warning = context$warning
+    )
+}
+
+epw_morph_belcher_from_monthly <- function(var, data_epw, data_mean, data_max = NULL, data_min = NULL,
+                                           type = c("shift", "stretch", "combined")) {
+    type <- match.arg(type)
+    if (!nrow(data_mean)) {
+        return(data.table::data.table())
+    }
+
+    monthly <- monthly_mean(data_epw, var)
+    u <- units(data_epw[[var]])
+    data_mean <- align_units(data.table::copy(data_mean), u)
+
+    case_fallback <- data.table::data.table()
+    if (identical(type, "combined") && !is.null(data_max) && !is.null(data_min)) {
+        data_max <- align_units(data.table::copy(data_max), u)
+        data_min <- align_units(data.table::copy(data_min), u)
+        join_cols <- c(
+            "activity_drs", "institution_id", "source_id", "experiment_id",
+            "member_id", "table_id", "lat", "lon", "dist", "units", "month",
+            "interval"
+        )
+        data_mean[data_max, on = join_cols, value_max := i.value]
+        data_mean[data_min, on = join_cols, value_min := i.value]
+
+        i_max <- data_mean[J(NA_real_), on = "value_max", which = TRUE, nomatch = NULL]
+        i_min <- data_mean[J(NA_real_), on = "value_min", which = TRUE, nomatch = NULL]
+        i <- unique(c(i_min, i_max))
+        if (length(i)) {
+            cols <- c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id")
+            case_fallback <- unique(data_mean[i], by = cols)
+            data.table::set(case_fallback, NULL, setdiff(names(case_fallback), cols), NULL)
+            cases <- case_fallback[, unique(sprintf(
+                "CMIP6.%s.%s.%s.%s.%s.%s",
+                activity_drs, institution_id, source_id, experiment_id, member_id, table_id
+            ))]
+            cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
+            warning(sprintf(
+                "Case(s) below contains missing values of max or min of '%s' data. ",
+                gsub("_", " ", var)
+            ),
+            "'Shift' method will be used for it.\n", paste0(cases, collapse = "\n"),
+            call. = FALSE
+            )
+        }
+    }
+
+    data_mean[monthly, on = "month", `:=`(
+        delta = value - val_mean,
+        alpha = value / val_mean,
+        epw_mean = i.val_mean,
+        epw_max = i.val_max,
+        epw_min = i.val_min
+    )]
+
+    data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
+        data_mean, on = "month", allow.cartesian = TRUE
+    ]
+
+    if (identical(type, "combined") && all(c("value_min", "value_max") %in% names(data))) {
+        data[, alpha := ((value_max - epw_max) - (value_min - epw_min)) / (epw_max - epw_min)]
+        if (nrow(case_fallback)) {
+            data[case_fallback, on = names(case_fallback), alpha := 0.0]
+        }
+    } else {
+        data[, alpha := value / epw_mean]
+    }
+
+    thres_alpha <- getOption("epwshiftr.threshold_alpha")
+    if (!checkmate::test_number(thres_alpha, lower = 0)) {
+        warning(paste0(
+            "The threshold value for the monthly-mean fractional change (Alpha) ",
+            "should be a positive number, but '",
+            if (is.null(thres_alpha)) "NULL" else thres_alpha,
+            "' is found."
+        ))
+    }
+    if (type %in% c("stretch", "combined") && nrow(abnorm_alpha <- data_mean[abs(units::drop_units(alpha)) > thres_alpha])) {
+        warning(sprintf(
+            paste(
+                "The absolute values of monthly-mean fractional change (Alpha) below",
+                "for '%s' has exceeded the threshold (%s) set by the option",
+                "'epwshiftr.threshold_alpha'. 'Shift' morphing method will be utilized",
+                "instead of '%s' method to avoid unrealistic values. It is highly",
+                "suggested to further investigate the input data.\n%s",
+                collapse = " "
+            ),
+            gsub("_", " ", var, fixed = TRUE), thres_alpha, type,
+            paste0(sprintf(
+                "Month = %s | Monthly-mean: EPW = %s, GCM = %s --> Alpha = %s",
+                format(abnorm_alpha$month),
+                format(abnorm_alpha$epw_mean, digits = 3),
+                format(abnorm_alpha$value, digits = 3),
+                format(units::drop_units(abnorm_alpha$alpha), digits = 3)
+            ), collapse = "\n")
+        ))
+        type <- "shift"
+    }
+
+    if (identical(type, "shift")) {
+        data[, c(var) := units::set_units(get(var) + delta, u, mode = "standard")]
+    } else if (identical(type, "stretch")) {
+        data[, c(var) := units::set_units(get(var) * alpha, u, mode = "standard")]
+    } else if (identical(type, "combined")) {
+        if (all(c("value_min", "value_max") %in% names(data))) {
+            data[, c(var) := units::set_units(get(var) + delta + alpha * (get(var) - epw_mean), u, mode = "standard")]
+        } else {
+            data[, c(var) := units::set_units(get(var) + delta + alpha * get(var), u, mode = "standard")]
+        }
+    }
+
+    data[, .SD, .SDcols = c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "dist", "interval",
+        "datetime", "year", "month", "day", "hour", "minute",
+        var, "delta", "alpha"
+    )]
+}
+
+epw_morph_belcher_tdb <- function(data_epw, context, type) {
+    tas <- epw_morph_belcher_monthly_variable(context, "tas")
+    if (!nrow(tas)) {
+        return(data.table::data.table())
+    }
+    tasmax <- epw_morph_belcher_monthly_variable(context, "tasmax")
+    tasmin <- epw_morph_belcher_monthly_variable(context, "tasmin")
+    epw_morph_belcher_from_monthly(
+        "dry_bulb_temperature", data_epw, tas,
+        if (nrow(tasmax)) tasmax else NULL,
+        if (nrow(tasmin)) tasmin else NULL,
+        type = type
+    )
+}
+
+epw_morph_belcher_rh <- function(data_epw, context, type) {
+    hurs <- epw_morph_belcher_monthly_variable(context, "hurs")
+    if (!nrow(hurs)) {
+        return(data.table::data.table())
+    }
+    hursmax <- epw_morph_belcher_monthly_variable(context, "hursmax")
+    hursmin <- epw_morph_belcher_monthly_variable(context, "hursmin")
+    rh <- epw_morph_belcher_from_monthly(
+        "relative_humidity", data_epw, hurs,
+        if (nrow(hursmax)) hursmax else NULL,
+        if (nrow(hursmin)) hursmin else NULL,
+        type = type
+    )
+    rh[relative_humidity > units::set_units(100, "%"), relative_humidity := units::set_units(100, "%")]
+    rh
+}
+
+epw_morph_belcher_monthly_field <- function(data_epw, context, variable_id, epw_field, type) {
+    data <- epw_morph_belcher_monthly_variable(context, variable_id)
+    if (!nrow(data)) {
+        return(data.table::data.table())
+    }
+    epw_morph_belcher_from_monthly(epw_field, data_epw, data, type = type)
+}
+
+epw_morph_belcher_total_sky_cover <- function(data_epw, context) {
+    var <- "total_sky_cover"
+    data_mean <- epw_morph_belcher_monthly_variable(context, "clt")
+    if (!nrow(data_mean)) {
+        return(data.table::data.table())
+    }
+    monthly <- unique(data_epw[, .SD, .SDcols = "month"])
+    data_mean <- data_mean[monthly, on = "month"]
+    data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
+        data_mean, on = "month", allow.cartesian = TRUE
+    ]
+    data.table::set(data, NULL, "value", units::drop_units(data$value))
+    data[, `:=`(
+        total_sky_cover = as.integer(round(pmax(0, pmin(10, value / 10)))),
+        delta = round(pmax(0, pmin(10, value / 10))) - total_sky_cover,
+        alpha = round(pmax(0, pmin(10, value / 10))) / total_sky_cover
+    )]
+    data[, .SD, .SDcols = c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "dist", "interval",
+        "datetime", "year", "month", "day", "hour", "minute",
+        var, "delta", "alpha"
+    )]
+}
+
 epw_morph_belcher_run <- function(context, backend = NULL) {
     methods <- context$recipe$methods
-    data_cmip <- epw_morph_context_algorithm_climate(context)
     epw <- context$epw$clone()
     data_epw <- suppressMessages(epw$add_unit()$data())
-    year_labels <- epw_morph_context_year_labels(context)
-    years <- year_labels$years
-    labels <- year_labels$labels
 
-    tas <- data_cmip[J("tas"), on = "variable", nomatch = NULL]
-    if (!nrow(tas)) {
-        tdb <- data.table::data.table()
-    } else {
-        tasmax <- data_cmip[J("tasmax"), on = "variable", nomatch = NULL]
-        tasmin <- data_cmip[J("tasmin"), on = "variable", nomatch = NULL]
-        if (!nrow(tasmax)) tasmax <- NULL
-        if (!nrow(tasmin)) tasmin <- NULL
-        tdb <- morphing_tdb(data_epw, tas, tasmax, tasmin, years, labels = labels, type = methods[["tdb"]], warning = context$warning)
-    }
-
-    hurs <- data_cmip[J("hurs"), on = "variable", nomatch = NULL]
-    if (!nrow(hurs)) {
-        rh <- data.table::data.table()
-    } else {
-        hursmax <- data_cmip[J("hursmax"), on = "variable", nomatch = NULL]
-        hursmin <- data_cmip[J("hursmin"), on = "variable", nomatch = NULL]
-        if (!nrow(hursmax)) hursmax <- NULL
-        if (!nrow(hursmin)) hursmin <- NULL
-        rh <- morphing_rh(data_epw, hurs, hursmax, hursmin, years, labels = labels, type = methods[["rh"]], warning = context$warning)
-    }
-
+    tdb <- epw_morph_belcher_tdb(data_epw, context, methods[["tdb"]])
+    rh <- epw_morph_belcher_rh(data_epw, context, methods[["rh"]])
     tdew <- if (!nrow(tdb) || !nrow(rh)) data.table::data.table() else morphing_tdew(tdb, rh)
 
-    psl <- data_cmip[J("psl"), on = "variable", nomatch = NULL]
-    p <- if (!nrow(psl)) {
-        data.table::data.table()
-    } else {
-        morphing_pa(data_epw, psl, years, labels = labels, type = methods[["p"]], warning = context$warning)
-    }
+    p <- epw_morph_belcher_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
 
     data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
         units::set_units(units::drop_units(horizontal_infrared_radiation_intensity_from_sky), "W/m^2"
     )]
-    rlds <- data_cmip[J("rlds"), on = "variable", nomatch = NULL]
-    hor_ir <- if (!nrow(rlds)) {
-        data.table::data.table()
-    } else {
-        morphing_hor_ir(data_epw, rlds, years, labels = labels, type = methods[["hor_ir"]], warning = context$warning)
-    }
+    hor_ir <- epw_morph_belcher_monthly_field(data_epw, context, "rlds", "horizontal_infrared_radiation_intensity_from_sky", methods[["hor_ir"]])
 
     data_epw[, global_horizontal_radiation :=
         units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
     )]
-    rsds <- data_cmip[J("rsds"), on = "variable", nomatch = NULL]
-    glob_rad <- if (!nrow(rsds)) {
-        data.table::data.table()
-    } else {
-        morphing_glob_rad(data_epw, rsds, years, labels = labels, type = methods[["glob_rad"]], warning = context$warning)
-    }
+    glob_rad <- epw_morph_belcher_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
     diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morphing_diff_rad(data_epw, glob_rad)
     norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) data.table::data.table() else morphing_norm_rad(glob_rad, diff_rad)
 
-    sfcWind <- data_cmip[J("sfcWind"), on = "variable", nomatch = NULL]
-    wind <- if (!nrow(sfcWind)) {
-        data.table::data.table()
-    } else {
-        morphing_wind_speed(data_epw, sfcWind, years, labels = labels, type = methods[["wind"]], warning = context$warning)
-    }
+    wind <- epw_morph_belcher_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
 
-    clt <- data_cmip[J("clt"), on = "variable", nomatch = NULL]
-    total_cover <- if (!nrow(clt)) {
-        data.table::data.table()
-    } else {
-        morphing_total_sky_cover(data_epw, clt, years, labels = labels, warning = context$warning)
-    }
+    total_cover <- epw_morph_belcher_total_sky_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morphing_opaque_sky_cover(data_epw, total_cover)
 
     parts <- list(
@@ -1119,8 +1458,7 @@ EpwMorpher <- R6::R6Class(
         #' @description
         #' Return recipe-required CMIP variable IDs.
         required_variables = function() {
-            rules <- epw_morph_recipe_rules(private$recipe)
-            unique(rules[required == TRUE & !derived & !is.na(variable_id) & nzchar(variable_id), variable_id])
+            epw_morph_variables(private$recipe)
         },
 
         #' @description
@@ -2228,8 +2566,9 @@ EpwMorpher <- R6::R6Class(
                 case_id <- epw_morph_hash(morph_id, epw_morph_json(as.list(case)))
                 for (j in seq_len(nrow(rules))) {
                     rule <- rules[j]
+                    target_variable_id <- epw_morph_rule_primary_variable(rule)
                     for (m in 1:12) {
-                        future <- case_climate[variable_id == rule$variable_id[[1L]] & month == m]
+                        future <- case_climate[case_climate[["variable_id"]] == target_variable_id & case_climate[["month"]] == m]
                         base <- baseline[epw_field == rule$epw_field[[1L]] & month == m]
                         status <- "ok"
                         if (!nrow(future)) {
@@ -2259,11 +2598,11 @@ EpwMorpher <- R6::R6Class(
                         }
                         row_case <- as.list(case)
                         rows[[length(rows) + 1L]] <- data.frame(
-                            factor_id = epw_morph_hash(morph_id, case_id, rule$epw_field[[1L]], rule$variable_id[[1L]], m),
+                            factor_id = epw_morph_hash(morph_id, case_id, rule$epw_field[[1L]], target_variable_id, m),
                             morph_id = morph_id,
                             case_id = case_id,
                             epw_field = rule$epw_field[[1L]],
-                            variable_id = rule$variable_id[[1L]],
+                            variable_id = target_variable_id,
                             source_id = store__chr1(row_case$source_id),
                             experiment_id = store__chr1(row_case$experiment_id),
                             variant_label = store__chr1(row_case$variant_label),
