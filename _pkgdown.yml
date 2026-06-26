@@ -49,40 +49,46 @@ navbar:
       href: https://github.com/ideas-lab-nus/epwshiftr
 
 reference:
-  - title: ESG dictionaries
+  - title: ESG dictionaries and vocabularies
+    desc: Build and validate project-specific controlled vocabularies.
     contents:
       - EsgDict
       - esgdict_option
       - esgdict_check
 
-  - title: ESGF search services
-    desc: Start with esg_query() / EsgQuery for ESGF search records and result objects.
+  - title: ESGF queries and results
+    desc: Query ESGF search services and work with returned result objects.
     contents:
       - esg_query
       - esg_result
       - '[.EsgResult'
       - data_node_status
-
-  - title: Remote ESGF data access
-    contents:
-      - EsgDataset
-      - Downloader
-      - EsgStore
-
-  - title: Solr date helpers
-    contents:
       - solr_date
       - is.solr_date
 
-  - title: Create future EPWs
+  - title: Climate data access and storage
+    desc: Open remote datasets, manage local stores, and run persistent downloads.
+    contents:
+      - EsgDataset
+      - EsgStore
+      - Downloader
+
+  - title: EPW morphing and backends
+    desc: Configure store-native EPW morphing, recipes, and statistical downscaling backends.
     contents:
       - EpwMorpher
+      - EpwMorphBackend
       - epw_morpher
       - epw_morph_periods
       - epw_morph_recipe
       - epw_morph_variables
+      - epw_morph_backends
+      - epw_morph_backend
+      - epw_morph_register_backend
+      - epw_morph_result
 
   - title: Store-native shift workflow
+    desc: Run the high-level staged workflow from request collection to future EPW output.
     contents:
       - shift_request
       - shift_site
@@ -102,13 +108,10 @@ reference:
       - shift_outputs
       - shift_artifacts
 
-  - title: Command line interface
+  - title: Command line and package options
     contents:
       - epwshiftr_cli
       - install_cli
       - uninstall_cli
-
-  - title: epwshiftr Options
-    contents:
       - epwshiftr-package
       - store_dir

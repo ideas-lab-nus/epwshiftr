@@ -91,6 +91,99 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_identical(get_cache_epw(), path)
 })
 
+test_that("epw_morph_recipe() accepts morph.R statistical downscaling method overrides", {
+    recipe <- epw_morph_recipe(methods = c(tdb = "shift", rh = "shift"))
+
+    expect_s3_class(recipe, "epw_morph_recipe")
+    expect_equal(recipe$backend, "belcher")
+    expect_equal(recipe$methods[c("tdb", "rh")], c(tdb = "shift", rh = "shift"))
+    expect_equal(
+        recipe$rules[epw_field == "dry_bulb_temperature", method],
+        "shift"
+    )
+    expect_equal(
+        recipe$rules[epw_field == "relative_humidity", method],
+        "shift"
+    )
+    expect_equal(epw_morph_variables(recipe), epw_morph_variables("recommended"))
+    expect_error(epw_morph_recipe(methods = c(foo = "shift")), "Unknown")
+    expect_error(epw_morph_recipe(methods = c(tdb = "scale")), "Unsupported")
+})
+
+test_that("R6 EPW morphing backends can be looked up, registered, and selected", {
+    expect_true("belcher" %in% epw_morph_backends())
+
+    belcher <- epw_morph_backend("belcher")
+    expect_true(inherits(belcher, "EpwMorphBackend"))
+    expect_equal(belcher$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt"))
+    expect_equal(epw_morph_variables(belcher), epw_morph_variables("recommended"))
+    expect_equal(epw_morph_variables("belcher"), epw_morph_variables("recommended"))
+    expect_equal(belcher$validate_methods(c(tdb = "shift"))[["tdb"]], "shift")
+    expect_error(epw_morph_backend("missing-backend"), "Unknown")
+    expect_error(epw_morph_register_backend("not-a-backend", list()), "EpwMorphBackend")
+
+    backend_name <- paste0("testbackend", Sys.getpid())
+    rules <- data.table::data.table(
+        step = "dry",
+        epw_field = "dry_bulb_temperature",
+        variable_id = "tas",
+        optional_variable_id = NA_character_,
+        method = "offset",
+        required = TRUE,
+        derived = FALSE,
+        method_choices = list(c("offset", "plus_two"))
+    )
+    runner <- function(context, backend) {
+        epw <- context$epw$clone()
+        suppressMessages(epw$drop_unit())
+        data <- data.table::as.data.table(epw$data())
+        offset <- if (identical(context$recipe$methods[["dry"]], "plus_two")) 2 else 1
+        data[, `:=`(
+            dry_bulb_temperature = dry_bulb_temperature + offset,
+            custom_backend = backend$name
+        )]
+        epw_morph_result(context, epw = epw, data = data)
+    }
+    custom <- EpwMorphBackend$new(
+        name = backend_name,
+        methods = c(dry = "offset"),
+        method_choices = c("offset", "plus_two"),
+        rules = rules,
+        runner = runner
+    )
+
+    epw_morph_register_backend(backend_name, custom, overwrite = TRUE)
+    expect_identical(epw_morph_backend(backend_name), custom)
+    expect_error(epw_morph_register_backend(backend_name, custom), "already registered")
+
+    recipe <- epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "plus_two"))
+    expect_equal(recipe$methods[["dry"]], "plus_two")
+    expect_equal(epw_morph_variables(recipe), "tas")
+    expect_error(
+        epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "scale")),
+        "Unsupported"
+    )
+    context <- epw_morph_context(
+        epw = eplusr::read_epw(get_cache_epw()),
+        climate = data.table::data.table(
+            time = as.POSIXct("2060-01-01", tz = "UTC"),
+            variable_id = "tas",
+            period = "2060s",
+            year = 2060L,
+            lon = 104,
+            lat = 1,
+            dist = 0,
+            units = "K",
+            value = 300
+        ),
+        recipe = recipe
+    )
+    result <- epw_morph_run_context(context)
+
+    expect_s3_class(result, "epw_morph_result")
+    expect_equal(unique(result$data$custom_backend), backend_name)
+})
+
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
@@ -304,8 +397,49 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_true(file.exists(result_path))
     expect_equal(morpher$status(strict$morph_id)$status, "result_done")
 
+    result_data <- read_test_parquet(result_path)
+    epw <- eplusr::read_epw(get_cache_epw())
+    suppressMessages(epw$drop_unit())
+    baseline_data <- data.table::as.data.table(epw$data())
+    expect_true(all(c(
+        "dry_bulb_temperature",
+        "relative_humidity",
+        "dew_point_temperature",
+        "atmospheric_pressure",
+        "global_horizontal_radiation",
+        "diffuse_horizontal_radiation",
+        "direct_normal_radiation",
+        "wind_speed",
+        "total_sky_cover",
+        "opaque_sky_cover"
+    ) %in% names(result_data)))
+    expect_true(any(abs(result_data$dry_bulb_temperature - baseline_data$dry_bulb_temperature) > 1e-6, na.rm = TRUE))
+    expect_true(any(abs(result_data$dew_point_temperature - baseline_data$dew_point_temperature) > 1e-6, na.rm = TRUE))
+    expect_true(any(abs(result_data$diffuse_horizontal_radiation - baseline_data$diffuse_horizontal_radiation) > 1e-6, na.rm = TRUE))
+    expect_true(any(abs(result_data$direct_normal_radiation - baseline_data$direct_normal_radiation) > 1e-6, na.rm = TRUE))
+
     resumed_results <- morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE)
     expect_equal(resumed_results$result_id, results$result_id)
+
+    override_morpher <- epw_morpher(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = epw_morph_recipe(methods = c(tdb = "shift", rh = "shift")),
+        label = "singapore"
+    )
+    override_baseline <- override_morpher$summarise_baseline()
+    override <- override_morpher$plan(
+        summary_id = unique(climate$summary_id),
+        baseline_id = unique(override_baseline$baseline_id),
+        strict = TRUE
+    )
+    expect_equal(override$status, "planned")
+    expect_false(identical(override$morph_id, strict$morph_id))
+    override_results <- override_morpher$run(override$morph_id, overwrite = TRUE)
+    override_data <- read_test_parquet(store_abs_path(override_results$output_path, root = store$path))
+    expect_true(any(abs(override_data$dry_bulb_temperature - result_data$dry_bulb_temperature) > 1e-6, na.rm = TRUE))
+    expect_true(any(abs(override_data$relative_humidity - result_data$relative_humidity) > 1e-6, na.rm = TRUE))
 
     outputs <- morpher$write_epw(
         morph_id = strict$morph_id,

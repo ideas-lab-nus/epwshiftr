@@ -241,11 +241,12 @@ epw_site
 This article keeps using the explicit `site` object so the site ID is short and
 predictable, while the EPW file itself is passed later as the morphing baseline.
 
-`epw_morph_variables()` returns the CMIP variable IDs needed by the morphing
-recipe. The result is a plain character vector because the same variable IDs are
-used at several workflow stages: first as the ESGF `variable_id` filter in
-`shift_request()`, then as the extraction variable list in `shift_extract()`,
-and finally as the coverage check used by `shift_morph()`.
+`epw_morph_variables()` returns the CMIP variable IDs needed by the selected
+morphing recipe. The result is a plain character vector because the same
+variable IDs are used at several workflow stages: first as the ESGF
+`variable_id` filter in `shift_request()`, then as the extraction variable list
+in `shift_extract()`, and finally as the coverage check used by
+`shift_morph()`.
 
 The helper provides three named variable sets:
 
@@ -255,11 +256,12 @@ The helper provides three named variable sets:
 - `"extended"`: the recommended set plus related max/min variables for future
   recipes.
 
-This article uses `"recommended"` because `strict = TRUE` requires every recipe
-variable.
+This article uses the default Belcher recipe because `strict = TRUE` requires
+every variable declared by the selected backend.
 
 ```{r variables}
-variables <- epw_morph_variables("recommended")
+shift_recipe <- epw_morph_recipe("belcher")
+variables <- epw_morph_variables(shift_recipe)
 variables
 ```
 
@@ -590,12 +592,31 @@ coverage are blocking errors instead of warnings.
 
 `shift_morph()` wraps the lower-level `EpwMorpher` planning and execution API.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
-factor diagnostics, or case grouping.
+factor diagnostics, case grouping, or custom backend registration.
+
+The same `shift_recipe` used to choose request variables can be passed into
+`shift_morph()`. Adjust the recipe when you want to change Belcher methods or
+select another registered backend:
+
+```r
+shift_recipe <- epw_morph_recipe(
+    "belcher",
+    methods = c(tdb = "shift", rh = "shift")
+)
+
+shift_morph(
+    extracted,
+    baseline = epw,
+    recipe = shift_recipe,
+    strict = TRUE
+)
+```
 
 ```{r morph}
 morphed <- shift_morph(
     extracted,
     baseline = epw,
+    recipe = shift_recipe,
     strict = TRUE
 )
 
