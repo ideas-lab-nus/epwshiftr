@@ -174,9 +174,9 @@ reproducible.</p>
 <span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="va">store_path</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">path</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store"</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">manifest</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, all.files <span class="op">=</span> <span class="cn">TRUE</span>, no.. <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "dicts"               "downloads"           "extracts"</span></span>
 <span><span class="co">#&gt;  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"</span></span>
@@ -368,9 +368,9 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-06-24 16:29:47</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-06-24 16:29:47</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-06-24 16:29:47</span></span>
+<span><span class="co">#&gt; 1:          cmip6 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-06-24 18:15:15</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">queries</span><span class="op">(</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"label"</span>, <span class="st">"index_node"</span>, <span class="st">"tracked"</span>, <span class="st">"created_at"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
@@ -379,7 +379,7 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
 <span><span class="co">#&gt;                    label                index_node tracked          created_at</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;                    &lt;char&gt;  &lt;lgcl&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 16:29:47</span></span>
+<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 18:15:15</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query_tags</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
@@ -393,9 +393,9 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-06-24 16:29:47</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-06-24 16:29:47</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-06-24 16:29:47</span></span></code></pre></div>
+<span><span class="co">#&gt; 1:          cmip6 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-06-24 18:15:15</span></span></code></pre></div>
 <p>The query snapshot is written under <code>queries/</code>, while the
 query identity and tracking state are recorded in the manifest.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
@@ -531,16 +531,16 @@ query-file links, and an update record.</p>
 <span><span class="co">#&gt; 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
 <span><span class="co">#&gt;                                                            update_id  status</span></span>
 <span><span class="co">#&gt;                                                               &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  2: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  3: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  4: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  5: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  6: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  7: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  8: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt;  9: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
-<span><span class="co">#&gt; 10: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4 current</span></span>
+<span><span class="co">#&gt;  1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  2: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  3: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  4: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  5: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  6: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  7: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  8: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt;  9: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
+<span><span class="co">#&gt; 10: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
 <span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">query_files</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"file_key"</span>, <span class="st">"status"</span>, <span class="st">"filename"</span>, <span class="st">"variable_id"</span>,</span>
@@ -612,13 +612,13 @@ update history reviewable.</p>
 <span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                           update_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 943177883add389370453a66d3103be8ad70065e1de48b03bb32369b8e23e0b4</span></span>
+<span><span class="co">#&gt; 1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a</span></span>
 <span><span class="co">#&gt;                                                            query_id status</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt; &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c   done</span></span>
 <span><span class="co">#&gt;    file_total new_count changed_count        completed_at</span></span>
 <span><span class="co">#&gt;         &lt;int&gt;     &lt;int&gt;         &lt;int&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:         20        20             0 2026-06-24 16:29:54</span></span>
+<span><span class="co">#&gt; 1:         20        20             0 2026-06-24 18:15:20</span></span>
 <span></span>
 <span><span class="va">latest_update</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">query_updates</span><span class="op">(</span><span class="va">query_id</span>, latest <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span></span>
@@ -710,7 +710,7 @@ back into <code>esg_file</code>, <code>file_catalog</code>, and
 <span><span class="co">#&gt; 1:                           0                          0      175082403</span></span>
 <span><span class="co">#&gt;    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok</span></span>
 <span><span class="co">#&gt;                 &lt;int&gt;           &lt;num&gt;          &lt;num&gt;          &lt;num&gt;  &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt; 1:                  0    298705752064   298705752064              0    TRUE</span></span>
+<span><span class="co">#&gt; 1:                  0    298175320064   298175320064              0    TRUE</span></span>
 <span><span class="co">#&gt;    disk_would_block disk_preflight</span></span>
 <span><span class="co">#&gt;              &lt;lgcl&gt;         &lt;lgcl&gt;</span></span>
 <span><span class="co">#&gt; 1:            FALSE           TRUE</span></span>
@@ -949,7 +949,7 @@ intermediates, and EPW outputs all use the same artifact table.</p>
 <span><span class="co">#&gt; 1: 0ba5c9b45f6e79375ad1cf96f9b5e6409123f14c07ea6552b4a10a1082cacdf4  query</span></span>
 <span><span class="co">#&gt;                                                                                                                                                                        expected_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpumWj3I/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json</span></span>
+<span><span class="co">#&gt; 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json</span></span>
 <span><span class="co">#&gt;    exists checksum_ok size_ok    status</span></span>
 <span><span class="co">#&gt;    &lt;lgcl&gt;      &lt;lgcl&gt;  &lt;lgcl&gt;    &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:   TRUE        TRUE    TRUE available</span></span>

@@ -92,7 +92,7 @@
 <div class="section level3">
 <h3 id="major-changes-0-1-4">Major changes<a class="anchor" aria-label="anchor" href="#major-changes-0-1-4"></a></h3>
 <ul><li>
-<p><code><a href="../reference/match_coord.html">match_coord()</a></code> has been refactored to correct the calculation method of geographical distance. Previously, epwshiftr assumes that distance on longitude and latitude is the same which is not true. Now it uses a spheroid formula to calculate the tunnel distance (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>). For details, please see <a href="https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance" class="external-link">Tunnel Distance</a> . The structure of the returned <code>epw_cmip6_coord</code> object has also changed. The <code>coord</code> column in the <code>coord</code> <code>data.table</code> is also a <code>data.table</code> which contains 6 columns describing the matched coordinates:</p>
+<p><code>match_coord()</code> has been refactored to correct the calculation method of geographical distance. Previously, epwshiftr assumes that distance on longitude and latitude is the same which is not true. Now it uses a spheroid formula to calculate the tunnel distance (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>). For details, please see <a href="https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance" class="external-link">Tunnel Distance</a> . The structure of the returned <code>epw_cmip6_coord</code> object has also changed. The <code>coord</code> column in the <code>coord</code> <code>data.table</code> is also a <code>data.table</code> which contains 6 columns describing the matched coordinates:</p>
 <ul><li>
 <code>index</code>: the indices of matched coordinates</li>
 <li>
@@ -107,9 +107,9 @@
 <li>
 <code>max_num</code>: Now the value <code>max_num</code> is the key input to control how many grid points are to be matched. The points will always be ordered in descending order in terms of the distances.</li>
 </ul></li>
-<li><p>The <code>data</code> in the returned value of <code><a href="../reference/extract_data.html">extract_data()</a></code> has been updated to include a new column <code>dist</code> which gives the spherical distance in km between EPW location and grid coordinates (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>).</p></li>
+<li><p>The <code>data</code> in the returned value of <code>extract_data()</code> has been updated to include a new column <code>dist</code> which gives the spherical distance in km between EPW location and grid coordinates (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/39" class="external-link">#39</a>).</p></li>
 <li>
-<p>The document on the return value structure for <code><a href="../reference/extract_data.html">extract_data()</a></code> and <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> has been fixed (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/29" class="external-link">#29</a>). And the column order for all metadata in the returned <code>data.table</code> from <code><a href="../reference/extract_data.html">extract_data()</a></code> and <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> are not consistent. The columns will always be in the order below (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/45" class="external-link">#45</a>):</p>
+<p>The document on the return value structure for <code>extract_data()</code> and <code>morphing_epw()</code> has been fixed (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/29" class="external-link">#29</a>). And the column order for all metadata in the returned <code>data.table</code> from <code>extract_data()</code> and <code>morphing_epw()</code> are not consistent. The columns will always be in the order below (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/45" class="external-link">#45</a>):</p>
 <ul><li><code>activity_drs</code></li>
 <li><code>institution_id</code></li>
 <li><code>source_id</code></li>
@@ -123,23 +123,23 @@
 </ul></div>
 <div class="section level3">
 <h3 id="new-features-0-1-4">New features<a class="anchor" aria-label="anchor" href="#new-features-0-1-4"></a></h3>
-<ul><li>A new parameter <code>full</code> is added to <code><a href="../reference/future_epw.html">future_epw()</a></code>. When setting to <code>TRUE</code>, a <code>data.table</code> containing information about how the data are split by the <code>by</code> argument and also the generated future EPWs and their paths are returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/18" class="external-link">#18</a>).</li>
-<li>Now <code><a href="../reference/summary_database.html">summary_database()</a></code> can append results to the previous scan and detect if any previously matched NetCDF files do not exist. It stores the metadata of those missing files as a new attribute <code>not_found</code> in the results. Warnings are issued if <code>warning</code> is set to <code>TRUE</code>. Also, a new parameter <code>miss</code> has been added to control how to manage those invalid entries. You can set it to <code>"keep"</code>, which is the default, to do nothing about it or <code>"overwrite"</code> to overwrite those entries based on the newly matched NetCDF files if possible (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/40" class="external-link">#40</a>).</li>
+<ul><li>A new parameter <code>full</code> is added to <code>future_epw()</code>. When setting to <code>TRUE</code>, a <code>data.table</code> containing information about how the data are split by the <code>by</code> argument and also the generated future EPWs and their paths are returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/18" class="external-link">#18</a>).</li>
+<li>Now <code>summary_database()</code> can append results to the previous scan and detect if any previously matched NetCDF files do not exist. It stores the metadata of those missing files as a new attribute <code>not_found</code> in the results. Warnings are issued if <code>warning</code> is set to <code>TRUE</code>. Also, a new parameter <code>miss</code> has been added to control how to manage those invalid entries. You can set it to <code>"keep"</code>, which is the default, to do nothing about it or <code>"overwrite"</code> to overwrite those entries based on the newly matched NetCDF files if possible (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/40" class="external-link">#40</a>).</li>
 <li>
-<code><a href="../reference/extract_data.html">extract_data()</a></code> now supports non-standard calendar, e.g. <code>360_day</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/32" class="external-link">#32</a>).</li>
-<li>A new parameter <code>warning</code> has been added in <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code>. If set to <code>TRUE</code>, warnings will be issued for cases with input data less than a decade (10 years) . This is because using data that only covers a short period of time may not be able to capture the average of future climate (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/41" class="external-link">#41</a>).</li>
+<code>extract_data()</code> now supports non-standard calendar, e.g. <code>360_day</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/32" class="external-link">#32</a>).</li>
+<li>A new parameter <code>warning</code> has been added in <code>morphing_epw()</code>. If set to <code>TRUE</code>, warnings will be issued for cases with input data less than a decade (10 years) . This is because using data that only covers a short period of time may not be able to capture the average of future climate (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/41" class="external-link">#41</a>).</li>
 <li>Now epwshiftr is able to download, parse and store CMIP6 Controlled Vocabularies (CVs) and Data Request data using the <code>EsgDict</code> class. Please see <code><a href="../reference/EsgDict.html">?EsgDict</a></code> for details (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/53" class="external-link">#53</a>).</li>
 <li>A new option <code>epwshiftr.threshold_alpha</code> has been added to set the threshold of the absolute value for alpha, i.e. monthly-mean fractional change when performing morphing operations. The default value is set to <code>3</code>. If the morphing methods are set <code>"stretch"</code> or <code>"combined"</code>, and the absolute alpha exceeds the threshold value, warnings are issued and the morphing method is fallbacked to <code>"shift"</code> to avoid unrealistic morphed values (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/54" class="external-link">#54</a>).</li>
 <li>Now HDF5 format is supported (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/60" class="external-link">#60</a>).</li>
-<li>Now <code>replica</code> can be <code>NULL</code> in <code><a href="../reference/esgf_query.html">esgf_query()</a></code> and <code><a href="../reference/init_cmip6_index.html">init_cmip6_index()</a></code>. In this case, both the master record and replicas are all returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/61" class="external-link">#61</a>).</li>
+<li>Now <code>replica</code> can be <code>NULL</code> in <code>esgf_query()</code> and <code>init_cmip6_index()</code>. In this case, both the master record and replicas are all returned (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/61" class="external-link">#61</a>).</li>
 <li>New class <code>EsgfQuery</code> is added to support more flexible APIs for ESGF search services. Please see <code>?EsgfQuery</code> for details (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/63" class="external-link">#63</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/69" class="external-link">#69</a>).</li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-0-1-4">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-4"></a></h3>
-<ul><li>Fix the error in <code><a href="../reference/summary_database.html">summary_database()</a></code> when no NetCDF files are found in the input directory (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
-<li>Fix the error about overwriting temporary EPW file when <code>epw</code> in <code><a href="../reference/match_coord.html">match_coord()</a></code> is a search string (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
-<li>Now <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> can correctly fall back to use “Shift” method when any missing values are detected in maximum and minimum prediction values of climate variables (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
-<li>Fix the wrong warning messages when <code>combined</code> method is used in <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
+<ul><li>Fix the error in <code>summary_database()</code> when no NetCDF files are found in the input directory (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
+<li>Fix the error about overwriting temporary EPW file when <code>epw</code> in <code>match_coord()</code> is a search string (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
+<li>Now <code>morphing_epw()</code> can correctly fall back to use “Shift” method when any missing values are detected in maximum and minimum prediction values of climate variables (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
+<li>Fix the wrong warning messages when <code>combined</code> method is used in <code>morphing_epw()</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/25" class="external-link">#25</a>).</li>
 <li>Now <code>get_data_node()</code> works again (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/80" class="external-link">#80</a>)</li>
 </ul></div>
 <div class="section level3">
@@ -161,12 +161,12 @@
 <h2 class="page-header" data-toc-text="0.1.2" id="epwshiftr-012">epwshiftr 0.1.2<small>2021-02-15</small><a class="anchor" aria-label="anchor" href="#epwshiftr-012"></a></h2>
 <div class="section level3">
 <h3 id="new-features-0-1-2">New features<a class="anchor" aria-label="anchor" href="#new-features-0-1-2"></a></h3>
-<ul><li>The type of morphing methods can be specified using the newly added <code>methods</code> argument in <code><a href="../reference/morphing_epw.html">morphing_epw()</a></code>.</li>
+<ul><li>The type of morphing methods can be specified using the newly added <code>methods</code> argument in <code>morphing_epw()</code>.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-0-1-2">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-2"></a></h3>
 <ul><li>
-<code><a href="../reference/esgf_query.html">esgf_query()</a></code> can accept <code>NULL</code> <code>resolution</code> argument (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/12" class="external-link">#12</a>).</li>
+<code>esgf_query()</code> can accept <code>NULL</code> <code>resolution</code> argument (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/12" class="external-link">#12</a>).</li>
 <li>
 <code>load_cimp6_index()</code> can be correctly load local CMIP6 output index file when <code>force</code> is <code>TRUE</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/8" class="external-link">#8</a>).</li>
 </ul></div>
@@ -176,11 +176,11 @@
 <div class="section level3">
 <h3 id="bug-fixes-0-1-1">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-1"></a></h3>
 <ul><li>
-<code><a href="../reference/esgf_query.html">esgf_query()</a></code> will give an informative message when LLNL ESGF node is not available (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/3" class="external-link">#3</a>).</li>
+<code>esgf_query()</code> will give an informative message when LLNL ESGF node is not available (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/3" class="external-link">#3</a>).</li>
 <li>
-<code><a href="../reference/extract_data.html">extract_data()</a></code> will automatically detect input NetCDF dimensions (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/6" class="external-link">#6</a>).</li>
+<code>extract_data()</code> will automatically detect input NetCDF dimensions (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/6" class="external-link">#6</a>).</li>
 <li>
-<code><a href="../reference/summary_database.html">summary_database()</a></code> now will proceed when no matched found (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/6" class="external-link">#6</a>).</li>
+<code>summary_database()</code> now will proceed when no matched found (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/6" class="external-link">#6</a>).</li>
 </ul></div>
 </div>
     <div class="section level2">

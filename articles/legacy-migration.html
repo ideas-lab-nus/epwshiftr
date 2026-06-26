@@ -131,9 +131,10 @@ Jia</h4>
 <p>epwshiftr’s recommended workflow is now <a href="future-epw-workflow.html">Create Future EPW Files</a>, built
 around <code>shift_*()</code>, <code>EsgStore</code>,
 <code>Downloader</code>, and <code>EpwMorpher</code>.</p>
-<p>The older data.table-oriented workflow remains documented in the
-reference for compatibility, but new work should migrate to the
-store-native API. This article maps old concepts to new ones.</p>
+<p>The older data.table-oriented workflow is available from the
+<code>legacy</code> branch or epwshiftr v0.1.4. Those functions are no
+longer exported by the current package. This article maps old concepts
+to new store-native concepts.</p>
 <div class="section level2">
 <h2 id="concept-map">Concept Map<a class="anchor" aria-label="anchor" href="#concept-map"></a>
 </h2>
@@ -150,7 +151,7 @@ store-native API. This article maps old concepts to new ones.</p>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td><code><a href="../reference/init_cmip6_index.html">init_cmip6_index()</a></code></td>
+<td><code>init_cmip6_index()</code></td>
 <td>
 <code><a href="../reference/shift_api.html">shift_request()</a></code> plus <code><a href="../reference/shift_api.html">shift_datasets()</a></code> /
 <code><a href="../reference/shift_api.html">shift_collect()</a></code>
@@ -159,7 +160,7 @@ store-native API. This article maps old concepts to new ones.</p>
 instead of one monolithic local index.</td>
 </tr>
 <tr class="even">
-<td><code><a href="../reference/summary_database.html">summary_database()</a></code></td>
+<td><code>summary_database()</code></td>
 <td>
 <code>EsgStore</code> file catalog and
 <code>storage_report()</code>
@@ -168,7 +169,7 @@ instead of one monolithic local index.</td>
 durable manifest.</td>
 </tr>
 <tr class="odd">
-<td><code><a href="../reference/match_coord.html">match_coord()</a></code></td>
+<td><code>match_coord()</code></td>
 <td>
 <code><a href="../reference/shift_api.html">shift_site()</a></code> and
 <code>EsgStore$plan_region()</code>
@@ -177,7 +178,7 @@ durable manifest.</td>
 objects.</td>
 </tr>
 <tr class="even">
-<td><code><a href="../reference/extract_data.html">extract_data()</a></code></td>
+<td><code>extract_data()</code></td>
 <td>
 <code><a href="../reference/shift_api.html">shift_extract()</a></code> or <code>EsgStore$extract()</code>
 </td>
@@ -185,7 +186,7 @@ objects.</td>
 coverage.</td>
 </tr>
 <tr class="odd">
-<td><code><a href="../reference/morphing_epw.html">morphing_epw()</a></code></td>
+<td><code>morphing_epw()</code></td>
 <td>
 <code><a href="../reference/shift_api.html">shift_morph()</a></code> or <code>EpwMorpher$run()</code>
 </td>
@@ -193,7 +194,7 @@ coverage.</td>
 resumable.</td>
 </tr>
 <tr class="even">
-<td><code><a href="../reference/future_epw.html">future_epw()</a></code></td>
+<td><code>future_epw()</code></td>
 <td>
 <code><a href="../reference/shift_api.html">shift_epw()</a></code> or <code>EpwMorpher$write_epw()</code>
 </td>
@@ -208,12 +209,12 @@ provenance.</td>
 </h2>
 <p>A simplified legacy script looked like this:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">index</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/init_cmip6_index.html">init_cmip6_index</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span>
-<span><span class="va">summary</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_database.html">summary_database</a></span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span>
-<span><span class="va">coord</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/match_coord.html">match_coord</a></span><span class="op">(</span><span class="va">epw</span>, <span class="va">summary</span><span class="op">)</span></span>
-<span><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/extract_data.html">extract_data</a></span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fl">2060</span><span class="op">)</span></span>
-<span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/morphing_epw.html">morphing_epw</a></span><span class="op">(</span><span class="va">data</span>, years <span class="op">=</span> <span class="fl">2060</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/future_epw.html">future_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">index</span> <span class="op">&lt;-</span> <span class="fu">init_cmip6_index</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span>
+<span><span class="va">summary</span> <span class="op">&lt;-</span> <span class="fu">summary_database</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span>
+<span><span class="va">coord</span> <span class="op">&lt;-</span> <span class="fu">match_coord</span><span class="op">(</span><span class="va">epw</span>, <span class="va">summary</span><span class="op">)</span></span>
+<span><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu">extract_data</span><span class="op">(</span><span class="va">coord</span>, years <span class="op">=</span> <span class="fl">2060</span><span class="op">)</span></span>
+<span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu">morphing_epw</span><span class="op">(</span><span class="va">data</span>, years <span class="op">=</span> <span class="fl">2060</span><span class="op">)</span></span>
+<span><span class="fu">future_epw</span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
 <p>That path assumed a local CMIP6 file index and passed large data
 objects between steps.</p>
 </div>

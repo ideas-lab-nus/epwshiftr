@@ -42,22 +42,13 @@
 <url><loc>/reference/esg_result.html</loc></url>
 <url><loc>/reference/esgdict_check.html</loc></url>
 <url><loc>/reference/esgdict_option.html</loc></url>
-<url><loc>/reference/esgf_query.html</loc></url>
-<url><loc>/reference/extract_data.html</loc></url>
-<url><loc>/reference/future_epw.html</loc></url>
 <url><loc>/reference/index.html</loc></url>
-<url><loc>/reference/init_cmip6_index.html</loc></url>
 <url><loc>/reference/install_cli.html</loc></url>
 <url><loc>/reference/is.solr_date.html</loc></url>
-<url><loc>/reference/load_cmip6_index.html</loc></url>
-<url><loc>/reference/match_coord.html</loc></url>
-<url><loc>/reference/morphing_epw.html</loc></url>
-<url><loc>/reference/set_cmip6_index.html</loc></url>
 <url><loc>/reference/shift_api.html</loc></url>
 <url><loc>/reference/solr_date.html</loc></url>
 <url><loc>/reference/store_dir.html</loc></url>
 <url><loc>/reference/sub-.EsgResult.html</loc></url>
-<url><loc>/reference/summary_database.html</loc></url>
 <url><loc>/reference/uninstall_cli.html</loc></url>
 </urlset>
 

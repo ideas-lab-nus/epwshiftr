@@ -104,16 +104,12 @@
         <td><p>Check ESG Dictionary Parameter Values</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="esgf-search-services">ESGF search services <a href="#esgf-search-services" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Start with esg_query() / EsgQuery; esgf_query() is a gently deprecated compatibility wrapper with legacy LLNL host semantics.</p>
+          <p class="section-desc"></p><p>Start with esg_query() / EsgQuery for ESGF search records and result objects.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="EsgQuery.html">esg_query()</a></code> </p>
         </td>
         <td><p>Query CMIP6 data using ESGF search RESTful API</p></td>
-      </tr><tr><td>
-          <p><code><a href="esgf_query.html">esgf_query()</a></code> </p>
-        </td>
-        <td><p>Legacy-compatible CMIP6 query wrapper using ESGF search RESTful API</p></td>
       </tr><tr><td>
           <p><code><a href="esg_result.html">esg_result()</a></code> </p>
         </td>
@@ -122,6 +118,10 @@
           <p><code><a href="sub-.EsgResult.html">`[`(<i>&lt;EsgResult&gt;</i>)</a></code> </p>
         </td>
         <td><p>Subset an ESGF query result</p></td>
+      </tr><tr><td>
+          <p><code><a href="data_node_status.html">data_node_status()</a></code> </p>
+        </td>
+        <td><p>Get status of ESGF data nodes</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="remote-esgf-data-access">Remote ESGF data access <a href="#remote-esgf-data-access" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
@@ -134,6 +134,10 @@
           <p><code><a href="Downloader.html">Downloader</a></code> </p>
         </td>
         <td><p>General Purpose File Downloader</p></td>
+      </tr><tr><td>
+          <p><code><a href="EsgStore.html">EsgStore</a></code> </p>
+        </td>
+        <td><p>Local ESGF Store</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="solr-date-helpers">Solr date helpers <a href="#solr-date-helpers" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
@@ -146,50 +150,6 @@
           <p><code><a href="is.solr_date.html">is.solr_date()</a></code> </p>
         </td>
         <td><p>Check whether an object is a parsed Solr date</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="cmip-index">CMIP6 Index <a href="#cmip-index" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Build CMIP6 output index</p>
-        </th>
-      </tr></tbody><tbody><tr><td>
-          <p><code><a href="init_cmip6_index.html">init_cmip6_index()</a></code> </p>
-        </td>
-        <td><p>Build CMIP6 experiment output file index</p></td>
-      </tr><tr><td>
-          <p><code><a href="load_cmip6_index.html">load_cmip6_index()</a></code> </p>
-        </td>
-        <td><p>Load previously stored CMIP6 experiment output file index</p></td>
-      </tr><tr><td>
-          <p><code><a href="set_cmip6_index.html">set_cmip6_index()</a></code> </p>
-        </td>
-        <td><p>Set CMIP6 index</p></td>
-      </tr><tr><td>
-          <p><code><a href="data_node_status.html">data_node_status()</a></code> </p>
-        </td>
-        <td><p>Get status of data nodes which store CMIP6 output</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="cmip-output">CMIP6 Output <a href="#cmip-output" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Manage CMIP6 output files</p>
-        </th>
-      </tr></tbody><tbody><tr><td>
-          <p><code><a href="summary_database.html">summary_database()</a></code> </p>
-        </td>
-        <td><p>Summary CMIP6 model output file status</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="data-extraction">Data extraction <a href="#data-extraction" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Extract CMIP6 data based on EPW</p>
-        </th>
-      </tr></tbody><tbody><tr><td>
-          <p><code><a href="EsgStore.html">EsgStore</a></code> </p>
-        </td>
-        <td><p>Local ESGF Store</p></td>
-      </tr><tr><td>
-          <p><code><a href="match_coord.html">match_coord()</a></code> </p>
-        </td>
-        <td><p>Match coordinates of input EPW in the CMIP6 output file database</p></td>
-      </tr><tr><td>
-          <p><code><a href="extract_data.html">extract_data()</a></code> </p>
-        </td>
-        <td><p>Extract data</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="create-future-epws">Create future EPWs <a href="#create-future-epws" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
@@ -214,14 +174,6 @@
           <p><code><a href="epw_morph_variables.html">epw_morph_variables()</a></code> </p>
         </td>
         <td><p>EPW morphing variable sets</p></td>
-      </tr><tr><td>
-          <p><code><a href="morphing_epw.html">morphing_epw()</a></code> </p>
-        </td>
-        <td><p>Morphing EPW weather variables</p></td>
-      </tr><tr><td>
-          <p><code><a href="future_epw.html">future_epw()</a></code> </p>
-        </td>
-        <td><p>Create future EPW files using morphed data</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="store-native-shift-workflow">Store-native shift workflow <a href="#store-native-shift-workflow" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
