@@ -185,11 +185,12 @@ epw_site
 This article keeps using the explicit `site` object so the site ID is short and
 predictable, while the EPW file itself is passed later as the morphing baseline.
 
-`epw_morph_variables()` returns the CMIP variable IDs needed by the morphing
-recipe. The result is a plain character vector because the same variable IDs are
-used at several workflow stages: first as the ESGF `variable_id` filter in
-`shift_request()`, then as the extraction variable list in `shift_extract()`,
-and finally as the coverage check used by `shift_morph()`.
+`epw_morph_variables()` returns the CMIP variable IDs needed by the selected
+morphing recipe. The result is a plain character vector because the same
+variable IDs are used at several workflow stages: first as the ESGF
+`variable_id` filter in `shift_request()`, then as the extraction variable list
+in `shift_extract()`, and finally as the coverage check used by
+`shift_morph()`.
 
 The helper provides three named variable sets:
 
@@ -199,12 +200,13 @@ The helper provides three named variable sets:
 - `"extended"`: the recommended set plus related max/min variables for future
   recipes.
 
-This article uses `"recommended"` because `strict = TRUE` requires every recipe
-variable.
+This article uses the default Belcher recipe because `strict = TRUE` requires
+every variable declared by the selected backend.
 
 
 ``` r
-variables <- epw_morph_variables("recommended")
+shift_recipe <- epw_morph_recipe("belcher")
+variables <- epw_morph_variables(shift_recipe)
 variables
 #> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
 ```
@@ -718,8 +720,9 @@ coverage are blocking errors instead of warnings.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
 factor diagnostics, case grouping, or custom backend registration.
 
-Pass a recipe when you want to adjust Belcher methods or select another
-registered backend:
+The same `shift_recipe` used to choose request variables can be passed into
+`shift_morph()`. Adjust the recipe when you want to change Belcher methods or
+select another registered backend:
 
 ```r
 shift_recipe <- epw_morph_recipe(
@@ -740,6 +743,7 @@ shift_morph(
 morphed <- shift_morph(
     extracted,
     baseline = epw,
+    recipe = shift_recipe,
     strict = TRUE
 )
 
@@ -766,7 +770,7 @@ morph_artifacts[, .(kind, role, relative_path)]
 #> 1: output derived
 #>                                                                                                                                                       relative_path
 #>                                                                                                                                                              <char>
-#> 1: outputs/epw-morph/976a52a06e6220d6fafd6ce6a435e8a4a2376636678ac2d494b55e1e4b370bec/case=cf00ce6636ae9046b27f3cb645b2ae33a65ebddc884a822062d4479f563590cb.parquet
+#> 1: outputs/epw-morph/7151ba639a04006fccc4809f2754db0c5111217b4b2083cb7cc8c02bb90875ca/case=449d8e0e3db38f5e39681257d5f5c78d802a31e5bdcaeb40f9045f798938b76e.parquet
 ```
 
 Use the same `shift_data()` helper to preview the hourly morphed weather table.

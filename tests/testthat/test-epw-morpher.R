@@ -105,6 +105,7 @@ test_that("epw_morph_recipe() accepts morph.R statistical downscaling method ove
         recipe$rules[epw_field == "relative_humidity", method],
         "shift"
     )
+    expect_equal(epw_morph_variables(recipe), epw_morph_variables("recommended"))
     expect_error(epw_morph_recipe(methods = c(foo = "shift")), "Unknown")
     expect_error(epw_morph_recipe(methods = c(tdb = "scale")), "Unsupported")
 })
@@ -115,6 +116,8 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     belcher <- epw_morph_backend("belcher")
     expect_true(inherits(belcher, "EpwMorphBackend"))
     expect_equal(belcher$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt"))
+    expect_equal(epw_morph_variables(belcher), epw_morph_variables("recommended"))
+    expect_equal(epw_morph_variables("belcher"), epw_morph_variables("recommended"))
     expect_equal(belcher$validate_methods(c(tdb = "shift"))[["tdb"]], "shift")
     expect_error(epw_morph_backend("missing-backend"), "Unknown")
     expect_error(epw_morph_register_backend("not-a-backend", list()), "EpwMorphBackend")
@@ -127,7 +130,8 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         optional_variable_id = NA_character_,
         method = "offset",
         required = TRUE,
-        derived = FALSE
+        derived = FALSE,
+        method_choices = list(c("offset", "plus_two"))
     )
     runner <- function(context, backend) {
         epw <- context$epw$clone()
@@ -154,6 +158,11 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
 
     recipe <- epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "plus_two"))
     expect_equal(recipe$methods[["dry"]], "plus_two")
+    expect_equal(epw_morph_variables(recipe), "tas")
+    expect_error(
+        epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "scale")),
+        "Unsupported"
+    )
     context <- epw_morph_context(
         epw = eplusr::read_epw(get_cache_epw()),
         climate = data.table::data.table(
@@ -394,9 +403,14 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     baseline_data <- data.table::as.data.table(epw$data())
     expect_true(all(c(
         "dry_bulb_temperature",
+        "relative_humidity",
         "dew_point_temperature",
+        "atmospheric_pressure",
+        "global_horizontal_radiation",
         "diffuse_horizontal_radiation",
         "direct_normal_radiation",
+        "wind_speed",
+        "total_sky_cover",
         "opaque_sky_cover"
     ) %in% names(result_data)))
     expect_true(any(abs(result_data$dry_bulb_temperature - baseline_data$dry_bulb_temperature) > 1e-6, na.rm = TRUE))

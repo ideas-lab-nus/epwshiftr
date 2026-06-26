@@ -61,6 +61,15 @@ periods <- epw_morph_periods(`2060s` = 2060L)
 `"minimal"` is useful for relaxed demonstrations, and `"extended"` adds related
 variables for future recipes.
 
+When you already have a recipe or backend object, ask that object for its
+variables instead of choosing a named set manually:
+
+```r
+belcher_recipe <- epw_morph_recipe("belcher")
+epw_morph_variables(belcher_recipe)
+epw_morph_variables(epw_morph_backend("belcher"))
+```
+
 # Recipes and Backends
 
 A recipe selects a backend and carries backend-specific method overrides. The
@@ -78,10 +87,11 @@ belcher$rules()
 ```
 
 The backend rules are the contract between planning and execution. Each rule
-declares a backend step, the EPW weather field it produces or checks, the
-required CMIP variable, the default method, and whether the step is derived from
-other backend outputs. `preview_plan()` and `summarise_baseline()` read these
-rules; they do not keep a separate hard-coded list of Belcher fields.
+declares a backend step, the EPW weather field it produces or checks, required
+and optional CMIP variables, method choices, and whether the step is derived
+from other backend outputs. `preview_plan()`, `summarise_baseline()`, and
+`epw_morph_variables()` read these rules; they do not keep a separate
+hard-coded list of Belcher fields.
 
 Use method overrides when the algorithm is still Belcher but you want a
 different transformation for selected primary variables:
@@ -114,7 +124,8 @@ but are not independent method overrides.
 
 Register a new backend when the variable requirements, output fields, or
 execution algorithm change. A backend is an `EpwMorphBackend` R6 object with a
-rule table and a runner function.
+rule table and a runner function. The built-in `"belcher"` backend is just the
+first registration; it is not a special execution path.
 
 The runner receives one canonical context:
 
@@ -128,6 +139,12 @@ The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
 columns needed by `write_epw()`.
 
+Rule tables must include `step`, `epw_field`, `method`, and `required`. They can
+use either the compact scalar columns `variable_id` and `optional_variable_id`
+or list columns `required_variables` and `optional_variables`. Use a
+`method_choices` list column when one step supports a narrower set of method
+values than the backend as a whole.
+
 This minimal backend copies the baseline EPW and offsets dry-bulb temperature.
 It is deliberately simple: a real backend would read `context$climate`, validate
 its required variables, and calculate weather fields from those rows.
@@ -140,7 +157,8 @@ offset_rules <- data.table::data.table(
     optional_variable_id = NA_character_,
     method = "plus_one",
     required = TRUE,
-    derived = FALSE
+    derived = FALSE,
+    method_choices = list(c("plus_one", "plus_two"))
 )
 
 offset_runner <- function(context, backend) {
@@ -174,6 +192,8 @@ offset_recipe <- epw_morph_recipe(
     backend = "constant_offset",
     methods = c(dry = "plus_two")
 )
+
+epw_morph_variables(offset_recipe)
 ```
 
 Use the recipe exactly like the built-in one:

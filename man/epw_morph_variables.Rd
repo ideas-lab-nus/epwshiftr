@@ -7,7 +7,8 @@
 epw_morph_variables(level = c("recommended", "minimal", "extended"))
 }
 \arguments{
-\item{level}{Variable set level.}
+\item{level}{Variable set level, an \link{EpwMorphBackend} object, or an
+\code{\link[=epw_morph_recipe]{epw_morph_recipe()}} object.}
 }
 \value{
 A character vector of CMIP variable IDs.
