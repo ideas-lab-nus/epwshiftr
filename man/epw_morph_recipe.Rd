@@ -4,10 +4,15 @@
 \alias{epw_morph_recipe}
 \title{EPW morphing recipe}
 \usage{
-epw_morph_recipe(name = "belcher")
+epw_morph_recipe(name = "belcher", backend = name, methods = NULL)
 }
 \arguments{
-\item{name}{Recipe name. Currently only \code{"belcher"} is implemented.}
+\item{name}{Recipe name. Defaults to \code{"belcher"}.}
+
+\item{backend}{Backend name. Defaults to \code{name}.}
+
+\item{methods}{Optional named character vector overriding morphing methods for
+backend steps.}
 }
 \value{
 A recipe list.

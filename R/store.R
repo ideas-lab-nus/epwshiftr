@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.2.0"
+STORE_SCHEMA_VERSION <- "2.3.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -3300,6 +3300,7 @@ EsgStore <- R6::R6Class(
             private$migrate_schema_to_2(current)
             private$migrate_schema_to_2_1(current)
             private$migrate_schema_to_2_2(current)
+            private$migrate_schema_to_2_3(current)
             private$set_store_schema_version(STORE_SCHEMA_VERSION)
             invisible(NULL)
         },
@@ -3364,6 +3365,15 @@ EsgStore <- R6::R6Class(
             private$init_epw_morph_schema()
             invisible(NULL)
         },
+
+        migrate_schema_to_2_3 = function(current) {
+            private$init_epw_morph_schema()
+            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lon DOUBLE")
+            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lat DOUBLE")
+            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS dist DOUBLE")
+            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS years_json VARCHAR")
+            invisible(NULL)
+        },
         # }}}
 
         # init_epw_morph_schema {{{
@@ -3415,6 +3425,10 @@ EsgStore <- R6::R6Class(
                     stat VARCHAR,
                     value DOUBLE,
                     units VARCHAR,
+                    lon DOUBLE,
+                    lat DOUBLE,
+                    dist DOUBLE,
+                    years_json VARCHAR,
                     coverage DOUBLE,
                     n_records INTEGER,
                     created_at TIMESTAMP

@@ -246,7 +246,9 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         periods = epw_morph_periods(`2060s` = 2060L),
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     )
-    morphed <- shift_morph(climate, strict = FALSE)
+    morph_recipe <- epw_morph_recipe(methods = c(tdb = "shift"))
+    expect_equal(epw_morph_variables(morph_recipe), epw_morph_variables("recommended"))
+    morphed <- shift_morph(climate, recipe = morph_recipe, strict = FALSE)
     epws <- shift_epw(morphed, dir = "shift-epw")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
