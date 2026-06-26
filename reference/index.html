@@ -87,8 +87,8 @@
     </div>
 
     <table class="ref-index"><colgroup><col class="alias"><col class="title"></colgroup><tbody><tr><th colspan="2">
-          <h2 id="esg-dictionaries">ESG dictionaries <a href="#esg-dictionaries" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
+          <h2 id="esg-dictionaries-and-vocabularies">ESG dictionaries and vocabularies <a href="#esg-dictionaries-and-vocabularies" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Build and validate project-specific controlled vocabularies.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="EsgDict.html">esgdict()</a></code> <code><a href="EsgDict.html">esgdict_set_default()</a></code> <code><a href="EsgDict.html">esgdict_get_default()</a></code> </p>
@@ -103,8 +103,8 @@
         </td>
         <td><p>Check ESG Dictionary Parameter Values</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="esgf-search-services">ESGF search services <a href="#esgf-search-services" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Start with esg_query() / EsgQuery for ESGF search records and result objects.</p>
+          <h2 id="esgf-queries-and-results">ESGF queries and results <a href="#esgf-queries-and-results" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Query ESGF search services and work with returned result objects.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="EsgQuery.html">esg_query()</a></code> </p>
@@ -122,27 +122,7 @@
           <p><code><a href="data_node_status.html">data_node_status()</a></code> </p>
         </td>
         <td><p>Get status of ESGF data nodes</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="remote-esgf-data-access">Remote ESGF data access <a href="#remote-esgf-data-access" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
-        </th>
-      </tr></tbody><tbody><tr><td>
-          <p><code><a href="EsgDataset.html">EsgDataset</a></code> </p>
-        </td>
-        <td><p>Remote NetCDF Dataset Access via OPeNDAP</p></td>
       </tr><tr><td>
-          <p><code><a href="Downloader.html">Downloader</a></code> </p>
-        </td>
-        <td><p>General Purpose File Downloader</p></td>
-      </tr><tr><td>
-          <p><code><a href="EsgStore.html">EsgStore</a></code> </p>
-        </td>
-        <td><p>Local ESGF Store</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="solr-date-helpers">Solr date helpers <a href="#solr-date-helpers" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
-        </th>
-      </tr></tbody><tbody><tr><td>
           <p><code><a href="solr_date.html">solr_date()</a></code> </p>
         </td>
         <td><p>Parse a Solr date, Date Math expression, or range</p></td>
@@ -151,13 +131,33 @@
         </td>
         <td><p>Check whether an object is a parsed Solr date</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="create-future-epws">Create future EPWs <a href="#create-future-epws" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
+          <h2 id="climate-data-access-and-storage">Climate data access and storage <a href="#climate-data-access-and-storage" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Open remote datasets, manage local stores, and run persistent downloads.</p>
+        </th>
+      </tr></tbody><tbody><tr><td>
+          <p><code><a href="EsgDataset.html">EsgDataset</a></code> </p>
+        </td>
+        <td><p>Remote NetCDF Dataset Access via OPeNDAP</p></td>
+      </tr><tr><td>
+          <p><code><a href="EsgStore.html">EsgStore</a></code> </p>
+        </td>
+        <td><p>Local ESGF Store</p></td>
+      </tr><tr><td>
+          <p><code><a href="Downloader.html">Downloader</a></code> </p>
+        </td>
+        <td><p>General Purpose File Downloader</p></td>
+      </tr></tbody><tbody><tr><th colspan="2">
+          <h2 id="epw-morphing-and-backends">EPW morphing and backends <a href="#epw-morphing-and-backends" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Configure store-native EPW morphing, recipes, and statistical downscaling backends.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="EpwMorpher.html">EpwMorpher</a></code> </p>
         </td>
         <td><p>Store-native EPW morpher</p></td>
+      </tr><tr><td>
+          <p><code><a href="EpwMorphBackend.html">EpwMorphBackend</a></code> </p>
+        </td>
+        <td><p>EPW morphing backend</p></td>
       </tr><tr><td>
           <p><code><a href="epw_morpher.html">epw_morpher()</a></code> </p>
         </td>
@@ -174,16 +174,32 @@
           <p><code><a href="epw_morph_variables.html">epw_morph_variables()</a></code> </p>
         </td>
         <td><p>EPW morphing variable sets</p></td>
+      </tr><tr><td>
+          <p><code><a href="epw_morph_backends.html">epw_morph_backends()</a></code> </p>
+        </td>
+        <td><p>EPW morphing backends</p></td>
+      </tr><tr><td>
+          <p><code><a href="epw_morph_backend.html">epw_morph_backend()</a></code> </p>
+        </td>
+        <td><p>Get an EPW morphing backend</p></td>
+      </tr><tr><td>
+          <p><code><a href="epw_morph_register_backend.html">epw_morph_register_backend()</a></code> </p>
+        </td>
+        <td><p>Register an EPW morphing backend</p></td>
+      </tr><tr><td>
+          <p><code><a href="epw_morph_result.html">epw_morph_result()</a></code> </p>
+        </td>
+        <td><p>Create an EPW morphing backend result</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="store-native-shift-workflow">Store-native shift workflow <a href="#store-native-shift-workflow" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
+          <p class="section-desc"></p><p>Run the high-level staged workflow from request collection to future EPW output.</p>
         </th>
       </tr></tbody><tbody><tr><td>
           <p><code><a href="shift_api.html">shift_request()</a></code> <code><a href="shift_api.html">shift_site()</a></code> <code><a href="shift_api.html">shift_collect()</a></code> <code><a href="shift_api.html">shift_download()</a></code> <code><a href="shift_api.html">shift_extract()</a></code> <code><a href="shift_api.html">shift_morph()</a></code> <code><a href="shift_api.html">shift_epw()</a></code> <code><a href="shift_api.html">shift_check()</a></code> <code><a href="shift_api.html">shift_refresh()</a></code> <code><a href="shift_api.html">shift_ids()</a></code> <code><a href="shift_api.html">shift_datasets()</a></code> <code><a href="shift_api.html">shift_files()</a></code> <code><a href="shift_api.html">shift_data()</a></code> <code><a href="shift_api.html">shift_diagnostics()</a></code> <code><a href="shift_api.html">shift_store()</a></code> <code><a href="shift_api.html">shift_target()</a></code> <code><a href="shift_api.html">shift_coverage()</a></code> <code><a href="shift_api.html">shift_outputs()</a></code> <code><a href="shift_api.html">shift_artifacts()</a></code> <code><a href="shift_api.html">shift_status()</a></code> </p>
         </td>
         <td><p>Store-native shift workflow API</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="command-line-interface">Command line interface <a href="#command-line-interface" class="anchor" aria-hidden="true"></a></h2>
+          <h2 id="command-line-and-package-options">Command line and package options <a href="#command-line-and-package-options" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>
         </th>
       </tr></tbody><tbody><tr><td>
@@ -198,11 +214,7 @@
           <p><code><a href="uninstall_cli.html">uninstall_cli()</a></code> </p>
         </td>
         <td><p>Uninstall the epwshiftr command launcher</p></td>
-      </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="epwshiftr-options">epwshiftr Options <a href="#epwshiftr-options" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p>
-        </th>
-      </tr></tbody><tbody><tr><td>
+      </tr><tr><td>
           <p><code><a href="epwshiftr-package.html">epwshiftr</a></code> <code><a href="epwshiftr-package.html">epwshiftr-package</a></code> </p>
         </td>
         <td><p>epwshiftr: Create future EnergyPlus Weather files using CMIP6 data</p></td>

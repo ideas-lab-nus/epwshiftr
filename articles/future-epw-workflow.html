@@ -272,9 +272,9 @@ object:</p>
 site ID is short and predictable, while the EPW file itself is passed
 later as the morphing baseline.</p>
 <p><code><a href="../reference/epw_morph_variables.html">epw_morph_variables()</a></code> returns the CMIP variable IDs
-needed by the morphing recipe. The result is a plain character vector
-because the same variable IDs are used at several workflow stages: first
-as the ESGF <code>variable_id</code> filter in
+needed by the selected morphing recipe. The result is a plain character
+vector because the same variable IDs are used at several workflow
+stages: first as the ESGF <code>variable_id</code> filter in
 <code><a href="../reference/shift_api.html">shift_request()</a></code>, then as the extraction variable list in
 <code><a href="../reference/shift_api.html">shift_extract()</a></code>, and finally as the coverage check used by
 <code><a href="../reference/shift_api.html">shift_morph()</a></code>.</p>
@@ -290,10 +290,12 @@ set.</li>
 <code>"extended"</code>: the recommended set plus related max/min
 variables for future recipes.</li>
 </ul>
-<p>This article uses <code>"recommended"</code> because
-<code>strict = TRUE</code> requires every recipe variable.</p>
+<p>This article uses the default Belcher recipe because
+<code>strict = TRUE</code> requires every variable declared by the
+selected backend.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"recommended"</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
+<span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">shift_recipe</span><span class="op">)</span></span>
 <span><span class="va">variables</span></span>
 <span><span class="co">#&gt; [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_request()</a></code> describes the remote climate data you
@@ -787,11 +789,29 @@ morphed hourly results back to the store. With
 coverage are blocking errors instead of warnings.</p>
 <p><code><a href="../reference/shift_api.html">shift_morph()</a></code> wraps the lower-level
 <code>EpwMorpher</code> planning and execution API. See <a href="epw-morpher.html">EpwMorpher</a> when you need to inspect monthly
-summaries, factor diagnostics, or case grouping.</p>
+summaries, factor diagnostics, case grouping, or custom backend
+registration.</p>
+<p>The same <code>shift_recipe</code> used to choose request variables
+can be passed into <code><a href="../reference/shift_api.html">shift_morph()</a></code>. Adjust the recipe when
+you want to change Belcher methods or select another registered
+backend:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"belcher"</span>,</span>
+<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>tdb <span class="op">=</span> <span class="st">"shift"</span>, rh <span class="op">=</span> <span class="st">"shift"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
+<span>    <span class="va">extracted</span>,</span>
+<span>    baseline <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    recipe <span class="op">=</span> <span class="va">shift_recipe</span>,</span>
+<span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    baseline <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    recipe <span class="op">=</span> <span class="va">shift_recipe</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -807,7 +827,7 @@ summaries, factor diagnostics, or case grouping.</p>
 hourly future weather data as Parquet artifacts, not EPW text files yet.
 Inspect the artifact rows when you want to see where those intermediate
 results live:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_artifacts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_artifacts</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span>
 <span><span class="va">morph_artifacts</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;      kind    role</span></span>
@@ -815,14 +835,14 @@ results live:</p>
 <span><span class="co">#&gt; 1: output derived</span></span>
 <span><span class="co">#&gt;                                                                                                                                                       relative_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: outputs/epw-morph/04b04a2f8bb330953d5701cd25caaf1453d90caf0d8e6eb3e7d5873697688945/case=3a1305236352154a8d570618b42d187e665ca9ead1ab249ece38431bdbfd1270.parquet</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: outputs/epw-morph/7151ba639a04006fccc4809f2754db0c5111217b4b2083cb7cc8c02bb90875ca/case=449d8e0e3db38f5e39681257d5f5c78d802a31e5bdcaeb40f9045f798938b76e.parquet</span></span></code></pre></div>
 <p>Use the same <code><a href="../reference/shift_api.html">shift_data()</a></code> helper to preview the hourly
 morphed weather table. The metadata columns identify the morphing case;
 the weather columns are the hourly EPW-style values that will be written
 to the final EPW. The preview below omits long IDs to keep the table
 readable; include <code>case_id</code> in <code>columns</code> when you
 need to join rows back to a specific morphing case.</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">morphed</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -898,9 +918,9 @@ morphed hourly results. It returns a <code>ShiftOutputs</code> stage.
 The first chunk assigns the result while hiding verbose writer output;
 the second prints the stage object.</p>
 <p>For the lower-level write path and output registry, see <a href="epw-morpher.html">EpwMorpher</a>.</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span></span>
 <span><span class="co">#&gt; &lt;epwshiftr::ShiftOutputs&gt;</span></span>
 <span><span class="co">#&gt;   stage:  outputs</span></span>
@@ -911,7 +931,7 @@ the second prints the stage object.</p>
 <p><code><a href="../reference/shift_api.html">shift_outputs()</a></code> lists the EPW files written by
 <code><a href="../reference/shift_api.html">shift_epw()</a></code>. These are the files you can pass to EnergyPlus
 or open with <code><a href="https://hongyuanjia.github.io/eplusr/reference/read_epw.html" class="external-link">eplusr::read_epw()</a></code>.</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">path</span>, <span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">period</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;                                                                                                                                     path</span></span>
@@ -928,7 +948,7 @@ step. Output metadata such as <code>output_id</code>,
 <code>case_id</code>, and <code>path</code> are available in
 <code>shift_data(epws)</code>; they are omitted here so the weather
 values stay visible.</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">epws</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -1017,7 +1037,7 @@ first?</li>
 check. It returns a single status string so it can be used in scripts,
 reports, or simple guards. For a successful run, the sequence should end
 with an EPW stage marked <code>written</code>.</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
 <span>    stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"request"</span>, <span class="st">"collect"</span>, <span class="st">"extract"</span>, <span class="st">"morph"</span>, <span class="st">"epw"</span><span class="op">)</span>,</span>
 <span>    status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -1047,7 +1067,7 @@ manifest IDs first.</p>
 <p>For common causes and the first place to look for each class of
 failure, see <a href="esgf-troubleshooting.html">ESGF
 troubleshooting</a>.</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Empty data.table (0 rows and 16 cols): stage,severity,code,message,query_id,session_id...</span></span></code></pre></div>
 </div>
@@ -1062,7 +1082,7 @@ selection, or extraction period needs to be adjusted.</p>
 <p>Coverage problems usually originate in query selection, time
 filtering, or remote access. The <a href="esgf-troubleshooting.html">ESGF troubleshooting</a> article
 collects those checks in one place.</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_coverage</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;    variable_id complete status output_rows output_file_count</span></span>
@@ -1083,7 +1103,7 @@ case metadata. These are the files to pass to EnergyPlus, archive with a
 simulation run, or reopen with <code><a href="https://hongyuanjia.github.io/eplusr/reference/read_epw.html" class="external-link">eplusr::read_epw()</a></code>. The
 store also keeps the intermediate Parquet artifacts so the workflow can
 be inspected or reused without repeating the remote query.</p>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
 <span>    file <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">basename</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span>,</span>
@@ -1106,7 +1126,7 @@ be inspected or reused without repeating the remote query.</p>
 for advanced users who want to inspect the lower-level
 <code>EsgStore</code>, <code>EpwMorpher</code>, or manifest tables
 directly.</p>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="fu"><a href="../reference/shift_api.html">shift_ids</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "query_id"    "plan_id"     "summary_id"  "baseline_id" "morph_id"</span></span></code></pre></div>
 </div>

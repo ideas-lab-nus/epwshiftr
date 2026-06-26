@@ -134,8 +134,8 @@ recommended user-facing interface in <a href="future-epw-workflow.html">Create F
 engine.</p>
 <p>Use <code>EpwMorpher</code> directly when you need to inspect monthly
 summaries, preview factor calculations, diagnose missing variables,
-choose morphing case grouping, or rerun only the morph/write part of a
-workflow.</p>
+choose morphing case grouping, change the statistical downscaling
+backend, or rerun only the morph/write part of a workflow.</p>
 <div class="section level2">
 <h2 id="inputs">Inputs<a class="anchor" aria-label="anchor" href="#inputs"></a>
 </h2>
@@ -170,13 +170,168 @@ directly:</p>
 the main workflow. <code>"minimal"</code> is useful for relaxed
 demonstrations, and <code>"extended"</code> adds related variables for
 future recipes.</p>
+<p>When you already have a recipe or backend object, ask that object for
+its variables instead of choosing a named set manually:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">belcher_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">belcher_recipe</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="recipes-and-backends">Recipes and Backends<a class="anchor" aria-label="anchor" href="#recipes-and-backends"></a>
+</h2>
+<p>A recipe selects a backend and carries backend-specific method
+overrides. The default recipe is <code>"belcher"</code>, which applies
+the Belcher-style statistical downscaling steps used by the high-level
+workflow.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_backends.html">epw_morph_backends</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">belcher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
+<span><span class="va">belcher</span><span class="op">$</span><span class="va">label</span></span>
+<span><span class="va">belcher</span><span class="op">$</span><span class="fu">required_variables</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">belcher</span><span class="op">$</span><span class="fu">methods</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">belcher</span><span class="op">$</span><span class="fu">rules</span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>The backend rules are the contract between planning and execution.
+Each rule declares a backend step, the EPW weather field it produces or
+checks, required and optional CMIP variables, method choices, and
+whether the step is derived from other backend outputs.
+<code>preview_plan()</code>, <code>summarise_baseline()</code>, and
+<code><a href="../reference/epw_morph_variables.html">epw_morph_variables()</a></code> read these rules; they do not keep a
+separate hard-coded list of Belcher fields.</p>
+<p>Use method overrides when the algorithm is still Belcher but you want
+a different transformation for selected primary variables:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">belcher_shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"belcher"</span>,</span>
+<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>        tdb <span class="op">=</span> <span class="st">"shift"</span>,</span>
+<span>        rh <span class="op">=</span> <span class="st">"shift"</span></span>
+<span>    <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
+<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
+<span>    recipe <span class="op">=</span> <span class="va">belcher_shift_recipe</span>,</span>
+<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The override names must be backend step names. For the built-in
+Belcher backend, the primary overrideable steps are <code>tdb</code>,
+<code>rh</code>, <code>p</code>, <code>hor_ir</code>,
+<code>glob_rad</code>, and <code>wind</code>; allowed values are
+<code>"shift"</code>, <code>"stretch"</code>, and
+<code>"combined"</code>. Derived steps such as dew point and direct
+normal radiation are declared in the rules but are not independent
+method overrides.</p>
+<div class="section level3">
+<h3 id="adding-a-backend">Adding a Backend<a class="anchor" aria-label="anchor" href="#adding-a-backend"></a>
+</h3>
+<p>Register a new backend when the variable requirements, output fields,
+or execution algorithm change. A backend is an
+<code>EpwMorphBackend</code> R6 object with a rule table and a runner
+function. The built-in <code>"belcher"</code> backend is just the first
+registration; it is not a special execution path.</p>
+<p>The runner receives one canonical context:</p>
+<ul>
+<li>
+<code>context$epw</code>: the baseline <code><a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a></code>
+object;</li>
+<li>
+<code>context$climate</code>: store-native climate rows with
+<code>variable_id</code>, <code>time</code>, <code>period</code>,
+<code>year</code>, <code>lon</code>, <code>lat</code>,
+<code>dist</code>, <code>units</code>, <code>value</code>, and case
+metadata;</li>
+<li>
+<code>context$recipe</code>: the selected recipe, including method
+overrides and rules;</li>
+<li>
+<code>context$by</code>, <code>context$case</code>,
+<code>context$strict</code>, and <code>context$warning</code>.</li>
+</ul>
+<p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
+hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
+as Parquet and adds the case metadata columns needed by
+<code>write_epw()</code>.</p>
+<p>Rule tables must include <code>step</code>, <code>epw_field</code>,
+<code>method</code>, and <code>required</code>. They can use either the
+compact scalar columns <code>variable_id</code> and
+<code>optional_variable_id</code> or list columns
+<code>required_variables</code> and <code>optional_variables</code>. Use
+a <code>method_choices</code> list column when one step supports a
+narrower set of method values than the backend as a whole.</p>
+<p>This minimal backend copies the baseline EPW and offsets dry-bulb
+temperature. It is deliberately simple: a real backend would read
+<code>context$climate</code>, validate its required variables, and
+calculate weather fields from those rows.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">offset_rules</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
+<span>    step <span class="op">=</span> <span class="st">"dry"</span>,</span>
+<span>    epw_field <span class="op">=</span> <span class="st">"dry_bulb_temperature"</span>,</span>
+<span>    variable_id <span class="op">=</span> <span class="st">"tas"</span>,</span>
+<span>    optional_variable_id <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
+<span>    method <span class="op">=</span> <span class="st">"plus_one"</span>,</span>
+<span>    required <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>    derived <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>    method_choices <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"plus_one"</span>, <span class="st">"plus_two"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">offset_runner</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">context</span>, <span class="va">backend</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">epw</span> <span class="op">&lt;-</span> <span class="va">context</span><span class="op">$</span><span class="va">epw</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">suppressMessages</a></span><span class="op">(</span><span class="va">epw</span><span class="op">$</span><span class="fu">drop_unit</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span>    <span class="va">weather</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/as.data.table.html" class="external-link">as.data.table</a></span><span class="op">(</span><span class="va">epw</span><span class="op">$</span><span class="fu">data</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span>    <span class="va">amount</span> <span class="op">&lt;-</span> <span class="kw"><a href="https://rdrr.io/r/base/switch.html" class="external-link">switch</a></span><span class="op">(</span></span>
+<span>        <span class="va">context</span><span class="op">$</span><span class="va">recipe</span><span class="op">$</span><span class="va">methods</span><span class="op">[[</span><span class="st">"dry"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>        plus_two <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>        plus_one <span class="op">=</span> <span class="fl">1</span></span>
+<span>    <span class="op">)</span></span>
+<span>    <span class="va">weather</span><span class="op">[</span>, <span class="va">dry_bulb_temperature</span> <span class="op">:=</span> <span class="va">dry_bulb_temperature</span> <span class="op">+</span> <span class="va">amount</span><span class="op">]</span></span>
+<span></span>
+<span>    <span class="fu"><a href="../reference/epw_morph_result.html">epw_morph_result</a></span><span class="op">(</span><span class="va">context</span>, epw <span class="op">=</span> <span class="va">epw</span>, data <span class="op">=</span> <span class="va">weather</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">offset_backend</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EpwMorphBackend.html">EpwMorphBackend</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span></span>
+<span>    name <span class="op">=</span> <span class="st">"constant_offset"</span>,</span>
+<span>    label <span class="op">=</span> <span class="st">"Constant dry-bulb offset"</span>,</span>
+<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>dry <span class="op">=</span> <span class="st">"plus_one"</span><span class="op">)</span>,</span>
+<span>    method_choices <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"plus_one"</span>, <span class="st">"plus_two"</span><span class="op">)</span>,</span>
+<span>    rules <span class="op">=</span> <span class="va">offset_rules</span>,</span>
+<span>    runner <span class="op">=</span> <span class="va">offset_runner</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/epw_morph_register_backend.html">epw_morph_register_backend</a></span><span class="op">(</span><span class="st">"constant_offset"</span>, <span class="va">offset_backend</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">offset_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"constant_offset"</span>,</span>
+<span>    backend <span class="op">=</span> <span class="st">"constant_offset"</span>,</span>
+<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>dry <span class="op">=</span> <span class="st">"plus_two"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">offset_recipe</span><span class="op">)</span></span></code></pre></div>
+<p>Use the recipe exactly like the built-in one:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
+<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
+<span>    recipe <span class="op">=</span> <span class="va">offset_recipe</span>,</span>
+<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Prefer registering a new backend name over overwriting
+<code>"belcher"</code>. Use <code>overwrite = TRUE</code> only for
+interactive experiments where replacing an existing registration is
+intentional.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="preflight-before-writing">Preflight Before Writing<a class="anchor" aria-label="anchor" href="#preflight-before-writing"></a>
 </h2>
 <p>Preflight checks extraction coverage and baseline readiness without
 modifying store state.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">diagnostics</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -195,7 +350,7 @@ extracted climate data.</p>
 <p>Morphing uses monthly summary statistics. The climate summary comes
 from store extraction outputs; the baseline summary comes from the EPW
 file.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -217,7 +372,7 @@ later stages without re-extracting climate data.</p>
 <p><code>preview_plan()</code> calculates plan rows, factor rows, and
 diagnostics without writing them. <code>plan()</code> persists the
 selected plan and factor rows.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
 <span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
 <span>    baseline_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span>,</span>
@@ -244,7 +399,7 @@ summary and reflect the cases you intend to write.</p>
 <h2 id="diagnose-and-run">Diagnose and Run<a class="anchor" aria-label="anchor" href="#diagnose-and-run"></a>
 </h2>
 <p>Run diagnostics before executing strict plans.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_id</span> <span class="op">&lt;-</span> <span class="va">plan</span><span class="op">$</span><span class="va">morph_id</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span></span>
 <span><span class="va">morpher</span><span class="op">$</span><span class="fu">diagnose</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
@@ -262,7 +417,7 @@ under the store. It does not write EPW text files yet.</p>
 <h2 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
 </h2>
 <p>Write EnergyPlus Weather files after morphing succeeds.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">write_epw</span><span class="op">(</span></span>
 <span>    <span class="va">morph_id</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
@@ -283,7 +438,7 @@ not need lower-level manifest IDs.</p>
 </h2>
 <p>For scripts that need the lower-level engine but not every
 intermediate object, use <code>workflow()</code>.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -296,7 +451,7 @@ intermediate object, use <code>workflow()</code>.</p>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></code></pre></div>
 <p>For most users, the equivalent high-level path is still clearer:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="va">files</span> <span class="op">|&gt;</span></span>
 <span>    <span class="fu"><a href="../reference/shift_api.html">shift_extract</a></span><span class="op">(</span>site <span class="op">=</span> <span class="va">site</span>, periods <span class="op">=</span> <span class="va">periods</span><span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>    <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span>baseline <span class="op">=</span> <span class="va">epw</span>, strict <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span> <span class="op">|&gt;</span></span>

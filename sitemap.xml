@@ -22,6 +22,7 @@
 <url><loc>/index.html</loc></url>
 <url><loc>/news/index.html</loc></url>
 <url><loc>/reference/Downloader.html</loc></url>
+<url><loc>/reference/EpwMorphBackend.html</loc></url>
 <url><loc>/reference/EpwMorpher.html</loc></url>
 <url><loc>/reference/EsgDataset.html</loc></url>
 <url><loc>/reference/EsgDict.html</loc></url>
@@ -33,8 +34,12 @@
 <url><loc>/reference/EsgStore.html</loc></url>
 <url><loc>/reference/as.character.DiskCache.html</loc></url>
 <url><loc>/reference/data_node_status.html</loc></url>
+<url><loc>/reference/epw_morph_backend.html</loc></url>
+<url><loc>/reference/epw_morph_backends.html</loc></url>
 <url><loc>/reference/epw_morph_periods.html</loc></url>
 <url><loc>/reference/epw_morph_recipe.html</loc></url>
+<url><loc>/reference/epw_morph_register_backend.html</loc></url>
+<url><loc>/reference/epw_morph_result.html</loc></url>
 <url><loc>/reference/epw_morph_variables.html</loc></url>
 <url><loc>/reference/epw_morpher.html</loc></url>
 <url><loc>/reference/epwshiftr-package.html</loc></url>
