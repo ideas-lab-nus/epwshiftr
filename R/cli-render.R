@@ -59,6 +59,15 @@ epwshiftr_cli_render <- function(result, context = NULL) {
     if (identical(group, "storage")) {
         return(epwshiftr_cli_render_storage(result, command, action))
     }
+    if (identical(group, "shift")) {
+        return(epwshiftr_cli_render_shift(result, command))
+    }
+    if (identical(group, "extract")) {
+        return(epwshiftr_cli_render_extract(result, command))
+    }
+    if (identical(group, "morph")) {
+        return(epwshiftr_cli_render_morph(result, command))
+    }
     epwshiftr_cli_render_default(result)
 }
 
@@ -357,6 +366,240 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
         "Storage result"
     )
     epwshiftr_cli_render_default(result, title = title)
+}
+
+
+epwshiftr_cli_render_shift <- function(result, command) {
+    if (identical(command, "run")) {
+        cli::cli_h1("Shift workflow")
+        epwshiftr_cli_render_summary(result[intersect(c("status", "query_id", "morph_id", "diagnostic_count"), names(result))], "Summary")
+        epwshiftr_cli_render_table(result$coverage, "Coverage", c("plan_count", "complete", "failed", "output_rows"))
+        epwshiftr_cli_render_table(result$outputs, "Outputs", c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"))
+        epwshiftr_cli_render_table(result$next_steps, "Next steps", c("step", "command"), show_types = FALSE)
+        return(invisible(NULL))
+    }
+    if (identical(command, "show")) {
+        return(epwshiftr_cli_render_shift_show(result))
+    }
+    if (identical(command, "config")) {
+        return(epwshiftr_cli_render_shift_config(result))
+    }
+    if (identical(command, "watch")) {
+        return(epwshiftr_cli_render_shift_watch(result))
+    }
+    title <- switch(
+        command,
+        status = "Shift status",
+        diagnostics = "Shift diagnostics",
+        outputs = "Shift outputs",
+        data = "Shift data",
+        "Shift result"
+    )
+    epwshiftr_cli_render_default(result, title = title)
+}
+
+
+epwshiftr_cli_render_shift_show <- function(result) {
+    cli::cli_h1("Shift workflow graph")
+    epwshiftr_cli_render_summary(result$summary, "Summary")
+    epwshiftr_cli_render_shift_tree(result)
+    epwshiftr_cli_render_table(
+        result$queries,
+        "Queries",
+        c("query_id", "label", "tracked", "file_current", "file_total", "download_incomplete", "download_retryable"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$plans,
+        "Extraction plans",
+        c("plan_id", "complete", "status", "query_id", "site_id", "variable_id", "output_rows", "last_error"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$morphs,
+        "Morph plans",
+        c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error"),
+        show_types = FALSE
+    )
+    if (isTRUE(result$include_outputs) || nrow(result$outputs)) {
+        epwshiftr_cli_render_table(
+            result$outputs,
+            "Outputs",
+            c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
+            show_types = FALSE
+        )
+    }
+    if (isTRUE(result$include_files)) {
+        epwshiftr_cli_render_table(
+            result$files,
+            "Files",
+            c("query_id", "file_key", "source_id", "experiment_id", "variant_label", "variable_id", "local_path"),
+            show_types = FALSE
+        )
+    }
+    invisible(NULL)
+}
+
+
+epwshiftr_cli_render_shift_tree <- function(result) {
+    queries <- data.table::as.data.table(result$queries)
+    plans <- data.table::as.data.table(result$plans)
+    morphs <- data.table::as.data.table(result$morphs)
+    links <- data.table::as.data.table(result$links)
+    outputs <- data.table::as.data.table(result$outputs)
+    if (!nrow(queries) && !nrow(plans) && !nrow(morphs)) {
+        return(invisible(NULL))
+    }
+    cli::cli_h2("Graph")
+    query_ids <- unique(c(
+        if (nrow(queries) && "query_id" %in% names(queries)) queries$query_id else character(),
+        if (nrow(plans) && "query_id" %in% names(plans)) plans$query_id else character()
+    ))
+    query_ids <- query_ids[!is.na(query_ids) & nzchar(query_ids)]
+    for (query_id in query_ids) {
+        cli::cli_text("query {query_id}")
+        plan_rows <- if (nrow(plans) && "query_id" %in% names(plans)) plans[plans$query_id == query_id] else plans[0]
+        for (i in seq_len(nrow(plan_rows))) {
+            plan_id <- plan_rows$plan_id[[i]]
+            plan_status <- epwshiftr_cli_string_default(plan_rows$status[[i]], "unknown")
+            cli::cli_text("  -> plan {plan_id} [{plan_status}]")
+            summary_ids <- if (nrow(links)) links$summary_id[links$plan_id == plan_id] else character()
+            morph_rows <- if (nrow(morphs) && length(summary_ids)) morphs[morphs$summary_id %in% summary_ids] else morphs[0]
+            for (j in seq_len(nrow(morph_rows))) {
+                morph_id <- morph_rows$morph_id[[j]]
+                morph_status <- epwshiftr_cli_string_default(morph_rows$status[[j]], "unknown")
+                cli::cli_text("     -> morph {morph_id} [{morph_status}]")
+                output_rows <- if (nrow(outputs)) outputs[outputs$morph_id == morph_id] else outputs[0]
+                if (nrow(output_rows)) {
+                    cli::cli_text("        -> outputs {nrow(output_rows)}")
+                }
+            }
+        }
+    }
+    invisible(NULL)
+}
+
+
+epwshiftr_cli_render_shift_config <- function(result) {
+    if (identical(result$action, "example")) {
+        cli::cli_h1("Shift config example")
+        epwshiftr_cli_render_summary(result[intersect(c("status", "output"), names(result))], "Summary")
+        if (is.na(result$output[[1L]])) {
+            json <- jsonlite::toJSON(result$config, auto_unbox = TRUE, pretty = TRUE, null = "null")
+            for (line in strsplit(json, "\n", fixed = TRUE)[[1L]]) {
+                cli::cli_text("{line}")
+            }
+        }
+        return(invisible(NULL))
+    }
+    if (identical(result$action, "validate")) {
+        cli::cli_h1("Shift config validation")
+        epwshiftr_cli_render_summary(result[intersect(c("status", "config"), names(result))], "Summary")
+        epwshiftr_cli_render_table(result$request, "Request")
+        epwshiftr_cli_render_table(result$site, "Site")
+        epwshiftr_cli_render_table(result$periods, "Periods")
+        return(invisible(NULL))
+    }
+    epwshiftr_cli_render_default(result, title = "Shift config")
+}
+
+
+epwshiftr_cli_render_shift_watch <- function(result) {
+    cli::cli_h1("Shift activity")
+    epwshiftr_cli_render_summary(result$summary, "Summary")
+    epwshiftr_cli_render_table(
+        result$downloads,
+        "Downloads",
+        c("status", "filename", "bytes_done", "size", "speed_bps", "eta_seconds", "attempts", "last_error", "session_id", "task_id", "file_key"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$plans,
+        "Extraction plans",
+        c("plan_id", "complete", "status", "query_id", "site_id", "variable_id", "output_rows", "last_error"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$morphs,
+        "Morph plans",
+        c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$outputs,
+        "Outputs",
+        c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$diagnostics,
+        "Diagnostics",
+        c("stage", "severity", "code", "message", "query_id", "plan_id", "morph_id", "action"),
+        show_types = FALSE
+    )
+    epwshiftr_cli_render_table(
+        result$events,
+        "Recent events",
+        c("created_at", "event", "status", "error", "job_id", "session_id", "task_id", "file_key"),
+        show_types = FALSE
+    )
+    invisible(NULL)
+}
+
+
+epwshiftr_cli_render_extract <- function(result, command) {
+    title <- switch(
+        command,
+        plan = "Extraction plan",
+        run = "Extraction run",
+        retry = "Extraction retry",
+        coverage = "Extraction coverage",
+        artifacts = "Extraction artifacts",
+        "Extraction result"
+    )
+    columns <- switch(
+        command,
+        plan = c("plan_id", "status", "query_id", "file_key", "site_id", "variable_id", "time_start", "time_stop"),
+        run = c("plan_id", "status", "query_id", "site_id", "variable_id", "attempt_count", "last_error", "updated_at"),
+        retry = c("plan_id", "status", "query_id", "site_id", "variable_id", "attempt_count", "last_error", "dry_run"),
+        coverage = c("plan_id", "complete", "status", "query_id", "site_id", "variable_id", "output_rows", "output_time_count", "last_error"),
+        artifacts = c("artifact_id", "kind", "role", "relative_path", "path", "created_at"),
+        NULL
+    )
+    epwshiftr_cli_render_table(result, title = title, columns = columns)
+}
+
+
+epwshiftr_cli_render_morph <- function(result, command) {
+    title <- switch(
+        command,
+        variables = "Morph variables",
+        backends = "Morph backends",
+        run = "Morph run",
+        epw = "Morph EPW outputs",
+        retry = "Morph retry",
+        status = "Morph status",
+        outputs = "Morph outputs",
+        "Morph result"
+    )
+    if (identical(command, "run") && is.list(result) && !is.data.frame(result)) {
+        cli::cli_h1(title)
+        epwshiftr_cli_render_summary(result[intersect(c("status", "morph_id", "diagnostic_count"), names(result))], "Summary")
+        epwshiftr_cli_render_table(result$plan, "Plan", c("morph_id", "status", "summary_id", "baseline_id", "strict", "last_error"))
+        epwshiftr_cli_render_table(result$results, "Results", c("case_id", "row_count", "output_path", "morph_id"))
+        return(invisible(NULL))
+    }
+    columns <- switch(
+        command,
+        variables = c("variable_id"),
+        backends = c("backend", "label", "required_variables", "methods"),
+        epw = c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
+        retry = c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error", "dry_run", "case_id", "row_count", "output_path"),
+        status = c("morph_id", "status", "label", "strict", "summary_id", "baseline_id", "updated_at", "last_error"),
+        outputs = c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
+        NULL
+    )
+    epwshiftr_cli_render_table(result, title = title, columns = columns)
 }
 
 
