@@ -156,6 +156,10 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr shift run --config PATH [--dry-run] [--download] [--overwrite] [--no-resume] [--no-progress]",
+            "  epwshiftr shift show [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--files] [--outputs]",
+            "  epwshiftr shift config example [--output PATH] [--overwrite]",
+            "  epwshiftr shift config validate --config PATH",
+            "  epwshiftr shift watch [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--follow] [--interval SECONDS] [--count N] [--events N]",
             "  epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
             "  epwshiftr shift diagnostics [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
             "  epwshiftr shift outputs --morph MORPH_ID",
@@ -166,6 +170,32 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Run a JSON-configured request -> collect -> optional download -> extract -> morph -> EPW workflow.",
             "The config is validated against inst/extdata/schema/shift-workflow-config.json."
+        ),
+        "shift show" = c(
+            "Usage: epwshiftr shift show [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--files] [--outputs]",
+            "",
+            "Show the store-backed query -> extraction -> morph -> output graph."
+        ),
+        "shift config" = c(
+            "Usage: epwshiftr shift config <example|validate> [options]",
+            "",
+            "Generate or validate JSON workflow configuration files."
+        ),
+        "shift config example" = c(
+            "Usage: epwshiftr shift config example [--output PATH] [--overwrite]",
+            "",
+            "Print or write an example JSON workflow configuration."
+        ),
+        "shift config validate" = c(
+            "Usage: epwshiftr shift config validate --config PATH",
+            "",
+            "Validate a JSON workflow configuration against the packaged schema."
+        ),
+        "shift watch" = c(
+            "Usage: epwshiftr shift watch [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--follow] [--interval SECONDS] [--count N] [--events N]",
+            "",
+            "Return a workflow activity snapshot with query, download, extraction, morphing, output, diagnostic, and event state.",
+            "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming."
         ),
         "shift status" = c(
             "Usage: epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
@@ -193,6 +223,7 @@ epwshiftr_cli_help_registry <- function() {
             "Commands:",
             "  epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--nearest N] [--filter key=value]...",
             "  epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "  epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume]",
             "  epwshiftr extract coverage [--plan PLAN_ID]",
             "  epwshiftr extract artifacts --plan PLAN_ID"
         ),
@@ -205,6 +236,11 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
             "",
             "Run selected extraction plans and write derived Parquet artifacts."
+        ),
+        "extract retry" = c(
+            "Usage: epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "",
+            "Preview or rerun extraction plans with retryable statuses."
         ),
         "extract coverage" = c(
             "Usage: epwshiftr extract coverage [--plan PLAN_ID]",
@@ -224,6 +260,7 @@ epwshiftr_cli_help_registry <- function() {
             "  epwshiftr morph backends",
             "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
             "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
+            "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume]",
             "  epwshiftr morph status [--morph MORPH_ID]",
             "  epwshiftr morph outputs [--morph MORPH_ID]"
         ),
@@ -246,6 +283,11 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
             "",
             "Write future EPW files for an existing morphing plan."
+        ),
+        "morph retry" = c(
+            "Usage: epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume]",
+            "",
+            "Preview or rerun existing morphing plans without replanning climate summaries or writing EPW files."
         ),
         "morph status" = c(
             "Usage: epwshiftr morph status [--morph MORPH_ID]",

@@ -2,6 +2,9 @@ epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALS
     switch(
         command,
         run = epwshiftr_cli_shift_run(store, args),
+        show = epwshiftr_cli_shift_show(store, args),
+        config = epwshiftr_cli_shift_config(store, args),
+        watch = epwshiftr_cli_shift_watch(store, args, jsonl = jsonl, quiet = quiet),
         status = epwshiftr_cli_shift_status(store, args),
         diagnostics = epwshiftr_cli_shift_diagnostics(store, args),
         outputs = epwshiftr_cli_shift_outputs(store, args),
@@ -9,33 +12,6 @@ epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALS
         epwshiftr_cli_usage_abort(sprintf("Unknown shift command: %s", command))
     )
 }
-
-
-epwshiftr_cli_extract <- function(store, command, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
-    switch(
-        command,
-        plan = epwshiftr_cli_extract_plan(store, args),
-        run = epwshiftr_cli_extract_run(store, args),
-        coverage = epwshiftr_cli_extract_coverage(store, args),
-        artifacts = epwshiftr_cli_extract_artifacts(store, args),
-        epwshiftr_cli_usage_abort(sprintf("Unknown extract command: %s", command))
-    )
-}
-
-
-epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
-    switch(
-        command,
-        variables = epwshiftr_cli_morph_variables(args),
-        backends = epwshiftr_cli_morph_backends(args),
-        run = epwshiftr_cli_morph_run(store, args),
-        epw = epwshiftr_cli_morph_epw(store, args),
-        status = epwshiftr_cli_morph_status(store, args),
-        outputs = epwshiftr_cli_morph_outputs(store, args),
-        epwshiftr_cli_usage_abort(sprintf("Unknown morph command: %s", command))
-    )
-}
-
 
 # shift -----------------------------------------------------------------------
 
@@ -124,7 +100,6 @@ epwshiftr_cli_shift_run <- function(store, args) {
     epwshiftr_cli_shift_stage_result(outputs)
 }
 
-
 epwshiftr_cli_shift_status <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--query", "--plan", "--morph"))
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -201,166 +176,6 @@ epwshiftr_cli_shift_data <- function(store, args) {
         case_id = epwshiftr_cli_csv(parsed$options[["--case"]])
     )
     shift_read_morph_data(store, results, n = limit, columns = columns)
-}
-
-
-# extract ---------------------------------------------------------------------
-
-epwshiftr_cli_extract_plan <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        options = c("--query", "--site-id", "--lon", "--lat", "--time", "--variable", "--nearest"),
-        multi_options = c("--filter")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    query_id <- epwshiftr_cli_required_single_id(parsed, "--query")
-    site_id <- epwshiftr_cli_required_option(parsed, "--site-id")
-    lon <- epwshiftr_cli_number(epwshiftr_cli_required_option(parsed, "--lon"), "--lon")
-    lat <- epwshiftr_cli_number(epwshiftr_cli_required_option(parsed, "--lat"), "--lat")
-    time <- epwshiftr_cli_time_range(epwshiftr_cli_required_option(parsed, "--time"))
-    store$plan_region(
-        query_id = query_id,
-        site_id = site_id,
-        lon = lon,
-        lat = lat,
-        time = time,
-        variable_id = epwshiftr_cli_csv(parsed$options[["--variable"]]),
-        filters = epwshiftr_cli_key_value_list(parsed$options[["--filter"]]),
-        nearest = epwshiftr_cli_count_or_default(parsed$options[["--nearest"]], "--nearest", 1L)
-    )
-}
-
-
-epwshiftr_cli_extract_run <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        flags = c("--overwrite", "--no-resume"),
-        options = c("--plan", "--fallback")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    fallback <- epwshiftr_cli_choice(parsed$options[["--fallback"]], c("auto", "error"), "--fallback", default = "auto")
-    store$extract(
-        plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
-        fallback = fallback,
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
-    )
-}
-
-
-epwshiftr_cli_extract_coverage <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
-    epwshiftr_cli_assert_no_positionals(parsed)
-    store$coverage(plan_id = epwshiftr_cli_ids(parsed$options[["--plan"]], "--plan", required = FALSE))
-}
-
-
-epwshiftr_cli_extract_artifacts <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
-    epwshiftr_cli_assert_no_positionals(parsed)
-    results <- shift_extraction_result_rows(store, epwshiftr_cli_required_ids(parsed, "--plan"))
-    shift_artifact_rows(store, results$artifact_id)
-}
-
-
-# morph -----------------------------------------------------------------------
-
-epwshiftr_cli_morph_variables <- function(args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--recipe"))
-    epwshiftr_cli_assert_no_positionals(parsed)
-    recipe <- epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "recommended")
-    variables <- if (recipe %in% c("recommended", "minimal", "extended")) {
-        epw_morph_variables(recipe)
-    } else {
-        epw_morph_variables(epwshiftr_cli_recipe(recipe))
-    }
-    data.table::data.table(variable_id = variables)
-}
-
-
-epwshiftr_cli_morph_backends <- function(args) {
-    parsed <- epwshiftr_cli_parse_command(args)
-    epwshiftr_cli_assert_no_positionals(parsed)
-    names <- epw_morph_backends()
-    data.table::rbindlist(lapply(names, function(name) {
-        backend <- epw_morph_backend(name)
-        data.table::data.table(
-            backend = backend$name,
-            label = backend$label,
-            required_variables = paste(backend$required_variables(), collapse = ","),
-            methods = paste(names(backend$methods()), collapse = ",")
-        )
-    }), use.names = TRUE, fill = TRUE)
-}
-
-
-epwshiftr_cli_morph_run <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        flags = c("--overwrite", "--no-resume"),
-        options = c("--plan", "--epw", "--recipe", "--strict", "--by"),
-        multi_options = c("--period")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
-    strict <- epwshiftr_cli_bool(parsed$options[["--strict"]], "--strict", default = TRUE)
-    morpher <- epw_morpher(
-        store,
-        epwshiftr_cli_required_option(parsed, "--epw"),
-        recipe = epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
-    )
-    workflow <- morpher$workflow(
-        plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
-        periods = periods,
-        by = epwshiftr_cli_config_character(
-            parsed$options[["--by"]],
-            default = c("source_id", "experiment_id", "variant_label", "period")
-        ),
-        strict = strict,
-        dir = NULL,
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
-    )
-    epwshiftr_cli_morph_workflow_result(workflow)
-}
-
-
-epwshiftr_cli_morph_epw <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        flags = c("--overwrite", "--no-resume"),
-        options = c("--morph", "--dir", "--separate")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    morph_id <- epwshiftr_cli_required_ids(parsed, "--morph")
-    morpher <- epwshiftr_cli_morpher_from_morph_id(store, morph_id)
-    morpher$write_epw(
-        morph_id = morph_id[[1L]],
-        dir = epwshiftr_cli_config_string(parsed$options[["--dir"]], default = "outputs/future-epw"),
-        separate = epwshiftr_cli_bool(parsed$options[["--separate"]], "--separate", default = TRUE),
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
-    )
-}
-
-
-epwshiftr_cli_morph_status <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--morph"))
-    epwshiftr_cli_assert_no_positionals(parsed)
-    epwshiftr_cli_morph_status_rows(
-        store,
-        epwshiftr_cli_ids(parsed$options[["--morph"]], "--morph", required = FALSE)
-    )
-}
-
-
-epwshiftr_cli_morph_outputs <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--morph"))
-    epwshiftr_cli_assert_no_positionals(parsed)
-    epwshiftr_cli_morph_output_rows(
-        store,
-        epwshiftr_cli_ids(parsed$options[["--morph"]], "--morph", required = FALSE)
-    )
 }
 
 
@@ -513,24 +328,7 @@ epwshiftr_cli_selector <- function(parsed) {
 }
 
 
-# config ----------------------------------------------------------------------
-
-epwshiftr_cli_read_shift_config <- function(path) {
-    checkmate::assert_string(path, min.chars = 1L)
-    if (!file.exists(path)) {
-        epwshiftr_cli_usage_abort(sprintf("Config file does not exist: %s", path))
-    }
-    config <- tryCatch(
-        jsonlite::read_json(path, simplifyVector = TRUE),
-        error = function(e) epwshiftr_cli_usage_abort(sprintf("Failed to read JSON config: %s", conditionMessage(e)))
-    )
-    tryCatch(
-        schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config"),
-        error = function(e) epwshiftr_cli_usage_abort(sprintf("Invalid shift workflow config: %s", conditionMessage(e)))
-    )
-    invisible(config)
-}
-
+# config coercion -------------------------------------------------------------
 
 epwshiftr_cli_config_section <- function(config, name) {
     value <- config[[name]]
@@ -977,22 +775,43 @@ epwshiftr_cli_shift_stage_result <- function(stage) {
         morph_id = ids$morph_id,
         diagnostic_count = nrow(diagnostics),
         coverage = epwshiftr_cli_coverage_summary(coverage),
-        outputs = outputs
+        outputs = outputs,
+        next_steps = epwshiftr_cli_shift_next_steps(ids)
     )
 }
 
 
-epwshiftr_cli_morph_workflow_result <- function(workflow) {
-    list(
-        status = if (nrow(workflow$plan)) workflow$plan$status[[1L]] else NA_character_,
-        plan_id = unique(workflow$climate$plan_id),
-        morph_id = unique(workflow$plan$morph_id),
-        diagnostic_count = nrow(workflow$diagnostics),
-        plan = workflow$plan,
-        results = workflow$results
-    )
+epwshiftr_cli_shift_next_steps <- function(ids) {
+    rows <- list()
+    if (length(ids$query_id)) {
+        rows[[length(rows) + 1L]] <- data.frame(
+            step = "status",
+            command = sprintf("epwshiftr shift status --query %s", ids$query_id[[1L]]),
+            stringsAsFactors = FALSE
+        )
+    }
+    if (length(ids$plan_id)) {
+        rows[[length(rows) + 1L]] <- data.frame(
+            step = "diagnostics",
+            command = sprintf("epwshiftr shift diagnostics --plan %s", paste(ids$plan_id, collapse = ",")),
+            stringsAsFactors = FALSE
+        )
+    }
+    if (length(ids$morph_id)) {
+        rows[[length(rows) + 1L]] <- data.frame(
+            step = c("outputs", "data"),
+            command = c(
+                sprintf("epwshiftr shift outputs --morph %s", ids$morph_id[[1L]]),
+                sprintf("epwshiftr shift data --morph %s --limit 5", ids$morph_id[[1L]])
+            ),
+            stringsAsFactors = FALSE
+        )
+    }
+    if (!length(rows)) {
+        return(data.frame(step = character(), command = character()))
+    }
+    data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
-
 
 epwshiftr_cli_coverage_summary <- function(coverage) {
     coverage <- data.table::as.data.table(coverage)
