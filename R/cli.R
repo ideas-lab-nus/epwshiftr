@@ -156,6 +156,15 @@ epwshiftr_cli_dispatch <- function(parsed) {
     if (identical(group, "storage")) {
         return(epwshiftr_cli_storage(store, command, rest))
     }
+    if (identical(group, "shift")) {
+        return(epwshiftr_cli_shift(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
+    if (identical(group, "extract")) {
+        return(epwshiftr_cli_extract(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
+    if (identical(group, "morph")) {
+        return(epwshiftr_cli_morph(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
     epwshiftr_cli_usage_abort(sprintf("Unknown command group: %s", group))
 }
 

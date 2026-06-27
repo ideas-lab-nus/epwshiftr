@@ -22,6 +22,9 @@ epwshiftr_cli_help_root <- function() {
         "  epwshiftr download help",
         "  epwshiftr esgf help",
         "  epwshiftr storage help",
+        "  epwshiftr shift help",
+        "  epwshiftr extract help",
+        "  epwshiftr morph help",
         "",
         "Use `epwshiftr help <group> <command>` for command-specific help."
     )
@@ -146,6 +149,113 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr query update [query_id]",
             "",
             "Refresh tracked query records and persist the update diff."
+        ),
+
+        shift = c(
+            "Usage: epwshiftr shift <command> [options]",
+            "",
+            "Commands:",
+            "  epwshiftr shift run --config PATH [--dry-run] [--download] [--overwrite] [--no-resume] [--no-progress]",
+            "  epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "  epwshiftr shift diagnostics [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "  epwshiftr shift outputs --morph MORPH_ID",
+            "  epwshiftr shift data --plan PLAN_ID|--morph MORPH_ID [--case CASE_ID] [--columns COLS] [--limit N]"
+        ),
+        "shift run" = c(
+            "Usage: epwshiftr shift run --config PATH [--dry-run] [--download] [--overwrite] [--no-resume] [--no-progress]",
+            "",
+            "Run a JSON-configured request -> collect -> optional download -> extract -> morph -> EPW workflow.",
+            "The config is validated against inst/extdata/schema/shift-workflow-config.json."
+        ),
+        "shift status" = c(
+            "Usage: epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "",
+            "Summarise store-backed workflow state by query, extraction plan, or morph ID."
+        ),
+        "shift diagnostics" = c(
+            "Usage: epwshiftr shift diagnostics [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "",
+            "Return workflow diagnostics reconstructed from store manifest state."
+        ),
+        "shift outputs" = c(
+            "Usage: epwshiftr shift outputs --morph MORPH_ID",
+            "",
+            "List EPW outputs recorded for a morphing plan."
+        ),
+        "shift data" = c(
+            "Usage: epwshiftr shift data --plan PLAN_ID|--morph MORPH_ID [--case CASE_ID] [--columns COLS] [--limit N]",
+            "",
+            "Preview extracted or morphed Parquet data from store manifest IDs."
+        ),
+        extract = c(
+            "Usage: epwshiftr extract <command> [options]",
+            "",
+            "Commands:",
+            "  epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--nearest N] [--filter key=value]...",
+            "  epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "  epwshiftr extract coverage [--plan PLAN_ID]",
+            "  epwshiftr extract artifacts --plan PLAN_ID"
+        ),
+        "extract plan" = c(
+            "Usage: epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--nearest N] [--filter key=value]...",
+            "",
+            "Create extraction plan rows for a stored query and target site."
+        ),
+        "extract run" = c(
+            "Usage: epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "",
+            "Run selected extraction plans and write derived Parquet artifacts."
+        ),
+        "extract coverage" = c(
+            "Usage: epwshiftr extract coverage [--plan PLAN_ID]",
+            "",
+            "Inspect extraction coverage and completeness."
+        ),
+        "extract artifacts" = c(
+            "Usage: epwshiftr extract artifacts --plan PLAN_ID",
+            "",
+            "List store artifact rows created by extraction results."
+        ),
+        morph = c(
+            "Usage: epwshiftr morph <command> [options]",
+            "",
+            "Commands:",
+            "  epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
+            "  epwshiftr morph backends",
+            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
+            "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
+            "  epwshiftr morph status [--morph MORPH_ID]",
+            "  epwshiftr morph outputs [--morph MORPH_ID]"
+        ),
+        "morph variables" = c(
+            "Usage: epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
+            "",
+            "List CMIP variables required by a morphing recipe or variable set."
+        ),
+        "morph backends" = c(
+            "Usage: epwshiftr morph backends",
+            "",
+            "List registered EPW morphing backends."
+        ),
+        "morph run" = c(
+            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
+            "",
+            "Run morphing through hourly Parquet outputs without writing EPW files."
+        ),
+        "morph epw" = c(
+            "Usage: epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
+            "",
+            "Write future EPW files for an existing morphing plan."
+        ),
+        "morph status" = c(
+            "Usage: epwshiftr morph status [--morph MORPH_ID]",
+            "",
+            "List morphing plan status rows."
+        ),
+        "morph outputs" = c(
+            "Usage: epwshiftr morph outputs [--morph MORPH_ID]",
+            "",
+            "List EPW output rows recorded for morphing plans."
         ),
         download = c(
             "Usage: epwshiftr download <command> [options]",
