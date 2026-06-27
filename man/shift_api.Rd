@@ -143,10 +143,9 @@ shift_status(x)
 
 \item{project}{Optional provider project, for example \code{"CMIP6"}.}
 
-\item{source, experiment, variant, frequency}{Provider-neutral request aliases.}
-
-\item{experiment, activity}{Historical reference experiment and activity
-filters used by \code{shift_reference_historical()}.}
+\item{source, experiment, variant, frequency}{Provider-neutral request aliases.
+In \code{shift_reference_historical()}, \code{experiment} is the historical
+reference experiment filter.}
 
 \item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, optional
 extraction variables in \code{\link[=shift_extract]{shift_extract()}}, or optional variables to read in
@@ -180,6 +179,9 @@ from \code{epw$location()} when \code{epw} is supplied.}
 climate data.}
 
 \item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{activity}{Historical reference activity filter used by
+\code{shift_reference_historical()}.}
 
 \item{match}{File metadata fields copied from the future climate stage when
 resolving an automatic historical reference.}
