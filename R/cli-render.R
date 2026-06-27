@@ -585,7 +585,7 @@ epwshiftr_cli_render_morph <- function(result, command) {
     if (identical(command, "run") && is.list(result) && !is.data.frame(result)) {
         cli::cli_h1(title)
         epwshiftr_cli_render_summary(result[intersect(c("status", "morph_id", "diagnostic_count"), names(result))], "Summary")
-        epwshiftr_cli_render_table(result$plan, "Plan", c("morph_id", "status", "summary_id", "baseline_id", "strict", "last_error"))
+        epwshiftr_cli_render_table(result$plan, "Plan", c("morph_id", "status", "summary_id", "reference_summary_id", "baseline_id", "strict", "last_error"))
         epwshiftr_cli_render_table(result$results, "Results", c("case_id", "row_count", "output_path", "morph_id"))
         return(invisible(NULL))
     }
@@ -594,8 +594,8 @@ epwshiftr_cli_render_morph <- function(result, command) {
         variables = c("variable_id"),
         backends = c("backend", "label", "required_variables", "methods"),
         epw = c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
-        retry = c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error", "dry_run", "case_id", "row_count", "output_path"),
-        status = c("morph_id", "status", "label", "strict", "summary_id", "baseline_id", "updated_at", "last_error"),
+        retry = c("morph_id", "status", "label", "summary_id", "reference_summary_id", "baseline_id", "strict", "last_error", "dry_run", "case_id", "row_count", "output_path"),
+        status = c("morph_id", "status", "label", "strict", "summary_id", "reference_summary_id", "baseline_id", "updated_at", "last_error"),
         outputs = c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
         NULL
     )

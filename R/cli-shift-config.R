@@ -23,7 +23,10 @@ epwshiftr_cli_read_shift_config <- function(path) {
         error = function(e) epwshiftr_cli_usage_abort(sprintf("Failed to read JSON config: %s", conditionMessage(e)))
     )
     tryCatch(
-        schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config"),
+        {
+            schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config")
+            epwshiftr_cli_validate_shift_config(config)
+        },
         error = function(e) epwshiftr_cli_usage_abort(sprintf("Invalid shift workflow config: %s", conditionMessage(e)))
     )
     invisible(config)

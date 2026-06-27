@@ -86,12 +86,35 @@
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["recipe", "strict", "by", "methods"]
+        "subset.of": ["recipe", "strict", "by", "methods", "reference", "reference_plan", "reference_periods"]
       },
       "fields": {
         "recipe": {"check": {"kind": "string"}},
         "strict": {"check": {"kind": "flag"}},
-        "methods": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+        "methods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+        "reference": {
+          "check": {"kind": "list"},
+          "keys": {
+            "type": "named",
+            "must.include": ["mode", "periods"],
+            "subset.of": ["mode", "periods", "plan", "plan_id", "experiment", "activity", "match", "filters", "options", "collect", "extract"]
+          },
+          "fields": {
+            "mode": {"check": {"kind": "choice", "choices": ["historical", "plan"]}},
+            "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "plan": {"check": {"kind": "character", "any.missing": false}},
+            "plan_id": {"check": {"kind": "character", "any.missing": false}},
+            "experiment": {"check": {"kind": "string"}},
+            "activity": {"check": {"kind": "string"}},
+            "match": {"check": {"kind": "character", "any.missing": false}},
+            "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "options": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "collect": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "extract": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+          }
+        },
+        "reference_plan": {"check": {"kind": "character", "any.missing": false}},
+        "reference_periods": {"check": {"kind": "list"}, "keys": {"type": "named"}}
       }
     },
     "epw": {

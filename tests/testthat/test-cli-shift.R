@@ -42,6 +42,44 @@ test_that("shift run validates JSON config and reports usage errors", {
     bad_period <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", invalid_period, "--dry-run"))
     expect_equal(bad_period$status, 2L)
     expect_match(bad_period$error, "Invalid year")
+
+    nested_reference <- tempfile(fileext = ".json")
+    cli_shift_test_config(nested_reference)
+    payload <- jsonlite::read_json(nested_reference, simplifyVector = TRUE)
+    payload$morph$reference <- list(
+        mode = "historical",
+        periods = list(reference = 1995L),
+        filters = list(table_id = "day")
+    )
+    jsonlite::write_json(payload, nested_reference, auto_unbox = TRUE)
+    valid_nested <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", nested_reference, "--dry-run"))
+    expect_equal(valid_nested$status, 0L)
+
+    plan_reference <- tempfile(fileext = ".json")
+    cli_shift_test_config(plan_reference)
+    payload <- jsonlite::read_json(plan_reference, simplifyVector = TRUE)
+    payload$morph$reference <- list(
+        mode = "plan",
+        plan = "REFERENCE_PLAN_ID",
+        periods = list(reference = 1995L)
+    )
+    jsonlite::write_json(payload, plan_reference, auto_unbox = TRUE)
+    valid_plan <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", plan_reference, "--dry-run"))
+    expect_equal(valid_plan$status, 0L)
+
+    mixed_reference <- tempfile(fileext = ".json")
+    cli_shift_test_config(mixed_reference)
+    payload <- jsonlite::read_json(mixed_reference, simplifyVector = TRUE)
+    payload$morph$reference <- list(
+        mode = "historical",
+        periods = list(reference = 1995L)
+    )
+    payload$morph$reference_plan <- "REFERENCE_PLAN_ID"
+    payload$morph$reference_periods <- list(reference = 1995L)
+    jsonlite::write_json(payload, mixed_reference, auto_unbox = TRUE)
+    bad_mixed <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", mixed_reference, "--dry-run"))
+    expect_equal(bad_mixed$status, 2L)
+    expect_match(bad_mixed$error, "morph.reference")
 })
 
 test_that("shift run executes collect, extract, relaxed morph, EPW output, and store-ID inspectors", {
