@@ -31,10 +31,11 @@ epwshiftr_cli_morph_backends <- function(args) {
     epwshiftr_cli_assert_no_positionals(parsed)
     names <- epw_morph_backends()
     data.table::rbindlist(lapply(names, function(name) {
-        backend <- epw_morph_backend(name)
+        backend <- suppressWarnings(epw_morph_backend(name))
         data.table::data.table(
             backend = backend$name,
             label = backend$label,
+            requires_reference = backend$requires_reference,
             required_variables = paste(backend$required_variables(), collapse = ","),
             methods = paste(names(backend$methods()), collapse = ",")
         )
@@ -46,24 +47,75 @@ epwshiftr_cli_morph_run <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         flags = c("--overwrite", "--no-resume"),
-        options = c("--plan", "--epw", "--recipe", "--strict", "--by"),
-        multi_options = c("--period")
+        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--strict", "--by"),
+        multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
+    reference_mode <- epwshiftr_cli_choice(parsed$options[["--reference"]], c("historical", "plan"), "--reference", default = NULL)
+    reference_plan_id <- epwshiftr_cli_ids(parsed$options[["--reference-plan"]], "--reference-plan", required = FALSE)
+    if (is.null(reference_mode) && length(reference_plan_id)) {
+        reference_mode <- "plan"
+    }
+    if (is.null(reference_mode) && length(parsed$options[["--reference-period"]])) {
+        epwshiftr_cli_usage_abort("--reference-period requires --reference or --reference-plan.")
+    }
+    if (!identical(reference_mode, "historical") &&
+        (length(parsed$options[["--reference-filter"]]) || length(parsed$options[["--reference-option"]]))) {
+        epwshiftr_cli_usage_abort("--reference-filter and --reference-option require --reference historical.")
+    }
+    reference_periods <- if (!is.null(reference_mode)) {
+        epwshiftr_cli_periods_from_cli(parsed$options[["--reference-period"]])
+    } else {
+        NULL
+    }
     strict <- epwshiftr_cli_bool(parsed$options[["--strict"]], "--strict", default = TRUE)
+    plan_id <- epwshiftr_cli_required_ids(parsed, "--plan")
+    epw <- epwshiftr_cli_required_option(parsed, "--epw")
+    recipe <- epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
+    by <- epwshiftr_cli_config_character(
+        parsed$options[["--by"]],
+        default = c("source_id", "experiment_id", "variant_label", "period")
+    )
+
+    if (identical(reference_mode, "historical")) {
+        if (length(reference_plan_id)) {
+            epwshiftr_cli_usage_abort("--reference-plan cannot be used with --reference historical.")
+        }
+        climate <- epwshiftr_cli_climate_stage_from_plan(store, plan_id, periods, epw)
+        reference <- shift_reference_historical(
+            reference_periods,
+            filters = epwshiftr_cli_key_value_list(parsed$options[["--reference-filter"]], "--reference-filter"),
+            options = epwshiftr_cli_key_value_list(parsed$options[["--reference-option"]], "--reference-option")
+        )
+        morphed <- shift_morph(
+            climate,
+            baseline = epw,
+            recipe = recipe,
+            reference = reference,
+            by = by,
+            strict = strict,
+            overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+            resume = !isTRUE(parsed$flags[["--no-resume"]])
+        )
+        return(epwshiftr_cli_morph_workflow_result(morphed@meta$workflow))
+    }
+
+    if (identical(reference_mode, "plan") && !length(reference_plan_id)) {
+        epwshiftr_cli_usage_abort("--reference-plan is required when --reference is plan.")
+    }
+
     morpher <- epw_morpher(
         store,
-        epwshiftr_cli_required_option(parsed, "--epw"),
-        recipe = epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
+        epw,
+        recipe = recipe
     )
     workflow <- morpher$workflow(
-        plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
+        plan_id = plan_id,
         periods = periods,
-        by = epwshiftr_cli_config_character(
-            parsed$options[["--by"]],
-            default = c("source_id", "experiment_id", "variant_label", "period")
-        ),
+        reference_plan_id = if (length(reference_plan_id)) reference_plan_id else NULL,
+        reference_periods = reference_periods,
+        by = by,
         strict = strict,
         dir = NULL,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),

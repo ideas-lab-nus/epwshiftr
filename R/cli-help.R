@@ -258,7 +258,7 @@ epwshiftr_cli_help_registry <- function() {
             "Commands:",
             "  epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
             "  epwshiftr morph backends",
-            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
+            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
             "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
             "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume]",
             "  epwshiftr morph status [--morph MORPH_ID]",
@@ -275,9 +275,10 @@ epwshiftr_cli_help_registry <- function() {
             "List registered EPW morphing backends."
         ),
         "morph run" = c(
-            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
             "",
-            "Run morphing through hourly Parquet outputs without writing EPW files."
+            "Run morphing through hourly Parquet outputs without writing EPW files.",
+            "Use --reference historical to resolve matching CMIP historical data from the plan's collected File metadata."
         ),
         "morph epw" = c(
             "Usage: epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",

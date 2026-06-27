@@ -126,6 +126,7 @@ cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
             fallback = "auto"
         ),
         morph = list(
+            recipe = "belcher_absolute",
             strict = FALSE,
             methods = list(tdb = "shift")
         ),

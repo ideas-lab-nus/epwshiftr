@@ -200,8 +200,9 @@ The helper provides three named variable sets:
 - `"extended"`: the recommended set plus related max/min variables for future
   recipes.
 
-This article uses the default Belcher recipe because `strict = TRUE` requires
-every variable declared by the selected backend.
+This article uses the default Belcher recipe. It is a change-factor backend, so
+the morphing step needs both a future climate extraction and a reference climate
+extraction.
 
 
 ``` r
@@ -211,8 +212,11 @@ variables
 #> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
 ```
 
-`shift_request()` describes the remote climate data you want. Here it targets
-one ESGF ScenarioMIP model, scenario, member, and monthly table.
+`shift_request()` describes the remote climate data you want. The future request
+targets one ESGF ScenarioMIP model, scenario, member, and monthly table. The
+reference request uses the matching historical experiment so Belcher
+change-factor morphing can compare future monthly fields with reference monthly
+fields before applying those changes to the baseline EPW.
 
 The values inside `filters` are ESGF search fields. `options` is not a search
 filter. `options$index_node` chooses the ESGF search node; if omitted,
@@ -256,6 +260,24 @@ request
 #>   frequency: mon
 #>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt
 #>   time:   2060-01-01T00:00:00Z -> 2060-12-31T23:59:59Z
+
+reference_request <- shift_request(
+    project = "CMIP6",
+    time = 1995L,
+    filters = list(
+        activity_id = "CMIP",
+        source_id = "MPI-ESM1-2-LR",
+        experiment_id = "historical",
+        variant_label = "r1i1p1f1",
+        frequency = "mon",
+        variable_id = variables,
+        data_node = "esgf.ceda.ac.uk",
+        table_id = "Amon"
+    ),
+    options = list(index_node = "https://esgf-data.dkrz.de")
+)
+
+reference_request
 ```
 
 # Run the Workflow
@@ -453,6 +475,13 @@ files
 #>   files:  7
 #>   variables: clt, hurs, psl, rlds, rsds, sfcWind, tas
 #>   ids:    query_id
+
+reference_files <- shift_collect(
+    reference_request,
+    store = file.path(workflow_root, "singapore-store")
+)
+
+reference_files
 ```
 
 Use `shift_files()` when you want to inspect the underlying `EsgResultFile`
@@ -606,6 +635,7 @@ see [ESGF troubleshooting](esgf-troubleshooting.html).
 
 ``` r
 periods <- epw_morph_periods(`2060s` = 2060L)
+reference_periods <- epw_morph_periods(reference = 1995L)
 
 extracted <- shift_extract(
     files,
@@ -622,6 +652,16 @@ extracted
 #>   store:  <tempdir>/epwshiftr-future-epw-workflow/singapore-store
 #>   coverage: 7/7 complete
 #>   ids:    query_id, plan_id
+
+reference <- shift_extract(
+    reference_files,
+    site = site,
+    periods = reference_periods,
+    variables = variables,
+    fallback = "auto"
+)
+
+reference
 ```
 
 `shift_coverage()` checks whether every requested variable has extracted rows
@@ -720,6 +760,10 @@ coverage are blocking errors instead of warnings.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
 factor diagnostics, case grouping, or custom backend registration.
 
+For Belcher change-factor morphing, pass either an extracted historical
+`ShiftClimate` stage or an automatic reference spec such as
+`shift_reference_historical(reference_periods)`.
+
 The same `shift_recipe` used to choose request variables can be passed into
 `shift_morph()`. Adjust the recipe when you want to change Belcher methods or
 select another registered backend:
@@ -732,6 +776,7 @@ shift_recipe <- epw_morph_recipe(
 
 shift_morph(
     extracted,
+    reference = reference,
     baseline = epw,
     recipe = shift_recipe,
     strict = TRUE
@@ -742,6 +787,7 @@ shift_morph(
 ``` r
 morphed <- shift_morph(
     extracted,
+    reference = reference,
     baseline = epw,
     recipe = shift_recipe,
     strict = TRUE
@@ -986,11 +1032,12 @@ For a successful run, the sequence should end with an EPW stage marked
 
 ``` r
 data.table::data.table(
-    stage = c("request", "collect", "extract", "morph", "epw"),
+    stage = c("request", "collect", "extract", "reference", "morph", "epw"),
     status = c(
         shift_status(request),
         shift_status(files),
         shift_status(extracted),
+        shift_status(reference),
         shift_status(morphed),
         shift_status(epws)
     )
@@ -1000,8 +1047,9 @@ data.table::data.table(
 #> 1: request       new
 #> 2: collect collected
 #> 3: extract extracted
-#> 4:   morph   morphed
-#> 5:     epw   written
+#> 4: reference extracted
+#> 5:   morph   morphed
+#> 6:     epw   written
 ```
 
 ## Read Diagnostics When Something Looks Wrong
