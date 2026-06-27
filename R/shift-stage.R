@@ -744,6 +744,8 @@ shift_resolve_epw <- function(x) {
 #'   `"esgf"`.
 #' @param project Optional provider project, for example `"CMIP6"`.
 #' @param source,experiment,variant,frequency Provider-neutral request aliases.
+#'   In `shift_reference_historical()`, `experiment` is the historical
+#'   reference experiment filter.
 #' @param time Optional request or extraction time filter. Numeric years such as
 #'   `2060L` are expanded to the full UTC year; otherwise supply one or two
 #'   date-time values accepted by the provider/store.
@@ -879,8 +881,8 @@ shift_reference_plan <- function(plan_id, periods) {
 }
 
 #' @rdname shift_api
-#' @param experiment,activity Historical reference experiment and activity
-#'   filters used by `shift_reference_historical()`.
+#' @param activity Historical reference activity filter used by
+#'   `shift_reference_historical()`.
 #' @param match File metadata fields copied from the future climate stage when
 #'   resolving an automatic historical reference.
 #' @param collect,extract Named option lists passed to the automatic

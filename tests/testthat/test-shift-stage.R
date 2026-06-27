@@ -520,13 +520,28 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         shift_extract(site = site, periods = future_periods, variables = variables)
 
     recipe <- epw_morph_recipe("belcher")
-    auto <- shift_morph(
-        climate,
-        recipe = recipe,
-        reference = shift_reference_historical(reference_periods),
-        strict = TRUE,
-        overwrite = TRUE
+    auto_warnings <- character()
+    auto <- withCallingHandlers(
+        shift_morph(
+            climate,
+            recipe = recipe,
+            reference = shift_reference_historical(reference_periods),
+            strict = TRUE,
+            overwrite = TRUE
+        ),
+        warning = function(w) {
+            msg <- conditionMessage(w)
+            expected <- grepl("Time filtering with method = 'drs'", msg, fixed = TRUE) ||
+                grepl("Could not parse a DRS time range", msg, fixed = TRUE)
+            if (!expected) {
+                return()
+            }
+            auto_warnings <<- c(auto_warnings, msg)
+            invokeRestart("muffleWarning")
+        }
     )
+    expect_true(any(grepl("Time filtering with method = 'drs'", auto_warnings, fixed = TRUE)))
+    expect_true(any(grepl("Could not parse a DRS time range", auto_warnings, fixed = TRUE)))
     reference_climate <- auto@meta$reference
     reference_ids <- shift_ids(reference_climate)
     plan_reference <- shift_reference_plan(reference_ids$plan_id, reference_periods)
