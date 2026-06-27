@@ -9,7 +9,7 @@ epw_morph_result(
   epw = context$epw,
   data,
   parts = list(),
-  diagnostics = epw_morph_empty_diagnostics(),
+  diagnostics = morpher__empty_diagnostics(),
   factors = NULL
 )
 }

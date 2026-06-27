@@ -84,7 +84,9 @@ location used by the R API.
 
 Use `shift run --config` when you want one command to execute the main workflow:
 request, collect, optional download, extract, morph, and write EPW files. The
-configuration file is JSON and is validated before work starts.
+configuration file is JSON and is validated before work starts. The default
+Belcher backend uses change factors, so the morph section points to a reference
+extraction plan that you prepared beforehand.
 
 ```json
 {
@@ -119,6 +121,12 @@ configuration file is JSON and is validated before work starts.
   "morph": {
     "recipe": "belcher",
     "strict": true,
+    "reference": {
+      "mode": "historical",
+      "periods": {
+        "reference": [1995]
+      }
+    },
     "by": ["source_id", "experiment_id", "variant_label", "period"]
   },
   "epw": {
@@ -184,6 +192,8 @@ epwshiftr --store ~/cmip6-store morph run \
   --epw baseline/SIN.epw \
   --period 2060s=2055:2064 \
   --recipe belcher \
+  --reference historical \
+  --reference-period reference=1995 \
   --strict true
 
 epwshiftr --store ~/cmip6-store morph epw --morph <morph_id> --dir outputs/future-epw

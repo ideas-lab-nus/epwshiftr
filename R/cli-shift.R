@@ -104,13 +104,20 @@ epwshiftr_cli_shift_run <- function(store, args) {
         epwshiftr_cli_config_string(morph$recipe, default = "belcher"),
         methods = morph$methods
     )
-    morphed <- shift_morph(
-        climate,
-        recipe = recipe,
-        strict = epwshiftr_cli_config_flag(morph$strict, default = TRUE),
-        by = epwshiftr_cli_config_character(morph$by, default = c("source_id", "experiment_id", "variant_label", "period")),
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
+    reference_args <- epwshiftr_cli_config_reference(morph)
+    morphed <- do.call(
+        shift_morph,
+        c(
+            list(
+                climate,
+                recipe = recipe,
+                strict = epwshiftr_cli_config_flag(morph$strict, default = TRUE),
+                by = epwshiftr_cli_config_character(morph$by, default = c("source_id", "experiment_id", "variant_label", "period")),
+                overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+                resume = !isTRUE(parsed$flags[["--no-resume"]])
+            ),
+            reference_args
+        )
     )
 
     epw <- epwshiftr_cli_config_section(config, "epw")
@@ -283,10 +290,11 @@ epwshiftr_cli_morph_backends <- function(args) {
     epwshiftr_cli_assert_no_positionals(parsed)
     names <- epw_morph_backends()
     data.table::rbindlist(lapply(names, function(name) {
-        backend <- epw_morph_backend(name)
+        backend <- suppressWarnings(epw_morph_backend(name))
         data.table::data.table(
             backend = backend$name,
             label = backend$label,
+            requires_reference = backend$requires_reference,
             required_variables = paste(backend$required_variables(), collapse = ","),
             methods = paste(names(backend$methods()), collapse = ",")
         )
@@ -298,24 +306,75 @@ epwshiftr_cli_morph_run <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         flags = c("--overwrite", "--no-resume"),
-        options = c("--plan", "--epw", "--recipe", "--strict", "--by"),
-        multi_options = c("--period")
+        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--strict", "--by"),
+        multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
+    reference_mode <- epwshiftr_cli_choice(parsed$options[["--reference"]], c("historical", "plan"), "--reference", default = NULL)
+    reference_plan_id <- epwshiftr_cli_ids(parsed$options[["--reference-plan"]], "--reference-plan", required = FALSE)
+    if (is.null(reference_mode) && length(reference_plan_id)) {
+        reference_mode <- "plan"
+    }
+    if (is.null(reference_mode) && length(parsed$options[["--reference-period"]])) {
+        epwshiftr_cli_usage_abort("--reference-period requires --reference or --reference-plan.")
+    }
+    if (!identical(reference_mode, "historical") &&
+        (length(parsed$options[["--reference-filter"]]) || length(parsed$options[["--reference-option"]]))) {
+        epwshiftr_cli_usage_abort("--reference-filter and --reference-option require --reference historical.")
+    }
+    reference_periods <- if (!is.null(reference_mode)) {
+        epwshiftr_cli_periods_from_cli(parsed$options[["--reference-period"]])
+    } else {
+        NULL
+    }
     strict <- epwshiftr_cli_bool(parsed$options[["--strict"]], "--strict", default = TRUE)
+    plan_id <- epwshiftr_cli_required_ids(parsed, "--plan")
+    epw <- epwshiftr_cli_required_option(parsed, "--epw")
+    recipe <- epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
+    by <- epwshiftr_cli_config_character(
+        parsed$options[["--by"]],
+        default = c("source_id", "experiment_id", "variant_label", "period")
+    )
+
+    if (identical(reference_mode, "historical")) {
+        if (length(reference_plan_id)) {
+            epwshiftr_cli_usage_abort("--reference-plan cannot be used with --reference historical.")
+        }
+        climate <- epwshiftr_cli_climate_stage_from_plan(store, plan_id, periods, epw)
+        reference <- shift_reference_historical(
+            reference_periods,
+            filters = epwshiftr_cli_key_value_list(parsed$options[["--reference-filter"]], "--reference-filter"),
+            options = epwshiftr_cli_key_value_list(parsed$options[["--reference-option"]], "--reference-option")
+        )
+        morphed <- shift_morph(
+            climate,
+            baseline = epw,
+            recipe = recipe,
+            reference = reference,
+            by = by,
+            strict = strict,
+            overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+            resume = !isTRUE(parsed$flags[["--no-resume"]])
+        )
+        return(epwshiftr_cli_morph_workflow_result(morphed@meta$workflow))
+    }
+
+    if (identical(reference_mode, "plan") && !length(reference_plan_id)) {
+        epwshiftr_cli_usage_abort("--reference-plan is required when --reference is plan.")
+    }
+
     morpher <- epw_morpher(
         store,
-        epwshiftr_cli_required_option(parsed, "--epw"),
-        recipe = epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
+        epw,
+        recipe = recipe
     )
     workflow <- morpher$workflow(
-        plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
+        plan_id = plan_id,
         periods = periods,
-        by = epwshiftr_cli_config_character(
-            parsed$options[["--by"]],
-            default = c("source_id", "experiment_id", "variant_label", "period")
-        ),
+        reference_plan_id = if (length(reference_plan_id)) reference_plan_id else NULL,
+        reference_periods = reference_periods,
+        by = by,
         strict = strict,
         dir = NULL,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
@@ -525,9 +584,24 @@ epwshiftr_cli_read_shift_config <- function(path) {
         error = function(e) epwshiftr_cli_usage_abort(sprintf("Failed to read JSON config: %s", conditionMessage(e)))
     )
     tryCatch(
-        schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config"),
+        {
+            schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config")
+            epwshiftr_cli_validate_shift_config(config)
+        },
         error = function(e) epwshiftr_cli_usage_abort(sprintf("Invalid shift workflow config: %s", conditionMessage(e)))
     )
+    invisible(config)
+}
+
+
+epwshiftr_cli_validate_shift_config <- function(config) {
+    morph <- config$morph
+    if (is.null(morph)) {
+        return(invisible(config))
+    }
+    if (!is.null(morph$reference) && (!is.null(morph$reference_plan) || !is.null(morph$reference_periods))) {
+        cli::cli_abort("Use either morph.reference or morph.reference_plan/morph.reference_periods, not both.")
+    }
     invisible(config)
 }
 
@@ -568,12 +642,61 @@ epwshiftr_cli_config_site <- function(config) {
 }
 
 
-epwshiftr_cli_periods_from_config <- function(value) {
+epwshiftr_cli_config_reference <- function(morph) {
+    reference <- morph$reference
+    legacy <- !is.null(morph$reference_plan) || !is.null(morph$reference_periods)
+    if (!is.null(reference) && legacy) {
+        epwshiftr_cli_usage_abort("Use either morph.reference or morph.reference_plan/morph.reference_periods, not both.")
+    }
+
+    if (is.null(reference)) {
+        return(list(
+            reference_plan_id = epwshiftr_cli_config_character(morph$reference_plan, default = NULL),
+            reference_periods = if (is.null(morph$reference_periods)) {
+                NULL
+            } else {
+                epwshiftr_cli_periods_from_config(morph$reference_periods, "morph.reference_periods")
+            }
+        ))
+    }
+
+    reference <- epwshiftr_cli_config_section(list(reference = reference), "reference")
+    mode <- epwshiftr_cli_config_choice(reference$mode, c("historical", "plan"), default = NULL)
+    if (is.null(mode)) {
+        epwshiftr_cli_usage_abort("morph.reference.mode is required.")
+    }
+    periods <- epwshiftr_cli_periods_from_config(reference$periods, "morph.reference.periods")
+
+    if (identical(mode, "plan")) {
+        plan_id <- epwshiftr_cli_config_character(shift_coalesce(reference$plan, reference$plan_id), default = NULL)
+        if (is.null(plan_id)) {
+            epwshiftr_cli_usage_abort("morph.reference.plan is required when morph.reference.mode is plan.")
+        }
+        return(list(reference = shift_reference_plan(plan_id, periods)))
+    }
+
+    list(reference = shift_reference_historical(
+        periods = periods,
+        experiment = epwshiftr_cli_config_string(reference$experiment, default = "historical"),
+        activity = epwshiftr_cli_config_string(reference$activity, default = "CMIP"),
+        match = epwshiftr_cli_config_character(
+            reference$match,
+            default = c("source_id", "variant_label", "frequency", "table_id")
+        ),
+        filters = epwshiftr_cli_config_named_list(reference$filters),
+        options = epwshiftr_cli_config_named_list(reference$options),
+        collect = epwshiftr_cli_config_named_list(reference$collect),
+        extract = epwshiftr_cli_config_named_list(reference$extract)
+    ))
+}
+
+
+epwshiftr_cli_periods_from_config <- function(value, field = "extract.periods") {
     if (is.null(value)) {
-        epwshiftr_cli_usage_abort("Config field extract.periods is required.")
+        epwshiftr_cli_usage_abort(sprintf("Config field %s is required.", field))
     }
     if (!is.list(value) || is.null(names(value)) || any(!nzchar(names(value)))) {
-        epwshiftr_cli_usage_abort("Config field extract.periods must be a named object.")
+        epwshiftr_cli_usage_abort(sprintf("Config field %s must be a named object.", field))
     }
     periods <- lapply(value, epwshiftr_cli_years)
     do.call(epw_morph_periods, periods)
@@ -814,6 +937,31 @@ epwshiftr_cli_morph_status_rows <- function(store, morph_id = NULL) {
         return(store$query("SELECT * FROM epw_morph_plan"))
     }
     shift_morph_plan(store, morph_id)
+}
+
+
+epwshiftr_cli_climate_stage_from_plan <- function(store, plan_id, periods, epw) {
+    plans <- shift_extraction_plan(store, plan_id)
+    if (!nrow(plans)) {
+        epwshiftr_cli_usage_abort("No extraction plan rows were found for --plan.")
+    }
+    query_id <- unique(plans$query_id)
+    query_id <- query_id[!is.na(query_id) & nzchar(query_id)]
+    if (!length(query_id)) {
+        epwshiftr_cli_usage_abort("Could not resolve File query IDs from --plan.")
+    }
+
+    shift_stage_new(
+        ShiftClimate,
+        "climate",
+        store_path = store$path,
+        ids = list(query_id = query_id, plan_id = plan_id),
+        meta = list(
+            site = shift_site(epw = epw),
+            periods = periods,
+            plan = plans
+        )
+    )
 }
 
 
