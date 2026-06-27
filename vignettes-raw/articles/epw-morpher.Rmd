@@ -26,7 +26,9 @@ of a workflow.
 # Inputs
 
 `EpwMorpher` consumes completed extraction outputs in an `EsgStore` and a
-baseline EPW file.
+baseline EPW file. The examples below assume the store already has a future
+extraction plan named `region` and a historical reference extraction plan named
+`reference_region`.
 
 ```r
 store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
@@ -55,6 +57,8 @@ epw_morph_variables("recommended")
 epw_morph_variables("extended")
 
 periods <- epw_morph_periods(`2060s` = 2060L)
+reference_periods <- epw_morph_periods(reference = 1995L)
+reference_spec <- shift_reference_historical(reference_periods)
 ```
 
 `"recommended"` is the strict Belcher recipe set used by the main workflow.
@@ -221,6 +225,8 @@ store state.
 diagnostics <- morpher$preflight(
     plan_id = region$plan_id,
     periods = periods,
+    reference_plan_id = reference_region$plan_id,
+    reference_periods = reference_periods,
     strict = TRUE
 )
 
@@ -244,9 +250,17 @@ climate <- morpher$summarise_climate(
     overwrite = FALSE
 )
 
+reference_climate <- morpher$summarise_climate(
+    plan_id = reference_region$plan_id,
+    periods = reference_periods,
+    strict = TRUE,
+    overwrite = FALSE
+)
+
 baseline <- morpher$summarise_baseline(overwrite = FALSE)
 
 unique(climate$summary_id)
+unique(reference_climate$summary_id)
 unique(baseline$baseline_id)
 ```
 
@@ -262,6 +276,7 @@ writing them. `plan()` persists the selected plan and factor rows.
 ```r
 preview <- morpher$preview_plan(
     summary_id = unique(climate$summary_id),
+    reference_summary_id = unique(reference_climate$summary_id),
     baseline_id = unique(baseline$baseline_id),
     by = c("source_id", "experiment_id", "variant_label", "period"),
     strict = TRUE
@@ -273,6 +288,7 @@ preview$diagnostics
 
 plan <- morpher$plan(
     summary_id = unique(climate$summary_id),
+    reference_summary_id = unique(reference_climate$summary_id),
     baseline_id = unique(baseline$baseline_id),
     by = c("source_id", "experiment_id", "variant_label", "period"),
     strict = TRUE
@@ -333,6 +349,8 @@ use `workflow()`.
 result <- morpher$workflow(
     plan_id = region$plan_id,
     periods = periods,
+    reference_plan_id = reference_region$plan_id,
+    reference_periods = reference_periods,
     by = c("source_id", "experiment_id", "variant_label", "period"),
     strict = TRUE,
     dir = "outputs/future-epw",
@@ -348,7 +366,12 @@ For most users, the equivalent high-level path is still clearer:
 ```r
 epws <- files |>
     shift_extract(site = site, periods = periods) |>
-    shift_morph(baseline = epw, strict = TRUE) |>
+    shift_morph(
+        baseline = epw,
+        reference = shift_reference_historical(reference_periods),
+        recipe = epw_morph_recipe("belcher"),
+        strict = TRUE
+    ) |>
     shift_epw()
 ```
 

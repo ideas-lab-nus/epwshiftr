@@ -4,6 +4,8 @@
 \alias{shift_api}
 \alias{shift_request}
 \alias{shift_site}
+\alias{shift_reference_plan}
+\alias{shift_reference_historical}
 \alias{shift_collect}
 \alias{shift_download}
 \alias{shift_extract}
@@ -47,6 +49,19 @@ shift_site(
   metadata = list()
 )
 
+shift_reference_plan(plan_id, periods)
+
+shift_reference_historical(
+  periods,
+  experiment = "historical",
+  activity = "CMIP",
+  match = c("source_id", "variant_label", "frequency", "table_id"),
+  filters = list(),
+  options = list(),
+  collect = list(),
+  extract = list(fallback = "auto")
+)
+
 shift_collect(
   x,
   store = NULL,
@@ -85,6 +100,9 @@ shift_morph(
   x,
   baseline = NULL,
   recipe = epw_morph_recipe("belcher"),
+  reference = NULL,
+  reference_plan_id = NULL,
+  reference_periods = NULL,
   strict = TRUE,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   overwrite = FALSE,
@@ -127,6 +145,9 @@ shift_status(x)
 
 \item{source, experiment, variant, frequency}{Provider-neutral request aliases.}
 
+\item{experiment, activity}{Historical reference experiment and activity
+filters used by \code{shift_reference_historical()}.}
+
 \item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, optional
 extraction variables in \code{\link[=shift_extract]{shift_extract()}}, or optional variables to read in
 \code{shift_data()}.}
@@ -154,6 +175,19 @@ from \code{epw$location()} when \code{epw} is supplied.}
 \item{epw}{Optional baseline EPW path or \link[eplusr:Epw]{eplusr::Epw} object.}
 
 \item{metadata}{Optional site metadata.}
+
+\item{plan_id}{Store extraction plan IDs for manually selected reference
+climate data.}
+
+\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{match}{File metadata fields copied from the future climate stage when
+resolving an automatic historical reference.}
+
+\item{collect, extract}{Named option lists passed to the automatic
+historical collect and extract steps. \code{collect} may contain \code{fields},
+\code{all}, \code{limit}, and \code{label}; \code{extract} may contain \code{variables}, \code{time},
+\code{filters}, \code{nearest}, and \code{fallback}.}
 
 \item{x}{A shift stage object.}
 
@@ -183,8 +217,6 @@ morphing results, or EPW outputs.}
 
 \item{site}{A \code{shift_site()} object.}
 
-\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
 \item{nearest}{Number of nearest grid points to extract.}
 
 \item{fallback}{Extraction fallback policy.}
@@ -193,6 +225,12 @@ morphing results, or EPW outputs.}
 \code{shift_site()} object containing \code{epw}.}
 
 \item{recipe}{Morphing recipe, usually from \code{\link[=epw_morph_recipe]{epw_morph_recipe()}}.}
+
+\item{reference}{Optional reference \code{ShiftClimate} stage for change-factor
+morphing.}
+
+\item{reference_plan_id, reference_periods}{Optional store plan IDs and period
+table for reference climate data.}
 
 \item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
 
