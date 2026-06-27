@@ -290,17 +290,20 @@ set.</li>
 <code>"extended"</code>: the recommended set plus related max/min
 variables for future recipes.</li>
 </ul>
-<p>This article uses the default Belcher recipe because
-<code>strict = TRUE</code> requires every variable declared by the
-selected backend.</p>
+<p>This article uses the default Belcher recipe. It is a change-factor
+backend, so the morphing step needs both a future climate extraction and
+a reference climate extraction.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
 <span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">shift_recipe</span><span class="op">)</span></span>
 <span><span class="va">variables</span></span>
 <span><span class="co">#&gt; [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_request()</a></code> describes the remote climate data you
-want. Here it targets one ESGF ScenarioMIP model, scenario, member, and
-monthly table.</p>
+want. The future request targets one ESGF ScenarioMIP model, scenario,
+member, and monthly table. The reference request uses the matching
+historical experiment so Belcher change-factor morphing can compare
+future monthly fields with reference monthly fields before applying
+those changes to the baseline EPW.</p>
 <p>The values inside <code>filters</code> are ESGF search fields.
 <code>options</code> is not a search filter.
 <code>options$index_node</code> chooses the ESGF search node; if
@@ -342,7 +345,25 @@ dictionaries</a>.</p>
 <span><span class="co">#&gt;   variant: r1i1p1f1</span></span>
 <span><span class="co">#&gt;   frequency: mon</span></span>
 <span><span class="co">#&gt;   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt</span></span>
-<span><span class="co">#&gt;   time:   2060-01-01T00:00:00Z -&gt; 2060-12-31T23:59:59Z</span></span></code></pre></div>
+<span><span class="co">#&gt;   time:   2060-01-01T00:00:00Z -&gt; 2060-12-31T23:59:59Z</span></span>
+<span></span>
+<span><span class="va">reference_request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_request</a></span><span class="op">(</span></span>
+<span>    project <span class="op">=</span> <span class="st">"CMIP6"</span>,</span>
+<span>    time <span class="op">=</span> <span class="fl">1995L</span>,</span>
+<span>    filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>        activity_id <span class="op">=</span> <span class="st">"CMIP"</span>,</span>
+<span>        source_id <span class="op">=</span> <span class="st">"MPI-ESM1-2-LR"</span>,</span>
+<span>        experiment_id <span class="op">=</span> <span class="st">"historical"</span>,</span>
+<span>        variant_label <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,</span>
+<span>        frequency <span class="op">=</span> <span class="st">"mon"</span>,</span>
+<span>        variable_id <span class="op">=</span> <span class="va">variables</span>,</span>
+<span>        data_node <span class="op">=</span> <span class="st">"esgf.ceda.ac.uk"</span>,</span>
+<span>        table_id <span class="op">=</span> <span class="st">"Amon"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>index_node <span class="op">=</span> <span class="st">"https://esgf-data.dkrz.de"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">reference_request</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="run-the-workflow">Run the Workflow<a class="anchor" aria-label="anchor" href="#run-the-workflow"></a>
@@ -547,7 +568,14 @@ stores</a>.</p>
 <span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
 <span><span class="co">#&gt;   files:  7</span></span>
 <span><span class="co">#&gt;   variables: clt, hurs, psl, rlds, rsds, sfcWind, tas</span></span>
-<span><span class="co">#&gt;   ids:    query_id</span></span></code></pre></div>
+<span><span class="co">#&gt;   ids:    query_id</span></span>
+<span></span>
+<span><span class="va">reference_files</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_collect</a></span><span class="op">(</span></span>
+<span>    <span class="va">reference_request</span>,</span>
+<span>    store <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"singapore-store"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">reference_files</span></span></code></pre></div>
 <p>Use <code><a href="../reference/shift_api.html">shift_files()</a></code> when you want to inspect the
 underlying <code>EsgResultFile</code> object that was saved into the
 store. Printing it gives the same high-level summary as a direct ESGF
@@ -686,6 +714,7 @@ failures to stop the extraction instead.</p>
 OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooting.html">ESGF troubleshooting</a>.</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span>
+<span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995L</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">extracted</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_extract</a></span><span class="op">(</span></span>
 <span>    <span class="va">files</span>,</span>
@@ -701,7 +730,17 @@ OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooti
 <span><span class="co">#&gt;   status: extracted</span></span>
 <span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
 <span><span class="co">#&gt;   coverage: 7/7 complete</span></span>
-<span><span class="co">#&gt;   ids:    query_id, plan_id</span></span></code></pre></div>
+<span><span class="co">#&gt;   ids:    query_id, plan_id</span></span>
+<span></span>
+<span><span class="va">reference</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_extract</a></span><span class="op">(</span></span>
+<span>    <span class="va">reference_files</span>,</span>
+<span>    site <span class="op">=</span> <span class="va">site</span>,</span>
+<span>    periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
+<span>    variables <span class="op">=</span> <span class="va">variables</span>,</span>
+<span>    fallback <span class="op">=</span> <span class="st">"auto"</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">reference</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_coverage()</a></code> checks whether every requested variable
 has extracted rows for the selected site and period. This is the main
 sanity check before morphing.</p>
@@ -791,6 +830,10 @@ coverage are blocking errors instead of warnings.</p>
 <code>EpwMorpher</code> planning and execution API. See <a href="epw-morpher.html">EpwMorpher</a> when you need to inspect monthly
 summaries, factor diagnostics, case grouping, or custom backend
 registration.</p>
+<p>For Belcher change-factor morphing, pass either an extracted
+historical <code>ShiftClimate</code> stage or an automatic reference
+spec such as
+<code>shift_reference_historical(reference_periods)</code>.</p>
 <p>The same <code>shift_recipe</code> used to choose request variables
 can be passed into <code><a href="../reference/shift_api.html">shift_morph()</a></code>. Adjust the recipe when
 you want to change Belcher methods or select another registered
@@ -803,6 +846,7 @@ backend:</p>
 <span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
+<span>    reference <span class="op">=</span> <span class="va">reference</span>,</span>
 <span>    baseline <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    recipe <span class="op">=</span> <span class="va">shift_recipe</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -810,6 +854,7 @@ backend:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
+<span>    reference <span class="op">=</span> <span class="va">reference</span>,</span>
 <span>    baseline <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    recipe <span class="op">=</span> <span class="va">shift_recipe</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -1039,11 +1084,12 @@ reports, or simple guards. For a successful run, the sequence should end
 with an EPW stage marked <code>written</code>.</p>
 <div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
-<span>    stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"request"</span>, <span class="st">"collect"</span>, <span class="st">"extract"</span>, <span class="st">"morph"</span>, <span class="st">"epw"</span><span class="op">)</span>,</span>
+<span>    stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"request"</span>, <span class="st">"collect"</span>, <span class="st">"extract"</span>, <span class="st">"reference"</span>, <span class="st">"morph"</span>, <span class="st">"epw"</span><span class="op">)</span>,</span>
 <span>    status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">request</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">files</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">extracted</span><span class="op">)</span>,</span>
+<span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">reference</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span>    <span class="op">)</span></span>
@@ -1053,8 +1099,9 @@ with an EPW stage marked <code>written</code>.</p>
 <span><span class="co">#&gt; 1: request       new</span></span>
 <span><span class="co">#&gt; 2: collect collected</span></span>
 <span><span class="co">#&gt; 3: extract extracted</span></span>
-<span><span class="co">#&gt; 4:   morph   morphed</span></span>
-<span><span class="co">#&gt; 5:     epw   written</span></span></code></pre></div>
+<span><span class="co">#&gt; 4: reference extracted</span></span>
+<span><span class="co">#&gt; 5:   morph   morphed</span></span>
+<span><span class="co">#&gt; 6:     epw   written</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="read-diagnostics-when-something-looks-wrong">Read Diagnostics When Something Looks Wrong<a class="anchor" aria-label="anchor" href="#read-diagnostics-when-something-looks-wrong"></a>

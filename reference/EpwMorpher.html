@@ -173,7 +173,10 @@ future EPW files through a store-backed morphing workflow.</p>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
 <span>  plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  summary_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_summary_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  baseline_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -190,8 +193,23 @@ future EPW files through a store-backed morphing workflow.</p>
 <dd><p>Optional period table from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
 
 
+<dt><code>reference_plan_id</code></dt>
+<dd><p>Optional reference extraction plan IDs for
+change-factor backends.</p></dd>
+
+
+<dt><code>reference_periods</code></dt>
+<dd><p>Optional reference period table from
+<code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
+
+
 <dt><code>summary_id</code></dt>
 <dd><p>Optional climate summary ID.</p></dd>
+
+
+<dt><code>reference_summary_id</code></dt>
+<dd><p>Optional reference climate summary ID for
+change-factor backends.</p></dd>
 
 
 <dt><code>baseline_id</code></dt>
@@ -264,6 +282,7 @@ future EPW files through a store-backed morphing workflow.</p>
 <h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorpher</span><span class="op">$</span><span class="fu">plan</span><span class="op">(</span></span>
 <span>  <span class="va">summary_id</span>,</span>
+<span>  reference_summary_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  baseline_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -275,6 +294,11 @@ future EPW files through a store-backed morphing workflow.</p>
 <h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>summary_id</code></dt>
 <dd><p>Climate summary ID.</p></dd>
+
+
+<dt><code>reference_summary_id</code></dt>
+<dd><p>Optional reference climate summary ID for
+change-factor backends.</p></dd>
 
 
 <dt><code>baseline_id</code></dt>
@@ -302,6 +326,7 @@ future EPW files through a store-backed morphing workflow.</p>
 <h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
 <span>  <span class="va">summary_id</span>,</span>
+<span>  reference_summary_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  baseline_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -312,6 +337,11 @@ future EPW files through a store-backed morphing workflow.</p>
 <h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>summary_id</code></dt>
 <dd><p>Climate summary ID.</p></dd>
+
+
+<dt><code>reference_summary_id</code></dt>
+<dd><p>Optional reference climate summary ID for
+change-factor backends.</p></dd>
 
 
 <dt><code>baseline_id</code></dt>
@@ -432,6 +462,8 @@ Parquet files and does not write EPW outputs.</p></dd>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
 <span>  <span class="va">plan_id</span>,</span>
 <span>  <span class="va">periods</span>,</span>
+<span>  reference_plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
@@ -449,6 +481,16 @@ Parquet files and does not write EPW outputs.</p></dd>
 
 <dt><code>periods</code></dt>
 <dd><p>Period table from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
+
+
+<dt><code>reference_plan_id</code></dt>
+<dd><p>Optional reference extraction plan IDs for
+change-factor backends.</p></dd>
+
+
+<dt><code>reference_periods</code></dt>
+<dd><p>Optional reference period table from
+<code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
 
 
 <dt><code>by</code></dt>

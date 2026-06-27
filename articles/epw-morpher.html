@@ -140,7 +140,10 @@ backend, or rerun only the morph/write part of a workflow.</p>
 <h2 id="inputs">Inputs<a class="anchor" aria-label="anchor" href="#inputs"></a>
 </h2>
 <p><code>EpwMorpher</code> consumes completed extraction outputs in an
-<code>EsgStore</code> and a baseline EPW file.</p>
+<code>EsgStore</code> and a baseline EPW file. The examples below assume
+the store already has a future extraction plan named <code>region</code>
+and a historical reference extraction plan named
+<code>reference_region</code>.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="st">"~/cmip6-singapore-store"</span>, create <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span></span>
@@ -165,7 +168,9 @@ directly:</p>
 <span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"recommended"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"extended"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span>
+<span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995L</span><span class="op">)</span></span>
+<span><span class="va">reference_spec</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_historical</a></span><span class="op">(</span><span class="va">reference_periods</span><span class="op">)</span></span></code></pre></div>
 <p><code>"recommended"</code> is the strict Belcher recipe set used by
 the main workflow. <code>"minimal"</code> is useful for relaxed
 demonstrations, and <code>"extended"</code> adds related variables for
@@ -335,6 +340,8 @@ modifying store state.</p>
 <code class="sourceCode R"><span><span class="va">diagnostics</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
+<span>    reference_plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
+<span>    reference_periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -358,9 +365,17 @@ file.</p>
 <span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
+<span><span class="va">reference_climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
+<span>    plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
+<span>    periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
+<span>    strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
 <span><span class="va">baseline</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_baseline</span><span class="op">(</span>overwrite <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span></span></code></pre></div>
 <p>The summary IDs are stable for the selected extraction plans,
 periods, baseline, and recipe. Reusing them lets you preview or rerun
@@ -375,6 +390,7 @@ selected plan and factor rows.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
 <span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
+<span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
 <span>    baseline_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span>,</span>
 <span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -386,6 +402,7 @@ selected plan and factor rows.</p>
 <span></span>
 <span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">plan</span><span class="op">(</span></span>
 <span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
+<span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
 <span>    baseline_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span>,</span>
 <span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -442,6 +459,8 @@ intermediate object, use <code>workflow()</code>.</p>
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
+<span>    reference_plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
+<span>    reference_periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
 <span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
@@ -454,7 +473,12 @@ intermediate object, use <code>workflow()</code>.</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="va">files</span> <span class="op">|&gt;</span></span>
 <span>    <span class="fu"><a href="../reference/shift_api.html">shift_extract</a></span><span class="op">(</span>site <span class="op">=</span> <span class="va">site</span>, periods <span class="op">=</span> <span class="va">periods</span><span class="op">)</span> <span class="op">|&gt;</span></span>
-<span>    <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span>baseline <span class="op">=</span> <span class="va">epw</span>, strict <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>    <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
+<span>        baseline <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>        reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_historical</a></span><span class="op">(</span><span class="va">reference_periods</span><span class="op">)</span>,</span>
+<span>        recipe <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span>,</span>
+<span>        strict <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>    <span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>    <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">

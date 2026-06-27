@@ -122,6 +122,19 @@ next step without manually passing manifest IDs.</p>
 <span>  metadata <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
+<span><span class="fu">shift_reference_plan</span><span class="op">(</span><span class="va">plan_id</span>, <span class="va">periods</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">shift_reference_historical</span><span class="op">(</span></span>
+<span>  <span class="va">periods</span>,</span>
+<span>  experiment <span class="op">=</span> <span class="st">"historical"</span>,</span>
+<span>  activity <span class="op">=</span> <span class="st">"CMIP"</span>,</span>
+<span>  match <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"frequency"</span>, <span class="st">"table_id"</span><span class="op">)</span>,</span>
+<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  collect <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  extract <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fallback <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
 <span><span class="fu">shift_collect</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -160,6 +173,9 @@ next step without manually passing manifest IDs.</p>
 <span>  <span class="va">x</span>,</span>
 <span>  baseline <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  recipe <span class="op">=</span> <span class="fu"><a href="epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span>,</span>
+<span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -209,7 +225,9 @@ next step without manually passing manifest IDs.</p>
 
 
 <dt id="arg-source-experiment-variant-frequency">source, experiment, variant, frequency<a class="anchor" aria-label="anchor" href="#arg-source-experiment-variant-frequency"></a></dt>
-<dd><p>Provider-neutral request aliases.</p></dd>
+<dd><p>Provider-neutral request aliases.
+In <code>shift_reference_historical()</code>, <code>experiment</code> is the historical
+reference experiment filter.</p></dd>
 
 
 <dt id="arg-variables">variables<a class="anchor" aria-label="anchor" href="#arg-variables"></a></dt>
@@ -258,6 +276,32 @@ from <code>epw$location()</code> when <code>epw</code> is supplied.</p></dd>
 
 <dt id="arg-metadata">metadata<a class="anchor" aria-label="anchor" href="#arg-metadata"></a></dt>
 <dd><p>Optional site metadata.</p></dd>
+
+
+<dt id="arg-plan-id">plan_id<a class="anchor" aria-label="anchor" href="#arg-plan-id"></a></dt>
+<dd><p>Store extraction plan IDs for manually selected reference
+climate data.</p></dd>
+
+
+<dt id="arg-periods">periods<a class="anchor" aria-label="anchor" href="#arg-periods"></a></dt>
+<dd><p>A period table, usually from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
+
+
+<dt id="arg-activity">activity<a class="anchor" aria-label="anchor" href="#arg-activity"></a></dt>
+<dd><p>Historical reference activity filter used by
+<code>shift_reference_historical()</code>.</p></dd>
+
+
+<dt id="arg-match">match<a class="anchor" aria-label="anchor" href="#arg-match"></a></dt>
+<dd><p>File metadata fields copied from the future climate stage when
+resolving an automatic historical reference.</p></dd>
+
+
+<dt id="arg-collect-extract">collect, extract<a class="anchor" aria-label="anchor" href="#arg-collect-extract"></a></dt>
+<dd><p>Named option lists passed to the automatic
+historical collect and extract steps. <code>collect</code> may contain <code>fields</code>,
+<code>all</code>, <code>limit</code>, and <code>label</code>; <code>extract</code> may contain <code>variables</code>, <code>time</code>,
+<code>filters</code>, <code>nearest</code>, and <code>fallback</code>.</p></dd>
 
 
 <dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
@@ -310,10 +354,6 @@ morphing results, or EPW outputs.</p></dd>
 <dd><p>A <code>shift_site()</code> object.</p></dd>
 
 
-<dt id="arg-periods">periods<a class="anchor" aria-label="anchor" href="#arg-periods"></a></dt>
-<dd><p>A period table, usually from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
-
-
 <dt id="arg-nearest">nearest<a class="anchor" aria-label="anchor" href="#arg-nearest"></a></dt>
 <dd><p>Number of nearest grid points to extract.</p></dd>
 
@@ -329,6 +369,16 @@ morphing results, or EPW outputs.</p></dd>
 
 <dt id="arg-recipe">recipe<a class="anchor" aria-label="anchor" href="#arg-recipe"></a></dt>
 <dd><p>Morphing recipe, usually from <code><a href="epw_morph_recipe.html">epw_morph_recipe()</a></code>.</p></dd>
+
+
+<dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
+<dd><p>Optional reference <code>ShiftClimate</code> stage for change-factor
+morphing.</p></dd>
+
+
+<dt id="arg-reference-plan-id-reference-periods">reference_plan_id, reference_periods<a class="anchor" aria-label="anchor" href="#arg-reference-plan-id-reference-periods"></a></dt>
+<dd><p>Optional store plan IDs and period
+table for reference climate data.</p></dd>
 
 
 <dt id="arg-strict">strict<a class="anchor" aria-label="anchor" href="#arg-strict"></a></dt>
