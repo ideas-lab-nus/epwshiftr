@@ -13,6 +13,8 @@ selected by \code{\link[=epw_morph_recipe]{epw_morph_recipe()}} and executed by 
 \item{\code{name}}{Backend name.}
 
 \item{\code{label}}{Human-readable backend label.}
+
+\item{\code{requires_reference}}{Whether the backend requires reference climate data.}
 }
 \if{html}{\out{</div>}}
 }
@@ -42,6 +44,7 @@ Create an EPW morphing backend.
   methods = NULL,
   method_choices = NULL,
   rules,
+  requires_reference = FALSE,
   runner
 )}\if{html}{\out{</div>}}
 }
@@ -58,6 +61,8 @@ Create an EPW morphing backend.
 \item{\code{method_choices}}{Allowed method values.}
 
 \item{\code{rules}}{Backend rule table.}
+
+\item{\code{requires_reference}}{Whether reference climate data are required.}
 
 \item{\code{runner}}{Function taking \verb{(context, backend)} and returning an
 \code{epw_morph_result}.}

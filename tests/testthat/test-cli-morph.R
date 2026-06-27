@@ -14,12 +14,14 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     backends <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "backends"))
     expect_equal(backends$status, 0L)
     expect_true("belcher" %in% backends$result$backend)
+    expect_true("belcher_absolute" %in% backends$result$backend)
 
     run <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
         "morph", "run",
         "--plan", paste(setup$plan_id, collapse = ","),
         "--epw", get_cache_epw(),
+        "--recipe", "belcher_absolute",
         "--period", "2060s=2060",
         "--strict", "false",
         "--overwrite"
@@ -78,6 +80,7 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
             "morph", "run",
             "--plan", paste(setup$plan_id, collapse = ","),
             "--epw", get_cache_epw(),
+            "--recipe", "belcher_absolute",
             "--period", "2060s=2060",
             "--strict", "false"
         )),
