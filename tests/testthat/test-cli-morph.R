@@ -32,6 +32,26 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     expect_equal(status$status, 0L)
     expect_equal(status$result$status, "result_done")
 
+    store <- EsgStore$new(setup$dir)
+    suppressWarnings(store$query(sprintf(
+        "UPDATE epw_morph_plan SET status = 'failed', last_error = 'forced failure' WHERE morph_id = %s",
+        shift_sql_string(run$result$morph_id)
+    )))
+    store$close()
+
+    retry_preview <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "retry", "--morph", run$result$morph_id))
+    expect_equal(retry_preview$status, 0L)
+    expect_equal(retry_preview$result$status, "failed")
+    expect_true(retry_preview$result$dry_run)
+
+    retry_bad_status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "retry", "--status", "bogus"))
+    expect_equal(retry_bad_status$status, 2L)
+    expect_match(retry_bad_status$error, "--status")
+
+    retry_run <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "retry", "--morph", run$result$morph_id, "--run"))
+    expect_equal(retry_run$status, 0L)
+    expect_true(nrow(retry_run$result) >= 1L)
+
     epw <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
         "morph", "epw",

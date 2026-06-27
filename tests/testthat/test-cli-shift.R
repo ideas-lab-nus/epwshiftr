@@ -10,6 +10,18 @@ test_that("shift run validates JSON config and reports usage errors", {
     expect_equal(dry_run$result$status, "dry_run")
     expect_equal(dry_run$result$request$variables, "tas")
 
+    validate <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "config", "validate", "--config", config))
+    expect_equal(validate$status, 0L)
+    expect_equal(validate$result$status, "valid")
+
+    example <- tempfile(fileext = ".json")
+    example_result <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "config", "example", "--output", example))
+    expect_equal(example_result$status, 0L)
+    expect_equal(example_result$result$status, "written")
+    expect_true(file.exists(example))
+    example_validate <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "config", "validate", "--config", example))
+    expect_equal(example_validate$status, 0L)
+
     missing_request <- tempfile(fileext = ".json")
     jsonlite::write_json(list(site = list(id = "SIN", lon = 103.98, lat = 1.37)), missing_request, auto_unbox = TRUE)
     bad_request <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", missing_request, "--dry-run"))
@@ -55,10 +67,29 @@ test_that("shift run executes collect, extract, relaxed morph, EPW output, and s
     expect_true(nrow(run$result$outputs) >= 1L)
     expect_true(all(file.exists(file.path(dir, run$result$outputs$path))))
     expect_true("File" %in% calls$types)
+    expect_true(nrow(run$result$next_steps) >= 1L)
 
     status <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "status", "--query", run$result$query_id))
     expect_equal(status$status, 0L)
     expect_equal(status$result$query_id, run$result$query_id)
+
+    show <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "show", "--query", run$result$query_id, "--files", "--outputs"))
+    expect_equal(show$status, 0L)
+    expect_named(show$result, c("summary", "queries", "plans", "links", "morphs", "outputs", "files", "diagnostics", "include_files", "include_outputs"))
+    expect_equal(show$result$summary$query_count, 1L)
+    expect_true(nrow(show$result$plans) >= 1L)
+    expect_equal(show$result$morphs$morph_id, run$result$morph_id)
+
+    watch <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "watch", "--morph", run$result$morph_id, "--events", "1"))
+    expect_equal(watch$status, 0L)
+    expect_named(watch$result, c("summary", "queries", "downloads", "plans", "morphs", "outputs", "diagnostics", "events"))
+    expect_equal(watch$result$morphs$morph_id, run$result$morph_id)
+
+    jsonl_text <- capture.output(
+        jsonl_watch <- epwshiftr_cli(c("--store", dir, "--jsonl", "shift", "watch", "--morph", run$result$morph_id, "--follow", "--count", "1", "--events", "1"))
+    )
+    expect_equal(jsonl_watch$status, 0L)
+    expect_equal(jsonlite::fromJSON(jsonl_text[[1L]])$morphs$morph_id, run$result$morph_id)
 
     diagnostics <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "diagnostics", "--plan", paste(run$result$plan_id, collapse = ",")))
     expect_equal(diagnostics$status, 0L)
@@ -90,5 +121,15 @@ test_that("shift run executes collect, extract, relaxed morph, EPW output, and s
     )
     expect_equal(rendered_run$status, 0L)
     expect_true(any(grepl("Shift workflow", rendered)))
+    expect_true(any(grepl("Next steps", rendered)))
     expect_false(any(grepl("^\\$", rendered)))
+
+    rendered_show <- capture.output(
+        rendered_show_result <- epwshiftr_cli(c("--store", dir, "shift", "show", "--morph", run$result$morph_id, "--outputs")),
+        type = "message"
+    )
+    expect_equal(rendered_show_result$status, 0L)
+    expect_true(any(grepl("Shift workflow graph", rendered_show)))
+    expect_true(any(grepl("-> morph", rendered_show, fixed = TRUE)))
+    expect_false(any(grepl("^\\$", rendered_show)))
 })
