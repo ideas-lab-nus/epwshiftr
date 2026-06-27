@@ -23,15 +23,17 @@ description: >
 -->
 
 The epwshiftr command line interface is a thin wrapper around the package's R
-APIs. It is meant for day-to-day ESGF store operations: checking the local
-environment, creating and tracking queries, previewing updates, running
-downloads, and validating local files.
+APIs. It is meant for day-to-day ESGF store operations and future-weather
+workflows: checking the local environment, creating and tracking queries,
+previewing updates, running downloads, validating local files, extracting site
+climate data, morphing baseline EPW files, and writing future EPW outputs.
 
 The CLI mirrors the same layers documented in
 [ESGF query results](esgf-query-results.html), [ESG stores](esg-store.html),
-[Downloader](downloader.html), and [ESGF troubleshooting](esgf-troubleshooting.html).
-It does not replace the high-level R workflow for writing EPW files; use
-[Create Future EPW Files](future-epw-workflow.html) for that end-to-end path.
+[Downloader](downloader.html), [Create Future EPW Files](future-epw-workflow.html),
+and [ESGF troubleshooting](esgf-troubleshooting.html). Workflow state is store
+backed. Commands exchange persistent `query_id`, `plan_id`, and `morph_id`
+values from the `EsgStore` manifest rather than writing separate stage files.
 
 It is not a separate cross-platform binary. The launcher installed by
 `install_cli()` calls the current `Rscript` and runs
@@ -76,6 +78,131 @@ epwshiftr --store ~/cmip6-store query list
 
 When `--store` is omitted, the CLI uses `store_dir()`, the same default store
 location used by the R API.
+
+
+# Run a Future EPW Workflow from JSON
+
+Use `shift run --config` when you want one command to execute the main workflow:
+request, collect, optional download, extract, morph, and write EPW files. The
+configuration file is JSON and is validated before work starts.
+
+```json
+{
+  "request": {
+    "project": "CMIP6",
+    "experiment": "ssp585",
+    "variables": ["tas", "hurs", "psl", "rsds", "rlds", "sfcWind", "clt"],
+    "frequency": "day",
+    "filters": {
+      "source_id": "EC-Earth3",
+      "variant_label": "r1i1p1f1"
+    }
+  },
+  "site": {
+    "id": "SIN",
+    "lon": 103.98,
+    "lat": 1.37,
+    "label": "singapore",
+    "epw": "baseline/SIN.epw"
+  },
+  "collect": {
+    "label": "singapore-ssp585"
+  },
+  "extract": {
+    "periods": {
+      "2060s": [2055, 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063, 2064]
+    },
+    "time": ["2055-01-01T00:00:00Z", "2064-12-31T23:59:59Z"],
+    "nearest": 1,
+    "fallback": "auto"
+  },
+  "morph": {
+    "recipe": "belcher",
+    "strict": true,
+    "by": ["source_id", "experiment_id", "variant_label", "period"]
+  },
+  "epw": {
+    "dir": "outputs/future-epw",
+    "separate": true
+  }
+}
+```
+
+Preview the parsed request and site without writing store state:
+
+```sh
+epwshiftr --store ~/cmip6-store shift run --config shift-workflow.json --dry-run
+```
+
+Run the workflow. Add `--download` when the workflow should download files
+before extraction; otherwise extraction can use OPeNDAP or previously cataloged
+local files.
+
+```sh
+epwshiftr --store ~/cmip6-store shift run --config shift-workflow.json --download
+```
+
+The result includes the durable IDs needed to inspect or continue the workflow:
+
+```sh
+epwshiftr --store ~/cmip6-store shift status --query <query_id>
+epwshiftr --store ~/cmip6-store shift show --query <query_id> --outputs
+epwshiftr --store ~/cmip6-store shift watch --morph <morph_id>
+epwshiftr --store ~/cmip6-store shift diagnostics --plan <plan_id>
+epwshiftr --store ~/cmip6-store shift outputs --morph <morph_id>
+epwshiftr --store ~/cmip6-store shift data --morph <morph_id> --limit 5
+```
+
+You can generate and validate workflow JSON from the CLI:
+
+```sh
+epwshiftr shift config example --output shift-workflow.json
+epwshiftr shift config validate --config shift-workflow.json
+```
+
+# Run Extraction and Morphing in Stages
+
+Use `extract` commands when a query already exists in the store and you want to
+plan, run, and inspect the climate extraction stage directly.
+
+```sh
+epwshiftr --store ~/cmip6-store extract plan \
+  --query <query_id> \
+  --site-id SIN \
+  --lon 103.98 \
+  --lat 1.37 \
+  --time 2055-01-01T00:00:00Z,2064-12-31T23:59:59Z \
+  --variable tas,hurs,psl,rsds,rlds,sfcWind,clt \
+  --nearest 1
+
+epwshiftr --store ~/cmip6-store extract run --plan <plan_id> --fallback auto
+epwshiftr --store ~/cmip6-store extract retry --plan <plan_id>
+epwshiftr --store ~/cmip6-store extract retry --plan <plan_id> --run
+epwshiftr --store ~/cmip6-store extract coverage --plan <plan_id>
+epwshiftr --store ~/cmip6-store extract artifacts --plan <plan_id>
+```
+
+Use `morph` commands to inspect available recipes/backends, run morphing from
+extracted `plan_id` values, and write EPW outputs later from the stored
+`morph_id`.
+
+```sh
+epwshiftr --store ~/cmip6-store morph variables --recipe belcher
+epwshiftr --store ~/cmip6-store morph backends
+
+epwshiftr --store ~/cmip6-store morph run \
+  --plan <plan_id> \
+  --epw baseline/SIN.epw \
+  --period 2060s=2055:2064 \
+  --recipe belcher \
+  --strict true
+
+epwshiftr --store ~/cmip6-store morph epw --morph <morph_id> --dir outputs/future-epw
+epwshiftr --store ~/cmip6-store morph retry --morph <morph_id>
+epwshiftr --store ~/cmip6-store morph retry --morph <morph_id> --run
+epwshiftr --store ~/cmip6-store morph status --morph <morph_id>
+epwshiftr --store ~/cmip6-store morph outputs --morph <morph_id>
+```
 
 # Search Without Saving
 
@@ -372,6 +499,9 @@ Use built-in help for the complete command list:
 epwshiftr help
 epwshiftr help query add
 epwshiftr help download run
+epwshiftr help shift run
+epwshiftr help extract plan
+epwshiftr help morph run
 epwshiftr help storage validate
 ```
 
@@ -380,5 +510,8 @@ The command groups intentionally mirror the package boundaries:
 - `doctor`: local and optional network diagnostics;
 - `query`: create, track, update, inspect, tag, and remove store queries;
 - `download`: preflight, run, resume, retry, verify, and inspect downloads;
+- `shift`: config-driven request, collect, extract, morph, and EPW workflow runs;
+- `extract`: store-ID extraction planning, execution, coverage, and artifacts;
+- `morph`: morphing variables, backends, runs, EPW writing, status, and outputs;
 - `storage`: layout, report, validate, repair, and cleanup local files;
 - `esgf`: compact ESGF query and download health reports.
