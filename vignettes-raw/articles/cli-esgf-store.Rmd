@@ -138,9 +138,18 @@ The result includes the durable IDs needed to inspect or continue the workflow:
 
 ```sh
 epwshiftr --store ~/cmip6-store shift status --query <query_id>
+epwshiftr --store ~/cmip6-store shift show --query <query_id> --outputs
+epwshiftr --store ~/cmip6-store shift watch --morph <morph_id>
 epwshiftr --store ~/cmip6-store shift diagnostics --plan <plan_id>
 epwshiftr --store ~/cmip6-store shift outputs --morph <morph_id>
 epwshiftr --store ~/cmip6-store shift data --morph <morph_id> --limit 5
+```
+
+You can generate and validate workflow JSON from the CLI:
+
+```sh
+epwshiftr shift config example --output shift-workflow.json
+epwshiftr shift config validate --config shift-workflow.json
 ```
 
 # Run Extraction and Morphing in Stages
@@ -159,6 +168,8 @@ epwshiftr --store ~/cmip6-store extract plan \
   --nearest 1
 
 epwshiftr --store ~/cmip6-store extract run --plan <plan_id> --fallback auto
+epwshiftr --store ~/cmip6-store extract retry --plan <plan_id>
+epwshiftr --store ~/cmip6-store extract retry --plan <plan_id> --run
 epwshiftr --store ~/cmip6-store extract coverage --plan <plan_id>
 epwshiftr --store ~/cmip6-store extract artifacts --plan <plan_id>
 ```
@@ -179,6 +190,8 @@ epwshiftr --store ~/cmip6-store morph run \
   --strict true
 
 epwshiftr --store ~/cmip6-store morph epw --morph <morph_id> --dir outputs/future-epw
+epwshiftr --store ~/cmip6-store morph retry --morph <morph_id>
+epwshiftr --store ~/cmip6-store morph retry --morph <morph_id> --run
 epwshiftr --store ~/cmip6-store morph status --morph <morph_id>
 epwshiftr --store ~/cmip6-store morph outputs --morph <morph_id>
 ```

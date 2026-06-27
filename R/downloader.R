@@ -1670,10 +1670,6 @@ Downloader <- R6::R6Class("Downloader",
                 private$write_manifest_config()
             }
 
-            if (n_workers > 0) {
-                private$ensure_mirai_daemons()
-            }
-
             self
         },
         # }}}

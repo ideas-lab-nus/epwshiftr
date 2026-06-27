@@ -41,6 +41,26 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
     expect_true(nrow(artifacts$result) >= 1L)
     expect_true(all(artifacts$result$role %in% "derived"))
 
+    store <- EsgStore$new(setup$dir)
+    suppressWarnings(store$query(sprintf(
+        "UPDATE extraction_plan SET status = 'failed', last_error = 'forced failure' WHERE plan_id = %s",
+        shift_sql_string(plan$result$plan_id[[1L]])
+    )))
+    store$close()
+
+    retry_preview <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "extract", "retry", "--plan", plan$result$plan_id[[1L]]))
+    expect_equal(retry_preview$status, 0L)
+    expect_equal(retry_preview$result$status, "failed")
+    expect_true(retry_preview$result$dry_run)
+
+    retry_bad_status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "extract", "retry", "--status", "bogus"))
+    expect_equal(retry_bad_status$status, 2L)
+    expect_match(retry_bad_status$error, "--status")
+
+    retry_run <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "extract", "retry", "--plan", plan$result$plan_id[[1L]], "--run", "--overwrite"))
+    expect_equal(retry_run$status, 0L)
+    expect_equal(retry_run$result$status, "done")
+
     rendered <- capture.output(
         rendered_cov <- epwshiftr_cli(c("--store", setup$dir, "extract", "coverage", "--plan", paste(plan$result$plan_id, collapse = ","))),
         type = "message"
