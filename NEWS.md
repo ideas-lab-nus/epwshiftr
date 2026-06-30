@@ -20,6 +20,8 @@
 * `EsgResultFile` and `EsgResultAggregation` now share their internal download
   and OPeNDAP fallback helpers while keeping the public methods unchanged
   (#118).
+* Removed the obsolete testthat start-order override now that tests no longer
+  depend on shared cache side effects (#117).
 
 # epwshiftr 0.1.4
 
