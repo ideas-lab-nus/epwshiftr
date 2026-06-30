@@ -91,18 +91,40 @@
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
 <div class="section level3">
 <h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
-<ul><li>The development line and the next CRAN release intentionally drop compatibility with the legacy <code>fst</code>, <code>future.apply</code>, <code>progressr</code>, and <code>pingr</code> workflows. Users who need the old implementation should use the <code>legacy</code> branch on GitHub or install epwshiftr <code>v0.1.4</code>.</li>
+<ul><li>Replaced the legacy data.table-oriented workflow with the new store-native workflow. Users who need <code>v0.1.4</code> behavior should use the <code>legacy</code> branch on GitHub or install epwshiftr <code>v0.1.4</code>.</li>
+<li>Removed the legacy <code>init_cmip6_index()</code>, <code>summary_database()</code>, <code>match_coord()</code>, <code>extract_data()</code>, <code>morphing_epw()</code>, <code>future_epw()</code>, <code>EsgfQuery</code>, <code>esgf_query()</code>, and related helpers. Use <code>shift_*</code>, <code>EsgStore</code>, <code>EpwMorpher</code>, <code>EsgQuery</code>, and <code><a href="../reference/data_node_status.html">data_node_status()</a></code> instead.</li>
+<li>Dropped the old <code>fst</code>, <code>future.apply</code>, <code>progressr</code>, <code>pingr</code>, <code>PCICt</code>, and <code>rappdirs</code>-based implementation paths; the new implementation uses DuckDB, <code>mirai</code>, S7, and store-managed manifests.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<ul><li>Added the store-native <code><a href="../reference/shift_api.html">shift_request()</a></code> -&gt; <code><a href="../reference/shift_api.html">shift_collect()</a></code> -&gt; <code><a href="../reference/shift_api.html">shift_download()</a></code> -&gt; <code><a href="../reference/shift_api.html">shift_extract()</a></code> -&gt; <code><a href="../reference/shift_api.html">shift_morph()</a></code> -&gt; <code><a href="../reference/shift_api.html">shift_epw()</a></code> workflow, with inspection helpers such as <code><a href="../reference/shift_api.html">shift_status()</a></code>, <code><a href="../reference/shift_api.html">shift_diagnostics()</a></code>, <code><a href="../reference/shift_api.html">shift_coverage()</a></code>, <code><a href="../reference/shift_api.html">shift_outputs()</a></code>, and <code><a href="../reference/shift_api.html">shift_data()</a></code>.</li>
+<li>Added <code>EsgStore</code>, a DuckDB-backed local store for query snapshots, dictionaries, source files, downloads, Parquet extracts, and generated EPW outputs.</li>
+<li>Reworked ESGF querying around <code><a href="../reference/EsgQuery.html">esg_query()</a></code> / <code>EsgQuery</code> and typed <code>EsgResult*</code> objects for Dataset, File, and Aggregation records.</li>
+<li>Added <code>EsgDataset</code> for remote OPeNDAP NetCDF access without downloading full files.</li>
+<li>Rebuilt ESG dictionaries as project-aware <code>EsgDict</code> objects with option discovery and legality checks across CMIP6 and related ESG projects.</li>
+<li>Added persistent downloader support, including download planning, resume, verification, node health, background jobs, daemon mode, and event logs.</li>
+<li>Added <code>EpwMorpher</code>, morphing recipes, backend registration, historical reference handling, resumable morphing, and manifest-backed EPW output registration (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/111" class="external-link">#111</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/115" class="external-link">#115</a>).</li>
+<li>Added the <code>epwshiftr</code> CLI with <code>doctor</code>, <code>query</code>, <code>download</code>, <code>storage</code>, <code>shift</code>, <code>extract</code>, <code>morph</code>, and <code>esgf</code> command groups (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/114" class="external-link">#114</a>).</li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
 <ul><li>
 <code>EsgQuery$collect(all = TRUE)</code> now warns and returns partial results when ESGF pagination stops making progress, instead of repeatedly requesting the same offset (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/116" class="external-link">#116</a>).</li>
 <li>
-<code>future_epw()</code> now correctly handles missing values when generating future weather files.</li>
+<code><a href="../reference/shift_api.html">shift_epw()</a></code> and <code>EpwMorpher$write_epw()</code> now fill missing, out-of-range, and special EPW values before saving generated weather files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/87" class="external-link">#87</a>).</li>
+</ul></div>
+<div class="section level3">
+<h3 id="documentation-development-version">Documentation<a class="anchor" aria-label="anchor" href="#documentation-development-version"></a></h3>
+<ul><li>Rewrote the README around the recommended <code>shift_*</code> workflow and the store-native migration path.</li>
+<li>Added migration documentation mapping legacy workflow steps to the new store-native replacements.</li>
+<li>Split and refreshed vignettes for ESGF query results, dictionaries, stores, downloader usage, EPW morphing, CLI usage, troubleshooting, and future EPW workflows.</li>
+<li>Expanded the development changelog so the release notes reflect the store-native workflow overhaul and migration path (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/121" class="external-link">#121</a>).</li>
 </ul></div>
 <div class="section level3">
 <h3 id="internal-changes-development-version">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-development-version"></a></h3>
-<ul><li>
+<ul><li>Updated GitHub Actions workflow dependencies for current Actions behavior (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/99" class="external-link">#99</a>).</li>
+<li>Removed obsolete print helpers and the legacy implementation files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/109" class="external-link">#109</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/110" class="external-link">#110</a>).</li>
+<li>
 <code>EsgResultFile</code> and <code>EsgResultAggregation</code> now share their internal download and OPeNDAP fallback helpers while keeping the public methods unchanged (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/118" class="external-link">#118</a>).</li>
 <li>Removed the obsolete testthat start-order override now that tests no longer depend on shared cache side effects (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/117" class="external-link">#117</a>).</li>
 </ul></div>
