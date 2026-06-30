@@ -2,6 +2,8 @@
 
 ## Breaking changes
 
+* Replaced the extraction `nearest` count option with explicit grid extraction
+  methods: `"nearest"`, `"idw"`, `"bilinear"`, and `"mean"` (#123).
 * Replaced the legacy data.table-oriented workflow with the new store-native
   workflow. Users who need `v0.1.4` behavior should use the `legacy` branch on
   GitHub or install epwshiftr `v0.1.4`.
