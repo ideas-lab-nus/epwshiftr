@@ -4,8 +4,8 @@ NULL
 # epw morph helpers {{{
 EPW_MORPH_VARIABLE_LEVELS <- list(
     minimal = c("tas", "hurs"),
-    recommended = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt"),
-    extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt")
+    recommended = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"),
+    extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
 )
 
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
@@ -40,10 +40,12 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "glob_rad",
         "wind",
         "total_cover",
+        "precip",
         "tdew",
         "diff_rad",
         "norm_rad",
-        "opaque_cover"
+        "opaque_cover",
+        "precip_rate"
     ),
     epw_field = c(
         "dry_bulb_temperature",
@@ -53,16 +55,18 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "global_horizontal_radiation",
         "wind_speed",
         "total_sky_cover",
+        "liquid_precip_depth",
         "dew_point_temperature",
         "diffuse_horizontal_radiation",
         "direct_normal_radiation",
-        "opaque_sky_cover"
+        "opaque_sky_cover",
+        "liquid_precip_rate"
     ),
-    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", NA_character_, NA_character_, NA_character_, NA_character_),
-    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
-    method = c(EPW_MORPH_BELCHER_METHOD_DEFAULTS, "sky_cover", "derived", "derived", "derived", "derived"),
-    required = c(rep(TRUE, 7L), rep(FALSE, 4L)),
-    derived = c(rep(FALSE, 7L), rep(TRUE, 4L))
+    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
+    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
+    method = c(EPW_MORPH_BELCHER_METHOD_DEFAULTS, "sky_cover", "precipitation", "derived", "derived", "derived", "derived", "derived"),
+    required = c(rep(TRUE, 8L), rep(FALSE, 5L)),
+    derived = c(rep(FALSE, 8L), rep(TRUE, 5L))
 )
 
 morpher__split_rule_variables <- function(x) {
@@ -649,6 +653,11 @@ morpher__unit_alias <- function(x) {
         "Wh/m^2" = "W/m^2",
         "m s-1" = "m/s",
         "m/s" = "m/s",
+        "mm" = "mm",
+        "millimeter" = "mm",
+        "millimetre" = "mm",
+        "kg m-2 s-1" = "kg m-2 s-1",
+        "kg m^-2 s^-1" = "kg m-2 s-1",
         x
     )
 }
@@ -693,6 +702,8 @@ morpher__default_epw_units <- function(field) {
         global_horizontal_radiation = "W/m^2",
         wind_speed = "m/s",
         total_sky_cover = NA_character_,
+        liquid_precip_depth = "mm",
+        liquid_precip_rate = "h",
         NA_character_
     )
 }
@@ -1950,6 +1961,258 @@ morpher__belcher_change_total_sky_cover <- function(data_epw, context) {
     morpher__belcher_total_sky_cover(data_epw, context, data_mean = data_mean, change_factor = TRUE)
 }
 
+# Normalize precipitation units before manually converting fluxes to monthly
+# water-equivalent depth; udunits does not know the density convention.
+morpher__precip_unit_kind <- function(units) {
+    units <- morpher__unit_alias(units)
+    if (is.na(units) || !nzchar(units)) {
+        return(NA_character_)
+    }
+    key <- tolower(trimws(units))
+    key <- gsub("\\s+", "", key)
+    key <- gsub("\\^", "", key)
+    switch(
+        key,
+        "kgm-2s-1" = "kg_m2_s",
+        "kgm**-2s**-1" = "kg_m2_s",
+        "kg/m2/s" = "kg_m2_s",
+        "kgm-2sec-1" = "kg_m2_s",
+        "mmday-1" = "mm_day",
+        "mm/day" = "mm_day",
+        "mmd-1" = "mm_day",
+        "mm/d" = "mm_day",
+        "mm" = "mm",
+        NA_character_
+    )
+}
+
+# Return Gregorian month lengths for the period years used by morphing.
+morpher__precip_month_days <- function(year, month) {
+    year <- as.integer(year)
+    month <- as.integer(month)
+    if (!length(year) || !length(month)) {
+        return(integer())
+    }
+    mapply(function(y, m) {
+        start <- as.Date(sprintf("%04d-%02d-01", y, m))
+        next_year <- y + as.integer(m == 12L)
+        next_month <- if (m == 12L) 1L else m + 1L
+        as.integer(as.Date(sprintf("%04d-%02d-01", next_year, next_month)) - start)
+    }, year, month)
+}
+
+# Convert a precipitation rate or monthly depth into water-equivalent millimetres.
+morpher__precip_depth_checked <- function(value, units, seconds) {
+    kind <- morpher__precip_unit_kind(units)
+    value <- morpher__drop_units(value)
+    if (!length(value) || is.na(value[[1L]]) || is.na(kind)) {
+        return(list(value = as.numeric(value), ok = !is.na(kind), message = "Unsupported precipitation units."))
+    }
+    value <- as.numeric(value[[1L]])
+    seconds <- as.numeric(seconds[[1L]])
+    if (!is.finite(value) || !is.finite(seconds)) {
+        return(list(value = value, ok = TRUE, message = NA_character_))
+    }
+    out <- switch(
+        kind,
+        kg_m2_s = value * seconds,
+        mm_day = value * seconds / 86400,
+        mm = value
+    )
+    list(value = out, ok = TRUE, message = NA_character_)
+}
+
+# Convert climate summary rows for `pr` from monthly mean rate to monthly depth.
+morpher__precip_summary_depth_checked <- function(value, units, years_json, month) {
+    years <- tryCatch(morpher__json_int_vector(years_json), error = function(e) integer())
+    if (!length(years)) {
+        years <- 2001L
+    }
+    days <- morpher__precip_month_days(years, month)
+    morpher__precip_depth_checked(value, units, mean(days, na.rm = TRUE) * 86400)
+}
+
+# Convert a baseline EPW monthly mean precipitation depth into a monthly total.
+morpher__baseline_precip_depth_checked <- function(value, units, month) {
+    if (is.na(units) || !nzchar(units)) {
+        units <- "mm"
+    }
+    converted <- morpher__convert_value_checked(value, units, "mm")
+    converted$value <- converted$value * morpher__precip_month_days(2001L, month) * 24
+    converted
+}
+
+# Summarise raw `pr` climate data to monthly water-equivalent depths.
+morpher__belcher_monthly_precip_variable <- function(context, variable_id, reference = FALSE) {
+    data <- if (isTRUE(reference)) {
+        morpher__context_reference_variable(context, variable_id)
+    } else {
+        morpher__context_variable(context, variable_id)
+    }
+    if (!nrow(data)) {
+        return(data.table::data.table())
+    }
+    data <- data.table::as.data.table(data.table::copy(data))
+    data[, `:=`(
+        year = as.integer(year),
+        month = data.table::month(time),
+        day = data.table::mday(time)
+    )]
+    data <- data[!(month == 2L & day == 29L)]
+
+    identity <- morpher__context_identity_rows(data)
+    data <- data.table::data.table(
+        identity,
+        units = as.character(data$units),
+        value = as.numeric(data$value),
+        year = as.integer(data$year),
+        month = as.integer(data$month),
+        interval = as.factor(data$period)
+    )
+    group_cols <- c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "units", "month", "interval")
+    out <- data[, .(
+        lon = mean(lon, na.rm = TRUE),
+        lat = mean(lat, na.rm = TRUE),
+        dist = mean(dist, na.rm = TRUE),
+        value = mean(value, na.rm = TRUE),
+        years = list(sort(unique(year)))
+    ), by = group_cols]
+
+    values <- vapply(seq_len(nrow(out)), function(i) {
+        days <- morpher__precip_month_days(out$years[[i]], out$month[[i]])
+        converted <- morpher__precip_depth_checked(out$value[[i]], out$units[[i]], mean(days, na.rm = TRUE) * 86400)
+        if (!isTRUE(converted$ok)) {
+            cli::cli_abort("Unsupported precipitation units for {.val {variable_id}}: {.val {out$units[[i]]}}.")
+        }
+        converted$value
+    }, numeric(1L))
+    out[, `:=`(
+        value = units::set_units(values, "mm", mode = "standard"),
+        units = "mm",
+        years = NULL
+    )]
+    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month", "interval"))
+    out[]
+}
+
+# Report conservative precipitation fallbacks consistently across strict modes.
+morpher__belcher_precip_guard <- function(rows, message, strict = TRUE) {
+    if (!nrow(rows)) {
+        return(invisible(NULL))
+    }
+    months <- paste(sort(unique(rows$month)), collapse = ", ")
+    message <- sprintf("%s Month(s): %s.", message, months)
+    if (isTRUE(strict)) {
+        cli::cli_abort(message)
+    }
+    warning(message, call. = FALSE)
+    invisible(NULL)
+}
+
+# Apply monthly precipitation targets while preserving baseline wet-hour timing.
+morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = TRUE,
+                                                 change_factor = FALSE) {
+    if (!nrow(data_mean) || !"liquid_precip_depth" %in% names(data_epw)) {
+        return(data.table::data.table())
+    }
+    rate_col <- "liquid_precip_rate"
+    keep <- c("datetime", "year", "month", "day", "hour", "minute", "liquid_precip_depth")
+    if (rate_col %in% names(data_epw)) {
+        keep <- c(keep, rate_col)
+    }
+    baseline <- data_epw[, .SD, .SDcols = keep]
+    if (!rate_col %in% names(baseline)) {
+        baseline[, (rate_col) := units::set_units(0, "h", mode = "standard")]
+    }
+    baseline[, .baseline_precip_depth := pmax(0, morpher__drop_units(liquid_precip_depth))]
+    monthly <- baseline[, .(baseline_total = sum(.baseline_precip_depth, na.rm = TRUE)), by = "month"]
+
+    data_mean <- data.table::copy(data_mean)
+    data_mean[monthly, on = "month", baseline_total := i.baseline_total]
+    data_mean[is.na(baseline_total), baseline_total := 0]
+    data_mean[, future_total := morpher__drop_units(value)]
+
+    if (isTRUE(change_factor)) {
+        data_mean[, reference_total := morpher__drop_units(reference_value)]
+        zero_reference <- data_mean[reference_total <= .Machine$double.eps & future_total > .Machine$double.eps]
+        morpher__belcher_precip_guard(
+            zero_reference,
+            "Reference climate precipitation is zero while future precipitation is positive; preserving baseline precipitation in relaxed mode.",
+            strict = strict
+        )
+        # Relaxed mode cannot infer new storm frequency from zero reference rain,
+        # so it keeps the baseline precipitation magnitude unchanged.
+        data_mean[, alpha := data.table::fifelse(
+            reference_total > .Machine$double.eps,
+            future_total / reference_total,
+            data.table::fifelse(future_total <= .Machine$double.eps, 0, 1)
+        )]
+        data_mean[, target_total := baseline_total * alpha]
+        data_mean[, delta := future_total - reference_total]
+    } else {
+        data_mean[, target_total := future_total]
+        data_mean[, alpha := data.table::fifelse(
+            baseline_total > .Machine$double.eps,
+            target_total / baseline_total,
+            NA_real_
+        )]
+        data_mean[, delta := target_total - baseline_total]
+    }
+
+    dry_target <- data_mean[baseline_total <= .Machine$double.eps & future_total > .Machine$double.eps]
+    morpher__belcher_precip_guard(
+        dry_target,
+        "Baseline EPW has no wet hours for positive target precipitation; keeping the month dry in relaxed mode.",
+        strict = strict
+    )
+    # Without baseline wet hours, v1 deliberately refuses to synthesize event
+    # timing and therefore leaves precipitation at zero for that month.
+    data_mean[baseline_total <= .Machine$double.eps, `:=`(
+        target_total = 0,
+        alpha = NA_real_
+    )]
+
+    data <- baseline[data_mean, on = "month", allow.cartesian = TRUE]
+    scale <- ifelse(is.na(data$alpha), 0, data$alpha)
+    # CMIP6 `pr` only supplies precipitation amount after time integration; the
+    # EPW liquid precipitation duration/rate field is derived from wet hours.
+    depth <- data$.baseline_precip_depth * scale
+    data[, liquid_precip_depth := units::set_units(depth, "mm", mode = "standard")]
+    data[, liquid_precip_rate := units::set_units(as.numeric(depth > .Machine$double.eps), "h", mode = "standard")]
+    data[, .baseline_precip_depth := NULL]
+    data[, .SD, .SDcols = c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "dist", "interval",
+        "datetime", "year", "month", "day", "hour", "minute",
+        "liquid_precip_depth", "liquid_precip_rate", "delta", "alpha"
+    )]
+}
+
+# Build absolute-target Belcher precipitation from future climate monthly totals.
+morpher__belcher_precip <- function(data_epw, context) {
+    pr <- morpher__belcher_monthly_precip_variable(context, "pr")
+    morpher__belcher_precip_from_monthly(data_epw, pr, strict = context$strict)
+}
+
+# Build change-factor Belcher precipitation from future/reference monthly totals.
+morpher__belcher_change_precip <- function(data_epw, context) {
+    pr <- morpher__belcher_monthly_precip_variable(context, "pr")
+    pr_ref <- morpher__belcher_monthly_precip_variable(context, "pr", reference = TRUE)
+    if (!nrow(pr)) {
+        return(data.table::data.table())
+    }
+    if (!nrow(pr_ref)) {
+        if (isTRUE(context$strict)) {
+            cli::cli_abort("Change-factor morphing requires reference climate data for {.val pr}.")
+        }
+        warning("Reference climate data are missing for pr; precipitation is left unchanged.", call. = FALSE)
+        return(data.table::data.table())
+    }
+    pr <- morpher__belcher_attach_reference(pr, pr_ref, "reference_value")
+    pr <- morpher__belcher_handle_missing_reference(pr, "pr", strict = context$strict)
+    morpher__belcher_precip_from_monthly(data_epw, pr, strict = context$strict, change_factor = TRUE)
+}
+
 morpher__belcher_absolute_run <- function(context, backend = NULL) {
     methods <- context$recipe$methods
     epw <- context$epw$clone()
@@ -1990,6 +2253,7 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
 
     total_cover <- morpher__belcher_total_sky_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
+    precip <- morpher__belcher_precip(data_epw, context)
 
     parts <- list(
         tdb = tdb,
@@ -2002,7 +2266,8 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
         diff_rad = diff_rad,
         wind = wind,
         total_cover = total_cover,
-        opaque_cover = opaque_cover
+        opaque_cover = opaque_cover,
+        precip = precip
     )
     suppressMessages(epw$drop_unit())
     for (name in names(parts)) {
@@ -2055,6 +2320,7 @@ morpher__belcher_run <- function(context, backend = NULL) {
 
     total_cover <- morpher__belcher_change_total_sky_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
+    precip <- morpher__belcher_change_precip(data_epw, context)
 
     parts <- list(
         tdb = tdb,
@@ -2067,7 +2333,8 @@ morpher__belcher_run <- function(context, backend = NULL) {
         diff_rad = diff_rad,
         wind = wind,
         total_cover = total_cover,
-        opaque_cover = opaque_cover
+        opaque_cover = opaque_cover,
+        precip = precip
     )
     suppressMessages(epw$drop_unit())
     for (name in names(parts)) {
@@ -3328,18 +3595,45 @@ EpwMorpher <- R6::R6Class(
             severity <- if (isTRUE(strict)) "error" else "warning"
             rows <- vector("list", nrow(bad))
             for (i in seq_len(nrow(bad))) {
+                message <- switch(
+                    bad$status[[i]],
+                    dry_baseline_precip = sprintf(
+                        "Baseline EPW has no wet hours for positive target precipitation in month %s.",
+                        bad$month[[i]]
+                    ),
+                    zero_reference_precip = sprintf(
+                        "Reference precipitation is zero while future precipitation is positive in month %s.",
+                        bad$month[[i]]
+                    ),
+                    unit_conversion_failed = sprintf(
+                        "Morphing factor unit conversion failed for %s from %s.",
+                        bad$epw_field[[i]], bad$variable_id[[i]]
+                    ),
+                    sprintf("Morphing factor is not available for %s from %s.", bad$epw_field[[i]], bad$variable_id[[i]])
+                )
+                action <- switch(
+                    bad$status[[i]],
+                    dry_baseline_precip = "Use a baseline EPW with wet hours for that month, or run in relaxed mode to keep it dry.",
+                    zero_reference_precip = "Provide non-zero historical precipitation for that month, or run in relaxed mode to keep baseline precipitation unchanged.",
+                    unit_conversion_failed = if (identical(bad$variable_id[[i]], "pr")) {
+                        "Use supported precipitation units such as kg m-2 s-1, or run in relaxed mode after correcting inputs."
+                    } else {
+                        "Use climate and baseline units that can be converted, or run in relaxed mode after correcting inputs."
+                    },
+                    "Provide the missing climate or baseline input, or run in relaxed mode."
+                )
                 rows[[i]] <- morpher__diagnostic(
                     stage = "plan",
                     severity = severity,
                     code = bad$status[[i]],
-                    message = sprintf("Morphing factor is not available for %s from %s.", bad$epw_field[[i]], bad$variable_id[[i]]),
+                    message = message,
                     morph_id = morph_id,
                     case_id = bad$case_id[[i]],
                     variable_id = bad$variable_id[[i]],
                     epw_field = bad$epw_field[[i]],
                     period = bad$period[[i]],
                     month = bad$month[[i]],
-                    action = "Provide the missing climate or baseline input, or run in relaxed mode."
+                    action = action
                 )
             }
             morpher__bind_diagnostics(rows)
@@ -3389,6 +3683,8 @@ EpwMorpher <- R6::R6Class(
                         } else if (!nrow(base)) {
                             status <- "missing_baseline"
                         }
+                        is_precip <- identical(rule$epw_field[[1L]], "liquid_precip_depth") &&
+                            identical(target_variable_id, "pr")
                         future_value <- if (nrow(future)) future$value[[1L]] else NA_real_
                         future_units <- if (nrow(future)) store__chr1(future$units[[1L]]) else NA_character_
                         reference_value <- if (nrow(ref)) mean(ref$value, na.rm = TRUE) else NA_real_
@@ -3398,14 +3694,59 @@ EpwMorpher <- R6::R6Class(
                         if (is.na(base_units) || !nzchar(base_units)) {
                             base_units <- morpher__default_epw_units(rule$epw_field[[1L]])
                         }
-                        if (identical(status, "ok")) {
+                        if (isTRUE(is_precip)) {
+                            base_units <- "mm"
+                            if (identical(status, "ok")) {
+                                converted <- morpher__precip_summary_depth_checked(
+                                    future_value,
+                                    future_units,
+                                    future$years_json[[1L]],
+                                    m
+                                )
+                                future_value <- converted$value
+                                if (!isTRUE(converted$ok)) {
+                                    status <- "unit_conversion_failed"
+                                }
+                            }
+                            if (identical(status, "ok") && isTRUE(reference_required)) {
+                                converted <- morpher__precip_summary_depth_checked(
+                                    ref$value[[1L]],
+                                    reference_units,
+                                    ref$years_json[[1L]],
+                                    m
+                                )
+                                reference_value <- converted$value
+                                if (!isTRUE(converted$ok)) {
+                                    status <- "unit_conversion_failed"
+                                }
+                            }
+                            if (identical(status, "ok")) {
+                                converted <- morpher__baseline_precip_depth_checked(base_value, store__chr1(base$units[[1L]]), m)
+                                base_value <- converted$value
+                                if (!isTRUE(converted$ok)) {
+                                    status <- "unit_conversion_failed"
+                                }
+                            }
+                            # A positive target cannot be allocated when the
+                            # baseline EPW has no wet hours for that month.
+                            if (identical(status, "ok") &&
+                                !is.na(base_value) && base_value <= .Machine$double.eps &&
+                                !is.na(future_value) && future_value > .Machine$double.eps) {
+                                status <- "dry_baseline_precip"
+                            }
+                            if (identical(status, "ok") && isTRUE(reference_required) &&
+                                !is.na(reference_value) && reference_value <= .Machine$double.eps &&
+                                !is.na(future_value) && future_value > .Machine$double.eps) {
+                                status <- "zero_reference_precip"
+                            }
+                        } else if (identical(status, "ok")) {
                             converted <- morpher__convert_value_checked(future_value, future_units, base_units)
                             future_value <- converted$value
                             if (!isTRUE(converted$ok)) {
                                 status <- "unit_conversion_failed"
                             }
                         }
-                        if (identical(status, "ok") && isTRUE(reference_required)) {
+                        if (identical(status, "ok") && isTRUE(reference_required) && !isTRUE(is_precip)) {
                             converted <- morpher__convert_value_checked(reference_value, reference_units, base_units)
                             reference_value <- converted$value
                             if (!isTRUE(converted$ok)) {
@@ -3413,8 +3754,8 @@ EpwMorpher <- R6::R6Class(
                             }
                         }
                         comparison_value <- if (isTRUE(reference_required)) reference_value else base_value
-                        delta <- if (status %in% c("ok", "unit_conversion_failed")) future_value - comparison_value else NA_real_
-                        alpha <- if (status %in% c("ok", "unit_conversion_failed") && !is.na(comparison_value) && !isTRUE(all.equal(comparison_value, 0))) {
+                        delta <- if (!is.na(future_value) && !is.na(comparison_value)) future_value - comparison_value else NA_real_
+                        alpha <- if (identical(status, "ok") && !is.na(comparison_value) && !isTRUE(all.equal(comparison_value, 0))) {
                             future_value / comparison_value
                         } else {
                             NA_real_

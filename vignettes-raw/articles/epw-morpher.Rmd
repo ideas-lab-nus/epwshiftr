@@ -120,9 +120,11 @@ morpher <- epw_morpher(
 
 The override names must be backend step names. For the built-in Belcher backend,
 the primary overrideable steps are `tdb`, `rh`, `p`, `hor_ir`, `glob_rad`, and
-`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`. Derived
-steps such as dew point and direct normal radiation are declared in the rules
-but are not independent method overrides.
+`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`.
+Precipitation is handled by a dedicated conservative step that preserves the
+baseline wet-hour timing. Derived steps such as dew point, direct normal
+radiation, and precipitation rate are declared in the rules but are not
+independent method overrides.
 
 ## Adding a Backend
 

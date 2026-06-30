@@ -111,8 +111,9 @@ shift_outputs(epws)
 ```
 
 This example uses monthly CMIP6 `Amon` records and the recommended EPW
-morphing variable set. The code is not evaluated when building the
-README because it performs live ESGF queries and remote data reads.
+morphing variable set, including precipitation. The code is not
+evaluated when building the README because it performs live ESGF queries
+and remote data reads.
 
 ## Inspect a workflow
 

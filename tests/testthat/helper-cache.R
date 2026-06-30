@@ -24,6 +24,9 @@ write_local_epw_fixture <- function(path) {
     hour0 <- as.integer(format(datetime, "%H"))
     yday <- as.integer(format(datetime, "%j"))
     daylight <- pmax(0, sin(pi * (hour0 - 6) / 12))
+    # Provide deterministic wet hours so precipitation morphing can preserve
+    # event timing without synthesizing new rainfall sequences.
+    rain_depth <- ifelse(day %% 7L == 1L & hour0 %in% 3:4, 2.0, 0.0)
 
     weather <- data.frame(
         year = year,
@@ -59,8 +62,8 @@ write_local_epw_fixture <- function(path) {
         snow_depth = 0L,
         days_since_last_snowfall = 88L,
         albedo = sprintf("%.2f", 0.12),
-        liquid_precipitation_depth = sprintf("%.1f", 0.0),
-        liquid_precipitation_quantity = sprintf("%.1f", 0.0),
+        liquid_precipitation_depth = sprintf("%.1f", rain_depth),
+        liquid_precipitation_quantity = sprintf("%.1f", as.numeric(rain_depth > 0)),
         stringsAsFactors = FALSE
     )
 
@@ -83,9 +86,9 @@ get_cache_epw <- function() {
     dir <- test_data_dir()
     file <- "SGP_Singapore.486980_IWEC.epw"
     epw <- file.path(dir, file)
-    if (!file.exists(epw)) {
-        write_local_epw_fixture(epw)
-    }
+    # The EPW fixture is tiny, so rewrite it to avoid stale CI cache content
+    # from older fixture versions without adding schema/version probes.
+    write_local_epw_fixture(epw)
     normalizePath(epw)
 }
 
