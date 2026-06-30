@@ -17,6 +17,8 @@
 
 ## Internal changes
 
+* Added regression tests for batched Dataset child collection, including
+  global `limit` handling and progress labels (#119).
 * `EsgResultFile` and `EsgResultAggregation` now share their internal download
   and OPeNDAP fallback helpers while keeping the public methods unchanged
   (#118).
