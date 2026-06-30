@@ -1200,6 +1200,39 @@ test_that("query__collect() records actual page query URLs", {
     expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
 })
 
+test_that("query__collect() warns and returns partial docs when pagination does not progress", {
+    captured_url <- character()
+    testthat::local_mocked_bindings(
+        cache__read_json = function(url, ...) {
+            captured_url <<- c(captured_url, url)
+            docs <- if (length(captured_url) == 1L) {
+                data.frame(id = c("dataset-1", "dataset-2"), score = 1, check.names = FALSE)
+            } else {
+                data.frame(id = character(), score = numeric(), check.names = FALSE)
+            }
+            list(response = list(numFound = 3L, docs = docs))
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_warning(
+        res <- query__collect(
+            "https://example.org",
+            QueryParamStore$new()$limit(2L),
+            all = TRUE,
+            limit = 2L
+        ),
+        "ESGF pagination stopped"
+    )
+
+    expect_equal(nrow(res$docs), 2L)
+    expect_identical(res$docs$id, c("dataset-1", "dataset-2"))
+    expect_length(captured_url, 2L)
+    expect_identical(res$context$query_url, captured_url)
+    expect_true(grepl("offset=0", utils::URLdecode(captured_url[[1L]]), fixed = TRUE))
+    expect_true(grepl("offset=2", utils::URLdecode(captured_url[[2L]]), fixed = TRUE))
+})
+
 test_that("query__collect() reports progress across collected pages", {
     reads <- 0L
     events <- character()
