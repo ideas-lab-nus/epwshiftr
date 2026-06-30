@@ -9,6 +9,9 @@
 
 ## Bug fixes
 
+* `EsgQuery$collect(all = TRUE)` now warns and returns partial results when
+  ESGF pagination stops making progress, instead of repeatedly requesting the
+  same offset (#116).
 * `future_epw()` now correctly handles missing values when generating future
   weather files.
 
