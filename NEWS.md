@@ -1,4 +1,4 @@
-# eplusr (development version)
+# epwshiftr (development version)
 
 ## Breaking changes
 
@@ -15,8 +15,11 @@
 * `future_epw()` now correctly handles missing values when generating future
   weather files.
 
-## Internal refactor
+## Internal changes
 
+* `EsgResultFile` and `EsgResultAggregation` now share their internal download
+  and OPeNDAP fallback helpers while keeping the public methods unchanged
+  (#118).
 * Removed the obsolete testthat start-order override now that tests no longer
   depend on shared cache side effects (#117).
 

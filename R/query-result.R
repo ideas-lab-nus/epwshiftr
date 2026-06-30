@@ -2691,6 +2691,76 @@ query_result__download_plan <- function(
     plan[]
 }
 
+# query_result__resolve_downloader {{{
+# Resolve the shared downloader contract used by public download methods and
+# HTTP fallback paths.
+query_result__resolve_downloader <- function(downloader = NULL, store = NULL, message) {
+    if (!is.null(downloader)) {
+        return(downloader)
+    }
+    if (!is.null(store)) {
+        return(store$downloader())
+    }
+
+    cli::cli_abort(message)
+}
+# }}}
+
+# query_result__download {{{
+# Shared implementation for File and Aggregation result downloads. The public
+# wrappers keep class-specific argument defaults and delegate the common work here.
+query_result__download <- function(
+    result,
+    downloader = NULL,
+    store = NULL,
+    replica,
+    service = "HTTPServer",
+    probe = TRUE,
+    strategy = c("fastest", "first", "stable"),
+    probe_concurrency = NULL,
+    probe_cache_seconds = 3600L,
+    session_label = NULL,
+    run = TRUE,
+    ...
+) {
+    strategy <- match.arg(strategy)
+    downloader <- query_result__resolve_downloader(
+        downloader,
+        store,
+        "`download()` requires an explicit `store` or persistent `downloader`."
+    )
+
+    # Reuse downloader history and network settings so ranking stays consistent
+    # with explicit calls to $download_plan().
+    node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
+    network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
+    node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+    if (is.null(probe_concurrency)) {
+        probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
+    }
+
+    # Let each result class keep its own $download_plan() replica semantics.
+    plan <- result$download_plan(
+        replica = replica,
+        service = service,
+        probe = probe,
+        strategy = strategy,
+        node_stats = node_stats,
+        network_policy = network_policy,
+        node_policy = node_policy,
+        probe_concurrency = probe_concurrency,
+        probe_cache_seconds = probe_cache_seconds
+    )
+    tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
+    session_id <- downloader$enqueue(plan, session_label = session_label)
+    if (isTRUE(run)) {
+        downloader$run(session_id = session_id, ...)
+    }
+
+    session_id
+}
+# }}}
+
 query_result__generator <- function(type) {
     type <- query_result__type(type)
     switch(
@@ -3119,6 +3189,206 @@ query_result__http_fallback <- function(result, indices, downloader, session_lab
     unname(paths)
 }
 
+# query_result__open_dataset {{{
+# Shared OPeNDAP open and HTTP fallback implementation for File and Aggregation
+# results. Class-specific wrappers provide labels and error messages.
+query_result__open_dataset <- function(
+    result,
+    which = NULL,
+    fallback = c("ask", "auto", "error"),
+    store = NULL,
+    downloader = NULL,
+    progress = getOption("epwshiftr.progress", interactive()),
+    result_label = "File",
+    empty_message,
+    unavailable_message,
+    http_missing_message
+) {
+    fallback <- match.arg(fallback)
+    checkmate::assert_flag(progress)
+    private <- priv(result)
+
+    if (!result$count()) {
+        cli::cli_abort(empty_message)
+    }
+
+    if (is.null(which)) {
+        indices <- seq_len(result$count())
+    } else if (is.character(which)) {
+        checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
+        checkmate::assert_subset(which, result$id, empty.ok = FALSE)
+        indices <- match(which, result$id)
+    } else {
+        checkmate::assert_integerish(
+            which,
+            lower = 1L,
+            upper = result$count(),
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE
+        )
+        indices <- as.integer(which)
+    }
+
+    # Pre-open OPeNDAP targets one by one so successful NetCDF handles can be
+    # adopted by the final EsgDataset without reopening those URLs.
+    urls <- result$url_opendap[indices]
+    targets <- urls
+    nc_handles <- vector("list", length(urls))
+    opendap_errors <- vector("list", length(urls))
+    failed <- rep(FALSE, length(urls))
+    missing <- is.na(urls)
+
+    # If any later validation or fallback step aborts, close handles that were
+    # already opened during the preflight loop.
+    close_preopened_handles <- function() {
+        open_pos <- base::which(!vapply(nc_handles, is.null, logical(1L)))
+        if (!length(open_pos)) {
+            return(invisible(NULL))
+        }
+
+        dataset__close_handles(targets[open_pos], nc_handles[open_pos])
+        nc_handles[open_pos] <<- vector("list", length(open_pos))
+        invisible(NULL)
+    }
+    cleanup_preopened <- TRUE
+    on.exit(
+        if (isTRUE(cleanup_preopened)) {
+            close_preopened_handles()
+        },
+        add = TRUE
+    )
+
+    # Close the progress bar explicitly so later fallback/download progress is
+    # reported as a separate operation.
+    progress_id <- dataset__progress_bar(progress, sprintf("Opening %s records", result_label), length(urls))
+    finish_opendap_progress <- function(ok) {
+        if (!is.null(progress_id)) {
+            dataset__progress_done(progress_id, ok)
+            progress_id <<- NULL
+        }
+        invisible(NULL)
+    }
+    on.exit(finish_opendap_progress(FALSE), add = TRUE)
+
+    for (j in seq_along(urls)) {
+        if (missing[[j]]) {
+            dataset__progress_update(progress_id, j)
+            next
+        }
+
+        d <- NULL
+        ok <- tryCatch(
+            {
+                d <- EsgDataset$new(urls[[j]])
+                d$open(progress = FALSE)
+                handles <- dataset__detach_handles(d)
+                if (!length(handles) || is.null(handles[[1L]])) {
+                    stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
+                }
+                nc_handles[j] <- handles[1L]
+                TRUE
+            },
+            error = function(e) {
+                if (!is.null(d) && is.function(d$close)) {
+                    d$close()
+                }
+                opendap_errors[[j]] <<- e
+                FALSE
+            }
+        )
+        failed[[j]] <- !ok
+        dataset__progress_update(progress_id, j)
+    }
+    finish_opendap_progress(TRUE)
+
+    fallback_pos <- base::which(missing | failed)
+    if (length(fallback_pos)) {
+        missing_pos <- base::which(missing)
+        failed_pos <- base::which(failed)
+        if (length(missing_pos)) {
+            cli::cli_alert_warning(
+                "OPeNDAP URLs are missing for {private$record_labels(indices[missing_pos])}."
+            )
+        }
+        if (length(failed_pos)) {
+            cli::cli_alert_warning(
+                "OPeNDAP connection failed for {private$record_labels(indices[failed_pos])}."
+            )
+        }
+
+        opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
+        if (fallback == "error") {
+            details <- c(
+                if (length(missing_pos)) {
+                    "x" = "Missing OPeNDAP URL: {private$record_labels(indices[missing_pos])}"
+                },
+                if (length(failed_pos)) {
+                    "x" = "Failed OPeNDAP open: {private$record_labels(indices[failed_pos])}"
+                }
+            )
+            cli::cli_abort(
+                c(unavailable_message, details),
+                parent = opendap_error
+            )
+        }
+
+        if (fallback == "ask") {
+            if (!interactive()) {
+                cli::cli_abort(
+                    "Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP."
+                )
+            } else {
+                answer <- utils::menu(
+                    choices = c(
+                        sprintf("Download %d file(s) via HTTP", length(fallback_pos)),
+                        "Cancel"
+                    ),
+                    title = "OPeNDAP is not available. What would you like to do?"
+                )
+                if (answer != 1L) {
+                    cli::cli_abort("Operation cancelled by user.")
+                }
+            }
+        }
+
+        download_urls <- result$url_download[indices[fallback_pos]]
+        if (any(is.na(download_urls))) {
+            http_missing_pos <- fallback_pos[is.na(download_urls)]
+            cli::cli_abort(c(
+                http_missing_message,
+                "x" = "Missing HTTPServer URL: {private$record_labels(indices[http_missing_pos])}"
+            ))
+        }
+
+        # Only require a downloader after HTTP fallback is known to be necessary.
+        downloader <- query_result__resolve_downloader(
+            downloader,
+            store,
+            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
+        )
+        cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
+        targets[fallback_pos] <- query_result__http_fallback(
+            result,
+            indices[fallback_pos],
+            downloader,
+            progress = progress
+        )
+    }
+
+    # Reuse pre-opened handles for successful OPeNDAP records and open only the
+    # fallback-downloaded targets that still need handles.
+    ds <- EsgDataset$new(targets)
+    dataset__adopt_handles(ds, nc_handles)
+    if (!isTRUE(ds$is_open)) {
+        ds$open(progress = FALSE)
+    }
+    dataset__set_context(ds, private$update_selection_context(indices))
+    cleanup_preopened <- FALSE
+    ds
+}
+# }}}
+
 query_result__drs_bound <- function(value, end = FALSE) {
     if (is.na(value) || !nzchar(value)) {
         return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
@@ -3241,6 +3511,75 @@ query_result__merge_params <- function(store, params) {
     state[names(extra)] <- extra
 
     store$restore(state)
+}
+# }}}
+
+# Child Dataset collection is split by Dataset count instead of URL length so
+# the behavior is deterministic and independent of JSON/url connection heuristics.
+QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE <- 50L
+
+# query_result__child_dataset_batches {{{
+# Split Dataset IDs for child File/Aggregation collection while preserving order.
+query_result__child_dataset_batches <- function(dataset_id, batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE) {
+    checkmate::assert_character(dataset_id, any.missing = FALSE)
+    checkmate::assert_count(batch_size, positive = TRUE)
+    if (!length(dataset_id)) {
+        return(list())
+    }
+
+    # Keep the original Dataset order so batched results remain predictable.
+    split(dataset_id, ceiling(seq_along(dataset_id) / as.integer(batch_size)))
+}
+# }}}
+
+# query_result__merge_child_collects {{{
+# Merge several child query responses into one result object state.
+query_result__merge_child_collects <- function(results, params, all = FALSE, limit = NULL) {
+    if (!length(results)) {
+        return(query_result__empty_response(params))
+    }
+    checkmate::assert_list(results)
+    checkmate::assert_flag(all)
+    checkmate::assert_count(limit, null.ok = TRUE)
+
+    docs <- data.table::rbindlist(lapply(results, `[[`, "docs"), fill = TRUE)
+    if (!isTRUE(all) && !is.null(limit) && query__collect_nrow(docs) > limit) {
+        # Query backends should honor the per-batch limit, but trim defensively
+        # so the public `limit` remains a global cap across all batches.
+        docs <- docs[seq_len(as.integer(limit)), , drop = FALSE]
+    }
+
+    response <- results[[length(results)]]$response
+    num_found <- vapply(results, function(result) {
+        value <- result$response$response$numFound
+        if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+            return(as.numeric(query__collect_nrow(result$docs)))
+        }
+        as.numeric(value[[1L]])
+    }, numeric(1L))
+
+    response$response$docs <- docs
+    response$response$numFound <- sum(num_found, na.rm = TRUE)
+    response$response$start <- 0L
+
+    query_urls <- unlist(
+        lapply(results, function(result) result$context$query_url),
+        use.names = FALSE
+    )
+
+    # The first effective parameter store contains required field expansion;
+    # restore the full Dataset selection so the final result reflects the caller
+    # request rather than the last batch.
+    parameter <- query_param__clone(results[[1L]]$parameter)
+    query_result__merge_params(parameter, list(dataset_id = query_param__value(params$state()$dataset_id)))
+    parameter$limit(query_param__value(params$limit()))
+
+    list(
+        response = response,
+        docs = docs,
+        parameter = parameter,
+        context = list(query_url = query_result__query_urls(query_urls, named = FALSE))
+    )
 }
 # }}}
 
@@ -3425,6 +3764,10 @@ EsgResultDataset <- R6::R6Class(
             )
             params <- built$params
             limit <- built$limit
+            selected_dataset_id <- if (is.null(which)) self$id else self$id[which]
+            if (!length(selected_dataset_id)) {
+                selected_dataset_id <- NULL
+            }
 
             req_fld <- if (type == "File") {
                 EsgResultFile$private_fields$required_fields
@@ -3435,20 +3778,72 @@ EsgResultDataset <- R6::R6Class(
             if (self$count() == 0L) {
                 result <- query_result__empty_response(params)
             } else {
-                collect_args <- list(
-                    child_index_node,
-                    params,
-                    required_fields = req_fld,
-                    all = all,
-                    limit = limit,
-                    constraints = FALSE,
-                    dict_check = TRUE
-                )
-                if (isTRUE(progress)) {
-                    collect_args$progress <- TRUE
-                    collect_args$progress_label <- sprintf("Collecting %s records", type)
+                # Collect one child query batch. The caller decides whether the
+                # batch is the original full request or a subset of Dataset IDs.
+                collect_one <- function(batch_params, batch_limit, dict_check,
+                                        batch_index = NULL, batch_count = NULL) {
+                    collect_args <- list(
+                        child_index_node,
+                        batch_params,
+                        required_fields = req_fld,
+                        all = all,
+                        limit = batch_limit,
+                        constraints = FALSE,
+                        dict_check = dict_check
+                    )
+                    if (isTRUE(progress)) {
+                        label <- sprintf("Collecting %s records", type)
+                        if (!is.null(batch_index)) {
+                            label <- sprintf("%s (batch %d/%d)", label, batch_index, batch_count)
+                        }
+                        collect_args$progress <- TRUE
+                        collect_args$progress_label <- label
+                    }
+                    do.call(query__collect, collect_args)
                 }
-                result <- do.call(query__collect, collect_args)
+
+                if (length(selected_dataset_id) > QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE) {
+                    batches <- query_result__child_dataset_batches(selected_dataset_id)
+                    collected <- vector("list", length(batches))
+                    collected_count <- 0L
+                    remaining <- as.integer(limit)
+
+                    for (i in seq_along(batches)) {
+                        # Each batch starts from the validated full parameter
+                        # store, then narrows only the Dataset ID facet.
+                        batch_params <- params$copy()
+                        query_result__merge_params(batch_params, list(dataset_id = batches[[i]]))
+                        batch_limit <- if (isTRUE(all)) limit else remaining
+                        batch_params$limit(batch_limit)
+
+                        collected[[i]] <- collect_one(
+                            batch_params,
+                            batch_limit,
+                            dict_check = i == 1L,
+                            batch_index = i,
+                            batch_count = length(batches)
+                        )
+                        collected_count <- i
+
+                        if (!isTRUE(all)) {
+                            # `limit` is a global cap for the public method, not
+                            # a per-batch cap, so stop once enough rows are held.
+                            remaining <- remaining - query__collect_nrow(collected[[i]]$docs)
+                            if (remaining <= 0L) {
+                                break
+                            }
+                        }
+                    }
+
+                    result <- query_result__merge_child_collects(
+                        collected[seq_len(collected_count)],
+                        params,
+                        all = all,
+                        limit = limit
+                    )
+                } else {
+                    result <- collect_one(params, limit, dict_check = TRUE)
+                }
             }
 
             # replace docs in the last response
@@ -3928,37 +4323,20 @@ EsgResultFile <- R6::R6Class(
             ...
         ) {
             replica <- match.arg(replica)
-            strategy <- match.arg(strategy)
-            if (is.null(downloader)) {
-                if (!is.null(store)) {
-                    downloader <- store$downloader()
-                } else {
-                    cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
-                }
-            }
-            node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
-            network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
-            node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
-            if (is.null(probe_concurrency)) {
-                probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
-            }
-            plan <- self$download_plan(
+            query_result__download(
+                self,
+                downloader = downloader,
+                store = store,
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats,
-                network_policy = network_policy,
-                node_policy = node_policy,
                 probe_concurrency = probe_concurrency,
-                probe_cache_seconds = probe_cache_seconds
+                probe_cache_seconds = probe_cache_seconds,
+                session_label = session_label,
+                run = run,
+                ...
             )
-            tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
-            session_id <- downloader$enqueue(plan, session_label = session_label)
-            if (isTRUE(run)) {
-                downloader$run(session_id = session_id, ...)
-            }
-            session_id
         },
         # }}}
 
@@ -4008,182 +4386,18 @@ EsgResultFile <- R6::R6Class(
             downloader = NULL,
             progress = getOption("epwshiftr.progress", interactive())
         ) {
-            fallback <- match.arg(fallback)
-            checkmate::assert_flag(progress)
-
-            if (!self$count()) {
-                cli::cli_abort("No file records are available to open.")
-            }
-
-            if (is.null(which)) {
-                indices <- seq_len(self$count())
-            } else if (is.character(which)) {
-                checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
-                checkmate::assert_subset(which, self$id, empty.ok = FALSE)
-                indices <- match(which, self$id)
-            } else {
-                checkmate::assert_integerish(
-                    which,
-                    lower = 1L,
-                    upper = self$count(),
-                    any.missing = FALSE,
-                    min.len = 1L,
-                    unique = TRUE
-                )
-                indices <- as.integer(which)
-            }
-
-            urls <- self$url_opendap[indices]
-            targets <- urls
-            nc_handles <- vector("list", length(urls))
-            opendap_errors <- vector("list", length(urls))
-            failed <- rep(FALSE, length(urls))
-            missing <- is.na(urls)
-
-            close_preopened_handles <- function() {
-                open_pos <- base::which(!vapply(nc_handles, is.null, logical(1L)))
-                if (!length(open_pos)) {
-                    return(invisible(NULL))
-                }
-
-                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
-                nc_handles[open_pos] <<- vector("list", length(open_pos))
-                invisible(NULL)
-            }
-            cleanup_preopened <- TRUE
-            on.exit(
-                if (isTRUE(cleanup_preopened)) {
-                    close_preopened_handles()
-                },
-                add = TRUE
+            query_result__open_dataset(
+                self,
+                which = which,
+                fallback = fallback,
+                store = store,
+                downloader = downloader,
+                progress = progress,
+                result_label = "File",
+                empty_message = "No file records are available to open.",
+                unavailable_message = "OPeNDAP is not available for these file records.",
+                http_missing_message = "HTTPServer download URLs are missing for one or more file records."
             )
-
-            progress_id <- dataset__progress_bar(progress, "Opening File records", length(urls))
-            finish_opendap_progress <- function(ok) {
-                if (!is.null(progress_id)) {
-                    dataset__progress_done(progress_id, ok)
-                    progress_id <<- NULL
-                }
-                invisible(NULL)
-            }
-            on.exit(finish_opendap_progress(FALSE), add = TRUE)
-
-            for (j in seq_along(urls)) {
-                if (missing[[j]]) {
-                    dataset__progress_update(progress_id, j)
-                    next
-                }
-
-                d <- NULL
-                ok <- tryCatch(
-                    {
-                        d <- EsgDataset$new(urls[[j]])
-                        d$open(progress = FALSE)
-                        handles <- dataset__detach_handles(d)
-                        if (!length(handles) || is.null(handles[[1L]])) {
-                            stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
-                        }
-                        nc_handles[j] <- handles[1L]
-                        TRUE
-                    },
-                    error = function(e) {
-                        if (!is.null(d) && is.function(d$close)) {
-                            d$close()
-                        }
-                        opendap_errors[[j]] <<- e
-                        FALSE
-                    }
-                )
-                failed[[j]] <- !ok
-                dataset__progress_update(progress_id, j)
-            }
-            finish_opendap_progress(TRUE)
-
-            fallback_pos <- base::which(missing | failed)
-            if (length(fallback_pos)) {
-                missing_pos <- base::which(missing)
-                failed_pos <- base::which(failed)
-                if (length(missing_pos)) {
-                    cli::cli_alert_warning(
-                        "OPeNDAP URLs are missing for {private$record_labels(indices[missing_pos])}."
-                    )
-                }
-                if (length(failed_pos)) {
-                    cli::cli_alert_warning(
-                        "OPeNDAP connection failed for {private$record_labels(indices[failed_pos])}."
-                    )
-                }
-
-                opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
-                if (fallback == "error") {
-                    details <- c(
-                        if (length(missing_pos)) {
-                            "x" = "Missing OPeNDAP URL: {private$record_labels(indices[missing_pos])}"
-                        },
-                        if (length(failed_pos)) {
-                            "x" = "Failed OPeNDAP open: {private$record_labels(indices[failed_pos])}"
-                        }
-                    )
-                    cli::cli_abort(
-                        c("OPeNDAP is not available for these file records.", details),
-                        parent = opendap_error
-                    )
-                }
-
-                if (fallback == "ask") {
-                    if (!interactive()) {
-                        cli::cli_abort(
-                            "Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP."
-                        )
-                    } else {
-                        answer <- utils::menu(
-                            choices = c(
-                                sprintf("Download %d file(s) via HTTP", length(fallback_pos)),
-                                "Cancel"
-                            ),
-                            title = "OPeNDAP is not available. What would you like to do?"
-                        )
-                        if (answer != 1L) {
-                            cli::cli_abort("Operation cancelled by user.")
-                        }
-                    }
-                }
-
-                download_urls <- self$url_download[indices[fallback_pos]]
-                if (any(is.na(download_urls))) {
-                    http_missing_pos <- fallback_pos[is.na(download_urls)]
-                    cli::cli_abort(c(
-                        "HTTPServer download URLs are missing for one or more file records.",
-                        "x" = "Missing HTTPServer URL: {private$record_labels(indices[http_missing_pos])}"
-                    ))
-                }
-
-                if (is.null(downloader)) {
-                    if (!is.null(store)) {
-                        downloader <- store$downloader()
-                    } else {
-                        cli::cli_abort(
-                            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
-                        )
-                    }
-                }
-                cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                targets[fallback_pos] <- query_result__http_fallback(
-                    self,
-                    indices[fallback_pos],
-                    downloader,
-                    progress = progress
-                )
-            }
-
-            ds <- EsgDataset$new(targets)
-            dataset__adopt_handles(ds, nc_handles)
-            if (!isTRUE(ds$is_open)) {
-                ds$open(progress = FALSE)
-            }
-            dataset__set_context(ds, private$update_selection_context(indices))
-            cleanup_preopened <- FALSE
-            ds
         }
         # }}}
     ),
@@ -4429,37 +4643,20 @@ EsgResultAggregation <- R6::R6Class(
             ...
         ) {
             replica <- match.arg(replica)
-            strategy <- match.arg(strategy)
-            if (is.null(downloader)) {
-                if (!is.null(store)) {
-                    downloader <- store$downloader()
-                } else {
-                    cli::cli_abort("`download()` requires an explicit `store` or persistent `downloader`.")
-                }
-            }
-            node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
-            network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
-            node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
-            if (is.null(probe_concurrency)) {
-                probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
-            }
-            plan <- self$download_plan(
+            query_result__download(
+                self,
+                downloader = downloader,
+                store = store,
                 replica = replica,
                 service = service,
                 probe = probe,
                 strategy = strategy,
-                node_stats = node_stats,
-                network_policy = network_policy,
-                node_policy = node_policy,
                 probe_concurrency = probe_concurrency,
-                probe_cache_seconds = probe_cache_seconds
+                probe_cache_seconds = probe_cache_seconds,
+                session_label = session_label,
+                run = run,
+                ...
             )
-            tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
-            session_id <- downloader$enqueue(plan, session_label = session_label)
-            if (isTRUE(run)) {
-                downloader$run(session_id = session_id, ...)
-            }
-            session_id
         },
         # }}}
 
@@ -4510,182 +4707,18 @@ EsgResultAggregation <- R6::R6Class(
             downloader = NULL,
             progress = getOption("epwshiftr.progress", interactive())
         ) {
-            fallback <- match.arg(fallback)
-            checkmate::assert_flag(progress)
-
-            if (!self$count()) {
-                cli::cli_abort("No aggregation records are available to open.")
-            }
-
-            if (is.null(which)) {
-                indices <- seq_len(self$count())
-            } else if (is.character(which)) {
-                checkmate::assert_character(which, any.missing = FALSE, min.len = 1L, unique = TRUE)
-                checkmate::assert_subset(which, self$id, empty.ok = FALSE)
-                indices <- match(which, self$id)
-            } else {
-                checkmate::assert_integerish(
-                    which,
-                    lower = 1L,
-                    upper = self$count(),
-                    any.missing = FALSE,
-                    min.len = 1L,
-                    unique = TRUE
-                )
-                indices <- as.integer(which)
-            }
-
-            urls <- self$url_opendap[indices]
-            targets <- urls
-            nc_handles <- vector("list", length(urls))
-            opendap_errors <- vector("list", length(urls))
-            failed <- rep(FALSE, length(urls))
-            missing <- is.na(urls)
-
-            close_preopened_handles <- function() {
-                open_pos <- which(!vapply(nc_handles, is.null, logical(1L)))
-                if (!length(open_pos)) {
-                    return(invisible(NULL))
-                }
-
-                dataset__close_handles(targets[open_pos], nc_handles[open_pos])
-                nc_handles[open_pos] <<- vector("list", length(open_pos))
-                invisible(NULL)
-            }
-            cleanup_preopened <- TRUE
-            on.exit(
-                if (isTRUE(cleanup_preopened)) {
-                    close_preopened_handles()
-                },
-                add = TRUE
+            query_result__open_dataset(
+                self,
+                which = which,
+                fallback = fallback,
+                store = store,
+                downloader = downloader,
+                progress = progress,
+                result_label = "Aggregation",
+                empty_message = "No aggregation records are available to open.",
+                unavailable_message = "OPeNDAP is not available for these aggregation records.",
+                http_missing_message = "HTTPServer download URLs are missing for one or more aggregation records."
             )
-
-            progress_id <- dataset__progress_bar(progress, "Opening Aggregation records", length(urls))
-            finish_opendap_progress <- function(ok) {
-                if (!is.null(progress_id)) {
-                    dataset__progress_done(progress_id, ok)
-                    progress_id <<- NULL
-                }
-                invisible(NULL)
-            }
-            on.exit(finish_opendap_progress(FALSE), add = TRUE)
-
-            for (j in seq_along(urls)) {
-                if (missing[[j]]) {
-                    dataset__progress_update(progress_id, j)
-                    next
-                }
-
-                d <- NULL
-                ok <- tryCatch(
-                    {
-                        d <- EsgDataset$new(urls[[j]])
-                        d$open(progress = FALSE)
-                        handles <- dataset__detach_handles(d)
-                        if (!length(handles) || is.null(handles[[1L]])) {
-                            stop("Opened EsgDataset does not expose a transferable NetCDF handle.", call. = FALSE)
-                        }
-                        nc_handles[j] <- handles[1L]
-                        TRUE
-                    },
-                    error = function(e) {
-                        if (!is.null(d) && is.function(d$close)) {
-                            d$close()
-                        }
-                        opendap_errors[[j]] <<- e
-                        FALSE
-                    }
-                )
-                failed[[j]] <- !ok
-                dataset__progress_update(progress_id, j)
-            }
-            finish_opendap_progress(TRUE)
-
-            fallback_pos <- which(missing | failed)
-            if (length(fallback_pos)) {
-                missing_pos <- which(missing)
-                failed_pos <- which(failed)
-                if (length(missing_pos)) {
-                    cli::cli_alert_warning(
-                        "OPeNDAP URLs are missing for {private$record_labels(indices[missing_pos])}."
-                    )
-                }
-                if (length(failed_pos)) {
-                    cli::cli_alert_warning(
-                        "OPeNDAP connection failed for {private$record_labels(indices[failed_pos])}."
-                    )
-                }
-
-                opendap_error <- if (length(failed_pos)) opendap_errors[[failed_pos[[1L]]]] else NULL
-                if (fallback == "error") {
-                    details <- c(
-                        if (length(missing_pos)) {
-                            "x" = "Missing OPeNDAP URL: {private$record_labels(indices[missing_pos])}"
-                        },
-                        if (length(failed_pos)) {
-                            "x" = "Failed OPeNDAP open: {private$record_labels(indices[failed_pos])}"
-                        }
-                    )
-                    cli::cli_abort(
-                        c("OPeNDAP is not available for these aggregation records.", details),
-                        parent = opendap_error
-                    )
-                }
-
-                if (fallback == "ask") {
-                    if (!interactive()) {
-                        cli::cli_abort(
-                            "Cannot ask for fallback in a non-interactive session. Use fallback = 'auto' to download via HTTP."
-                        )
-                    } else {
-                        answer <- utils::menu(
-                            choices = c(
-                                sprintf("Download %d file(s) via HTTP", length(fallback_pos)),
-                                "Cancel"
-                            ),
-                            title = "OPeNDAP is not available. What would you like to do?"
-                        )
-                        if (answer != 1L) {
-                            cli::cli_abort("Operation cancelled by user.")
-                        }
-                    }
-                }
-
-                download_urls <- self$url_download[indices[fallback_pos]]
-                if (any(is.na(download_urls))) {
-                    http_missing_pos <- fallback_pos[is.na(download_urls)]
-                    cli::cli_abort(c(
-                        "HTTPServer download URLs are missing for one or more aggregation records.",
-                        "x" = "Missing HTTPServer URL: {private$record_labels(indices[http_missing_pos])}"
-                    ))
-                }
-
-                if (is.null(downloader)) {
-                    if (!is.null(store)) {
-                        downloader <- store$downloader()
-                    } else {
-                        cli::cli_abort(
-                            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
-                        )
-                    }
-                }
-                cli::cli_alert_info("Downloading {length(fallback_pos)} file(s) via HTTP as fallback...")
-                targets[fallback_pos] <- query_result__http_fallback(
-                    self,
-                    indices[fallback_pos],
-                    downloader,
-                    progress = progress
-                )
-            }
-
-            ds <- EsgDataset$new(targets)
-            dataset__adopt_handles(ds, nc_handles)
-            if (!isTRUE(ds$is_open)) {
-                ds$open(progress = FALSE)
-            }
-            dataset__set_context(ds, private$update_selection_context(indices))
-            cleanup_preopened <- FALSE
-            ds
         }
         # }}}
     ),
