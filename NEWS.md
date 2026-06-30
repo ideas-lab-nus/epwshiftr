@@ -15,6 +15,12 @@
 * `future_epw()` now correctly handles missing values when generating future
   weather files.
 
+## Internal changes
+
+* `EsgResultFile` and `EsgResultAggregation` now share their internal download
+  and OPeNDAP fallback helpers while keeping the public methods unchanged
+  (#118).
+
 # epwshiftr 0.1.4
 
 ## Major changes
