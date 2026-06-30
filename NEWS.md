@@ -1,4 +1,4 @@
-# eplusr (development version)
+# epwshiftr (development version)
 
 ## Breaking changes
 
