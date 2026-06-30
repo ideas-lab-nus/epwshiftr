@@ -2,21 +2,67 @@
 
 ## Breaking changes
 
-* The development line and the next CRAN release intentionally drop compatibility
-  with the legacy `fst`, `future.apply`, `progressr`, and `pingr` workflows.
-  Users who need the old implementation should use the `legacy` branch on
+* Replaced the legacy data.table-oriented workflow with the new store-native
+  workflow. Users who need `v0.1.4` behavior should use the `legacy` branch on
   GitHub or install epwshiftr `v0.1.4`.
+* Removed the legacy `init_cmip6_index()`, `summary_database()`,
+  `match_coord()`, `extract_data()`, `morphing_epw()`, `future_epw()`,
+  `EsgfQuery`, `esgf_query()`, and related helpers. Use `shift_*`,
+  `EsgStore`, `EpwMorpher`, `EsgQuery`, and `data_node_status()` instead.
+* Dropped the old `fst`, `future.apply`, `progressr`, `pingr`, `PCICt`, and
+  `rappdirs`-based implementation paths; the new implementation uses DuckDB,
+  `mirai`, S7, and store-managed manifests.
+
+## New features
+
+* Added the store-native `shift_request()` -> `shift_collect()` ->
+  `shift_download()` -> `shift_extract()` -> `shift_morph()` -> `shift_epw()`
+  workflow, with inspection helpers such as `shift_status()`,
+  `shift_diagnostics()`, `shift_coverage()`, `shift_outputs()`, and
+  `shift_data()`.
+* Added `EsgStore`, a DuckDB-backed local store for query snapshots,
+  dictionaries, source files, downloads, Parquet extracts, and generated EPW
+  outputs.
+* Reworked ESGF querying around `esg_query()` / `EsgQuery` and typed
+  `EsgResult*` objects for Dataset, File, and Aggregation records.
+* Added `EsgDataset` for remote OPeNDAP NetCDF access without downloading full
+  files.
+* Rebuilt ESG dictionaries as project-aware `EsgDict` objects with option
+  discovery and legality checks across CMIP6 and related ESG projects.
+* Added persistent downloader support, including download planning, resume,
+  verification, node health, background jobs, daemon mode, and event logs.
+* Added `EpwMorpher`, morphing recipes, backend registration, historical
+  reference handling, resumable morphing, and manifest-backed EPW output
+  registration (#111, #115).
+* Added the `epwshiftr` CLI with `doctor`, `query`, `download`, `storage`,
+  `shift`, `extract`, `morph`, and `esgf` command groups (#114).
 
 ## Bug fixes
 
 * `EsgQuery$collect(all = TRUE)` now warns and returns partial results when
   ESGF pagination stops making progress, instead of repeatedly requesting the
   same offset (#116).
-* `future_epw()` now correctly handles missing values when generating future
-  weather files.
+* `shift_epw()` and `EpwMorpher$write_epw()` now fill missing, out-of-range,
+  and special EPW values before saving generated weather files (#87).
+
+## Documentation
+
+* Rewrote the README around the recommended `shift_*` workflow and the
+  store-native migration path.
+* Added migration documentation mapping legacy workflow steps to the new
+  store-native replacements.
+* Split and refreshed vignettes for ESGF query results, dictionaries, stores,
+  downloader usage, EPW morphing, CLI usage, troubleshooting, and future EPW
+  workflows.
+* Expanded the development changelog so the release notes reflect the
+  store-native workflow overhaul and migration path (#TBD).
 
 ## Internal changes
 
+* Updated GitHub Actions workflow dependencies for current Actions behavior
+  (#99).
+* Removed obsolete print helpers and the legacy implementation files (#109,
+  #110).
 * `EsgResultFile` and `EsgResultAggregation` now share their internal download
   and OPeNDAP fallback helpers while keeping the public methods unchanged
   (#118).
