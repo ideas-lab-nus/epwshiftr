@@ -15,6 +15,11 @@
 * `future_epw()` now correctly handles missing values when generating future
   weather files.
 
+## Internal refactor
+
+* Removed the obsolete testthat start-order override now that tests no longer
+  depend on shared cache side effects (#117).
+
 # epwshiftr 0.1.4
 
 ## Major changes
