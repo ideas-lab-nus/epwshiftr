@@ -1457,6 +1457,126 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
     expect_length(priv(files)$context$query_url, 1L)
 })
 
+test_that("EsgResultDataset$collect() batches large child queries", {
+    dataset_id <- sprintf("dataset-%03d", seq_len(QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE * 2L + 5L))
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = dataset_id, size = seq_along(dataset_id), check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    # Mock child collection so the test can inspect per-batch query inputs
+    # without issuing ESGF requests.
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress = FALSE,
+            progress_label = NULL
+        ) {
+            batch_id <- query_param__value(params$state()$dataset_id)
+            call_id <- length(calls) + 1L
+            calls[[call_id]] <<- list(
+                index_node = index_node,
+                dataset_id = batch_id,
+                dict_check = dict_check,
+                all = all,
+                limit = limit
+            )
+
+            docs <- data.frame(
+                id = paste0("file-", batch_id),
+                dataset_id = batch_id,
+                size = seq_along(batch_id),
+                check.names = FALSE
+            )
+            docs$url <- I(rep(list("https://example.org/file.nc|application/netcdf|HTTPServer"), length(batch_id)))
+            params$fields(unique(c(query_param__value(params$fields()), required_fields)))
+            response <- query_result_test_response(docs)
+            list(
+                response = response,
+                docs = docs,
+                parameter = params,
+                context = list(query_url = paste0("https://example.org/search?page=", call_id))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(datasets$collect(fields = "id", all = TRUE), "EsgResultFile")
+
+    expect_length(calls, 3L)
+    expect_equal(
+        vapply(calls, function(call) length(call$dataset_id), integer(1L)),
+        c(50L, 50L, 5L)
+    )
+    expect_identical(unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE), dataset_id)
+    expect_true(calls[[1L]]$dict_check)
+    expect_false(any(vapply(calls[-1L], `[[`, logical(1L), "dict_check")))
+    expect_equal(files$count(), length(dataset_id))
+    expect_length(priv(files)$context$query_url, 3L)
+    expect_identical(query_param__value(priv(files)$parameter$state()$dataset_id), dataset_id)
+    expect_true(all(EsgResultFile$private_fields$required_fields %in% query_param__value(priv(files)$parameter$fields())))
+})
+
+test_that("EsgResultDataset$collect() keeps limit global across child batches", {
+    dataset_id <- sprintf("dataset-%03d", seq_len(QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE * 2L + 20L))
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = dataset_id, size = seq_along(dataset_id), check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    # Mock child collection so the test can verify the public `limit` remains
+    # global instead of being applied independently to every batch.
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
+                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+            batch_id <- query_param__value(params$state()$dataset_id)
+            param_limit <- query_param__value(params$limit())
+            take <- min(length(batch_id), as.integer(param_limit))
+            docs <- data.frame(
+                id = paste0("file-", batch_id[seq_len(take)]),
+                dataset_id = batch_id[seq_len(take)],
+                size = seq_len(take),
+                check.names = FALSE
+            )
+            docs$url <- I(rep(list("https://example.org/file.nc|application/netcdf|HTTPServer"), take))
+            params$fields(unique(c(query_param__value(params$fields()), required_fields)))
+            calls[[length(calls) + 1L]] <<- list(
+                dataset_id = batch_id,
+                limit = limit,
+                param_limit = param_limit
+            )
+
+            response <- query_result_test_response(docs)
+            list(
+                response = response,
+                docs = docs,
+                parameter = params,
+                context = list(query_url = paste0("https://example.org/search?page=", length(calls)))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    files <- expect_s3_class(datasets$collect(fields = "id", limit = 55L), "EsgResultFile")
+
+    expect_length(calls, 2L)
+    expect_equal(vapply(calls, `[[`, integer(1L), "limit"), c(55L, 5L))
+    expect_equal(vapply(calls, `[[`, integer(1L), "param_limit"), c(55L, 5L))
+    expect_equal(files$count(), 55L)
+    expect_identical(query_param__value(priv(files)$parameter$limit()), 55L)
+    expect_identical(query_param__value(priv(files)$parameter$state()$dataset_id), dataset_id)
+})
+
 test_that("EsgResultDataset$collect() passes progress to child query only for non-empty results", {
     datasets <- query_result_test_object(
         "Dataset",
@@ -1470,6 +1590,8 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
     )
 
     calls <- list()
+    # Mock child collection so the test can inspect progress forwarding
+    # without issuing ESGF requests.
     testthat::local_mocked_bindings(
         query__collect = function(
             index_node,
@@ -1505,6 +1627,67 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
 
     expect_s3_class(empty$collect(fields = "id", progress = TRUE), "EsgResultFile")
     expect_length(calls, 2L)
+})
+
+test_that("EsgResultDataset$collect() labels progress for child query batches", {
+    dataset_id <- sprintf("dataset-%03d", seq_len(QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE * 2L + 1L))
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = dataset_id, size = seq_along(dataset_id), check.names = FALSE),
+        query_result_test_params("Dataset")
+    )
+
+    calls <- list()
+    # Mock child collection so the test can inspect per-batch progress inputs
+    # without issuing ESGF requests.
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress = FALSE,
+            progress_label = NULL
+        ) {
+            batch_id <- query_param__value(params$state()$dataset_id)
+            calls[[length(calls) + 1L]] <<- list(
+                dataset_id = batch_id,
+                progress = progress,
+                progress_label = progress_label
+            )
+
+            # Return one child File row per Dataset ID so the batch merge path
+            # sees realistic row counts and URL fields.
+            docs <- data.frame(
+                id = paste0("file-", batch_id),
+                dataset_id = batch_id,
+                size = seq_along(batch_id),
+                check.names = FALSE
+            )
+            docs$url <- I(rep(list("https://example.org/file.nc|application/netcdf|HTTPServer"), length(batch_id)))
+            params$fields(unique(c(query_param__value(params$fields()), required_fields)))
+            response <- query_result_test_response(docs)
+            list(
+                response = response,
+                docs = docs,
+                parameter = params,
+                context = list(query_url = paste0("https://example.org/search?page=", length(calls)))
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_s3_class(datasets$collect(fields = "id", all = TRUE, progress = TRUE), "EsgResultFile")
+
+    expect_length(calls, 3L)
+    expect_true(all(vapply(calls, `[[`, logical(1L), "progress")))
+    expect_identical(
+        vapply(calls, `[[`, character(1L), "progress_label"),
+        sprintf("Collecting File records (batch %d/3)", seq_along(calls))
+    )
 })
 # }}}
 # EsgResultDataset$expand_replicas() {{{
