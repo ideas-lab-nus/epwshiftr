@@ -88,6 +88,26 @@
     </div>
 
     <div class="section level2">
+<h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
+<ul><li>The development line and the next CRAN release intentionally drop compatibility with the legacy <code>fst</code>, <code>future.apply</code>, <code>progressr</code>, and <code>pingr</code> workflows. Users who need the old implementation should use the <code>legacy</code> branch on GitHub or install epwshiftr <code>v0.1.4</code>.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<ul><li>
+<code>EsgQuery$collect(all = TRUE)</code> now warns and returns partial results when ESGF pagination stops making progress, instead of repeatedly requesting the same offset (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/116" class="external-link">#116</a>).</li>
+<li>
+<code>future_epw()</code> now correctly handles missing values when generating future weather files.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="internal-changes-development-version">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-development-version"></a></h3>
+<ul><li>
+<code>EsgResultFile</code> and <code>EsgResultAggregation</code> now share their internal download and OPeNDAP fallback helpers while keeping the public methods unchanged (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/118" class="external-link">#118</a>).</li>
+<li>Removed the obsolete testthat start-order override now that tests no longer depend on shared cache side effects (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/117" class="external-link">#117</a>).</li>
+</ul></div>
+</div>
+    <div class="section level2">
 <h2 class="page-header" data-toc-text="0.1.4" id="epwshiftr-014">epwshiftr 0.1.4<small>2024-03-12</small><a class="anchor" aria-label="anchor" href="#epwshiftr-014"></a></h2>
 <div class="section level3">
 <h3 id="major-changes-0-1-4">Major changes<a class="anchor" aria-label="anchor" href="#major-changes-0-1-4"></a></h3>
