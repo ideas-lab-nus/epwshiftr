@@ -34,6 +34,8 @@
 * Added `EpwMorpher`, morphing recipes, backend registration, historical
   reference handling, resumable morphing, and manifest-backed EPW output
   registration (#111, #115).
+* Belcher EPW downscaling now supports CMIP6 precipitation (`pr`) and includes it
+  in the recommended morphing variable set (#122).
 * Added the `epwshiftr` CLI with `doctor`, `query`, `download`, `storage`,
   `shift`, `extract`, `morph`, and `esgf` command groups (#114).
 
