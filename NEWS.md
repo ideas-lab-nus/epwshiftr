@@ -55,7 +55,7 @@
   downloader usage, EPW morphing, CLI usage, troubleshooting, and future EPW
   workflows.
 * Expanded the development changelog so the release notes reflect the
-  store-native workflow overhaul and migration path (#TBD).
+  store-native workflow overhaul and migration path (#121).
 
 ## Internal changes
 
