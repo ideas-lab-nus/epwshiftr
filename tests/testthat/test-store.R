@@ -118,6 +118,83 @@ store_test__completed_store <- function() {
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
 
+# Build a test-only downloader whose public methods assert they are called
+# outside EsgStore's manifest lock.
+store_test__lock_check_downloader <- function(store) {
+    # This R6 class mimics the small downloader surface EsgStore needs in the
+    # lock-boundary tests without starting real downloads or background jobs.
+    R6::R6Class(
+        "StoreLockCheckDownloader",
+        public = list(
+            n_workers = 1L,
+            network_policy = NULL,
+            node_policy = NULL,
+            calls = character(),
+            plan = NULL,
+
+            # Every downloader-side operation in these tests should happen after
+            # the store lock has been released.
+            assert_unlocked = function(where) {
+                self$calls <- c(self$calls, where)
+                testthat::expect_identical(priv(store)$lock_depth, 0L, info = where)
+            },
+
+            # EsgStore reads node history before ranking candidates.
+            data_nodes = function(service = "HTTPServer") {
+                self$assert_unlocked("data_nodes")
+                NULL
+            },
+
+            # Probe recording writes to the downloader manifest, not the store.
+            record_probes = function(plan, probed = TRUE) {
+                self$assert_unlocked("record_probes")
+                invisible(NULL)
+            },
+
+            # Capture the plan so later fake run() calls can return matching task rows.
+            enqueue = function(plan, session_label = NULL) {
+                self$assert_unlocked("enqueue")
+                self$plan <- data.table::as.data.table(plan)
+                "session-lock-check"
+            },
+
+            # Return a completed task row without touching the filesystem.
+            run = function(session_id = NULL, progress = TRUE, overwrite = FALSE, resume = TRUE, ...) {
+                self$assert_unlocked("run")
+                data.table::data.table(
+                    task_id = "task-lock-check",
+                    session_id = session_id,
+                    file_key = self$plan$file_key[[1L]],
+                    logical_file_id = self$plan$logical_file_id[[1L]],
+                    status = "done",
+                    target_path = NA_character_,
+                    selected_url = self$plan$url[[1L]],
+                    checksum = self$plan$checksum[[1L]],
+                    checksum_type = self$plan$checksum_type[[1L]],
+                    filename = self$plan$filename[[1L]]
+                )
+            },
+
+            # Return a queued job row for background-download branches.
+            start = function(session_id = NULL, overwrite = FALSE, resume = TRUE,
+                             mode = c("process", "daemon"), store_path = NULL) {
+                self$assert_unlocked("start")
+                data.table::data.table(
+                    job_id = "job-lock-check",
+                    session_id = session_id,
+                    status = "queued"
+                )
+            },
+
+            # sync_downloads() may ask for completed tasks; return none so the
+            # lock-boundary tests stay focused on call placement.
+            tasks = function(...) {
+                data.table::data.table()
+            }
+        )
+    )$new()
+}
+
 store_test__with_downloaded_query <- function(code) {
     src <- tempfile(fileext = ".nc")
     writeLines("tracked query netcdf placeholder", src)
@@ -678,6 +755,92 @@ test_that("EsgStore$update_queries()", {
         expect_identical(change_by_file[["master:CMIP6.mock.master.file-1"]], "current")
         expect_identical(change_by_file[["master:CMIP6.mock.master.file-2"]], "stale")
         expect_false(is.na(store$queries()$last_checked_at[[1L]]))
+    })
+})
+
+test_that("EsgStore query update and download workflows release store lock around external work", {
+    skip_if_not_installed("duckdb")
+
+    # Create a minimal tracked-query store and inject a collect mock that fails
+    # if ESGF collection happens while EsgStore's manifest lock is held.
+    with_lock_check_store <- function(code) {
+        dir <- tempfile("esg-store-")
+        store <- EsgStore$new(dir)
+        on.exit(store$close(), add = TRUE)
+
+        query <- esg_query("https://example.org")$
+            experiment_id("ssp585")$
+            variable_id("tas")$
+            limit(1L)
+        query_id <- store$add_query(query, track = TRUE)
+
+        dataset_docs <- data.frame(
+            id = "dataset-1",
+            source_id = "EC-Earth3",
+            experiment_id = "ssp585",
+            size = 1,
+            access = I(list(c("HTTPServer"))),
+            check.names = FALSE
+        )
+        file_docs <- store_test__file_docs(path = "lock-check.nc")
+        file_docs$master_id <- "CMIP6.mock.lock-check"
+        file_docs$tracking_id <- "hdl:21.14100/lock-check"
+        file_docs$latest <- TRUE
+        file_docs$retracted <- FALSE
+
+        testthat::local_mocked_bindings(
+            # Collection is the network-facing part of these workflows and must
+            # remain outside the store lock.
+            query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+                expect_identical(priv(store)$lock_depth, 0L, info = "query__collect")
+                docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+                response <- store_test__response(docs)
+                params$fields(c(query_param__value(params$fields()), required_fields))
+                list(response = response, docs = response$response$docs, parameter = params)
+            },
+            .package = "epwshiftr"
+        )
+
+        code(store, query_id)
+    }
+
+    with_lock_check_store(function(store, query_id) {
+        dl <- store_test__lock_check_downloader(store)
+        links <- store$update_queries(query_id = query_id, enqueue = TRUE, downloader = dl, replica = "current", probe = FALSE)
+
+        expect_equal(nrow(links), 1L)
+        expect_equal(links$download_session_id, "session-lock-check")
+        expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl$calls))
+        update <- store$query_updates(query_id, latest = TRUE)
+        expect_equal(update$download_session_id, "session-lock-check")
+    })
+
+    with_lock_check_store(function(store, query_id) {
+        dl <- store_test__lock_check_downloader(store)
+        session_id <- store$download_query(query_id, downloader = dl, replica = "current", run = FALSE, probe = FALSE)
+
+        expect_equal(session_id, "session-lock-check")
+        expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl$calls))
+        expect_false("run" %in% dl$calls)
+        update <- store$query_updates(query_id, latest = TRUE)
+        expect_equal(update$download_session_id, "session-lock-check")
+    })
+
+    with_lock_check_store(function(store, query_id) {
+        dl <- store_test__lock_check_downloader(store)
+        session_id <- store$download_query(query_id, downloader = dl, replica = "current", run = TRUE, probe = FALSE)
+
+        expect_equal(session_id, "session-lock-check")
+        expect_true(all(c("record_probes", "enqueue", "run") %in% dl$calls))
+    })
+
+    with_lock_check_store(function(store, query_id) {
+        dl <- store_test__lock_check_downloader(store)
+        job <- store$download_query(query_id, downloader = dl, replica = "current", run = TRUE, background = TRUE, probe = FALSE)
+
+        expect_equal(job$job_id, "job-lock-check")
+        expect_true(all(c("record_probes", "enqueue", "start") %in% dl$calls))
+        expect_false("run" %in% dl$calls)
     })
 })
 # }}}
@@ -1610,6 +1773,53 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     expect_true(file.exists(file.path(store$path, catalog$local_path)))
     expect_false(is.na(catalog$local_artifact_id))
     expect_true(file.exists(store$artifact_path(catalog$local_artifact_id)))
+})
+
+test_that("EsgStore$download_files() releases store lock around downloader work", {
+    skip_if_not_installed("duckdb")
+
+    # Build a small File result with an HTTPServer candidate so download_files()
+    # can exercise both supplied-result and catalog-query branches.
+    docs <- store_test__file_docs(path = "lock-download-files.nc")
+    docs$master_id <- "CMIP6.mock.lock-download-files"
+    docs$tracking_id <- "hdl:21.14100/lock-download-files"
+    docs$latest <- TRUE
+    docs$retracted <- FALSE
+    files <- store_test__result(docs = docs)
+
+    dir_files <- tempfile("esg-store-")
+    store_files <- EsgStore$new(dir_files)
+    on.exit(store_files$close(), add = TRUE)
+
+    dl_files <- store_test__lock_check_downloader(store_files)
+    session_id <- store_files$download_files(
+        files = files,
+        replica = "current",
+        downloader = dl_files,
+        run = FALSE,
+        probe = FALSE
+    )
+
+    expect_equal(session_id, "session-lock-check")
+    expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl_files$calls))
+    expect_false("run" %in% dl_files$calls)
+
+    dir_catalog <- tempfile("esg-store-")
+    store_catalog <- EsgStore$new(dir_catalog)
+    on.exit(store_catalog$close(), add = TRUE)
+    query_id <- store_catalog$add_files(files)
+
+    dl_catalog <- store_test__lock_check_downloader(store_catalog)
+    session_id <- store_catalog$download_files(
+        query_id = query_id,
+        downloader = dl_catalog,
+        run = TRUE,
+        probe = FALSE,
+        progress = FALSE
+    )
+
+    expect_equal(session_id, "session-lock-check")
+    expect_true(all(c("record_probes", "enqueue", "run") %in% dl_catalog$calls))
 })
 
 test_that("EsgStore$download_files() selects catalog candidates before enqueueing", {
