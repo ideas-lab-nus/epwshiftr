@@ -1,4 +1,5 @@
 # EsgDataset {{{
+ESG_GRID_METHOD_CHOICES <- c("nearest", "idw", "bilinear", "mean")
 # DatasetAsyncTask {{{
 dataset__async_condition <- function(class, message) {
     structure(list(message = message, call = NULL), class = c(class, "error", "condition"))
@@ -792,7 +793,8 @@ EsgDataset <- R6::R6Class(
         #'        always read the full time axis. A length-2 character,
         #'        `Date`, or `POSIXt` range is parsed in UTC and used
         #'        explicitly. Default: `"auto"`.
-        #' @param nearest Number of nearest grid cells to keep. Default: `1L`.
+        #' @param method Grid extraction method. One of `"nearest"`, `"idw"`,
+        #'        `"bilinear"`, or `"mean"`. Default: `"nearest"`.
         #' @param rbind If `TRUE`, return one data.table. If `FALSE`, return a
         #'        list of per-file, per-variable data.tables. Default: `TRUE`.
         #' @param async If `TRUE`, offload each NetCDF variable read to a
@@ -801,7 +803,9 @@ EsgDataset <- R6::R6Class(
         #'        read. Only supported when `async = TRUE`.
         #'
         #' @return A data.table or list of data.tables with columns including
-        #' `file_index`, `variable`, `time`, `lon`, `lat`, `dist`, and `value`.
+        #' `file_index`, `variable`, `time`, `lon`, `lat`, `method`, and
+        #' `value`. The `"grid_sources"` attribute records contributing grid
+        #' coordinates and weights.
         #'
         #' @examples
         #' \dontrun{
@@ -812,12 +816,12 @@ EsgDataset <- R6::R6Class(
         #'     time = c("2050-01-01", "2050-12-31")
         #' )
         #' }
-        read_region = function(variable, lon, lat, time = "auto", nearest = 1L,
+        read_region = function(variable, lon, lat, time = "auto", method = "nearest",
                                rbind = TRUE, async = FALSE, timeout = NULL) {
             checkmate::assert_character(variable, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_number(lon, lower = -180, upper = 360, finite = TRUE)
             checkmate::assert_number(lat, lower = -90, upper = 90, finite = TRUE)
-            checkmate::assert_int(nearest, lower = 1L)
+            method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
             checkmate::assert_flag(rbind)
             private$validate_async_request(async, timeout)
             private$check_open()
@@ -834,7 +838,7 @@ EsgDataset <- R6::R6Class(
                         lon = lon,
                         lat = lat,
                         time = time,
-                        nearest = nearest,
+                        method = method,
                         index = i,
                         async = async,
                         timeout = timeout
@@ -864,13 +868,21 @@ EsgDataset <- R6::R6Class(
 
             if (!length(pieces)) {
                 empty <- private$empty_region_data_table()
+                attr(empty, "grid_sources") <- private$empty_grid_sources_data_table()
                 return(if (isTRUE(rbind)) empty else list())
             }
             if (!isTRUE(rbind)) {
                 return(pieces)
             }
 
-            data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+            out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+            sources <- data.table::rbindlist(
+                lapply(pieces, function(piece) attr(piece, "grid_sources", exact = TRUE)),
+                use.names = TRUE,
+                fill = TRUE
+            )
+            attr(out, "grid_sources") <- sources
+            out
         },
         # }}}
 
@@ -1402,8 +1414,25 @@ EsgDataset <- R6::R6Class(
                 time = as.POSIXct(character(), tz = "UTC"),
                 lon = numeric(),
                 lat = numeric(),
-                dist = numeric(),
+                method = character(),
                 value = numeric()
+            )
+        },
+        # }}}
+
+        # empty_grid_sources_data_table {{{
+        # Describes the grid cells that contributed to an extracted station value.
+        empty_grid_sources_data_table = function() {
+            data.table::data.table(
+                file_index = integer(),
+                variable = character(),
+                method = character(),
+                source_index = integer(),
+                role = character(),
+                grid_lon = numeric(),
+                grid_lat = numeric(),
+                grid_dist_km = numeric(),
+                weight = numeric()
             )
         },
         # }}}
@@ -1424,8 +1453,196 @@ EsgDataset <- R6::R6Class(
         },
         # }}}
 
+        # lon_to_360 {{{
+        # Converts any longitude convention into a cyclic 0-360 axis for cell math.
+        lon_to_360 = function(lon) {
+            (lon + 360) %% 360
+        },
+        # }}}
+
+        # make_region_grid_coords {{{
+        # Builds a rectilinear coordinate table used by nearest-neighbour methods.
+        make_region_grid_coords = function(grid_lat, grid_lon, lat, target_lon) {
+            coords <- data.table::CJ(
+                ind_lat = seq_along(grid_lat),
+                ind_lon = seq_along(grid_lon)
+            )
+            coords[, `:=`(
+                grid_lat = grid_lat[ind_lat],
+                grid_lon = grid_lon[ind_lon],
+                grid_dist_km = tunnel_dist(grid_lat[ind_lat], grid_lon[ind_lon], lat, target_lon)
+            )]
+            coords
+        },
+        # }}}
+
+        # select_nearest_grid_sources {{{
+        # Selects nearest source cells and assigns either nearest or IDW weights.
+        select_nearest_grid_sources = function(coords, method) {
+            count <- if (identical(method, "nearest")) 1L else 4L
+            sources <- data.table::copy(coords)
+            data.table::setorder(sources, grid_dist_km)
+            sources <- sources[seq_len(min(count, .N))]
+            sources[, source_index := seq_len(.N)]
+
+            if (identical(method, "nearest")) {
+                sources[, `:=`(role = "nearest", weight = 1)]
+                return(sources)
+            }
+
+            eps <- sqrt(.Machine$double.eps)
+            exact <- which(sources$grid_dist_km <= eps)
+            if (length(exact)) {
+                weights <- rep(0, nrow(sources))
+                weights[[exact[[1L]]]] <- 1
+            } else {
+                raw <- 1 / (sources$grid_dist_km ^ 2)
+                weights <- raw / sum(raw)
+            }
+            sources[, `:=`(
+                role = sprintf("nearest_%d", source_index),
+                weight = weights
+            )]
+            sources
+        },
+        # }}}
+
+        # find_lat_bounds {{{
+        # Finds the south/north coordinates that enclose a target latitude.
+        find_lat_bounds = function(grid_lat, lat) {
+            vals <- sort(unique(as.numeric(grid_lat[!is.na(grid_lat)])))
+            if (length(vals) < 2L) {
+                stop("Bilinear and mean grid methods require at least two latitude coordinates.", call. = FALSE)
+            }
+            if (lat < vals[[1L]] || lat > vals[[length(vals)]]) {
+                stop(sprintf(
+                    "Target latitude %.6f is outside the grid latitude range [%.6f, %.6f].",
+                    lat,
+                    vals[[1L]],
+                    vals[[length(vals)]]
+                ), call. = FALSE)
+            }
+            if (lat <= vals[[1L]]) {
+                return(c(south = vals[[1L]], north = vals[[2L]]))
+            }
+            if (lat >= vals[[length(vals)]]) {
+                return(c(south = vals[[length(vals) - 1L]], north = vals[[length(vals)]]))
+            }
+
+            south <- max(vals[vals <= lat])
+            north_candidates <- vals[vals > south]
+            if (!length(north_candidates)) {
+                stop("Cannot identify a northern latitude bound for the requested point.", call. = FALSE)
+            }
+            c(south = south, north = min(north_candidates))
+        },
+        # }}}
+
+        # find_lon_bounds {{{
+        # Finds west/east longitudes on a cyclic axis, including dateline wrap.
+        find_lon_bounds = function(grid_lon, target_lon) {
+            lon_tbl <- unique(data.table::data.table(
+                grid_lon = as.numeric(grid_lon[!is.na(grid_lon)]),
+                lon360 = private$lon_to_360(as.numeric(grid_lon[!is.na(grid_lon)]))
+            ))
+            if (nrow(lon_tbl) < 2L) {
+                stop("Bilinear and mean grid methods require at least two longitude coordinates.", call. = FALSE)
+            }
+            if (any(duplicated(lon_tbl$lon360))) {
+                stop("Longitude coordinates are duplicated after converting to a 0-360 grid.", call. = FALSE)
+            }
+
+            vals <- sort(lon_tbl$lon360)
+            target360 <- private$lon_to_360(target_lon)
+            west_candidates <- vals[vals <= target360]
+            west <- if (length(west_candidates)) max(west_candidates) else vals[[length(vals)]]
+            east_candidates <- vals[vals > west]
+            east <- if (length(east_candidates)) min(east_candidates) else vals[[1L]]
+
+            west_row <- lon_tbl[match(west, lon_tbl$lon360)]
+            east_row <- lon_tbl[match(east, lon_tbl$lon360)]
+            list(
+                west_lon = west_row$grid_lon[[1L]],
+                east_lon = east_row$grid_lon[[1L]],
+                west360 = west,
+                east360 = east,
+                target360 = target360
+            )
+        },
+        # }}}
+
+        # select_cell_grid_sources {{{
+        # Selects the four enclosing cell corners and computes method weights.
+        select_cell_grid_sources = function(grid_lat, grid_lon, lat, target_lon, method) {
+            lat_bounds <- private$find_lat_bounds(grid_lat, lat)
+            lon_bounds <- private$find_lon_bounds(grid_lon, target_lon)
+
+            south_idx <- match(lat_bounds[["south"]], grid_lat)
+            north_idx <- match(lat_bounds[["north"]], grid_lat)
+            west_idx <- match(lon_bounds$west_lon, grid_lon)
+            east_idx <- match(lon_bounds$east_lon, grid_lon)
+            if (anyNA(c(south_idx, north_idx, west_idx, east_idx))) {
+                stop("Cannot map enclosing grid coordinates back to NetCDF indices.", call. = FALSE)
+            }
+
+            sources <- data.table::data.table(
+                ind_lat = c(south_idx, south_idx, north_idx, north_idx),
+                ind_lon = c(west_idx, east_idx, west_idx, east_idx),
+                source_index = 1:4,
+                role = c("lower_left", "lower_right", "upper_left", "upper_right"),
+                grid_lon = grid_lon[c(west_idx, east_idx, west_idx, east_idx)],
+                grid_lat = grid_lat[c(south_idx, south_idx, north_idx, north_idx)]
+            )
+            sources[, grid_dist_km := tunnel_dist(grid_lat, grid_lon, lat, target_lon)]
+
+            if (identical(method, "mean")) {
+                sources[, weight := 0.25]
+                return(sources)
+            }
+
+            x1 <- lon_bounds$west360
+            x2 <- lon_bounds$east360
+            target_x <- lon_bounds$target360
+            # Crossing the dateline means the eastern bound is numerically smaller.
+            if (x2 <= x1) {
+                x2 <- x2 + 360
+            }
+            if (target_x < x1) {
+                target_x <- target_x + 360
+            }
+            y1 <- lat_bounds[["south"]]
+            y2 <- lat_bounds[["north"]]
+            if (x2 == x1 || y2 == y1) {
+                stop("Cannot compute bilinear weights for a zero-area grid cell.", call. = FALSE)
+            }
+
+            wx_east <- (target_x - x1) / (x2 - x1)
+            wx_west <- 1 - wx_east
+            wy_north <- (lat - y1) / (y2 - y1)
+            wy_south <- 1 - wy_north
+            sources[, weight := c(
+                wx_west * wy_south,
+                wx_east * wy_south,
+                wx_west * wy_north,
+                wx_east * wy_north
+            )]
+            sources
+        },
+        # }}}
+
+        # region_grid_sources {{{
+        # Dispatches method-specific source-cell selection for point extraction.
+        region_grid_sources = function(method, grid_lat, grid_lon, lat, target_lon) {
+            coords <- private$make_region_grid_coords(grid_lat, grid_lon, lat, target_lon)
+            if (method %in% c("nearest", "idw")) {
+                return(private$select_nearest_grid_sources(coords, method))
+            }
+            private$select_cell_grid_sources(grid_lat, grid_lon, lat, target_lon, method)
+        },
+        # }}}
+
         # read_region_one {{{
-        read_region_one = function(variable, lon, lat, time, nearest, index,
+        read_region_one = function(variable, lon, lat, time, method, index,
                                    async = FALSE, timeout = NULL) {
             meta <- tryCatch(
                 private$get_var_dim_meta(variable, index = index),
@@ -1466,34 +1683,30 @@ EsgDataset <- R6::R6Class(
                 base::which(time_axis >= time[[1L]] & time_axis <= time[[2L]])
             }
             if (!length(time_idx)) {
-                return(private$empty_region_data_table())
+                empty <- private$empty_region_data_table()
+                attr(empty, "grid_sources") <- private$empty_grid_sources_data_table()
+                return(empty)
             }
 
             grid <- self$get_spatial_grid(index = index)
             if (is.null(grid$lat) || is.null(grid$lon)) {
                 stop(sprintf("File index %d does not expose both 'lat' and 'lon' coordinate variables.", index), call. = FALSE)
             }
+            if (method %in% c("bilinear", "mean") && (length(dim(grid$lat)) > 1L || length(dim(grid$lon)) > 1L)) {
+                # Cell-corner methods assume separable 1D coordinate axes.
+                stop("Bilinear and mean grid methods only support rectilinear 1D 'lat'/'lon' grids.", call. = FALSE)
+            }
             grid_lat <- as.vector(grid$lat)
             grid_lon <- as.vector(grid$lon)
             target_lon <- private$normalize_lon_for_grid(lon, grid_lon)
 
-            coords <- data.table::CJ(
-                ind_lat = seq_along(grid_lat),
-                ind_lon = seq_along(grid_lon)
-            )
-            coords[, `:=`(
-                lat = grid_lat[ind_lat],
-                lon = grid_lon[ind_lon],
-                dist = tunnel_dist(grid_lat[ind_lat], grid_lon[ind_lon], lat, target_lon)
-            )]
-            data.table::setorder(coords, dist)
-            coords <- coords[seq_len(min(nearest, .N))]
+            sources <- private$region_grid_sources(method, grid_lat, grid_lon, lat, target_lon)
 
             dim_index <- function(name) match(name, meta$names)
             selected <- list(
                 time = time_idx,
-                lat = coords$ind_lat,
-                lon = coords$ind_lon
+                lat = sources$ind_lat,
+                lon = sources$ind_lon
             )
 
             start <- rep(1L, length(meta$names))
@@ -1522,14 +1735,25 @@ EsgDataset <- R6::R6Class(
             dt <- private$array_to_data_table(arr, variable, start = start, count = count, index = index)
 
             if (!nrow(dt)) {
-                return(private$empty_region_data_table())
+                empty <- private$empty_region_data_table()
+                attr(empty, "grid_sources") <- private$empty_grid_sources_data_table()
+                return(empty)
             }
 
-            coords_keep <- coords[, .(lat, lon, dist)]
+            coords_keep <- sources[, .(
+                lat = grid_lat,
+                lon = grid_lon,
+                source_index,
+                role,
+                grid_dist_km,
+                weight
+            )]
             dt <- merge(dt, coords_keep, by = c("lat", "lon"), all = FALSE, sort = FALSE)
             dt <- dt[time %in% time_axis[time_idx]]
             if (!nrow(dt)) {
-                return(private$empty_region_data_table())
+                empty <- private$empty_region_data_table()
+                attr(empty, "grid_sources") <- private$empty_grid_sources_data_table()
+                return(empty)
             }
 
             value_col <- if (variable %in% names(dt)) variable else paste0(variable, "_value")
@@ -1537,13 +1761,31 @@ EsgDataset <- R6::R6Class(
                 stop(sprintf("Cannot identify value column for variable '%s'.", variable), call. = FALSE)
             }
             data.table::setnames(dt, value_col, "value")
-            dt[, `:=`(file_index = index, variable = variable)]
-            data.table::setcolorder(dt, c(
-                "file_index", "variable",
-                intersect(c("time", "lon", "lat", "dist"), names(dt)),
-                setdiff(names(dt), c("file_index", "variable", "time", "lon", "lat", "dist"))
-            ))
-            dt[]
+            out <- dt[, .(
+                value = if (any(is.na(value))) NA_real_ else sum(value * weight)
+            ), by = .(time)]
+            out[, `:=`(
+                file_index = index,
+                variable = variable,
+                lon = lon,
+                lat = lat,
+                method = method
+            )]
+            data.table::setcolorder(out, c("file_index", "variable", "time", "lon", "lat", "method", "value"))
+
+            grid_sources <- sources[, .(
+                file_index = index,
+                variable = variable,
+                method = method,
+                source_index,
+                role,
+                grid_lon,
+                grid_lat,
+                grid_dist_km,
+                weight
+            )]
+            attr(out, "grid_sources") <- grid_sources
+            out[]
         },
         # }}}
 

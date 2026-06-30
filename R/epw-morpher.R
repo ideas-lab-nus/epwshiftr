@@ -927,7 +927,13 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     if (!"units" %in% names(climate)) {
         climate[, units := NA_character_]
     }
-    for (col in c("lon", "lat", "dist")) {
+    if (!"lon" %in% names(climate) && "requested_lon" %in% names(climate)) {
+        climate[, lon := requested_lon]
+    }
+    if (!"lat" %in% names(climate) && "requested_lat" %in% names(climate)) {
+        climate[, lat := requested_lat]
+    }
+    for (col in c("lon", "lat")) {
         if (!col %in% names(climate)) {
             climate[, (col) := NA_real_]
         }
@@ -975,7 +981,7 @@ morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
 }
 
 morpher__context_required_columns <- function() {
-    c("variable_id", "time", "period", "year", "lon", "lat", "dist", "units", "value")
+    c("variable_id", "time", "period", "year", "lon", "lat", "units", "value")
 }
 
 morpher__validate_context <- function(context) {
@@ -1055,7 +1061,7 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
     if (!nrow(data)) {
         return(data.table::data.table())
     }
-    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat", "dist"), names(data))
+    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat"), names(data))
     if (length(missing)) {
         cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
     }
@@ -2214,7 +2220,7 @@ EpwMorpher <- R6::R6Class(
             target_summary_id <- summary_id
             current_summary <- current[current[["summary_id"]] == target_summary_id]
             current_usable <- nrow(current_summary) &&
-                all(c("years_json", "lon", "lat", "dist") %in% names(current_summary)) &&
+                all(c("years_json", "lon", "lat") %in% names(current_summary)) &&
                 all(!is.na(current_summary$years_json) & nzchar(current_summary$years_json))
             if (!isTRUE(overwrite) && isTRUE(current_usable)) {
                 return(current_summary)

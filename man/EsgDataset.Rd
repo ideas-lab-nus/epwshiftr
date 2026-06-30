@@ -806,7 +806,7 @@ Read variable values near a target coordinate and optional time range
   lon,
   lat,
   time = "auto",
-  nearest = 1L,
+  method = "nearest",
   rbind = TRUE,
   async = FALSE,
   timeout = NULL
@@ -830,7 +830,8 @@ always read the full time axis. A length-2 character,
 \code{Date}, or \code{POSIXt} range is parsed in UTC and used
 explicitly. Default: \code{"auto"}.}
 
-\item{\code{nearest}}{Number of nearest grid cells to keep. Default: \code{1L}.}
+\item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
+\code{"bilinear"}, or \code{"mean"}. Default: \code{"nearest"}.}
 
 \item{\code{rbind}}{If \code{TRUE}, return one data.table. If \code{FALSE}, return a
 list of per-file, per-variable data.tables. Default: \code{TRUE}.}
@@ -845,7 +846,9 @@ read. Only supported when \code{async = TRUE}.}
 }
 \subsection{Returns}{
 A data.table or list of data.tables with columns including
-\code{file_index}, \code{variable}, \code{time}, \code{lon}, \code{lat}, \code{dist}, and \code{value}.
+\code{file_index}, \code{variable}, \code{time}, \code{lon}, \code{lat}, \code{method}, and
+\code{value}. The \code{"grid_sources"} attribute records contributing grid
+coordinates and weights.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}

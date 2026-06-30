@@ -1306,7 +1306,7 @@ Plan regional extraction jobs from cataloged files.
   site_id = "site-1",
   variable_id = NULL,
   filters = list(),
-  nearest = 1L
+  method = "nearest"
 )}\if{html}{\out{</div>}}
 }
 
@@ -1326,7 +1326,8 @@ variables in the query are used.}
 
 \item{\code{filters}}{Named list of exact-match file catalog filters.}
 
-\item{\code{nearest}}{Number of nearest grid cells to keep. Default: \code{1L}.}
+\item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
+\code{"bilinear"}, or \code{"mean"}. Default: \code{"nearest"}.}
 }
 \if{html}{\out{</div>}}
 }

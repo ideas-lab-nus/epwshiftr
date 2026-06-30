@@ -90,7 +90,7 @@ shift_extract(
   variables = NULL,
   time = NULL,
   filters = list(),
-  nearest = 1L,
+  method = "nearest",
   fallback = c("auto", "error"),
   overwrite = FALSE,
   resume = TRUE
@@ -189,7 +189,7 @@ resolving an automatic historical reference.}
 \item{collect, extract}{Named option lists passed to the automatic
 historical collect and extract steps. \code{collect} may contain \code{fields},
 \code{all}, \code{limit}, and \code{label}; \code{extract} may contain \code{variables}, \code{time},
-\code{filters}, \code{nearest}, and \code{fallback}.}
+\code{filters}, \code{method}, and \code{fallback}.}
 
 \item{x}{A shift stage object.}
 
@@ -219,7 +219,7 @@ morphing results, or EPW outputs.}
 
 \item{site}{A \code{shift_site()} object.}
 
-\item{nearest}{Number of nearest grid points to extract.}
+\item{method}{Grid extraction method.}
 
 \item{fallback}{Extraction fallback policy.}
 
