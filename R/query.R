@@ -1928,6 +1928,16 @@ query__collect <- function(
     query_urls <- c(query_urls, url)
     response <- cache__read_json(url)
     docs <- response$response$docs
+    doc_pages <- list(docs)
+
+    warn_no_progress <- function(offset) {
+        cli::cli_warn(c(
+            "!" = "ESGF pagination stopped before all reported records were collected.",
+            "i" = "Index node: {index_node}",
+            "i" = "Offset: {offset}; collected: {current}; reported total: {total}."
+        ))
+        invisible(NULL)
+    }
 
     # check if the total number is less that the limit
     total <- response$response$numFound
@@ -1938,22 +1948,35 @@ query__collect <- function(
     if (total > 0L && all) {
         left <- total - current
 
-        while (left > 0L) {
-            store$offset(current)
+        if (left > 0L && current == 0L) {
+            warn_no_progress(0L)
+        } else {
+            while (left > 0L) {
+                page_offset <- current
+                store$offset(page_offset)
 
-            url <- query__build(index_node, store)
-            query_urls <- c(query_urls, url)
-            response <- cache__read_json(url)
+                url <- query__build(index_node, store)
+                query_urls <- c(query_urls, url)
+                response <- cache__read_json(url)
+                page_docs <- response$response$docs
+                page_n <- query__collect_nrow(page_docs)
+                if (page_n == 0L) {
+                    warn_no_progress(page_offset)
+                    break
+                }
 
-            # combine results
-            docs <- data.table::rbindlist(list(docs, response$response$docs), fill = TRUE)
-            current <- nrow(docs)
-            if (!is.null(progress_id)) {
-                cli::cli_progress_update(id = progress_id, total = total, set = current)
+                doc_pages[[length(doc_pages) + 1L]] <- page_docs
+                current <- current + page_n
+                if (!is.null(progress_id)) {
+                    cli::cli_progress_update(id = progress_id, total = total, set = current)
+                }
+
+                left <- total - current
             }
-
-            left <- total - current
         }
+    }
+    if (length(doc_pages) > 1L) {
+        docs <- data.table::rbindlist(doc_pages, fill = TRUE)
     }
 
     # 'score' is always returned in the response
