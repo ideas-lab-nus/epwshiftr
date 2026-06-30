@@ -110,8 +110,7 @@ store_test__completed_store <- function() {
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN",
-        nearest = 1L
+        site_id = "SIN"
     )
     store$extract(plan_id = plan$plan_id)
 
@@ -357,7 +356,7 @@ test_that("EsgStore$new()", {
             "esg_file", "esg_query_file", "file_catalog",
             "esg_query_update", "esg_query_update_file",
             "esg_query_tag", "esg_query_dependency",
-            "extraction_plan", "extraction_result",
+            "extraction_plan", "extraction_result", "extraction_grid_source",
             "epw_source", "epw_baseline_summary", "epw_climate_summary",
             "epw_morph_plan", "epw_morph_factor", "epw_morph_result",
             "epw_output"
@@ -1725,8 +1724,7 @@ test_that("EsgStore$plan_region() respects variable filters", {
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        variable_id = "tas",
-        nearest = 1L
+        variable_id = "tas"
     )
 
     expect_equal(nrow(plan), 1L)
@@ -2034,7 +2032,7 @@ test_that("EsgStore$plan_region() creates extraction plans", {
         site_id = "SIN",
         filters = list(source_id = "EC-Earth3"),
         variable_id = c("tas", "hurs"),
-        nearest = 2L
+        method = "idw"
     )
 
     expect_s3_class(plan, "data.table")
@@ -2042,8 +2040,21 @@ test_that("EsgStore$plan_region() creates extraction plans", {
     expect_setequal(plan$variable_id, c("tas", "hurs"))
     expect_equal(unique(plan$site_id), "SIN")
     expect_equal(unique(plan$status), "pending")
-    expect_equal(unique(plan$nearest), 2L)
+    expect_equal(unique(plan$method), "idw")
+    expect_false("nearest" %in% names(plan))
     expect_match(plan$plan_id, "^[0-9a-f]{64}$")
+
+    nearest_plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31"),
+        site_id = "SIN",
+        filters = list(source_id = "EC-Earth3"),
+        variable_id = c("tas", "hurs"),
+        method = "nearest"
+    )
+    expect_false(any(nearest_plan$plan_id %in% plan$plan_id))
 
     conn <- priv(store)$conn
     ddb_exec(conn, "UPDATE extraction_plan SET status = 'done'")
@@ -2055,9 +2066,9 @@ test_that("EsgStore$plan_region() creates extraction plans", {
         site_id = "SIN",
         filters = list(source_id = "EC-Earth3"),
         variable_id = c("tas", "hurs"),
-        nearest = 2L
+        method = "idw"
     )
-    expect_equal(nrow(ddb_read_table(conn, "extraction_plan")), 2L)
+    expect_equal(nrow(ddb_read_table(conn, "extraction_plan")), 4L)
     expect_equal(unique(plan_again$status), "done")
 })
 
@@ -2124,20 +2135,26 @@ test_that("EsgStore$extract()", {
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN",
-        nearest = 1L
+        site_id = "SIN"
     )
 
     processed <- store$extract(plan_id = plan$plan_id)
     conn <- priv(store)$conn
     plans <- ddb_read_table(conn, "extraction_plan")
     results <- ddb_read_table(conn, "extraction_result")
+    grid_sources <- ddb_read_table(conn, "extraction_grid_source")
     artifacts <- ddb_read_table(conn, "artifact")
 
     expect_equal(processed$status, "done")
     expect_equal(plans$status, "done")
+    expect_equal(plans$method, "nearest")
     expect_equal(plans$available_time_count, 2L)
     expect_equal(nrow(results), 1L)
+    expect_equal(nrow(grid_sources), 1L)
+    expect_equal(grid_sources$method, "nearest")
+    expect_equal(grid_sources$weight, 1)
+    expect_equal(grid_sources$grid_lon, 104)
+    expect_equal(grid_sources$grid_lat, 1)
     expect_equal(results$year, 2060L)
     expect_equal(results$row_count, 2L)
     expect_equal(results$unique_time_count, 2L)
@@ -2148,13 +2165,14 @@ test_that("EsgStore$extract()", {
     parquet <- store_abs_path(results$output_path[[1L]], root = dir)
     expect_true(file.exists(parquet))
     rows <- ddb_query(conn, sprintf(
-        "SELECT site_id, source_id, experiment_id, variable_id, units, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
+        "SELECT site_id, source_id, experiment_id, variable_id, method, units, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
         ddb_literal(conn, parquet)
     ))
     expect_equal(rows$site_id, "SIN")
     expect_equal(rows$source_id, "EC-Earth3")
     expect_equal(rows$experiment_id, "ssp585")
     expect_equal(rows$variable_id, "tas")
+    expect_equal(rows$method, "nearest")
     expect_equal(rows$units, "K")
     expect_equal(rows$n, 2)
 
@@ -2224,8 +2242,7 @@ test_that("EsgStore$extract() detects output conflicts without manifest rows", {
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN",
-        nearest = 1L
+        site_id = "SIN"
     )
 
     processed <- store$extract(plan_id = plan$plan_id)

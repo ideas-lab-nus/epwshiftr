@@ -7,6 +7,20 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
     on.exit(unlink(nc), add = TRUE)
     setup <- cli_shift_test_store_with_query(nc)
 
+    old_nearest <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir,
+        "extract", "plan",
+        "--query", setup$query_id,
+        "--site-id", "SIN",
+        "--lon", "103.98",
+        "--lat", "1.37",
+        "--time", "2060-01-02T00:00:00Z,2060-01-03T23:59:59Z",
+        "--variable", "tas",
+        "--nearest", "1"
+    ))
+    expect_equal(old_nearest$status, 2L)
+    expect_match(old_nearest$error, "--nearest")
+
     plan <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
         "extract", "plan",
@@ -16,7 +30,7 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
         "--lat", "1.37",
         "--time", "2060-01-02T00:00:00Z,2060-01-03T23:59:59Z",
         "--variable", "tas",
-        "--nearest", "1",
+        "--method", "nearest",
         "--filter", "source_id=EC-Earth3"
     ))
     expect_equal(plan$status, 0L)

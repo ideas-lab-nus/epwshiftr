@@ -221,14 +221,14 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr extract <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--nearest N] [--filter key=value]...",
+            "  epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--method METHOD] [--filter key=value]...",
             "  epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
             "  epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume]",
             "  epwshiftr extract coverage [--plan PLAN_ID]",
             "  epwshiftr extract artifacts --plan PLAN_ID"
         ),
         "extract plan" = c(
-            "Usage: epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--nearest N] [--filter key=value]...",
+            "Usage: epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--method METHOD] [--filter key=value]...",
             "",
             "Create extraction plan rows for a stored query and target site."
         ),

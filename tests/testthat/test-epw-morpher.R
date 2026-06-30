@@ -320,8 +320,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN",
-        nearest = 1L
+        site_id = "SIN"
     )
     processed <- store$extract(plan_id = plan$plan_id)
     expect_equal(processed$status, "done")
@@ -443,8 +442,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         lat = 1.37,
         time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
         site_id = "SIN",
-        variable_id = variables,
-        nearest = 1L
+        variable_id = variables
     )
     expect_setequal(plan$variable_id, variables)
 
@@ -622,8 +620,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         lat = 1.37,
         time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
         site_id = "SIN",
-        variable_id = variables,
-        nearest = 1L
+        variable_id = variables
     )
     workflow_processed <- workflow_store$extract(plan_id = workflow_plan$plan_id)
     expect_true(all(workflow_processed$status == "done"))

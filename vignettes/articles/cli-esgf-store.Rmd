@@ -115,7 +115,7 @@ extraction plan that you prepared beforehand.
       "2060s": [2055, 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063, 2064]
     },
     "time": ["2055-01-01T00:00:00Z", "2064-12-31T23:59:59Z"],
-    "nearest": 1,
+    "method": "nearest",
     "fallback": "auto"
   },
   "morph": {
@@ -181,7 +181,7 @@ epwshiftr --store ~/cmip6-store extract plan \
   --lat 1.37 \
   --time 2055-01-01T00:00:00Z,2064-12-31T23:59:59Z \
   --variable tas,hurs,psl,rsds,rlds,sfcWind,clt \
-  --nearest 1
+  --method nearest
 
 epwshiftr --store ~/cmip6-store extract run --plan <plan_id> --fallback auto
 epwshiftr --store ~/cmip6-store extract retry --plan <plan_id>
