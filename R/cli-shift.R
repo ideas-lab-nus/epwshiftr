@@ -62,9 +62,6 @@ epwshiftr_cli_shift_run <- function(store, args) {
     }
 
     extract <- epwshiftr_cli_config_section(config, "extract")
-    if (!is.null(extract$nearest)) {
-        epwshiftr_cli_usage_abort("extract.nearest is no longer supported; use extract.method.")
-    }
     climate <- shift_extract(
         stage,
         site = site,
@@ -341,10 +338,6 @@ epwshiftr_cli_selector <- function(parsed) {
 # config coercion -------------------------------------------------------------
 
 epwshiftr_cli_validate_shift_config <- function(config) {
-    extract <- config$extract
-    if (!is.null(extract$nearest)) {
-        cli::cli_abort("extract.nearest is no longer supported; use extract.method.")
-    }
     morph <- config$morph
     if (is.null(morph)) {
         return(invisible(config))

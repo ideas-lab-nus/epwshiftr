@@ -34,15 +34,6 @@ test_that("shift run validates JSON config and reports usage errors", {
     expect_equal(bad_unknown$status, 2L)
     expect_match(bad_unknown$error, "surprise")
 
-    legacy_nearest <- tempfile(fileext = ".json")
-    cli_shift_test_config(legacy_nearest)
-    payload <- jsonlite::read_json(legacy_nearest, simplifyVector = TRUE)
-    payload$extract$nearest <- 1L
-    jsonlite::write_json(payload, legacy_nearest, auto_unbox = TRUE)
-    bad_nearest <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "config", "validate", "--config", legacy_nearest))
-    expect_equal(bad_nearest$status, 2L)
-    expect_match(bad_nearest$error, "extract\\.method")
-
     invalid_period <- tempfile(fileext = ".json")
     cli_shift_test_config(invalid_period)
     payload <- jsonlite::read_json(invalid_period, simplifyVector = TRUE)
