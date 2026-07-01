@@ -73,7 +73,7 @@
       "keys": {
         "type": "named",
         "must.include": ["periods"],
-        "subset.of": ["periods", "variables", "time", "filters", "method", "nearest", "fallback"]
+        "subset.of": ["periods", "variables", "time", "filters", "method", "fallback"]
       },
       "fields": {
         "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},

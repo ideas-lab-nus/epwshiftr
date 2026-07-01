@@ -14,12 +14,9 @@ epwshiftr_cli_extract <- function(store, command, args, json = FALSE, jsonl = FA
 epwshiftr_cli_extract_plan <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--query", "--site-id", "--lon", "--lat", "--time", "--variable", "--method", "--nearest"),
+        options = c("--query", "--site-id", "--lon", "--lat", "--time", "--variable", "--method"),
         multi_options = c("--filter")
     )
-    if (!is.null(parsed$options[["--nearest"]])) {
-        epwshiftr_cli_usage_abort("--nearest is no longer supported; use --method.")
-    }
     epwshiftr_cli_assert_no_positionals(parsed)
     query_id <- epwshiftr_cli_required_single_id(parsed, "--query")
     site_id <- epwshiftr_cli_required_option(parsed, "--site-id")
