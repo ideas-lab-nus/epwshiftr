@@ -196,7 +196,8 @@ The helper provides three named variable sets:
 
 - `"minimal"`: air temperature and relative humidity, useful for relaxed
   demonstrations.
-- `"recommended"`: the current strict Belcher recipe set.
+- `"recommended"`: the current strict Belcher recipe set, including
+  precipitation.
 - `"extended"`: the recommended set plus related max/min variables for future
   recipes.
 
@@ -210,6 +211,7 @@ shift_recipe <- epw_morph_recipe("belcher")
 variables <- epw_morph_variables(shift_recipe)
 variables
 #> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
+#> [8] "pr"
 ```
 
 `shift_request()` describes the remote climate data you want. The future request
@@ -258,7 +260,7 @@ request
 #>   experiment: ssp585
 #>   variant: r1i1p1f1
 #>   frequency: mon
-#>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt
+#>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
 #>   time:   2060-01-01T00:00:00Z -> 2060-12-31T23:59:59Z
 
 reference_request <- shift_request(
