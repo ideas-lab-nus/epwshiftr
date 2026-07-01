@@ -908,9 +908,6 @@ shift_reference_historical <- function(periods, experiment = "historical", activ
     checkmate::assert_list(collect, names = "unique")
     checkmate::assert_subset(names(collect), c("fields", "all", "limit", "label"))
     checkmate::assert_list(extract, names = "unique")
-    if ("nearest" %in% names(extract)) {
-        cli::cli_abort("`extract$nearest` is no longer supported; use `extract$method`.")
-    }
     checkmate::assert_subset(names(extract), c("variables", "time", "filters", "method", "fallback"))
 
     ShiftReferenceSpec(

@@ -8,22 +8,6 @@ local_is_leap_year <- function(year) {
     (year %% 4L == 0L && year %% 100L != 0L) || year %% 400L == 0L
 }
 
-local_tunnel_dist <- function(lat1, lon1, lat2, lon2) {
-    to_rad <- function(x) x * pi / 180
-    earth_radius <- 6371.009
-
-    lat1 <- to_rad(lat1)
-    lon1 <- to_rad(lon1)
-    lat2 <- to_rad(lat2)
-    lon2 <- to_rad(lon2)
-
-    delta_x <- cos(lat2) * cos(lon2) - cos(lat1) * cos(lon1)
-    delta_y <- cos(lat2) * sin(lon2) - cos(lat1) * sin(lon1)
-    delta_z <- sin(lat2) - sin(lat1)
-
-    sqrt(delta_x ^ 2 + delta_y ^ 2 + delta_z ^ 2) * earth_radius
-}
-
 local_cmip6_variable_spec <- function(variable_id) {
     specs <- list(
         tas = list(
@@ -173,12 +157,9 @@ write_local_morph_tas_fixture <- function(path, year = 2060L) {
         by = "day"
     )
     coords <- data.table::CJ(lat = c(1.0, 2.0), lon = c(103.5, 104.0, 104.5))
-    coords[, `:=`(
-        coord_id = .I,
-        dist = local_tunnel_dist(lat, lon, 1.37, 103.98)
-    )]
+    coords[, coord_id := .I]
     data <- data.table::CJ(datetime = datetime, coord_id = coords$coord_id)
-    data[coords, on = "coord_id", `:=`(lon = i.lon, lat = i.lat, dist = i.dist)]
+    data[coords, on = "coord_id", `:=`(lon = i.lon, lat = i.lat)]
     data[, `:=`(
         activity_drs = "ScenarioMIP",
         institution_id = "EC-Earth-Consortium",
@@ -194,7 +175,7 @@ write_local_morph_tas_fixture <- function(path, year = 2060L) {
     data[, coord_id := NULL]
     data.table::setcolorder(data, c(
         "activity_drs", "institution_id", "source_id", "experiment_id",
-        "member_id", "table_id", "lon", "lat", "dist", "datetime",
+        "member_id", "table_id", "lon", "lat", "datetime",
         "variable", "description", "units", "value"
     ))
     write_parquet_file(data, path)
