@@ -51,6 +51,9 @@ write_vignette_epw <- function(path) {
     hour0 <- as.integer(format(datetime, "%H"))
     yday <- as.integer(format(datetime, "%j"))
     daylight <- pmax(0, sin(pi * (hour0 - 6) / 12))
+    # The synthetic EPW keeps a stable wet-hour mask for conservative
+    # precipitation downscaling examples.
+    rain_depth <- ifelse(day %% 7L == 1L & hour0 %in% 3:4, 2.0, 0.0)
 
     weather <- data.frame(
         year = year,
@@ -86,8 +89,8 @@ write_vignette_epw <- function(path) {
         snow_depth = 0L,
         days_since_last_snowfall = 88L,
         albedo = sprintf("%.2f", 0.12),
-        liquid_precipitation_depth = sprintf("%.1f", 0.0),
-        liquid_precipitation_quantity = sprintf("%.1f", 0.0),
+        liquid_precipitation_depth = sprintf("%.1f", rain_depth),
+        liquid_precipitation_quantity = sprintf("%.1f", as.numeric(rain_depth > 0)),
         stringsAsFactors = FALSE
     )
 
@@ -252,7 +255,8 @@ The helper provides three named variable sets:
 
 - `"minimal"`: air temperature and relative humidity, useful for relaxed
   demonstrations.
-- `"recommended"`: the current strict Belcher recipe set.
+- `"recommended"`: the current strict Belcher recipe set, including
+  precipitation.
 - `"extended"`: the recommended set plus related max/min variables for future
   recipes.
 

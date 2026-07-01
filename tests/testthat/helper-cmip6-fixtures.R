@@ -60,6 +60,11 @@ local_cmip6_variable_spec <- function(variable_id) {
             standard_name = "cloud_area_fraction",
             long_name = "Total Cloud Cover Percentage",
             units = "%"
+        ),
+        pr = list(
+            standard_name = "precipitation_flux",
+            long_name = "Precipitation",
+            units = "kg m-2 s-1"
         )
     )
     spec <- specs[[variable_id]]
@@ -85,6 +90,9 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
                 rsds = pmax(0, 260 + 180 * sin(phase - pi / 3) + 3 * spatial),
                 sfcWind = pmax(0.1, 3 + 0.6 * cos(phase) + spatial / 8),
                 clt = pmin(100, pmax(0, 52 + 22 * cos(phase - pi / 6) + spatial)),
+                # Keep fixture precipitation positive and seasonal so monthly
+                # flux-to-depth conversion has predictable non-zero totals.
+                pr = pmax(0, 4e-5 + 2e-5 * sin(phase - pi / 5) + spatial * 1e-6),
                 stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
             )
         }

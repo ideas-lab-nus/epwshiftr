@@ -87,8 +87,22 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_equal(epw$location()$city, "Singapore")
     expect_equal(epw$location()$country, "Singapore")
     expect_equal(nrow(epw$data()), 8760L)
+    expect_gt(sum(epw$data()$liquid_precip_depth, na.rm = TRUE), 0)
 
     expect_identical(get_cache_epw(), path)
+
+    stale_lines <- readLines(path, warn = FALSE)
+    stale_weather <- strsplit(stale_lines[-seq_len(8L)], ",", fixed = TRUE)
+    stale_weather <- lapply(stale_weather, function(x) {
+        x[[34L]] <- "0.0"
+        x[[35L]] <- "0.0"
+        x
+    })
+    writeLines(c(stale_lines[seq_len(8L)], vapply(stale_weather, paste, character(1L), collapse = ",")), path)
+
+    expect_identical(get_cache_epw(), path)
+    epw <- eplusr::read_epw(path)
+    expect_gt(sum(epw$data()$liquid_precip_depth, na.rm = TRUE), 0)
 })
 
 test_that("epw_morph_recipe() accepts morph.R statistical downscaling method overrides", {
@@ -118,7 +132,7 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     belcher <- epw_morph_backend("belcher")
     expect_true(inherits(belcher, "EpwMorphBackend"))
     expect_true(belcher$requires_reference)
-    expect_equal(belcher$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt"))
+    expect_equal(belcher$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"))
     expect_equal(epw_morph_variables(belcher), epw_morph_variables("recommended"))
     expect_equal(epw_morph_variables("belcher"), epw_morph_variables("recommended"))
     expect_equal(belcher$validate_methods(c(tdb = "shift"))[["tdb"]], "shift")
@@ -295,6 +309,54 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
     expect_equal(total_cover$total_sky_cover, 4L)
     expect_true(is.na(total_cover$alpha))
     expect_equal(opaque$opaque_sky_cover, 2L)
+
+    precip_epw <- data.table::data.table(
+        datetime = as.POSIXct(c("2001-01-01 01:00:00", "2001-01-01 02:00:00"), tz = "UTC"),
+        year = 2001L,
+        month = 1L,
+        day = 1L,
+        hour = 1:2,
+        minute = 60L,
+        liquid_precip_depth = units::set_units(c(1, 1), "mm"),
+        liquid_precip_rate = units::set_units(c(1, 1), "h")
+    )
+    precip_target <- data.table::data.table(
+        activity_drs = "ScenarioMIP",
+        institution_id = "inst",
+        source_id = "model",
+        experiment_id = "ssp585",
+        member_id = "r1i1p1f1",
+        table_id = "day",
+        lon = 0,
+        lat = 0,
+        dist = 0,
+        units = "mm",
+        value = units::set_units(2, "mm"),
+        reference_value = units::set_units(1, "mm"),
+        month = 1L,
+        interval = "future"
+    )
+    doubled_precip <- morpher__belcher_precip_from_monthly(
+        precip_epw,
+        precip_target,
+        strict = TRUE,
+        change_factor = TRUE
+    )
+    expect_equal(sum(units::drop_units(doubled_precip$liquid_precip_depth)), 4)
+    expect_equal(unique(units::drop_units(doubled_precip$liquid_precip_rate)), 1)
+
+    dry_precip_epw <- data.table::copy(precip_epw)
+    dry_precip_epw[, liquid_precip_depth := units::set_units(0, "mm")]
+    expect_error(
+        morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = TRUE),
+        "no wet hours"
+    )
+    relaxed_dry <- NULL
+    expect_warning(
+        relaxed_dry <- morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = FALSE),
+        "keeping the month dry"
+    )
+    expect_equal(sum(units::drop_units(relaxed_dry$liquid_precip_depth)), 0)
 })
 
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
@@ -526,12 +588,16 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         "direct_normal_radiation",
         "wind_speed",
         "total_sky_cover",
-        "opaque_sky_cover"
+        "opaque_sky_cover",
+        "liquid_precip_depth",
+        "liquid_precip_rate"
     ) %in% names(result_data)))
     expect_true(any(abs(result_data$dry_bulb_temperature - baseline_data$dry_bulb_temperature) > 1e-6, na.rm = TRUE))
     expect_true(any(abs(result_data$dew_point_temperature - baseline_data$dew_point_temperature) > 1e-6, na.rm = TRUE))
     expect_true(any(abs(result_data$diffuse_horizontal_radiation - baseline_data$diffuse_horizontal_radiation) > 1e-6, na.rm = TRUE))
     expect_true(any(abs(result_data$direct_normal_radiation - baseline_data$direct_normal_radiation) > 1e-6, na.rm = TRUE))
+    expect_true(any(abs(result_data$liquid_precip_depth - baseline_data$liquid_precip_depth) > 1e-6, na.rm = TRUE))
+    expect_setequal(unique(result_data$liquid_precip_rate), c(0, 1))
 
     resumed_results <- morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE)
     expect_equal(resumed_results$result_id, results$result_id)
