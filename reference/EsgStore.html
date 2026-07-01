@@ -1609,7 +1609,7 @@ job record when <code>run = TRUE</code> and <code>background = TRUE</code>.</p>
 <span>  site_id <span class="op">=</span> <span class="st">"site-1"</span>,</span>
 <span>  variable_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  nearest <span class="op">=</span> <span class="fl">1L</span></span>
+<span>  method <span class="op">=</span> <span class="st">"nearest"</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -1640,8 +1640,9 @@ variables in the query are used.</p></dd>
 <dd><p>Named list of exact-match file catalog filters.</p></dd>
 
 
-<dt><code>nearest</code></dt>
-<dd><p>Number of nearest grid cells to keep. Default: <code>1L</code>.</p></dd>
+<dt><code>method</code></dt>
+<dd><p>Grid extraction method. One of <code>"nearest"</code>, <code>"idw"</code>,
+<code>"bilinear"</code>, or <code>"mean"</code>. Default: <code>"nearest"</code>.</p></dd>
 
 
 </dl><p></p></div>

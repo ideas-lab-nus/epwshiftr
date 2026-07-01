@@ -91,7 +91,8 @@
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
 <div class="section level3">
 <h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
-<ul><li>Replaced the legacy data.table-oriented workflow with the new store-native workflow. Users who need <code>v0.1.4</code> behavior should use the <code>legacy</code> branch on GitHub or install epwshiftr <code>v0.1.4</code>.</li>
+<ul><li>Replaced the extraction <code>nearest</code> count option with explicit grid extraction methods: <code>"nearest"</code>, <code>"idw"</code>, <code>"bilinear"</code>, and <code>"mean"</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/123" class="external-link">#123</a>).</li>
+<li>Replaced the legacy data.table-oriented workflow with the new store-native workflow. Users who need <code>v0.1.4</code> behavior should use the <code>legacy</code> branch on GitHub or install epwshiftr <code>v0.1.4</code>.</li>
 <li>Removed the legacy <code>init_cmip6_index()</code>, <code>summary_database()</code>, <code>match_coord()</code>, <code>extract_data()</code>, <code>morphing_epw()</code>, <code>future_epw()</code>, <code>EsgfQuery</code>, <code>esgf_query()</code>, and related helpers. Use <code>shift_*</code>, <code>EsgStore</code>, <code>EpwMorpher</code>, <code>EsgQuery</code>, and <code><a href="../reference/data_node_status.html">data_node_status()</a></code> instead.</li>
 <li>Dropped the old <code>fst</code>, <code>future.apply</code>, <code>progressr</code>, <code>pingr</code>, <code>PCICt</code>, and <code>rappdirs</code>-based implementation paths; the new implementation uses DuckDB, <code>mirai</code>, S7, and store-managed manifests.</li>
 </ul></div>

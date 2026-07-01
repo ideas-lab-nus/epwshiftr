@@ -209,7 +209,7 @@ you prepared beforehand.</p>
 <span id="cb5-24"><a href="#cb5-24" tabindex="-1"></a>      <span class="dt">"2060s"</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">2055</span><span class="ot">,</span> <span class="dv">2056</span><span class="ot">,</span> <span class="dv">2057</span><span class="ot">,</span> <span class="dv">2058</span><span class="ot">,</span> <span class="dv">2059</span><span class="ot">,</span> <span class="dv">2060</span><span class="ot">,</span> <span class="dv">2061</span><span class="ot">,</span> <span class="dv">2062</span><span class="ot">,</span> <span class="dv">2063</span><span class="ot">,</span> <span class="dv">2064</span><span class="ot">]</span></span>
 <span id="cb5-25"><a href="#cb5-25" tabindex="-1"></a>    <span class="fu">},</span></span>
 <span id="cb5-26"><a href="#cb5-26" tabindex="-1"></a>    <span class="dt">"time"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"2055-01-01T00:00:00Z"</span><span class="ot">,</span> <span class="st">"2064-12-31T23:59:59Z"</span><span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb5-27"><a href="#cb5-27" tabindex="-1"></a>    <span class="dt">"nearest"</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb5-27"><a href="#cb5-27" tabindex="-1"></a>    <span class="dt">"method"</span><span class="fu">:</span> <span class="st">"nearest"</span><span class="fu">,</span></span>
 <span id="cb5-28"><a href="#cb5-28" tabindex="-1"></a>    <span class="dt">"fallback"</span><span class="fu">:</span> <span class="st">"auto"</span></span>
 <span id="cb5-29"><a href="#cb5-29" tabindex="-1"></a>  <span class="fu">},</span></span>
 <span id="cb5-30"><a href="#cb5-30" tabindex="-1"></a>  <span class="dt">"morph"</span><span class="fu">:</span> <span class="fu">{</span></span>
@@ -259,7 +259,7 @@ stage directly.</p>
 <span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">--lat</span> 1.37 <span class="dt">\</span></span>
 <span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>  <span class="at">--time</span> 2055-01-01T00:00:00Z,2064-12-31T23:59:59Z <span class="dt">\</span></span>
 <span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>  <span class="at">--variable</span> tas,hurs,psl,rsds,rlds,sfcWind,clt <span class="dt">\</span></span>
-<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>  <span class="at">--nearest</span> 1</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>  <span class="at">--method</span> nearest</span>
 <span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a></span>
 <span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract run <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> --fallback auto</span>
 <span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract retry <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span>
