@@ -143,7 +143,7 @@ The runner receives one canonical context:
 
 - `context$epw`: the baseline `eplusr::Epw` object;
 - `context$climate`: store-native climate rows with `variable_id`, `time`,
-  `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
+  `period`, `year`, `lon`, `lat`, `units`, `value`, and case metadata;
 - `context$recipe`: the selected recipe, including method overrides and rules;
 - `context$by`, `context$case`, `context$strict`, and `context$warning`.
 

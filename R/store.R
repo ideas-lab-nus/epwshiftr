@@ -2036,9 +2036,6 @@ EsgStore <- R6::R6Class(
             out <- unique(out)
             append_out <- out
             existing_plan_cols <- names(private$read_table("extraction_plan"))
-            if ("nearest" %in% existing_plan_cols && !"nearest" %in% names(append_out)) {
-                append_out$nearest <- NA_integer_
-            }
             append_out <- append_out[, intersect(existing_plan_cols, names(append_out)), drop = FALSE]
             private$append_new_rows("extraction_plan", append_out, "plan_id")
 
@@ -3308,8 +3305,6 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec("ALTER TABLE extraction_plan ADD COLUMN IF NOT EXISTS method VARCHAR")
-            private$exec("UPDATE extraction_plan SET method = 'nearest' WHERE method IS NULL OR method = ''")
             private$exec(
                 "
                 CREATE TABLE IF NOT EXISTS extraction_grid_source (
@@ -3345,7 +3340,6 @@ EsgStore <- R6::R6Class(
                     time_max TIMESTAMP,
                     lon_actual DOUBLE,
                     lat_actual DOUBLE,
-                    dist_min DOUBLE,
                     completed_at TIMESTAMP
                 )
             "
@@ -3366,7 +3360,6 @@ EsgStore <- R6::R6Class(
             private$migrate_schema_to_2_2(current)
             private$migrate_schema_to_2_3(current)
             private$migrate_schema_to_2_4(current)
-            private$migrate_schema_to_2_5(current)
             private$set_store_schema_version(STORE_SCHEMA_VERSION)
             invisible(NULL)
         },
@@ -3436,7 +3429,6 @@ EsgStore <- R6::R6Class(
             private$init_epw_morph_schema()
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lon DOUBLE")
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lat DOUBLE")
-            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS dist DOUBLE")
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS years_json VARCHAR")
             invisible(NULL)
         },
@@ -3445,31 +3437,6 @@ EsgStore <- R6::R6Class(
             private$init_epw_morph_schema()
             private$exec("ALTER TABLE epw_morph_plan ADD COLUMN IF NOT EXISTS reference_summary_id VARCHAR")
             private$exec("ALTER TABLE epw_morph_factor ADD COLUMN IF NOT EXISTS reference DOUBLE")
-            invisible(NULL)
-        },
-
-        migrate_schema_to_2_5 = function(current) {
-            private$exec("ALTER TABLE extraction_plan ADD COLUMN IF NOT EXISTS method VARCHAR")
-            private$exec("UPDATE extraction_plan SET method = 'nearest' WHERE method IS NULL OR method = ''")
-            private$exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_grid_source (
-                    source_row_id VARCHAR PRIMARY KEY,
-                    plan_id VARCHAR,
-                    file_key VARCHAR,
-                    query_id VARCHAR,
-                    variable_id VARCHAR,
-                    method VARCHAR,
-                    source_index INTEGER,
-                    role VARCHAR,
-                    grid_lon DOUBLE,
-                    grid_lat DOUBLE,
-                    grid_dist_km DOUBLE,
-                    weight DOUBLE,
-                    created_at TIMESTAMP
-                )
-            "
-            )
             invisible(NULL)
         },
         # }}}
@@ -3525,7 +3492,6 @@ EsgStore <- R6::R6Class(
                     units VARCHAR,
                     lon DOUBLE,
                     lat DOUBLE,
-                    dist DOUBLE,
                     years_json VARCHAR,
                     coverage DOUBLE,
                     n_records INTEGER,
@@ -5926,7 +5892,6 @@ EsgStore <- R6::R6Class(
                 time_max = max(dt$time),
                 lon_actual = dt$lon[[1L]],
                 lat_actual = dt$lat[[1L]],
-                dist_min = NA_real_,
                 completed_at = store__now(),
                 stringsAsFactors = FALSE
             )
