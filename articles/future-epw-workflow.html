@@ -284,8 +284,8 @@ stages: first as the ESGF <code>variable_id</code> filter in
 <code>"minimal"</code>: air temperature and relative humidity,
 useful for relaxed demonstrations.</li>
 <li>
-<code>"recommended"</code>: the current strict Belcher recipe
-set.</li>
+<code>"recommended"</code>: the current strict Belcher recipe set,
+including precipitation.</li>
 <li>
 <code>"extended"</code>: the recommended set plus related max/min
 variables for future recipes.</li>
@@ -297,7 +297,8 @@ a reference climate extraction.</p>
 <code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
 <span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">shift_recipe</span><span class="op">)</span></span>
 <span><span class="va">variables</span></span>
-<span><span class="co">#&gt; [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"</span></span>
+<span><span class="co">#&gt; [8] "pr"</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_request()</a></code> describes the remote climate data you
 want. The future request targets one ESGF ScenarioMIP model, scenario,
 member, and monthly table. The reference request uses the matching
@@ -344,7 +345,7 @@ dictionaries</a>.</p>
 <span><span class="co">#&gt;   experiment: ssp585</span></span>
 <span><span class="co">#&gt;   variant: r1i1p1f1</span></span>
 <span><span class="co">#&gt;   frequency: mon</span></span>
-<span><span class="co">#&gt;   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt</span></span>
+<span><span class="co">#&gt;   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)</span></span>
 <span><span class="co">#&gt;   time:   2060-01-01T00:00:00Z -&gt; 2060-12-31T23:59:59Z</span></span>
 <span></span>
 <span><span class="va">reference_request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_request</a></span><span class="op">(</span></span>

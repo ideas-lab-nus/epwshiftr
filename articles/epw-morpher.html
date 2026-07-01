@@ -227,9 +227,10 @@ Belcher backend, the primary overrideable steps are <code>tdb</code>,
 <code>rh</code>, <code>p</code>, <code>hor_ir</code>,
 <code>glob_rad</code>, and <code>wind</code>; allowed values are
 <code>"shift"</code>, <code>"stretch"</code>, and
-<code>"combined"</code>. Derived steps such as dew point and direct
-normal radiation are declared in the rules but are not independent
-method overrides.</p>
+<code>"combined"</code>. Precipitation is handled by a dedicated
+conservative step that preserves the baseline wet-hour timing. Derived
+steps such as dew point, direct normal radiation, and precipitation rate
+are declared in the rules but are not independent method overrides.</p>
 <div class="section level3">
 <h3 id="adding-a-backend">Adding a Backend<a class="anchor" aria-label="anchor" href="#adding-a-backend"></a>
 </h3>
