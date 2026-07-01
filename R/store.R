@@ -860,22 +860,28 @@ EsgStore <- R6::R6Class(
                 return(data.table::data.table())
             }
 
-            private$with_store_lock({
             updated <- vector("list", nrow(rows))
             for (i in seq_len(nrow(rows))) {
+                # Network collection can be slow; keep it outside the store lock.
                 query <- private$load_query(rows[i])
                 files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
-                updated[[i]] <- private$update_query_files(
-                    rows$query_id[[i]],
-                    files,
-                    fields = fields,
-                    all = all,
-                    limit = limit
-                )
+
+                # Only the manifest mutation needs the store lock.
+                updated[[i]] <- private$with_store_lock({
+                    private$update_query_files(
+                        rows$query_id[[i]],
+                        files,
+                        fields = fields,
+                        all = all,
+                        limit = limit
+                    )
+                })
                 if (isTRUE(enqueue)) {
+                    # Build and enqueue downloader work without holding the store lock.
                     sid <- private$enqueue_query_download(
                         query_id = rows$query_id[[i]],
                         files = files,
+                        current = updated[[i]][updated[[i]][["status"]] %in% "current", , drop = FALSE],
                         downloader = downloader,
                         replica = replica,
                         session_label = session_label,
@@ -886,12 +892,16 @@ EsgStore <- R6::R6Class(
                         strategy = strategy,
                         error_if_empty = FALSE
                     )
-                    updated[[i]]$download_session_id <- sid
-                    private$set_query_update_session(updated[[i]]$update_id[[1L]], sid)
+                    if (nrow(updated[[i]])) {
+                        updated[[i]]$download_session_id <- sid
+                        # Persist the session link with a short manifest write.
+                        private$with_store_lock({
+                            private$set_query_update_session(updated[[i]]$update_id[[1L]], sid)
+                        })
+                    }
                 }
             }
             data.table::rbindlist(updated, fill = TRUE)
-            })
         },
         # }}}
 
@@ -1062,13 +1072,20 @@ EsgStore <- R6::R6Class(
             }
 
             row <- private$get_query_row(query_id)
-            private$with_store_lock({
+            # Network collection can be slow; keep it outside the store lock.
             query <- private$load_query(row)
             files <- query$collect(type = "File", fields = fields, all = all, limit = limit, ...)
-            links <- private$update_query_files(query_id, files, fields = fields, all = all, limit = limit)
+
+            # Commit the refreshed file links under a short lock.
+            links <- private$with_store_lock({
+                private$update_query_files(query_id, files, fields = fields, all = all, limit = limit)
+            })
+
+            # Build and enqueue the downloader session after releasing the store lock.
             session_id <- private$enqueue_query_download(
                 query_id = query_id,
                 files = files,
+                current = links[links[["status"]] %in% "current", , drop = FALSE],
                 downloader = downloader,
                 replica = replica,
                 session_label = session_label,
@@ -1079,7 +1096,12 @@ EsgStore <- R6::R6Class(
                 strategy = strategy,
                 error_if_empty = TRUE
             )
-            private$set_query_update_session(links$update_id[[1L]], session_id)
+            if (nrow(links)) {
+                # Store only the downloader session reference under lock.
+                private$with_store_lock({
+                    private$set_query_update_session(links$update_id[[1L]], session_id)
+                })
+            }
             if (isTRUE(run)) {
                 if (isTRUE(background)) {
                     return(downloader$start(
@@ -1094,7 +1116,6 @@ EsgStore <- R6::R6Class(
                 self$sync_downloads(downloader)
             }
             session_id
-            })
         },
         # }}}
 
@@ -1762,9 +1783,14 @@ EsgStore <- R6::R6Class(
                 downloader <- self$downloader()
             }
 
-            private$with_store_lock({
             plan <- if (!is.null(files)) {
+                # Cataloging files mutates the store; plan construction itself stays unlocked.
                 query_id <- self$add_files(files, label = session_label)
+                current <- private$with_store_lock({
+                    # add_files() records file collections in file_catalog, not esg_query_file.
+                    catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
+                    catalog[catalog[["query_id"]] == query_id]
+                })
                 node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
                 network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
                 node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
@@ -1782,14 +1808,19 @@ EsgStore <- R6::R6Class(
                     ...
                 )
                 plan <- do.call(files$download_plan, plan_args)
-                plan <- private$decorate_download_plan(plan, query_id = query_id)
+                plan <- private$decorate_download_plan_with_files(plan, current)
+                plan <- plan[plan[["file_key"]] %in% current$file_key]
                 plan
             } else {
-                private$catalog_download_plan(query_id = query_id)
+                # Catalog reads need a consistent snapshot, but downloader work does not.
+                private$with_store_lock({
+                    private$catalog_download_plan(query_id = query_id)
+                })
             }
             if (!nrow(plan)) {
                 return(NA_character_)
             }
+            # Downloader manifest/probe operations must not hold the store lock.
             tryCatch(downloader$record_probes(plan, probed = probe), error = function(e) NULL)
             session_id <- downloader$enqueue(plan, session_label = session_label)
             if (isTRUE(run)) {
@@ -1806,7 +1837,6 @@ EsgStore <- R6::R6Class(
                 self$sync_downloads(downloader)
             }
             session_id
-            })
         },
         # }}}
 
@@ -4052,6 +4082,7 @@ EsgStore <- R6::R6Class(
         enqueue_query_download = function(
             query_id,
             files,
+            current,
             downloader,
             replica,
             session_label,
@@ -4062,7 +4093,7 @@ EsgStore <- R6::R6Class(
             strategy,
             error_if_empty = TRUE
         ) {
-            current <- self$query_files(query_id, status = "current")
+            current <- data.table::as.data.table(current)
             if (!nrow(current)) {
                 if (isTRUE(error_if_empty)) {
                     cli::cli_abort("Stored ESGF query {.val {query_id}} has no current files to download.")
@@ -4070,6 +4101,7 @@ EsgStore <- R6::R6Class(
                 return(NA_character_)
             }
 
+            # Use the committed current-file snapshot supplied by the caller.
             node_stats <- tryCatch(downloader$data_nodes(service = service), error = function(e) NULL)
             network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
             node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
@@ -4085,7 +4117,7 @@ EsgStore <- R6::R6Class(
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds
             )
-            plan <- private$decorate_download_plan(plan, query_id = query_id)
+            plan <- private$decorate_download_plan_with_files(plan, current)
             plan <- plan[plan[["file_key"]] %in% current$file_key]
             if (!nrow(plan)) {
                 if (isTRUE(error_if_empty)) {
