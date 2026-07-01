@@ -2068,7 +2068,6 @@ morpher__belcher_monthly_precip_variable <- function(context, variable_id, refer
     out <- data[, .(
         lon = mean(lon, na.rm = TRUE),
         lat = mean(lat, na.rm = TRUE),
-        dist = mean(dist, na.rm = TRUE),
         value = mean(value, na.rm = TRUE),
         years = list(sort(unique(year)))
     ), by = group_cols]
@@ -2086,7 +2085,7 @@ morpher__belcher_monthly_precip_variable <- function(context, variable_id, refer
         units = "mm",
         years = NULL
     )]
-    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month", "interval"))
+    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "units", "value", "month", "interval"))
     out[]
 }
 
@@ -2177,7 +2176,7 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     data[, .baseline_precip_depth := NULL]
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
-        "table_id", "lon", "lat", "dist", "interval",
+        "table_id", "lon", "lat", "interval",
         "datetime", "year", "month", "day", "hour", "minute",
         "liquid_precip_depth", "liquid_precip_rate", "delta", "alpha"
     )]
