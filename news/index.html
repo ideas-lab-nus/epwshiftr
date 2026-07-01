@@ -110,7 +110,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
-<ul><li>
+<ul><li>Fixed precipitation morphing summaries to avoid carrying the removed legacy <code>dist</code> extraction column after grid extraction methods became explicit (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/124" class="external-link">#124</a>).</li>
+<li>
 <code>EsgStore</code> now keeps ESGF query collection and downloader operations outside the store manifest lock, reducing lock hold time during query update and download workflows (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/120" class="external-link">#120</a>).</li>
 <li>
 <code>EsgQuery$collect(all = TRUE)</code> now warns and returns partial results when ESGF pagination stops making progress, instead of repeatedly requesting the same offset (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/116" class="external-link">#116</a>).</li>
