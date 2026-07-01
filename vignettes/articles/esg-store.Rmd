@@ -730,7 +730,7 @@ store$sync_downloads(downloader)
 # Plan Extraction
 
 Extraction plans connect query files to a site, time range, variables, and a
-nearest-grid rule. Planning is metadata-only; extraction reads OPeNDAP or local
+grid method. Planning is metadata-only; extraction reads OPeNDAP or local
 NetCDF data and writes Parquet outputs under `extracts/`.
 
 
@@ -742,7 +742,7 @@ region <- store$plan_region(
     time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
     site_id = "SIN",
     variable_id = variables,
-    nearest = 1L
+    method = "nearest"
 )
 
 select_cols(region, c(

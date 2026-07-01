@@ -73,12 +73,12 @@
       "keys": {
         "type": "named",
         "must.include": ["periods"],
-        "subset.of": ["periods", "variables", "time", "filters", "nearest", "fallback"]
+        "subset.of": ["periods", "variables", "time", "filters", "method", "fallback"]
       },
       "fields": {
         "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "nearest": {"check": {"kind": "count", "positive": true}},
+        "method": {"check": {"kind": "choice", "choices": ["nearest", "idw", "bilinear", "mean"]}},
         "fallback": {"check": {"kind": "choice", "choices": ["auto", "error"]}}
       }
     },

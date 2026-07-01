@@ -577,7 +577,7 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
 })
 # }}}
 # EsgDataset$read_region() {{{
-test_that("EsgDataset$read_region() reads nearest grid cells and time windows", {
+test_that("EsgDataset$read_region() reads grid-method values and time windows", {
     path1 <- tempfile(fileext = ".nc")
     path2 <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path1, 2060L)
@@ -588,53 +588,74 @@ test_that("EsgDataset$read_region() reads nearest grid cells and time windows", 
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    dt <- ds$read_region(
-        variable = "tas",
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        nearest = 2L
-    )
-    expect_s3_class(dt, "data.table")
-    expect_named(dt, c("file_index", "variable", "time", "lon", "lat", "dist", "value"))
-    expect_identical(unique(dt$file_index), 1L)
-    expect_identical(unique(dt$variable), "tas")
-    expect_equal(nrow(dt), 4L)
-    expect_equal(
-        sort(unique(as.Date(dt$time))),
-        as.Date(c("2060-01-02", "2060-01-03"))
-    )
+    expected_values <- function(sources) {
+        lat_vals <- c(1.0, 2.0, 41.0)
+        lon_vals <- c(103.5, 104.0, 104.5, 254.0)
+        time_vals <- c(1.5, 2.5)
+        vapply(time_vals, function(time) {
+            phase <- 2 * pi * time / 366
+            source_values <- vapply(seq_len(nrow(sources)), function(i) {
+                lat_i <- match(sources$grid_lat[[i]], lat_vals)
+                lon_i <- match(sources$grid_lon[[i]], lon_vals)
+                spatial <- lat_i / 10 + lon_i / 20
+                299 + 5 * sin(phase) + spatial
+            }, numeric(1L))
+            sum(source_values * sources$weight)
+        }, numeric(1L))
+    }
 
-    coords <- data.table::CJ(lat = c(1.0, 2.0, 41.0), lon = c(103.5, 104.0, 104.5, 254.0))
-    coords[, dist := local_tunnel_dist(lat, lon, 1.37, 103.98)]
-    data.table::setorder(coords, dist)
-    expected_coords <- coords[1:2, .(lat, lon)]
-    got_coords <- unique(dt[, .(lat, lon)])
-    data.table::setorder(got_coords, lat, lon)
-    data.table::setorder(expected_coords, lat, lon)
-    expect_equal(got_coords, expected_coords)
+    for (method in ESG_GRID_METHOD_CHOICES) {
+        dt <- ds$read_region(
+            variable = "tas",
+            lon = 103.98,
+            lat = 1.37,
+            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+            method = method
+        )
+        sources <- attr(dt, "grid_sources")
+
+        expect_s3_class(dt, "data.table")
+        expect_named(dt, c("file_index", "variable", "time", "lon", "lat", "method", "value"))
+        expect_identical(unique(dt$file_index), 1L)
+        expect_identical(unique(dt$variable), "tas")
+        expect_identical(unique(dt$method), method)
+        expect_equal(unique(dt$lon), 103.98)
+        expect_equal(unique(dt$lat), 1.37)
+        expect_equal(nrow(dt), 2L)
+        expect_equal(
+            sort(unique(as.Date(dt$time))),
+            as.Date(c("2060-01-02", "2060-01-03"))
+        )
+
+        expect_s3_class(sources, "data.table")
+        expect_equal(sum(sources$weight), 1)
+        expect_equal(nrow(sources), if (identical(method, "nearest")) 1L else 4L)
+        expect_equal(dt$value, expected_values(sources), tolerance = 1e-5)
+    }
 
     dt_list <- ds$read_region(
         variable = "tas",
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        nearest = 1L,
         rbind = FALSE
     )
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
     expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
+    expect_true(all(vapply(dt_list, function(x) inherits(attr(x, "grid_sources"), "data.table"), logical(1L))))
 
     dt_neg_lon <- ds$read_region(
         variable = "tas",
         lon = -106,
         lat = 41,
-        time = c("2060-01-01T00:00:00Z", "2060-01-01T23:59:59Z"),
-        nearest = 1L
+        time = c("2060-01-01T00:00:00Z", "2060-01-01T23:59:59Z")
     )
-    expect_identical(unique(dt_neg_lon$lon), 254)
+    neg_sources <- attr(dt_neg_lon, "grid_sources")
+    expect_identical(unique(dt_neg_lon$lon), -106)
     expect_identical(unique(dt_neg_lon$lat), 41)
+    expect_identical(unique(neg_sources$grid_lon), 254)
+    expect_identical(unique(neg_sources$grid_lat), 41)
 
     expect_error(
         ds$read_region("hurs", lon = 103.98, lat = 1.37),

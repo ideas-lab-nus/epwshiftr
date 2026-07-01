@@ -766,7 +766,6 @@ morpher__stat_rows <- function(dt) {
         value = mean(value, na.rm = TRUE),
         lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
         lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        dist = if ("dist" %in% names(.SD)) mean(dist, na.rm = TRUE) else NA_real_,
         n_records = .N
     ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
     mean_rows[, stat := "mean"]
@@ -775,7 +774,6 @@ morpher__stat_rows <- function(dt) {
         value = min(value, na.rm = TRUE),
         lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
         lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        dist = if ("dist" %in% names(.SD)) mean(dist, na.rm = TRUE) else NA_real_,
         n_records = .N
     ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
     min_rows[, stat := "min"]
@@ -784,7 +782,6 @@ morpher__stat_rows <- function(dt) {
         value = max(value, na.rm = TRUE),
         lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
         lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        dist = if ("dist" %in% names(.SD)) mean(dist, na.rm = TRUE) else NA_real_,
         n_records = .N
     ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
     max_rows[, stat := "max"]
@@ -938,7 +935,7 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     if (!"units" %in% names(climate)) {
         climate[, units := NA_character_]
     }
-    for (col in c("lon", "lat", "dist")) {
+    for (col in c("lon", "lat")) {
         if (!col %in% names(climate)) {
             climate[, (col) := NA_real_]
         }
@@ -986,7 +983,7 @@ morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
 }
 
 morpher__context_required_columns <- function() {
-    c("variable_id", "time", "period", "year", "lon", "lat", "dist", "units", "value")
+    c("variable_id", "time", "period", "year", "lon", "lat", "units", "value")
 }
 
 morpher__validate_context <- function(context) {
@@ -1056,8 +1053,7 @@ morpher__context_identity_rows <- function(data) {
         member_id = store__chr(morpher__context_pick_column(data, "member_id", "variant_label")),
         table_id = store__chr(morpher__context_pick_column(data, "table_id", "frequency")),
         lon = as.numeric(morpher__context_pick_column(data, "lon", default = NA_real_)),
-        lat = as.numeric(morpher__context_pick_column(data, "lat", default = NA_real_)),
-        dist = as.numeric(morpher__context_pick_column(data, "dist", default = NA_real_))
+        lat = as.numeric(morpher__context_pick_column(data, "lat", default = NA_real_))
     )
 }
 
@@ -1066,7 +1062,7 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
     if (!nrow(data)) {
         return(data.table::data.table())
     }
-    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat", "dist"), names(data))
+    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat"), names(data))
     if (length(missing)) {
         cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
     }
@@ -1128,14 +1124,13 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
     out <- data[, .(
         lon = mean(lon, na.rm = TRUE),
         lat = mean(lat, na.rm = TRUE),
-        dist = mean(dist, na.rm = TRUE),
         value = mean(value, na.rm = TRUE)
     ), by = group_cols]
     unit <- out$units[!is.na(out$units) & nzchar(out$units)][1L]
     if (length(unit) && !is.na(unit)) {
         data.table::set(out, NULL, "value", units::set_units(out$value, unit, mode = "standard"))
     }
-    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "dist", "units", "value", "month", "interval"))
+    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "units", "value", "month", "interval"))
     out[]
 }
 
@@ -1490,7 +1485,7 @@ morpher__belcher_opaque_sky_cover <- function(data_epw, total_sky_cover) {
 
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
-        "table_id", "lon", "lat", "dist", "interval",
+        "table_id", "lon", "lat", "interval",
         "datetime", "year", "month", "day", "hour", "minute",
         "opaque_sky_cover", "delta", "alpha"
     )]
@@ -1513,7 +1508,7 @@ morpher__belcher_from_monthly <- function(var, data_epw, data_mean, data_max = N
         data_min <- morpher__belcher_align_units(data.table::copy(data_min), u)
         join_cols <- c(
             "activity_drs", "institution_id", "source_id", "experiment_id",
-            "member_id", "table_id", "lat", "lon", "dist", "units", "month",
+            "member_id", "table_id", "lat", "lon", "units", "month",
             "interval"
         )
         data_mean[data_max, on = join_cols, value_max := i.value]
@@ -1607,7 +1602,7 @@ morpher__belcher_from_monthly <- function(var, data_epw, data_mean, data_max = N
 
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
-        "table_id", "lon", "lat", "dist", "interval",
+        "table_id", "lon", "lat", "interval",
         "datetime", "year", "month", "day", "hour", "minute",
         var, "delta", "alpha"
     )]
@@ -1688,7 +1683,7 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         reference_min <- morpher__belcher_align_units(data.table::copy(reference_min), u)
         join_cols <- intersect(c(
             "activity_drs", "institution_id", "source_id", "experiment_id",
-            "member_id", "table_id", "lat", "lon", "dist", "units", "month",
+            "member_id", "table_id", "lat", "lon", "units", "month",
             "interval"
         ), names(data_mean))
         data_mean[data_max, on = join_cols, value_max := i.value]
@@ -1792,7 +1787,7 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
 
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
-        "table_id", "lon", "lat", "dist", "interval",
+        "table_id", "lon", "lat", "interval",
         "datetime", "year", "month", "day", "hour", "minute",
         var, "delta", "alpha"
     )]
@@ -1950,7 +1945,7 @@ morpher__belcher_total_sky_cover <- function(data_epw, context, data_mean = NULL
     data[, target_total_sky_cover := NULL]
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
-        "table_id", "lon", "lat", "dist", "interval",
+        "table_id", "lon", "lat", "interval",
         "datetime", "year", "month", "day", "hour", "minute",
         var, "delta", "alpha"
     )]
@@ -2481,7 +2476,7 @@ EpwMorpher <- R6::R6Class(
             target_summary_id <- summary_id
             current_summary <- current[current[["summary_id"]] == target_summary_id]
             current_usable <- nrow(current_summary) &&
-                all(c("years_json", "lon", "lat", "dist") %in% names(current_summary)) &&
+                all(c("years_json", "lon", "lat") %in% names(current_summary)) &&
                 all(!is.na(current_summary$years_json) & nzchar(current_summary$years_json))
             if (!isTRUE(overwrite) && isTRUE(current_usable)) {
                 return(current_summary)
@@ -2527,7 +2522,7 @@ EpwMorpher <- R6::R6Class(
                 "summary_row_id", "summary_id", "plan_id", "site_id", "source_id",
                 "experiment_id", "variant_label", "frequency", "table_id",
                 "variable_id", "period", "month", "stat", "value", "units",
-                "lon", "lat", "dist", "years_json", "coverage", "n_records", "created_at"
+                "lon", "lat", "years_json", "coverage", "n_records", "created_at"
             ))
             morpher__delete_by_key(private$store, "epw_climate_summary", "summary_id", summary_id)
             morpher__replace_rows(private$store, "epw_climate_summary", rows, "summary_row_id")

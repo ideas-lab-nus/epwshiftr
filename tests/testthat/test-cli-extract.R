@@ -16,7 +16,7 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
         "--lat", "1.37",
         "--time", "2060-01-02T00:00:00Z,2060-01-03T23:59:59Z",
         "--variable", "tas",
-        "--nearest", "1",
+        "--method", "nearest",
         "--filter", "source_id=EC-Earth3"
     ))
     expect_equal(plan$status, 0L)

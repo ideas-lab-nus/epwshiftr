@@ -14,7 +14,7 @@ epwshiftr_cli_extract <- function(store, command, args, json = FALSE, jsonl = FA
 epwshiftr_cli_extract_plan <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--query", "--site-id", "--lon", "--lat", "--time", "--variable", "--nearest"),
+        options = c("--query", "--site-id", "--lon", "--lat", "--time", "--variable", "--method"),
         multi_options = c("--filter")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -31,7 +31,7 @@ epwshiftr_cli_extract_plan <- function(store, args) {
         time = time,
         variable_id = epwshiftr_cli_csv(parsed$options[["--variable"]]),
         filters = epwshiftr_cli_key_value_list(parsed$options[["--filter"]]),
-        nearest = epwshiftr_cli_count_or_default(parsed$options[["--nearest"]], "--nearest", 1L)
+        method = epwshiftr_cli_choice(parsed$options[["--method"]], ESG_GRID_METHOD_CHOICES, "--method", default = "nearest")
     )
 }
 

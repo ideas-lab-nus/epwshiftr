@@ -100,7 +100,7 @@ epwshiftr_cli_shift_example_config <- function() {
         extract = list(
             periods = list(`2060s` = 2055L:2064L),
             time = c("2055-01-01T00:00:00Z", "2064-12-31T23:59:59Z"),
-            nearest = 1L,
+            method = "nearest",
             fallback = "auto"
         ),
         morph = list(

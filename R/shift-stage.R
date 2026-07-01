@@ -214,7 +214,12 @@ shift_file_catalog <- function(store, query_id) {
 
 shift_extraction_plan <- function(store, plan_id) {
     shift_query_maybe(store, sprintf(
-        "SELECT * FROM extraction_plan WHERE plan_id IN (%s)",
+        paste(
+            "SELECT plan_id, query_id, file_key, site_id, variable_id,",
+            "lon, lat, method, time_start, time_stop, status,",
+            "available_time_count, attempt_count, last_error, created_at, updated_at",
+            "FROM extraction_plan WHERE plan_id IN (%s)"
+        ),
         shift_stage_query_ids(plan_id)
     ))
 }
@@ -888,7 +893,7 @@ shift_reference_plan <- function(plan_id, periods) {
 #' @param collect,extract Named option lists passed to the automatic
 #'   historical collect and extract steps. `collect` may contain `fields`,
 #'   `all`, `limit`, and `label`; `extract` may contain `variables`, `time`,
-#'   `filters`, `nearest`, and `fallback`.
+#'   `filters`, `method`, and `fallback`.
 #' @export
 shift_reference_historical <- function(periods, experiment = "historical", activity = "CMIP",
                                        match = c("source_id", "variant_label", "frequency", "table_id"),
@@ -903,7 +908,7 @@ shift_reference_historical <- function(periods, experiment = "historical", activ
     checkmate::assert_list(collect, names = "unique")
     checkmate::assert_subset(names(collect), c("fields", "all", "limit", "label"))
     checkmate::assert_list(extract, names = "unique")
-    checkmate::assert_subset(names(extract), c("variables", "time", "filters", "nearest", "fallback"))
+    checkmate::assert_subset(names(extract), c("variables", "time", "filters", "method", "fallback"))
 
     ShiftReferenceSpec(
         mode = "historical",
@@ -968,14 +973,14 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
-#' @param nearest Number of nearest grid points to extract.
+#' @param method Grid extraction method.
 #' @param fallback Extraction fallback policy.
 #' @export
 shift_extract <- S7::new_generic(
     "shift_extract",
     "x",
     function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
-             filters = list(), nearest = 1L, fallback = c("auto", "error"),
+             filters = list(), method = "nearest", fallback = c("auto", "error"),
              overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
     }
@@ -1547,7 +1552,7 @@ S7::method(shift_download, ShiftFiles) <- function(x, downloader = NULL, run = T
 }
 
 shift_extract_stage <- function(x, upstream_name, site = NULL, periods = NULL, variables = NULL, time = NULL,
-                                filters = list(), nearest = 1L,
+                                filters = list(), method = "nearest",
                                 fallback = c("auto", "error"), overwrite = FALSE,
                                 resume = TRUE) {
     checkmate::assert_choice(upstream_name, c("files", "download"))
@@ -1556,7 +1561,7 @@ shift_extract_stage <- function(x, upstream_name, site = NULL, periods = NULL, v
     }
     checkmate::assert_data_frame(periods)
     checkmate::assert_list(filters, names = "unique")
-    checkmate::assert_int(nearest, lower = 1L)
+    method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
     fallback <- match.arg(fallback)
@@ -1574,7 +1579,7 @@ shift_extract_stage <- function(x, upstream_name, site = NULL, periods = NULL, v
         site_id = site@id,
         variable_id = variables,
         filters = filters,
-        nearest = nearest
+        method = method
     )
     plan_id <- unique(plan$plan_id)
     processed <- store$extract(plan_id = plan_id, fallback = fallback, overwrite = overwrite, resume = resume)
@@ -1603,7 +1608,7 @@ shift_extract_stage <- function(x, upstream_name, site = NULL, periods = NULL, v
 }
 
 S7::method(shift_extract, ShiftFiles) <- function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
-                                                  filters = list(), nearest = 1L,
+                                                  filters = list(), method = "nearest",
                                                   fallback = c("auto", "error"), overwrite = FALSE,
                                                   resume = TRUE) {
     shift_extract_stage(
@@ -1614,7 +1619,7 @@ S7::method(shift_extract, ShiftFiles) <- function(x, site = NULL, periods = NULL
         variables = variables,
         time = time,
         filters = filters,
-        nearest = nearest,
+        method = method,
         fallback = fallback,
         overwrite = overwrite,
         resume = resume
@@ -1622,7 +1627,7 @@ S7::method(shift_extract, ShiftFiles) <- function(x, site = NULL, periods = NULL
 }
 
 S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = NULL, variables = NULL, time = NULL,
-                                                     filters = list(), nearest = 1L,
+                                                     filters = list(), method = "nearest",
                                                      fallback = c("auto", "error"), overwrite = FALSE,
                                                      resume = TRUE) {
     shift_extract_stage(
@@ -1633,7 +1638,7 @@ S7::method(shift_extract, ShiftDownload) <- function(x, site = NULL, periods = N
         variables = variables,
         time = time,
         filters = filters,
-        nearest = nearest,
+        method = method,
         fallback = fallback,
         overwrite = overwrite,
         resume = resume
@@ -1769,7 +1774,7 @@ shift_reference_resolve_historical <- function(x, recipe, site, spec, overwrite 
         variables = variables,
         time = shift_periods_time(periods),
         filters = extract_filters,
-        nearest = 1L,
+        method = "nearest",
         fallback = "auto",
         overwrite = overwrite,
         resume = resume
