@@ -109,6 +109,8 @@
 <div class="section level3">
 <h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
 <ul><li>
+<code>EsgStore</code> now keeps ESGF query collection and downloader operations outside the store manifest lock, reducing lock hold time during query update and download workflows (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/120" class="external-link">#120</a>).</li>
+<li>
 <code>EsgQuery$collect(all = TRUE)</code> now warns and returns partial results when ESGF pagination stops making progress, instead of repeatedly requesting the same offset (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/116" class="external-link">#116</a>).</li>
 <li>
 <code><a href="../reference/shift_api.html">shift_epw()</a></code> and <code>EpwMorpher$write_epw()</code> now fill missing, out-of-range, and special EPW values before saving generated weather files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/87" class="external-link">#87</a>).</li>
@@ -122,7 +124,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="internal-changes-development-version">Internal changes<a class="anchor" aria-label="anchor" href="#internal-changes-development-version"></a></h3>
-<ul><li>Updated GitHub Actions workflow dependencies for current Actions behavior (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/99" class="external-link">#99</a>).</li>
+<ul><li>Added regression tests for batched Dataset child collection, including global <code>limit</code> handling and progress labels (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/119" class="external-link">#119</a>).</li>
+<li>Updated GitHub Actions workflow dependencies for current Actions behavior (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/99" class="external-link">#99</a>).</li>
 <li>Removed obsolete print helpers and the legacy implementation files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/109" class="external-link">#109</a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/issues/110" class="external-link">#110</a>).</li>
 <li>
 <code>EsgResultFile</code> and <code>EsgResultAggregation</code> now share their internal download and OPeNDAP fallback helpers while keeping the public methods unchanged (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/118" class="external-link">#118</a>).</li>
