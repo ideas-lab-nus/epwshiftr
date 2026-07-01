@@ -59,6 +59,8 @@
 
 ## Internal changes
 
+* Added regression tests for batched Dataset child collection, including
+  global `limit` handling and progress labels (#119).
 * Updated GitHub Actions workflow dependencies for current Actions behavior
   (#99).
 * Removed obsolete print helpers and the legacy implementation files (#109,
