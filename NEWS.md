@@ -43,6 +43,8 @@
 
 ## Bug fixes
 
+* Fixed precipitation morphing summaries to avoid carrying the removed legacy
+  `dist` extraction column after grid extraction methods became explicit (#124).
 * `EsgStore` now keeps ESGF query collection and downloader operations outside
   the store manifest lock, reducing lock hold time during query update and
   download workflows (#120).
