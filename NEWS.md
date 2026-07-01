@@ -39,6 +39,9 @@
 
 ## Bug fixes
 
+* `EsgStore` now keeps ESGF query collection and downloader operations outside
+  the store manifest lock, reducing lock hold time during query update and
+  download workflows (#120).
 * `EsgQuery$collect(all = TRUE)` now warns and returns partial results when
   ESGF pagination stops making progress, instead of repeatedly requesting the
   same offset (#116).
