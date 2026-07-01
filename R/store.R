@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.4.0"
+STORE_SCHEMA_VERSION <- "2.5.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -1914,7 +1914,8 @@ EsgStore <- R6::R6Class(
         #' @param variable_id Optional variable IDs. If `NULL`, all cataloged
         #'        variables in the query are used.
         #' @param filters Named list of exact-match file catalog filters.
-        #' @param nearest Number of nearest grid cells to keep. Default: `1L`.
+        #' @param method Grid extraction method. One of `"nearest"`, `"idw"`,
+        #'        `"bilinear"`, or `"mean"`. Default: `"nearest"`.
         #'
         #' @return A data.table of extraction plan rows.
         plan_region = function(
@@ -1925,7 +1926,7 @@ EsgStore <- R6::R6Class(
             site_id = "site-1",
             variable_id = NULL,
             filters = list(),
-            nearest = 1L
+            method = "nearest"
         ) {
             checkmate::assert_string(query_id)
             checkmate::assert_number(lon, lower = -180, upper = 360, finite = TRUE)
@@ -1933,7 +1934,7 @@ EsgStore <- R6::R6Class(
             checkmate::assert_string(site_id)
             checkmate::assert_character(variable_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_list(filters, names = "unique")
-            checkmate::assert_int(nearest, lower = 1L)
+            method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
             private$check_open()
 
             time_range <- store__time_range(time)
@@ -2008,7 +2009,7 @@ EsgStore <- R6::R6Class(
                             plan$variable_id[[i]],
                             lon,
                             lat,
-                            nearest,
+                            method,
                             time_range$start,
                             time_range$stop
                         )
@@ -2021,7 +2022,7 @@ EsgStore <- R6::R6Class(
                 variable_id = plan$variable_id,
                 lon = lon,
                 lat = lat,
-                nearest = nearest,
+                method = method,
                 time_start = time_range$start,
                 time_stop = time_range$stop,
                 status = "pending",
@@ -2033,10 +2034,19 @@ EsgStore <- R6::R6Class(
                 stringsAsFactors = FALSE
             )
             out <- unique(out)
-            private$append_new_rows("extraction_plan", out, "plan_id")
+            append_out <- out
+            existing_plan_cols <- names(private$read_table("extraction_plan"))
+            append_out <- append_out[, intersect(existing_plan_cols, names(append_out)), drop = FALSE]
+            private$append_new_rows("extraction_plan", append_out, "plan_id")
 
             existing <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
-            existing[plan_id %in% out$plan_id]
+            plan_cols <- c(
+                "plan_id", "query_id", "file_key", "site_id", "variable_id",
+                "lon", "lat", "method", "time_start", "time_stop", "status",
+                "available_time_count", "attempt_count", "last_error",
+                "created_at", "updated_at"
+            )
+            existing[plan_id %in% out$plan_id, intersect(plan_cols, names(existing)), with = FALSE]
         },
         # }}}
 
@@ -3283,7 +3293,7 @@ EsgStore <- R6::R6Class(
                     variable_id VARCHAR,
                     lon DOUBLE,
                     lat DOUBLE,
-                    nearest INTEGER,
+                    method VARCHAR,
                     time_start TIMESTAMP,
                     time_stop TIMESTAMP,
                     status VARCHAR,
@@ -3292,6 +3302,25 @@ EsgStore <- R6::R6Class(
                     last_error VARCHAR,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS extraction_grid_source (
+                    source_row_id VARCHAR PRIMARY KEY,
+                    plan_id VARCHAR,
+                    file_key VARCHAR,
+                    query_id VARCHAR,
+                    variable_id VARCHAR,
+                    method VARCHAR,
+                    source_index INTEGER,
+                    role VARCHAR,
+                    grid_lon DOUBLE,
+                    grid_lat DOUBLE,
+                    grid_dist_km DOUBLE,
+                    weight DOUBLE,
+                    created_at TIMESTAMP
                 )
             "
             )
@@ -3311,7 +3340,6 @@ EsgStore <- R6::R6Class(
                     time_max TIMESTAMP,
                     lon_actual DOUBLE,
                     lat_actual DOUBLE,
-                    dist_min DOUBLE,
                     completed_at TIMESTAMP
                 )
             "
@@ -3401,7 +3429,6 @@ EsgStore <- R6::R6Class(
             private$init_epw_morph_schema()
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lon DOUBLE")
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lat DOUBLE")
-            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS dist DOUBLE")
             private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS years_json VARCHAR")
             invisible(NULL)
         },
@@ -3465,7 +3492,6 @@ EsgStore <- R6::R6Class(
                     units VARCHAR,
                     lon DOUBLE,
                     lat DOUBLE,
-                    dist DOUBLE,
                     years_json VARCHAR,
                     coverage DOUBLE,
                     n_records INTEGER,
@@ -5489,8 +5515,9 @@ EsgStore <- R6::R6Class(
                 lon = plan$lon[[1L]],
                 lat = plan$lat[[1L]],
                 time = requested_time,
-                nearest = plan$nearest[[1L]]
+                method = plan$method[[1L]]
             )
+            grid_sources <- attr(dt, "grid_sources", exact = TRUE)
             units <- tryCatch(
                 as.character(ds$att_get(plan$variable_id[[1L]], "units", index = 1L))[[1L]],
                 error = function(e) NA_character_
@@ -5507,9 +5534,14 @@ EsgStore <- R6::R6Class(
 
             private$decorate_extract(dt, plan, file)
             results <- private$write_extract_partitions(dt, plan, file, overwrite = overwrite)
+            grid_sources <- private$decorate_extract_grid_sources(grid_sources, plan, file)
             private$delete_by_key("extraction_result", "plan_id", plan$plan_id)
+            private$delete_by_key("extraction_grid_source", "plan_id", plan$plan_id)
             if (nrow(results)) {
                 ddb_append_table(private$conn, "extraction_result", results)
+            }
+            if (nrow(grid_sources)) {
+                ddb_append_table(private$conn, "extraction_grid_source", grid_sources)
             }
 
             private$mark_plan_status(
@@ -5628,14 +5660,13 @@ EsgStore <- R6::R6Class(
                 file_key = plan$file_key[[1L]],
                 query_id = plan$query_id[[1L]],
                 site_id = plan$site_id[[1L]],
-                requested_lon = plan$lon[[1L]],
-                requested_lat = plan$lat[[1L]],
                 source_id = file$source_id[[1L]],
                 experiment_id = file$experiment_id[[1L]],
                 variant_label = file$variant_label[[1L]],
                 frequency = file$frequency[[1L]],
                 table_id = file$table_id[[1L]],
                 variable_id = plan$variable_id[[1L]],
+                method = plan$method[[1L]],
                 grid_label = file$grid_label[[1L]]
             )]
             data.table::setcolorder(
@@ -5656,7 +5687,7 @@ EsgStore <- R6::R6Class(
                     "time",
                     "lon",
                     "lat",
-                    "dist",
+                    "method",
                     "value",
                     setdiff(
                         names(dt),
@@ -5676,13 +5707,78 @@ EsgStore <- R6::R6Class(
                             "time",
                             "lon",
                             "lat",
-                            "dist",
+                            "method",
                             "value"
                         )
                     )
                 )
             )
             invisible(dt)
+        },
+        # }}}
+
+        # decorate_extract_grid_sources {{{
+        # Persists one static set of method-specific source grid cells per plan.
+        decorate_extract_grid_sources = function(sources, plan, file) {
+            if (is.null(sources)) {
+                return(data.table::data.table())
+            }
+            sources <- data.table::as.data.table(data.table::copy(sources))
+            if (!nrow(sources)) {
+                return(sources)
+            }
+            now <- store__now()
+            sources[, `:=`(
+                plan_id = plan$plan_id[[1L]],
+                file_key = plan$file_key[[1L]],
+                query_id = plan$query_id[[1L]],
+                variable_id = plan$variable_id[[1L]],
+                method = plan$method[[1L]],
+                created_at = now
+            )]
+            sources[, source_row_id := vapply(
+                seq_len(.N),
+                function(i) {
+                    store__hash(
+                        plan_id[[i]],
+                        file_key[[i]],
+                        variable_id[[i]],
+                        method[[i]],
+                        source_index[[i]]
+                    )
+                },
+                character(1L)
+            )]
+            data.table::setcolorder(sources, c(
+                "source_row_id",
+                "plan_id",
+                "file_key",
+                "query_id",
+                "variable_id",
+                "method",
+                "source_index",
+                "role",
+                "grid_lon",
+                "grid_lat",
+                "grid_dist_km",
+                "weight",
+                "created_at"
+            ))
+            sources[, c(
+                "source_row_id",
+                "plan_id",
+                "file_key",
+                "query_id",
+                "variable_id",
+                "method",
+                "source_index",
+                "role",
+                "grid_lon",
+                "grid_lat",
+                "grid_dist_km",
+                "weight",
+                "created_at"
+            ), with = FALSE]
         },
         # }}}
 
@@ -5794,9 +5890,8 @@ EsgStore <- R6::R6Class(
                 unique_time_count = data.table::uniqueN(dt$time),
                 time_min = min(dt$time),
                 time_max = max(dt$time),
-                lon_actual = dt$lon[[which.min(dt$dist)]],
-                lat_actual = dt$lat[[which.min(dt$dist)]],
-                dist_min = min(dt$dist, na.rm = TRUE),
+                lon_actual = dt$lon[[1L]],
+                lat_actual = dt$lat[[1L]],
                 completed_at = store__now(),
                 stringsAsFactors = FALSE
             )

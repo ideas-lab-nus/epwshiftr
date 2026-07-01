@@ -196,7 +196,6 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
             year = 2060L,
             lon = 104,
             lat = 1,
-            dist = 0,
             units = "K",
             value = 300
         ),
@@ -227,7 +226,6 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         table_id = "day",
         lon = 0,
         lat = 0,
-        dist = 0,
         units = "K",
         value = units::set_units(305, "K"),
         month = 1L,
@@ -257,7 +255,6 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         table_id = "day",
         lon = 0,
         lat = 0,
-        dist = 0,
         interval = "future",
         datetime = as.POSIXct(c("2001-03-21 08:00:00", "2001-03-21 01:00:00"), tz = "UTC"),
         year = 2001L,
@@ -298,7 +295,6 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         table_id = "day",
         lon = 0,
         lat = 0,
-        dist = 0,
         units = "%",
         value = units::set_units(40, "%"),
         month = 1L,
@@ -382,8 +378,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
         lon = 103.98,
         lat = 1.37,
         time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN",
-        nearest = 1L
+        site_id = "SIN"
     )
     processed <- store$extract(plan_id = plan$plan_id)
     expect_equal(processed$status, "done")
@@ -505,8 +500,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         lat = 1.37,
         time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
         site_id = "SIN",
-        variable_id = variables,
-        nearest = 1L
+        variable_id = variables
     )
     expect_setequal(plan$variable_id, variables)
 
@@ -688,8 +682,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         lat = 1.37,
         time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
         site_id = "SIN",
-        variable_id = variables,
-        nearest = 1L
+        variable_id = variables
     )
     workflow_processed <- workflow_store$extract(plan_id = workflow_plan$plan_id)
     expect_true(all(workflow_processed$status == "done"))

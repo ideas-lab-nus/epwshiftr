@@ -69,7 +69,7 @@ epwshiftr_cli_shift_run <- function(store, args) {
         variables = epwshiftr_cli_config_character(extract$variables, default = NULL),
         time = epwshiftr_cli_config_time(extract$time),
         filters = epwshiftr_cli_config_named_list(extract$filters),
-        nearest = epwshiftr_cli_config_count(extract$nearest, default = 1L),
+        method = epwshiftr_cli_config_choice(extract$method, ESG_GRID_METHOD_CHOICES, default = "nearest"),
         fallback = epwshiftr_cli_config_choice(extract$fallback, c("auto", "error"), default = "auto"),
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
         resume = !isTRUE(parsed$flags[["--no-resume"]])
