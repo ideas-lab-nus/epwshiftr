@@ -105,15 +105,14 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_gt(sum(epw$data()$liquid_precip_depth, na.rm = TRUE), 0)
 })
 
-test_that("epwshiftr_example_epw() writes a reusable Singapore EPW", {
-    dir <- withr::local_tempdir()
+test_that("packaged Singapore EPW fixture is readable", {
+    path <- system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr",
+        mustWork = TRUE
+    )
 
-    path <- epwshiftr_example_epw(dir = dir)
-    mtime <- file.info(path)$mtime
-    same <- epwshiftr_example_epw(dir = dir, overwrite = FALSE)
-
-    expect_identical(same, path)
-    expect_equal(file.info(path)$mtime, mtime)
+    expect_identical(basename(path), "SGP_Singapore.486980_IWEC.epw")
     expect_equal(eplusr::read_epw(path)$location()$city, "Singapore")
 })
 

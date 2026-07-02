@@ -362,7 +362,7 @@ Constructor:
 
 ```r
 epw <- system.file(
-  "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
+  "extdata/examples/SGP_Singapore.486980_IWEC.epw",
   package = "epwshiftr",
   mustWork = TRUE
 )
@@ -588,7 +588,7 @@ manifest IDs:
 library(epwshiftr)
 
 epw <- system.file(
-  "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
+  "extdata/examples/SGP_Singapore.486980_IWEC.epw",
   package = "epwshiftr",
   mustWork = TRUE
 )

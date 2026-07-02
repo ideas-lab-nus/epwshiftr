@@ -74,7 +74,6 @@ Collate:
     'epw-morpher.R'
     'epw-output.R'
     'epwshiftr-package.R'
-    'example-epw.R'
     'geo.R'
     'gh.R'
     'import-standalone-schema.R'
