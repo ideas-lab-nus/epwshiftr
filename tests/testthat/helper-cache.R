@@ -13,9 +13,19 @@ test_data_dir <- function() {
 
 get_cache_epw <- function() {
     dir <- test_data_dir()
-    # The EPW fixture is tiny, so rewrite it to avoid stale CI cache content
-    # from older fixture versions without adding schema/version probes.
-    epwshiftr_example_epw(dir = dir, overwrite = TRUE)
+    fixture <- system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr",
+        mustWork = TRUE
+    )
+    path <- file.path(dir, basename(fixture))
+    # Always refresh the cached copy so tests do not reuse stale weather rows
+    # from an older fixture version.
+    ok <- file.copy(fixture, path, overwrite = TRUE)
+    if (!isTRUE(ok)) {
+        stop(sprintf("Failed to copy EPW fixture to test cache: %s", path), call. = FALSE)
+    }
+    normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
 get_cache_nc <- function(reset = FALSE) {

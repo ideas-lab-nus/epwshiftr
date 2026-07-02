@@ -75,7 +75,11 @@ automatically.
 ``` r
 library(epwshiftr)
 
-epw <- epwshiftr_example_epw()
+epw <- system.file(
+    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
 
 site <- shift_site(
     id = "SIN",
