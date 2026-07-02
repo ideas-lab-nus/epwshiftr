@@ -1265,6 +1265,7 @@ test_that("EsgResult$save() / EsgResult$load() preserve empty child results", {
         generator <- switch(case_name, file = EsgResultFile, aggregation = EsgResultAggregation)
         response <- query_result_test_response(empty_file_docs)
         response$response$docs <- list()
+        response$facet_counts$facet_fields <- list()
         result <- query_result__new(
             generator,
             "https://example.org",
