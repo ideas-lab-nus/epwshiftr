@@ -8,10 +8,6 @@ EPW_MORPH_VARIABLE_LEVELS <- list(
     extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
 )
 
-EPW_MORPH_VARIABLE_ALTERNATIVES <- list(
-    hurs = c("huss", "hur")
-)
-
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
 EPW_MORPH_BACKEND_WARNINGS <- new.env(parent = emptyenv())
 
@@ -125,23 +121,10 @@ morpher__missing_variable_guidance <- function(variable_id, present_variables = 
     present_variables <- unique(as.character(present_variables))
     present_variables <- present_variables[!is.na(present_variables) & nzchar(present_variables)]
     if (identical(variable_id, "hurs")) {
-        alternatives <- intersect(EPW_MORPH_VARIABLE_ALTERNATIVES$hurs, present_variables)
-        if (length(alternatives)) {
-            return(list(
-                suffix = sprintf(
-                    " Alternative humidity variable(s) %s are present, but this Belcher implementation does not convert them to hurs.",
-                    paste(alternatives, collapse = ", ")
-                ),
-                action = paste(
-                    "Add and extract hurs, choose a model/scenario that provides hurs,",
-                    "or run in relaxed mode; relative humidity and dew point will fall back to baseline when humidity factors are unavailable."
-                )
-            ))
-        }
         return(list(
-            suffix = " Belcher humidity morphing uses hurs for relative humidity.",
+            suffix = " Belcher humidity morphing requires near-surface relative humidity (hurs).",
             action = paste(
-                "Add and extract hurs, choose a model/scenario that provides hurs,",
+                "Add and extract hurs from a source that provides near-surface relative humidity,",
                 "or run in relaxed mode; relative humidity and dew point will fall back to baseline when humidity factors are unavailable."
             )
         ))
