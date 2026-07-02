@@ -4780,6 +4780,27 @@ EsgResultAggregation <- R6::R6Class(
 # }}}
 
 # query_result__response {{{
+# Normalize empty ESGF facet buckets to named empty lists so saved-result schema
+# validation sees a JSON object instead of an unnamed array.
+query_result__named_empty_facets <- function(x) {
+    if (is.null(x) || (is.list(x) && !length(x))) {
+        return(stats::setNames(list(), character()))
+    }
+    x
+}
+
+# Normalize the parts of an ESGF response whose JSON shape is ambiguous when
+# ESGF returns no records or no facet counts.
+query_result__response_facets <- function(response) {
+    if (is.null(response$facet_counts)) {
+        response$facet_counts <- list()
+    }
+    for (name in c("facet_queries", "facet_fields", "facet_ranges", "facet_intervals", "facet_heatmaps")) {
+        response$facet_counts[[name]] <- query_result__named_empty_facets(response$facet_counts[[name]])
+    }
+    response
+}
+
 query_result__response <- function(response) {
     if (is.null(response)) {
         return(response)
@@ -4790,7 +4811,7 @@ query_result__response <- function(response) {
         response$response$docs <- data.frame(check.names = FALSE)
     }
 
-    response
+    query_result__response_facets(response)
 }
 # }}}
 
@@ -4811,11 +4832,11 @@ query_result__empty_response <- function(params) {
             maxScore = 0
         ),
         facet_counts = list(
-            facet_queries = list(),
-            facet_fields = list(),
-            facet_ranges = list(),
-            facet_intervals = list(),
-            facet_heatmaps = list()
+            facet_queries = stats::setNames(list(), character()),
+            facet_fields = stats::setNames(list(), character()),
+            facet_ranges = stats::setNames(list(), character()),
+            facet_intervals = stats::setNames(list(), character()),
+            facet_heatmaps = stats::setNames(list(), character())
         ),
         timestamp = Sys.time()
     )
