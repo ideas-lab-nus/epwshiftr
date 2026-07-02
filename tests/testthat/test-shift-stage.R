@@ -257,6 +257,19 @@ test_that("shift_request() and shift_site() create inspectable S7 stages", {
     expect_true(data.table::as.data.table(site)$has_epw)
 })
 
+test_that("shift_request() applies ESGF control filters through typed setters", {
+    req <- shift_request(
+        project = "CMIP6",
+        variables = "tas",
+        filters = list(latest = TRUE, replica = FALSE, table_id = "Amon")
+    )
+    query <- shift_as_query(req)
+
+    expect_true(query_param__value(query$latest()))
+    expect_false(query_param__value(query$replica()))
+    expect_identical(query_param__value(query$params()$table_id), "Amon")
+})
+
 test_that("shift diagnostics normalize empty partial tables", {
     partial <- data.table::data.table(stage = character(), severity = character())
     diagnostics <- shift_diagnostics_normalize(partial)
