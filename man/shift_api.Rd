@@ -58,8 +58,7 @@ shift_site(
 
 shift_cmip6_scenario(
   source,
-  scenario = scenarios,
-  scenarios = NULL,
+  scenario,
   member = NULL,
   years = NULL,
   variables = "recommended",
@@ -96,8 +95,7 @@ shift_plan(
 shift_future_epw(
   baseline,
   source,
-  scenario = scenarios,
-  scenarios = NULL,
+  scenario,
   years = NULL,
   periods = NULL,
   period_name = "future",
@@ -267,7 +265,7 @@ from \code{epw$location()} when \code{epw} is supplied.}
 
 \item{metadata}{Optional site metadata.}
 
-\item{scenario, scenarios}{CMIP6 scenario experiment IDs, for example
+\item{scenario}{CMIP6 scenario experiment IDs, for example
 \code{"ssp126"} or \code{"ssp585"}.}
 
 \item{member}{CMIP6 variant label, for example \code{"r1i1p1f1"}.}

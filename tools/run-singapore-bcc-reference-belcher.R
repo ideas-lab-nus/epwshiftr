@@ -55,7 +55,6 @@ outputs <- shift_future_epw(
     frequency = "mon",
     table_id = "Amon",
     grid_label = "gn",
-    data_node = "esgf.ceda.ac.uk",
     index_node = "https://esgf-data.dkrz.de",
     morph = list(strict = FALSE),
     resume = TRUE

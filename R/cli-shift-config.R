@@ -82,7 +82,6 @@ epwshiftr_cli_shift_example_config <- function() {
             frequency = "mon",
             table_id = "Amon",
             grid_label = "gn",
-            data_node = "esgf.ceda.ac.uk",
             index_node = "https://esgf-data.dkrz.de"
         ),
         site = list(
@@ -93,12 +92,12 @@ epwshiftr_cli_shift_example_config <- function() {
             epw = "baseline/SIN.epw"
         ),
         collect = list(
-            label = "singapore-ssp585"
+            label = "singapore-bcc-csm2-mr"
         ),
         download = list(
             run = FALSE,
             background = FALSE,
-            session_label = "singapore-ssp585"
+            session_label = "singapore-bcc-csm2-mr"
         ),
         extract = list(
             periods = list(`2060s` = "2055:2065"),
