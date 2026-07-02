@@ -218,10 +218,11 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     expect_equal(unique(result$data$custom_backend), backend_name)
 })
 
-test_that("Belcher missing-humidity guidance names available alternatives", {
+test_that("Belcher missing-humidity guidance requires hurs explicitly", {
     guidance <- morpher__missing_variable_guidance("hurs", present_variables = c("tas", "huss"))
 
-    expect_match(guidance$suffix, "huss")
+    expect_match(guidance$suffix, "requires near-surface relative humidity")
+    expect_no_match(guidance$suffix, "huss|Alternative")
     expect_match(guidance$action, "relative humidity and dew point")
 })
 
@@ -424,7 +425,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     relaxed_preflight <- morpher$preflight(plan$plan_id, periods, strict = FALSE)
     expect_true(any(relaxed_preflight$severity == "warning"))
     missing_hurs <- relaxed_preflight[code == "missing_required_variable" & variable_id == "hurs"]
-    expect_match(missing_hurs$message, "Belcher humidity morphing uses hurs")
+    expect_match(missing_hurs$message, "requires near-surface relative humidity")
     expect_match(missing_hurs$action, "relative humidity and dew point")
 
     climate <- morpher$summarise_climate(plan$plan_id, periods, strict = FALSE)
