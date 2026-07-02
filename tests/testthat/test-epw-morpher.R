@@ -105,6 +105,18 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_gt(sum(epw$data()$liquid_precip_depth, na.rm = TRUE), 0)
 })
 
+test_that("epwshiftr_example_epw() writes a reusable Singapore EPW", {
+    dir <- withr::local_tempdir()
+
+    path <- epwshiftr_example_epw(dir = dir)
+    mtime <- file.info(path)$mtime
+    same <- epwshiftr_example_epw(dir = dir, overwrite = FALSE)
+
+    expect_identical(same, path)
+    expect_equal(file.info(path)$mtime, mtime)
+    expect_equal(eplusr::read_epw(path)$location()$city, "Singapore")
+})
+
 test_that("epw_morph_recipe() accepts morph.R statistical downscaling method overrides", {
     recipe <- epw_morph_recipe(methods = c(tdb = "shift", rh = "shift"))
 

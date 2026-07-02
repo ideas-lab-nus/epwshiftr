@@ -104,6 +104,7 @@ shift_morph(
   reference_plan_id = NULL,
   reference_periods = NULL,
   strict = TRUE,
+  complete_only = TRUE,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   overwrite = FALSE,
   resume = TRUE
@@ -188,8 +189,8 @@ resolving an automatic historical reference.}
 
 \item{collect, extract}{Named option lists passed to the automatic
 historical collect and extract steps. \code{collect} may contain \code{fields},
-\code{all}, \code{limit}, and \code{label}; \code{extract} may contain \code{variables}, \code{time},
-\code{filters}, \code{method}, and \code{fallback}.}
+\code{all}, \code{limit}, \code{label}, and \code{time}; \code{extract} may contain \code{variables},
+\code{time}, \code{filters}, \code{method}, and \code{fallback}.}
 
 \item{x}{A shift stage object.}
 
@@ -236,10 +237,15 @@ table for reference climate data.}
 
 \item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
 
+\item{complete_only}{Whether \code{\link[=shift_morph]{shift_morph()}} should morph only complete
+extraction plans when a climate stage also contains failed or incomplete
+plans.}
+
 \item{by}{Grouping columns used to create morphing cases.}
 
-\item{dir}{Store-relative output directory for generated EPW files. If \code{NULL},
-\code{\link[=shift_epw]{shift_epw()}} uses \code{"outputs/future-epw"}.}
+\item{dir}{Output directory inside the store root for generated EPW files.
+Relative paths are resolved under the store root. If \code{NULL}, \code{\link[=shift_epw]{shift_epw()}}
+uses \code{"outputs/future-epw"}.}
 
 \item{separate}{Whether to create separate output directories per morphing case.}
 
