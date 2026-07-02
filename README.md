@@ -75,11 +75,7 @@ automatically.
 ``` r
 library(epwshiftr)
 
-epw <- system.file(
-    "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
-)
+epw <- epwshiftr_example_epw()
 
 site <- shift_site(
     id = "SIN",

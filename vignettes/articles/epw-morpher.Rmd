@@ -41,12 +41,7 @@ extraction plan named `region` and a historical reference extraction plan named
 ```r
 store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
 
-epw <- system.file(
-    "extdata", "vignettes", "future-weather",
-    "SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
-)
+epw <- epwshiftr_example_epw()
 
 morpher <- epw_morpher(
     store = store,
