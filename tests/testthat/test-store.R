@@ -2299,6 +2299,8 @@ test_that("EsgStore$coverage()", {
     expect_true(cov$complete)
     expect_equal(cov$output_time_count, 2)
     expect_equal(cov$output_rows, 2)
+    expect_equal(nrow(store$coverage(plan_id = "missing-plan")), 0L)
+    expect_equal(store$coverage(plan_id = cov$plan_id)$plan_id, cov$plan_id)
 })
 
 test_that("EsgStore$coverage() detects incomplete outputs", {

@@ -2196,7 +2196,10 @@ EsgStore <- R6::R6Class(
 
             plans <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
             if (!is.null(plan_id)) {
-                plans <- plans[plans$plan_id %in% plan_id]
+                # Avoid data.table's column-name lookup on the RHS; the argument
+                # and the plan table both use the name `plan_id`.
+                target_plan_id <- plan_id
+                plans <- plans[plans[["plan_id"]] %in% target_plan_id]
             }
             if (!nrow(plans)) {
                 return(plans)

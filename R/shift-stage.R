@@ -994,6 +994,9 @@ shift_extract <- S7::new_generic(
 #'   morphing.
 #' @param reference_plan_id,reference_periods Optional store plan IDs and period
 #'   table for reference climate data.
+#' @param complete_only Whether [shift_morph()] should morph only complete
+#'   extraction plans when a climate stage also contains failed or incomplete
+#'   plans.
 #' @param by Grouping columns used to create morphing cases.
 #' @export
 shift_morph <- S7::new_generic(
@@ -1001,7 +1004,7 @@ shift_morph <- S7::new_generic(
     "x",
     function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
              reference = NULL, reference_plan_id = NULL, reference_periods = NULL,
-             strict = TRUE,
+             strict = TRUE, complete_only = TRUE,
              by = c("source_id", "experiment_id", "variant_label", "period"),
              overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
@@ -1870,10 +1873,42 @@ shift_reference_infer_field <- function(field, catalog, request) {
     character()
 }
 
+# Select the complete subset of extraction plans for morphing while keeping
+# incomplete-plan diagnostics visible on the morphed stage.
+shift_morph_complete_plan_selection <- function(store, plan_id, complete_only = TRUE, stage = "morph") {
+    if (is.null(plan_id) || !length(plan_id) || !isTRUE(complete_only)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    coverage <- store$coverage(plan_id = plan_id)
+    if (!nrow(coverage) || !"complete" %in% names(coverage)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    complete_ids <- unique(coverage$plan_id[coverage$complete %in% TRUE])
+    selected <- plan_id[plan_id %in% complete_ids]
+    if (!length(selected) || identical(selected, plan_id)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    skipped <- setdiff(plan_id, selected)
+    list(
+        plan_id = selected,
+        diagnostics = shift_diagnostic(
+            stage,
+            "warning",
+            "ignored_incomplete_extraction",
+            sprintf("Ignoring %d incomplete extraction plan(s) while morphing.", length(skipped)),
+            plan_id = paste(skipped, collapse = ", "),
+            action = "Inspect `shift_coverage()` for skipped plans, or set `complete_only = FALSE` to include them."
+        )
+    )
+}
+
 S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
                                                   reference = NULL, reference_plan_id = NULL,
                                                   reference_periods = NULL,
-                                                  strict = TRUE,
+                                                  strict = TRUE, complete_only = TRUE,
                                                   by = c("source_id", "experiment_id", "variant_label", "period"),
                                                   overwrite = FALSE, resume = TRUE) {
     checkmate::assert_character(reference_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
@@ -1882,6 +1917,7 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
         checkmate::assert_names(names(reference_periods), must.include = c("period", "year"))
     }
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(complete_only)
     checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
@@ -1903,11 +1939,23 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
         resume = resume
     )
 
+    plan_selection <- shift_morph_complete_plan_selection(
+        store,
+        ids$plan_id,
+        complete_only = complete_only,
+        stage = "morph"
+    )
+    reference_selection <- shift_morph_complete_plan_selection(
+        store,
+        reference_resolved$plan_id,
+        complete_only = complete_only,
+        stage = "reference"
+    )
     morpher <- epw_morpher(store, epw, site_id = site@id, recipe = recipe, label = site@label)
     workflow <- morpher$workflow(
-        plan_id = ids$plan_id,
+        plan_id = plan_selection$plan_id,
         periods = periods,
-        reference_plan_id = reference_resolved$plan_id,
+        reference_plan_id = reference_selection$plan_id,
         reference_periods = reference_resolved$periods,
         by = by,
         strict = strict,
@@ -1918,13 +1966,18 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
     summary_id <- unique(workflow$climate$summary_id)[[1L]]
     baseline_id <- unique(workflow$baseline$baseline_id)[[1L]]
     morph_id <- unique(workflow$plan$morph_id)[[1L]]
-    diagnostics <- shift_diagnostics_normalize(workflow$diagnostics)
+    diagnostics <- shift_bind_diagnostics(
+        plan_selection$diagnostics,
+        reference_selection$diagnostics,
+        shift_diagnostics_normalize(workflow$diagnostics)
+    )
 
     shift_stage_new(
         ShiftMorphed,
         "morphed",
         store_path = x@store_path,
         ids = utils::modifyList(ids, list(
+            plan_id = plan_selection$plan_id,
             summary_id = summary_id,
             baseline_id = baseline_id,
             morph_id = morph_id
@@ -1934,7 +1987,10 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
             baseline = baseline,
             reference = reference_resolved$reference,
             reference_spec = reference_resolved$spec,
-            reference_plan_id = reference_resolved$plan_id,
+            reference_plan_id = reference_selection$plan_id,
+            original_plan_id = ids$plan_id,
+            original_reference_plan_id = reference_resolved$plan_id,
+            complete_only = complete_only,
             reference_periods = reference_resolved$periods,
             recipe = recipe,
             workflow = workflow,
