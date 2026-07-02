@@ -22,9 +22,11 @@ description: >
   =====================================================================
 -->
 
-`shift_morph()` and `shift_epw()` are the recommended user-facing interface in
-[Create Future EPW Files](future-epw-workflow.html). They wrap `EpwMorpher`, the
-lower-level store-native morphing engine.
+`shift_future_epw()` is the recommended user-facing interface in
+[Create Future EPW Files](future-epw-workflow.html). Use `shift_plan()` and
+`shift_explain()` when you want to inspect the stages before running them.
+`shift_morph()` and `shift_epw()` remain the lower-level wrappers around
+`EpwMorpher`, the store-native morphing engine.
 
 Use `EpwMorpher` directly when you need to inspect monthly summaries, preview
 factor calculations, diagnose missing variables, choose morphing case grouping,
@@ -42,7 +44,7 @@ extraction plan named `region` and a historical reference extraction plan named
 store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
 
 epw <- system.file(
-    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+    "extdata", "examples", "SGP_Singapore.486980_IWEC.epw",
     package = "epwshiftr",
     mustWork = TRUE
 )
@@ -64,8 +66,15 @@ epw_morph_variables("recommended")
 epw_morph_variables("extended")
 
 periods <- epw_morph_periods(`2060s` = 2060L)
-reference_periods <- epw_morph_periods(reference = 1995L)
-reference_spec <- shift_reference_historical(reference_periods)
+reference_spec <- shift_historical_reference(1995:2014)
+
+request <- shift_cmip6_scenario(
+    source = "BCC-CSM2-MR",
+    scenario = c("ssp126", "ssp585"),
+    years = 2055:2065,
+    variables = "belcher",
+    frequency = "mon"
+)
 ```
 
 `"recommended"` is the strict Belcher recipe set used by the main workflow.
@@ -144,7 +153,7 @@ The runner receives one canonical context:
 
 - `context$epw`: the baseline `eplusr::Epw` object;
 - `context$climate`: store-native climate rows with `variable_id`, `time`,
-  `period`, `year`, `lon`, `lat`, `units`, `value`, and case metadata;
+  `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
 - `context$recipe`: the selected recipe, including method overrides and rules;
 - `context$by`, `context$case`, `context$strict`, and `context$warning`.
 
@@ -351,8 +360,29 @@ need lower-level manifest IDs.
 
 # One-Call Workflow
 
-For scripts that need the lower-level engine but not every intermediate object,
-use `workflow()`.
+For most scripts, use the task-oriented API and let epwshiftr resolve the store
+stages, historical Belcher reference, EPW writing, and final export path:
+
+```r
+epws <- shift_future_epw(
+    baseline = epw,
+    source = "BCC-CSM2-MR",
+    scenario = c("ssp126", "ssp585"),
+    years = 2055:2065,
+    period_name = "2060s",
+    output = "~/Downloads/epwshiftr-test",
+    recipe = "belcher",
+    reference_years = 1995:2014,
+    frequency = "mon",
+    table_id = "Amon",
+    morph = list(strict = FALSE)
+)
+
+shift_outputs(epws)
+```
+
+When you already have lower-level extraction plan IDs and need direct control of
+the morphing engine, use `workflow()`.
 
 ```r
 result <- morpher$workflow(
@@ -373,15 +403,17 @@ names(result)
 For most users, the equivalent high-level path is still clearer:
 
 ```r
-epws <- files |>
-    shift_extract(site = site, periods = periods) |>
-    shift_morph(
-        baseline = epw,
-        reference = shift_reference_historical(reference_periods),
-        recipe = epw_morph_recipe("belcher"),
-        strict = TRUE
-    ) |>
-    shift_epw()
+plan <- shift_plan(
+    request = request,
+    site = shift_site(id = "SIN", epw = epw),
+    periods = list(`2060s` = 2055:2065),
+    store = "~/cmip6-singapore-store",
+    reference = shift_historical_reference(1995:2014),
+    epw = list(export_dir = "~/Downloads/epwshiftr-test")
+)
+
+shift_explain(plan)
+epws <- shift_run(plan)
 ```
 
 # Relationship to Other Layers

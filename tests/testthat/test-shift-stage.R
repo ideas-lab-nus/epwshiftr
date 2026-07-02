@@ -276,6 +276,42 @@ test_that("shift_request() applies ESGF control filters through typed setters", 
     expect_identical(query_param__value(query$params()$table_id), "Amon")
 })
 
+test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
+    req <- shift_cmip6_scenario(
+        source = "BCC-CSM2-MR",
+        scenario = c("ssp126", "ssp585"),
+        member = "r1i1p1f1",
+        years = 2055:2065,
+        variables = "belcher",
+        frequency = "mon",
+        grid_label = "gn",
+        data_node = "esgf.ceda.ac.uk",
+        index_node = "https://esgf-data.dkrz.de"
+    )
+
+    expect_equal(req@meta$project, "CMIP6")
+    expect_equal(req@meta$experiment, c("ssp126", "ssp585"))
+    expect_equal(req@meta$time, c("2055-01-01T00:00:00Z", "2065-12-31T23:59:59Z"))
+    expect_equal(req@meta$filters$activity_id, "ScenarioMIP")
+    expect_equal(req@meta$filters$table_id, "Amon")
+    expect_true(all(c("tas", "hurs", "pr") %in% req@meta$variables))
+
+    site <- shift_site(id = "SIN", epw = get_cache_epw())
+    plan <- shift_plan(
+        request = req,
+        site = site,
+        periods = list(`2060s` = "2055:2065"),
+        store = tempfile("shift-store-"),
+        reference = shift_historical_reference("1995:2014"),
+        epw = list(export_dir = tempfile("future-epw-"))
+    )
+    explain <- shift_explain(plan)
+
+    expect_equal(shift_status(plan), "planned")
+    expect_true(all(c("request", "reference", "export") %in% explain$step))
+    expect_match(explain$detail[explain$step == "request"], "BCC-CSM2-MR")
+})
+
 test_that("shift diagnostics normalize empty partial tables", {
     partial <- data.table::data.table(stage = character(), severity = character())
     diagnostics <- shift_diagnostics_normalize(partial)
@@ -356,7 +392,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
-    nc <- tempfile(fileext = ".nc")
+    nc <- file.path(tempdir(), local_cmip6_nc_file(2060L, variable_id = "tas"))
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")
     on.exit(unlink(nc), add = TRUE)
 
@@ -468,6 +504,51 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_named(morphed@meta$workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
+})
+
+test_that("shift_future_epw() runs a one-call workflow and exports EPW files", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    nc <- file.path(tempdir(), local_cmip6_nc_file(2060L, variable_id = "tas"))
+    write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")
+    on.exit(unlink(nc), add = TRUE)
+
+    docs <- shift_test_file_docs(basename(nc), opendap_url = nc, download_url = nc)
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    calls$file_fields <- list()
+    shift_test_mock_collect(docs, calls)
+
+    export_dir <- tempfile("future-epw-")
+    outputs <- shift_future_epw(
+        baseline = get_cache_epw(),
+        source = "EC-Earth3",
+        scenario = "ssp585",
+        years = 2060L,
+        period_name = "2060s",
+        store = tempfile("shift-store-"),
+        output = export_dir,
+        member = "r1i1p1f1",
+        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute")),
+        variables = "tas",
+        frequency = "day",
+        table_id = "day",
+        options = list(time_filter_method = "opendap"),
+        extract = list(
+            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+            fallback = "auto"
+        ),
+        morph = list(strict = FALSE),
+        epw = list(separate = FALSE),
+        overwrite = TRUE
+    )
+
+    out <- shift_outputs(outputs)
+    expect_equal(shift_status(outputs), "written")
+    expect_true("export_path" %in% names(out))
+    expect_true(all(file.exists(out$export_path)))
+    expect_true(any(calls$values %in% "File"))
 })
 
 test_that("shift_morph() uses complete extraction plans by default", {

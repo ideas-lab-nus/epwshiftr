@@ -130,6 +130,8 @@ ShiftDownload <- S7::new_class("ShiftDownload", parent = ShiftStage)
 ShiftClimate <- S7::new_class("ShiftClimate", parent = ShiftStage)
 ShiftMorphed <- S7::new_class("ShiftMorphed", parent = ShiftStage)
 ShiftOutputs <- S7::new_class("ShiftOutputs", parent = ShiftStage)
+# ShiftPlan stores a deferred end-to-end workflow that can be explained or run.
+ShiftPlan <- S7::new_class("ShiftPlan", parent = ShiftStage)
 
 ShiftReferenceSpec <- S7::new_class(
     "ShiftReferenceSpec",
@@ -457,6 +459,125 @@ shift_time_window <- function(time) {
         ))
     }
     time
+}
+
+# Parse user-facing year inputs used by workflow plans and presets.
+shift_years_value <- function(value, arg = "years") {
+    if (is.numeric(value) && !inherits(value, c("Date", "POSIXt"))) {
+        checkmate::assert_integerish(value, any.missing = FALSE, min.len = 1L)
+        return(as.integer(value))
+    }
+    if (is.character(value)) {
+        pieces <- trimws(unlist(strsplit(value, ",", fixed = TRUE), use.names = FALSE))
+        pieces <- pieces[nzchar(pieces)]
+        years <- integer()
+        for (piece in pieces) {
+            if (grepl(":", piece, fixed = TRUE)) {
+                bounds <- suppressWarnings(as.integer(trimws(strsplit(piece, ":", fixed = TRUE)[[1L]])))
+                if (length(bounds) != 2L || any(is.na(bounds))) {
+                    cli::cli_abort("`{arg}` contains an invalid year range: {.val {piece}}.")
+                }
+                years <- c(years, seq.int(min(bounds), max(bounds)))
+            } else {
+                year <- suppressWarnings(as.integer(piece))
+                if (length(year) != 1L || is.na(year)) {
+                    cli::cli_abort("`{arg}` contains an invalid year: {.val {piece}}.")
+                }
+                years <- c(years, year)
+            }
+        }
+        return(unique(years))
+    }
+    cli::cli_abort("`{arg}` must be numeric years or character year ranges.")
+}
+
+# Normalize period inputs so users can pass either epw_morph_periods() output or
+# a named list such as list(`2060s` = 2055:2065).
+shift_periods_from_input <- function(periods, arg = "periods") {
+    if (is.data.frame(periods)) {
+        checkmate::assert_names(names(periods), must.include = c("period", "year"))
+        return(data.table::as.data.table(periods))
+    }
+    if (!is.list(periods) || is.null(names(periods)) || any(!nzchar(names(periods)))) {
+        cli::cli_abort("`{arg}` must be a period table or a named list of years.")
+    }
+    values <- lapply(seq_along(periods), function(i) {
+        shift_years_value(periods[[i]], sprintf("%s$%s", arg, names(periods)[[i]]))
+    })
+    do.call(epw_morph_periods, stats::setNames(values, names(periods)))
+}
+
+# Build a one-period table from the common years + period_name shorthand.
+shift_periods_from_years <- function(years, period = "future", arg = "years") {
+    checkmate::assert_string(period, min.chars = 1L)
+    years <- shift_years_value(years, arg = arg)
+    do.call(epw_morph_periods, stats::setNames(list(years), period))
+}
+
+# Resolve recipe strings early so later workflow stages can rely on a recipe
+# object and its required variable set.
+shift_recipe_value <- function(recipe) {
+    if (inherits(recipe, "epw_morph_recipe")) {
+        return(recipe)
+    }
+    if (is.character(recipe) && length(recipe) == 1L) {
+        return(epw_morph_recipe(recipe))
+    }
+    cli::cli_abort("`recipe` must be a recipe name or an {.cls epw_morph_recipe} object.")
+}
+
+# Let high-level APIs accept named variable sets while leaving explicit CMIP
+# variable IDs untouched.
+shift_variables_value <- function(variables, recipe = NULL) {
+    if (is.null(variables)) {
+        return(epw_morph_variables(shift_coalesce(recipe, "recommended")))
+    }
+    if (inherits(variables, "epw_morph_recipe") || inherits(variables, "EpwMorphBackend")) {
+        return(epw_morph_variables(variables))
+    }
+    variables <- as.character(variables)
+    if (length(variables) == 1L &&
+        variables %in% c(names(EPW_MORPH_VARIABLE_LEVELS), epw_morph_backends())) {
+        return(epw_morph_variables(variables))
+    }
+    variables[!is.na(variables) & nzchar(variables)]
+}
+
+# Store paths are normalized before planning so plans are portable and printable
+# even when execution is deferred.
+shift_store_path_value <- function(store, create = FALSE) {
+    checkmate::assert_flag(create)
+    if (inherits(store, "EsgStore")) {
+        return(normalizePath(store$path, winslash = "/", mustWork = FALSE))
+    }
+    checkmate::assert_string(store, min.chars = 1L)
+    if (isTRUE(create) && !dir.exists(store)) {
+        dir.create(store, recursive = TRUE, showWarnings = FALSE)
+    }
+    normalizePath(store, winslash = "/", mustWork = FALSE)
+}
+
+# Drop NULL values from named lists before forwarding them to stage functions.
+shift_compact_list <- function(x) {
+    x[vapply(x, Negate(is.null), logical(1L))]
+}
+
+# Keep only arguments accepted by the target workflow stage.
+shift_list_subset <- function(x, allowed) {
+    x[intersect(names(x), allowed)]
+}
+
+# Choose CMIP table defaults that match the most common atmospheric frequencies.
+shift_cmip6_table_id <- function(frequency) {
+    frequency <- as.character(frequency)[[1L]]
+    switch(
+        frequency,
+        mon = "Amon",
+        day = "day",
+        `3hr` = "3hr",
+        `6hr` = "6hr",
+        NULL
+    )
 }
 
 shift_display_values <- function(x, max = 7L) {
@@ -864,6 +985,59 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 }
 
 #' @rdname shift_api
+#' @param scenario,scenarios CMIP6 scenario experiment IDs, for example
+#'   `"ssp126"` or `"ssp585"`.
+#' @param member CMIP6 variant label, for example `"r1i1p1f1"`.
+#' @param years Optional years used to constrain the future request time window.
+#' @param activity CMIP6 activity ID. `shift_cmip6_scenario()` defaults to
+#'   `"ScenarioMIP"` and `shift_reference_historical()` defaults to `"CMIP"`.
+#' @param table_id CMIP6 table ID. If `NULL`, a common atmospheric table is
+#'   inferred from `frequency`.
+#' @param grid_label Optional CMIP6 grid label.
+#' @param data_node Optional ESGF data node filter.
+#' @param index_node Optional ESGF index node.
+#' @export
+shift_cmip6_scenario <- function(source, scenario = scenarios, scenarios = NULL, member = NULL,
+                                 years = NULL, variables = "recommended", frequency = "mon",
+                                 activity = "ScenarioMIP", table_id = NULL, grid_label = NULL,
+                                 data_node = NULL, index_node = NULL, filters = list(), options = list()) {
+    checkmate::assert_character(source, any.missing = FALSE, min.len = 1L)
+    checkmate::assert_character(scenario, any.missing = FALSE, min.len = 1L)
+    checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
+    checkmate::assert_character(frequency, any.missing = FALSE, min.len = 1L)
+    checkmate::assert_string(activity, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(table_id, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(grid_label, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(index_node, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_list(filters, names = "unique")
+    checkmate::assert_list(options, names = "unique")
+
+    time <- if (is.null(years)) NULL else shift_time_window(range(shift_years_value(years)))
+    table_id <- shift_coalesce(table_id, shift_cmip6_table_id(frequency))
+    defaults <- shift_compact_list(list(
+        activity_id = activity,
+        table_id = table_id,
+        grid_label = grid_label,
+        data_node = data_node
+    ))
+    options <- utils::modifyList(shift_compact_list(list(index_node = index_node)), options)
+
+    shift_request(
+        provider = "esgf",
+        project = "CMIP6",
+        source = source,
+        experiment = scenario,
+        variant = member,
+        variables = shift_variables_value(variables),
+        frequency = frequency,
+        time = time,
+        filters = utils::modifyList(defaults, filters),
+        options = options
+    )
+}
+
+#' @rdname shift_api
 #' @param plan_id Store extraction plan IDs for manually selected reference
 #'   climate data.
 #' @export
@@ -886,8 +1060,161 @@ shift_reference_plan <- function(plan_id, periods) {
 }
 
 #' @rdname shift_api
-#' @param activity Historical reference activity filter used by
-#'   `shift_reference_historical()`.
+#' @param period Reference period name used when constructing periods from
+#'   `years`.
+#' @export
+shift_historical_reference <- function(years = 1995:2014, period = "reference", ...) {
+    shift_reference_historical(shift_periods_from_years(years, period = period, arg = "years"), ...)
+}
+
+#' @rdname shift_api
+#' @param request A [shift_request()] object, commonly from
+#'   `shift_cmip6_scenario()`.
+#' @param collect,download,extract,morph,epw Named option lists for each workflow
+#'   stage.
+#' @export
+shift_plan <- function(request, site, periods, store, reference = NULL,
+                       recipe = epw_morph_recipe("belcher"),
+                       collect = list(), download = list(run = FALSE),
+                       extract = list(fallback = "auto"), morph = list(),
+                       epw = list(dir = "outputs/future-epw", separate = TRUE),
+                       overwrite = FALSE, resume = TRUE) {
+    if (!S7::S7_inherits(request, ShiftRequest)) {
+        cli::cli_abort("`request` must be a {.cls ShiftRequest}, usually from {.fn shift_request} or {.fn shift_cmip6_scenario}.")
+    }
+    if (!S7::S7_inherits(site, ShiftSite)) {
+        cli::cli_abort("`site` must be a {.cls ShiftSite}.")
+    }
+    periods <- shift_periods_from_input(periods)
+    store_path <- shift_store_path_value(store, create = FALSE)
+    recipe <- shift_recipe_value(recipe)
+    if (!is.null(reference) &&
+        !S7::S7_inherits(reference, ShiftReferenceSpec) &&
+        !S7::S7_inherits(reference, ShiftClimate)) {
+        cli::cli_abort("`reference` must be a {.cls ShiftReferenceSpec}, a {.cls ShiftClimate} stage, or `NULL`.")
+    }
+    checkmate::assert_list(collect, names = "unique")
+    checkmate::assert_list(download, names = "unique")
+    checkmate::assert_list(extract, names = "unique")
+    checkmate::assert_list(morph, names = "unique")
+    checkmate::assert_list(epw, names = "unique")
+    checkmate::assert_flag(overwrite)
+    checkmate::assert_flag(resume)
+
+    shift_stage_new(
+        ShiftPlan,
+        "plan",
+        store_path = store_path,
+        meta = list(
+            request = request,
+            site = site,
+            periods = periods,
+            reference = reference,
+            recipe = recipe,
+            collect = collect,
+            download = download,
+            extract = extract,
+            morph = morph,
+            epw = epw,
+            overwrite = overwrite,
+            resume = resume
+        )
+    )
+}
+
+#' @rdname shift_api
+#' @param baseline Baseline EPW path or [eplusr::Epw] object.
+#' @param output Optional user-facing directory where final EPW files are copied.
+#'   If `store` is omitted, a store is created under `file.path(output, "store")`.
+#' @param period_name Name assigned when `years` is supplied instead of
+#'   `periods`.
+#' @param reference_years Historical reference years used by Belcher
+#'   change-factor morphing when `reference` is `NULL`.
+#' @param dry_run If `TRUE`, return the planned workflow without running it.
+#' @export
+shift_future_epw <- function(baseline, source, scenario = scenarios, scenarios = NULL,
+                             years = NULL, periods = NULL, period_name = "future",
+                             store = NULL, output = NULL, site_id = NULL, label = NULL,
+                             member = "r1i1p1f1", recipe = epw_morph_recipe("belcher"),
+                             reference = NULL, reference_years = 1995:2014,
+                             variables = NULL, frequency = "mon", activity = "ScenarioMIP",
+                             table_id = NULL, grid_label = NULL, data_node = NULL,
+                             index_node = NULL, filters = list(), options = list(),
+                             collect = list(), download = list(run = FALSE),
+                             extract = list(fallback = "auto"), morph = list(),
+                             epw = list(), strict = TRUE, overwrite = FALSE,
+                             resume = TRUE, dry_run = FALSE) {
+    recipe <- shift_recipe_value(recipe)
+
+    # Normalize the user's time target before deriving the request window.
+    periods <- if (is.null(periods)) {
+        if (is.null(years)) {
+            cli::cli_abort("Supply `years` or `periods` for the future EPW workflow.")
+        }
+        shift_periods_from_years(years, period = period_name)
+    } else {
+        shift_periods_from_input(periods)
+    }
+    if (is.null(store)) {
+        if (is.null(output)) {
+            cli::cli_abort("Supply `store`, or supply `output` so a store can be created under it.")
+        }
+        # Keep the database/cache under the delivery directory for portable runs.
+        store <- file.path(path.expand(output), "store")
+    }
+
+    # The one-call API requests exactly the variables required by the recipe
+    # unless the caller intentionally narrows or expands the variable list.
+    variables <- shift_variables_value(variables, recipe = recipe)
+    request <- shift_cmip6_scenario(
+        source = source,
+        scenario = scenario,
+        member = member,
+        years = periods$year,
+        variables = variables,
+        frequency = frequency,
+        activity = activity,
+        table_id = table_id,
+        grid_label = grid_label,
+        data_node = data_node,
+        index_node = index_node,
+        filters = filters,
+        options = options
+    )
+    site <- shift_site(id = site_id, label = label, epw = baseline)
+    if (is.null(reference) && isTRUE(morpher__recipe_requires_reference(recipe))) {
+        # Belcher change-factor morphing needs a historical baseline; create a
+        # deferred historical reference spec so execution can resolve it later.
+        reference <- shift_historical_reference(reference_years)
+    }
+    morph <- utils::modifyList(list(strict = strict), morph)
+    epw <- utils::modifyList(
+        list(dir = "outputs/future-epw", separate = TRUE, export_dir = output),
+        epw
+    )
+
+    plan <- shift_plan(
+        request = request,
+        site = site,
+        periods = periods,
+        store = store,
+        reference = reference,
+        recipe = recipe,
+        collect = collect,
+        download = download,
+        extract = extract,
+        morph = morph,
+        epw = epw,
+        overwrite = overwrite,
+        resume = resume
+    )
+    if (isTRUE(dry_run)) {
+        return(plan)
+    }
+    shift_run(plan)
+}
+
+#' @rdname shift_api
 #' @param match File metadata fields copied from the future climate stage when
 #'   resolving an automatic historical reference.
 #' @param collect,extract Named option lists passed to the automatic
@@ -990,8 +1317,8 @@ shift_extract <- S7::new_generic(
 #' @param baseline Optional baseline EPW path, [eplusr::Epw] object, or
 #'   `shift_site()` object containing `epw`.
 #' @param recipe Morphing recipe, usually from [epw_morph_recipe()].
-#' @param reference Optional reference `ShiftClimate` stage for change-factor
-#'   morphing.
+#' @param reference Optional `ShiftReferenceSpec` or `ShiftClimate` stage for
+#'   change-factor morphing.
 #' @param reference_plan_id,reference_periods Optional store plan IDs and period
 #'   table for reference climate data.
 #' @param complete_only Whether [shift_morph()] should morph only complete
@@ -1016,14 +1343,55 @@ shift_morph <- S7::new_generic(
 #'   Relative paths are resolved under the store root. If `NULL`, [shift_epw()]
 #'   uses `"outputs/future-epw"`.
 #' @param separate Whether to create separate output directories per morphing case.
+#' @param export_dir Optional directory outside or inside the store where EPW
+#'   files should also be copied for user-facing delivery.
 #' @export
 shift_epw <- S7::new_generic(
     "shift_epw",
     "x",
-    function(x, dir = NULL, separate = TRUE, overwrite = FALSE, resume = TRUE) {
+    function(x, dir = NULL, separate = TRUE, export_dir = NULL, overwrite = FALSE, resume = TRUE) {
     S7::S7_dispatch()
     }
 )
+
+#' @rdname shift_api
+#' @export
+shift_explain <- function(x, ...) {
+    shift_assert_stage(x)
+    if (!S7::S7_inherits(x, ShiftPlan)) {
+        cli::cli_abort("{.fn shift_explain} currently expects a {.cls ShiftPlan}.")
+    }
+    shift_plan_explain(x)
+}
+
+#' @rdname shift_api
+#' @export
+shift_run <- function(x, ...) {
+    shift_assert_stage(x)
+    if (!S7::S7_inherits(x, ShiftPlan)) {
+        cli::cli_abort("{.fn shift_run} currently expects a {.cls ShiftPlan}.")
+    }
+    shift_plan_run(x, ...)
+}
+
+#' @rdname shift_api
+#' @export
+shift_export_epw <- function(x, dir, separate = TRUE, overwrite = FALSE, resume = TRUE) {
+    shift_assert_stage(x)
+    checkmate::assert_string(dir, min.chars = 1L)
+    checkmate::assert_flag(separate)
+    checkmate::assert_flag(overwrite)
+    checkmate::assert_flag(resume)
+
+    if (S7::S7_inherits(x, ShiftMorphed)) {
+        x <- shift_epw(x, separate = separate, overwrite = overwrite, resume = resume)
+    }
+    if (!S7::S7_inherits(x, ShiftOutputs)) {
+        cli::cli_abort("{.fn shift_export_epw} expects a {.cls ShiftOutputs} or {.cls ShiftMorphed} stage.")
+    }
+
+    shift_export_outputs(x, dir = dir, separate = separate, overwrite = overwrite, resume = resume)
+}
 
 #' @rdname shift_api
 #' @param strict If `TRUE`, abort when diagnostics contain errors.
@@ -1322,6 +1690,9 @@ shift_status <- function(x) {
     }
     if (S7::S7_inherits(x, ShiftRequest) || S7::S7_inherits(x, ShiftSite)) {
         return("new")
+    }
+    if (S7::S7_inherits(x, ShiftPlan)) {
+        return("planned")
     }
 
     ids <- shift_ids(x)
@@ -1906,6 +2277,176 @@ shift_morph_complete_plan_selection <- function(store, plan_id, complete_only = 
     )
 }
 
+# Build a compact, user-facing execution plan without touching remote services.
+shift_plan_explain <- function(x) {
+    meta <- x@meta
+    request <- meta$request@meta
+    epw <- meta$epw
+    reference <- meta$reference
+    reference_detail <- NULL
+    if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
+        reference_detail <- sprintf("Resolve %s reference climate", reference@mode)
+    } else if (S7::S7_inherits(reference, ShiftClimate)) {
+        reference_detail <- "Use supplied reference climate"
+    }
+    data.table::data.table(
+        step = c(
+            "request",
+            "collect",
+            if (isTRUE(meta$download$run)) "download" else character(),
+            "extract",
+            if (!is.null(reference_detail)) "reference" else character(),
+            "morph",
+            "write_epw",
+            if (!is.null(epw$export_dir)) "export" else character()
+        ),
+        detail = c(
+            sprintf(
+                "%s %s %s",
+                shift_coalesce(request$project, "CMIP"),
+                shift_coalesce(shift_display_values(request$source), "<any source>"),
+                shift_coalesce(shift_display_values(request$experiment), "<any experiment>")
+            ),
+            sprintf("Collect File records into %s", shift_display_path(x@store_path)),
+            if (isTRUE(meta$download$run)) "Download source NetCDF files before extraction" else character(),
+            sprintf(
+                "Extract %s for %s",
+                shift_coalesce(shift_display_values(shift_coalesce(meta$extract$variables, request$variables)), "<requested variables>"),
+                shift_display_values(unique(meta$periods$period))
+            ),
+            if (!is.null(reference_detail)) reference_detail else character(),
+            sprintf("Morph with %s", meta$recipe$name),
+            sprintf("Write EPW outputs under %s", shift_coalesce(epw$dir, "outputs/future-epw")),
+            if (!is.null(epw$export_dir)) sprintf("Copy EPW outputs to %s", shift_display_path(path.expand(epw$export_dir))) else character()
+        )
+    )
+}
+
+# Execute a ShiftPlan by delegating each step to the existing stage API.
+shift_plan_run <- function(x, ...) {
+    meta <- x@meta
+    overwrite <- isTRUE(meta$overwrite)
+    resume <- isTRUE(meta$resume)
+
+    collect_args <- utils::modifyList(
+        list(store = x@store_path, fields = "*", all = TRUE, limit = FALSE, label = NULL),
+        shift_list_subset(meta$collect, c("fields", "all", "limit", "label"))
+    )
+    # Collection always writes to the plan store so dry-run and run agree.
+    files <- do.call(shift_collect, c(list(meta$request), collect_args))
+    stage <- files
+
+    download_run <- isTRUE(meta$download$run)
+    if (download_run) {
+        download_args <- utils::modifyList(
+            list(run = TRUE, background = FALSE, resume = resume, overwrite = overwrite),
+            shift_list_subset(
+                meta$download,
+                c(
+                    "downloader", "run", "background", "resume", "overwrite",
+                    "session_label", "replica", "service", "probe",
+                    "probe_concurrency", "probe_cache_seconds", "strategy", "mode"
+                )
+            )
+        )
+        stage <- do.call(shift_download, c(list(stage), download_args))
+    }
+
+    extract_args <- utils::modifyList(
+        list(
+            site = meta$site,
+            periods = meta$periods,
+            variables = NULL,
+            time = NULL,
+            filters = list(),
+            method = "nearest",
+            fallback = "auto",
+            overwrite = overwrite,
+            resume = resume
+        ),
+        shift_list_subset(
+            meta$extract,
+            c("variables", "time", "filters", "method", "fallback", "overwrite", "resume")
+        )
+    )
+    # Extraction options may narrow variables/time, but periods and site are
+    # owned by the plan to keep the future EPW target explicit.
+    climate <- do.call(shift_extract, c(list(stage), extract_args))
+
+    morph_args <- utils::modifyList(
+        list(
+            baseline = meta$site,
+            recipe = meta$recipe,
+            reference = meta$reference,
+            strict = TRUE,
+            complete_only = TRUE,
+            by = c("source_id", "experiment_id", "variant_label", "period"),
+            overwrite = overwrite,
+            resume = resume
+        ),
+        shift_list_subset(
+            meta$morph,
+            c("strict", "complete_only", "by", "overwrite", "resume")
+        )
+    )
+    # Baseline, recipe, and reference are explicit plan inputs, not nested morph
+    # list overrides, so config and R APIs behave the same way.
+    morphed <- do.call(shift_morph, c(list(climate), morph_args))
+
+    epw_args <- utils::modifyList(
+        list(dir = "outputs/future-epw", separate = TRUE, export_dir = NULL, overwrite = overwrite, resume = resume),
+        shift_list_subset(meta$epw, c("dir", "separate", "export_dir", "overwrite", "resume"))
+    )
+    do.call(shift_epw, c(list(morphed), epw_args))
+}
+
+# Compute the user-facing export path for one generated EPW row.
+shift_export_target_path <- function(row, dir, separate = TRUE) {
+    path <- row$path[[1L]]
+    filename <- basename(path)
+    if (isTRUE(separate)) {
+        parts <- unlist(row[, intersect(c("source_id", "experiment_id", "variant_label", "period"), names(row)), with = FALSE], use.names = FALSE)
+        parts <- morpher__safe_path(parts[!is.na(parts) & nzchar(parts)])
+        return(do.call(file.path, as.list(c(dir, parts, filename))))
+    }
+    file.path(dir, filename)
+}
+
+# Copy registered EPW outputs to a user-facing directory and annotate the stage
+# with absolute export paths.
+shift_export_outputs <- function(x, dir, separate = TRUE, overwrite = FALSE, resume = TRUE) {
+    dir <- normalizePath(path.expand(dir), winslash = "/", mustWork = FALSE)
+    outputs <- data.table::copy(shift_outputs(x))
+    if (!nrow(outputs)) {
+        return(x)
+    }
+    store <- shift_store(x)
+    export_path <- character(nrow(outputs))
+    for (i in seq_len(nrow(outputs))) {
+        source <- store_abs_path(outputs$path[[i]], root = store$path)
+        target <- shift_export_target_path(outputs[i], dir = dir, separate = separate)
+        if (!file.exists(source)) {
+            cli::cli_abort("Cannot export missing EPW output: {.path {source}}.")
+        }
+        if (file.exists(target) && !isTRUE(overwrite) && !isTRUE(resume)) {
+            cli::cli_abort("Export target already exists: {.path {target}}.")
+        }
+        if (!file.exists(target) || isTRUE(overwrite)) {
+            dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+            ok <- file.copy(source, target, overwrite = overwrite)
+            if (!isTRUE(ok)) {
+                cli::cli_abort("Failed to export EPW output to {.path {target}}.")
+            }
+        }
+        export_path[[i]] <- normalizePath(target, winslash = "/", mustWork = TRUE)
+    }
+    outputs[, export_path := export_path]
+    x@meta$outputs <- outputs
+    x@meta$export_dir <- dir
+    x@meta$paths <- outputs$path
+    x
+}
+
 S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
                                                   reference = NULL, reference_plan_id = NULL,
                                                   reference_periods = NULL,
@@ -2006,10 +2547,11 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
     )
 }
 
-S7::method(shift_epw, ShiftMorphed) <- function(x, dir = NULL, separate = TRUE, overwrite = FALSE, resume = TRUE) {
+S7::method(shift_epw, ShiftMorphed) <- function(x, dir = NULL, separate = TRUE, export_dir = NULL, overwrite = FALSE, resume = TRUE) {
     dir <- shift_coalesce(dir, "outputs/future-epw")
     checkmate::assert_string(dir, min.chars = 1L)
     checkmate::assert_flag(separate)
+    checkmate::assert_string(export_dir, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
 
@@ -2028,14 +2570,18 @@ S7::method(shift_epw, ShiftMorphed) <- function(x, dir = NULL, separate = TRUE, 
     path_col <- intersect(c("path", "output_path", "relative_path"), names(outputs))
     paths <- if (length(path_col)) outputs[[path_col[[1L]]]] else character()
 
-    shift_stage_new(
+    stage <- shift_stage_new(
         ShiftOutputs,
         "outputs",
         store_path = x@store_path,
         ids = ids,
-        meta = list(morphed = x, format = "epw", outputs = outputs, paths = paths),
+        meta = list(morphed = x, format = "epw", outputs = outputs, paths = paths, export_dir = export_dir),
         diagnostics = shift_diagnostics_empty()
     )
+    if (!is.null(export_dir)) {
+        stage <- shift_export_epw(stage, dir = export_dir, separate = separate, overwrite = overwrite, resume = resume)
+    }
+    stage
 }
 
 # check methods ---------------------------------------------------------------

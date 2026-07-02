@@ -66,11 +66,10 @@ workflow, use the `legacy` branch on GitHub or install epwshiftr
 
 ## Quick start
 
-The `shift_*` workflow keeps the complete process readable: create a
-site, request climate data, collect file records, extract the needed
-site data, morph, and write EPW outputs. Each stage returns an
-inspectable object and carries the internal store IDs forward
-automatically.
+For the common baseline-to-future EPW workflow, use
+`shift_future_epw()`. It creates the CMIP6 request, extracts the site
+time series, resolves the historical Belcher reference, writes EPW files
+inside the store, and copies the final EPWs to `output`.
 
 ``` r
 library(epwshiftr)
@@ -81,62 +80,64 @@ epw <- system.file(
     mustWork = TRUE
 )
 
-site <- shift_site(
-    id = "SIN",
-    label = "singapore",
-    epw = epw
-)
-
-req <- shift_request(
-    provider = "esgf",
-    project = "CMIP6",
-    source = "EC-Earth3",
-    experiment = "ssp585",
-    variant = "r1i1p1f1",
-    variables = epw_morph_variables("recommended"),
+epws <- shift_future_epw(
+    baseline = epw,
+    source = "BCC-CSM2-MR",
+    scenario = c("ssp126", "ssp585"),
+    member = "r1i1p1f1",
+    years = 2055:2065,
+    period_name = "2060s",
+    output = "~/Downloads/epwshiftr-test",
+    recipe = "belcher",
+    reference_years = 1995:2014,
     frequency = "mon",
-    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
-    filters = list(activity_id = "ScenarioMIP", table_id = "Amon")
+    table_id = "Amon",
+    grid_label = "gn",
+    data_node = "esgf.ceda.ac.uk",
+    index_node = "https://esgf-data.dkrz.de",
+    morph = list(strict = FALSE)
 )
-
-epws <-
-    req |>
-    shift_collect(store = "cache/singapore-store") |>
-    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
-    shift_morph(baseline = site, strict = TRUE) |>
-    shift_epw()
 
 shift_status(epws)
 shift_outputs(epws)
 ```
 
-This example uses monthly CMIP6 `Amon` records and the recommended EPW
-morphing variable set, including precipitation. The code is not
-evaluated when building the README because it performs live ESGF queries
-and remote data reads.
+This example uses monthly CMIP6 `Amon` records and the variables
+required by the Belcher recipe. The code is not evaluated when building
+the README because it performs live ESGF queries and remote data reads.
 
 ## Inspect a workflow
 
-Use these helpers when you want to inspect a stage before continuing or
-diagnose why a stage is blocked.
+Use `shift_plan()` and `shift_explain()` when you want to inspect the
+workflow before touching ESGF services.
 
 ``` r
+req <- shift_cmip6_scenario(
+    source = "BCC-CSM2-MR",
+    scenario = c("ssp126", "ssp585"),
+    member = "r1i1p1f1",
+    years = 2055:2065,
+    variables = "belcher",
+    frequency = "mon",
+    table_id = "Amon"
+)
+
+site <- shift_site(id = "SIN", label = "singapore", epw = epw)
+
+plan <- shift_plan(
+    request = req,
+    site = site,
+    periods = list(`2060s` = 2055:2065),
+    store = "~/Downloads/epwshiftr-test/store",
+    reference = shift_historical_reference(1995:2014),
+    epw = list(export_dir = "~/Downloads/epwshiftr-test")
+)
+
+shift_explain(plan)
+epws <- shift_run(plan)
+
 shift_status(epws)
 shift_diagnostics(epws)
-shift_outputs(epws)
-
-extracted <- req |>
-    shift_collect(store = "cache/singapore-store") |>
-    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L))
-
-shift_coverage(extracted)
-shift_data(extracted)
-shift_ids(extracted)
-
-morphed <- shift_morph(extracted, baseline = site, strict = TRUE)
-shift_data(morphed)
-
-epws <- shift_epw(morphed)
 shift_outputs(epws)
 shift_data(epws)
 ```
