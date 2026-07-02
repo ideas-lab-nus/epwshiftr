@@ -8,6 +8,10 @@ EPW_MORPH_VARIABLE_LEVELS <- list(
     extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
 )
 
+EPW_MORPH_VARIABLE_ALTERNATIVES <- list(
+    hurs = c("huss", "hur")
+)
+
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
 EPW_MORPH_BACKEND_WARNINGS <- new.env(parent = emptyenv())
 
@@ -113,6 +117,40 @@ morpher__rules_required_variables <- function(rules) {
         morpher__split_rule_variables(rules[["required_variables"]][i])
     })
     unique(unlist(vars, use.names = FALSE))
+}
+
+# Build user-facing guidance for required CMIP variables that are unavailable
+# in the selected extraction or summary input.
+morpher__missing_variable_guidance <- function(variable_id, present_variables = character()) {
+    present_variables <- unique(as.character(present_variables))
+    present_variables <- present_variables[!is.na(present_variables) & nzchar(present_variables)]
+    if (identical(variable_id, "hurs")) {
+        alternatives <- intersect(EPW_MORPH_VARIABLE_ALTERNATIVES$hurs, present_variables)
+        if (length(alternatives)) {
+            return(list(
+                suffix = sprintf(
+                    " Alternative humidity variable(s) %s are present, but this Belcher implementation does not convert them to hurs.",
+                    paste(alternatives, collapse = ", ")
+                ),
+                action = paste(
+                    "Add and extract hurs, choose a model/scenario that provides hurs,",
+                    "or run in relaxed mode; relative humidity and dew point will fall back to baseline when humidity factors are unavailable."
+                )
+            ))
+        }
+        return(list(
+            suffix = " Belcher humidity morphing uses hurs for relative humidity.",
+            action = paste(
+                "Add and extract hurs, choose a model/scenario that provides hurs,",
+                "or run in relaxed mode; relative humidity and dew point will fall back to baseline when humidity factors are unavailable."
+            )
+        ))
+    }
+
+    list(
+        suffix = "",
+        action = "Add and extract the required variable, or run in relaxed mode."
+    )
 }
 
 morpher__rule_primary_variable <- function(rule) {
@@ -3335,15 +3373,21 @@ EpwMorpher <- R6::R6Class(
                     action = "Complete extraction before morphing."
                 )
             }
-            missing_variables <- setdiff(self$required_variables(), unique(coverage$variable_id))
+            present_variables <- unique(coverage$variable_id)
+            missing_variables <- setdiff(self$required_variables(), present_variables)
             for (variable_id in missing_variables) {
+                guidance <- morpher__missing_variable_guidance(variable_id, present_variables)
                 diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
                     stage = "extraction",
                     severity = severity,
                     code = "missing_required_variable",
-                    message = sprintf("Required CMIP variable %s is missing from selected extraction plans.", variable_id),
+                    message = sprintf(
+                        "Required CMIP variable %s is missing from selected extraction plans.%s",
+                        variable_id,
+                        guidance$suffix
+                    ),
                     variable_id = variable_id,
-                    action = "Add and extract the required variable, or run in relaxed mode."
+                    action = guidance$action
                 )
             }
 
@@ -3465,16 +3509,22 @@ EpwMorpher <- R6::R6Class(
             if (length(missing_by)) {
                 return(morpher__bind_diagnostics(diagnostics))
             }
-            missing_variables <- setdiff(self$required_variables(), unique(climate$variable_id))
+            present_variables <- unique(climate$variable_id)
+            missing_variables <- setdiff(self$required_variables(), present_variables)
             for (variable_id in missing_variables) {
+                guidance <- morpher__missing_variable_guidance(variable_id, present_variables)
                 diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
                     stage = "climate_summary",
                     severity = severity,
                     code = "missing_required_variable",
-                    message = sprintf("Required CMIP variable %s is missing from climate summary.", variable_id),
+                    message = sprintf(
+                        "Required CMIP variable %s is missing from climate summary.%s",
+                        variable_id,
+                        guidance$suffix
+                    ),
                     summary_id = summary_id,
                     variable_id = variable_id,
-                    action = "Summarise climate data with all required variables, or run in relaxed mode."
+                    action = guidance$action
                 )
             }
             cases <- unique(climate[, by, with = FALSE])
