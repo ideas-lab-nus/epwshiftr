@@ -1415,8 +1415,15 @@ shift_as_query <- function(x) {
     )
 }
 
+# Apply a stage request constraint to the ESGF query through the most specific
+# setter available so control parameters such as `latest` and `replica` keep
+# their typed validation instead of falling through to ad hoc `$params()`.
 shift_query_set <- function(query, name, value) {
     if (is.null(value)) {
+        return(invisible(query))
+    }
+    if (name %in% names(QUERY_PARAM__DEF) && is.function(query[[name]])) {
+        query[[name]](value)
         return(invisible(query))
     }
     args <- stats::setNames(list(value), name)
