@@ -604,6 +604,25 @@ morpher__recipe_method_overrides <- function(recipe) {
     if (!length(overrides)) NULL else overrides
 }
 
+# Resolve an EPW output directory and fail before any filesystem writes when
+# the manifest cannot safely store the path relative to the EsgStore root.
+morpher__epw_output_root <- function(dir, store_path) {
+    root <- store_abs_path(dir, root = store_path)
+    tryCatch(
+        {
+            store_rel_path(root, root = store_path)
+            root
+        },
+        error = function(e) {
+            cli::cli_abort(c(
+                "EPW output directory must be inside the epwshiftr store root.",
+                "x" = "Requested directory: {.path {root}}",
+                "i" = "Use a store under your desired output root, or pass a store-relative `dir` such as {.val outputs/future-epw}."
+            ))
+        }
+    )
+}
+
 morpher__hash <- function(...) {
     store__hash(...)
 }
@@ -2917,9 +2936,10 @@ EpwMorpher <- R6::R6Class(
         #' Write future EPW files from morphing results.
         #'
         #' @param morph_id Morphing plan ID.
-        #' @param dir Output directory. Relative paths are resolved under the store
-        #'        root. If `NULL`, the workflow stops after writing morph result
-        #'        Parquet files and does not write EPW outputs.
+        #' @param dir Output directory inside the store root. Relative paths are
+        #'        resolved under the store root. If `NULL`, the workflow stops
+        #'        after writing morph result Parquet files and does not write EPW
+        #'        outputs.
         #' @param separate Whether to create case subdirectories.
         #' @param overwrite Whether to overwrite existing EPW files.
         #' @param resume Whether to reuse complete existing EPW outputs.
@@ -2939,7 +2959,7 @@ EpwMorpher <- R6::R6Class(
 
             tryCatch(
                 {
-                    root <- store_abs_path(dir, root = private$store$path)
+                    root <- morpher__epw_output_root(dir, private$store$path)
                     dir.create(root, recursive = TRUE, showWarnings = FALSE)
                     base_epw <- private$epw$clone()
                     suppressMessages(base_epw$drop_unit())
