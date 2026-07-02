@@ -27,13 +27,23 @@ epwshiftr_cli_shift_run <- function(store, args) {
     request <- epwshiftr_cli_config_request(config$request)
     site <- epwshiftr_cli_config_site(config$site)
     periods <- epwshiftr_cli_periods_from_config(config$extract$periods)
+    plan <- epwshiftr_cli_config_plan(
+        config = config,
+        request = request,
+        site = site,
+        periods = periods,
+        store = store,
+        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+        resume = !isTRUE(parsed$flags[["--no-resume"]])
+    )
     if (isTRUE(parsed$flags[["--dry-run"]])) {
         return(list(
             status = "dry_run",
             config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
             request = data.table::as.data.table(request),
             site = data.table::as.data.table(site),
-            periods = periods
+            periods = periods,
+            explain = shift_explain(plan)
         ))
     }
 
@@ -101,6 +111,7 @@ epwshiftr_cli_shift_run <- function(store, args) {
         morphed,
         dir = epwshiftr_cli_config_string(epw$dir, default = "outputs/future-epw"),
         separate = epwshiftr_cli_config_flag(epw$separate, default = TRUE),
+        export_dir = epwshiftr_cli_config_string(epw$export_dir, default = NULL),
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
         resume = !isTRUE(parsed$flags[["--no-resume"]])
     )
@@ -357,6 +368,24 @@ epwshiftr_cli_config_section <- function(config, name) {
 
 epwshiftr_cli_config_request <- function(config) {
     config <- epwshiftr_cli_config_section(list(request = config), "request")
+    preset <- epwshiftr_cli_config_string(config$preset, default = NULL)
+    if (identical(preset, "cmip6_scenario")) {
+        return(shift_cmip6_scenario(
+            source = epwshiftr_cli_config_character(config$source, default = NULL),
+            scenario = epwshiftr_cli_config_character(shift_coalesce(config$scenario, config$experiment), default = NULL),
+            member = epwshiftr_cli_config_character(shift_coalesce(config$member, config$variant), default = NULL),
+            years = epwshiftr_cli_config_character(config$years, default = NULL),
+            variables = epwshiftr_cli_config_character(config$variables, default = "recommended"),
+            frequency = epwshiftr_cli_config_character(config$frequency, default = "mon"),
+            activity = epwshiftr_cli_config_string(config$activity, default = "ScenarioMIP"),
+            table_id = epwshiftr_cli_config_string(config$table_id, default = NULL),
+            grid_label = epwshiftr_cli_config_string(config$grid_label, default = NULL),
+            data_node = epwshiftr_cli_config_string(config$data_node, default = NULL),
+            index_node = epwshiftr_cli_config_string(config$index_node, default = NULL),
+            filters = epwshiftr_cli_config_named_list(config$filters),
+            options = epwshiftr_cli_config_named_list(config$options)
+        ))
+    }
     shift_request(
         provider = epwshiftr_cli_config_string(config$provider, default = "esgf"),
         project = epwshiftr_cli_config_string(config$project, default = NULL),
@@ -368,6 +397,31 @@ epwshiftr_cli_config_request <- function(config) {
         time = epwshiftr_cli_config_time(config$time),
         filters = epwshiftr_cli_config_named_list(config$filters),
         options = epwshiftr_cli_config_named_list(config$options)
+    )
+}
+
+
+# Build the R-side workflow plan used for dry-run/explain output.
+epwshiftr_cli_config_plan <- function(config, request, site, periods, store, overwrite = FALSE, resume = TRUE) {
+    morph <- epwshiftr_cli_config_section(config, "morph")
+    epw <- epwshiftr_cli_config_section(config, "epw")
+    shift_plan(
+        request = request,
+        site = site,
+        periods = periods,
+        store = epwshiftr_cli_list_value(epwshiftr_cli_config_section(config, "collect"), "store", store),
+        reference = epwshiftr_cli_config_reference(morph)$reference,
+        recipe = epwshiftr_cli_recipe(
+            epwshiftr_cli_config_string(morph$recipe, default = "belcher"),
+            methods = morph$methods
+        ),
+        collect = epwshiftr_cli_config_section(config, "collect"),
+        download = epwshiftr_cli_config_section(config, "download"),
+        extract = epwshiftr_cli_config_section(config, "extract"),
+        morph = morph,
+        epw = epw,
+        overwrite = overwrite,
+        resume = resume
     )
 }
 

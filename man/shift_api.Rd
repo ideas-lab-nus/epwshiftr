@@ -4,13 +4,20 @@
 \alias{shift_api}
 \alias{shift_request}
 \alias{shift_site}
+\alias{shift_cmip6_scenario}
 \alias{shift_reference_plan}
+\alias{shift_historical_reference}
+\alias{shift_plan}
+\alias{shift_future_epw}
 \alias{shift_reference_historical}
 \alias{shift_collect}
 \alias{shift_download}
 \alias{shift_extract}
 \alias{shift_morph}
 \alias{shift_epw}
+\alias{shift_explain}
+\alias{shift_run}
+\alias{shift_export_epw}
 \alias{shift_check}
 \alias{shift_refresh}
 \alias{shift_ids}
@@ -49,7 +56,78 @@ shift_site(
   metadata = list()
 )
 
+shift_cmip6_scenario(
+  source,
+  scenario = scenarios,
+  scenarios = NULL,
+  member = NULL,
+  years = NULL,
+  variables = "recommended",
+  frequency = "mon",
+  activity = "ScenarioMIP",
+  table_id = NULL,
+  grid_label = NULL,
+  data_node = NULL,
+  index_node = NULL,
+  filters = list(),
+  options = list()
+)
+
 shift_reference_plan(plan_id, periods)
+
+shift_historical_reference(years = 1995:2014, period = "reference", ...)
+
+shift_plan(
+  request,
+  site,
+  periods,
+  store,
+  reference = NULL,
+  recipe = epw_morph_recipe("belcher"),
+  collect = list(),
+  download = list(run = FALSE),
+  extract = list(fallback = "auto"),
+  morph = list(),
+  epw = list(dir = "outputs/future-epw", separate = TRUE),
+  overwrite = FALSE,
+  resume = TRUE
+)
+
+shift_future_epw(
+  baseline,
+  source,
+  scenario = scenarios,
+  scenarios = NULL,
+  years = NULL,
+  periods = NULL,
+  period_name = "future",
+  store = NULL,
+  output = NULL,
+  site_id = NULL,
+  label = NULL,
+  member = "r1i1p1f1",
+  recipe = epw_morph_recipe("belcher"),
+  reference = NULL,
+  reference_years = 1995:2014,
+  variables = NULL,
+  frequency = "mon",
+  activity = "ScenarioMIP",
+  table_id = NULL,
+  grid_label = NULL,
+  data_node = NULL,
+  index_node = NULL,
+  filters = list(),
+  options = list(),
+  collect = list(),
+  download = list(run = FALSE),
+  extract = list(fallback = "auto"),
+  morph = list(),
+  epw = list(),
+  strict = TRUE,
+  overwrite = FALSE,
+  resume = TRUE,
+  dry_run = FALSE
+)
 
 shift_reference_historical(
   periods,
@@ -110,7 +188,20 @@ shift_morph(
   resume = TRUE
 )
 
-shift_epw(x, dir = NULL, separate = TRUE, overwrite = FALSE, resume = TRUE)
+shift_epw(
+  x,
+  dir = NULL,
+  separate = TRUE,
+  export_dir = NULL,
+  overwrite = FALSE,
+  resume = TRUE
+)
+
+shift_explain(x, ...)
+
+shift_run(x, ...)
+
+shift_export_epw(x, dir, separate = TRUE, overwrite = FALSE, resume = TRUE)
 
 shift_check(x, strict = FALSE, ...)
 
@@ -176,25 +267,74 @@ from \code{epw$location()} when \code{epw} is supplied.}
 
 \item{metadata}{Optional site metadata.}
 
+\item{scenario, scenarios}{CMIP6 scenario experiment IDs, for example
+\code{"ssp126"} or \code{"ssp585"}.}
+
+\item{member}{CMIP6 variant label, for example \code{"r1i1p1f1"}.}
+
+\item{years}{Optional years used to constrain the future request time window.}
+
+\item{activity}{CMIP6 activity ID. \code{shift_cmip6_scenario()} defaults to
+\code{"ScenarioMIP"} and \code{shift_reference_historical()} defaults to \code{"CMIP"}.}
+
+\item{table_id}{CMIP6 table ID. If \code{NULL}, a common atmospheric table is
+inferred from \code{frequency}.}
+
+\item{grid_label}{Optional CMIP6 grid label.}
+
+\item{data_node}{Optional ESGF data node filter.}
+
+\item{index_node}{Optional ESGF index node.}
+
 \item{plan_id}{Store extraction plan IDs for manually selected reference
 climate data.}
 
 \item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
 
-\item{activity}{Historical reference activity filter used by
-\code{shift_reference_historical()}.}
+\item{period}{Reference period name used when constructing periods from
+\code{years}.}
+
+\item{request}{A \code{\link[=shift_request]{shift_request()}} object, commonly from
+\code{shift_cmip6_scenario()}.}
+
+\item{site}{A \code{shift_site()} object.}
+
+\item{store}{An \link{EsgStore}, store path, or \code{NULL}.}
+
+\item{reference}{Optional \code{ShiftReferenceSpec} or \code{ShiftClimate} stage for
+change-factor morphing.}
+
+\item{recipe}{Morphing recipe, usually from \code{\link[=epw_morph_recipe]{epw_morph_recipe()}}.}
+
+\item{collect, download, extract, morph, epw}{Named option lists for each workflow
+stage.}
+
+\item{overwrite}{Whether to overwrite existing downloads, extraction outputs,
+morphing results, or EPW outputs.}
+
+\item{resume}{Whether to reuse complete existing downloads, extraction
+outputs, morphing results, or EPW outputs.}
+
+\item{baseline}{Optional baseline EPW path, \link[eplusr:Epw]{eplusr::Epw} object, or
+\code{shift_site()} object containing \code{epw}.}
+
+\item{period_name}{Name assigned when \code{years} is supplied instead of
+\code{periods}.}
+
+\item{output}{Optional user-facing directory where final EPW files are copied.
+If \code{store} is omitted, a store is created under \code{file.path(output, "store")}.}
+
+\item{reference_years}{Historical reference years used by Belcher
+change-factor morphing when \code{reference} is \code{NULL}.}
+
+\item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
+
+\item{dry_run}{If \code{TRUE}, return the planned workflow without running it.}
 
 \item{match}{File metadata fields copied from the future climate stage when
 resolving an automatic historical reference.}
 
-\item{collect, extract}{Named option lists passed to the automatic
-historical collect and extract steps. \code{collect} may contain \code{fields},
-\code{all}, \code{limit}, \code{label}, and \code{time}; \code{extract} may contain \code{variables},
-\code{time}, \code{filters}, \code{method}, and \code{fallback}.}
-
 \item{x}{A shift stage object.}
-
-\item{store}{An \link{EsgStore}, store path, or \code{NULL}.}
 
 \item{fields}{File fields collected from Dataset records. The default
 requests all fields and lets the result/store layers preserve and validate
@@ -210,32 +350,14 @@ can use OPeNDAP first and only download as a fallback when requested.}
 
 \item{background}{Whether to run downloads in a background job.}
 
-\item{resume}{Whether to reuse complete existing downloads, extraction
-outputs, morphing results, or EPW outputs.}
-
-\item{overwrite}{Whether to overwrite existing downloads, extraction outputs,
-morphing results, or EPW outputs.}
-
 \item{session_label}{Optional download session label.}
-
-\item{site}{A \code{shift_site()} object.}
 
 \item{method}{Grid extraction method.}
 
 \item{fallback}{Extraction fallback policy.}
 
-\item{baseline}{Optional baseline EPW path, \link[eplusr:Epw]{eplusr::Epw} object, or
-\code{shift_site()} object containing \code{epw}.}
-
-\item{recipe}{Morphing recipe, usually from \code{\link[=epw_morph_recipe]{epw_morph_recipe()}}.}
-
-\item{reference}{Optional reference \code{ShiftClimate} stage for change-factor
-morphing.}
-
 \item{reference_plan_id, reference_periods}{Optional store plan IDs and period
 table for reference climate data.}
-
-\item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
 
 \item{complete_only}{Whether \code{\link[=shift_morph]{shift_morph()}} should morph only complete
 extraction plans when a climate stage also contains failed or incomplete
@@ -249,6 +371,9 @@ uses \code{"outputs/future-epw"}.}
 
 \item{separate}{Whether to create separate output directories per morphing case.}
 
+\item{export_dir}{Optional directory outside or inside the store where EPW
+files should also be copied for user-facing delivery.}
+
 \item{n}{Maximum number of data rows to read. Use \code{Inf} to read all rows.}
 
 \item{case_id}{Optional morphing case IDs to read from morphed or EPW output
@@ -259,6 +384,11 @@ stages.}
 \item{severity}{Optional diagnostic severities to keep.}
 
 \item{create}{Whether to create a store when \code{x} is a path.}
+
+\item{collect, extract}{Named option lists passed to the automatic
+historical collect and extract steps. \code{collect} may contain \code{fields},
+\code{all}, \code{limit}, \code{label}, and \code{time}; \code{extract} may contain \code{variables},
+\code{time}, \code{filters}, \code{method}, and \code{fallback}.}
 }
 \value{
 A shift stage object.

@@ -5,10 +5,11 @@ test_that("shift run validates JSON config and reports usage errors", {
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
 
-    dry_run <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", config, "--dry-run"))
+    dry_run <- suppressWarnings(epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", config, "--dry-run")))
     expect_equal(dry_run$status, 0L)
     expect_equal(dry_run$result$status, "dry_run")
     expect_equal(dry_run$result$request$variables, "tas")
+    expect_true(all(c("request", "collect", "extract", "morph", "write_epw") %in% dry_run$result$explain$step))
 
     validate <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "config", "validate", "--config", config))
     expect_equal(validate$status, 0L)
@@ -67,6 +68,25 @@ test_that("shift run validates JSON config and reports usage errors", {
     valid_plan <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", plan_reference, "--dry-run"))
     expect_equal(valid_plan$status, 0L)
 
+    preset_request <- tempfile(fileext = ".json")
+    cli_shift_test_config(preset_request)
+    payload <- jsonlite::read_json(preset_request, simplifyVector = TRUE)
+    payload$request <- list(
+        preset = "cmip6_scenario",
+        source = "BCC-CSM2-MR",
+        scenario = c("ssp126", "ssp585"),
+        member = "r1i1p1f1",
+        years = "2055:2065",
+        variables = "tas",
+        frequency = "mon",
+        table_id = "Amon"
+    )
+    payload$extract$periods <- list(`2060s` = "2055:2065")
+    jsonlite::write_json(payload, preset_request, auto_unbox = TRUE)
+    valid_preset <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", preset_request, "--dry-run"))
+    expect_equal(valid_preset$status, 0L)
+    expect_equal(valid_preset$result$request$experiment, "ssp126,ssp585")
+
     mixed_reference <- tempfile(fileext = ".json")
     cli_shift_test_config(mixed_reference)
     payload <- jsonlite::read_json(mixed_reference, simplifyVector = TRUE)
@@ -95,6 +115,10 @@ test_that("shift run executes collect, extract, relaxed morph, EPW output, and s
     dir <- tempfile("esg-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
+    export_dir <- tempfile("cli-shift-export-")
+    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload$epw$export_dir <- export_dir
+    jsonlite::write_json(payload, config, auto_unbox = TRUE, pretty = TRUE)
 
     run <- epwshiftr_cli(c("--quiet", "--store", dir, "shift", "run", "--config", config, "--overwrite"))
     expect_equal(run$status, 0L)
@@ -104,6 +128,8 @@ test_that("shift run executes collect, extract, relaxed morph, EPW output, and s
     expect_true(length(run$result$plan_id) >= 1L)
     expect_true(nrow(run$result$outputs) >= 1L)
     expect_true(all(file.exists(file.path(dir, run$result$outputs$path))))
+    expect_true("export_path" %in% names(run$result$outputs))
+    expect_true(all(file.exists(run$result$outputs$export_path)))
     expect_true("File" %in% calls$types)
     expect_true(nrow(run$result$next_steps) >= 1L)
 

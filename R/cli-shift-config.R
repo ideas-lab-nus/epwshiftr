@@ -73,14 +73,17 @@ epwshiftr_cli_shift_config_validate <- function(args) {
 epwshiftr_cli_shift_example_config <- function() {
     list(
         request = list(
-            project = "CMIP6",
-            experiment = "ssp585",
-            variables = c("tas", "hurs", "psl", "rsds", "rlds", "sfcWind", "clt"),
-            frequency = "day",
-            filters = list(
-                source_id = "EC-Earth3",
-                variant_label = "r1i1p1f1"
-            )
+            preset = "cmip6_scenario",
+            source = "BCC-CSM2-MR",
+            scenario = c("ssp126", "ssp585"),
+            member = "r1i1p1f1",
+            years = "2055:2065",
+            variables = "belcher",
+            frequency = "mon",
+            table_id = "Amon",
+            grid_label = "gn",
+            data_node = "esgf.ceda.ac.uk",
+            index_node = "https://esgf-data.dkrz.de"
         ),
         site = list(
             id = "SIN",
@@ -98,18 +101,22 @@ epwshiftr_cli_shift_example_config <- function() {
             session_label = "singapore-ssp585"
         ),
         extract = list(
-            periods = list(`2060s` = 2055L:2064L),
-            time = c("2055-01-01T00:00:00Z", "2064-12-31T23:59:59Z"),
+            periods = list(`2060s` = "2055:2065"),
             method = "nearest",
             fallback = "auto"
         ),
         morph = list(
             recipe = "belcher",
-            strict = TRUE,
+            strict = FALSE,
+            reference = list(
+                mode = "historical",
+                periods = list(reference = "1995:2014")
+            ),
             by = c("source_id", "experiment_id", "variant_label", "period")
         ),
         epw = list(
             dir = "outputs/future-epw",
+            export_dir = "future-epw",
             separate = TRUE
         )
     )

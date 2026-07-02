@@ -12,11 +12,17 @@
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["provider", "project", "source", "experiment", "variant", "variables", "frequency", "time", "filters", "options"]
+        "subset.of": ["preset", "provider", "project", "source", "scenario", "experiment", "member", "variant", "variables", "frequency", "years", "time", "activity", "table_id", "grid_label", "data_node", "index_node", "filters", "options"]
       },
       "fields": {
+        "preset": {"check": {"kind": "choice", "choices": ["cmip6_scenario"]}},
         "provider": {"check": {"kind": "string"}},
         "project": {"check": {"kind": "string"}},
+        "activity": {"check": {"kind": "string"}},
+        "table_id": {"check": {"kind": "string"}},
+        "grid_label": {"check": {"kind": "string"}},
+        "data_node": {"check": {"kind": "string"}},
+        "index_node": {"check": {"kind": "string"}},
         "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
       }
@@ -121,10 +127,11 @@
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["dir", "separate"]
+        "subset.of": ["dir", "separate", "export_dir"]
       },
       "fields": {
         "dir": {"check": {"kind": "string"}},
+        "export_dir": {"check": {"kind": "string"}},
         "separate": {"check": {"kind": "flag"}}
       }
     }
