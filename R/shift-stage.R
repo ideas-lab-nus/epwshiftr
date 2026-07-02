@@ -1012,8 +1012,9 @@ shift_morph <- S7::new_generic(
 )
 
 #' @rdname shift_api
-#' @param dir Store-relative output directory for generated EPW files. If `NULL`,
-#'   [shift_epw()] uses `"outputs/future-epw"`.
+#' @param dir Output directory inside the store root for generated EPW files.
+#'   Relative paths are resolved under the store root. If `NULL`, [shift_epw()]
+#'   uses `"outputs/future-epw"`.
 #' @param separate Whether to create separate output directories per morphing case.
 #' @export
 shift_epw <- S7::new_generic(

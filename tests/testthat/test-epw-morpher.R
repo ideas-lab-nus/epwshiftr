@@ -460,6 +460,14 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     expect_equal(unique(result_data$period), "2060s")
     expect_equal(morpher$status(relaxed$morph_id)$status, "result_done")
 
+    expect_error(
+        morpher$write_epw(
+            morph_id = relaxed$morph_id,
+            dir = tempfile("future-epw-outside-")
+        ),
+        "inside the epwshiftr store root"
+    )
+
     outputs <- morpher$write_epw(
         morph_id = relaxed$morph_id,
         dir = "outputs/future-epw",
