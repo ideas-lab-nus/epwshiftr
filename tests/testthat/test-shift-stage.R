@@ -185,10 +185,16 @@ shift_test_mock_collect_filtered <- function(file_docs, calls) {
 
 shift_test_mock_collect_sequence <- function(file_doc_sets, calls) {
     calls$file_calls <- 0L
+    calls$collect_times <- list()
     testthat::local_mocked_bindings(
         query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                   limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             type <- query_param__value(params$type())
+            calls$collect_times <- c(calls$collect_times, list(list(
+                type = type,
+                datetime_start = shift_test_param_value(params, "datetime_start"),
+                datetime_stop = shift_test_param_value(params, "datetime_stop")
+            )))
             variables <- as.character(shift_test_param_value(params, "variable_id"))
             variables <- variables[!is.na(variables) & nzchar(variables)]
             docs <- if (identical(type, "Dataset")) {
@@ -533,28 +539,18 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         shift_extract(site = site, periods = future_periods, variables = variables)
 
     recipe <- epw_morph_recipe("belcher")
-    auto_warnings <- character()
-    auto <- withCallingHandlers(
-        shift_morph(
-            climate,
-            recipe = recipe,
-            reference = shift_reference_historical(reference_periods),
-            strict = TRUE,
-            overwrite = TRUE
-        ),
-        warning = function(w) {
-            msg <- conditionMessage(w)
-            expected <- grepl("Time filtering with method = 'drs'", msg, fixed = TRUE) ||
-                grepl("Could not parse a DRS time range", msg, fixed = TRUE)
-            if (!expected) {
-                return()
-            }
-            auto_warnings <<- c(auto_warnings, msg)
-            invokeRestart("muffleWarning")
-        }
+    auto <- shift_morph(
+        climate,
+        recipe = recipe,
+        reference = shift_reference_historical(reference_periods),
+        strict = TRUE,
+        overwrite = TRUE
     )
-    expect_true(any(grepl("Time filtering with method = 'drs'", auto_warnings, fixed = TRUE)))
-    expect_true(any(grepl("Could not parse a DRS time range", auto_warnings, fixed = TRUE)))
+    historical_collect_times <- calls$collect_times[3:4]
+    expect_equal(vapply(historical_collect_times, `[[`, character(1L), "type"), c("Dataset", "File"))
+    expect_true(all(vapply(historical_collect_times, function(x) {
+        is.null(x$datetime_start) && is.null(x$datetime_stop)
+    }, logical(1L))))
     reference_climate <- auto@meta$reference
     reference_ids <- shift_ids(reference_climate)
     plan_reference <- shift_reference_plan(reference_ids$plan_id, reference_periods)

@@ -892,8 +892,8 @@ shift_reference_plan <- function(plan_id, periods) {
 #'   resolving an automatic historical reference.
 #' @param collect,extract Named option lists passed to the automatic
 #'   historical collect and extract steps. `collect` may contain `fields`,
-#'   `all`, `limit`, and `label`; `extract` may contain `variables`, `time`,
-#'   `filters`, `method`, and `fallback`.
+#'   `all`, `limit`, `label`, and `time`; `extract` may contain `variables`,
+#'   `time`, `filters`, `method`, and `fallback`.
 #' @export
 shift_reference_historical <- function(periods, experiment = "historical", activity = "CMIP",
                                        match = c("source_id", "variant_label", "frequency", "table_id"),
@@ -906,7 +906,7 @@ shift_reference_historical <- function(periods, experiment = "historical", activ
     checkmate::assert_list(filters, names = "unique")
     checkmate::assert_list(options, names = "unique")
     checkmate::assert_list(collect, names = "unique")
-    checkmate::assert_subset(names(collect), c("fields", "all", "limit", "label"))
+    checkmate::assert_subset(names(collect), c("fields", "all", "limit", "label", "time"))
     checkmate::assert_list(extract, names = "unique")
     checkmate::assert_subset(names(extract), c("variables", "time", "filters", "method", "fallback"))
 
@@ -1754,17 +1754,22 @@ shift_reference_resolve_historical <- function(x, recipe, site, spec, overwrite 
     )
     options <- utils::modifyList(if (is.null(root)) list() else root@meta$options, spec@options)
     project <- shift_coalesce(if (is.null(root)) NULL else root@meta$project, "CMIP6")
+    # Historical Dataset records often span the full CMIP run; only constrain
+    # ESGF collection by time when the caller explicitly requests it.
+    collect_time <- if ("time" %in% names(spec@collect)) spec@collect$time else NULL
     request <- shift_request(
         provider = provider,
         project = project,
-        time = shift_periods_time(periods),
+        time = collect_time,
         filters = filters,
         options = options
     )
 
+    collect_overrides <- spec@collect
+    collect_overrides$time <- NULL
     collect_args <- utils::modifyList(
         list(store = store, fields = "*", all = TRUE, limit = FALSE, label = "historical-reference"),
-        spec@collect
+        collect_overrides
     )
     files <- do.call(shift_collect, c(list(request), collect_args))
     if (is.null(files@meta$file_count) || files@meta$file_count < 1L) {
