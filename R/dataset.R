@@ -5,6 +5,19 @@ dataset__async_condition <- function(class, message) {
     structure(list(message = message, call = NULL), class = c(class, "error", "condition"))
 }
 
+# Describe infrastructure failures separately from errors raised by the
+# NetCDF operation itself, so callers may safely fall back to synchronous I/O.
+dataset__async_unavailable <- function(operation, condition) {
+    dataset__async_condition(
+        "epwshiftr_async_unavailable",
+        sprintf(
+            "Could not start the worker used to %s: %s",
+            operation,
+            conditionMessage(condition)
+        )
+    )
+}
+
 dataset__async_error <- function(operation, result, timeout_ms = NULL) {
     if (inherits(result, "miraiError")) {
         message <- attr(result, "message", exact = TRUE)
@@ -84,7 +97,13 @@ DatasetAsyncTask <- R6::R6Class(
             invisible(self)
         },
 
-        collect = function() {
+        # Poll a one-shot worker so workflow reporters can keep a synchronous
+        # caller visibly alive and respond to cooperative cancellation while
+        # RNetCDF performs the blocking read in another process.
+        collect = function(
+            progress_callback = getOption("epwshiftr.dataset.progress_callback", NULL),
+            poll_interval = 0.25
+        ) {
             if (identical(self$status, "completed")) {
                 return(self$result)
             }
@@ -93,7 +112,34 @@ DatasetAsyncTask <- R6::R6Class(
                 stop(self$error)
             }
 
+            if (!is.null(progress_callback) && !is.function(progress_callback)) {
+                stop("`progress_callback` must be a function or NULL.")
+            }
+            checkmate::assert_number(poll_interval, lower = 0.05, finite = TRUE)
+
+            # The worker is cancelled on interrupts or reporter errors so a
+            # foreground Ctrl-C cannot leave an unowned RNetCDF process behind.
+            collected <- FALSE
+            on.exit({
+                if (!isTRUE(collected) && !is.null(self$mirai_obj) &&
+                    isTRUE(mirai::unresolved(self$mirai_obj))) {
+                    try(self$cancel(), silent = TRUE)
+                }
+            }, add = TRUE)
+            while (isTRUE(mirai::unresolved(self$mirai_obj))) {
+                if (!is.null(progress_callback)) {
+                    progress_callback(list(
+                        operation = self$operation,
+                        state = "waiting",
+                        elapsed_seconds = as.numeric(difftime(
+                            Sys.time(), self$started_at, units = "secs"))
+                    ))
+                }
+                Sys.sleep(poll_interval)
+            }
+
             result <- mirai::collect_mirai(self$mirai_obj)
+            collected <- TRUE
             error <- dataset__async_error(self$operation, result, self$timeout_ms)
             if (!is.null(error)) {
                 status <- if (inherits(error, "epwshiftr_async_timeout")) {
@@ -1249,34 +1295,41 @@ EsgDataset <- R6::R6Class(
 
             timeout_ms <- private$normalize_async_timeout(timeout)
             compute_profile <- private$next_async_compute_profile()
-            mirai::daemons(1L, dispatcher = TRUE, .compute = compute_profile)
-
-            mirai_obj <- mirai::mirai(
-                {
-                    handles <- vector("list", length(urls))
-                    on.exit(
-                        {
-                            for (i in seq_along(handles)) {
-                                if (!is.null(handles[[i]])) {
-                                    try(RNetCDF::close.nc(handles[[i]]), silent = TRUE)
+            # Worker setup is an optional liveness enhancement for workflow
+            # callers. Classify launch failures distinctly so a caller can
+            # continue synchronously without hiding an actual NetCDF error.
+            mirai_obj <- tryCatch({
+                mirai::daemons(1L, dispatcher = TRUE, .compute = compute_profile)
+                mirai::mirai(
+                    {
+                        handles <- vector("list", length(urls))
+                        on.exit(
+                            {
+                                for (i in seq_along(handles)) {
+                                    if (!is.null(handles[[i]])) {
+                                        try(RNetCDF::close.nc(handles[[i]]), silent = TRUE)
+                                    }
                                 }
-                            }
-                        },
-                        add = TRUE
-                    )
+                            },
+                            add = TRUE
+                        )
 
-                    for (i in seq_along(urls)) {
-                        handles[[i]] <- RNetCDF::open.nc(urls[[i]])
-                    }
+                        for (i in seq_along(urls)) {
+                            handles[[i]] <- RNetCDF::open.nc(urls[[i]])
+                        }
 
-                    do.call(handler, c(list(urls = urls, nc_handles = handles), handler_args))
-                },
-                urls = private$urls,
-                handler = handler,
-                handler_args = handler_args,
-                .timeout = timeout_ms,
-                .compute = compute_profile
-            )
+                        do.call(handler, c(list(urls = urls, nc_handles = handles), handler_args))
+                    },
+                    urls = private$urls,
+                    handler = handler,
+                    handler_args = handler_args,
+                    .timeout = timeout_ms,
+                    .compute = compute_profile
+                )
+            }, error = function(e) {
+                try(mirai::daemons(0L, .compute = compute_profile), silent = TRUE)
+                stop(dataset__async_unavailable(operation, e))
+            })
 
             task <- DatasetAsyncTask$new(
                 operation = operation,

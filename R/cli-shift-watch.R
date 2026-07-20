@@ -19,7 +19,8 @@ epwshiftr_cli_shift_watch <- function(store, args, json = FALSE,
                                       jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--follow", "--no-progress", "--verbose", "--debug"),
+        flags = c("--follow", "--no-progress", "--reduced-motion",
+            "--verbose", "--debug"),
         options = c("--run", "--interval", "--count", "--events")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -43,7 +44,8 @@ epwshiftr_cli_shift_watch <- function(store, args, json = FALSE,
             jsonl = jsonl,
             quiet = isTRUE(quiet) || isTRUE(json),
             progress = progress,
-            detail = detail
+            detail = detail,
+            motion = epwshiftr_cli_shift_motion(parsed)
         )
         if (isTRUE(json)) {
             # JSON follow suppresses intermediate snapshots and lets the
@@ -78,7 +80,18 @@ epwshiftr_cli_shift_watch_snapshot <- function(store, run_id, event_count = 10L)
     # Preserve the full event history only as renderer metadata; JSON/JSONL
     # contracts continue to expose the requested recent-event count.
     attr(snapshot, "shift_ui_events") <- all_events
+    attr(snapshot, "shift_ui_state") <- run@meta$ui_state
     snapshot
+}
+
+
+# Emit one typed JSONL record for workflow automation. Snapshot, event, gap, and
+# terminal records remain self-describing and never contain human progress text.
+epwshiftr_cli_shift_jsonl_record <- function(type, ...) {
+    epwshiftr_cli_emit_jsonl(c(list(
+        type = type,
+        emitted_at = store__now()
+    ), list(...)))
 }
 
 
@@ -86,36 +99,84 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                                              event_count = 10L, interval = 1, count = Inf,
                                              jsonl = FALSE, quiet = FALSE,
                                              progress = c("dynamic", "log", "none"),
-                                             detail = "normal") {
+                                             detail = "normal",
+                                             motion = c("auto", "full", "reduced", "none")) {
     progress <- match.arg(progress)
+    motion <- match.arg(motion)
+    ui <- shift_ui(progress = progress, detail = detail, motion = motion)
+    motion <- shift__ui_motion(ui, progress)
     i <- 0L
-    bar_id <- NULL
+    frame <- 0L
+    renderer <- tryCatch(shift__ui_renderer(progress), error = function(e) NULL)
+    if (identical(progress, "dynamic") && is.null(renderer)) {
+        progress <- "log"
+        motion <- "none"
+    }
     last_event_id <- NA_character_
     event_cursor_initialized <- FALSE
     update_dynamic <- function(snapshot) {
         view_events <- shift_coalesce(attr(snapshot, "shift_ui_events"),
             snapshot$events)
         view <- shift__ui_table_view(snapshot$run, snapshot$cases,
-            view_events, detail = detail)
-        refreshed <- shift__ui_progress_refresh(bar_id, view$lines)
-        bar_id <<- refreshed$ids
-        refreshed$ok
+            view_events, detail = detail, motion = motion, frame = frame)
+        ui_state <- attr(snapshot, "shift_ui_state")
+        if (!is.null(ui_state) && length(ui_state)) {
+            view$state <- ui_state
+            view$lines <- shift__ui_status_lines(ui_state,
+                motion = motion, frame = frame)
+            view$compact <- shift__ui_compact_line(ui_state,
+                motion = motion, frame = frame)
+        }
+        ok <- !is.null(renderer) &&
+            isTRUE(renderer$draw(view$lines, compact = view$compact))
+        if (!isTRUE(ok)) {
+            if (!is.null(renderer)) renderer$close(result = "failed")
+            renderer <<- NULL
+            progress <<- "log"
+            motion <<- "none"
+        }
+        ok
     }
     close_dynamic <- function(result = "done") {
-        if (length(bar_id)) {
-            shift__ui_progress_close(bar_id, result = result)
-            bar_id <<- character()
+        if (!is.null(renderer)) {
+            renderer$close(result = result)
         }
         invisible(NULL)
     }
     on.exit(close_dynamic(), add = TRUE)
     repeat {
         i <- i + 1L
+        frame <- frame + 1L
         snapshot <- epwshiftr_cli_shift_watch_snapshot(store, run_id = run_id, event_count = event_count)
+        active <- epwshiftr_cli_shift_watch_active(snapshot)
         if (isTRUE(quiet)) {
             # no output
         } else if (isTRUE(jsonl)) {
-            epwshiftr_cli_emit_jsonl(snapshot)
+            all_rows <- shift_coalesce(attr(snapshot, "shift_ui_events"),
+                snapshot$events)
+            delta <- shift__ui_event_delta(
+                all_rows,
+                last_event_id = last_event_id,
+                initial_limit = event_count,
+                initial = !event_cursor_initialized
+            )
+            if (!isTRUE(event_cursor_initialized)) {
+                epwshiftr_cli_shift_jsonl_record("snapshot", snapshot = snapshot)
+            } else {
+                if (isTRUE(delta$gap)) {
+                    epwshiftr_cli_shift_jsonl_record("gap",
+                        message = "Older workflow events are no longer available in the live buffer.")
+                }
+                for (j in seq_len(nrow(delta$rows))) {
+                    epwshiftr_cli_shift_jsonl_record("event",
+                        event = epwshiftr_cli_row_object(delta$rows, j))
+                }
+            }
+            last_event_id <- delta$cursor
+            event_cursor_initialized <- TRUE
+            if (!isTRUE(active)) {
+                epwshiftr_cli_shift_jsonl_record("terminal", snapshot = snapshot)
+            }
         } else if (identical(progress, "dynamic")) {
             if (!isTRUE(update_dynamic(snapshot))) {
                 epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
@@ -152,7 +213,7 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
         if (!is.infinite(count) && i >= count) {
             break
         }
-        if (!epwshiftr_cli_shift_watch_active(snapshot)) {
+        if (!isTRUE(active)) {
             if (identical(progress, "dynamic") && !isTRUE(quiet) && !isTRUE(jsonl)) {
                 close_dynamic()
                 epwshiftr_cli_render_shift_watch(snapshot, detail = detail)

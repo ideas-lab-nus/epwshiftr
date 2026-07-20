@@ -349,6 +349,239 @@ test_that("shift reference specs validate manual and automatic reference inputs"
     expect_error(shift_reference_plan(character(), periods), "length >= 1")
 })
 
+test_that("historical workflow queries preserve years without exact datetime bounds", {
+    reference_years <- 1995:2014
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            "BCC-CSM2-MR", c("ssp126", "ssp585"),
+            index_nodes = "https://example.org"
+        ),
+        periods = list(`2060s` = 2055:2065),
+        method = belcher(reference = historical_reference(reference_years)),
+        dir = tempfile("historical-query-output-"),
+        store = tempfile("historical-query-store-"),
+        dry_run = TRUE
+    )
+    request <- shift__historical_request(plan, "https://example.org")
+    query <- shift_as_esg_query(request)
+
+    expect_null(request@meta$time)
+    expect_equal(plan@meta$method@reference@periods$year, reference_years)
+    expect_false(grepl("datetime_start|datetime_stop", query$url()))
+
+    # Real monthly CMIP6 Dataset metadata uses representative mid-month
+    # timestamps. A December 16 endpoint still covers the calendar year 2014.
+    variables <- epw_morph_variables(plan@meta$method@recipe)
+    reference_catalog <- data.table::rbindlist(lapply(variables, function(variable) {
+        docs <- shift_test_file_docs(
+            sprintf("historical_%s.nc", variable),
+            variable_id = variable,
+            datetime_start = "1850-01-16T12:00:00Z",
+            datetime_end = "2014-12-16T12:00:00Z"
+        )
+        docs$source_id <- "BCC-CSM2-MR"
+        docs$experiment_id <- "historical"
+        docs$frequency <- "mon"
+        docs$table_id <- "Amon"
+        docs$grid_label <- "gn"
+        docs
+    }), fill = TRUE)
+    candidates <- shift__cmip6_candidates(
+        reference_catalog,
+        models = "BCC-CSM2-MR", experiments = "historical",
+        variables = variables, years = reference_years,
+        frequency = "mon", table = "Amon"
+    )
+    expect_true(any(candidates$complete))
+
+    error <- expect_error(
+        shift__resolve_cmip6_selection(
+            plan,
+            future_catalog = data.table::data.table(),
+            reference_catalog = data.table::data.table()
+        ),
+        class = "epwshiftr_shift_reference_catalog_empty"
+    )
+    expect_match(conditionMessage(error), "Historical reference catalog is empty")
+    expect_match(conditionMessage(error), "1995–2014")
+})
+
+test_that("workflow File collection fills omitted ESGF times from DRS names", {
+    skip_if_not_installed("duckdb")
+
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    calls$file_fields <- list()
+    docs <- shift_test_file_docs(
+        "tas_Amon_BCC-CSM2-MR_ssp585_r1i1p1f1_gn_205501-206512.nc",
+        datetime_start = NA_character_,
+        datetime_end = NA_character_
+    )
+    shift_test_mock_collect(docs, calls)
+    request <- shift_request(
+        project = "CMIP6",
+        source = "BCC-CSM2-MR",
+        experiment = "ssp585",
+        variables = "tas",
+        frequency = "mon",
+        time = c(2055L, 2065L),
+        filters = list(table_id = "Amon", grid_label = "gn"),
+        options = list(time_filter_method = "auto")
+    )
+    files <- shift_collect(
+        request, store = tempfile("shift-drs-time-store-"))
+    catalog <- shift_file_catalog(
+        shift_store(files), shift_ids(files)$query_id)
+
+    expect_false(is.na(catalog$datetime_start[[1L]]))
+    expect_false(is.na(catalog$datetime_end[[1L]]))
+    expect_equal(format(catalog$datetime_start[[1L]], "%Y", tz = "UTC"),
+        "2055")
+    expect_equal(format(catalog$datetime_end[[1L]], "%Y", tz = "UTC"),
+        "2065")
+})
+
+test_that("resolver coverage defensively repairs cached catalogs without times", {
+    catalog <- shift_test_file_docs(
+        "tas_Amon_BCC-CSM2-MR_ssp585_r1i1p1f1_gn_205501-206512.nc",
+        variable_id = "tas",
+        datetime_start = NA_character_,
+        datetime_end = NA_character_
+    )
+    catalog$source_id <- "BCC-CSM2-MR"
+    catalog$experiment_id <- "ssp585"
+    catalog$frequency <- "mon"
+    catalog$table_id <- "Amon"
+    catalog$grid_label <- "gn"
+    candidates <- shift__cmip6_candidates(
+        catalog,
+        models = "BCC-CSM2-MR",
+        experiments = "ssp585",
+        variables = "tas",
+        years = 2055:2065,
+        frequency = "mon",
+        table = "Amon"
+    )
+
+    expect_true(candidates$complete[[1L]])
+    expect_true(is.na(candidates$missing[[1L]]))
+})
+
+test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
+    make_catalog <- function(variables) {
+        data.table::rbindlist(lapply(variables, function(variable) {
+            docs <- shift_test_file_docs(
+                sprintf("%s_Amon_BCC-CSM2-MR_ssp126_r1i1p1f1_gn_205501-206512.nc",
+                    variable),
+                variable_id = variable,
+                datetime_start = "2055-01-01T00:00:00Z",
+                datetime_end = "2065-12-31T23:59:59Z"
+            )
+            docs$source_id <- "BCC-CSM2-MR"
+            docs$experiment_id <- "ssp126"
+            docs$frequency <- "mon"
+            docs$table_id <- "Amon"
+            docs$grid_label <- "gn"
+            docs
+        }), fill = TRUE)
+    }
+    requirements <- list(hurs = list("hurs", c("huss", "tas", "ps")))
+    candidates <- function(variables) {
+        shift__cmip6_candidates(
+            make_catalog(variables),
+            models = "BCC-CSM2-MR",
+            experiments = "ssp126",
+            variables = unique(unlist(requirements, recursive = TRUE)),
+            years = 2055:2065,
+            frequency = "mon",
+            table = "Amon",
+            requirements = requirements
+        )
+    }
+
+    expect_true(candidates("hurs")$complete[[1L]])
+    expect_true(candidates(c("huss", "tas", "ps"))$complete[[1L]])
+    psl_only <- candidates(c("huss", "tas", "psl"))
+    expect_false(psl_only$complete[[1L]])
+    expect_match(psl_only$missing[[1L]], "huss\\+tas\\+ps")
+})
+
+test_that("humidity fallback persists a canonical hurs extraction artifact", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    inputs <- c("huss", "tas", "ps")
+    paths <- stats::setNames(vapply(inputs, function(variable) {
+        path <- tempfile(fileext = ".nc")
+        write_local_cmip6_netcdf_fixture(path, 2060L,
+            variable_id = variable)
+        path
+    }, character(1L)), inputs)
+    on.exit(unlink(paths), add = TRUE)
+    docs <- data.table::rbindlist(lapply(inputs, function(variable) {
+        row <- shift_test_file_docs(
+            basename(paths[[variable]]),
+            opendap_url = paths[[variable]],
+            download_url = paths[[variable]],
+            variable_id = variable
+        )
+        row$master_id <- sprintf("humidity-%s", variable)
+        row$tracking_id <- sprintf("hdl:test/humidity-%s", variable)
+        row$id <- sprintf("humidity-%s|dataset", variable)
+        row
+    }), fill = TRUE)
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    calls$file_fields <- list()
+    shift_test_mock_collect(docs, calls)
+
+    request <- shift_request(
+        project = "CMIP6",
+        experiment = "ssp585",
+        variables = inputs,
+        frequency = "day"
+    )
+    site <- shift_site("SIN", lon = 103.98, lat = 1.37,
+        epw = get_cache_epw())
+    climate <- request |>
+        shift_collect(store = tempfile("shift-derived-hurs-store-")) |>
+        shift_extract(
+            site = site,
+            periods = epw_morph_periods(`2060s` = 2060L),
+            fallback = "error"
+        )
+    derived <- shift__derive_hurs_climate(
+        climate, epw_morph_recipe("belcher")
+    )
+    coverage <- shift_coverage(derived)
+    hurs <- coverage[variable_id == "hurs"]
+    data <- shift_data(derived, variables = "hurs")
+
+    expect_equal(nrow(hurs), 1L)
+    expect_true(hurs$complete[[1L]])
+    expect_true(all(data$units == "%"))
+    expect_true(all(is.finite(data$value)))
+    expect_true(all(data$derived_from == "huss,tas,ps"))
+    expect_true(all(data$value > 0 & data$value < 150))
+
+    store <- shift_store(derived)
+    artifact_id <- store$query(sprintf(
+        "SELECT artifact_id FROM extraction_result WHERE plan_id = %s LIMIT 1",
+        ddb_literal(priv(store)$conn, hurs$plan_id[[1L]])
+    ))$artifact_id[[1L]]
+    artifact <- store$query(sprintf(
+        "SELECT metadata_json FROM artifact WHERE artifact_id = %s",
+        ddb_literal(priv(store)$conn, artifact_id)
+    ))
+    expect_match(artifact$metadata_json[[1L]], "huss,tas,ps")
+
+    reused <- shift__derive_hurs_climate(
+        derived, epw_morph_recipe("belcher"), resume = TRUE
+    )
+    expect_equal(shift_ids(reused)$plan_id, shift_ids(derived)$plan_id)
+})
+
 test_that("morph methods bind optional or explicit references at construction", {
     historical <- historical_reference(1995:2014)
     manual <- shift_reference_plan("plan-reference", epw_morph_periods(reference = 1995L))
@@ -612,9 +845,15 @@ test_that("shift_ui() validates presentation options without changing scientific
     expect_true(S7::S7_inherits(shift_ui(), ShiftUiOptions))
     expect_equal(shift_ui("log", detail = "detail", heartbeat = 2)@progress, "log")
     expect_equal(shift_ui(detail = "debug")@detail, "debug")
+    expect_equal(shift_ui(motion = "reduced")@motion, "reduced")
+    expect_equal(shift_ui(refresh = 0.2)@refresh, 0.2)
     expect_error(shift_ui("invalid"), "arg")
+    expect_error(shift_ui(motion = "invalid"), "arg")
+    expect_error(shift_ui(refresh = 0.01), "not >= 0.05")
     expect_error(shift_ui(heartbeat = -1), "not >= 0")
     expect_equal(shift__ui_mode(shift_ui("none")), "none")
+    expect_equal(shift__ui_motion(shift_ui("dynamic", motion = "auto")), "full")
+    expect_equal(shift__ui_motion(shift_ui("log", motion = "full")), "none")
 
     store <- tempfile("shift-ui-store-")
     output <- tempfile("shift-ui-output-")
@@ -632,7 +871,8 @@ test_that("shift_ui() validates presentation options without changing scientific
     }
     expect_identical(
         shift__plan_spec(make_plan(shift_ui("none"))),
-        shift__plan_spec(make_plan(shift_ui("log", detail = "debug", heartbeat = 1)))
+        shift__plan_spec(make_plan(shift_ui("log", detail = "debug",
+            motion = "full", refresh = 0.05, heartbeat = 1)))
     )
 })
 
@@ -665,57 +905,49 @@ test_that("ShiftReporter persists structured milestones while none mode stays si
     expect_equal(unit$outcome, "completed")
 })
 
-test_that("ShiftReporter recreates its four-row dynamic view when one row disappears", {
-    bars <- character()
-    updates <- character()
-    increments <- integer()
-    alive <- new.env(parent = emptyenv())
+test_that("ShiftReporter submits one complete frame per dynamic refresh", {
+    frames <- list()
+    compacts <- character()
+    closes <- 0L
     testthat::local_mocked_bindings(
-        cli_progress_bar = function(name = NULL, total = NA, current = TRUE,
-                                    auto_terminate = TRUE, ...) {
-            id <- sprintf("bar-%d", length(bars) + 1L)
-            bars <<- c(bars, id)
-            alive[[id]] <- TRUE
-            expect_false(current)
-            expect_false(auto_terminate)
-            id
-        },
-        cli_progress_update = function(id = NULL, inc = NULL, set = NULL, ...) {
-            if (!isTRUE(alive[[id]])) {
-                stop(sprintf("Cannot find progress bar `%s`", id), call. = FALSE)
+        shift__ui_renderer = function(...) list(
+            draw = function(lines, compact = NULL) {
+                frames[[length(frames) + 1L]] <<- lines
+                compacts <<- c(compacts, compact)
+                TRUE
+            },
+            suspend = function(code) code(),
+            close = function(...) {
+                closes <<- closes + 1L
+                invisible(NULL)
             }
-            updates <<- c(updates, id)
-            increments <<- c(increments,
-                if (is.null(set)) as.integer(inc) else NA_integer_)
-            invisible(id)
-        },
-        cli_progress_done = function(id = NULL, ...) {
-            alive[[id]] <- FALSE
-            invisible(TRUE)
-        },
-        .package = "cli"
+        ),
+        .package = "epwshiftr"
     )
 
     reporter <- shift__reporter(shift_ui("dynamic", heartbeat = 0))
     reporter$stage_started("resolve", "Resolving inputs.")
     reporter$unit_started("Trying node one", current = 1L, total = 2L)
-    alive[["bar-1"]] <- FALSE
-
     expect_silent(reporter$heartbeat("Waiting for future catalog", force = TRUE))
-    expect_equal(length(bars), 8L)
-    expect_equal(utils::tail(updates, 4L), paste0("bar-", 5:8))
-    expect_true(all(utils::tail(increments, 4L) == 0L))
+    expect_equal(length(frames), 3L)
+    expect_true(all(lengths(frames) == 11L))
+    expect_length(compacts, 3L)
+    expect_true(all(nzchar(compacts)))
     expect_message(reporter$unit_completed(
         "Node one failed", current = 1L, total = 2L, outcome = "failed"
     ), "Node one failed")
+    reporter$close()
+    expect_equal(closes, 1L)
 })
 
-test_that("ShiftReporter falls back to logs when dynamic rows cannot be created", {
+test_that("ShiftReporter falls back to logs when frame painting fails", {
     testthat::local_mocked_bindings(
-        cli_progress_bar = function(...) {
-            stop("dynamic renderer unavailable", call. = FALSE)
-        },
-        .package = "cli"
+        shift__ui_renderer = function(...) list(
+            draw = function(...) FALSE,
+            suspend = function(code) code(),
+            close = function(...) invisible(NULL)
+        ),
+        .package = "epwshiftr"
     )
     reporter <- shift__reporter(shift_ui("dynamic"))
 
@@ -767,10 +999,59 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
     expect_equal(shift_status(run), "cancelled")
     expect_false(is.na(run@meta$run$completed_at[[1L]]))
     expect_equal(run@meta$run$last_error[[1L]], "Interrupted by user.")
-    expect_gt(nrow(shift_logs(run)), 0L)
+    logs <- shift_logs(run)
+    expect_gt(nrow(logs), 0L)
+    expect_true(all(logs$source == "event"))
     terminal <- run@meta$events[status %in% c("cancelled", "failed")]
     expect_equal(terminal$status, "cancelled")
     expect_equal(terminal$message, "Interrupted by user.")
+})
+
+test_that("background live sidecars carry transient reporter state without events", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-live-ui-store-")
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
+            frequency = "day", table = "day"
+        ),
+        periods = list(`2060s` = 2060L),
+        method = shift_morph_method(suppressWarnings(
+            epw_morph_recipe("belcher_absolute"))),
+        dir = tempfile("shift-live-ui-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    store <- shift_store(plan)
+    on.exit(store$close(), add = TRUE)
+    job <- shift__job_create(store, run_id, mode = "foreground",
+        ui = shift_ui("none", heartbeat = 0))
+    initial_events <- nrow(morpher__private_store(store)$read_table(
+        "shift_run_event"))
+    reporter <- shift__reporter(
+        shift_ui("none", heartbeat = 0), store = store,
+        run_id = run_id, job_id = job$job_id[[1L]]
+    )
+    reporter$heartbeat(
+        "Reading tas",
+        details = list(
+            stage = "extract_future", unit_type = "extraction_plan",
+            scenario = "ssp585", variable = "tas",
+            access_method = "OPeNDAP", transfer_state = "waiting"
+        ),
+        force = TRUE
+    )
+
+    live <- shift__live_run_get(run_id, store_path)
+    expect_s7_class(live, ShiftRun)
+    expect_identical(live@meta$ui_state$current_details$variable, "tas")
+    expect_identical(live@meta$ui_state$current_details$access_method,
+        "OPeNDAP")
+    expect_equal(nrow(morpher__private_store(store)$read_table(
+        "shift_run_event")), initial_events)
 })
 
 test_that("rejected resolver nodes remain results rather than diagnostics", {
@@ -806,7 +1087,7 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
     expect_equal(nrow(shift_diagnostics(run, refresh = FALSE)), 0L)
     nodes <- shift__ui_event_nodes(run@meta$events)
     expect_equal(nodes$node, "DKRZ")
-    expect_equal(nodes$result, "missing hurs")
+    expect_equal(nodes$result, "coverage: missing hurs")
 })
 
 test_that("background runs register live jobs before launching workers", {
@@ -833,12 +1114,17 @@ test_that("background runs register live jobs before launching workers", {
         )
         invisible(0L)
     }))
-    run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
+    run <- shift_run(plan, background = TRUE, ui = shift_ui("none",
+        motion = "reduced", refresh = 0.25, heartbeat = 7))
     expect_equal(shift_status(run), "queued")
     expect_equal(launched$args$run_id, shift_ids(run)$run_id)
     expect_true(startsWith(launched$args$log_path, normalizePath(store_path, winslash = "/")))
     expect_equal(run@meta$jobs$mode, "process")
     expect_equal(run@meta$jobs$status, "queued")
+    ui_spec <- jsonlite::fromJSON(run@meta$jobs$ui_json[[1L]])
+    expect_identical(ui_spec$motion, "reduced")
+    expect_equal(ui_spec$refresh, 0.25)
+    expect_equal(ui_spec$heartbeat, 7)
     expect_equal(nrow(shift_logs(run)), 0L)
 
     cancelled <- shift_cancel(run)
@@ -934,7 +1220,12 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
-    variables <- epw_morph_variables("recommended")
+    # Exercise the production fallback for both future scenarios and the
+    # explicit historical reference instead of supplying direct hurs.
+    variables <- unique(c(
+        setdiff(epw_morph_variables("recommended"), "hurs"),
+        "huss", "ps"
+    ))
     future_nc <- stats::setNames(vapply(variables, function(variable_id) {
         path <- tempfile(fileext = ".nc")
         write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = variable_id)
@@ -1087,7 +1378,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     expect_false(any(grepl("\\.(duckdb|parquet|json)$", delivery_files)))
 
     calls$future_scenarios <- "ssp585"
-    expect_error(
+    missing_store <- tempfile("shift-default-missing-store-")
+    missing_error <- tryCatch(
         shift_future_epw(
             epw = get_cache_epw(),
             climate = shift_cmip6(
@@ -1097,10 +1389,25 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             periods = list(`2060s` = 2060L),
             method = belcher(reference = historical_reference(1995L)),
             dir = tempfile("shift-default-missing-output-"),
-            store = tempfile("shift-default-missing-store-")
+            store = missing_store,
+            ui = shift_ui("none")
         ),
-        class = "epwshiftr_shift_error"
+        epwshiftr_shift_error = identity
     )
+    expect_s3_class(missing_error, "epwshiftr_shift_error")
+    expect_null(conditionCall(missing_error))
+    expect_match(conditionMessage(missing_error), "1 node checked",
+        fixed = TRUE)
+    expect_match(conditionMessage(missing_error),
+        "Resuming this request unchanged", fixed = TRUE)
+    expect_false(grepl("Retry:", conditionMessage(missing_error), fixed = TRUE))
+    missing_run <- shift_run_get(missing_error$run_id, missing_store)
+    missing_diagnostics <- shift_diagnostics(missing_run)
+    expect_identical(missing_diagnostics$code,
+        "shift_resolver_exhausted")
+    expect_match(missing_diagnostics$message, "ssp126", fixed = TRUE)
+    expect_match(missing_diagnostics$action, "resuming unchanged",
+        fixed = TRUE)
 
     partial <- shift_future_epw(
         epw = get_cache_epw(),
@@ -1127,7 +1434,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         shift__export_outputs = function(...) {
             export_attempts <<- export_attempts + 1L
             if (export_attempts == 1L) {
-                rlang::abort("simulated interruption after morphing")
+                stop("simulated interruption after morphing", call. = FALSE)
             }
             original_export(...)
         },
@@ -1149,6 +1456,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         epwshiftr_shift_error = identity
     )
     expect_s3_class(interrupted, "epwshiftr_shift_error")
+    expect_null(conditionCall(interrupted))
     expect_null(interrupted$parent)
     expect_s3_class(interrupted$source_error, "error")
     expect_equal(lengths(regmatches(conditionMessage(interrupted),
@@ -1163,6 +1471,104 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     expect_equal(shift_status(resumed), "completed")
     expect_equal(calls$file_calls, file_calls_before_resume)
     expect_equal(nrow(shift_outputs(resumed)), 2L)
+})
+
+test_that("resolver exhaustion preserves closest candidate and recovery semantics", {
+    future <- data.table::data.table(
+        source_id = "BCC-CSM2-MR",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        frequency = "mon",
+        table_id = "Amon",
+        complete = FALSE,
+        missing = paste(
+            "ssp126/hurs: no files;",
+            "ssp585/tas: missing years 2055"
+        )
+    )
+    reference <- data.table::rbindlist(list(
+        data.table::copy(future),
+        data.table::copy(future)[, variant_label := "r2i1p1f1"]
+    ))
+    reference[, `:=`(complete = TRUE, missing = NA_character_)]
+    node_diagnostic <- shift__cmip6_resolution_diagnostic(
+        future, reference, "BCC-CSM2-MR", reference_required = TRUE
+    )
+    records <- list(
+        list(
+            node = "DKRZ", kind = "coverage",
+            future_files = 28L, reference_files = 39L,
+            resolution = node_diagnostic
+        ),
+        list(
+            node = "IPSL", kind = "timeout",
+            future_files = NA_integer_, reference_files = NA_integer_,
+            resolution = NULL
+        )
+    )
+    aggregate <- shift__resolver_failure_diagnostic(records)
+    condition <- tryCatch(
+        shift__abort_resolver_exhausted(records),
+        epwshiftr_shift_resolver_exhausted = identity
+    )
+
+    expect_identical(node_diagnostic$reason, "future_incomplete")
+    # The reference-only r2 identity has one generic unavailable marker, but
+    # r1 is the real future near-match and must remain the diagnostic identity.
+    expect_identical(node_diagnostic$closest$member, "r1i1p1f1")
+    expect_match(node_diagnostic$missing[[1L]], "ssp126/hurs", fixed = TRUE)
+    expect_equal(aggregate$nodes_checked, 2L)
+    expect_equal(aggregate$coverage_failures, 1L)
+    expect_equal(aggregate$timeout_failures, 1L)
+    expect_false(aggregate$retryable)
+    expect_identical(aggregate$recovery, "inspect")
+    expect_s3_class(condition, "epwshiftr_shift_resolution_error")
+    expect_null(conditionCall(condition))
+    expect_match(conditionMessage(condition), "2 nodes checked", fixed = TRUE)
+})
+
+test_that("resolver recommends retry only when every node failure is transient", {
+    records <- list(
+        list(node = "IPSL", kind = "timeout", future_files = NA_integer_,
+            reference_files = NA_integer_, resolution = NULL),
+        list(node = "LIU", kind = "network", future_files = NA_integer_,
+            reference_files = NA_integer_, resolution = NULL)
+    )
+    diagnostic <- shift__resolver_failure_diagnostic(records)
+
+    expect_true(diagnostic$retryable)
+    expect_identical(diagnostic$recovery, "retry")
+})
+
+test_that("failure commands are concise for default stores and explicit otherwise", {
+    default_store <- tempfile("shift-default-command-store-")
+    custom_store <- tempfile("shift-custom-command-store-")
+    withr::local_options(epwshiftr.dir_store = default_store)
+
+    expect_identical(
+        shift__run_command("shift_resume", "run-test", default_store),
+        'shift_resume("run-test")'
+    )
+    expect_identical(
+        shift__run_command("shift_logs", "run-test", default_store,
+            "tail = 20L"),
+        'shift_logs("run-test", tail = 20L)'
+    )
+    custom <- shift__run_command("shift_resume", "run-test", custom_store)
+    expect_match(custom, 'shift_resume\\("run-test", store = ', perl = TRUE)
+    expect_match(custom, store_normalize_path(custom_store), fixed = TRUE)
+})
+
+test_that("resolution evidence tolerates omitted aggregate counters", {
+    evidence <- shift__resolution_evidence(list(
+        summary = "Selection incomplete",
+        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
+        missing = "future: ssp585/hurs"
+    ))
+
+    expect_length(evidence, 2L)
+    expect_match(evidence[[1L]], "BCC-CSM2-MR/r1i1p1f1/gn", fixed = TRUE)
+    expect_match(evidence[[2L]], "ssp585/hurs", fixed = TRUE)
 })
 
 test_that("CMIP6 resolver preserves explicit member/grid choices and rejects ties", {

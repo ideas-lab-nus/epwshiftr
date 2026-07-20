@@ -293,6 +293,8 @@ shift_status(x, refresh = TRUE)
 shift_ui(
   progress = c("auto", "dynamic", "log", "none"),
   detail = c("normal", "detail", "debug"),
+  motion = c("auto", "full", "reduced", "none"),
+  refresh = 0.12,
   heartbeat = 10
 )
 }
@@ -481,8 +483,8 @@ plans.}
 \item{export_dir}{Optional directory outside or inside the store where EPW
 files should also be copied for user-facing delivery.}
 
-\item{refresh}{Whether a \code{ShiftRun} inspector should reload the latest state
-from its store before returning.}
+\item{refresh}{In \code{\link[=shift_ui]{shift_ui()}}, minimum seconds between visual animation
+frames. In \code{ShiftRun} inspectors, whether to reload persisted state first.}
 
 \item{run_id}{Persisted workflow run ID.}
 
@@ -514,7 +516,13 @@ stages.}
 \code{"detail"} adds selection, reuse, and fallback decisions, and \code{"debug"}
 also shows full URLs, paths, and low-level transfer context.}
 
-\item{heartbeat}{Minimum seconds between transient heartbeat updates.}
+\item{motion}{Dynamic-terminal animation policy: \code{"auto"}, \code{"full"},
+\code{"reduced"}, or \code{"none"}. This never changes log, JSON, or workflow data.}
+
+\item{heartbeat}{Minimum seconds between job-liveness updates. Durable
+writes are always throttled to at least one second.
+Use \code{progress = "log"} for screen readers, reduced-motion use, redirected
+output, and stable captured logs.}
 }
 \value{
 A shift stage object.

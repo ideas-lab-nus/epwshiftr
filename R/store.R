@@ -2164,15 +2164,24 @@ EsgStore <- R6::R6Class(
                 )
                 if (!is.null(reporter)) {
                     result_status <- processed[[i]]$status[[1L]]
+                    used_access <- attr(processed[[i]], "access_method", exact = TRUE)
+                    if (is.null(used_access)) {
+                        used_access <- if (!is.na(file$local_path[[1L]]) &&
+                            nzchar(file$local_path[[1L]])) "local" else "OPeNDAP"
+                    }
                     reporter$unit_completed(
                         sprintf("%s %s", result_status, plan$variable_id[[1L]]),
                         current = i,
                         total = nrow(plans),
                         outcome = if (result_status %in% c("done", "empty")) "completed" else "failed",
                         details = list(
+                            unit_type = "extraction_plan",
                             scenario = store__chr1(file$experiment_id[[1L]]),
                             variable = plan$variable_id[[1L]],
-                            access_method = if (!is.na(file$local_path[[1L]])) "local" else "OPeNDAP"
+                            period = sprintf("%s/%s",
+                                format(plan$time_start[[1L]], "%Y"),
+                                format(plan$time_stop[[1L]], "%Y")),
+                            access_method = used_access
                         )
                     )
                 }
@@ -5642,12 +5651,51 @@ EsgStore <- R6::R6Class(
             available_time_count <- sum(valid_time >= requested_time[[1L]] & valid_time <= requested_time[[2L]])
             private$update_file_actual_time(file, actual_start, actual_end)
 
-            dt <- ds$read_region(
+            # Remote reads run in the existing one-shot dataset worker so the
+            # main R process can refresh elapsed time and observe cancellation.
+            callback <- if (is.null(reporter)) NULL else function(progress) {
+                reporter$heartbeat(details = list(
+                    unit_type = "extraction_plan",
+                    scenario = store__chr1(file$experiment_id[[1L]]),
+                    variable = plan$variable_id[[1L]],
+                    period = sprintf("%s/%s",
+                        format(plan$time_start[[1L]], "%Y"),
+                        format(plan$time_stop[[1L]], "%Y")),
+                    access_method = opened$access_method,
+                    transfer_state = shift_coalesce(progress$state, "waiting")
+                ))
+                invisible(TRUE)
+            }
+            old <- options(epwshiftr.dataset.progress_callback = callback)
+            on.exit(options(old), add = TRUE)
+            read_args <- list(
                 variable = plan$variable_id[[1L]],
                 lon = plan$lon[[1L]],
                 lat = plan$lat[[1L]],
                 time = requested_time,
                 method = plan$method[[1L]]
+            )
+            use_async <- !is.null(reporter) &&
+                identical(opened$access_method, "OPeNDAP")
+            dt <- tryCatch(
+                do.call(ds$read_region, c(read_args, list(async = use_async))),
+                epwshiftr_async_unavailable = function(e) {
+                    # Some locked-down hosts cannot launch mirai's local
+                    # worker. Keep extraction functional and make the loss of
+                    # fine-grained liveness explicit in the workflow history.
+                    reporter$notice(
+                        "Worker unavailable; continuing with synchronous OPeNDAP read",
+                        outcome = "fallback",
+                        details = list(
+                            unit_type = "extraction_plan",
+                            scenario = store__chr1(file$experiment_id[[1L]]),
+                            variable = plan$variable_id[[1L]],
+                            access_method = opened$access_method,
+                            reason = conditionMessage(e)
+                        )
+                    )
+                    do.call(ds$read_region, c(read_args, list(async = FALSE)))
+                }
             )
             grid_sources <- attr(dt, "grid_sources", exact = TRUE)
             units <- tryCatch(
@@ -5656,12 +5704,14 @@ EsgStore <- R6::R6Class(
             )
             dt[, units := units]
             if (!nrow(dt)) {
-                return(private$mark_plan_status(
+                result <- private$mark_plan_status(
                     plan,
                     status = "empty",
                     available_time_count = available_time_count,
                     last_error = NA_character_
-                ))
+                )
+                attr(result, "access_method") <- opened$access_method
+                return(result)
             }
 
             private$decorate_extract(dt, plan, file)
@@ -5676,18 +5726,30 @@ EsgStore <- R6::R6Class(
                 ddb_append_table(private$conn, "extraction_grid_source", grid_sources)
             }
 
-            private$mark_plan_status(
+            result <- private$mark_plan_status(
                 plan,
                 status = "done",
                 available_time_count = available_time_count,
                 last_error = NA_character_
             )
+            attr(result, "access_method") <- opened$access_method
+            result
         },
         # }}}
 
         # open_plan_dataset {{{
         open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE,
                                      reporter = NULL) {
+            local <- store__chr1(file$local_path)
+            if (!is.na(local) && nzchar(local)) {
+                local <- store_abs_path(local, root = private$store_path)
+                if (file.exists(local)) {
+                    ds <- EsgDataset$new(local)
+                    ds$open()
+                    return(list(dataset = ds, target = local,
+                        access_method = "local"))
+                }
+            }
             opendap <- store__chr1(file$url_opendap)
             if (!is.na(opendap) && nzchar(opendap)) {
                 ds <- EsgDataset$new(opendap)
@@ -5703,7 +5765,12 @@ EsgStore <- R6::R6Class(
                     }
                 )
                 if (isTRUE(ok)) {
-                    return(list(dataset = ds, target = opendap))
+                    return(list(dataset = ds, target = opendap,
+                        access_method = if (file.exists(opendap)) {
+                            "local"
+                        } else {
+                            "OPeNDAP"
+                        }))
                 }
                 if (identical(fallback, "error")) {
                     stop(open_error)
@@ -5735,7 +5802,8 @@ EsgStore <- R6::R6Class(
                 reporter = reporter)
             ds <- EsgDataset$new(local_path)
             ds$open()
-            list(dataset = ds, target = local_path)
+            list(dataset = ds, target = local_path,
+                access_method = "HTTPServer")
         },
         # }}}
 
@@ -5791,9 +5859,22 @@ EsgStore <- R6::R6Class(
             )
             plan <- private$apply_download_layout(plan, file)
             session_id <- downloader$enqueue(plan, session_label = sprintf("extract:%s", file$file_key[[1L]]))
+            unbind <- if (!is.null(reporter) &&
+                exists("shift__download_reporter_bind", mode = "function")) {
+                shift__download_reporter_bind(
+                    downloader, reporter, role = "HTTP fallback", variables = 1L,
+                    nested = TRUE)
+            } else {
+                NULL
+            }
+            if (!is.null(unbind)) {
+                on.exit(unbind(), add = TRUE)
+            }
             tasks <- downloader$run(
                 session_id = session_id,
-                progress = is.null(reporter) || identical(reporter$mode(), "dynamic"),
+                # A workflow reporter is the sole Console owner. Native bars are
+                # retained only for standalone low-level extraction calls.
+                progress = is.null(reporter),
                 overwrite = overwrite
             )
             failed <- tasks[!tasks[["status"]] %in% c("done", "skipped"), , drop = FALSE]
@@ -5953,7 +6034,25 @@ EsgStore <- R6::R6Class(
                     file_key = plan$file_key[[1L]],
                     metadata = list(
                         plan_id = plan$plan_id[[1L]],
-                        year = as.integer(year)
+                        year = as.integer(year),
+                        # Derived-variable rows carry their scientific lineage
+                        # in both the Parquet data and artifact manifest. Raw
+                        # extraction chunks simply record null provenance.
+                        derived_from = if ("derived_from" %in% names(chunk)) {
+                            unique(as.character(chunk$derived_from))
+                        } else {
+                            NULL
+                        },
+                        derivation = if ("derivation" %in% names(chunk)) {
+                            unique(as.character(chunk$derivation))
+                        } else {
+                            NULL
+                        },
+                        source_plan_ids = if ("source_plan_ids" %in% names(chunk)) {
+                            unique(as.character(chunk$source_plan_ids))
+                        } else {
+                            NULL
+                        }
                     )
                 )
                 results[[i]] <- private$extract_result_row(plan, chunk, output_path, year, artifact_id)

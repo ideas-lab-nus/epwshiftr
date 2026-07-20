@@ -3573,7 +3573,7 @@
         "method": {
           "check": {
             "kind": "choice",
-            "choices": ["drs", "opendap"]
+            "choices": ["drs", "opendap", "auto"]
           }
         },
         "unknown": {

@@ -22,7 +22,8 @@ epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALS
 epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--dry-run", "--background", "--no-progress", "--verbose", "--debug"),
+        flags = c("--dry-run", "--background", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--config")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -42,10 +43,20 @@ epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, qu
         ))
     }
     # Machine-readable and quiet modes must never mix reporter text into their
-    # stdout contract. Human CLI runs otherwise use the stable log renderer.
+    # stdout contract. Human TTY runs share the dynamic R dashboard.
     progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
-        isTRUE(parsed$flags[["--no-progress"]])) "none" else "log"
-    ui <- shift_ui(progress = progress, detail = epwshiftr_cli_shift_detail(parsed))
+        isTRUE(parsed$flags[["--no-progress"]])) {
+        "none"
+    } else if (isTRUE(cli::is_dynamic_tty())) {
+        "dynamic"
+    } else {
+        "log"
+    }
+    ui <- shift_ui(
+        progress = progress,
+        detail = epwshiftr_cli_shift_detail(parsed),
+        motion = epwshiftr_cli_shift_motion(parsed)
+    )
     epwshiftr_cli_shift_stage_result(shift_run(plan, background = background, ui = ui))
 }
 
@@ -128,12 +139,19 @@ epwshiftr_cli_shift_logs <- function(store, args) {
 epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--background", "--no-progress", "--verbose", "--debug"),
+        flags = c("--background", "--no-progress", "--reduced-motion",
+            "--verbose", "--debug"),
         options = "--run"
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
-        isTRUE(parsed$flags[["--no-progress"]])) "none" else "log"
+        isTRUE(parsed$flags[["--no-progress"]])) {
+        "none"
+    } else if (isTRUE(cli::is_dynamic_tty())) {
+        "dynamic"
+    } else {
+        "log"
+    }
     epwshiftr_cli_shift_stage_result(
         shift_resume(
             epwshiftr_cli_required_single_id(parsed, "--run"),
@@ -141,7 +159,8 @@ epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE,
             background = isTRUE(parsed$flags[["--background"]]),
             ui = shift_ui(
                 progress = progress,
-                detail = epwshiftr_cli_shift_detail(parsed)
+                detail = epwshiftr_cli_shift_detail(parsed),
+                motion = epwshiftr_cli_shift_motion(parsed)
             )
         )
     )
@@ -156,6 +175,12 @@ epwshiftr_cli_shift_detail <- function(parsed) {
         return("detail")
     }
     "normal"
+}
+
+
+# Map the CLI accessibility switch onto the presentation-only motion policy.
+epwshiftr_cli_shift_motion <- function(parsed) {
+    if (isTRUE(parsed$flags[["--reduced-motion"]])) "reduced" else "auto"
 }
 
 

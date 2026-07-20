@@ -256,12 +256,29 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     expect_equal(unique(result$data$custom_backend), backend_name)
 })
 
-test_that("Belcher missing-humidity guidance requires hurs explicitly", {
+test_that("Belcher humidity capabilities keep hurs canonical and derive from surface inputs", {
+    recipe <- epw_morph_recipe("belcher")
+    requirements <- morpher__variable_requirements(recipe)
     guidance <- morpher__missing_variable_guidance("hurs", present_variables = c("tas", "huss"))
 
-    expect_match(guidance$suffix, "requires near-surface relative humidity")
-    expect_no_match(guidance$suffix, "huss|Alternative")
-    expect_match(guidance$action, "relative humidity and dew point")
+    expect_equal(requirements$hurs, list("hurs", c("huss", "tas", "ps")))
+    expect_true(all(c("hurs", "huss", "tas", "ps") %in%
+        morpher__input_variables(recipe)))
+    expect_match(guidance$suffix, "huss \\+ tas \\+ ps")
+    expect_no_match(guidance$suffix, "psl")
+
+    expected <- 100 * (0.01 * 100000 /
+        (0.621945 + (1 - 0.621945) * 0.01)) /
+        exp(morpher__psychro_ln_pws(300 - 273.15))
+    expect_equal(
+        morpher__hurs_from_huss_si(0.01, 300, 100000),
+        expected,
+        tolerance = 1e-12
+    )
+    expect_error(
+        morpher__humidity_input_si(100000, "hPa", "ps"),
+        NA
+    )
 })
 
 test_that("Belcher change-factor and solar radiation helpers follow reference formulas", {

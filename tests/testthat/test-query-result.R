@@ -1095,6 +1095,36 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
     }
 })
 
+test_that("EsgResult$filter_time() auto mode preserves metadata and fills DRS gaps", {
+    docs <- query_result_test_file_time_docs("File")
+    docs$datetime_start <- c(
+        "2050-01-01T00:00:00Z", NA_character_, NA_character_
+    )
+    docs$datetime_end <- c(
+        "2050-12-31T23:59:59Z", NA_character_, NA_character_
+    )
+    result <- query_result_test_object(
+        "File", docs, query_result_test_params("File"))
+
+    warnings <- character()
+    filtered <- withCallingHandlers(
+        result$filter_time("2050-06-01", "2050-06-30", method = "auto"),
+        warning = function(w) {
+            warnings <<- c(warnings, conditionMessage(w))
+            invokeRestart("muffleWarning")
+        }
+    )
+    ranges <- filtered$to_data_table(
+        c("id", "datetime_start", "datetime_end"))
+
+    expect_identical(filtered$time_filter$method, "auto")
+    expect_identical(filtered$id, docs$id[c(1L, 3L)])
+    expect_identical(ranges$datetime_start[[1L]],
+        "2050-01-01T00:00:00Z")
+    expect_true(is.na(ranges$datetime_start[[2L]]))
+    expect_true(any(grepl("metadata or DRS", warnings, fixed = TRUE)))
+})
+
 test_that("EsgResult$filter_time() context persists through save/load", {
     result <- query_result_test_object("File", query_result_test_file_time_docs(), query_result_test_params("File"))
     filtered <- suppressWarnings(result$filter_time("2050-06-01", "2050-06-30", method = "drs"))
