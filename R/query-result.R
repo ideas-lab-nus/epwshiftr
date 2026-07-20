@@ -556,7 +556,9 @@ EsgResult <- R6::R6Class(
         # }}}
 
         # filter_time_result {{{
-        filter_time_result = function(start, stop, method = c("drs", "opendap"), result_label = "file") {
+        filter_time_result = function(start, stop,
+                                      method = c("drs", "opendap", "auto"),
+                                      result_label = "file") {
             method <- match.arg(method)
             window <- query_result__time_window(start, stop)
             docs <- private$get_docs()
@@ -578,7 +580,8 @@ EsgResult <- R6::R6Class(
             ranges <- switch(
                 method,
                 drs = private$filter_time_ranges_drs(docs, result_label),
-                opendap = private$filter_time_ranges_opendap(result_label)
+                opendap = private$filter_time_ranges_opendap(result_label),
+                auto = private$filter_time_ranges_auto(docs, result_label)
             )
             known <- !is.na(ranges$datetime_start) & !is.na(ranges$datetime_end)
             keep <- !known | (ranges$datetime_start <= window$stop & ranges$datetime_end >= window$start)
@@ -694,6 +697,55 @@ EsgResult <- R6::R6Class(
             }
 
             ranges
+        },
+        # }}}
+
+        # filter_time_ranges_auto {{{
+        # Prefer authoritative File metadata and fill only absent ranges from
+        # CMIP/DRS filenames. ESGF nodes commonly omit the requested datetime
+        # fields, while local fixtures and some providers already supply them.
+        filter_time_ranges_auto = function(docs, result_label = "file") {
+            n <- nrow(docs)
+            # Normalize a potentially absent provider field to one value per
+            # result row before parsing it as a UTC timestamp.
+            field <- function(name) {
+                value <- docs[[name]]
+                if (is.null(value)) {
+                    return(rep(NA_character_, n))
+                }
+                value <- as.character(value)
+                if (length(value) < n) {
+                    value <- c(value, rep(NA_character_, n - length(value)))
+                }
+                value[seq_len(n)]
+            }
+            start <- solrdate__parse(field("datetime_start"), tz = "UTC")
+            end <- solrdate__parse(field("datetime_end"), tz = "UTC")
+            missing <- is.na(start) | is.na(end)
+            if (any(missing)) {
+                labels <- query_result__drs_labels(docs)
+                drs <- query_result__drs_ranges(labels$value)
+                start[missing] <- drs$datetime_start[missing]
+                end[missing] <- drs$datetime_end[missing]
+            }
+            unknown <- is.na(start) | is.na(end)
+            if (any(unknown)) {
+                warning(
+                    sprintf(
+                        paste(
+                            "Could not determine a metadata or DRS time range",
+                            "for %d %s record(s); keeping those records."
+                        ),
+                        sum(unknown), result_label
+                    ),
+                    call. = FALSE
+                )
+            }
+            data.frame(
+                datetime_start = start,
+                datetime_end = end,
+                check.names = FALSE
+            )
         },
         # }}}
 
@@ -4138,11 +4190,14 @@ EsgResultFile <- R6::R6Class(
         #'
         #' @param start,stop Time range boundaries. Character, `Date`, and
         #'        `POSIXt` inputs are accepted and parsed in UTC.
-        #' @param method How to determine file time ranges. One of `"drs"` or
-        #'        `"opendap"`. Default: `"drs"`.
+        #' @param method How to determine file time ranges. `"auto"` prefers
+        #'        ESGF metadata and fills absent ranges from DRS filenames;
+        #'        `"drs"` always parses filenames, and `"opendap"` reads the
+        #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultFile` object.
-        filter_time = function(start, stop, method = c("drs", "opendap")) {
+        filter_time = function(start, stop,
+                               method = c("drs", "opendap", "auto")) {
             private$filter_time_result(start, stop, method = method, result_label = "file")
         },
         # }}}
@@ -4524,11 +4579,14 @@ EsgResultAggregation <- R6::R6Class(
         #'
         #' @param start,stop Time range boundaries. Character, `Date`, and
         #'        `POSIXt` inputs are accepted and parsed in UTC.
-        #' @param method How to determine file time ranges. One of `"drs"` or
-        #'        `"opendap"`. Default: `"drs"`.
+        #' @param method How to determine file time ranges. `"auto"` prefers
+        #'        ESGF metadata and fills absent ranges from DRS filenames;
+        #'        `"drs"` always parses filenames, and `"opendap"` reads the
+        #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultAggregation` object.
-        filter_time = function(start, stop, method = c("drs", "opendap")) {
+        filter_time = function(start, stop,
+                               method = c("drs", "opendap", "auto")) {
             private$filter_time_result(start, stop, method = method, result_label = "aggregation")
         },
         # }}}

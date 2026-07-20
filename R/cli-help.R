@@ -155,24 +155,25 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr shift <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--verbose | --debug]",
+            "  epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "  epwshiftr shift show --run RUN_ID",
             "  epwshiftr shift config example [--output PATH] [--overwrite]",
             "  epwshiftr shift config validate --config PATH",
-            "  epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--verbose | --debug]",
+            "  epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "  epwshiftr shift cancel --run RUN_ID [--force]",
             "  epwshiftr shift logs --run RUN_ID [--tail N]",
             "  epwshiftr shift status --run RUN_ID",
             "  epwshiftr shift diagnostics --run RUN_ID",
             "  epwshiftr shift outputs --run RUN_ID",
             "  epwshiftr shift data --run RUN_ID [--case CASE_ID] [--columns COLS] [--limit N]",
-            "  epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--verbose | --debug]"
+            "  epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]"
         ),
         "shift run" = c(
-            "Usage: epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--verbose | --debug]",
+            "Usage: epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Run a JSON-configured request -> collect -> optional download -> extract -> morph -> EPW workflow.",
             "The config is validated against inst/extdata/schema/shift-workflow-config.json.",
+            "--reduced-motion replaces animated frames with a stable active marker.",
             "--verbose shows selection, reuse, and fallback details; --debug also shows full URLs and paths."
         ),
         "shift show" = c(
@@ -196,11 +197,12 @@ epwshiftr_cli_help_registry <- function() {
             "Validate a JSON workflow configuration against the packaged schema."
         ),
         "shift watch" = c(
-            "Usage: epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--verbose | --debug]",
+            "Usage: epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Return a workflow activity snapshot with query, download, extraction, morphing, output, diagnostic, and event state.",
             "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming.",
-            "Dynamic terminals show stage, current unit, case/output counts, and the last event in one fixed view."
+            "Dynamic terminals show a stage rail, measured progress, the current unit, live resolver state, and recent milestones.",
+            "Use --reduced-motion to keep the dashboard with a stable active marker."
         ),
         "shift cancel" = c(
             "Usage: epwshiftr shift cancel --run RUN_ID [--force]",
@@ -233,7 +235,7 @@ epwshiftr_cli_help_registry <- function() {
             "Preview final EPW data for a persisted run."
         ),
         "shift resume" = c(
-            "Usage: epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--verbose | --debug]",
+            "Usage: epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Resume a failed or interrupted run using its pinned resolved inputs."
         ),

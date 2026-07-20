@@ -1,29 +1,248 @@
-test_that("shared status views are four rows and remain within 80 columns", {
+test_that("shared status views are stage-adaptive and remain within the terminal width", {
     state <- list(
         status = "running",
         stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "extract_reference",
+            "coverage", "morph", "write_epw"),
+        completed_stages = character(),
         stage_current = 1L,
         stage_total = 6L,
         stage_message = "Resolving complete CMIP6 workflow inputs.",
         unit_label = paste(rep("DKRZ future catalog waiting", 8L), collapse = " "),
         unit_current = 1L,
         unit_total = 6L,
+        plan_context = list(
+            line = "BCC-CSM2-MR \u00b7 ssp126 + ssp585 \u00b7 2060s \u00b7 belcher",
+            selection = "member auto \u00b7 grid auto"
+        ),
         cases_ready = 0L,
         cases_total = 2L,
         outputs_completed = 0L,
-        last_event = paste(rep("Catalog retry", 12L), collapse = " "),
+        recent_events = c("Catalog retry", "Previous request completed"),
+        recent_outcomes = c("fallback", "completed"),
         elapsed_seconds = 12
     )
-    lines <- unname(shift__ui_status_lines(state, width = 80L))
-    expect_length(lines, 4L)
-    expect_true(all(nchar(lines, type = "width") <= 80L))
-    expect_match(lines[[1L]], "Stage.*Resolve.*RUNNING")
-    expect_match(lines[[2L]], "Current.*1/6")
-    expect_match(lines[[3L]], "ready 0/2.*outputs 0/2")
-    expect_match(lines[[4L]], "Last")
+    lines <- unname(shift__ui_status_lines(state, width = 80L,
+        motion = "full", frame = 2L))
+    expect_gte(length(lines), 11L)
+    expect_true(all(cli::ansi_nchar(lines, type = "width") <= 79L))
+    plain <- cli::ansi_strip(lines)
+    expect_match(plain[[1L]], "Future EPW.*RUNNING")
+    expect_true(any(grepl("Plan.*BCC-CSM2-MR.*belcher", plain)))
+    expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
+    expect_true(any(grepl("Flow.*Resolve.*Future", plain)))
+    expect_true(any(grepl("Now.*DKRZ", plain)))
+    expect_true(any(grepl("Status.*node 1 of 6.*member auto", plain)))
+    expect_false(any(grepl("%", plain, fixed = TRUE)))
+    expect_true(any(grepl("Activity", plain, fixed = TRUE)))
+    expect_true(any(grepl("Attempts", plain)))
+    expect_true(all(cli::ansi_nchar(lines, type = "width") == 79L))
+})
+
+test_that("wide dashboards add quiet hierarchy while narrow views preserve content", {
+    state <- list(
+        run_id = "run-panel", status = "running", stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        unit_label = "CEDA · future catalog · waiting",
+        unit_current = 2L, unit_total = 6L,
+        current_details = list(current = 2L, total = 6L),
+        plan_context = list(
+            line = "BCC-CSM2-MR · ssp585 · 2060s · belcher",
+            selection = "member auto · grid auto"
+        ),
+        elapsed_seconds = 5
+    )
+    wide <- shift__ui_status_lines(state, width = 60L)
+    narrow <- shift__ui_status_lines(state, width = 59L)
+    wide_plain <- cli::ansi_strip(wide)
+    narrow_plain <- cli::ansi_strip(narrow)
+
+    expect_gte(length(wide), 11L)
+    expect_true(all(cli::ansi_nchar(wide, type = "width") == 59L))
+    expect_match(wide_plain[[1L]], "^╭─ Future EPW")
+    expect_true(any(grepl("^├─ Workflow", wide_plain)))
+    expect_true(any(grepl("^├─ Activity", wide_plain)))
+    expect_match(utils::tail(wide_plain, 1L), "^╰─")
+
+    expect_gte(length(narrow), 8L)
+    expect_false(any(grepl("^[╭├╰│]", narrow_plain)))
+    expect_match(narrow_plain[[1L]], "Future EPW", fixed = TRUE)
+})
+
+test_that("title-like dashboard labels use semantic emphasis", {
+    withr::local_options(cli.num_colors = 256L)
+
+    expect_identical(shift__ui_label_role("Plan"), "accent")
+    expect_identical(shift__ui_label_role("Flow"), "accent")
+    expect_identical(shift__ui_label_role("Failure"), "danger")
+    expect_identical(shift__ui_label_role("Status"), "accent")
+    expect_identical(shift__ui_label_role("Summary"), "accent")
+    expect_identical(shift__ui_label_role("Attempts"), "quiet")
+
+    plan <- shift__ui_labeled_line("Plan", "BCC-CSM2-MR")
+    failure <- shift__ui_labeled_line("Failure", "resolver exhausted")
+    quiet <- shift__ui_labeled_line("Attempts", "6 tried")
+    expect_true(all(cli::ansi_has_any(c(plan, failure, quiet))))
+    expect_identical(cli::ansi_strip(plan), "Plan     BCC-CSM2-MR")
+    expect_identical(cli::ansi_strip(failure),
+        "Failure  resolver exhausted")
+    expect_false(identical(plan, failure))
+    expect_false(identical(plan, quiet))
+})
+
+test_that("frame renderer paints each dashboard update atomically", {
+    writes <- character()
+    output <- rawConnection(raw(), "wb")
+    on.exit(close(output), add = TRUE)
+    renderer <- ShiftFrameRenderer$new(
+        output = output,
+        backend = "frame",
+        writer = function(text) writes <<- c(writes, text)
+    )
+
+    expect_true(renderer$draw(c("one", "two", "three")))
+    expect_true(renderer$draw(c("ONE", "TWO")))
+
+    expect_length(writes, 2L)
+    expect_identical(writes[[1L]],
+        "\rone\033[K\n\rtwo\033[K\n\rthree\033[K\r")
+    expect_identical(writes[[2L]], paste0(
+        "\033[2A\rONE\033[K\n\rTWO\033[K\r",
+        "\n\r\033[K\033[1A\r"
+    ))
+})
+
+test_that("frame renderer commits a terminal frame without erasing it", {
+    writes <- character()
+    shown <- 0L
+    output <- rawConnection(raw(), "wb")
+    on.exit(close(output), add = TRUE)
+    testthat::local_mocked_bindings(
+        ansi_hide_cursor = function(...) invisible(NULL),
+        ansi_show_cursor = function(...) {
+            shown <<- shown + 1L
+            invisible(NULL)
+        },
+        .package = "cli"
+    )
+    renderer <- ShiftFrameRenderer$new(
+        output = output,
+        backend = "frame",
+        writer = function(text) writes <<- c(writes, text)
+    )
+
+    renderer$draw(c("failed one", "failed two"))
+    renderer$commit("failed")
+    renderer$commit("failed")
+
+    expect_length(writes, 2L)
+    expect_match(writes[[1L]], "failed one", fixed = TRUE)
+    expect_identical(writes[[2L]], "\n")
+    expect_equal(shown, 1L)
+    expect_false(renderer$active())
+})
+
+test_that("frame renderer suspends output and restores the last frame once", {
+    writes <- character()
+    hidden <- 0L
+    shown <- 0L
+    output <- rawConnection(raw(), "wb")
+    on.exit(close(output), add = TRUE)
+    testthat::local_mocked_bindings(
+        ansi_hide_cursor = function(...) hidden <<- hidden + 1L,
+        ansi_show_cursor = function(...) shown <<- shown + 1L,
+        .package = "cli"
+    )
+    renderer <- ShiftFrameRenderer$new(
+        output = output,
+        backend = "frame",
+        writer = function(text) writes <<- c(writes, text)
+    )
+    renderer$draw(c("one", "two"))
+    renderer$suspend(function() {
+        writes <<- c(writes, "notice\n")
+        renderer$suspend(function() writes <<- c(writes, "detail\n"))
+    })
+    renderer$close()
+    renderer$close()
+
+    expect_equal(hidden, 1L)
+    expect_equal(shown, 1L)
+    expect_identical(writes[[3L]], "notice\n")
+    expect_identical(writes[[4L]], "detail\n")
+    expect_match(writes[[5L]], "one", fixed = TRUE)
+    expect_false(renderer$active())
+})
+
+test_that("compact renderer delegates one live row to cli", {
+    created <- 0L
+    updates <- character()
+    closed <- 0L
+    output <- rawConnection(raw(), "wb")
+    on.exit(close(output), add = TRUE)
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(...) {
+            created <<- created + 1L
+            "compact-id"
+        },
+        cli_progress_update = function(id, status, ...) {
+            updates <<- c(updates, status)
+            invisible(id)
+        },
+        cli_progress_done = function(...) {
+            closed <<- closed + 1L
+            invisible(TRUE)
+        },
+        .package = "cli"
+    )
+    renderer <- ShiftFrameRenderer$new(output, backend = "compact")
+    renderer$draw(c("full row 1", "full row 2"), compact = "compact one")
+    renderer$draw(c("full row 1", "full row 2"), compact = "compact two")
+    renderer$close()
+
+    expect_equal(created, 1L)
+    expect_identical(updates, c("compact one", "compact two"))
+    expect_equal(closed, 1L)
+})
+
+test_that("renderer backend uses cli capabilities and degrades safely", {
+    output <- rawConnection(raw(), "wb")
+    on.exit(close(output), add = TRUE)
+    testthat::local_mocked_bindings(
+        is_dynamic_tty = function(...) TRUE,
+        .package = "cli"
+    )
+    expect_identical(shift__ui_renderer_backend(output), "compact")
+
+    testthat::local_mocked_bindings(
+        is_dynamic_tty = function(...) FALSE,
+        .package = "cli"
+    )
+    expect_identical(shift__ui_renderer_backend(output), "log")
+})
+
+test_that("compact status preserves stage, unit, progress, and elapsed time", {
+    state <- list(
+        status = "running", stage = "resolve",
+        stage_message = "Resolving workflow inputs",
+        unit_label = "Checking catalog", unit_current = 2L, unit_total = 6L,
+        current_details = list(current = 2L, total = 6L,
+            node = INDEX_NODES[["CEDA"]], catalog_role = "reference"),
+        elapsed_seconds = 15
+    )
+    line <- cli::ansi_strip(shift__ui_compact_line(state, width = 80L,
+        motion = "full", frame = 1L))
+    expect_match(line, "Resolve", fixed = TRUE)
+    expect_match(line, "2/6", fixed = TRUE)
+    expect_match(line, "CEDA", fixed = TRUE)
+    expect_match(line, "reference", fixed = TRUE)
+    expect_match(line, "15s", fixed = TRUE)
+    expect_lte(nchar(line, type = "width"), 80L)
 })
 
 test_that("auto mode follows terminal capability for R and Rscript callers", {
+    withr::local_envvar(c(CI = NA_character_, TERM = "xterm-256color"))
     testthat::local_mocked_bindings(
         is_dynamic_tty = function(...) FALSE,
         .package = "cli"
@@ -35,6 +254,32 @@ test_that("auto mode follows terminal capability for R and Rscript callers", {
         .package = "cli"
     )
     expect_identical(shift__ui_mode(shift_ui("auto")), "dynamic")
+})
+
+test_that("motion frames animate only in full mode", {
+    expect_false(identical(
+        shift__ui_spinner("full", 0L),
+        shift__ui_spinner("full", 1L)
+    ))
+    expect_identical(
+        shift__ui_spinner("reduced", 0L),
+        shift__ui_spinner("reduced", 9L)
+    )
+    expect_identical(shift__ui_spinner("none", 0L), "")
+})
+
+test_that("recent activity keeps three semantic milestones", {
+    reporter <- shift__reporter(shift_ui("none"))
+    reporter$stage_started("resolve", "Resolving inputs.")
+    for (i in seq_len(4L)) {
+        reporter$unit_started(sprintf("Node %d", i), i, 4L)
+        reporter$unit_completed(sprintf("Node %d rejected", i), i, 4L,
+            outcome = "rejected")
+    }
+    state <- reporter$snapshot()
+    expect_length(state$recent_events, 3L)
+    expect_false(any(grepl("Node 1", state$recent_events, fixed = TRUE)))
+    expect_true(any(grepl("Node 4", state$recent_events, fixed = TRUE)))
 })
 
 test_that("node and case tables use task-level rows and responsive columns", {
@@ -76,6 +321,13 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
         run_id = "run-test",
         status = "running",
         current_stage = "resolve",
+        spec_json = shift__spec_json(list(
+            climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585",
+                member = NULL, grid = NULL),
+            periods = list(`2060s` = 2055:2065),
+            method = list(name = "belcher", reference_mode = "baseline_epw"),
+            control = list(download = "auto")
+        )),
         started_at = now,
         completed_at = as.POSIXct(NA, tz = "UTC")
     )
@@ -89,7 +341,10 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
             "ORNL · selected r1i1p1f1 / gn"
         ),
         details_json = vapply(list(
-            list(stage = "resolve", phase = "stage", current = 1L, total = 6L),
+            list(stage = "resolve", phase = "stage", current = 1L, total = 6L,
+                next_stage = "extract_future",
+                stage_sequence = c("resolve", "extract_future",
+                    "extract_reference", "coverage", "morph", "write_epw")),
             list(stage = "resolve", phase = "unit", unit_type = "index_node",
                 unit_label = "ORNL · checking future + reference catalogs",
                 current = 3L, total = 6L, node = INDEX_NODES[["ORNL"]]),
@@ -107,8 +362,14 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
         status = c("pending", "pending")
     )
     view <- shift__ui_table_view(row, cases, events, width = 80L)
-    expect_match(view$lines[[1L]], "[1/6] Resolve", fixed = TRUE)
-    expect_match(view$lines[[2L]], "[3/6] ORNL", fixed = TRUE)
+    plain <- cli::ansi_strip(view$lines)
+    expect_match(plain[[1L]], "Future EPW", fixed = TRUE)
+    expect_match(plain[[2L]], "BCC-CSM2-MR", fixed = TRUE)
+    expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
+    expect_true(any(grepl("Resolve", plain, fixed = TRUE)))
+    expect_true(any(grepl("ORNL", plain, fixed = TRUE)))
+    expect_true(any(grepl("node 3 of 6", plain, fixed = TRUE)))
+    expect_true(any(grepl("Activity", plain, fixed = TRUE)))
     expect_match(paste(view$nodes, collapse = "\n"), "ORNL.*48.*24.*selected")
     expect_match(paste(view$cases, collapse = "\n"), "ssp126")
 })
@@ -189,7 +450,9 @@ test_that("download views report files, bytes, and variable counts", {
         data.frame(
             status = c("done", "downloading", "queued"),
             bytes_done = c(1024, 512, 0),
-            size = c(1024, 2048, 4096)
+            size = c(1024, 2048, 4096),
+            speed_bps = c(NA, 256, NA),
+            filename = c("done.nc", "tas.nc", "queued.nc")
         )
     })
     metrics <- shift__download_metrics(downloader, "session", variables = 8L)
@@ -201,6 +464,9 @@ test_that("download views report files, bytes, and variable counts", {
     expect_match(label, "1/3 files", fixed = TRUE)
     expect_match(label, "1.5 KiB/7.0 KiB", fixed = TRUE)
     expect_match(label, "8 variables", fixed = TRUE)
+    expect_equal(metrics$speed_bps, 256)
+    expect_equal(metrics$active_files, "tas.nc")
+    expect_equal(metrics$active_task_count, 1L)
 })
 
 test_that("download task progress is bridged into the workflow heartbeat", {
@@ -244,6 +510,43 @@ test_that("download task progress is bridged into the workflow heartbeat", {
     expect_match(seen, "8 variables", fixed = TRUE)
 })
 
+test_that("nested fallback downloads retain extraction unit ownership", {
+    callbacks <- new.env(parent = emptyenv())
+    calls <- character()
+    downloader <- list(
+        tasks = function(session_id = NULL) data.frame(
+            status = "done", bytes_done = 1024, size = 1024,
+            filename = "tas.nc"
+        ),
+        on = function(event, fun) {
+            callbacks[[event]] <- fun
+            event
+        },
+        off = function(token) TRUE
+    )
+    reporter <- list(
+        ui = function() shift_ui("none"),
+        unit_started = function(...) calls <<- c(calls, "started"),
+        unit_updated = function(...) calls <<- c(calls, "updated"),
+        unit_completed = function(...) calls <<- c(calls, "completed"),
+        notice = function(...) invisible(NULL),
+        heartbeat = function(...) invisible(TRUE)
+    )
+    cleanup <- shift__download_reporter_bind(
+        downloader, reporter, role = "HTTP fallback", variables = 1L,
+        nested = TRUE
+    )
+    event <- list(
+        session_id = "fallback-session", filename = "tas.nc",
+        target_path = NA_character_, data_node = "example.org"
+    )
+    callbacks$session_start(c(event, event = "session_start"), downloader)
+    callbacks$session_done(c(event, event = "session_done"), downloader)
+    cleanup()
+
+    expect_equal(calls, c("updated", "updated"))
+})
+
 test_that("reporter updates the current unit label and keeps heartbeat labels stable", {
     reporter <- shift__reporter(shift_ui("none"))
     reporter$stage_started("download", "Downloading files.")
@@ -271,7 +574,172 @@ test_that("normal failure output includes concrete missing case reasons", {
     expect_true(any(grepl("future/hurs", output, fixed = TRUE)))
 })
 
-test_that("startup plan summaries are exactly three width-bounded lines", {
+test_that("dynamic failures commit one structured terminal dashboard", {
+    frames <- list()
+    commits <- character()
+    closes <- 0L
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(lines, compact = NULL) {
+                frames[[length(frames) + 1L]] <<- lines
+                TRUE
+            },
+            suspend = function(code) code(),
+            commit = function(result) {
+                commits <<- c(commits, result)
+                invisible(NULL)
+            },
+            close = function(...) {
+                closes <<- closes + 1L
+                invisible(NULL)
+            }
+        ),
+        .package = "epwshiftr"
+    )
+    reporter <- shift__reporter(shift_ui("dynamic", motion = "none"))
+    reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
+    reporter$unit_completed(
+        "Rejected: incomplete coverage",
+        current = 6L,
+        total = 6L,
+        outcome = "rejected",
+        details = list(
+            unit_type = "index_node", node = INDEX_NODES[["LIU"]],
+            future_files = 83L, reference_files = 121L,
+            error_kind = "coverage", error = "incomplete coverage"
+        )
+    )
+    failure <- list(
+        kind = "resolver_exhausted",
+        summary = "No ESGF index node resolved a complete CMIP6 input set.",
+        cause = "Future and historical catalogs have no complete identity in common.",
+        nodes_checked = 6L, usable_nodes = 0L,
+        coverage_failures = 5L, timeout_failures = 1L,
+        network_failures = 0L, other_failures = 0L,
+        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
+        missing = "reference: historical/hurs: missing years 1995"
+    )
+    output <- capture.output(reporter$run_failed(
+        message = failure$summary,
+        details = failure
+    ), type = "message")
+    plain <- cli::ansi_strip(frames[[length(frames)]])
+
+    expect_length(output, 0L)
+    expect_identical(commits, "failed")
+    expect_equal(closes, 0L)
+    expect_match(plain[[1L]], "FAILED", fixed = TRUE)
+    expect_true(any(grepl("Failure", plain, fixed = TRUE)))
+    expect_true(any(grepl("Diagnosis", plain, fixed = TRUE)))
+    expect_true(any(grepl("6 checked.*5 incomplete.*1 timeout", plain)))
+    expect_true(any(grepl("BCC-CSM2-MR/r1i1p1f1/gn", plain, fixed = TRUE)))
+    expect_false(any(grepl("Resolver attempts", output, fixed = TRUE)))
+})
+
+test_that("failed dashboards remain legible without colour and at narrow widths", {
+    withr::local_options(cli.num_colors = 1L)
+    state <- list(
+        run_id = "run-failed-narrow",
+        status = "failed",
+        stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        unit_label = "No ESGF index node resolved a complete input set",
+        current_details = list(current = 6L, total = 6L),
+        plan_context = list(
+            line = "BCC-CSM2-MR · ssp126 + ssp585 · 2060s · belcher",
+            selection = "member auto · grid auto"
+        ),
+        failure_details = list(
+            summary = "No ESGF index node resolved a complete input set.",
+            cause = "Future and historical catalogs have no complete identity in common.",
+            nodes_checked = 6L, usable_nodes = 0L,
+            coverage_failures = 5L, timeout_failures = 1L,
+            closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
+            missing = "reference: historical/hurs: missing years 1995"
+        ),
+        elapsed_seconds = 30
+    )
+
+    wide <- shift__ui_status_lines(state, width = 80L, motion = "none")
+    expect_false(any(cli::ansi_has_any(wide)))
+    expect_match(wide[[1L]], "FAILED", fixed = TRUE)
+    expect_true(any(grepl("Failure", wide, fixed = TRUE)))
+    expect_true(any(grepl("Diagnosis", wide, fixed = TRUE)))
+    expect_true(any(grepl("6 checked.*5 incomplete.*1 timeout", wide)))
+
+    narrow <- shift__ui_status_lines(state, width = 32L, motion = "none")
+    expect_true(all(cli::ansi_nchar(narrow, type = "width") <= 32L))
+    expect_false(any(grepl("^[╭├╰│]", narrow)))
+    expect_true(any(grepl("Failure", narrow, fixed = TRUE)))
+    expect_true(any(grepl("Summary", narrow, fixed = TRUE)))
+    expect_true(any(grepl("✖", narrow, fixed = TRUE)))
+})
+
+test_that("watch reconstruction retains the structured terminal diagnosis", {
+    now <- as.POSIXct("2026-07-20 00:00:00", tz = "UTC")
+    row <- data.table::data.table(
+        run_id = "run-watch-failed",
+        status = "failed",
+        current_stage = "resolve",
+        spec_json = shift__spec_json(list(
+            climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585"),
+            periods = list(`2060s` = 2055:2065),
+            method = list(name = "belcher", reference_mode = "baseline_epw")
+        )),
+        started_at = now,
+        completed_at = now + 12,
+        updated_at = now + 12
+    )
+    failure <- list(
+        stage = "resolve", phase = "unit", unit_type = "index_node",
+        unit_label = "No ESGF index node resolved a complete input set.",
+        current = 6L, total = 6L,
+        summary = "No ESGF index node resolved a complete input set.",
+        cause = "Future catalog coverage is incomplete.",
+        nodes_checked = 6L, coverage_failures = 6L, usable_nodes = 0L,
+        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
+        missing = "future: ssp585/hurs: missing years 2055"
+    )
+    events <- data.table::data.table(
+        event_id = "failure",
+        stage = "resolve",
+        status = "failed",
+        message = failure$summary,
+        details_json = shift__spec_json(failure),
+        created_at = now + 12
+    )
+    view <- shift__ui_table_view(row, data.table::data.table(), events,
+        width = 80L)
+    plain <- cli::ansi_strip(view$lines)
+
+    expect_identical(view$state$failure_details$cause, failure$cause)
+    expect_match(plain[[1L]], "FAILED", fixed = TRUE)
+    expect_true(any(grepl("Diagnosis", plain, fixed = TRUE)))
+    expect_true(any(grepl("6 checked.*6 incomplete", plain)))
+    expect_true(any(grepl("BCC-CSM2-MR/r1i1p1f1/gn", plain,
+        fixed = TRUE)))
+})
+
+test_that("normal resolver tables abbreviate repeated errors", {
+    rows <- data.table::data.table(
+        node = "DKRZ", future = 28L, reference = 39L,
+        duration = "2s", outcome = "rejected",
+        result = paste(
+            "coverage: No complete CMIP6 member/grid candidate was found",
+            "for model BCC-CSM2-MR with a very long diagnostic"
+        )
+    )
+    normal <- shift__ui_node_table(rows, width = 180L, detail = "normal")
+    detail <- shift__ui_node_table(rows, width = 180L, detail = "detail")
+
+    expect_match(paste(normal, collapse = "\n"), "incomplete coverage",
+        fixed = TRUE)
+    expect_false(any(grepl("very long diagnostic", normal, fixed = TRUE)))
+    expect_true(any(grepl("very long diagnostic", detail, fixed = TRUE)))
+})
+
+test_that("startup plan summaries include output and selection without a full dump", {
     skip_if_not_installed("duckdb")
 
     plan <- shift_future_epw(
@@ -287,11 +755,186 @@ test_that("startup plan summaries are exactly three width-bounded lines", {
         dry_run = TRUE
     )
     lines <- unname(shift__ui_plan_summary(plan, "run-test", width = 80L))
-    expect_length(lines, 3L)
+    expect_length(lines, 5L)
     expect_true(all(nchar(lines, type = "width") <= 80L))
     expect_match(lines[[1L]], "Future EPW.*run-test.*STARTING")
     expect_match(lines[[2L]], "BCC-CSM2-MR.*ssp126.*2060s")
     expect_match(lines[[3L]], "belcher.*baseline EPW.*2 expected")
+    expect_match(lines[[4L]], "Selection.*member r1i1p1f1.*grid gn")
+    expect_match(lines[[5L]], "Output")
+})
+
+test_that("dynamic startup is a replaceable first frame rather than a transcript", {
+    skip_if_not_installed("duckdb")
+
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+        periods = list(`2060s` = 2055:2065),
+        method = belcher(),
+        dir = tempfile("shift-ui-output-"),
+        store = tempfile("shift-ui-store-"),
+        dry_run = TRUE
+    )
+    frames <- list()
+    closed <- 0L
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(lines, compact = NULL) {
+                frames[[length(frames) + 1L]] <<- lines
+                TRUE
+            },
+            suspend = function(code) code(),
+            close = function(...) {
+                closed <<- closed + 1L
+                invisible(NULL)
+            }
+        ),
+        .package = "epwshiftr"
+    )
+    reporter <- shift__reporter(shift_ui("dynamic", motion = "none"))
+    startup_output <- capture.output(
+        reporter$run_started(plan, "run_534d9b84b235029404b318bd"),
+        type = "message"
+    )
+    expect_length(startup_output, 0L)
+    expect_length(frames, 1L)
+    plain <- cli::ansi_strip(frames[[1L]])
+
+    milestone_output <- capture.output({
+        reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
+        reporter$stage_completed("Resolved inputs.")
+    }, type = "message")
+    reporter$close()
+
+    expect_length(milestone_output, 0L)
+    expect_match(plain[[1L]], "run 04b318bd", fixed = TRUE)
+    expect_match(paste(plain, collapse = " "),
+        "BCC-CSM2-MR.*ssp126.*belcher")
+    expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
+    expect_true(any(grepl("Resolve", plain, fixed = TRUE)))
+    expect_equal(closed, 1L)
+})
+
+test_that("wide resolver frames keep one motion focus and terse node outcomes", {
+    state <- list(
+        run_id = "run_534d9b84b235029404b318bd",
+        status = "running",
+        stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "extract_reference",
+            "coverage", "morph", "write_epw"),
+        current_details = list(
+            current = 2L, total = 6L, node = INDEX_NODES[["CEDA"]],
+            catalog_role = "future", unit_label = "Waiting for catalog response"
+        ),
+        unit_label = "Waiting for catalog response",
+        unit_current = 2L,
+        unit_total = 6L,
+        plan_context = list(
+            line = paste("BCC-CSM2-MR", "ssp126 + ssp585", "2060s (2055\u20132065)",
+                "belcher / historical 1995\u20132014", "2 EPWs", sep = " \u00b7 "),
+            selection = "member auto \u00b7 grid auto"
+        ),
+        node_rows = data.table::data.table(
+            node = "DKRZ", future = 28L, reference = 0L,
+            outcome = "rejected", duration = "10s",
+            result = paste("coverage: No complete CMIP6 member/grid candidate",
+                "was found for model BCC-CSM2-MR")
+        ),
+        elapsed_seconds = 12
+    )
+    frame <- shift__ui_status_lines(state, width = 180L,
+        motion = "full", frame = 2L)
+    plain <- cli::ansi_strip(frame)
+    spinner <- shift__ui_spinner("full", 2L)
+
+    expect_gte(length(frame), 11L)
+    expect_true(all(cli::ansi_nchar(frame, type = "width") == 179L))
+    expect_equal(sum(grepl(spinner, plain, fixed = TRUE)), 1L)
+    expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
+    expect_true(any(grepl("node 2 of 6", plain)))
+    expect_false(any(grepl("%", plain, fixed = TRUE)))
+    expect_true(any(grepl("Activity", plain, fixed = TRUE)))
+    node_line <- plain[grepl("no reference files", plain, fixed = TRUE)]
+    expect_length(node_line, 1L)
+    expect_false(grepl("BCC-CSM2-MR", node_line, fixed = TRUE))
+})
+
+test_that("dashboard plan content reflows with the current terminal width", {
+    context <- list(items = c(
+        "BCC-CSM2-MR",
+        "ssp126 + ssp585",
+        "2060s (2055–2065)",
+        "belcher / historical 1995–2014",
+        "2 EPWs"
+    ))
+    medium <- shift__ui_plan_lines(context, width = 90L)
+    wide <- shift__ui_plan_lines(context, width = 180L)
+
+    expect_gt(length(medium), 1L)
+    expect_length(wide, 1L)
+    expect_match(paste(cli::ansi_strip(medium), collapse = " "),
+        "2 EPWs", fixed = TRUE)
+    expect_false(grepl("…",
+        paste(cli::ansi_strip(medium), collapse = " "), fixed = TRUE))
+    expect_equal(shift__ui_dashboard_width(90L), 89L)
+    expect_equal(shift__ui_dashboard_width(180L), 179L)
+})
+
+test_that("dashboard prose wraps semantically and preserves a safe terminal column", {
+    state <- list(
+        run_id = "run-wrap", status = "failed", stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "extract_reference",
+            "coverage", "morph", "write_epw"),
+        unit_label = paste("LIU reference catalog could not resolve",
+            "a complete CMIP6 input set for this workflow"),
+        current_details = list(current = 6L, total = 6L),
+        plan_context = list(items = c(
+            "BCC-CSM2-MR", "ssp126 + ssp585", "2060s (2055–2065)",
+            "belcher / historical 1995–2014", "2 EPWs"),
+            selection = "member auto · grid auto"),
+        failure_details = list(
+            cause = paste("No member and grid covers every requested future",
+                "scenario, humidity input, and target year."),
+            nodes_checked = 6L, coverage_failures = 5L,
+            timeout_failures = 1L, usable_nodes = 0L,
+            closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1",
+                grid = "gn"),
+            missing = paste("future: ssp126/hurs has no files;",
+                "huss plus pressure may be available")),
+        elapsed_seconds = 39
+    )
+
+    for (terminal_width in c(60L, 80L, 121L)) {
+        lines <- shift__ui_status_lines(state, width = terminal_width,
+            motion = "none")
+        plain <- cli::ansi_strip(lines)
+        expect_true(all(cli::ansi_nchar(lines, type = "width") <=
+            terminal_width - 1L))
+        expect_false(any(cli::ansi_nchar(lines, type = "width") ==
+            terminal_width))
+        expect_true(any(grepl("Failure", plain, fixed = TRUE)))
+        expect_true(any(grepl("Summary", plain, fixed = TRUE)))
+        expect_match(paste(trimws(plain), collapse = " "),
+            "humidity.*input, and target year")
+    }
+})
+
+test_that("flow rail chooses semantic compact variants instead of clipping", {
+    state <- list(
+        status = "running", stage = "resolve",
+        stage_sequence = c("resolve", "extract_future", "extract_reference",
+            "coverage", "morph", "write_epw")
+    )
+    medium <- cli::ansi_strip(shift__ui_stage_rail(state, width = 44L))
+    narrow <- cli::ansi_strip(shift__ui_stage_rail(state, width = 25L))
+
+    expect_match(medium, "Flow.*Resolve", fixed = FALSE)
+    expect_false(grepl("Coverage", medium, fixed = TRUE))
+    expect_match(narrow, "Flow.*Resolve", fixed = FALSE)
+    expect_false(any(grepl("…", c(medium, narrow), fixed = TRUE)))
+    expect_true(cli::ansi_nchar(medium, type = "width") <= 44L)
+    expect_true(cli::ansi_nchar(narrow, type = "width") <= 25L)
 })
 
 test_that("shift_watch() renders the shared status view instead of one long string", {
@@ -321,9 +964,289 @@ test_that("shift_watch() renders the shared status view instead of one long stri
         type = "message"
     )
     expect_s7_class(watched, ShiftRun)
-    expect_true(any(grepl("^Stage", output)))
-    expect_true(any(grepl("^Current", output)))
-    expect_true(any(grepl("^Cases", output)))
-    expect_true(any(grepl("^Last", output)))
+    expect_true(any(grepl("Future EPW", output, fixed = TRUE)))
+    expect_true(any(grepl("Plan", output, fixed = TRUE)))
+    expect_true(any(grepl("Workflow", output, fixed = TRUE)))
+    expect_true(any(grepl("Flow", output, fixed = TRUE)))
+    expect_true(any(grepl("Now", output, fixed = TRUE)))
+    expect_true(any(grepl("Status", output, fixed = TRUE)))
+    expect_true(any(grepl("Activity", output, fixed = TRUE)))
+    expect_true(any(grepl("Recent", output, fixed = TRUE)))
     expect_false(any(grepl("queued | planned | cases", output, fixed = TRUE)))
+})
+
+test_that("dynamic watch animates cached state between store polls", {
+    skip_if_not_installed("duckdb")
+
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
+        periods = list(`2060s` = 2060L),
+        method = belcher(),
+        dir = tempfile("shift-watch-animation-output-"),
+        store = tempfile("shift-watch-animation-store-"),
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    store <- shift_store(plan)
+    on.exit(store$close(), add = TRUE)
+    base <- shift__run_handle(store, run_id)
+    running <- base
+    running_meta <- running@meta
+    running_meta$run <- data.table::copy(running_meta$run)
+    running_meta$run$status <- "running"
+    running_meta$run$current_stage <- "resolve"
+    running_meta$run$started_at <- Sys.time()
+    running@meta <- running_meta
+    completed <- running
+    completed_meta <- completed@meta
+    completed_meta$run <- data.table::copy(completed_meta$run)
+    completed_meta$run$status <- "completed"
+    completed_meta$run$completed_at <- Sys.time()
+    completed@meta <- completed_meta
+
+    polls <- 0L
+    updates <- 0L
+    closes <- 0L
+    testthat::local_mocked_bindings(
+        shift_run_get = function(...) {
+            polls <<- polls + 1L
+            if (polls >= 3L) completed else running
+        },
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(...) {
+                updates <<- updates + 1L
+                TRUE
+            },
+            close = function(...) {
+                closes <<- closes + 1L
+                invisible(NULL)
+            }
+        ),
+        .package = "epwshiftr"
+    )
+
+    capture.output(
+        result <- shift_watch(
+            running, follow = TRUE, interval = 0.2,
+            ui = shift_ui("dynamic", refresh = 0.05)
+        ),
+        type = "message"
+    )
+    expect_equal(shift_status(result, refresh = FALSE), "completed")
+    # Initial/final handle refreshes surround two workflow polls, while four
+    # dashboard frames render from the cached snapshot in that interval.
+    expect_equal(polls, 4L)
+    expect_gt(updates, polls - 2L)
+    expect_gte(closes, 1L)
+})
+
+test_that("wide characters and narrow terminals never overflow their display width", {
+    for (width in c(20L, 32L, 40L, 80L)) {
+        value <- shift__ui_fit(strrep("测", 40L), width)
+        expect_lte(cli::ansi_nchar(value, type = "width"), width)
+    }
+    token <- "/very/long/path/without/spaces"
+    wrapped_token <- shift__ui_hard_wrap(token, 8L)
+    expect_true(all(cli::ansi_nchar(wrapped_token, type = "width") <= 8L))
+    expect_identical(paste0(cli::ansi_strip(wrapped_token), collapse = ""),
+        token)
+
+    cases <- data.table::data.table(
+        experiment_id = "ssp585",
+        period = "2060年代",
+        variant_label = "r1i1p1f1",
+        status = "missing",
+        missing_reason = "缺少近地面比湿变量：2055–2065 全部年份"
+    )
+    for (width in c(32L, 40L, 60L, 80L)) {
+        lines <- shift__ui_case_table(cases, width = width, detail = "detail")
+        expect_true(all(cli::ansi_nchar(lines, type = "width") <= width))
+    }
+
+    state <- list(
+        run_id = "run-narrow-terminal", status = "running",
+        stage = "extract_future",
+        stage_sequence = c("resolve", "extract_future", "extract_reference",
+            "coverage", "morph", "write_epw"),
+        completed_stages = "resolve",
+        unit_label = "ssp585 \u00b7 near-surface air temperature \u00b7 2055\u20132065",
+        unit_current = 5L, unit_total = 16L,
+        current_details = list(current = 5L, total = 16L,
+            variable = "tas", scenario = "ssp585"),
+        elapsed_seconds = 20
+    )
+    for (width in c(24L, 32L, 40L, 80L)) {
+        lines <- shift__ui_status_lines(state, width = width,
+            motion = "full", frame = 3L)
+        expect_true(all(cli::ansi_nchar(lines, type = "width") <= width - 1L))
+    }
+})
+
+test_that("terminal dashboards stop all animation", {
+    state <- list(
+        run_id = "run-complete", status = "completed", stage = "write_epw",
+        stage_sequence = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        completed_stages = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        unit_label = "Exported final EPW", unit_current = 2L, unit_total = 2L,
+        current_details = list(current = 2L, total = 2L,
+            outcome = "completed"),
+        outputs_completed = 2L, cases_total = 2L, elapsed_seconds = 30
+    )
+    first <- cli::ansi_strip(shift__ui_status_lines(state,
+        motion = "full", frame = 1L))
+    second <- cli::ansi_strip(shift__ui_status_lines(state,
+        motion = "full", frame = 7L))
+    expect_identical(first, second)
+    expect_match(first[[1L]], "COMPLETED")
+    expect_true(any(grepl("100%", first, fixed = TRUE)))
+})
+
+test_that("download stages expose measured transfer metrics and active files", {
+    state <- list(
+        run_id = "run-download",
+        stage = "download",
+        status = "running",
+        elapsed_seconds = 20,
+        unit_label = "future download · tas.nc + hurs.nc",
+        unit_current = 2L,
+        unit_total = 8L,
+        current_details = list(
+            unit_type = "download_session",
+            current = 2L,
+            total = 8L,
+            bytes_done = 1024^2,
+            bytes_total = 4 * 1024^2,
+            speed_bps = 512 * 1024,
+            eta_seconds = 6,
+            active_task_count = 2L,
+            active_files = c("tas.nc", "hurs.nc")
+        ),
+        cases_ready = 0L,
+        cases_total = 2L,
+        outputs_completed = 0L,
+        last_event = "Selected r1i1p1f1 / gn"
+    )
+    lines <- shift__ui_status_lines(state, width = 100L)
+    plain <- cli::ansi_strip(lines)
+    expect_true(any(grepl("2/8", plain, fixed = TRUE)))
+    expect_true(any(grepl("1.0 MiB/4.0 MiB", plain, fixed = TRUE)))
+    expect_true(any(grepl("512.0 KiB/s", plain, fixed = TRUE)))
+    expect_true(any(grepl("ETA 6s", plain, fixed = TRUE)))
+    expect_true(any(grepl("2 active", plain, fixed = TRUE)))
+})
+
+test_that("coverage, morph, and EPW stages expose distinct metrics", {
+    base <- list(
+        status = "running", stage_message = "Working", unit_label = "case",
+        unit_current = 1L, unit_total = 2L,
+        current_details = list(current = 1L, total = 2L),
+        cases_ready = 1L, cases_total = 2L, outputs_completed = 0L,
+        last_event = "Resolved", elapsed_seconds = 1
+    )
+
+    coverage <- shift__ui_status_lines(utils::modifyList(base,
+        list(stage = "coverage")), width = 80L)
+    morph <- shift__ui_status_lines(utils::modifyList(base,
+        list(stage = "morph")), width = 80L)
+    epw <- shift__ui_status_lines(utils::modifyList(base,
+        list(stage = "write_epw", outputs_completed = 1L)), width = 80L)
+
+    expect_true(any(grepl("Cases.*1/2.*ready 1.*missing 1",
+        cli::ansi_strip(coverage))))
+    expect_true(any(grepl("Cases.*1/2", cli::ansi_strip(morph))))
+    expect_true(any(grepl("EPWs.*1/2.*exported 1/2",
+        cli::ansi_strip(epw))))
+})
+
+test_that("transient updates do not replace the last completed milestone", {
+    reporter <- shift__reporter(shift_ui("none"))
+    reporter$stage_started("resolve", "Resolving inputs.")
+    reporter$unit_started("Checking catalogs", 1L, 2L)
+    reporter$unit_completed("Selected DKRZ", 1L, 2L)
+    reporter$unit_updated("Waiting for the next catalog", 2L, 2L)
+    expect_identical(reporter$snapshot()$last_event, "Selected DKRZ")
+})
+
+test_that("heartbeat details update live state without unthrottled durable touches", {
+    touches <- 0L
+    testthat::local_mocked_bindings(
+        shift__job_touch = function(store, job_id, ui_state = NULL) {
+            touches <<- touches + 1L
+            invisible(NULL)
+        },
+        shift__job_check_cancel = function(...) invisible(FALSE),
+        .package = "epwshiftr"
+    )
+    reporter <- shift__reporter(
+        shift_ui("none", heartbeat = 10),
+        store = list(), run_id = "run-test", job_id = "job-test"
+    )
+    reporter$heartbeat(details = list(
+        unit_type = "catalog", catalog_role = "future",
+        access_method = "HTTPServer", bytes_done = 1024
+    ))
+    reporter$heartbeat(details = list(bytes_done = 2048))
+
+    state <- reporter$snapshot()
+    expect_identical(state$current_details$catalog_role, "future")
+    expect_identical(state$current_details$access_method, "HTTPServer")
+    expect_equal(state$current_details$bytes_done, 2048)
+    expect_equal(touches, 1L)
+})
+
+test_that("dynamic frames advance faster than durable liveness", {
+    touches <- 0L
+    updates <- 0L
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(...) {
+                updates <<- updates + 1L
+                TRUE
+            },
+            suspend = function(code) code(),
+            close = function(...) invisible(NULL)
+        ),
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        shift__job_touch = function(store, job_id, ui_state = NULL) {
+            touches <<- touches + 1L
+            invisible(NULL)
+        },
+        shift__job_check_cancel = function(...) invisible(FALSE),
+        .package = "epwshiftr"
+    )
+    reporter <- shift__reporter(
+        shift_ui("dynamic", motion = "full", refresh = 0.05,
+            heartbeat = 100),
+        store = list(), run_id = "run-test", job_id = "job-test"
+    )
+    reporter$heartbeat("Waiting for catalog")
+    Sys.sleep(0.06)
+    reporter$heartbeat("Waiting for catalog")
+
+    expect_equal(touches, 1L)
+    expect_gte(updates, 2L)
+})
+
+test_that("append-only logs preserve complete messages at narrow widths", {
+    withr::local_options(width = 20L)
+    reporter <- shift__reporter(shift_ui("log", detail = "debug"))
+    reporter$stage_started("resolve", "Resolving inputs.")
+    message <- paste(rep("complete-catalog-context", 8L), collapse = " ")
+    output <- capture.output(reporter$unit_started(message), type = "message")
+    expect_true(any(grepl(message, output, fixed = TRUE)))
+})
+
+test_that("auto mode uses logs in CI and dumb terminals", {
+    withr::local_envvar(c(CI = "true", TERM = "xterm-256color"))
+    expect_identical(shift__ui_mode(shift_ui("auto")), "log")
+    withr::local_envvar(c(CI = NA_character_, TERM = "dumb"))
+    expect_identical(shift__ui_mode(shift_ui("auto")), "log")
 })

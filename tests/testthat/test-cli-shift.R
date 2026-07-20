@@ -117,6 +117,69 @@ test_that("shift run validates the task-oriented JSON config", {
     expect_equal(invalid$status, 2L)
 })
 
+test_that("shift watch JSONL follow emits typed event deltas", {
+    first_events <- data.table::data.table(
+        event_id = "event-1", run_id = "run-jsonl", stage = "resolve",
+        status = "running", message = "Resolving", details_json = NA_character_,
+        created_at = as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
+    )
+    second_events <- data.table::rbindlist(list(
+        first_events,
+        data.table::data.table(
+            event_id = "event-2", run_id = "run-jsonl", stage = "resolve",
+            status = "completed", message = "Resolved",
+            details_json = NA_character_,
+            created_at = as.POSIXct("2026-01-01 00:00:01", tz = "UTC")
+        )
+    ))
+    snapshots <- list(
+        list(
+            run = data.table::data.table(run_id = "run-jsonl", status = "running"),
+            cases = data.table::data.table(), outputs = data.table::data.table(),
+            diagnostics = data.table::data.table(), events = first_events
+        ),
+        list(
+            run = data.table::data.table(run_id = "run-jsonl", status = "completed"),
+            cases = data.table::data.table(), outputs = data.table::data.table(),
+            diagnostics = data.table::data.table(), events = second_events
+        )
+    )
+    index <- 0L
+    testthat::local_mocked_bindings(
+        epwshiftr_cli_shift_watch_snapshot = function(...) {
+            index <<- index + 1L
+            snapshot <- snapshots[[index]]
+            attr(snapshot, "shift_ui_events") <- snapshot$events
+            snapshot
+        },
+        .package = "epwshiftr"
+    )
+
+    output <- capture.output(result <- epwshiftr_cli_shift_watch_follow(
+        store = "unused", run_id = "run-jsonl", event_count = 10L,
+        interval = 0, count = 2L, jsonl = TRUE, quiet = FALSE,
+        progress = "none"
+    ))
+    records <- lapply(output, jsonlite::fromJSON)
+
+    expect_equal(vapply(records, `[[`, character(1L), "type"),
+        c("snapshot", "event", "terminal"))
+    expect_equal(records[[2L]]$event$event_id, "event-2")
+    expect_equal(records[[3L]]$snapshot$run$run_id, "run-jsonl")
+})
+
+test_that("shift CLI maps reduced motion independently from detail", {
+    parsed <- list(flags = list(
+        "--reduced-motion" = TRUE,
+        "--verbose" = FALSE,
+        "--debug" = FALSE
+    ))
+    expect_identical(epwshiftr_cli_shift_motion(parsed), "reduced")
+    expect_identical(epwshiftr_cli_shift_detail(parsed), "normal")
+    parsed$flags[["--reduced-motion"]] <- FALSE
+    expect_identical(epwshiftr_cli_shift_motion(parsed), "auto")
+})
+
 
 test_that("shift CLI registers, inspects, and cancels background jobs", {
     skip_if_not_installed("duckdb")
@@ -299,7 +362,10 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         ))
     )
     expect_equal(jsonl_watch$status, 0L)
-    expect_equal(jsonlite::fromJSON(jsonl_text[[1L]])$run$run_id, run_id)
+    jsonl_records <- lapply(jsonl_text, jsonlite::fromJSON)
+    expect_equal(vapply(jsonl_records, `[[`, character(1L), "type"),
+        c("snapshot", "terminal"))
+    expect_equal(jsonl_records[[1L]]$snapshot$run$run_id, run_id)
 
     json_text <- capture.output(
         json_watch <- epwshiftr_cli(c(

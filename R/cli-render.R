@@ -436,8 +436,8 @@ epwshiftr_cli_render_shift_config <- function(result) {
 }
 
 
-# Render CLI watch snapshots with the same stage/current/case/last view as the
-# foreground R reporter, then append terminal artifacts when they exist.
+# Render CLI watch snapshots with the same live dashboard as the foreground R
+# reporter, then append terminal artifacts when they exist.
 epwshiftr_cli_render_shift_watch <- function(
     result,
     detail = shift_coalesce(attr(result, "shift_ui_detail"), "normal")
@@ -452,6 +452,11 @@ epwshiftr_cli_render_shift_watch <- function(
         width = shift__ui_width(),
         detail = detail
     )
+    ui_state <- attr(result, "shift_ui_state")
+    if (!is.null(ui_state) && length(ui_state)) {
+        view$lines <- shift__ui_status_lines(ui_state,
+            width = shift__ui_width())
+    }
     shift__ui_print_view(view, include_tables = TRUE)
     epwshiftr_cli_render_table(
         result$outputs,

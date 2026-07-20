@@ -122,10 +122,14 @@ morpher__missing_variable_guidance <- function(variable_id, present_variables = 
     present_variables <- present_variables[!is.na(present_variables) & nzchar(present_variables)]
     if (identical(variable_id, "hurs")) {
         return(list(
-            suffix = " Belcher humidity morphing requires near-surface relative humidity (hurs).",
+            suffix = paste(
+                " Belcher humidity morphing requires near-surface relative humidity (hurs)",
+                "or derivable huss + tas + ps inputs."
+            ),
             action = paste(
                 "Add and extract hurs from a source that provides near-surface relative humidity,",
-                "or run in relaxed mode; relative humidity and dew point will fall back to baseline when humidity factors are unavailable."
+                "or extract huss, tas, and surface pressure ps so canonical hurs can be derived;",
+                "relative humidity and dew point fall back to baseline only in relaxed low-level runs."
             )
         ))
     }
@@ -480,6 +484,49 @@ epw_morph_variables <- function(level = c("recommended", "minimal", "extended"))
     EPW_MORPH_VARIABLE_LEVELS[[level]]
 }
 
+# Describe canonical morph variables separately from the source-variable
+# alternatives that can produce them. Keeping this at the recipe boundary lets
+# the resolver and extraction workflow share one capability contract without
+# teaching the morphing engine about ESGF catalog details.
+morpher__variable_requirements <- function(recipe) {
+    canonical <- epw_morph_variables(recipe)
+    requirements <- stats::setNames(
+        lapply(canonical, function(variable) list(variable)),
+        canonical
+    )
+    if (inherits(recipe, "epw_morph_recipe") &&
+        identical(recipe$backend, "belcher") &&
+        "hurs" %in% canonical) {
+        # Direct relative humidity is authoritative. Specific humidity is a
+        # fallback only when surface air pressure and temperature are both
+        # present; sea-level pressure is intentionally not interchangeable.
+        requirements[["hurs"]] <- list("hurs", c("huss", "tas", "ps"))
+    }
+    requirements
+}
+
+# Expand recipe capabilities to the exact ESGF variables worth querying and
+# extracting. This is deliberately internal: users still reason about the
+# canonical variables returned by epw_morph_variables().
+morpher__input_variables <- function(recipe) {
+    requirements <- morpher__variable_requirements(recipe)
+    unique(unlist(requirements, recursive = TRUE, use.names = FALSE))
+}
+
+# Test whether one set of available variables satisfies a canonical morphing
+# requirement, preserving the declared alternative order for direct-data
+# preference and deterministic diagnostics.
+morpher__requirement_match <- function(available, alternatives) {
+    available <- unique(as.character(available))
+    for (alternative in alternatives) {
+        alternative <- as.character(alternative)
+        if (all(alternative %in% available)) {
+            return(alternative)
+        }
+    }
+    character()
+}
+
 #' EPW morphing recipe
 #'
 #' @param name Recipe name. Defaults to `"belcher"`.
@@ -720,6 +767,9 @@ morpher__unit_alias <- function(x) {
         "millimetre" = "mm",
         "kg m-2 s-1" = "kg m-2 s-1",
         "kg m^-2 s^-1" = "kg m-2 s-1",
+        "kg kg-1" = "kg/kg",
+        "kg kg^-1" = "kg/kg",
+        "kg/kg" = "kg/kg",
         "1" = "1",
         x
     )
@@ -1442,6 +1492,146 @@ morpher__psychro_ln_pws <- function(t_c) {
         1.4452093e-8 * t_k[!ice]^3 +
         6.5459673 * log(t_k[!ice])
     out
+}
+
+# Derive relative humidity from CF near-surface specific humidity, air
+# temperature, and surface pressure. The exact moist-air relation converts
+# specific humidity to vapour partial pressure; the existing ASHRAE saturation
+# pressure correlation then supplies the temperature-dependent denominator.
+morpher__hurs_from_huss_si <- function(huss, tas, ps) {
+    huss <- as.numeric(huss)
+    tas <- as.numeric(tas)
+    ps <- as.numeric(ps)
+    valid <- is.na(huss) | (is.finite(huss) & huss >= 0 & huss < 1)
+    valid <- valid & (is.na(tas) | (is.finite(tas) & tas >= 173.15 & tas <= 473.15))
+    valid <- valid & (is.na(ps) | (is.finite(ps) & ps > 0))
+    if (!all(valid)) {
+        cli::cli_abort(
+            paste(
+                "Cannot derive hurs because huss, tas, or ps contains values",
+                "outside the supported physical range."
+            ),
+            class = "epwshiftr_hurs_derivation_error"
+        )
+    }
+
+    # epsilon is the molecular-weight ratio of dry air to water vapour used by
+    # ASHRAE psychrometric relations. `psl` must never enter this equation.
+    epsilon <- 0.621945
+    vapour_pressure <- huss * ps / (epsilon + (1 - epsilon) * huss)
+    saturation_pressure <- exp(morpher__psychro_ln_pws(tas - 273.15))
+    100 * vapour_pressure / saturation_pressure
+}
+
+# Normalize the narrowly supported CF units needed by the hurs derivation.
+# Rejecting unknown units is safer than silently treating scaled humidity or
+# pressure as SI input.
+morpher__humidity_input_si <- function(value, units, variable_id) {
+    units <- vapply(units, morpher__unit_alias, character(1L))
+    allowed <- switch(
+        variable_id,
+        huss = c("1", "kg/kg"),
+        tas = c("K", "degC"),
+        ps = c("Pa", "hPa")
+    )
+    unknown <- unique(units[is.na(units) | !units %in% allowed])
+    if (length(unknown)) {
+        cli::cli_abort(
+            "Cannot derive hurs from {.val {variable_id}} with unsupported unit(s): {.val {unknown}}.",
+            class = "epwshiftr_hurs_derivation_error"
+        )
+    }
+    out <- as.numeric(value)
+    if (identical(variable_id, "tas")) {
+        out[units == "degC"] <- out[units == "degC"] + 273.15
+    } else if (identical(variable_id, "ps")) {
+        out[units == "hPa"] <- out[units == "hPa"] * 100
+    }
+    out
+}
+
+# Build canonical hurs extraction rows from aligned huss, tas, and ps rows.
+# Direct hurs rows are handled by the caller and never pass through this helper.
+morpher__derive_hurs_rows <- function(climate) {
+    climate <- data.table::as.data.table(data.table::copy(climate))
+    required_columns <- c("variable_id", "time", "value", "units")
+    missing_columns <- setdiff(required_columns, names(climate))
+    if (length(missing_columns)) {
+        cli::cli_abort(
+            "Cannot derive hurs because extraction data lacks column(s): {.val {missing_columns}}.",
+            class = "epwshiftr_hurs_derivation_error"
+        )
+    }
+    required_inputs <- c("huss", "tas", "ps")
+    absent <- setdiff(required_inputs, unique(climate$variable_id))
+    if (length(absent)) {
+        present <- unique(as.character(climate$variable_id))
+        cli::cli_abort(
+            c(
+                "Cannot derive hurs because input variable(s) are missing: {.val {absent}}.",
+                "i" = "Available aligned input variable(s): {.val {present}}."
+            ),
+            class = "epwshiftr_hurs_derivation_error"
+        )
+    }
+
+    key <- intersect(
+        c("source_id", "experiment_id", "variant_label", "frequency",
+          "table_id", "grid_label", "site_id", "time"),
+        names(climate)
+    )
+    if (!"time" %in% key) {
+        cli::cli_abort("Cannot derive hurs without aligned extraction times.")
+    }
+
+    # Collapse identical rows from overlapping source files, but fail when two
+    # files disagree at the same identity and timestamp.
+    prepare <- function(variable_id) {
+        target_variable <- variable_id
+        rows <- climate[climate[["variable_id"]] == target_variable]
+        rows[["value_si"]] <- morpher__humidity_input_si(
+            rows[["value"]], rows[["units"]], target_variable
+        )
+        conflicts <- rows[, list(
+            values = data.table::uniqueN(get("value_si"))
+        ), by = key]
+        conflicts <- conflicts[conflicts[["values"]] > 1L]
+        if (nrow(conflicts)) {
+            cli::cli_abort(
+                "Cannot derive hurs because {.val {variable_id}} has conflicting values at aligned timestamps.",
+                class = "epwshiftr_hurs_derivation_error"
+            )
+        }
+        rows[!duplicated(rows, by = key)]
+    }
+    huss <- prepare("huss")
+    tas <- prepare("tas")[, c(key, "value_si"), with = FALSE]
+    data.table::setnames(tas, "value_si", "tas_si")
+    ps <- prepare("ps")[, c(key, "value_si"), with = FALSE]
+    data.table::setnames(ps, "value_si", "ps_si")
+    out <- tas[huss, on = key, nomatch = 0L]
+    out <- ps[out, on = key, nomatch = 0L]
+    if (nrow(out) != nrow(huss)) {
+        cli::cli_abort(
+            "Cannot derive hurs because huss, tas, and ps timestamps are not fully aligned.",
+            class = "epwshiftr_hurs_derivation_error"
+        )
+    }
+
+    source_plan_ids <- sort(unique(as.character(climate$plan_id)))
+    source_plan_ids <- source_plan_ids[!is.na(source_plan_ids) & nzchar(source_plan_ids)]
+    out[["variable_id"]] <- "hurs"
+    out[["variable"]] <- "hurs"
+    out[["value"]] <- morpher__hurs_from_huss_si(
+        out[["value_si"]], out[["tas_si"]], out[["ps_si"]]
+    )
+    out[["units"]] <- "%"
+    out[["derived_from"]] <- "huss,tas,ps"
+    out[["derivation"]] <-
+        "q-to-vapour-pressure + ASHRAE saturation pressure"
+    out[["source_plan_ids"]] <- paste(source_plan_ids, collapse = ",")
+    out[, c("value_si", "tas_si", "ps_si") := NULL]
+    out[]
 }
 
 # Differentiate the ASHRAE logarithmic saturation-pressure equation so the

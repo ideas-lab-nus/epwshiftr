@@ -104,12 +104,27 @@ shift_outputs(run)
 shift_missing(run)
 ```
 
-Foreground runs begin with a three-line intent summary. Dynamic terminals then
-keep a four-row view of the stage, current unit, case/output counts, and last
-event; redirected output uses scoped, append-only log lines instead. Resolver
-attempts and user cases are shown as compact tables at their workflow
-boundaries. `shift_ui()` controls only presentation and never changes the
-workflow specification or its `spec_hash`:
+Dynamic foreground runs start directly inside one atomic live panel; the plan
+context is replaced in place instead of leaving a duplicate startup transcript.
+On terminals at least 60 columns wide, a quiet border and labelled `Workflow`
+and `Activity` rules separate the run identity, active work, and recent results.
+Narrow terminals omit that decoration and preserve the same semantic rows. The
+dashboard keeps one animated current operation, a static stage rail,
+stage-specific measured progress, and two recent resolver or workflow outcomes.
+Resolver failover reports node attempts and elapsed time without presenting the
+attempt count as a workflow percentage. The live region is capped at 112
+columns, uses short normal-mode diagnostics, and reserves green, yellow, and red
+for semantic outcomes. Dynamic IDE consoles without cursor-up support receive
+one compact status row, while redirected output uses complete append-only logs.
+Downloads add aggregate bytes, speed, ETA, active-file counts, and filenames at
+higher detail levels. If a run fails, its final panel remains in terminal
+scrollback and changes `Activity` to `Diagnosis`: repeated mirror failures are
+collapsed into attempt counts, one cause, the closest CMIP6 identity, and the
+first missing requirement. Transient failures offer `Retry`; incomplete
+scientific coverage instead asks you to change the selection or reference,
+because resuming the unchanged request would produce the same result.
+`shift_ui()` controls only presentation and never changes the workflow
+specification or its `spec_hash`:
 
 ```{r shift-ui, eval = FALSE}
 run <- shift_future_epw(
@@ -118,13 +133,25 @@ run <- shift_future_epw(
     periods = list(`2060s` = 2055:2065),
     method = belcher(reference = historical_reference(1995:2014)),
     dir = "~/Downloads/epwshiftr-test",
-    ui = shift_ui(progress = "log", detail = "detail")
+    ui = shift_ui(
+        progress = "auto",
+        detail = "detail",
+        motion = "auto"
+    )
 )
 ```
 
 Use `detail = "normal"` for task-level progress, `"detail"` for selection,
 reuse, fallback, and all output paths, or `"debug"` to additionally include
-full URLs and internal paths.
+full URLs and internal paths. Live renderers use full animation by default;
+`motion = "reduced"` keeps a stable active marker, while `motion = "none"`
+removes motion without disabling the dashboard or compact status row. Terminal
+capability, width, Unicode, styling, and cursor visibility follow `cli`'s public
+APIs; the multi-line framebuffer owns only atomic frame painting. `refresh`
+controls only visual frames and `heartbeat` controls durable job liveness. Use
+`progress = "log"` for screen readers, redirected output, and stable captured
+logs. `"auto"` selects log mode automatically in CI, `TERM=dumb`, and
+non-dynamic terminals.
 
 For a long run that should survive the current R session, launch a detached
 worker. Registration returns immediately; the same `ShiftRun` handle reads live
@@ -140,7 +167,7 @@ run <- shift_future_epw(
     background = TRUE
 )
 shift_watch(run)
-shift_logs(run)
+shift_logs(run) # `source` distinguishes process logs from persisted events
 # shift_cancel(run) # stop at the next safe workflow boundary
 ```
 

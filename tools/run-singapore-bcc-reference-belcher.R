@@ -56,7 +56,8 @@ run <- shift_future_epw(
     method = belcher(
         reference = historical_reference(1995:2014)
     ),
-    dir = out_root
+    dir = out_root,
+    store = out_root
 )
 
 print(shift_outputs(run)[,

@@ -32,17 +32,40 @@
 
 ## New features
 
-* Added `shift_ui()` and a unified workflow reporter with a three-line startup
-  summary; a fixed stage/current/case/last-event terminal view; resolver and
-  case tables; task-specific file, byte, and variable metrics; and ordered
-  `normal`, `detail`, and `debug` output. Reporter milestones are also persisted
-  as structured run events, and `shift_watch()` reconstructs the same view.
-  Console-cleaned status rows are recreated without stopping the workflow.
+* Added `shift_ui()` and a unified workflow reporter with an in-place plan
+  summary; a responsive stage rail, one animated current operation,
+  stage-specific measured progress, terse resolver attempts, and a two-item
+  activity feed; aggregate download bytes, speed, ETA, and active files; and
+  ordered `normal`, `detail`, and `debug` output. Resolver failover no longer
+  presents node attempts as a workflow percentage. ANSI terminals paint the
+  complete dashboard atomically through a cli-capability-aware framebuffer,
+  add a quiet panel border with labelled workflow and activity sections at 60
+  columns and above, reserve the final terminal column against autowrap, and
+  reflow plan, current operation, status, and diagnosis fields at semantic
+  boundaries instead of clipping them. Flow falls back from the complete rail
+  to current-plus-next and current-only forms as space contracts. Semantic
+  colours remain reserved for state instead of ordinary plan values. Narrow
+  terminals retain the same content without decorative chrome. Constrained dynamic IDE
+  consoles use one compact cli status row. Failed runs now commit their final
+  panel to terminal scrollback and replace repeated resolver exceptions with a
+  structured diagnosis: attempt counts, one cause, the closest CMIP6 identity,
+  and the first missing requirement. Recovery text distinguishes transient
+  retryable failures from scientific coverage failures and omits the default
+  store path from copyable commands. Title-like dashboard labels now use a
+  consistent bold accent, while failure labels use the danger colour and
+  secondary labels remain quiet. `motion` and `refresh` control presentation
+  independently from durable job heartbeats, and `shift_watch()` advances
+  cached animation frames without increasing store polling frequency. Reporter
+  milestones remain structured run events while throttled sidecars carry
+  transient state without recording animation-only events. CI, `TERM=dumb`,
+  redirected, and captured output use complete append-only logs.
 * Added detached Future EPW jobs with live `ShiftRun` refresh,
   `shift_watch()`, `shift_cancel()`, and `shift_logs()`. Background attempts
   retain their PID, heartbeat, log, cancellation, and terminal state, while a
   lock-free live snapshot keeps watch/cancel responsive when the worker owns
-  DuckDB's process lock.
+  DuckDB's process lock. `shift_logs()` identifies process-log and persisted-
+  event rows, and CLI JSONL follow emits typed snapshot, event-delta, gap, and
+  terminal records.
 * Added persisted `ShiftRun` workflow records, expected-case state and events,
   plus `shift_runs()`, `shift_run_get()`, `shift_cases()`, `shift_missing()`, and
   `shift_resume()` for run-ID-based inspection and cross-session recovery.
@@ -75,12 +98,37 @@
 
 ## Bug fixes
 
+* Belcher CMIP6 resolution now keeps `hurs` as the canonical humidity input but
+  can satisfy it from complete `huss`, `tas`, and surface-pressure (`ps`) data
+  when direct relative humidity is unavailable. The derived `hurs` values use
+  the package's ASHRAE saturation-pressure equation, are persisted as normal
+  extraction plans and Parquet artifacts with source-plan provenance, and are
+  reused on resume. Mean sea-level pressure (`psl`) is never substituted for
+  surface pressure. High-level Future EPW plans also reject equal or nested
+  delivery/store paths so internal manifests, catalogs, and logs cannot enter
+  the exported-EPW directory.
+* Future-EPW collection now preserves ESGF File time metadata and fills missing
+  ranges from CMIP/DRS filenames before storing or filtering records. Resolver
+  coverage also repairs older cached catalogs defensively, preventing complete
+  member/grid combinations from being rejected as if every requested year were
+  absent. Closest-identity diagnostics prefer identities present in the future
+  catalog, and a mixed set of coverage failures plus one timed-out mirror no
+  longer presents an unconditional `Retry` action.
+* Historical-reference discovery no longer turns requested calendar years into
+  exact ESGF Dataset end timestamps. This keeps complete monthly datasets whose
+  metadata ends on a representative December date (for example December 16)
+  eligible for resolution; the requested years are still enforced during
+  candidate selection, extraction, and coverage checks. Empty reference
+  catalogs now report a dedicated diagnostic before member/grid matching.
 * Future-EPW progress now degrades to readable line logs when a dynamic Console
   region cannot be recreated, keeps the current business-unit label in sync,
   freezes elapsed time for every terminal run state, and preserves every unseen
   event between R or CLI watch polls. Expected resolver-node rejection no longer
   creates an error diagnostic, and foreground runs expose their durable events
-  through `shift_logs()`.
+  through `shift_logs()`. Extraction fallback downloads now share the workflow
+  reporter instead of opening competing native progress bars; remote NetCDF
+  reads remain visibly alive through a polled worker and fall back to synchronous
+  I/O when that worker cannot be launched.
 * Fixed precipitation morphing summaries to avoid carrying the removed legacy
   `dist` extraction column after grid extraction methods became explicit (#124).
 * `EsgStore` now keeps ESGF query collection and downloader operations outside
