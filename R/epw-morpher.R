@@ -221,8 +221,13 @@ EpwMorphBackend <- R6::R6Class(
         name = NULL,
         #' @field label Human-readable backend label.
         label = NULL,
-        #' @field requires_reference Whether the backend requires reference climate data.
+        #' @field requires_reference Whether external reference climate data are
+        #'   mandatory for this backend.
         requires_reference = FALSE,
+        #' @field accepts_reference Whether the backend can consume external
+        #'   reference climate data. A backend may accept a reference without
+        #'   requiring one.
+        accepts_reference = FALSE,
 
         #' @description
         #' Create an EPW morphing backend.
@@ -232,14 +237,24 @@ EpwMorphBackend <- R6::R6Class(
         #' @param methods Named default method vector.
         #' @param method_choices Allowed method values.
         #' @param rules Backend rule table.
-        #' @param requires_reference Whether reference climate data are required.
+        #' @param requires_reference Whether external reference climate data are
+        #'   mandatory. This can be `TRUE` only when `accepts_reference` is also
+        #'   `TRUE`.
+        #' @param accepts_reference Whether external reference climate data can
+        #'   be consumed. `TRUE` with `requires_reference = FALSE` defines an
+        #'   optional-reference backend such as Belcher.
         #' @param runner Function taking `(context, backend)` and returning an
         #'        `epw_morph_result`.
         initialize = function(name, label = NULL, methods = NULL, method_choices = NULL, rules,
-                              requires_reference = FALSE, runner) {
+                              requires_reference = FALSE,
+                              accepts_reference = requires_reference, runner) {
             checkmate::assert_string(name, min.chars = 1L)
             checkmate::assert_string(label, null.ok = TRUE)
             checkmate::assert_flag(requires_reference)
+            checkmate::assert_flag(accepts_reference)
+            if (isTRUE(requires_reference) && !isTRUE(accepts_reference)) {
+                cli::cli_abort("A backend that requires reference climate must also accept it.")
+            }
             if (is.null(methods)) {
                 methods <- stats::setNames(character(), character())
             }
@@ -252,6 +267,7 @@ EpwMorphBackend <- R6::R6Class(
             self$name <- tolower(name)
             self$label <- if (is.null(label)) self$name else label
             self$requires_reference <- requires_reference
+            self$accepts_reference <- accepts_reference
             private$method_defaults <- methods
             private$allowed_methods <- method_choices
             private$rule_table <- morpher__normalize_backend_rules(
@@ -348,11 +364,11 @@ morpher__default_backend_specs <- function() {
     list(
         belcher = EpwMorphBackend$new(
             name = "belcher",
-            label = "Belcher change-factor statistical downscaling",
+            label = "Belcher statistical downscaling with optional external reference",
             methods = EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS,
             method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
             rules = EPW_MORPH_BELCHER_RULES,
-            requires_reference = TRUE,
+            accepts_reference = TRUE,
             runner = morpher__belcher_run
         ),
         belcher_absolute = EpwMorphBackend$new(
@@ -376,7 +392,7 @@ morpher__warn_backend <- function(name) {
     assign(name, TRUE, envir = EPW_MORPH_BACKEND_WARNINGS)
     cli::cli_warn(c(
         "!" = "Backend {.val belcher_absolute} uses the legacy absolute-target Belcher implementation.",
-        "i" = "Use {.val belcher} with reference climate data for change-factor morphing."
+        "i" = "Use {.code belcher(reference = historical_reference(...))} when matching historical data are available; omit the reference only as a fallback."
     ))
     invisible(NULL)
 }
@@ -521,7 +537,8 @@ epw_morph_periods <- function(...) {
 #' Create an EPW morpher
 #'
 #' @param store An [EsgStore] object.
-#' @param epw EPW path or an [eplusr::Epw] object.
+#' @param epw Baseline EPW path, internal `EpwFile`, or an external object
+#'   inheriting from `"Epw"`.
 #' @param site_id Optional site identifier.
 #' @param recipe EPW morphing recipe.
 #' @param label Optional source label.
@@ -571,6 +588,15 @@ morpher__recipe_requires_reference <- function(recipe) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     epw_morph_backend(recipe$backend)$requires_reference
+}
+
+# Report whether a recipe can consume external climate reference data while
+# still distinguishing optional-reference backends from required ones.
+morpher__recipe_accepts_reference <- function(recipe) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    epw_morph_backend(recipe$backend)$accepts_reference
 }
 
 morpher__recipe_method_overrides <- function(recipe) {
@@ -654,17 +680,11 @@ morpher__delete_by_key <- function(store, table, key, values) {
 }
 
 morpher__units_label <- function(x) {
-    if (!inherits(x, "units")) {
-        return(NA_character_)
-    }
-    out <- tryCatch(units::deparse_unit(x), error = function(e) NA_character_)
+    out <- attr(x, "epw_unit", exact = TRUE)
     if (length(out) != 1L || is.na(out) || !nzchar(out)) NA_character_ else out
 }
 
 morpher__drop_units <- function(x) {
-    if (inherits(x, "units")) {
-        return(as.numeric(units::drop_units(x)))
-    }
     as.numeric(x)
 }
 
@@ -686,6 +706,8 @@ morpher__unit_alias <- function(x) {
         "percent" = "%",
         "Pa" = "Pa",
         "pascal" = "Pa",
+        "hPa" = "hPa",
+        "hectopascal" = "hPa",
         "W/m2" = "W/m^2",
         "W m-2" = "W/m^2",
         "W h m-2" = "W/m^2",
@@ -698,6 +720,7 @@ morpher__unit_alias <- function(x) {
         "millimetre" = "mm",
         "kg m-2 s-1" = "kg m-2 s-1",
         "kg m^-2 s^-1" = "kg m-2 s-1",
+        "1" = "1",
         x
     )
 }
@@ -718,34 +741,27 @@ morpher__convert_value_checked <- function(value, from, to) {
     if (identical(from, "degC") && identical(to, "K")) {
         return(list(value = as.numeric(value) + 273.15, ok = TRUE, message = NA_character_))
     }
-    tryCatch(
-        list(
-            value = as.numeric(units::drop_units(units::set_units(units::set_units(value, from, mode = "standard"), to, mode = "standard"))),
-            ok = TRUE,
-            message = NA_character_
-        ),
-        error = function(e) list(
-            value = as.numeric(value),
-            ok = FALSE,
-            message = conditionMessage(e)
-        )
+    if (identical(from, "hPa") && identical(to, "Pa")) {
+        return(list(value = as.numeric(value) * 100, ok = TRUE, message = NA_character_))
+    }
+    if (identical(from, "Pa") && identical(to, "hPa")) {
+        return(list(value = as.numeric(value) / 100, ok = TRUE, message = NA_character_))
+    }
+    if (identical(from, "1") && identical(to, "%")) {
+        return(list(value = as.numeric(value) * 100, ok = TRUE, message = NA_character_))
+    }
+    if (identical(from, "%") && identical(to, "1")) {
+        return(list(value = as.numeric(value) / 100, ok = TRUE, message = NA_character_))
+    }
+    list(
+        value = as.numeric(value),
+        ok = FALSE,
+        message = sprintf("Unsupported unit conversion from %s to %s.", from, to)
     )
 }
 
 morpher__default_epw_units <- function(field) {
-    switch(
-        field,
-        dry_bulb_temperature = "degC",
-        relative_humidity = "%",
-        atmospheric_pressure = "Pa",
-        horizontal_infrared_radiation_intensity_from_sky = "W/m^2",
-        global_horizontal_radiation = "W/m^2",
-        wind_speed = "m/s",
-        total_sky_cover = NA_character_,
-        liquid_precip_depth = "mm",
-        liquid_precip_rate = "h",
-        NA_character_
-    )
+    epw_file_unit(field)
 }
 
 morpher__case_columns <- function() {
@@ -836,7 +852,7 @@ morpher__field_units <- function(data, fields) {
 morpher__get_epw_path <- function(epw) {
     path <- tryCatch(epw$path(), error = function(e) NULL)
     if (is.null(path) || !length(path) || is.na(path[[1L]]) || !nzchar(path[[1L]])) {
-        cli::cli_abort("An {.cls eplusr::Epw} object used by {.cls EpwMorpher} must have a file path.")
+        cli::cli_abort("An internal EPW object used by {.cls EpwMorpher} must have a file path.")
     }
     path[[1L]]
 }
@@ -988,8 +1004,8 @@ morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
                               reference_years = NULL, reference_labels = NULL,
                               by = character(),
                               case = NULL, strict = TRUE, warning = FALSE) {
-    if (!inherits(epw, "Epw")) {
-        cli::cli_abort("`epw` must be an {.cls eplusr::Epw} object.")
+    if (!inherits(epw, "EpwFile")) {
+        cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
     }
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -1166,10 +1182,6 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
         lat = mean(lat, na.rm = TRUE),
         value = mean(value, na.rm = TRUE)
     ), by = group_cols]
-    unit <- out$units[!is.na(out$units) & nzchar(out$units)][1L]
-    if (length(unit) && !is.na(unit)) {
-        data.table::set(out, NULL, "value", units::set_units(out$value, unit, mode = "standard"))
-    }
     data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "units", "value", "month", "interval"))
     out[]
 }
@@ -1258,8 +1270,8 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
 epw_morph_result <- function(context, epw = context$epw, data, parts = list(),
                              diagnostics = morpher__empty_diagnostics(), factors = NULL) {
     checkmate::assert_class(context, "morpher__context")
-    if (!inherits(epw, "Epw")) {
-        cli::cli_abort("`epw` must be an {.cls eplusr::Epw} object.")
+    if (!inherits(epw, "EpwFile")) {
+        cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
     }
     if (missing(data)) {
         cli::cli_abort("`data` must be supplied.")
@@ -1336,27 +1348,32 @@ morpher__belcher_epw_monthly <- function(data_epw, var, keep_units = TRUE) {
         by = "month"
     ]
 
-    if (keep_units && inherits(data_epw[[var]], "units")) {
-        u <- units::deparse_unit(data_epw[[var]])
-        monthly[, `:=`(
-            val_mean = units::set_units(val_mean, u, mode = "standard"),
-            val_max = units::set_units(val_max, u, mode = "standard"),
-            val_min = units::set_units(val_min, u, mode = "standard")
-        )]
-    }
-
     monthly
 }
 
+# Convert climate values from their declared source units into the explicit EPW
+# field unit before monthly morphing factors are calculated.
 morpher__belcher_align_units <- function(data, target_units) {
-    data.table::set(data, NULL, "value", units::set_units(data$value, target_units, mode = "standard"))
+    converted <- lapply(seq_len(nrow(data)), function(i) {
+        morpher__convert_value_checked(data$value[[i]], data$units[[i]], target_units)
+    })
+    ok <- vapply(converted, `[[`, logical(1L), "ok")
+    if (any(!ok)) {
+        messages <- unique(vapply(converted[!ok], `[[`, character(1L), "message"))
+        cli::cli_abort(c(
+            "Climate values cannot be converted to the EPW field unit {.val {target_units}}.",
+            "x" = messages
+        ))
+    }
+    data.table::set(data, NULL, "value", vapply(converted, `[[`, numeric(1L), "value"))
+    data[, units := target_units]
     data
 }
 
 morpher__belcher_drop_units <- function(data, vars) {
     for (var in c(vars, "delta", "alpha")) {
-        if (var %in% names(data) && inherits(data[[var]], "units")) {
-            data.table::set(data, NULL, var, units::drop_units(data[[var]]))
+        if (var %in% names(data)) {
+            data.table::set(data, NULL, var, as.numeric(data[[var]]))
         }
     }
     data
@@ -1405,22 +1422,78 @@ morpher__belcher_solar_angle <- function(latitude, longitude, day_of_year, hour,
         cos(morpher__belcher_to_radian(hour_angle))
 }
 
-morpher__belcher_tdew <- function(tdb, rh) {
-    psychrolib::SetUnitSystem("SI")
+# Evaluate the ASHRAE saturation-vapour-pressure correlation in logarithmic
+# form. Separate ice and liquid-water coefficients meet at the triple point.
+morpher__psychro_ln_pws <- function(t_c) {
+    t_k <- as.numeric(t_c) + 273.15
+    ice <- t_k <= 273.16
+    out <- numeric(length(t_k))
+    out[ice] <- -5.6745359e3 / t_k[ice] +
+        6.3925247 -
+        9.677843e-3 * t_k[ice] +
+        6.2215701e-7 * t_k[ice]^2 +
+        2.0747825e-9 * t_k[ice]^3 -
+        9.484024e-13 * t_k[ice]^4 +
+        4.1635019 * log(t_k[ice])
+    out[!ice] <- -5.8002206e3 / t_k[!ice] +
+        1.3914993 -
+        4.8640239e-2 * t_k[!ice] +
+        4.1764768e-5 * t_k[!ice]^2 -
+        1.4452093e-8 * t_k[!ice]^3 +
+        6.5459673 * log(t_k[!ice])
+    out
+}
 
+# Differentiate the ASHRAE logarithmic saturation-pressure equation so the
+# dew-point inverse can use a stable vectorised Newton iteration.
+morpher__psychro_d_ln_pws <- function(t_c) {
+    t_k <- as.numeric(t_c) + 273.15
+    ice <- t_k <= 273.16
+    out <- numeric(length(t_k))
+    out[ice] <- 5.6745359e3 / t_k[ice]^2 -
+        9.677843e-3 +
+        2 * 6.2215701e-7 * t_k[ice] +
+        3 * 2.0747825e-9 * t_k[ice]^2 -
+        4 * 9.484024e-13 * t_k[ice]^3 +
+        4.1635019 / t_k[ice]
+    out[!ice] <- 5.8002206e3 / t_k[!ice]^2 -
+        4.8640239e-2 +
+        2 * 4.1764768e-5 * t_k[!ice] -
+        3 * 1.4452093e-8 * t_k[!ice]^2 +
+        6.5459673 / t_k[!ice]
+    out
+}
+
+# Solve vapour pressure = RH * saturation pressure for dew point. The bounds
+# match the ASHRAE correlation validity range used by the previous backend.
+morpher__dew_point_from_rh <- function(t_c, rh) {
+    t_c <- as.numeric(t_c)
+    rh <- pmin(1, pmax(as.numeric(rh), .Machine$double.eps))
+    target <- log(rh) + morpher__psychro_ln_pws(t_c)
+    dew <- pmin(t_c, 100)
+    for (i in seq_len(20L)) {
+        step <- (morpher__psychro_ln_pws(dew) - target) /
+            morpher__psychro_d_ln_pws(dew)
+        updated <- pmin(t_c, pmax(-100, pmin(200, dew - step)))
+        if (all(abs(updated - dew) <= 1e-9)) {
+            dew <- updated
+            break
+        }
+        dew <- updated
+    }
+    dew
+}
+
+morpher__belcher_tdew <- function(tdb, rh) {
     tdew <- data.table::copy(tdb)[
         rh, on = c(setdiff(names(tdb), c("dry_bulb_temperature", "delta", "alpha"))),
         relative_humidity := i.relative_humidity
     ]
 
     tdew[!is.na(dry_bulb_temperature) & !is.na(relative_humidity),
-        dew_point_temperature := units::set_units(
-            psychrolib::GetTDewPointFromRelHum(
-                units::drop_units(dry_bulb_temperature),
-                units::drop_units(relative_humidity) / 100
-            ),
-            "degree_Celsius",
-            mode = "standard"
+        dew_point_temperature := morpher__dew_point_from_rh(
+            dry_bulb_temperature,
+            relative_humidity / 100
         )
     ]
 
@@ -1445,9 +1518,7 @@ morpher__belcher_diffuse_radiation <- function(data_epw, glob_rad) {
         diffuse_horizontal_radiation := i.diffuse_horizontal_radiation * alpha
     ]
     diff_rad[, global_horizontal_radiation := NULL]
-    diff_rad[, diffuse_horizontal_radiation := units::set_units(units::drop_units(
-        diffuse_horizontal_radiation
-    ), "W/m^2")][]
+    diff_rad[, diffuse_horizontal_radiation := as.numeric(diffuse_horizontal_radiation)][]
 }
 
 morpher__epw_location_numeric <- function(epw, names, default = NA_real_) {
@@ -1497,7 +1568,7 @@ morpher__belcher_direct_normal_radiation <- function(glob_rad, diff_rad, latitud
         0
     )
     dni <- pmin(dni, pmax(0, ghi) * 3)
-    norm_rad[, direct_normal_radiation := units::set_units(dni, "W/m^2")]
+    norm_rad[, direct_normal_radiation := as.numeric(dni)]
     norm_rad[, c("global_horizontal_radiation", "diffuse_horizontal_radiation", "day_of_year", "solar_angle") := NULL]
     norm_rad[, c("lat_calc", "lon_calc") := NULL]
 }
@@ -1539,7 +1610,7 @@ morpher__belcher_from_monthly <- function(var, data_epw, data_mean, data_max = N
     }
 
     monthly <- morpher__belcher_epw_monthly(data_epw, var)
-    u <- units::deparse_unit(data_epw[[var]])
+    u <- morpher__default_epw_units(var)
     data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), u)
 
     case_fallback <- data.table::data.table()
@@ -1629,14 +1700,14 @@ morpher__belcher_from_monthly <- function(var, data_epw, data_mean, data_max = N
     }
 
     if (identical(type, "shift")) {
-        data[, c(var) := units::set_units(get(var) + delta, u, mode = "standard")]
+        data[, c(var) := get(var) + delta]
     } else if (identical(type, "stretch")) {
-        data[, c(var) := units::set_units(get(var) * alpha, u, mode = "standard")]
+        data[, c(var) := get(var) * alpha]
     } else if (identical(type, "combined")) {
         if (all(c("value_min", "value_max") %in% names(data))) {
-            data[, c(var) := units::set_units(get(var) + delta + alpha * (get(var) - epw_mean), u, mode = "standard")]
+            data[, c(var) := get(var) + delta + alpha * (get(var) - epw_mean)]
         } else {
-            data[, c(var) := units::set_units(get(var) + delta + alpha * get(var), u, mode = "standard")]
+            data[, c(var) := get(var) + delta + alpha * get(var)]
         }
     }
 
@@ -1708,7 +1779,7 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
     }
 
     monthly <- morpher__belcher_epw_monthly(data_epw, var)
-    u <- units::deparse_unit(data_epw[[var]])
+    u <- morpher__default_epw_units(var)
     data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), u)
     reference_mean <- morpher__belcher_align_units(data.table::copy(reference_mean), u)
     data_mean <- morpher__belcher_attach_reference(data_mean, reference_mean, "reference_value")
@@ -1818,11 +1889,11 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
     }
 
     if (identical(type, "shift")) {
-        data[, c(var) := units::set_units(get(var) + delta, u, mode = "standard")]
+        data[, c(var) := get(var) + delta]
     } else if (identical(type, "stretch")) {
-        data[, c(var) := units::set_units(get(var) * alpha, u, mode = "standard")]
+        data[, c(var) := get(var) * alpha]
     } else if (identical(type, "combined")) {
-        data[, c(var) := units::set_units(get(var) + delta + alpha * (get(var) - epw_mean), u, mode = "standard")]
+        data[, c(var) := get(var) + delta + alpha * (get(var) - epw_mean)]
     }
 
     data[, .SD, .SDcols = c(
@@ -1861,8 +1932,8 @@ morpher__belcher_rh <- function(data_epw, context, type) {
         if (nrow(hursmin)) hursmin else NULL,
         type = type
     )
-    rh[relative_humidity > units::set_units(100, "%"), relative_humidity := units::set_units(100, "%")]
-    rh[relative_humidity < units::set_units(0, "%"), relative_humidity := units::set_units(0, "%")]
+    rh[relative_humidity > 100, relative_humidity := 100]
+    rh[relative_humidity < 0, relative_humidity := 0]
     rh
 }
 
@@ -1906,8 +1977,8 @@ morpher__belcher_change_rh <- function(data_epw, context, type) {
         type = type,
         strict = context$strict
     )
-    rh[relative_humidity > units::set_units(100, "%"), relative_humidity := units::set_units(100, "%")]
-    rh[relative_humidity < units::set_units(0, "%"), relative_humidity := units::set_units(0, "%")]
+    rh[relative_humidity > 100, relative_humidity := 100]
+    rh[relative_humidity < 0, relative_humidity := 0]
     rh
 }
 
@@ -2121,7 +2192,7 @@ morpher__belcher_monthly_precip_variable <- function(context, variable_id, refer
         converted$value
     }, numeric(1L))
     out[, `:=`(
-        value = units::set_units(values, "mm", mode = "standard"),
+        value = as.numeric(values),
         units = "mm",
         years = NULL
     )]
@@ -2156,7 +2227,7 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     }
     baseline <- data_epw[, .SD, .SDcols = keep]
     if (!rate_col %in% names(baseline)) {
-        baseline[, (rate_col) := units::set_units(0, "h", mode = "standard")]
+        baseline[, (rate_col) := 0]
     }
     baseline[, .baseline_precip_depth := pmax(0, morpher__drop_units(liquid_precip_depth))]
     monthly <- baseline[, .(baseline_total = sum(.baseline_precip_depth, na.rm = TRUE)), by = "month"]
@@ -2211,8 +2282,8 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     # CMIP6 `pr` only supplies precipitation amount after time integration; the
     # EPW liquid precipitation duration/rate field is derived from wet hours.
     depth <- data$.baseline_precip_depth * scale
-    data[, liquid_precip_depth := units::set_units(depth, "mm", mode = "standard")]
-    data[, liquid_precip_rate := units::set_units(as.numeric(depth > .Machine$double.eps), "h", mode = "standard")]
+    data[, liquid_precip_depth := as.numeric(depth)]
+    data[, liquid_precip_rate := as.numeric(depth > .Machine$double.eps)]
     data[, .baseline_precip_depth := NULL]
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
@@ -2259,13 +2330,10 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     p <- morpher__belcher_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
 
     data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
-        units::set_units(units::drop_units(horizontal_infrared_radiation_intensity_from_sky), "W/m^2"
-    )]
+        as.numeric(horizontal_infrared_radiation_intensity_from_sky)]
     hor_ir <- morpher__belcher_monthly_field(data_epw, context, "rlds", "horizontal_infrared_radiation_intensity_from_sky", methods[["hor_ir"]])
 
-    data_epw[, global_horizontal_radiation :=
-        units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
-    )]
+    data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
     glob_rad <- morpher__belcher_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
     diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
     epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
@@ -2312,7 +2380,10 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
 
 morpher__belcher_run <- function(context, backend = NULL) {
     if (is.null(context$reference_climate)) {
-        cli::cli_abort("Backend {.val belcher} requires reference climate data.")
+        # Without external historical climate, the EPW monthly climatology is
+        # the reference. Applying future-minus-EPW changes is equivalent to the
+        # absolute-target implementation, including precipitation scaling.
+        return(morpher__belcher_absolute_run(context, backend))
     }
 
     methods <- context$recipe$methods
@@ -2326,13 +2397,10 @@ morpher__belcher_run <- function(context, backend = NULL) {
     p <- morpher__belcher_change_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
 
     data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
-        units::set_units(units::drop_units(horizontal_infrared_radiation_intensity_from_sky), "W/m^2"
-    )]
+        as.numeric(horizontal_infrared_radiation_intensity_from_sky)]
     hor_ir <- morpher__belcher_change_monthly_field(data_epw, context, "rlds", "horizontal_infrared_radiation_intensity_from_sky", methods[["hor_ir"]])
 
-    data_epw[, global_horizontal_radiation :=
-        units::set_units(units::drop_units(global_horizontal_radiation), "W/m^2"
-    )]
+    data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
     glob_rad <- morpher__belcher_change_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
     diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
     epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
@@ -2397,7 +2465,8 @@ EpwMorpher <- R6::R6Class(
         #' Create an EPW morpher.
         #'
         #' @param store An [EsgStore] object.
-        #' @param epw EPW path or an [eplusr::Epw] object.
+        #' @param epw Baseline EPW path, internal `EpwFile`, or an external
+        #'   object inheriting from `"Epw"`.
         #' @param site_id Optional site identifier.
         #' @param recipe EPW morphing recipe.
         #' @param label Optional source label.
@@ -2465,6 +2534,8 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("`reference_periods` must be supplied when `reference_plan_id` is supplied.")
             }
             reference_required <- morpher__recipe_requires_reference(private$recipe)
+            reference_accepted <- morpher__recipe_accepts_reference(private$recipe)
+            reference_supplied <- !is.null(reference_plan_id) || !is.null(reference_summary_id)
             reference_missing <- isTRUE(reference_required) &&
                 is.null(reference_plan_id) && is.null(reference_summary_id)
 
@@ -2476,10 +2547,23 @@ EpwMorpher <- R6::R6Class(
                 if (reference_missing) {
                     morpher__diagnostic(
                         stage = "reference",
-                        severity = if (isTRUE(strict)) "error" else "warning",
+                        # A required reference is structural input, so relaxed
+                        # scientific diagnostics must never downgrade it.
+                        severity = "error",
                         code = "missing_reference_climate",
                         message = "The selected morphing backend requires reference climate data.",
                         action = "Supply `reference_plan_id` and `reference_periods`, or use a backend that does not require reference climate."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
+                if (isTRUE(reference_supplied) && !isTRUE(reference_accepted)) {
+                    morpher__diagnostic(
+                        stage = "reference",
+                        severity = "error",
+                        code = "unexpected_reference_climate",
+                        message = "The selected morphing backend does not accept reference climate data.",
+                        action = "Remove the reference input or select a backend that accepts it."
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -2588,7 +2672,7 @@ EpwMorpher <- R6::R6Class(
             rules <- morpher__recipe_rules(private$recipe)
             fields <- unique(rules[required == TRUE & !derived, epw_field])
             fields <- intersect(fields, names(data))
-            units_map <- morpher__field_units(data, fields)
+            units_map <- stats::setNames(lapply(fields, morpher__default_epw_units), fields)
             rows <- morpher__monthly_long(data, character(), fields, units_map)
             if (!nrow(rows)) {
                 cli::cli_abort("No recipe EPW fields were found in the baseline EPW.")
@@ -2698,6 +2782,8 @@ EpwMorpher <- R6::R6Class(
             factors <- private$factor_rows(morph_id, climate, baseline, by, strict = strict, reference = reference)
             reference_required <- morpher__recipe_requires_reference(private$recipe)
             reference_missing <- isTRUE(reference_required) && is.null(reference_summary_id)
+            reference_rejected <- !is.null(reference_summary_id) &&
+                !isTRUE(morpher__recipe_accepts_reference(private$recipe))
             diagnostics <- morpher__bind_diagnostics(
                 private$preflight_summary(summary_id, by, strict = strict),
                 if (!is.null(reference_summary_id)) {
@@ -2708,7 +2794,9 @@ EpwMorpher <- R6::R6Class(
                 if (reference_missing) {
                     morpher__diagnostic(
                         stage = "reference",
-                        severity = if (isTRUE(strict)) "error" else "warning",
+                        # Missing required reference data is a structural
+                        # error, independent of scientific strictness.
+                        severity = "error",
                         code = "missing_reference_climate",
                         message = "The selected morphing backend requires reference climate data.",
                         morph_id = morph_id,
@@ -2717,10 +2805,24 @@ EpwMorpher <- R6::R6Class(
                 } else {
                     morpher__empty_diagnostics()
                 },
+                if (reference_rejected) {
+                    morpher__diagnostic(
+                        stage = "reference",
+                        severity = "error",
+                        code = "unexpected_reference_climate",
+                        message = "The selected morphing backend does not accept reference climate data.",
+                        morph_id = morph_id,
+                        action = "Remove `reference_summary_id` or select a backend that accepts it."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
                 private$preflight_baseline(baseline_id, strict = strict),
                 private$factor_diagnostics(factors, strict = strict, morph_id = morph_id)
             )
-            status <- if (any(diagnostics$severity == "error") && isTRUE(strict)) "blocked" else "planned"
+            structural_reference_error <- isTRUE(reference_missing) || isTRUE(reference_rejected)
+            status <- if (structural_reference_error ||
+                (any(diagnostics$severity == "error") && isTRUE(strict))) "blocked" else "planned"
             now <- morpher__now()
             plan <- data.table::data.table(
                 morph_id = morph_id,
@@ -2785,7 +2887,9 @@ EpwMorpher <- R6::R6Class(
         #' @param morph_id Morphing plan ID.
         #' @param overwrite Whether to overwrite existing result files.
         #' @param resume Whether to reuse complete existing results.
-        run = function(morph_id, overwrite = FALSE, resume = TRUE) {
+        #' @param reporter Optional workflow reporter used by task-level runs.
+        run = function(morph_id, overwrite = FALSE, resume = TRUE,
+                       reporter = NULL) {
             checkmate::assert_string(morph_id, min.chars = 1L)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
@@ -2814,6 +2918,16 @@ EpwMorpher <- R6::R6Class(
             ]
             if (!isTRUE(overwrite) && isTRUE(resume) && length(unique(complete_existing$case_id)) == length(cases)) {
                 private$set_plan_status(morph_id, "result_done")
+                if (!is.null(reporter)) {
+                    for (case_index in seq_along(cases)) {
+                        case <- plan_cases[case_index]
+                        label <- private$report_case_label(case)
+                        reporter$unit_started(label, current = case_index, total = length(cases),
+                            details = private$report_case_details(case, "morph_case"))
+                        reporter$unit_skipped(sprintf("Reused %s", label),
+                            current = case_index, total = length(cases))
+                    }
+                }
                 return(complete_existing[match(cases, complete_existing$case_id)])
             }
 
@@ -2841,18 +2955,30 @@ EpwMorpher <- R6::R6Class(
                     reference_by <- morpher__reference_case_by(by)
                     result_rows <- list()
                     for (case_index in seq_along(cases)) {
+                        if (!is.null(reporter)) {
+                            reporter$check_cancel("morph")
+                        }
                         case_id <- cases[[case_index]]
+                        case <- plan_cases[case_index]
+                        label <- private$report_case_label(case)
+                        if (!is.null(reporter)) {
+                            reporter$unit_started(label, current = case_index, total = length(cases),
+                                details = private$report_case_details(case, "morph_case"))
+                        }
                         path <- private$morph_result_path(morph_id, case_id)
                         target_case_id <- case_id
                         existing_case <- complete_existing[complete_existing[["case_id"]] == target_case_id]
                         if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_case)) {
                             result_rows[[length(result_rows) + 1L]] <- existing_case[1L]
+                            if (!is.null(reporter)) {
+                                reporter$unit_skipped(sprintf("Reused %s", label),
+                                    current = case_index, total = length(cases))
+                            }
                             next
                         }
                         if (file.exists(path) && !isTRUE(overwrite)) {
                             cli::cli_abort("Morph result already exists without a complete manifest row: {.path {path}}.")
                         }
-                        case <- plan_cases[case_index]
                         case_climate <- private$filter_case_climate(climate, case, by)
                         if (!nrow(case_climate)) {
                             cli::cli_abort("No extracted climate rows matched morphing case {.val {target_case_id}}.")
@@ -2860,7 +2986,10 @@ EpwMorpher <- R6::R6Class(
                         reference_case_climate <- NULL
                         if (!is.null(reference_climate)) {
                             reference_case_climate <- private$filter_case_climate(reference_climate, case, reference_by)
-                            if (isTRUE(morpher__recipe_requires_reference(private$recipe)) && !nrow(reference_case_climate)) {
+                            # Supplying an external reference selects
+                            # change-factor mode for every case; never fall
+                            # back to the baseline EPW for an unmatched case.
+                            if (!nrow(reference_case_climate)) {
                                 cli::cli_abort("No reference climate rows matched morphing case {.val {target_case_id}}.")
                             }
                         }
@@ -2901,6 +3030,10 @@ EpwMorpher <- R6::R6Class(
                             created_at = morpher__now(),
                             stringsAsFactors = FALSE
                         )
+                        if (!is.null(reporter)) {
+                            reporter$unit_completed(sprintf("Morphed %s", label),
+                                current = case_index, total = length(cases), outcome = "completed")
+                        }
                     }
                     results <- data.table::rbindlist(result_rows, use.names = TRUE, fill = TRUE)
                     morpher__delete_by_key(private$store, "epw_morph_result", "morph_id", morph_id)
@@ -2926,7 +3059,9 @@ EpwMorpher <- R6::R6Class(
         #' @param separate Whether to create case subdirectories.
         #' @param overwrite Whether to overwrite existing EPW files.
         #' @param resume Whether to reuse complete existing EPW outputs.
-        write_epw = function(morph_id, dir, separate = TRUE, overwrite = FALSE, resume = TRUE) {
+        #' @param reporter Optional workflow reporter used by task-level runs.
+        write_epw = function(morph_id, dir, separate = TRUE, overwrite = FALSE,
+                             resume = TRUE, reporter = NULL) {
             checkmate::assert_string(morph_id, min.chars = 1L)
             checkmate::assert_string(dir, min.chars = 1L)
             checkmate::assert_flag(separate)
@@ -2952,10 +3087,22 @@ EpwMorpher <- R6::R6Class(
                     current_outputs <- current_outputs[current_outputs[["morph_id"]] == target_morph_id]
                     output_rows <- vector("list", nrow(results))
                     for (i in seq_len(nrow(results))) {
+                        if (!is.null(reporter)) {
+                            reporter$check_cancel("write_epw")
+                        }
                         result <- results[i]
                         result_path <- store_abs_path(result$output_path[[1L]], root = private$store$path)
                         dt <- morpher__parquet_read(private$store, result_path)
                         meta <- private$case_metadata_from_result(dt)
+                        label <- paste(unlist(meta[c("experiment_id", "variant_label", "period")], use.names = FALSE), collapse = " | ")
+                        if (!is.null(reporter)) {
+                            reporter$unit_started(label, current = i, total = nrow(results),
+                                details = list(
+                                    unit_type = "epw_case",
+                                    scenario = meta$experiment_id,
+                                    period = meta$period
+                                ))
+                        }
                         label <- paste(morpher__safe_path(unlist(meta, use.names = FALSE)), collapse = ".")
                         filename <- paste(tools::file_path_sans_ext(basename(morpher__get_epw_path(private$epw))), label, "epw", sep = ".")
                         output_path <- if (isTRUE(separate)) {
@@ -2970,6 +3117,10 @@ EpwMorpher <- R6::R6Class(
                         ]
                         if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_output) && file.exists(output_path)) {
                             output_rows[[i]] <- existing_output[1L]
+                            if (!is.null(reporter)) {
+                                reporter$unit_skipped(sprintf("Reused EPW %s", label),
+                                    current = i, total = nrow(results))
+                            }
                             next
                         }
                         if (file.exists(output_path) && !isTRUE(overwrite)) {
@@ -3005,6 +3156,10 @@ EpwMorpher <- R6::R6Class(
                             created_at = morpher__now(),
                             stringsAsFactors = FALSE
                         )
+                        if (!is.null(reporter)) {
+                            reporter$unit_completed(sprintf("Wrote EPW %s", label),
+                                current = i, total = nrow(results), outcome = "completed")
+                        }
                     }
                     outputs <- data.table::rbindlist(output_rows, use.names = TRUE, fill = TRUE)
                     morpher__delete_by_key(private$store, "epw_output", "morph_id", morph_id)
@@ -3034,10 +3189,11 @@ EpwMorpher <- R6::R6Class(
         #' @param separate Whether to create case subdirectories.
         #' @param overwrite Whether to overwrite existing plan, result, and EPW outputs.
         #' @param resume Whether to reuse complete existing result and EPW outputs.
+        #' @param reporter Optional workflow reporter used by task-level runs.
         workflow = function(plan_id, periods, reference_plan_id = NULL, reference_periods = NULL,
                             by = c("source_id", "experiment_id", "variant_label", "period"),
                             strict = TRUE, dir = "outputs/future-epw", separate = TRUE,
-                            overwrite = FALSE, resume = TRUE) {
+                            overwrite = FALSE, resume = TRUE, reporter = NULL) {
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_character(reference_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_data_frame(periods)
@@ -3053,6 +3209,18 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_flag(separate)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
+
+            # Stop before summaries or store writes when reference structure is
+            # incompatible with the selected backend.
+            if (isTRUE(morpher__recipe_requires_reference(private$recipe)) && is.null(reference_plan_id)) {
+                cli::cli_abort(c(
+                    "The selected morphing backend requires explicit reference climate data.",
+                    "i" = "Supply `reference_plan_id` and `reference_periods`."
+                ))
+            }
+            if (!is.null(reference_plan_id) && !isTRUE(morpher__recipe_accepts_reference(private$recipe))) {
+                cli::cli_abort("The selected morphing backend does not accept reference climate data.")
+            }
 
             preflight <- self$preflight(
                 plan_id = plan_id,
@@ -3101,11 +3269,13 @@ EpwMorpher <- R6::R6Class(
             if (isTRUE(strict)) {
                 self$check(plan$morph_id[[1L]])
             }
-            results <- self$run(plan$morph_id[[1L]], overwrite = overwrite, resume = resume)
+            results <- self$run(plan$morph_id[[1L]], overwrite = overwrite,
+                resume = resume, reporter = reporter)
             outputs <- if (is.null(dir)) {
                 NULL
             } else {
-                self$write_epw(plan$morph_id[[1L]], dir = dir, separate = separate, overwrite = overwrite, resume = resume)
+                self$write_epw(plan$morph_id[[1L]], dir = dir, separate = separate,
+                    overwrite = overwrite, resume = resume, reporter = reporter)
             }
             list(
                 preflight = preflight,
@@ -3157,15 +3327,36 @@ EpwMorpher <- R6::R6Class(
         label = NULL,
         recipe = NULL,
 
+        # Build one stable user-facing label from the scientific case identity,
+        # avoiding opaque internal case hashes in progress displays.
+        report_case_label = function(case) {
+            fields <- intersect(c("experiment_id", "variant_label", "period"), names(case))
+            values <- unlist(case[, ..fields], use.names = FALSE)
+            values <- values[!is.na(values) & nzchar(as.character(values))]
+            paste(as.character(values), collapse = " | ")
+        },
+
+        # Preserve structured case identity alongside the concise label so CLI
+        # watch can render progress without reparsing human-readable messages.
+        report_case_details = function(case, unit_type) {
+            list(
+                unit_type = unit_type,
+                scenario = if ("experiment_id" %in% names(case)) case$experiment_id[[1L]] else NULL,
+                period = if ("period" %in% names(case)) case$period[[1L]] else NULL
+            )
+        },
+
         register_epw = function(epw) {
-            if (inherits(epw, "Epw")) {
-                epw_path <- morpher__get_epw_path(epw)
-                epw_obj <- epw$clone()
+            if (inherits(epw, "EpwFile") || epw_file_is_external(epw)) {
+                # Normalize every object input at the engine boundary; external
+                # Epw implementations never leak into morphing internals.
+                epw_obj <- epw_file_coerce(epw)
+                epw_path <- morpher__get_epw_path(epw_obj)
             } else {
                 checkmate::assert_string(epw, min.chars = 1L)
                 checkmate::assert_file_exists(epw)
                 epw_path <- epw
-                epw_obj <- eplusr::read_epw(epw_path)
+                epw_obj <- epw_file_read(epw_path)
             }
             checksum <- store_hash_file(epw_path, "sha256")
             epw_id <- morpher__hash("epw", checksum, private$site_id, private$label)
@@ -3201,7 +3392,7 @@ EpwMorpher <- R6::R6Class(
             )
             morpher__replace_rows(private$store, "epw_source", row, "epw_id")
             private$epw_id <- epw_id
-            private$epw <- eplusr::read_epw(target)
+            private$epw <- epw_file_read(target)
             invisible(NULL)
         },
 
@@ -3693,11 +3884,13 @@ EpwMorpher <- R6::R6Class(
             if (!nrow(cases)) {
                 cli::cli_abort("No climate summary cases were found.")
             }
-            reference_required <- morpher__recipe_requires_reference(private$recipe)
             reference_by <- morpher__reference_case_by(by)
             if (is.null(reference)) {
                 reference <- data.table::data.table()
             }
+            # A supplied reference summary selects CMIP6 change-factor mode;
+            # otherwise each EPW monthly baseline value is the comparison.
+            external_reference <- nrow(reference) > 0L
             rows <- list()
             for (i in seq_len(nrow(cases))) {
                 case <- cases[i]
@@ -3725,7 +3918,7 @@ EpwMorpher <- R6::R6Class(
                         status <- "ok"
                         if (!nrow(future)) {
                             status <- "missing_climate"
-                        } else if (isTRUE(reference_required) && !nrow(ref)) {
+                        } else if (isTRUE(external_reference) && !nrow(ref)) {
                             status <- "missing_reference"
                         } else if (!nrow(base)) {
                             status <- "missing_baseline"
@@ -3755,7 +3948,7 @@ EpwMorpher <- R6::R6Class(
                                     status <- "unit_conversion_failed"
                                 }
                             }
-                            if (identical(status, "ok") && isTRUE(reference_required)) {
+                            if (identical(status, "ok") && isTRUE(external_reference)) {
                                 converted <- morpher__precip_summary_depth_checked(
                                     ref$value[[1L]],
                                     reference_units,
@@ -3781,7 +3974,7 @@ EpwMorpher <- R6::R6Class(
                                 !is.na(future_value) && future_value > .Machine$double.eps) {
                                 status <- "dry_baseline_precip"
                             }
-                            if (identical(status, "ok") && isTRUE(reference_required) &&
+                            if (identical(status, "ok") && isTRUE(external_reference) &&
                                 !is.na(reference_value) && reference_value <= .Machine$double.eps &&
                                 !is.na(future_value) && future_value > .Machine$double.eps) {
                                 status <- "zero_reference_precip"
@@ -3793,14 +3986,19 @@ EpwMorpher <- R6::R6Class(
                                 status <- "unit_conversion_failed"
                             }
                         }
-                        if (identical(status, "ok") && isTRUE(reference_required) && !isTRUE(is_precip)) {
+                        if (identical(status, "ok") && isTRUE(external_reference) && !isTRUE(is_precip)) {
                             converted <- morpher__convert_value_checked(reference_value, reference_units, base_units)
                             reference_value <- converted$value
                             if (!isTRUE(converted$ok)) {
                                 status <- "unit_conversion_failed"
                             }
                         }
-                        comparison_value <- if (isTRUE(reference_required)) reference_value else base_value
+                        # Persist the effective reference even in EPW-baseline
+                        # mode so factors remain inspectable and reproducible.
+                        if (!isTRUE(external_reference)) {
+                            reference_value <- base_value
+                        }
+                        comparison_value <- reference_value
                         delta <- if (!is.na(future_value) && !is.na(comparison_value)) future_value - comparison_value else NA_real_
                         alpha <- if (identical(status, "ok") && !is.na(comparison_value) && !isTRUE(all.equal(comparison_value, 0))) {
                             future_value / comparison_value

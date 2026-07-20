@@ -359,7 +359,8 @@ test_that("EsgStore$new()", {
             "extraction_plan", "extraction_result", "extraction_grid_source",
             "epw_source", "epw_baseline_summary", "epw_climate_summary",
             "epw_morph_plan", "epw_morph_factor", "epw_morph_result",
-            "epw_output"
+            "epw_output", "shift_run", "shift_run_case", "shift_run_event",
+            "shift_run_job"
         )
     )
 })
@@ -377,7 +378,7 @@ test_that("EsgStore$new(create = FALSE)", {
     expect_true(file.exists(file.path(dir, "manifest.duckdb")))
 })
 
-test_that("EsgStore$new() migrates older manifests", {
+test_that("EsgStore$new() rejects older manifests", {
     skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
@@ -387,18 +388,14 @@ test_that("EsgStore$new() migrates older manifests", {
     manifest <- file.path(dir, "manifest.duckdb")
     conn <- ddb_connect(manifest, read_only = FALSE)
     on.exit(if (!is.null(conn) && ddb_is_valid(conn)) ddb_disconnect(conn, shutdown = TRUE), add = TRUE)
-    ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
-    ddb_exec(conn, "ALTER TABLE esg_query_update DROP COLUMN IF EXISTS download_session_id")
-    ddb_exec(conn, "ALTER TABLE esg_query_update DROP COLUMN IF EXISTS last_error")
+    ddb_exec(conn, "UPDATE store_meta SET value = '2.6.0' WHERE key = 'schema_version'")
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
-    store <- EsgStore$new(dir, create = FALSE)
-    on.exit(store$close(), add = TRUE)
-
-    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
-    cols <- names(ddb_read_table(priv(store)$conn, "esg_query_update"))
-    expect_true(all(c("download_session_id", "last_error") %in% cols))
+    expect_error(
+        EsgStore$new(dir, create = FALSE),
+        "does not match the required version"
+    )
 })
 # }}}
 # EsgStore$close() {{{

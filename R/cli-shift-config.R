@@ -7,7 +7,7 @@ epwshiftr_cli_shift_config <- function(store, args) {
     switch(
         action,
         example = epwshiftr_cli_shift_config_example(rest),
-        validate = epwshiftr_cli_shift_config_validate(rest),
+        validate = epwshiftr_cli_shift_config_validate(store, rest),
         epwshiftr_cli_usage_abort(sprintf("Unknown shift config command: %s", action))
     )
 }
@@ -54,69 +54,57 @@ epwshiftr_cli_shift_config_example <- function(args) {
 }
 
 
-epwshiftr_cli_shift_config_validate <- function(args) {
+epwshiftr_cli_shift_config_validate <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = "--config")
     epwshiftr_cli_assert_no_positionals(parsed)
     config_path <- epwshiftr_cli_required_option(parsed, "--config")
     config <- epwshiftr_cli_read_shift_config(config_path)
+    plan <- epwshiftr_cli_config_plan(config, store = store)
     list(
         action = "validate",
         status = "valid",
         config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
-        request = data.table::as.data.table(epwshiftr_cli_config_request(config$request)),
-        site = data.table::as.data.table(epwshiftr_cli_config_site(config$site)),
-        periods = epwshiftr_cli_periods_from_config(config$extract$periods)
+        cases = shift_cases(plan),
+        explain = shift_explain(plan)
     )
 }
 
 
 epwshiftr_cli_shift_example_config <- function() {
     list(
-        request = list(
-            preset = "cmip6_scenario",
-            source = "BCC-CSM2-MR",
-            scenario = c("ssp126", "ssp585"),
-            member = "r1i1p1f1",
-            years = "2055:2065",
-            variables = "belcher",
+        version = 1L,
+        epw = system.file(
+            "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+            package = "epwshiftr",
+            mustWork = TRUE
+        ),
+        climate = list(
+            provider = "cmip6",
+            model = "BCC-CSM2-MR",
+            scenarios = c("ssp126", "ssp585"),
+            member = NULL,
+            grid = NULL,
             frequency = "mon",
-            table_id = "Amon",
-            grid_label = "gn",
-            index_node = "https://esgf-data.dkrz.de"
+            table = "Amon"
         ),
-        site = list(
-            id = "SIN",
-            lon = 103.98,
-            lat = 1.37,
-            label = "singapore",
-            epw = "baseline/SIN.epw"
-        ),
-        collect = list(
-            label = "singapore-bcc-csm2-mr"
-        ),
-        download = list(
-            run = FALSE,
-            background = FALSE,
-            session_label = "singapore-bcc-csm2-mr"
-        ),
-        extract = list(
-            periods = list(`2060s` = "2055:2065"),
-            method = "nearest",
-            fallback = "auto"
-        ),
-        morph = list(
-            recipe = "belcher",
-            strict = FALSE,
+        periods = list(`2060s` = "2055:2065"),
+        # Prefer a matching historical climate reference. Users may omit this
+        # block only when no suitable reference data are available; omission
+        # never triggers an implicit historical request.
+        method = list(
+            name = "belcher",
             reference = list(
                 mode = "historical",
                 periods = list(reference = "1995:2014")
-            ),
-            by = c("source_id", "experiment_id", "variant_label", "period")
+            )
         ),
-        epw = list(
-            dir = "outputs/future-epw",
-            export_dir = "future-epw",
-            separate = TRUE
+        dir = "future-epw",
+        control = list(
+            strict = TRUE,
+            allow_partial = FALSE,
+            download = "auto",
+            resume = TRUE,
+            overwrite = FALSE
         )
     )
 }

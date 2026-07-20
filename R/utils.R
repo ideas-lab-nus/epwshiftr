@@ -395,23 +395,50 @@ set_size_units <- function(x) {
     if (!length(x)) {
         return(NULL)
     }
-    base <- 1024L
-    iec <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
-    if (!inherits(x, "units")) {
-        x <- units::set_units(x, iec[[1L]], mode = "standard")
-    } else {
-        bytes <- try(units::set_units(x, iec[[1L]], mode = "standard"), silent = TRUE)
-        if (inherits(bytes, "try-error")) {
-            warning("Failed to set input units to 'Byte'. Conversion skipped.")
-            return(x)
-        }
-        x <- bytes
-    }
+    # Keep byte values numeric for arithmetic while attaching a lightweight
+    # display class that does not require the units package.
+    structure(as.numeric(x), class = c("epwshiftr_bytes", "numeric"))
+}
 
-    power <- log(units::drop_units(x), base = base)
-    power[is.infinite(power)] <- 0
-    power <- min(as.integer(power), length(iec))
-    units::set_units(x, iec[power + 1L], mode = "standard")
+# Format byte counts with IEC prefixes so result tables remain readable after
+# removing the units package dependency.
+#' @export
+format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
+    checkmate::assert_count(digits)
+    labels <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
+    vapply(as.numeric(x), function(value) {
+        if (is.na(value)) {
+            return(NA_character_)
+        }
+        power <- if (!is.finite(value) || value == 0) {
+            0L
+        } else {
+            max(0L, min(as.integer(floor(log(abs(value), base = 1024))), length(labels) - 1L))
+        }
+        scaled <- value / 1024^power
+        if (power == 0L) {
+            sprintf("%.0f %s", scaled, labels[[power + 1L]])
+        } else {
+            sprintf(paste0("%.", digits, "f %s"), scaled, labels[[power + 1L]])
+        }
+    }, character(1L))
+}
+
+# Print the lightweight byte vector through its human-readable formatter while
+# retaining the original numeric values invisibly.
+#' @export
+print.epwshiftr_bytes <- function(x, ...) {
+    print(format(x, ...), quote = FALSE)
+    invisible(x)
+}
+
+# Format raw byte counts for query summaries and formatted result tables using
+# the same dependency-free IEC representation as the public size vector.
+format_size_units <- function(x, digits = 2L) {
+    if (!length(x)) {
+        return(character())
+    }
+    format(set_size_units(x), digits = digits)
 }
 
 # store_is_abs_path {{{
@@ -998,8 +1025,12 @@ utils::globalVariables(c(
     "baseline_opaque_sky_cover",
     "baseline_total",
     "baseline_total_sky_cover",
+    "case_count",
+    "case_id",
+    "complete",
     "cooldown_until",
     "country",
+    "created_at",
     "data_node",
     "datetime",
     "datetime_end",
@@ -1008,6 +1039,7 @@ utils::globalVariables(c(
     "day_of_year",
     "degree_Celsius",
     "delta",
+    "deprecated",
     "derived",
     "dew_point_temperature",
     "diffuse_horizontal_radiation",
@@ -1021,6 +1053,7 @@ utils::globalVariables(c(
     "epw_mean",
     "epw_min",
     "experiment_id",
+    "export_path",
     "failure_count",
     "file_id",
     "file_mtime",
@@ -1030,6 +1063,7 @@ utils::globalVariables(c(
     "frequency",
     "future_total",
     "global_horizontal_radiation",
+    "grid_label",
     "horizontal_infrared_radiation_intensity_from_sky",
     "hour",
     "i.baseline_total",
@@ -1055,6 +1089,7 @@ utils::globalVariables(c(
     "interval",
     "kind",
     "last_probe_at",
+    "latest",
     "lat",
     "lat_calc",
     "latitude",
@@ -1088,6 +1123,7 @@ utils::globalVariables(c(
     "ord_lat",
     "ord_lon",
     "overlap",
+    "output_id",
     "period",
     "ping",
     "plan_id",
@@ -1107,10 +1143,13 @@ utils::globalVariables(c(
     "reference_value",
     "relative_humidity",
     "required",
+    "requested_experiment",
+    "retracted",
     "site_id",
     "solar_angle",
     "source_id",
     "source_type",
+    "started_at",
     "stat",
     "status",
     "step",
@@ -1138,5 +1177,7 @@ utils::globalVariables(c(
     "variable_id",
     "variant_label",
     "wmo_number",
-    "year"
+    "year",
+    "years",
+    "years_json"
 ))

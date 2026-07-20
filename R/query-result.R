@@ -365,8 +365,7 @@ EsgResult <- R6::R6Class(
         # }}}
 
         # size {{{
-        #' @field size A vector of [units][units::as_units()] indicating the
-        #'        file sizes.
+        #' @field size A numeric vector of file sizes in bytes.
         size = function() {
             size <- private$get_field("size")
             set_size_units(size)
@@ -888,6 +887,11 @@ EsgResult <- R6::R6Class(
         get_output_field = function(field, formatted = FALSE) {
             docs <- private$get_docs()
             value <- docs[[field]]
+            if (isTRUE(formatted) && identical(field, "size")) {
+                # Keep the default table numeric, but make the explicitly
+                # formatted table human-readable without a units dependency.
+                return(format_size_units(self$size))
+            }
             if (isTRUE(formatted) || is.null(value)) {
                 return(self[[field]])
             }
@@ -1018,7 +1022,7 @@ EsgResult <- R6::R6Class(
             if (type == "Aggregation") {
                 cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
             } else {
-                cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
+                cli::cli_bullets(c("*" = "Total size: {format_size_units(sum(self$size))}"))
             }
             if (!length(fields)) {
                 cli::cli_bullets(c("*" = "Fields: 0"))
@@ -1047,8 +1051,11 @@ EsgResult <- R6::R6Class(
 
             if (self$count() == 0L) {
                 cli::cli_bullets(c(" " = "{.strong <Empty>}"))
+                result_type <- tolower(type)
+                # Include the result type so cli does not coalesce identical
+                # empty-result notes from consecutive result objects.
                 cli::cli_bullets(c(
-                    " " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"
+                    " " = "{.emph NOTE: No matching {result_type} records. Update the query and try again.}"
                 ))
                 return()
             }
@@ -1068,11 +1075,10 @@ EsgResult <- R6::R6Class(
                 access <- private$get_field("access")
 
                 size <- sprintf(
-                    "%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
+                    "%s   [ %s Files, %s | %s ]\n%s   [ Access: <%s> ]",
                     spc,
                     number_of_files[ind],
-                    round(self$size[ind], 2),
-                    units(self$size)$numerator,
+                    format_size_units(self$size[ind]),
                     if (is.null(number_of_aggregations)) {
                         "No Aggregations"
                     } else {
@@ -1091,10 +1097,9 @@ EsgResult <- R6::R6Class(
                 url <- self$url
 
                 size <- sprintf(
-                    "%s   [ %s %s | Access: <%s> ]",
+                    "%s   [ %s | Access: <%s> ]",
                     spc,
-                    if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
-                    units(self$size)$numerator,
+                    if (type == "Aggregation") "<Unknown>" else format_size_units(self$size[ind]),
                     if (is.null(url)) {
                         "NONE"
                     } else {

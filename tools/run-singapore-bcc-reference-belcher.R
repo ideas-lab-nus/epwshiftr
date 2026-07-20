@@ -10,7 +10,10 @@ load_current_epwshiftr <- function() {
 
     if (is_source) {
         if (!requireNamespace("pkgload", quietly = TRUE)) {
-            stop("Please install pkgload, or install epwshiftr first.", call. = FALSE)
+            stop(
+                "Please install pkgload, or install epwshiftr first.",
+                call. = FALSE
+            )
         }
         pkgload::load_all(getwd(), quiet = FALSE)
     } else {
@@ -39,28 +42,34 @@ load_current_epwshiftr()
 
 out_root <- path.expand("~/Downloads/epwshiftr-test")
 dir.create(out_root, recursive = TRUE, showWarnings = FALSE)
-options(epwshiftr.dir_cache = file.path(out_root, "cache"))
 
-outputs <- shift_future_epw(
-    baseline = find_singapore_epw(),
-    source = "BCC-CSM2-MR",
-    scenario = c("ssp126", "ssp585"),
-    member = "r1i1p1f1",
-    years = 2055:2065,
-    period_name = "2060s",
-    store = file.path(out_root, "store-ceda"),
-    output = out_root,
-    recipe = "belcher",
-    reference_years = 1995:2014,
-    frequency = "mon",
-    table_id = "Amon",
-    grid_label = "gn",
-    index_node = "https://esgf-data.dkrz.de",
-    morph = list(strict = FALSE),
-    resume = TRUE
+run <- shift_future_epw(
+    epw = system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr"
+    ),
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = out_root
 )
 
-print(shift_outputs(outputs)[, intersect(
-    c("source_id", "experiment_id", "variant_label", "period", "path", "export_path"),
-    names(shift_outputs(outputs))
-), with = FALSE])
+print(shift_outputs(run)[,
+    intersect(
+        c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "period",
+            "path",
+            "export_path"
+        ),
+        names(shift_outputs(run))
+    ),
+    with = FALSE
+])

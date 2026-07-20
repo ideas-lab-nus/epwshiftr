@@ -72,9 +72,10 @@ use the `legacy` branch on GitHub or install epwshiftr `v0.1.4`.
 ## Quick start
 
 For the common baseline-to-future EPW workflow, use
-`shift_future_epw()`. It creates the CMIP6 request, extracts the site time
-series, resolves the historical Belcher reference, writes EPW files inside the
-store, and copies the final EPWs to `output`.
+`shift_future_epw()`. When matching historical CMIP6 data are available, the
+recommended Belcher method supplies them explicitly with
+`historical_reference()`. The function resolves files, extracts the site time
+series, persists a resumable run, and copies only the final EPWs to `dir`.
 
 ```{r shift-workflow, eval = FALSE}
 library(epwshiftr)
@@ -85,65 +86,102 @@ epw <- system.file(
     mustWork = TRUE
 )
 
-epws <- shift_future_epw(
-    baseline = epw,
-    source = "BCC-CSM2-MR",
-    scenario = c("ssp126", "ssp585"),
-    member = "r1i1p1f1",
-    years = 2055:2065,
-    period_name = "2060s",
-    output = "~/Downloads/epwshiftr-test",
-    recipe = "belcher",
-    reference_years = 1995:2014,
-    frequency = "mon",
-    table_id = "Amon",
-    grid_label = "gn",
-    index_node = "https://esgf-data.dkrz.de",
-    morph = list(strict = FALSE)
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test"
 )
 
-shift_status(epws)
-shift_outputs(epws)
+shift_status(run)
+shift_outputs(run)
+shift_missing(run)
 ```
+
+Foreground runs begin with a three-line intent summary. Dynamic terminals then
+keep a four-row view of the stage, current unit, case/output counts, and last
+event; redirected output uses scoped, append-only log lines instead. Resolver
+attempts and user cases are shown as compact tables at their workflow
+boundaries. `shift_ui()` controls only presentation and never changes the
+workflow specification or its `spec_hash`:
+
+```{r shift-ui, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = "~/Downloads/epwshiftr-test",
+    ui = shift_ui(progress = "log", detail = "detail")
+)
+```
+
+Use `detail = "normal"` for task-level progress, `"detail"` for selection,
+reuse, fallback, and all output paths, or `"debug"` to additionally include
+full URLs and internal paths.
+
+For a long run that should survive the current R session, launch a detached
+worker. Registration returns immediately; the same `ShiftRun` handle reads live
+state from the store:
+
+```{r shift-background, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = "~/Downloads/epwshiftr-test",
+    background = TRUE
+)
+shift_watch(run)
+shift_logs(run)
+# shift_cancel(run) # stop at the next safe workflow boundary
+```
+
+Use `force = TRUE` only if the worker does not respond to the normal
+cancellation request; it terminates the recorded worker process immediately.
 
 This example uses monthly CMIP6 `Amon` records and the variables required by the
 Belcher recipe. The code is not evaluated when building the README because it
 performs live ESGF queries and remote data reads.
 
+If no suitable historical CMIP6 reference is available, use `belcher()` as a
+fallback. It then uses the input EPW climatology and does not infer or query a
+historical reference.
+
 ## Inspect a workflow
 
-Use `shift_plan()` and `shift_explain()` when you want to inspect the workflow
-before touching ESGF services.
+Set `dry_run = TRUE` and use `shift_explain()` when you want to inspect the
+workflow before touching ESGF services.
 
 ```{r inspect-workflow, eval = FALSE}
-req <- shift_cmip6_scenario(
-    source = "BCC-CSM2-MR",
-    scenario = c("ssp126", "ssp585"),
-    member = "r1i1p1f1",
-    years = 2055:2065,
-    variables = "belcher",
-    frequency = "mon",
-    table_id = "Amon"
-)
-
-site <- shift_site(id = "SIN", label = "singapore", epw = epw)
-
-plan <- shift_plan(
-    request = req,
-    site = site,
+plan <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
     periods = list(`2060s` = 2055:2065),
-    store = "~/Downloads/epwshiftr-test/store",
-    reference = shift_historical_reference(1995:2014),
-    epw = list(export_dir = "~/Downloads/epwshiftr-test")
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test",
+    dry_run = TRUE
 )
 
 shift_explain(plan)
-epws <- shift_run(plan)
+run <- shift_run(plan, ui = shift_ui("auto"))
 
-shift_status(epws)
-shift_diagnostics(epws)
-shift_outputs(epws)
-shift_data(epws)
+shift_status(run)
+shift_diagnostics(run)
+shift_outputs(run)
+shift_data(run)
 ```
 
 `shift_ids()` exposes underlying manifest IDs for advanced debugging, but normal

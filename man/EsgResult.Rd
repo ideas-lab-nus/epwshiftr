@@ -32,8 +32,7 @@ the nature and format of the corresponding document of the
 URLs.
 }}
 
-\item{\code{size}}{A vector of \link[units:units]{units} indicating the
-file sizes.}
+\item{\code{size}}{A numeric vector of file sizes in bytes.}
 
 \item{\code{fields}}{A character vector indicating all fields in the results,
 preserving the order returned by the response.}

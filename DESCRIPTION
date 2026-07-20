@@ -26,13 +26,10 @@ Imports:
     curl,
     data.table (>= 1.12.4),
     duckdb,
-    eplusr (>= 0.15.2),
     jsonlite,
     mirai,
-    psychrolib,
     R6,
     RNetCDF,
-    units,
     S7
 Suggests:
     testthat (>= 3.0.0),
@@ -69,6 +66,7 @@ Collate:
     'dict-store.R'
     'dict.R'
     'downloader.R'
+    'epw-file.R'
     'utils.R'
     'store.R'
     'epw-morpher.R'
@@ -84,6 +82,7 @@ Collate:
     'query.R'
     'schema.R'
     'shift-stage.R'
+    'shift-ui.R'
     'standalone-cache.R'
     'zzz.R'
 Config/testthat/edition: 3

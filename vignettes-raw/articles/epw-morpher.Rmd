@@ -58,7 +58,7 @@ epw_morph_variables("recommended")
 epw_morph_variables("extended")
 
 periods <- epw_morph_periods(`2060s` = 2060L)
-reference_spec <- shift_historical_reference(1995:2014)
+reference_spec <- historical_reference(1995:2014)
 
 request <- shift_cmip6_scenario(
     source = "BCC-CSM2-MR",
@@ -143,7 +143,7 @@ first registration; it is not a special execution path.
 
 The runner receives one canonical context:
 
-- `context$epw`: the baseline `eplusr::Epw` object;
+- `context$epw`: the package's internal baseline EPW representation;
 - `context$climate`: store-native climate rows with `variable_id`, `time`,
   `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
 - `context$recipe`: the selected recipe, including method overrides and rules;
@@ -352,26 +352,31 @@ need lower-level manifest IDs.
 
 # One-Call Workflow
 
-For most scripts, use the task-oriented API and let epwshiftr resolve the store
-stages, historical Belcher reference, EPW writing, and final export path:
+For most scripts, use the task-oriented API and supply matching historical
+CMIP6 data when they are available. epwshiftr resolves the store stages, EPW
+writing, and final export path:
 
 ```r
-epws <- shift_future_epw(
-    baseline = epw,
-    source = "BCC-CSM2-MR",
-    scenario = c("ssp126", "ssp585"),
-    years = 2055:2065,
-    period_name = "2060s",
-    output = "~/Downloads/epwshiftr-test",
-    recipe = "belcher",
-    reference_years = 1995:2014,
-    frequency = "mon",
-    table_id = "Amon",
-    morph = list(strict = FALSE)
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test"
 )
 
-shift_outputs(epws)
+shift_status(run)
+shift_outputs(run)
+shift_missing(run)
 ```
+
+If no suitable historical reference data exist, `belcher()` is the fallback:
+it uses the EPW climatology directly and does not infer a historical request.
 
 When you already have lower-level extraction plan IDs and need direct control of
 the morphing engine, use `workflow()`.
@@ -395,17 +400,23 @@ names(result)
 For most users, the equivalent high-level path is still clearer:
 
 ```r
-plan <- shift_plan(
-    request = request,
-    site = shift_site(id = "SIN", epw = epw),
+plan <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
     periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test",
     store = "~/cmip6-singapore-store",
-    reference = shift_historical_reference(1995:2014),
-    epw = list(export_dir = "~/Downloads/epwshiftr-test")
+    dry_run = TRUE
 )
 
 shift_explain(plan)
-epws <- shift_run(plan)
+run <- shift_run(plan)
 ```
 
 # Relationship to Other Layers

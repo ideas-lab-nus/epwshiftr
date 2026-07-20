@@ -2,6 +2,21 @@
 
 ## Breaking changes
 
+* Replaced the decomposed high-level future-EPW arguments with the
+  task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
+  store, dry_run)` interface. Future model, scenarios, member, grid, frequency,
+  and discovery constraints now form one complete `ShiftCmip6Spec` created by
+  `shift_cmip6()`. Morphing methods are explicit `ShiftMorphMethod` objects.
+  `belcher(reference = historical_reference(...))` is the recommended path
+  when matching historical CMIP6 data are available. `belcher()` remains a
+  fallback that uses the baseline EPW climatology; `NULL` never infers a
+  historical request.
+* Removed the `eplusr`, `psychrolib`, and `units` runtime dependencies. EPW files
+  are parsed and written directly, while objects inheriting from `Epw` remain
+  accepted through a dependency-free conversion to the internal `EpwFile`.
+  The required ASHRAE saturation-pressure and dew-point equations are
+  implemented internally, and climate-value conversion uses explicit supported
+  unit pairs.
 * Replaced the extraction `nearest` count option with explicit grid extraction
   methods: `"nearest"`, `"idw"`, `"bilinear"`, and `"mean"` (#123).
 * Replaced the legacy data.table-oriented workflow with the new store-native
@@ -17,6 +32,23 @@
 
 ## New features
 
+* Added `shift_ui()` and a unified workflow reporter with a three-line startup
+  summary; a fixed stage/current/case/last-event terminal view; resolver and
+  case tables; task-specific file, byte, and variable metrics; and ordered
+  `normal`, `detail`, and `debug` output. Reporter milestones are also persisted
+  as structured run events, and `shift_watch()` reconstructs the same view.
+  Console-cleaned status rows are recreated without stopping the workflow.
+* Added detached Future EPW jobs with live `ShiftRun` refresh,
+  `shift_watch()`, `shift_cancel()`, and `shift_logs()`. Background attempts
+  retain their PID, heartbeat, log, cancellation, and terminal state, while a
+  lock-free live snapshot keeps watch/cancel responsive when the worker owns
+  DuckDB's process lock.
+* Added persisted `ShiftRun` workflow records, expected-case state and events,
+  plus `shift_runs()`, `shift_run_get()`, `shift_cases()`, `shift_missing()`, and
+  `shift_resume()` for run-ID-based inspection and cross-session recovery.
+* Added typed `shift_cmip6()` and `shift_control()` configuration,
+  complete future/reference CMIP6 resolution, strict expected-case coverage,
+  and explicit partial-output policy.
 * Added the store-native `shift_request()` -> `shift_collect()` ->
   `shift_download()` -> `shift_extract()` -> `shift_morph()` -> `shift_epw()`
   workflow, with inspection helpers such as `shift_status()`,
@@ -43,6 +75,12 @@
 
 ## Bug fixes
 
+* Future-EPW progress now degrades to readable line logs when a dynamic Console
+  region cannot be recreated, keeps the current business-unit label in sync,
+  freezes elapsed time for every terminal run state, and preserves every unseen
+  event between R or CLI watch polls. Expected resolver-node rejection no longer
+  creates an error diagnostic, and foreground runs expose their durable events
+  through `shift_logs()`.
 * Fixed precipitation morphing summaries to avoid carrying the removed legacy
   `dist` extraction column after grid extraction methods became explicit (#124).
 * `EsgStore` now keeps ESGF query collection and downloader operations outside

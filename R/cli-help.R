@@ -155,26 +155,30 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr shift <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr shift run --config PATH [--dry-run] [--download] [--overwrite] [--no-resume] [--no-progress]",
-            "  epwshiftr shift show [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--files] [--outputs]",
+            "  epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--verbose | --debug]",
+            "  epwshiftr shift show --run RUN_ID",
             "  epwshiftr shift config example [--output PATH] [--overwrite]",
             "  epwshiftr shift config validate --config PATH",
-            "  epwshiftr shift watch [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--follow] [--interval SECONDS] [--count N] [--events N]",
-            "  epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
-            "  epwshiftr shift diagnostics [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
-            "  epwshiftr shift outputs --morph MORPH_ID",
-            "  epwshiftr shift data --plan PLAN_ID|--morph MORPH_ID [--case CASE_ID] [--columns COLS] [--limit N]"
+            "  epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--verbose | --debug]",
+            "  epwshiftr shift cancel --run RUN_ID [--force]",
+            "  epwshiftr shift logs --run RUN_ID [--tail N]",
+            "  epwshiftr shift status --run RUN_ID",
+            "  epwshiftr shift diagnostics --run RUN_ID",
+            "  epwshiftr shift outputs --run RUN_ID",
+            "  epwshiftr shift data --run RUN_ID [--case CASE_ID] [--columns COLS] [--limit N]",
+            "  epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--verbose | --debug]"
         ),
         "shift run" = c(
-            "Usage: epwshiftr shift run --config PATH [--dry-run] [--download] [--overwrite] [--no-resume] [--no-progress]",
+            "Usage: epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--verbose | --debug]",
             "",
             "Run a JSON-configured request -> collect -> optional download -> extract -> morph -> EPW workflow.",
-            "The config is validated against inst/extdata/schema/shift-workflow-config.json."
+            "The config is validated against inst/extdata/schema/shift-workflow-config.json.",
+            "--verbose shows selection, reuse, and fallback details; --debug also shows full URLs and paths."
         ),
         "shift show" = c(
-            "Usage: epwshiftr shift show [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--files] [--outputs]",
+            "Usage: epwshiftr shift show --run RUN_ID",
             "",
-            "Show the store-backed query -> extraction -> morph -> output graph."
+            "Show persisted intent, case state, events, diagnostics, and outputs for a workflow run."
         ),
         "shift config" = c(
             "Usage: epwshiftr shift config <example|validate> [options]",
@@ -192,30 +196,46 @@ epwshiftr_cli_help_registry <- function() {
             "Validate a JSON workflow configuration against the packaged schema."
         ),
         "shift watch" = c(
-            "Usage: epwshiftr shift watch [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID] [--follow] [--interval SECONDS] [--count N] [--events N]",
+            "Usage: epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--verbose | --debug]",
             "",
             "Return a workflow activity snapshot with query, download, extraction, morphing, output, diagnostic, and event state.",
-            "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming."
+            "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming.",
+            "Dynamic terminals show stage, current unit, case/output counts, and the last event in one fixed view."
+        ),
+        "shift cancel" = c(
+            "Usage: epwshiftr shift cancel --run RUN_ID [--force]",
+            "",
+            "Request cancellation at the next safe workflow boundary. Use --force to terminate the recorded worker process immediately."
+        ),
+        "shift logs" = c(
+            "Usage: epwshiftr shift logs --run RUN_ID [--tail N]",
+            "",
+            "Return the stdout/stderr tail from the latest workflow job attempt."
         ),
         "shift status" = c(
-            "Usage: epwshiftr shift status [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "Usage: epwshiftr shift status --run RUN_ID",
             "",
-            "Summarise store-backed workflow state by query, extraction plan, or morph ID."
+            "Return the persisted workflow run row."
         ),
         "shift diagnostics" = c(
-            "Usage: epwshiftr shift diagnostics [--query QUERY_ID] [--plan PLAN_ID] [--morph MORPH_ID]",
+            "Usage: epwshiftr shift diagnostics --run RUN_ID",
             "",
             "Return workflow diagnostics reconstructed from store manifest state."
         ),
         "shift outputs" = c(
-            "Usage: epwshiftr shift outputs --morph MORPH_ID",
+            "Usage: epwshiftr shift outputs --run RUN_ID",
             "",
             "List EPW outputs recorded for a morphing plan."
         ),
         "shift data" = c(
-            "Usage: epwshiftr shift data --plan PLAN_ID|--morph MORPH_ID [--case CASE_ID] [--columns COLS] [--limit N]",
+            "Usage: epwshiftr shift data --run RUN_ID [--case CASE_ID] [--columns COLS] [--limit N]",
             "",
-            "Preview extracted or morphed Parquet data from store manifest IDs."
+            "Preview final EPW data for a persisted run."
+        ),
+        "shift resume" = c(
+            "Usage: epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--verbose | --debug]",
+            "",
+            "Resume a failed or interrupted run using its pinned resolved inputs."
         ),
         extract = c(
             "Usage: epwshiftr extract <command> [options]",

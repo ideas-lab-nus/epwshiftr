@@ -355,7 +355,7 @@ Suggested properties:
 - `label`: human-readable label.
 - `lon`: longitude, optionally read from `epw$location()`.
 - `lat`: latitude, optionally read from `epw$location()`.
-- `epw`: optional baseline EPW path or `eplusr::Epw` object.
+- `epw`: optional baseline EPW path.
 - `metadata`: provider-neutral site metadata.
 
 Constructor:
@@ -1020,7 +1020,8 @@ Minimum focused tests for the new API:
 
 - Whether S7 class constructors are exported directly or only through
   `shift_*()` functions.
-- Whether `ShiftSite` should store an `eplusr::Epw` object, an EPW path, or both.
+- Whether `ShiftSite` should store only the EPW path or also a parsed internal
+  header snapshot.
 - Whether `shift_request()` should include provider plugins in the first
   release, or start with ESGF only while preserving provider-neutral naming.
 - How much provider-specific detail should appear in `print()` versus

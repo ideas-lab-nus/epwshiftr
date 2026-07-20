@@ -83,7 +83,7 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     expect_true(file.exists(path))
     expect_identical(basename(path), "SGP_Singapore.486980_IWEC.epw")
 
-    epw <- eplusr::read_epw(path)
+    epw <- epw_file_read(path)
     expect_equal(epw$location()$city, "Singapore")
     expect_equal(epw$location()$country, "Singapore")
     expect_equal(nrow(epw$data()), 8760L)
@@ -101,7 +101,7 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
     writeLines(c(stale_lines[seq_len(8L)], vapply(stale_weather, paste, character(1L), collapse = ",")), path)
 
     expect_identical(get_cache_epw(), path)
-    epw <- eplusr::read_epw(path)
+    epw <- epw_file_read(path)
     expect_gt(sum(epw$data()$liquid_precip_depth, na.rm = TRUE), 0)
 })
 
@@ -113,7 +113,15 @@ test_that("packaged Singapore EPW fixture is readable", {
     )
 
     expect_identical(basename(path), "SGP_Singapore.486980_IWEC.epw")
-    expect_equal(eplusr::read_epw(path)$location()$city, "Singapore")
+    expect_equal(epw_file_read(path)$location()$city, "Singapore")
+
+    external <- test_external_epw(path)
+    original_path <- external$path()
+    converted <- epw_file_coerce(external)
+    expect_true(inherits(converted, "EpwFile"))
+    expect_equal(converted$location()$city, "Singapore")
+    # Conversion saves a deep clone and must not mutate the caller's object.
+    expect_identical(external$path(), original_path)
 })
 
 test_that("epw_morph_recipe() accepts morph.R statistical downscaling method overrides", {
@@ -142,17 +150,20 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
 
     belcher <- epw_morph_backend("belcher")
     expect_true(inherits(belcher, "EpwMorphBackend"))
-    expect_true(belcher$requires_reference)
+    expect_false(belcher$requires_reference)
+    expect_true(belcher$accepts_reference)
     expect_equal(belcher$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"))
     expect_equal(epw_morph_variables(belcher), epw_morph_variables("recommended"))
     expect_equal(epw_morph_variables("belcher"), epw_morph_variables("recommended"))
     expect_equal(belcher$validate_methods(c(tdb = "shift"))[["tdb"]], "shift")
-    expect_true(morpher__recipe_requires_reference(epw_morph_recipe("belcher")))
+    expect_false(morpher__recipe_requires_reference(epw_morph_recipe("belcher")))
+    expect_true(morpher__recipe_accepts_reference(epw_morph_recipe("belcher")))
     if (exists("belcher_absolute", envir = EPW_MORPH_BACKEND_WARNINGS, inherits = FALSE)) {
         rm("belcher_absolute", envir = EPW_MORPH_BACKEND_WARNINGS)
     }
     expect_warning(legacy <- epw_morph_backend("belcher_absolute"), "legacy absolute-target")
     expect_false(legacy$requires_reference)
+    expect_false(legacy$accepts_reference)
     expect_false(morpher__recipe_requires_reference(epw_morph_recipe("belcher_absolute")))
     expect_error(epw_morph_backend("missing-backend"), "Unknown")
     expect_error(epw_morph_register_backend("not-a-backend", list()), "EpwMorphBackend")
@@ -186,8 +197,32 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         rules = rules,
         runner = runner
     )
+    required_name <- paste0(backend_name, "required")
+    required <- EpwMorphBackend$new(
+        name = required_name,
+        methods = c(dry = "offset"),
+        method_choices = c("offset", "plus_two"),
+        rules = rules,
+        requires_reference = TRUE,
+        runner = runner
+    )
+    expect_true(required$requires_reference)
+    expect_true(required$accepts_reference)
+    expect_error(
+        EpwMorphBackend$new(
+            name = paste0(required_name, "invalid"),
+            methods = c(dry = "offset"),
+            method_choices = "offset",
+            rules = rules,
+            requires_reference = TRUE,
+            accepts_reference = FALSE,
+            runner = runner
+        ),
+        "must also accept"
+    )
 
     epw_morph_register_backend(backend_name, custom, overwrite = TRUE)
+    epw_morph_register_backend(required_name, required, overwrite = TRUE)
     expect_identical(epw_morph_backend(backend_name), custom)
     expect_error(epw_morph_register_backend(backend_name, custom), "already registered")
 
@@ -198,8 +233,11 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "scale")),
         "Unsupported"
     )
+    required_recipe <- epw_morph_recipe(name = required_name, backend = required_name)
+    expect_true(morpher__recipe_requires_reference(required_recipe))
+    expect_error(shift_morph_method(required_recipe), "requires an explicit reference")
     context <- morpher__context(
-        epw = eplusr::read_epw(get_cache_epw()),
+        epw = epw_file_read(get_cache_epw()),
         climate = data.table::data.table(
             time = as.POSIXct("2060-01-01", tz = "UTC"),
             variable_id = "tas",
@@ -234,7 +272,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         day = 15:16,
         hour = c(8L, 9L),
         minute = 60L,
-        dry_bulb_temperature = units::set_units(c(20, 30), "degree_Celsius")
+        dry_bulb_temperature = c(20, 30)
     )
     future <- data.table::data.table(
         activity_drs = "ScenarioMIP",
@@ -246,14 +284,14 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         lon = 0,
         lat = 0,
         units = "K",
-        value = units::set_units(305, "K"),
+        value = 305,
         month = 1L,
         interval = "future"
     )
     reference <- data.table::copy(future)
     reference[, `:=`(
         experiment_id = "historical",
-        value = units::set_units(300, "K"),
+        value = 300,
         interval = "reference"
     )]
     shifted <- morpher__belcher_from_monthly_change(
@@ -263,7 +301,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         reference,
         type = "shift"
     )
-    expect_equal(units::drop_units(shifted$dry_bulb_temperature), c(25, 35), tolerance = 1e-8)
+    expect_equal(shifted$dry_bulb_temperature, c(25, 35), tolerance = 1e-8)
 
     glob <- data.table::data.table(
         activity_drs = "ScenarioMIP",
@@ -281,17 +319,17 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         day = 21L,
         hour = c(8L, 1L),
         minute = 60L,
-        global_horizontal_radiation = units::set_units(c(800, 800), "W/m^2"),
+        global_horizontal_radiation = c(800, 800),
         delta = 0,
         alpha = 1
     )
     diff <- data.table::copy(glob)
     diff[, `:=`(
         global_horizontal_radiation = NULL,
-        diffuse_horizontal_radiation = units::set_units(c(200, 200), "W/m^2")
+        diffuse_horizontal_radiation = c(200, 200)
     )]
     dni <- morpher__belcher_direct_normal_radiation(glob, diff, latitude = 0, longitude = 0, timezone = 0)
-    dni_value <- units::drop_units(dni$direct_normal_radiation)
+    dni_value <- dni$direct_normal_radiation
     expect_gt(dni_value[[1L]], 800)
     expect_equal(dni_value[[2L]], 0)
 
@@ -315,7 +353,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         lon = 0,
         lat = 0,
         units = "%",
-        value = units::set_units(40, "%"),
+        value = 40,
         month = 1L,
         interval = "future"
     )
@@ -332,8 +370,8 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         day = 1L,
         hour = 1:2,
         minute = 60L,
-        liquid_precip_depth = units::set_units(c(1, 1), "mm"),
-        liquid_precip_rate = units::set_units(c(1, 1), "h")
+        liquid_precip_depth = c(1, 1),
+        liquid_precip_rate = c(1, 1)
     )
     precip_target <- data.table::data.table(
         activity_drs = "ScenarioMIP",
@@ -346,8 +384,8 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         lat = 0,
         dist = 0,
         units = "mm",
-        value = units::set_units(2, "mm"),
-        reference_value = units::set_units(1, "mm"),
+        value = 2,
+        reference_value = 1,
         month = 1L,
         interval = "future"
     )
@@ -357,11 +395,11 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         strict = TRUE,
         change_factor = TRUE
     )
-    expect_equal(sum(units::drop_units(doubled_precip$liquid_precip_depth)), 4)
-    expect_equal(unique(units::drop_units(doubled_precip$liquid_precip_rate)), 1)
+    expect_equal(sum(doubled_precip$liquid_precip_depth), 4)
+    expect_equal(unique(doubled_precip$liquid_precip_rate), 1)
 
     dry_precip_epw <- data.table::copy(precip_epw)
-    dry_precip_epw[, liquid_precip_depth := units::set_units(0, "mm")]
+    dry_precip_epw[, liquid_precip_depth := 0]
     expect_error(
         morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = TRUE),
         "no wet hours"
@@ -371,7 +409,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         relaxed_dry <- morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = FALSE),
         "keeping the month dry"
     )
-    expect_equal(sum(units::drop_units(relaxed_dry$liquid_precip_depth)), 0)
+    expect_equal(sum(relaxed_dry$liquid_precip_depth), 0)
 })
 
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
@@ -402,14 +440,17 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     processed <- store$extract(plan_id = plan$plan_id)
     expect_equal(processed$status, "done")
 
+    external_epw <- test_external_epw(get_cache_epw())
+    original_external_path <- external_epw$path()
     morpher <- epw_morpher(
         store = store,
-        epw = get_cache_epw(),
+        epw = external_epw,
         site_id = "SIN",
         recipe = suppressWarnings(epw_morph_recipe("belcher_absolute")),
         label = "singapore"
     )
     expect_true(inherits(morpher, "EpwMorpher"))
+    expect_identical(external_epw$path(), original_external_path)
     expect_setequal(morpher$required_variables(), epw_morph_variables("recommended"))
 
     periods <- epw_morph_periods(`2060s` = 2060L)
@@ -490,7 +531,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     output_path <- store_abs_path(outputs$path, root = store$path)
     expect_true(file.exists(output_path))
     expect_gt(file.size(output_path), 0)
-    expect_true(inherits(eplusr::read_epw(output_path), "Epw"))
+    expect_true(inherits(epw_file_read(output_path), "EpwFile"))
 
     expect_equal(morpher$status(relaxed$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(relaxed$morph_id)), 1L)
@@ -599,8 +640,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(morpher$status(strict$morph_id)$status, "result_done")
 
     result_data <- read_test_parquet(result_path)
-    epw <- eplusr::read_epw(get_cache_epw())
-    suppressMessages(epw$drop_unit())
+    epw <- epw_file_read(get_cache_epw())
     baseline_data <- data.table::as.data.table(epw$data())
     expect_true(all(c(
         "dry_bulb_temperature",
@@ -659,8 +699,22 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         baseline_id = unique(change_baseline$baseline_id),
         strict = TRUE
     )
-    expect_equal(change_missing_ref$plan$status, "blocked")
-    expect_true(any(change_missing_ref$diagnostics$code == "missing_reference_climate"))
+    expect_equal(change_missing_ref$plan$status, "planned")
+    expect_false(any(change_missing_ref$diagnostics$code == "missing_reference_climate"))
+    expect_true(all(!is.na(change_missing_ref$factors$reference)))
+    expect_equal(change_missing_ref$factors$reference, change_missing_ref$factors$baseline)
+    baseline_reference <- change_morpher$plan(
+        summary_id = unique(climate$summary_id),
+        baseline_id = unique(change_baseline$baseline_id),
+        strict = TRUE
+    )
+    baseline_reference_results <- change_morpher$run(baseline_reference$morph_id, overwrite = TRUE)
+    baseline_reference_data <- read_test_parquet(
+        store_abs_path(baseline_reference_results$output_path, root = store$path)
+    )
+    expect_true(any(abs(
+        baseline_reference_data$dry_bulb_temperature - baseline_data$dry_bulb_temperature
+    ) > 1e-6, na.rm = TRUE))
     change <- change_morpher$plan(
         summary_id = unique(climate$summary_id),
         reference_summary_id = unique(climate$summary_id),
@@ -688,7 +742,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     output_path <- store_abs_path(outputs$path, root = store$path)
     expect_true(file.exists(output_path))
     expect_gt(file.size(output_path), 0)
-    expect_true(inherits(eplusr::read_epw(output_path), "Epw"))
+    expect_true(inherits(epw_file_read(output_path), "EpwFile"))
 
     expect_equal(morpher$status(strict$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(strict$morph_id)), 1L)
