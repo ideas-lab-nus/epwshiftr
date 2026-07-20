@@ -15,7 +15,8 @@ epw_morpher(
 \arguments{
 \item{store}{An \link{EsgStore} object.}
 
-\item{epw}{EPW path or an \link[eplusr:Epw]{eplusr::Epw} object.}
+\item{epw}{Baseline EPW path, internal \code{EpwFile}, or an external object
+inheriting from \code{"Epw"}.}
 
 \item{site_id}{Optional site identifier.}
 

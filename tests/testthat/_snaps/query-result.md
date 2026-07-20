@@ -9,7 +9,7 @@
       * Result count: 2
       * Dataset files: 3
       * Dataset aggregations: 2
-      * Total size: XX [GiB]
+      * Total size: XX GB
       * Fields: XX | [ id, version, activity_id, data_node, experiment_id, frequency,
         index_node, instance_id, latest, master_id, number_of_files, project,
         replica, size, source_id, variable_id, variant_label, access, and
@@ -34,10 +34,10 @@
       -- <Dataset> (From 1 Data Nodes) -----------------------------------------------
     Output
       [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 2 Files, 1 GiB | 2 Aggregations ]
+          [ XX Files, XX GB | X Aggregations ]
           [ Access: <...> ]
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.v20200202|esgf.data.node
-          [ 1 Files, 2 GiB | 0 Aggregations ]
+          [ XX Files, XX GB | X Aggregations ]
           [ Access: <...> ]
 
 # EsgResultFile$print() snapshots offline fixtures
@@ -49,7 +49,7 @@
       * Index Node: https://example.org
       * Collected at: yyyy-mm-dd HH:MM:SS
       * Result count: 1
-      * Total size: XX [GiB]
+      * Total size: XX GB
       * Fields: XX | [ id, version, activity_id, institution_id, dataset_id, size,
         checksum, checksum_type, instance_id, master_id, replica, tracking_id, title,
         data_node, url, filename, url_opendap, and url_download ]
@@ -70,7 +70,7 @@
       -- <File> (From 1 Data Nodes) --------------------------------------------------
     Output
       [1] tas_day_AWI-CM-1-1-MR_sspXXX_r1i1p1f1_gn_20200101-20211231.nc|esgf.data.node
-          [ 1 MiB | Access: <OPENDAP, HTTPServer> ]
+          [ XX MB | Access: <...> ]
 
 # EsgResultAggregation$print() snapshots offline fixtures
 
@@ -102,9 +102,9 @@
       -- <Aggregation> (From 1 Data Nodes) -------------------------------------------
     Output
       [1] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
-          [ <Unknown> Byte | Access: <...> ]
+          [ <Unknown> | Access: <...> ]
       [2] CMIP6.ScenarioMIP.AWI.AWI-CM-1-1-MR.sspXXX.r1i1p1f1.day.tas.gn.tas.20200101.aggregration|esgf.data.node
-          [ <Unknown> Byte | Access: <...> ]
+          [ <Unknown> | Access: <...> ]
 
 # esg_result() constructs typed empty query results
 
@@ -115,7 +115,7 @@
       * Index Node:
       * Collected at: NULL
       * Result count: 0
-      * Total size: 0 [Byte]
+      * Total size: 0 Byte
       * Fields: 0
       
       -- <Query Parameter> -----------------------------------------------------------
@@ -131,7 +131,7 @@
     Message
       -- <File> ----------------------------------------------------------------------
         <Empty>
-        NOTE: No matched data found. Please update query parameters and try again.
+        NOTE: No matching file records. Update the query and try again.
 
 ---
 
@@ -158,31 +158,4 @@
     Message
       -- <Aggregation> ---------------------------------------------------------------
         <Empty>
-        NOTE: No matched data found. Please update query parameters and try again.
-
----
-
-    Code
-      esg_result("aggregation")$print()
-    Message
-      == ESGF Query Result [Aggregation] =============================================
-      * Index Node:
-      * Collected at: NULL
-      * Result count: 0
-      * Total size: <Unknown> [Byte]
-      * Fields: 0
-      
-      -- <Query Parameter> -----------------------------------------------------------
-      * project = CMIP6
-      * fields = *
-      * type = Dataset
-      * offset = 0
-      * distrib = true
-      * limit = 10
-      * format = application/solr+json
-    Output
-      
-    Message
-      -- <Aggregation> ---------------------------------------------------------------
-        <Empty>
-        NOTE: No matched data found. Please update query parameters and try again.
+        NOTE: No matching aggregation records. Update the query and try again.

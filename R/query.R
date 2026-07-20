@@ -49,9 +49,18 @@ FIELDS_FACETS_COMMON <- c(
     "variant_label"
 )
 
-# Read an ESGF JSON response, honoring the explicit cache mode for this request.
-cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", TRUE), ...) {
+# Read an ESGF JSON response through curl, honoring cache mode while exposing a
+# throttled callback boundary for long-running workflow queries.
+cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", TRUE),
+                             progress_callback = getOption("epwshiftr.query.progress_callback", NULL),
+                             timeout = getOption("epwshiftr.query.timeout", 300),
+                             connect_timeout = getOption("epwshiftr.query.connect_timeout", 30), ...) {
     mode <- cache__mode(cache, name = "`cache`")
+    if (!is.null(progress_callback) && !is.function(progress_callback)) {
+        stop("`progress_callback` must be a function or NULL.", call. = FALSE)
+    }
+    checkmate::assert_number(timeout, lower = 0, finite = TRUE)
+    checkmate::assert_number(connect_timeout, lower = 0, finite = TRUE)
 
     if (mode != "off") {
         disk_cache <- cache__get()
@@ -68,18 +77,50 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
     }
 
     json_source <- url
-    con <- NULL
     if (is.character(url) && length(url) == 1L && grepl("^https?://", url, useBytes = TRUE)) {
-        con <- base::url(url, headers = c(Accept = "application/json, text/*, */*"))
-        json_source <- con
-    }
-    on.exit({
-        if (!is.null(con) && isTRUE(tryCatch(isOpen(con), error = function(e) FALSE))) {
-            close(con)
+        handle <- curl::new_handle(
+            timeout = timeout,
+            connecttimeout = min(connect_timeout, timeout),
+            followlocation = TRUE,
+            failonerror = TRUE
+        )
+        curl::handle_setheaders(handle, Accept = "application/json, text/*, */*")
+        if (!is.null(progress_callback)) {
+            # libcurl calls this during connection and transfer waits. Returning
+            # TRUE tells curl to continue after the reporter callback.
+            curl::handle_setopt(
+                handle,
+                noprogress = FALSE,
+                progressfunction = function(down, up) {
+                    progress_callback(list(state = "transfer", download = down, upload = up, url = url))
+                    TRUE
+                }
+            )
+            progress_callback(list(state = "started", url = url))
         }
-    }, add = TRUE)
+        fetched <- tryCatch(
+            curl::curl_fetch_memory(url, handle = handle),
+            error = function(e) e
+        )
+        if (inherits(fetched, "error")) {
+            json_source <- fetched
+        } else {
+            json_source <- rawToChar(fetched$content)
+            if (!is.null(progress_callback)) {
+                progress_callback(list(
+                    state = "completed", url = url,
+                    downloaded = length(fetched$content),
+                    status_code = as.integer(fetched$status_code)
+                ))
+            }
+        }
+    }
 
-    res <- tryCatch(jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    res <- if (inherits(json_source, "error")) {
+        json_source
+    } else {
+        tryCatch(jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+    }
     timestamp <- Sys.time()
 
     if (inherits(res, "warning") || inherits(res, "error")) {

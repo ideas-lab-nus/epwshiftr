@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.5.0"
+STORE_SCHEMA_VERSION <- "2.7.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -2064,6 +2064,7 @@ EsgStore <- R6::R6Class(
         #'        Default: `FALSE`.
         #' @param resume Whether to reuse complete existing extraction outputs.
         #'        Default: `TRUE`.
+        #' @param reporter Optional workflow reporter used by task-level runs.
         #'
         #' @return A data.table of processed extraction plan rows.
         extract = function(
@@ -2071,7 +2072,8 @@ EsgStore <- R6::R6Class(
             status = c("pending", "failed"),
             fallback = c("auto", "error"),
             overwrite = FALSE,
-            resume = TRUE
+            resume = TRUE,
+            reporter = NULL
         ) {
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_subset(status, c("pending", "failed", "empty", "done"))
@@ -2084,7 +2086,11 @@ EsgStore <- R6::R6Class(
             if (is.null(plan_id)) {
                 plans <- plans[plans$status %in% status]
             } else {
-                plans <- plans[plans$plan_id %in% plan_id]
+                # Keep the requested IDs outside data.table evaluation. Using
+                # `plan_id` on both sides would resolve both names as the table
+                # column and accidentally execute every plan in the store.
+                requested_plan_id <- plan_id
+                plans <- plans[plans$plan_id %in% requested_plan_id]
             }
             if (!nrow(plans)) {
                 return(plans)
@@ -2094,19 +2100,61 @@ EsgStore <- R6::R6Class(
             processed <- vector("list", nrow(plans))
             for (i in seq_len(nrow(plans))) {
                 plan <- plans[i]
+                file <- catalog[catalog$file_key == plan$file_key[[1L]]]
+                scenario <- if (nrow(file)) {
+                    store__chr1(file$experiment_id[[1L]])
+                } else {
+                    "unknown scenario"
+                }
+                if (!is.null(reporter)) {
+                    reporter$check_cancel()
+                    label <- sprintf("%s \u00b7 %s \u00b7 %s to %s",
+                        scenario,
+                        plan$variable_id[[1L]],
+                        format(plan$time_start[[1L]], "%Y-%m-%d"),
+                        format(plan$time_stop[[1L]], "%Y-%m-%d"))
+                    reporter$unit_started(label, current = i, total = nrow(plans),
+                        details = list(
+                            unit_type = "extraction_plan",
+                            scenario = scenario,
+                            variable = plan$variable_id[[1L]],
+                            period = sprintf("%s/%s",
+                                format(plan$time_start[[1L]], "%Y"),
+                                format(plan$time_stop[[1L]], "%Y")),
+                            access_method = "OPeNDAP"
+                        ))
+                    if (nrow(file)) {
+                        source_location <- if (!is.na(file$local_path[[1L]]) &&
+                            nzchar(file$local_path[[1L]])) {
+                            file$local_path[[1L]]
+                        } else {
+                            file$url_opendap[[1L]]
+                        }
+                        reporter$detail(sprintf("  source: %s", source_location),
+                            level = "debug")
+                    }
+                }
                 resumed <- if (!isTRUE(overwrite) && isTRUE(resume)) private$resume_extract_plan(plan) else NULL
                 if (!is.null(resumed)) {
                     processed[[i]] <- resumed
+                    if (!is.null(reporter)) {
+                        reporter$unit_skipped(sprintf("Reused %s", plan$variable_id[[1L]]),
+                            current = i, total = nrow(plans))
+                    }
                     next
                 }
-                file <- catalog[catalog$file_key == plan$file_key[[1L]]]
                 if (!nrow(file)) {
                     processed[[i]] <- private$mark_plan_failed(plan, "The cataloged file record no longer exists.")
+                    if (!is.null(reporter)) {
+                        reporter$unit_completed(sprintf("Failed %s: catalog record missing", plan$variable_id[[1L]]),
+                            current = i, total = nrow(plans), outcome = "failed")
+                    }
                     next
                 }
 
                 processed[[i]] <- tryCatch(
-                    private$extract_one(plan, file[1L], fallback = fallback, overwrite = overwrite),
+                    private$extract_one(plan, file[1L], fallback = fallback,
+                        overwrite = overwrite, reporter = reporter),
                     error = function(e) {
                         if (inherits(e, "epwshiftr_store_extract_conflict")) {
                             stop(e)
@@ -2114,6 +2162,20 @@ EsgStore <- R6::R6Class(
                         private$mark_plan_failed(plan, conditionMessage(e))
                     }
                 )
+                if (!is.null(reporter)) {
+                    result_status <- processed[[i]]$status[[1L]]
+                    reporter$unit_completed(
+                        sprintf("%s %s", result_status, plan$variable_id[[1L]]),
+                        current = i,
+                        total = nrow(plans),
+                        outcome = if (result_status %in% c("done", "empty")) "completed" else "failed",
+                        details = list(
+                            scenario = store__chr1(file$experiment_id[[1L]]),
+                            variable = plan$variable_id[[1L]],
+                            access_method = if (!is.na(file$local_path[[1L]])) "local" else "OPeNDAP"
+                        )
+                    )
+                }
             }
 
             data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
@@ -3050,6 +3112,10 @@ EsgStore <- R6::R6Class(
 
         # init_schema {{{
         init_schema = function() {
+            # Capture whether this is a genuinely empty manifest before
+            # creating the metadata table. Existing manifests are never
+            # upgraded implicitly because workflow state must remain coherent.
+            existing_tables <- ddb_list_tables(private$conn)
             private$exec(
                 "
                 CREATE TABLE IF NOT EXISTS store_meta (
@@ -3059,6 +3125,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
+            private$assert_schema_version(existing_tables)
             private$exec(
                 "
                 CREATE TABLE IF NOT EXISTS artifact (
@@ -3348,22 +3415,39 @@ EsgStore <- R6::R6Class(
             "
             )
             private$init_epw_morph_schema()
+            private$init_shift_run_schema()
 
-            private$migrate_schema()
+            private$initialize_schema_version()
 
             invisible(NULL)
         },
         # }}}
 
-        # migrate_schema {{{
-        migrate_schema = function() {
+        # schema version {{{
+        # Reject old manifests before any current-schema tables are created.
+        # This deliberately replaces the former best-effort migration path.
+        assert_schema_version = function(existing_tables) {
             current <- private$store_schema_version()
-            private$migrate_schema_to_2(current)
-            private$migrate_schema_to_2_1(current)
-            private$migrate_schema_to_2_2(current)
-            private$migrate_schema_to_2_3(current)
-            private$migrate_schema_to_2_4(current)
-            private$set_store_schema_version(STORE_SCHEMA_VERSION)
+            if (!length(existing_tables)) {
+                return(invisible(NULL))
+            }
+            if (is.na(current) || !identical(current, STORE_SCHEMA_VERSION)) {
+                shown <- if (is.na(current)) "missing" else current
+                path <- private$store_path
+                private$disconnect()
+                cli::cli_abort(c(
+                    "Store schema version {.val {shown}} does not match the required version {.val {STORE_SCHEMA_VERSION}}.",
+                    "i" = "Create a new store instead of reusing {.path {path}}."
+                ))
+            }
+            invisible(NULL)
+        },
+
+        # Record the schema only after every current table has been created.
+        initialize_schema_version = function() {
+            if (is.na(private$store_schema_version())) {
+                private$set_store_schema_version(STORE_SCHEMA_VERSION)
+            }
             invisible(NULL)
         },
 
@@ -3394,54 +3478,6 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
 
-        migrate_schema_to_2 = function(current) {
-            if (!is.na(current)) {
-                cmp <- tryCatch(utils::compareVersion(current, STORE_SCHEMA_VERSION), error = function(e) -1L)
-                if (cmp > 0L) {
-                    cli::cli_abort(
-                        "Store manifest schema version {.val {current}} is newer than this package supports ({.val {STORE_SCHEMA_VERSION}})."
-                    )
-                }
-            }
-            private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS download_session_id VARCHAR")
-            private$exec("ALTER TABLE esg_query_update ADD COLUMN IF NOT EXISTS last_error VARCHAR")
-            invisible(NULL)
-        },
-
-        migrate_schema_to_2_1 = function(current) {
-            private$exec("ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
-            private$exec("ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS master_id VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS instance_id VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS version VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS activity_id VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS institution_id VARCHAR")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN")
-            private$exec("ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN")
-            invisible(NULL)
-        },
-
-        migrate_schema_to_2_2 = function(current) {
-            private$init_epw_morph_schema()
-            invisible(NULL)
-        },
-
-        migrate_schema_to_2_3 = function(current) {
-            private$init_epw_morph_schema()
-            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lon DOUBLE")
-            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS lat DOUBLE")
-            private$exec("ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS years_json VARCHAR")
-            invisible(NULL)
-        },
-
-        migrate_schema_to_2_4 = function(current) {
-            private$init_epw_morph_schema()
-            private$exec("ALTER TABLE epw_morph_plan ADD COLUMN IF NOT EXISTS reference_summary_id VARCHAR")
-            private$exec("ALTER TABLE epw_morph_factor ADD COLUMN IF NOT EXISTS reference DOUBLE")
-            invisible(NULL)
-        },
         # }}}
 
         # init_epw_morph_schema {{{
@@ -3571,6 +3607,97 @@ EsgStore <- R6::R6Class(
                     variant_label VARCHAR,
                     period VARCHAR,
                     created_at TIMESTAMP
+                )
+            "
+            )
+            invisible(NULL)
+        },
+        # }}}
+
+        # init_shift_run_schema {{{
+        # Persist task intent, resolved inputs, case fulfilment, and stage
+        # events so a failed workflow can be inspected and resumed later.
+        init_shift_run_schema = function() {
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS shift_run (
+                    run_id VARCHAR PRIMARY KEY,
+                    task VARCHAR,
+                    spec_hash VARCHAR,
+                    spec_json VARCHAR,
+                    resolved_spec_json VARCHAR,
+                    status VARCHAR,
+                    current_stage VARCHAR,
+                    query_id VARCHAR,
+                    reference_query_id VARCHAR,
+                    plan_ids_json VARCHAR,
+                    reference_plan_ids_json VARCHAR,
+                    morph_id VARCHAR,
+                    output_dir VARCHAR,
+                    package_version VARCHAR,
+                    started_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    last_error VARCHAR
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS shift_run_case (
+                    run_case_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    case_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    grid_label VARCHAR,
+                    period VARCHAR,
+                    years_json VARCHAR,
+                    required BOOLEAN,
+                    status VARCHAR,
+                    output_id VARCHAR,
+                    export_path VARCHAR,
+                    missing_reason VARCHAR,
+                    updated_at TIMESTAMP
+                )
+            "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS shift_run_event (
+                    event_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    stage VARCHAR,
+                    status VARCHAR,
+                    message VARCHAR,
+                    details_json VARCHAR,
+                    created_at TIMESTAMP
+                )
+                "
+            )
+            # A run can have multiple foreground/background attempts. Keeping
+            # jobs separate preserves process and log history across resume.
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS shift_run_job (
+                    job_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    attempt INTEGER,
+                    mode VARCHAR,
+                    status VARCHAR,
+                    pid INTEGER,
+                    hostname VARCHAR,
+                    log_path VARCHAR,
+                    ui_json VARCHAR,
+                    cancel_requested_at TIMESTAMP,
+                    started_at TIMESTAMP,
+                    heartbeat_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    exit_code INTEGER,
+                    last_error VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
                 )
             "
             )
@@ -5497,8 +5624,10 @@ EsgStore <- R6::R6Class(
             plan
         },
 
-        extract_one = function(plan, file, fallback = "auto", overwrite = FALSE) {
-            opened <- private$open_plan_dataset(file, fallback = fallback, overwrite = overwrite)
+        extract_one = function(plan, file, fallback = "auto", overwrite = FALSE,
+                               reporter = NULL) {
+            opened <- private$open_plan_dataset(file, fallback = fallback,
+                overwrite = overwrite, reporter = reporter)
             ds <- opened$dataset
             on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
 
@@ -5557,7 +5686,8 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # open_plan_dataset {{{
-        open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE) {
+        open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE,
+                                     reporter = NULL) {
             opendap <- store__chr1(file$url_opendap)
             if (!is.na(opendap) && nzchar(opendap)) {
                 ds <- EsgDataset$new(opendap)
@@ -5581,13 +5711,28 @@ EsgStore <- R6::R6Class(
                 if (isTRUE(ds$is_open)) {
                     ds$close()
                 }
+                if (!is.null(reporter)) {
+                    reporter$notice(
+                        sprintf("OPeNDAP unavailable for %s; using HTTP fallback.", file$filename[[1L]]),
+                        outcome = "fallback",
+                        details = list(
+                            unit_type = "extraction_plan",
+                            variable = file$variable_id[[1L]],
+                            access_method = "HTTPServer",
+                            error = conditionMessage(open_error)
+                        )
+                    )
+                    reporter$detail(sprintf("  fallback reason: %s",
+                        conditionMessage(open_error)), level = "detail")
+                }
             }
 
             if (identical(fallback, "error")) {
                 stop("OPeNDAP is not available for this file record.", call. = FALSE)
             }
 
-            local_path <- private$download_plan_file(file, overwrite = overwrite)
+            local_path <- private$download_plan_file(file, overwrite = overwrite,
+                reporter = reporter)
             ds <- EsgDataset$new(local_path)
             ds$open()
             list(dataset = ds, target = local_path)
@@ -5595,7 +5740,7 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # download_plan_file {{{
-        download_plan_file = function(file, overwrite = FALSE) {
+        download_plan_file = function(file, overwrite = FALSE, reporter = NULL) {
             download <- store__chr1(file$url_download)
             if (is.na(download) || !nzchar(download)) {
                 stop("HTTPServer download URL is not available for this file record.", call. = FALSE)
@@ -5646,7 +5791,11 @@ EsgStore <- R6::R6Class(
             )
             plan <- private$apply_download_layout(plan, file)
             session_id <- downloader$enqueue(plan, session_label = sprintf("extract:%s", file$file_key[[1L]]))
-            tasks <- downloader$run(session_id = session_id, progress = FALSE, overwrite = overwrite)
+            tasks <- downloader$run(
+                session_id = session_id,
+                progress = is.null(reporter) || identical(reporter$mode(), "dynamic"),
+                overwrite = overwrite
+            )
             failed <- tasks[!tasks[["status"]] %in% c("done", "skipped"), , drop = FALSE]
             if (nrow(failed)) {
                 stop("HTTPServer download failed for this file record.", call. = FALSE)

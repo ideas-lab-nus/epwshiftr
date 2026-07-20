@@ -141,6 +141,7 @@ DOWNLOADER_RESOURCE_POLICY_DEFAULT <- list(
 DOWNLOADER_CALLBACK_EVENTS <- c(
     "session_start",
     "task_start",
+    "task_progress",
     "candidate_error",
     "task_done",
     "task_error",
@@ -4122,6 +4123,7 @@ Downloader <- R6::R6Class("Downloader",
             switch(event,
                 enqueue = "session_start",
                 start = "task_start",
+                progress = "task_progress",
                 candidate_error = "candidate_error",
                 done = "task_done",
                 error = "task_error",
@@ -4197,7 +4199,11 @@ Downloader <- R6::R6Class("Downloader",
                 target_path = downloader__one_chr(task_value("target_path", NA_character_)),
                 selected_url = downloader__one_chr(task_value("selected_url", NA_character_)),
                 data_node = downloader__one_chr(task_value("data_node", NA_character_)),
+                filename = downloader__one_chr(task_value("filename", NA_character_)),
+                size = suppressWarnings(as.numeric(task_value("size", NA_real_))),
                 bytes_done = bytes_done,
+                speed_bps = suppressWarnings(as.numeric(task_value("speed_bps", NA_real_))),
+                eta_seconds = suppressWarnings(as.numeric(task_value("eta_seconds", NA_real_))),
                 error = error,
                 created_at = downloader__now(),
                 message = message
@@ -4651,7 +4657,7 @@ Downloader <- R6::R6Class("Downloader",
 
         update_task_progress = function(task_id, bytes_done, speed_bps = NA_real_,
                                         eta_seconds = NA_real_, current_url = NA_character_) {
-            private$with_manifest_lock({
+            updated <- private$with_manifest_lock({
             task <- private$select_tasks(task_id = task_id)
             if (!nrow(task)) {
                 return(invisible(task))
@@ -4677,8 +4683,18 @@ Downloader <- R6::R6Class("Downloader",
             if (!is.na(job_id)) {
                 private$update_job_progress(job_id)
             }
-            invisible(task)
+            task
             })
+            # Emit after releasing the manifest lock because workflow callbacks
+            # may inspect aggregate session tasks to build byte/file progress.
+            if (nrow(updated)) {
+                private$emit_callback_event(
+                    "progress",
+                    session_id = updated$session_id[[1L]],
+                    task_id = updated$task_id[[1L]]
+                )
+            }
+            invisible(updated)
         },
 
         update_job_progress = function(job_id) {

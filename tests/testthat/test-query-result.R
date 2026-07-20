@@ -2400,7 +2400,8 @@ test_that("EsgResultDataset$to_data_table() supports offline fixtures", {
     expect_true(withVisible(datasets$to_data_table())$visible)
     expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
     expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
-    expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(datasets$to_data_table(formatted = TRUE)$size, "character")
+    expect_equal(datasets$to_data_table(formatted = TRUE)$size, c("1.00 GiB", "2.00 GiB"))
 })
 # }}}
 # EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url / EsgResultDataset$size / EsgResultDataset$index_node / EsgResultDataset$access / EsgResultDataset$number_of_files / EsgResultDataset$has_opendap() / EsgResultDataset$has_download() / EsgResultDataset$count() {{{
@@ -2457,8 +2458,10 @@ test_that("EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url 
 
     expect_null(datasets$url)
 
-    expect_s3_class(datasets$size, "units")
+    expect_type(datasets$size, "double")
     expect_length(datasets$size, 2L)
+    expect_s3_class(datasets$size, "epwshiftr_bytes")
+    expect_equal(format(datasets$size), c("1.00 GiB", "2.00 GiB"))
 
     expect_type(datasets$index_node, "character")
     expect_length(datasets$index_node, 2L)
@@ -2665,7 +2668,8 @@ test_that("EsgResultFile$to_data_table() supports offline fixtures", {
     expect_true(withVisible(files$to_data_table())$visible)
     expect_s3_class(files$to_data_table(c("checksum", "checksum_type")), "data.table")
     expect_equal(names(files$to_data_table(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
-    expect_s3_class(files$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(files$to_data_table(formatted = TRUE)$size, "character")
+    expect_equal(files$to_data_table(formatted = TRUE)$size, "1.00 MiB")
     expect_s3_class(files$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 })
 # }}}
@@ -2689,7 +2693,7 @@ test_that("EsgResultFile$fields / EsgResultFile$id / EsgResultFile$url / EsgResu
     expect_length(files$url, 1L)
     expect_s3_class(files$url[[1L]], "data.table")
 
-    expect_s3_class(files$size, "units")
+    expect_type(files$size, "double")
     expect_length(files$size, 1L)
 
     expect_type(files$dataset_id, "character")
@@ -2754,7 +2758,7 @@ test_that("EsgResultAggregation$to_data_table() supports offline fixtures", {
     expect_true(withVisible(aggs$to_data_table())$visible)
     expect_s3_class(aggs$to_data_table(c("url", "size")), "data.table")
     expect_equal(names(aggs$to_data_table(c("url", "size"))), c("url", "size"))
-    expect_s3_class(aggs$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(aggs$to_data_table(formatted = TRUE)$size, "character")
     expect_s3_class(aggs$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 })
 # }}}
@@ -2778,7 +2782,7 @@ test_that("EsgResultAggregation$fields / EsgResultAggregation$id / EsgResultAggr
     expect_length(aggs$url, 2L)
     expect_s3_class(aggs$url[[1L]], "data.table")
 
-    expect_s3_class(aggs$size, "units")
+    expect_type(aggs$size, "double")
     expect_length(aggs$size, 2L)
 
     expect_type(aggs$dataset_id, "character")
@@ -2821,7 +2825,6 @@ test_that("esg_result() constructs typed empty query results", {
     expect_s3_class(esg_result(), "EsgResultDataset")
 
     expect_snapshot(esg_result("file")$print(), transform = transform_print)
-    expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
     expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
 })
 # }}}
