@@ -88,3 +88,4 @@ Collate:
     'standalone-cache.R'
     'zzz.R'
 Config/testthat/edition: 3
+Config/Needs/website: r-lib/asciicast, r-lib/pkgload

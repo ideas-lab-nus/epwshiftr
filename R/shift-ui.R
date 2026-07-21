@@ -823,6 +823,55 @@ shift__ui_recent_lines <- function(state, width = shift__ui_width()) {
     )
 }
 
+# Render a durable completion receipt from final case counts and exported paths.
+# The output directory carries location context once; individual rows therefore
+# use basenames so the useful scenario/period identity survives narrow widths.
+shift__ui_result_lines <- function(state, width = shift__ui_width()) {
+    outputs <- as.integer(shift_coalesce(state$outputs_completed, 0L))
+    total <- as.integer(shift_coalesce(state$cases_total, outputs))
+    if (is.na(total) || total < outputs) {
+        total <- outputs
+    }
+    missing <- max(0L, total - outputs)
+    summary <- sprintf(
+        "%d/%d EPW%s exported \u00b7 %d missing",
+        outputs, total, if (total == 1L) "" else "s", missing
+    )
+    lines <- shift__ui_labeled_lines("Summary", summary, width)
+
+    output_dir <- shift_coalesce(state$output_dir,
+        shift_coalesce(state$plan_context$output, NULL))
+    if (!is.null(output_dir) && length(output_dir) &&
+        !is.na(output_dir[[1L]]) && nzchar(output_dir[[1L]])) {
+        lines <- c(lines, shift__ui_labeled_lines(
+            "Output", shift_display_path(output_dir[[1L]]), width))
+    }
+
+    paths <- as.character(shift_coalesce(state$output_paths, character()))
+    paths <- unique(paths[!is.na(paths) & nzchar(paths)])
+    limit <- suppressWarnings(as.numeric(shift_coalesce(
+        state$output_path_limit, 5L))[[1L]])
+    if (!length(limit) || is.na(limit) || limit < 1) {
+        limit <- 5L
+    }
+    shown <- if (is.finite(limit)) utils::head(paths, as.integer(limit)) else paths
+    omitted <- length(paths) - length(shown)
+    if (length(shown)) {
+        for (i in seq_along(shown)) {
+            lines <- c(lines, shift__ui_labeled_lines(
+                if (i == 1L) "Files" else "",
+                basename(shown[[i]]), width
+            ))
+        }
+    }
+    if (omitted > 0L) {
+        lines <- c(lines, shift__ui_labeled_lines(
+            "", sprintf("\u2026 %d more output%s", omitted,
+                if (omitted == 1L) "" else "s"), width))
+    }
+    lines
+}
+
 # Render one compact terminal diagnosis from structured failure fields. Values
 # wrap under their semantic prefix so the durable failure card preserves the
 # actionable cause and closest-candidate evidence at every terminal width.
@@ -1015,8 +1064,11 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
         cli::style_bold(current_label)), content_width)
     metrics <- shift__ui_metric_line(state, width = content_width)
     terminal_problem <- status %in% c("failed", "cancelled")
+    terminal_result <- status %in% c("completed", "partial")
     context <- if (isTRUE(terminal_problem)) {
         shift__ui_failure_lines(state, content_width)
+    } else if (isTRUE(terminal_result)) {
+        shift__ui_result_lines(state, content_width)
     } else if (identical(state$stage, "resolve")) {
         shift__ui_live_node_lines(state, content_width, motion, frame)
     } else {
@@ -1038,11 +1090,15 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
         vapply(plan_lines, shift__ui_panel_line, character(1L), width = width),
         shift__ui_panel_rule(cli::style_bold("Workflow"), width, "middle"),
         vapply(workflow, shift__ui_panel_line, character(1L), width = width),
-        shift__ui_panel_rule(cli::style_bold(if (isTRUE(terminal_problem)) {
-            "Diagnosis"
-        } else {
-            "Activity"
-        }), width, "middle"),
+        shift__ui_panel_rule(cli::style_bold(
+            if (isTRUE(terminal_problem)) {
+                "Diagnosis"
+            } else if (isTRUE(terminal_result)) {
+                "Results"
+            } else {
+                "Activity"
+            }
+        ), width, "middle"),
         vapply(context, shift__ui_panel_line, character(1L), width = width),
         shift__ui_panel_rule(width = width, kind = "bottom")
     )
@@ -1444,6 +1500,12 @@ shift__ui_table_state <- function(row, events, cases) {
         stopping = "Waiting for cancellation boundary",
         "Waiting for next workflow event"
     )
+    plan_context <- shift__ui_plan_context_from_row(row, nrow(cases))
+    output_paths <- if ("export_path" %in% names(cases)) {
+        as.character(cases$export_path)
+    } else {
+        character()
+    }
     list(
         run_id = row$run_id[[1L]],
         status = row$status[[1L]],
@@ -1462,10 +1524,13 @@ shift__ui_table_state <- function(row, events, cases) {
         next_stage = stage_details$next_stage,
         stage_sequence = stage_sequence,
         completed_stages = completed_stages,
-        plan_context = shift__ui_plan_context_from_row(row, nrow(cases)),
+        plan_context = plan_context,
         cases_ready = sum(cases$status %in% c("ready", "morphing", "morphed", "completed")),
         cases_total = if (nrow(cases)) nrow(cases) else 0L,
         outputs_completed = sum(cases$status %in% "completed"),
+        output_dir = plan_context$output,
+        output_paths = output_paths,
+        output_path_limit = 5L,
         last_event = if (is.na(last_index)) "No completed event yet" else events$message[[last_index]],
         recent_events = if (!length(recent_indices)) character() else
             as.character(events$message[recent_indices]),
@@ -1517,6 +1582,9 @@ shift__ui_table_view <- function(row, cases, events,
                                  width = shift__ui_width(), detail = "normal",
                                  motion = "none", frame = 0L) {
     state <- shift__ui_table_state(row, events, cases)
+    # Normal watch output mirrors the foreground receipt's five-file cap;
+    # explicit detail/debug views retain every persisted export path.
+    state$output_path_limit <- if (identical(detail, "normal")) 5L else Inf
     list(
         state = state,
         lines = shift__ui_status_lines(state, width = width,
@@ -2012,8 +2080,9 @@ ShiftReporter <- R6::R6Class(
             invisible(due_liveness)
         },
 
-        # Render one terminal success summary from the refreshed run state and
-        # cap output paths unless verbose mode was requested.
+        # Render one terminal completion receipt from the refreshed run state.
+        # Frame terminals commit it to scrollback; compact/log renderers retain
+        # the append-only text summary that remains suitable for redirection.
         run_completed = function(run, outputs = data.table::data.table()) {
             elapsed <- private$elapsed(private$started_at)
             status <- shift_status(run, refresh = FALSE)
@@ -2021,25 +2090,44 @@ ShiftReporter <- R6::R6Class(
             if (identical(status, "completed")) {
                 private$completed_stages <- private$stage_sequence
             }
+            paths <- shift_coalesce(outputs$export_path, outputs$path)
+            paths <- as.character(paths[!is.na(paths) & nzchar(paths)])
+            output_dir <- if (nrow(run@meta$run) &&
+                "output_dir" %in% names(run@meta$run)) {
+                run@meta$run$output_dir[[1L]]
+            } else {
+                NULL
+            }
+            if ((is.null(output_dir) || !length(output_dir) ||
+                is.na(output_dir[[1L]]) || !nzchar(output_dir[[1L]])) &&
+                length(paths)) {
+                output_dir <- dirname(paths[[1L]])
+            }
+            private$output_paths <- paths
+            private$output_dir <- output_dir
+            private$output_path_limit <- if (
+                shift__ui_at_least(private$ui_value, "detail")) Inf else 5L
             private$add_recent(sprintf("%d EPW output(s) ready", nrow(outputs)), status)
             if (identical(private$mode_value, "dynamic")) {
                 private$render_dynamic(force = TRUE)
             }
-            private$close_renderer(result = "done",
-                preserve = identical(status, "partial"))
-            private$emit("success", sprintf("Future EPW run %s %s: %d output(s) in %s.",
-                private$run_id_value, status, nrow(outputs), shift__format_elapsed(elapsed)))
-            if (!identical(private$mode_value, "none") && nrow(outputs)) {
-                paths <- shift_coalesce(outputs$export_path, outputs$path)
-                paths <- paths[!is.na(paths) & nzchar(paths)]
-                output_dir <- if (nrow(run@meta$run) && "output_dir" %in% names(run@meta$run)) {
-                    run@meta$run$output_dir[[1L]]
-                } else {
-                    dirname(paths[[1L]])
-                }
-                if (!is.na(output_dir) && nzchar(output_dir)) {
+            renderer_backend <- if (is.null(private$renderer)) NULL else
+                tryCatch(private$renderer$backend(), error = function(e) NULL)
+            committed_frame <- identical(private$mode_value, "dynamic") &&
+                identical(renderer_backend, "frame")
+            private$close_renderer(result = "done", preserve = TRUE)
+            if (!isTRUE(committed_frame)) {
+                private$emit("success", sprintf(
+                    "Future EPW run %s %s: %d output(s) in %s.",
+                    private$run_id_value, status, nrow(outputs),
+                    shift__format_elapsed(elapsed)))
+            }
+            if (!isTRUE(committed_frame) &&
+                !identical(private$mode_value, "none") && nrow(outputs)) {
+                if (!is.null(output_dir) && length(output_dir) &&
+                    !is.na(output_dir[[1L]]) && nzchar(output_dir[[1L]])) {
                     private$emit("text", sprintf("Output directory: %s",
-                        shift_display_path(output_dir)))
+                        shift_display_path(output_dir[[1L]])))
                 }
                 if (shift__ui_at_least(private$ui_value, "detail")) {
                     for (path in paths) {
@@ -2171,6 +2259,9 @@ ShiftReporter <- R6::R6Class(
         case_rows = NULL,
         plan_context = NULL,
         failure_details = list(),
+        output_dir = NULL,
+        output_paths = character(),
+        output_path_limit = 5L,
 
         # Map reporter message kinds onto cli output while temporarily
         # releasing an active framebuffer. Console rendering failures are
@@ -2240,8 +2331,9 @@ ShiftReporter <- R6::R6Class(
             invisible(TRUE)
         },
 
-        # Release the active framebuffer exactly once. Terminal failures commit
-        # their final semantic frame; routine cleanup clears transient output.
+        # Release the active framebuffer exactly once. Terminal workflow
+        # outcomes commit their final semantic frame; routine cleanup clears
+        # transient output.
         close_renderer = function(result = "done", preserve = FALSE) {
             if (!is.null(private$renderer)) {
                 if (isTRUE(preserve) &&
@@ -2304,6 +2396,9 @@ ShiftReporter <- R6::R6Class(
                 node_rows = private$node_rows,
                 plan_context = private$plan_context,
                 failure_details = private$failure_details,
+                output_dir = private$output_dir,
+                output_paths = private$output_paths,
+                output_path_limit = private$output_path_limit,
                 elapsed_seconds = private$elapsed(private$started_at)
             )
         },

@@ -73,17 +73,16 @@ the recommended Belcher method supplies them explicitly with
 time series, persists a resumable run, and copies only the final EPWs to
 `dir`.
 
+Run the complete workflow with the scientific intent kept in one call:
+
 ``` r
 library(epwshiftr)
 
-epw <- system.file(
-    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
-)
-
 run <- shift_future_epw(
-    epw = epw,
+    epw = system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr"
+    ),
     climate = shift_cmip6(
         model = "BCC-CSM2-MR",
         scenarios = c("ssp126", "ssp585")
@@ -92,12 +91,32 @@ run <- shift_future_epw(
     method = belcher(
         reference = historical_reference(1995:2014)
     ),
-    dir = "~/Downloads/epwshiftr-test"
+    dir = tempdir()
 )
+```
 
+The representative terminal recording below is generated from
+deterministic workflow states, so README builds do not depend on live
+ESGF services. A real run uses the same dashboard; the selected node,
+timings, and file counts vary.
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-workflow-output-dark.svg">
+<img src="man/figures/README/shift-workflow-output.svg" width="100%" />
+</picture>
+
+Inspect the persisted run and its delivered files with the same handle:
+
+``` r
 shift_status(run)
-shift_outputs(run)
+outputs <- shift_outputs(run)
+outputs[, .(
+    experiment_id,
+    period,
+    file = basename(export_path)
+)]
 shift_missing(run)
+shift_diagnostics(run)
 ```
 
 Dynamic foreground runs start directly inside one atomic live panel; the
@@ -114,8 +133,10 @@ columns, uses short normal-mode diagnostics, and reserves green, yellow,
 and red for semantic outcomes. Dynamic IDE consoles without cursor-up
 support receive one compact status row, while redirected output uses
 complete append-only logs. Downloads add aggregate bytes, speed, ETA,
-active-file counts, and filenames at higher detail levels. If a run
-fails, its final panel remains in terminal scrollback and changes
+active-file counts, and filenames at higher detail levels. Successful
+and partial runs leave a final `Results` receipt with output counts, the
+delivery directory, and exported filenames in terminal scrollback. If a
+run fails, its final panel remains in terminal scrollback and changes
 `Activity` to `Diagnosis`: repeated mirror failures are collapsed into
 attempt counts, one cause, the closest CMIP6 identity, and the first
 missing requirement. Transient failures offer `Retry`; incomplete
@@ -175,8 +196,9 @@ cancellation request; it terminates the recorded worker process
 immediately.
 
 This example uses monthly CMIP6 `Amon` records and the variables
-required by the Belcher recipe. The code is not evaluated when building
-the README because it performs live ESGF queries and remote data reads.
+required by the Belcher recipe. The committed asciicast SVG demonstrates
+the production dashboard without performing remote data reads during
+documentation builds.
 
 If no suitable historical CMIP6 reference is available, use `belcher()`
 as a fallback. It then uses the input EPW climatology and does not infer

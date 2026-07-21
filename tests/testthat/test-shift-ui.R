@@ -636,6 +636,95 @@ test_that("dynamic failures commit one structured terminal dashboard", {
     expect_false(any(grepl("Resolver attempts", output, fixed = TRUE)))
 })
 
+test_that("dynamic completions commit one durable results dashboard", {
+    frames <- list()
+    commits <- character()
+    closes <- 0L
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(lines, compact = NULL) {
+                frames[[length(frames) + 1L]] <<- lines
+                TRUE
+            },
+            suspend = function(code) code(),
+            backend = function() "frame",
+            commit = function(result) {
+                commits <<- c(commits, result)
+                invisible(NULL)
+            },
+            close = function(...) {
+                closes <<- closes + 1L
+                invisible(NULL)
+            }
+        ),
+        .package = "epwshiftr"
+    )
+    output_dir <- tempfile("shift-completed-output-")
+    paths <- file.path(output_dir, c(
+        "BCC-CSM2-MR_ssp126_2060s.epw",
+        "BCC-CSM2-MR_ssp585_2060s.epw"
+    ))
+    run <- shift_stage_new(
+        ShiftRun,
+        "run",
+        ids = list(run_id = "run-complete"),
+        meta = list(run = data.table::data.table(
+            run_id = "run-complete",
+            status = "completed",
+            output_dir = output_dir
+        ))
+    )
+    reporter <- shift__reporter(
+        shift_ui("dynamic", motion = "none"),
+        run_id = "run-complete"
+    )
+    reporter$stage_started("write_epw", "Writing final EPWs.")
+    reporter$cases_updated(data.table::data.table(
+        status = c("completed", "completed")
+    ))
+    reporter$unit_completed("Exported final EPWs", 2L, 2L,
+        details = list(unit_type = "epw_export"))
+    output <- capture.output(reporter$run_completed(
+        run, data.table::data.table(export_path = paths)
+    ), type = "message")
+    plain <- cli::ansi_strip(frames[[length(frames)]])
+
+    expect_length(output, 0L)
+    expect_identical(commits, "done")
+    expect_equal(closes, 0L)
+    expect_true(any(grepl("Results", plain, fixed = TRUE)))
+    expect_true(any(grepl("Summary.*2/2 EPWs exported.*0 missing", plain)))
+    expect_true(any(grepl("Output", plain, fixed = TRUE)))
+    expect_true(all(vapply(basename(paths), function(path) {
+        grepl(path, paste(plain, collapse = ""), fixed = TRUE)
+    }, logical(1L))))
+})
+
+test_that("log completions retain the append-only summary fallback", {
+    output_dir <- tempfile("shift-log-output-")
+    path <- file.path(output_dir, "BCC-CSM2-MR_ssp126_2060s.epw")
+    run <- shift_stage_new(
+        ShiftRun,
+        "run",
+        ids = list(run_id = "run-log-complete"),
+        meta = list(run = data.table::data.table(
+            run_id = "run-log-complete",
+            status = "completed",
+            output_dir = output_dir
+        ))
+    )
+    reporter <- shift__reporter(
+        shift_ui("log", detail = "normal"),
+        run_id = "run-log-complete"
+    )
+    output <- capture.output(reporter$run_completed(
+        run, data.table::data.table(export_path = path)
+    ), type = "message")
+
+    expect_true(any(grepl("1 output(s)", output, fixed = TRUE)))
+    expect_true(any(grepl("Output directory", output, fixed = TRUE)))
+})
+
 test_that("failed dashboards remain legible without colour and at narrow widths", {
     withr::local_options(cli.num_colors = 1L)
     state <- list(
@@ -1096,7 +1185,13 @@ test_that("terminal dashboards stop all animation", {
         unit_label = "Exported final EPW", unit_current = 2L, unit_total = 2L,
         current_details = list(current = 2L, total = 2L,
             outcome = "completed"),
-        outputs_completed = 2L, cases_total = 2L, elapsed_seconds = 30
+        outputs_completed = 2L, cases_total = 2L,
+        output_dir = "/tmp/future epw output",
+        output_paths = c(
+            "/tmp/future epw output/BCC-CSM2-MR_ssp126_2060s.epw",
+            "/tmp/future epw output/BCC-CSM2-MR_ssp585_2060s.epw"
+        ),
+        elapsed_seconds = 30
     )
     first <- cli::ansi_strip(shift__ui_status_lines(state,
         motion = "full", frame = 1L))
@@ -1105,6 +1200,47 @@ test_that("terminal dashboards stop all animation", {
     expect_identical(first, second)
     expect_match(first[[1L]], "COMPLETED")
     expect_true(any(grepl("100%", first, fixed = TRUE)))
+    expect_true(any(grepl("Results", first, fixed = TRUE)))
+    expect_true(any(grepl("Summary.*2/2 EPWs exported.*0 missing", first)))
+    expect_true(any(grepl("Output", first, fixed = TRUE)))
+})
+
+test_that("completion receipts preserve long output names at every width", {
+    filename <- paste0(
+        "BCC-CSM2-MR_ssp585_r1i1p1f1_gn_Singapore_",
+        "2060s_2055-2065_final.epw"
+    )
+    state <- list(
+        run_id = "run-complete-narrow",
+        status = "completed",
+        stage = "write_epw",
+        stage_sequence = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        completed_stages = c("resolve", "extract_future", "coverage", "morph",
+            "write_epw"),
+        unit_label = "Exported final EPW",
+        current_details = list(current = 1L, total = 1L,
+            outcome = "completed"),
+        outputs_completed = 1L,
+        cases_total = 1L,
+        output_dir = "/tmp/a deliberately long future epw output directory",
+        output_paths = file.path("/tmp", filename),
+        elapsed_seconds = 30
+    )
+
+    for (width in c(24L, 40L, 60L, 80L)) {
+        lines <- shift__ui_status_lines(state, width = width,
+            motion = "none")
+        plain <- cli::ansi_strip(lines)
+        normalized <- gsub("[[:space:]]+", " ", paste(plain,
+            collapse = " "))
+        file_start <- grep("Files", plain, fixed = TRUE)[[1L]]
+        file_text <- gsub("[[:space:]│]+", "", paste(
+            plain[file_start:length(plain)], collapse = ""))
+        expect_true(all(cli::ansi_nchar(lines, type = "width") <= width - 1L))
+        expect_true(grepl(filename, file_text, fixed = TRUE))
+        expect_true(grepl("1/1 EPW exported", normalized, fixed = TRUE))
+    }
 })
 
 test_that("download stages expose measured transfer metrics and active files", {
