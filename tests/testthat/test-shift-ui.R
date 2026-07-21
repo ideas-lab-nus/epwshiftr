@@ -1064,6 +1064,55 @@ test_that("shift_watch() renders the shared status view instead of one long stri
     expect_false(any(grepl("queued | planned | cases", output, fixed = TRUE)))
 })
 
+test_that("generic operation reporters preserve receipts in log and dynamic modes", {
+    log_output <- capture.output({
+        reporter <- ShiftReporter$new(shift_ui("log"),
+            run_id = "run-generic-log", step_id = "step-generic-log")
+        reporter$operation_started("collect", "Collect CMIP6",
+            context = list(items = c("Collect CMIP6", "input request")),
+            stage_sequence = c("collect", "extract"))
+        reporter$operation_waiting("12 files collected")
+    }, type = "message")
+    expect_true(any(grepl("Collect CMIP6", log_output, fixed = TRUE)))
+    expect_true(any(grepl("waiting: 12 files collected", log_output,
+        fixed = TRUE)))
+
+    quiet_output <- capture.output({
+        reporter <- ShiftReporter$new(shift_ui("none"),
+            run_id = "run-generic-none")
+        reporter$operation_started("extract", "Extract Climate")
+        reporter$operation_waiting("3 plans processed")
+    }, type = "message")
+    expect_length(quiet_output, 0L)
+
+    draws <- 0L
+    commits <- 0L
+    testthat::local_mocked_bindings(
+        shift__ui_renderer = function(...) list(
+            draw = function(...) {
+                draws <<- draws + 1L
+                TRUE
+            },
+            commit = function(...) {
+                commits <<- commits + 1L
+                invisible(NULL)
+            },
+            close = function(...) invisible(NULL),
+            suspend = function(code) code(),
+            backend = function() "frame"
+        ),
+        .package = "epwshiftr"
+    )
+    reporter <- ShiftReporter$new(shift_ui("dynamic"),
+        run_id = "run-generic-dynamic")
+    reporter$operation_started("morph", "Morph EPW",
+        stage_sequence = c("collect", "extract", "morph"),
+        completed_stages = c("collect", "extract"))
+    reporter$operation_completed("2 cases morphed")
+    expect_gte(draws, 2L)
+    expect_identical(commits, 1L)
+})
+
 test_that("dynamic watch animates cached state between store polls", {
     skip_if_not_installed("duckdb")
 

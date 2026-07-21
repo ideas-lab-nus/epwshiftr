@@ -360,7 +360,7 @@ test_that("EsgStore$new()", {
             "epw_source", "epw_baseline_summary", "epw_climate_summary",
             "epw_morph_plan", "epw_morph_factor", "epw_morph_result",
             "epw_output", "shift_run", "shift_run_case", "shift_run_event",
-            "shift_run_job"
+            "shift_run_job", "shift_run_step"
         )
     )
 })

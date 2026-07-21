@@ -406,10 +406,12 @@ shift__ui_plan_context <- function(plan) {
 # fixed status region and in redirected logs.
 shift__ui_stage_label <- function(stage) {
     labels <- c(
-        planned = "Plan", resolve = "Resolve", download = "Download",
+        planned = "Plan", collect = "Collect", resolve = "Resolve",
+        download = "Download", extract = "Extract",
         extract_future = "Extract future",
         extract_reference = "Extract reference", coverage = "Coverage",
-        morph = "Morph", write_epw = "Write EPW", completed = "Completed",
+        morph = "Morph", write_epw = "Write EPW", export_epw = "Export EPW",
+        completed = "Completed",
         resume = "Resume"
     )
     value <- labels[[as.character(shift_coalesce(stage, "planned"))]]
@@ -517,6 +519,7 @@ shift__ui_status_style <- function(status) {
         failed = cli::col_red(status),
         cancelled = cli::col_red(status),
         stopping = cli::col_yellow(status),
+        waiting = cli::col_blue(status),
         queued = cli::col_blue(status),
         cli::col_cyan(status)
     )
@@ -658,6 +661,7 @@ shift__ui_state_symbol <- function(status, motion = "none", frame = 0L,
         failed = "\u2716",
         cancelled = "\u25a0",
         stopping = "!",
+        waiting = "\u25cb",
         running = shift__ui_spinner(motion, frame),
         active = shift__ui_spinner(motion, frame),
         current = "\u25cf",
@@ -678,6 +682,7 @@ shift__ui_state_symbol <- function(status, motion = "none", frame = 0L,
         fallback = cli::col_blue(symbol),
         partial = cli::col_yellow(symbol),
         stopping = cli::col_yellow(symbol),
+        waiting = cli::col_blue(symbol),
         rejected = cli::col_yellow(symbol),
         failed = cli::col_red(symbol),
         cancelled = cli::col_red(symbol),
@@ -704,9 +709,10 @@ shift__ui_stage_rail <- function(state, width = shift__ui_width(),
             "Waiting for workflow stages", width))
     }
     short <- c(
-        resolve = "Resolve", download = "Download", extract_future = "Future",
+        collect = "Collect", resolve = "Resolve", download = "Download",
+        extract = "Extract", extract_future = "Future",
         extract_reference = "Reference", coverage = "Coverage",
-        morph = "Morph", write_epw = "EPW"
+        morph = "Morph", write_epw = "EPW", export_epw = "Export"
     )
     labels <- vapply(sequence, function(stage) {
         if (stage %in% names(short)) short[[stage]] else shift__ui_stage_label(stage)
@@ -833,10 +839,10 @@ shift__ui_result_lines <- function(state, width = shift__ui_width()) {
         total <- outputs
     }
     missing <- max(0L, total - outputs)
-    summary <- sprintf(
+    summary <- shift_coalesce(state$result_summary, sprintf(
         "%d/%d EPW%s exported \u00b7 %d missing",
         outputs, total, if (total == 1L) "" else "s", missing
-    )
+    ))
     lines <- shift__ui_labeled_lines("Summary", summary, width)
 
     output_dir <- shift_coalesce(state$output_dir,
@@ -1024,15 +1030,17 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     elapsed <- shift__format_elapsed(shift_coalesce(state$elapsed_seconds, 0))
     run_label <- shift__ui_run_short(state$run_id)
     status <- as.character(shift_coalesce(state$status, "running"))[[1L]]
+    plan_context <- shift_coalesce(state$plan_context, list())
+    task_label <- as.character(shift_coalesce(state$task_label,
+        shift_coalesce(plan_context$title, "Future EPW")))[[1L]]
     header_parts <- c(
-        cli::style_bold("Future EPW"),
+        cli::style_bold(task_label),
         shift__ui_status_style(status),
         cli::style_dim(elapsed),
         if (nzchar(run_label)) cli::style_dim(paste("run", run_label))
     )
     header <- paste(header_parts[!vapply(header_parts, is.null, logical(1L))],
         collapse = "  ")
-    plan_context <- shift_coalesce(state$plan_context, list())
     plan_lines <- shift__ui_plan_lines(plan_context, width = content_width)
     details <- shift_coalesce(state$current_details, list())
     current_context <- character()
@@ -1050,7 +1058,7 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     if (length(current_context)) {
         current_label <- paste(c(current_context, current_label), collapse = " \u00b7 ")
     }
-    current_status <- if (status %in% c("queued", "stopping", "completed",
+    current_status <- if (status %in% c("queued", "waiting", "stopping", "completed",
         "partial", "failed", "cancelled")) status else "running"
     current_label_name <- if (identical(status, "failed")) {
         "Failure"
@@ -1064,7 +1072,7 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
         cli::style_bold(current_label)), content_width)
     metrics <- shift__ui_metric_line(state, width = content_width)
     terminal_problem <- status %in% c("failed", "cancelled")
-    terminal_result <- status %in% c("completed", "partial")
+    terminal_result <- status %in% c("completed", "partial", "waiting")
     context <- if (isTRUE(terminal_problem)) {
         shift__ui_failure_lines(state, content_width)
     } else if (isTRUE(terminal_result)) {
@@ -1138,7 +1146,7 @@ shift__ui_compact_line <- function(state, width = shift__ui_width(),
         x = unit, fixed = TRUE))) {
         unit <- paste(c(context, unit), collapse = " \u00b7 ")
     }
-    marker <- if (status %in% c("failed", "cancelled", "partial", "stopping",
+    marker <- if (status %in% c("failed", "cancelled", "partial", "stopping", "waiting",
         "completed")) status else "running"
     parts <- c(
         paste(shift__ui_state_symbol(marker, motion, frame), stage),
@@ -1333,6 +1341,11 @@ shift__ui_stage_sequence_from_row <- function(row) {
     if (is.null(spec)) {
         return(character())
     }
+    task <- as.character(shift_coalesce(spec$task, "future_epw"))[[1L]]
+    if (!identical(task, "future_epw")) {
+        current <- as.character(shift_coalesce(row$current_stage[[1L]], task))
+        return(current)
+    }
     reference_mode <- as.character(shift_coalesce(
         spec$method$reference_mode, "none"))[[1L]]
     download <- as.character(shift_coalesce(spec$control$download, "auto"))[[1L]]
@@ -1400,6 +1413,19 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     if (is.null(spec)) {
         return(list())
     }
+    task <- as.character(shift_coalesce(spec$task, "future_epw"))[[1L]]
+    if (!identical(task, "future_epw")) {
+        current <- as.character(shift_coalesce(row$current_stage[[1L]], task))
+        label <- shift__task_label(current)
+        return(list(
+            title = label,
+            line = label,
+            items = c(label, sprintf("store %s",
+                shift_display_path(shift_coalesce(spec$store, "<store>")))),
+            selection = NULL,
+            output = if ("output_dir" %in% names(row)) row$output_dir[[1L]] else NULL
+        ))
+    }
     climate <- shift_coalesce(spec$climate, spec$request)
     model <- paste(as.character(shift_coalesce(
         climate$model, climate$source)), collapse = ", ")
@@ -1437,7 +1463,8 @@ shift__ui_table_state <- function(row, events, cases) {
     details <- shift__ui_event_details(events)
     stage <- row$current_stage[[1L]]
     stage_indices <- which(vapply(details, function(x) {
-        identical(x$phase, "stage") && identical(x$stage, stage)
+        isTRUE(x$phase %in% c("stage", "operation")) &&
+            identical(x$stage, stage)
     }, logical(1L)))
     stage_index <- if (length(stage_indices)) utils::tail(stage_indices, 1L) else NA_integer_
     unit_indices <- which(vapply(details, function(x) {
@@ -1455,8 +1482,10 @@ shift__ui_table_state <- function(row, events, cases) {
     }
     recent_indices <- utils::tail(milestone_indices, 3L)
     completed_stages <- unique(vapply(seq_along(details), function(i) {
-        if (identical(details[[i]]$phase, "stage") &&
-            identical(events$status[[i]], "completed")) {
+        operation_done <- identical(details[[i]]$phase, "operation") &&
+            isTRUE(details[[i]]$outcome %in% c("completed", "partial"))
+        if ((identical(details[[i]]$phase, "stage") &&
+            identical(events$status[[i]], "completed")) || operation_done) {
             as.character(details[[i]]$stage)
         } else {
             NA_character_
@@ -1467,7 +1496,7 @@ shift__ui_table_state <- function(row, events, cases) {
     stopped_at <- row$completed_at[[1L]]
     if (is.na(stopped_at)) {
         terminal <- row$status[[1L]] %in%
-            c("completed", "partial", "failed", "cancelled")
+            c("waiting", "completed", "partial", "failed", "cancelled")
         # Older or partially written terminal rows may lack completed_at. In
         # that case freeze elapsed time at their last durable activity rather
         # than making a completed or failed run appear to keep executing.
@@ -1493,6 +1522,7 @@ shift__ui_table_state <- function(row, events, cases) {
     }
     fallback_stage_message <- switch(row$status[[1L]],
         queued = "Waiting for background worker",
+        waiting = "Waiting for the next shift stage",
         completed = "Workflow completed",
         partial = "Workflow completed with missing cases",
         failed = "Workflow failed",
@@ -1508,6 +1538,7 @@ shift__ui_table_state <- function(row, events, cases) {
     }
     list(
         run_id = row$run_id[[1L]],
+        task_label = shift_coalesce(plan_context$title, "Future EPW"),
         status = row$status[[1L]],
         stage = stage,
         stage_message = if (is.na(stage_index)) {
@@ -1531,6 +1562,12 @@ shift__ui_table_state <- function(row, events, cases) {
         output_dir = plan_context$output,
         output_paths = output_paths,
         output_path_limit = 5L,
+        result_summary = if (row$status[[1L]] %in%
+            c("waiting", "completed", "partial") && !is.na(last_index)) {
+            events$message[[last_index]]
+        } else {
+            NULL
+        },
         last_event = if (is.na(last_index)) "No completed event yet" else events$message[[last_index]],
         recent_events = if (!length(recent_indices)) character() else
             as.character(events$message[recent_indices]),
@@ -1743,7 +1780,8 @@ ShiftReporter <- R6::R6Class(
         # Bind one reporter to a stable run/job identity and resolve its
         # presentation mode once for the lifetime of the execution attempt.
         initialize = function(ui = shift_ui(), store = NULL, run_id = NULL,
-                              job_id = NULL, background = FALSE) {
+                              job_id = NULL, background = FALSE,
+                              step_id = NULL) {
             if (!S7::S7_inherits(ui, ShiftUiOptions)) {
                 cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
             }
@@ -1764,6 +1802,7 @@ ShiftReporter <- R6::R6Class(
             private$store <- store
             private$run_id_value <- run_id
             private$job_id_value <- job_id
+            private$step_id_value <- step_id
             private$background <- isTRUE(background)
             private$started_at <- Sys.time()
             private$last_heartbeat <- as.POSIXct(NA)
@@ -1773,12 +1812,97 @@ ShiftReporter <- R6::R6Class(
             private$status <- if (isTRUE(background)) "queued" else "running"
         },
 
+        # Start a generic standalone shift operation without requiring a
+        # Future EPW plan. The same semantic state feeds foreground frames,
+        # persisted events, and later shift_watch() reconstruction.
+        operation_started = function(task, label, context = list(),
+                                     stage_sequence = task,
+                                     completed_stages = character()) {
+            checkmate::assert_string(task, min.chars = 1L)
+            checkmate::assert_string(label, min.chars = 1L)
+            checkmate::assert_list(context)
+            private$task_label <- label
+            private$status <- "running"
+            private$stage <- task
+            private$stage_sequence <- unique(as.character(stage_sequence))
+            private$completed_stages <- unique(as.character(completed_stages))
+            private$stage_started_at <- Sys.time()
+            private$stage_message <- shift_coalesce(context$message,
+                paste("Preparing", tolower(label)))
+            private$plan_context <- utils::modifyList(list(
+                title = label,
+                items = c(label, sprintf("store %s",
+                    shift_display_path(shift_coalesce(context$store, "<store>")))),
+                selection = NULL,
+                output = NULL
+            ), context)
+            position <- match(task, private$stage_sequence)
+            private$next_stage <- if (!is.na(position) &&
+                position < length(private$stage_sequence)) {
+                private$stage_sequence[[position + 1L]]
+            } else {
+                NULL
+            }
+            if (identical(private$mode_value, "dynamic")) {
+                private$render_dynamic(force = TRUE)
+            } else if (!identical(private$mode_value, "none")) {
+                private$emit("info", sprintf("%s run %s started.",
+                    label, private$run_id_value))
+                for (line in shift__ui_plan_lines(private$plan_context,
+                    width = private$width())) {
+                    private$emit("verbatim", line)
+                }
+            }
+            private$persist(task, "running", private$stage_message,
+                shift__progress_details(stage = task, phase = "operation",
+                    unit_type = "shift_operation", outcome = "running",
+                    stage_sequence = private$stage_sequence,
+                    next_stage = private$next_stage))
+            invisible(self)
+        },
+
+        # Commit an operation that produced its final delivery artifact while
+        # preserving the dashboard receipt in terminal scrollback.
+        operation_completed = function(summary, output_paths = character(),
+                                       output_dir = NULL) {
+            private$finish_operation("completed", summary,
+                output_paths = output_paths, output_dir = output_dir)
+            invisible(self)
+        },
+
+        # Commit one successful intermediate step without terminating its run.
+        # The framebuffer closes at the R prompt; the returned stage carries
+        # run/step identity into the next invocation.
+        operation_waiting = function(summary, output_paths = character(),
+                                     output_dir = NULL) {
+            private$finish_operation("waiting", summary,
+                output_paths = output_paths, output_dir = output_dir)
+            invisible(self)
+        },
+
+        # Close the caller's framebuffer after handing work to an existing
+        # detached subsystem while keeping the durable run in running state.
+        operation_detached = function(summary, output_paths = character(),
+                                      output_dir = NULL) {
+            private$finish_operation("running", summary,
+                output_paths = output_paths, output_dir = output_dir)
+            invisible(self)
+        },
+
+        # Reuse the established failure receipt for generic operations so
+        # Future EPW and standalone stages never print competing error panels.
+        operation_failed = function(message, cancelled = FALSE,
+                                    details = list()) {
+            self$run_failed(message, cancelled = cancelled, details = details)
+        },
+
         # Render the scientific plan summary before any remote operation and
         # include control commands when a process job has only been queued.
         run_started = function(plan, run_id, background = FALSE) {
             private$run_id_value <- run_id
             private$background <- isTRUE(background)
             private$status <- if (isTRUE(background)) "queued" else "running"
+            private$task_label <- "Future EPW"
             private$cases_total <- nrow(plan@meta$expected_cases)
             private$stage_sequence <- shift__ui_stage_sequence(plan)
             private$plan_context <- shift__ui_plan_context(plan)
@@ -2211,6 +2335,8 @@ ShiftReporter <- R6::R6Class(
         run_id = function() private$run_id_value,
         # Return the current execution-attempt identity used for heartbeats.
         job_id = function() private$job_id_value,
+        # Return the persisted step currently owning reporter events.
+        step_id = function() private$step_id_value,
         # Return the current business context for terminal diagnostics without
         # exposing the reporter's mutable private environment.
         context = function() shift_coalesce(private$current_details, list()),
@@ -2231,6 +2357,7 @@ ShiftReporter <- R6::R6Class(
         store = NULL,
         run_id_value = NULL,
         job_id_value = NULL,
+        step_id_value = NULL,
         background = FALSE,
         status = NULL,
         stage = NULL,
@@ -2262,6 +2389,8 @@ ShiftReporter <- R6::R6Class(
         output_dir = NULL,
         output_paths = character(),
         output_path_limit = 5L,
+        task_label = "Future EPW",
+        result_summary = NULL,
 
         # Map reporter message kinds onto cli output while temporarily
         # releasing an active framebuffer. Console rendering failures are
@@ -2307,7 +2436,8 @@ ShiftReporter <- R6::R6Class(
             # suppress the first snapshot to avoid two full live JSON rewrites
             # for every reporter milestone.
             shift__run_event(private$store, private$run_id_value, stage, status,
-                message, details, snapshot = FALSE)
+                message, details, snapshot = FALSE,
+                step_id = private$step_id_value)
             private$touch_job(force = TRUE)
             invisible(NULL)
         },
@@ -2375,6 +2505,7 @@ ShiftReporter <- R6::R6Class(
             details <- shift_coalesce(private$current_details, list())
             list(
                 run_id = private$run_id_value,
+                task_label = private$task_label,
                 status = private$status,
                 stage = private$stage,
                 stage_message = private$stage_message,
@@ -2399,8 +2530,46 @@ ShiftReporter <- R6::R6Class(
                 output_dir = private$output_dir,
                 output_paths = private$output_paths,
                 output_path_limit = private$output_path_limit,
+                result_summary = private$result_summary,
                 elapsed_seconds = private$elapsed(private$started_at)
             )
+        },
+
+        # Finalize a generic operation in one place so completed and waiting
+        # receipts share identical rendering and persistence semantics.
+        finish_operation = function(status, summary, output_paths = character(),
+                                    output_dir = NULL) {
+            checkmate::assert_choice(status, c("completed", "waiting", "running"))
+            checkmate::assert_string(summary, min.chars = 1L)
+            private$status <- status
+            private$result_summary <- summary
+            private$last_event <- summary
+            private$completed_stages <- unique(c(private$completed_stages,
+                private$stage))
+            private$output_paths <- as.character(output_paths)
+            private$output_dir <- output_dir
+            private$add_recent(summary, status)
+            private$current_details <- utils::modifyList(
+                shift_coalesce(private$current_details, list()),
+                list(unit_label = summary, unit_base_label = summary,
+                    outcome = status)
+            )
+            if (identical(private$mode_value, "dynamic")) {
+                private$render_dynamic(force = TRUE)
+            }
+            renderer_backend <- if (is.null(private$renderer)) NULL else
+                tryCatch(private$renderer$backend(), error = function(e) NULL)
+            committed_frame <- identical(private$mode_value, "dynamic") &&
+                identical(renderer_backend, "frame")
+            private$close_renderer(result = status, preserve = TRUE)
+            if (!isTRUE(committed_frame) &&
+                !identical(private$mode_value, "none")) {
+                private$emit(if (identical(status, "completed")) "success" else "info",
+                    sprintf("%s run %s %s: %s",
+                        private$task_label, private$run_id_value, status,
+                        summary))
+            }
+            invisible(NULL)
         },
 
         # Refresh the complete dashboard as one atomic frame on its own visual
@@ -2563,13 +2732,15 @@ ShiftReporter <- R6::R6Class(
 
 # Construct a reporter after a run and optional job have durable identities.
 shift__reporter <- function(ui = shift_ui(), store = NULL, run_id = NULL,
-                            job_id = NULL, background = FALSE) {
+                            job_id = NULL, background = FALSE,
+                            step_id = NULL) {
     ShiftReporter$new(
         ui = ui,
         store = store,
         run_id = run_id,
         job_id = job_id,
-        background = background
+        background = background,
+        step_id = step_id
     )
 }
 

@@ -743,6 +743,86 @@ epwshiftr_cli_morpher_from_morph_id <- function(store, morph_id) {
     )
 }
 
+# Reconstruct the minimum ShiftMorphed graph required by the public EPW and
+# retry APIs. Climate data remain store-backed; only stable IDs, period labels,
+# the baseline EPW identity, and the recipe are materialized here.
+epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
+    if (length(morph_id) != 1L) {
+        epwshiftr_cli_usage_abort("Exactly one morph ID is required.")
+    }
+    row <- shift_query_maybe(store, sprintf(
+        paste(
+            "SELECT p.*, s.path, s.site_id, s.label",
+            "FROM epw_morph_plan p",
+            "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
+            "WHERE p.morph_id IN (%s)"
+        ),
+        shift_stage_query_ids(morph_id)
+    ))
+    if (!nrow(row) || is.na(row$path[[1L]]) || !nzchar(row$path[[1L]])) {
+        cli::cli_abort("Could not reconstruct morph ID {.val {morph_id}}.")
+    }
+    summary <- shift_query_maybe(store, sprintf(
+        "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+        shift_sql_string(row$summary_id[[1L]])
+    ))
+    if (!nrow(summary)) {
+        cli::cli_abort("Morph ID {.val {morph_id}} has no climate summary.")
+    }
+    period_rows <- unique(summary[, .(period, years_json)])
+    period_values <- lapply(seq_len(nrow(period_rows)), function(i) {
+        as.integer(jsonlite::fromJSON(period_rows$years_json[[i]],
+            simplifyVector = TRUE))
+    })
+    names(period_values) <- period_rows$period
+    periods <- do.call(epw_morph_periods, period_values)
+    epw <- store_abs_path(row$path[[1L]], root = store$path)
+    site <- shift_site(
+        id = epwshiftr_cli_na_null(row$site_id[[1L]]),
+        label = epwshiftr_cli_na_null(row$label[[1L]]),
+        epw = epw
+    )
+    plan_id <- unique(summary$plan_id)
+    climate <- shift_stage_new(ShiftClimate, "climate",
+        store_path = store$path,
+        ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]]),
+        meta = list(site = site, periods = periods,
+            variables = unique(summary$variable_id),
+            coverage = store$coverage(plan_id = plan_id)))
+
+    reference_plan_id <- NULL
+    reference_periods <- NULL
+    if (!is.na(row$reference_summary_id[[1L]]) &&
+        nzchar(row$reference_summary_id[[1L]])) {
+        reference <- shift_query_maybe(store, sprintf(
+            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+            shift_sql_string(row$reference_summary_id[[1L]])
+        ))
+        if (nrow(reference)) {
+            reference_plan_id <- unique(reference$plan_id)
+            reference_rows <- unique(reference[, .(period, years_json)])
+            reference_values <- lapply(seq_len(nrow(reference_rows)),
+                function(i) as.integer(jsonlite::fromJSON(
+                    reference_rows$years_json[[i]], simplifyVector = TRUE)))
+            names(reference_values) <- reference_rows$period
+            reference_periods <- do.call(epw_morph_periods, reference_values)
+        }
+    }
+    by <- tryCatch(as.character(jsonlite::fromJSON(row$by_json[[1L]],
+        simplifyVector = TRUE)), error = function(e) {
+        c("source_id", "experiment_id", "variant_label", "period")
+    })
+    shift_stage_new(ShiftMorphed, "morphed", store_path = store$path,
+        ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]],
+            baseline_id = row$baseline_id[[1L]], morph_id = morph_id),
+        meta = list(climate = climate, baseline = site,
+            recipe = epwshiftr_cli_recipe_from_json(row$recipe_json[[1L]]),
+            reference_plan_id = reference_plan_id,
+            reference_periods = reference_periods,
+            by = by,
+            strict = isTRUE(row$strict[[1L]])))
+}
+
 
 epwshiftr_cli_recipe_from_json <- function(json) {
     parsed <- tryCatch(jsonlite::fromJSON(json, simplifyVector = TRUE), error = function(e) NULL)

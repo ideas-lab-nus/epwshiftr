@@ -3,9 +3,12 @@ epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALS
         command,
         variables = epwshiftr_cli_morph_variables(args),
         backends = epwshiftr_cli_morph_backends(args),
-        run = epwshiftr_cli_morph_run(store, args),
-        epw = epwshiftr_cli_morph_epw(store, args),
-        retry = epwshiftr_cli_morph_retry(store, args),
+        run = epwshiftr_cli_morph_run(store, args, json = json,
+            jsonl = jsonl, quiet = quiet),
+        epw = epwshiftr_cli_morph_epw(store, args, json = json,
+            jsonl = jsonl, quiet = quiet),
+        retry = epwshiftr_cli_morph_retry(store, args, json = json,
+            jsonl = jsonl, quiet = quiet),
         status = epwshiftr_cli_morph_status(store, args),
         outputs = epwshiftr_cli_morph_outputs(store, args),
         epwshiftr_cli_usage_abort(sprintf("Unknown morph command: %s", command))
@@ -43,10 +46,12 @@ epwshiftr_cli_morph_backends <- function(args) {
 }
 
 
-epwshiftr_cli_morph_run <- function(store, args) {
+epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
+                                    jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--overwrite", "--no-resume"),
+        flags = c("--overwrite", "--no-resume", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--strict", "--by"),
         multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option")
     )
@@ -78,76 +83,77 @@ epwshiftr_cli_morph_run <- function(store, args) {
         default = c("source_id", "experiment_id", "variant_label", "period")
     )
 
+    reference <- NULL
     if (identical(reference_mode, "historical")) {
         if (length(reference_plan_id)) {
             epwshiftr_cli_usage_abort("--reference-plan cannot be used with --reference historical.")
         }
-        climate <- epwshiftr_cli_climate_stage_from_plan(store, plan_id, periods, epw)
         reference <- shift_reference_historical(
             reference_periods,
             filters = epwshiftr_cli_key_value_list(parsed$options[["--reference-filter"]], "--reference-filter"),
             options = epwshiftr_cli_key_value_list(parsed$options[["--reference-option"]], "--reference-option")
         )
-        morphed <- shift_morph(
-            climate,
-            baseline = epw,
-            recipe = recipe,
-            reference = reference,
-            by = by,
-            strict = strict,
-            overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-            resume = !isTRUE(parsed$flags[["--no-resume"]])
-        )
-        return(epwshiftr_cli_morph_workflow_result(morphed@meta$workflow))
     }
 
     if (identical(reference_mode, "plan") && !length(reference_plan_id)) {
         epwshiftr_cli_usage_abort("--reference-plan is required when --reference is plan.")
     }
-
-    morpher <- epw_morpher(
-        store,
-        epw,
-        recipe = recipe
-    )
-    workflow <- morpher$workflow(
-        plan_id = plan_id,
-        periods = periods,
-        reference_plan_id = if (length(reference_plan_id)) reference_plan_id else NULL,
-        reference_periods = reference_periods,
+    if (identical(reference_mode, "plan")) {
+        reference <- shift_reference_plan(reference_plan_id, reference_periods)
+    }
+    climate <- epwshiftr_cli_climate_stage_from_plan(store, plan_id, periods, epw)
+    morphed <- shift_morph(
+        climate,
+        baseline = epw,
+        recipe = recipe,
+        reference = reference,
         by = by,
         strict = strict,
-        dir = NULL,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl,
+            quiet = quiet)
     )
-    epwshiftr_cli_morph_workflow_result(workflow)
+    result <- epwshiftr_cli_morph_workflow_result(morphed@meta$workflow)
+    result$run_id <- shift_ids(morphed)$run_id
+    result$step_id <- shift_ids(morphed)$step_id
+    result
 }
 
 
-epwshiftr_cli_morph_epw <- function(store, args) {
+epwshiftr_cli_morph_epw <- function(store, args, json = FALSE,
+                                    jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--overwrite", "--no-resume"),
+        flags = c("--overwrite", "--no-resume", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--morph", "--dir", "--separate")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     morph_id <- epwshiftr_cli_required_ids(parsed, "--morph")
-    morpher <- epwshiftr_cli_morpher_from_morph_id(store, morph_id)
-    morpher$write_epw(
-        morph_id = morph_id[[1L]],
+    morphed <- epwshiftr_cli_morphed_stage_from_morph_id(store, morph_id)
+    outputs <- shift_epw(
+        morphed,
         dir = epwshiftr_cli_config_string(parsed$options[["--dir"]], default = "outputs/future-epw"),
         separate = epwshiftr_cli_bool(parsed$options[["--separate"]], "--separate", default = TRUE),
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl,
+            quiet = quiet)
     )
+    result <- shift_outputs(outputs)
+    result[, `:=`(run_id = shift_ids(outputs)$run_id,
+        step_id = shift_ids(outputs)$step_id)]
+    result[]
 }
 
 
-epwshiftr_cli_morph_retry <- function(store, args) {
+epwshiftr_cli_morph_retry <- function(store, args, json = FALSE,
+                                      jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--run", "--overwrite", "--no-resume"),
+        flags = c("--run", "--overwrite", "--no-resume", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--morph", "--status")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -178,12 +184,24 @@ epwshiftr_cli_morph_retry <- function(store, args) {
     results <- vector("list", nrow(candidates))
     for (i in seq_len(nrow(candidates))) {
         morph_id <- candidates$morph_id[[i]]
-        morpher <- epwshiftr_cli_morpher_from_morph_id(store, morph_id)
-        results[[i]] <- morpher$run(
-            morph_id,
+        previous <- epwshiftr_cli_morphed_stage_from_morph_id(store, morph_id)
+        morphed <- shift_morph(
+            previous@meta$climate,
+            baseline = previous@meta$baseline,
+            recipe = previous@meta$recipe,
+            reference_plan_id = previous@meta$reference_plan_id,
+            reference_periods = previous@meta$reference_periods,
+            by = previous@meta$by,
+            strict = previous@meta$strict,
             overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-            resume = !isTRUE(parsed$flags[["--no-resume"]])
+            resume = !isTRUE(parsed$flags[["--no-resume"]]),
+            ui = epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl,
+                quiet = quiet)
         )
+        row <- data.table::as.data.table(morphed@meta$results)
+        row[, `:=`(run_id = shift_ids(morphed)$run_id,
+            step_id = shift_ids(morphed)$step_id)]
+        results[[i]] <- row
     }
     data.table::rbindlist(results, use.names = TRUE, fill = TRUE)
 }

@@ -1,4 +1,4 @@
-STORE_SCHEMA_VERSION <- "2.7.0"
+STORE_SCHEMA_VERSION <- "2.8.0"
 STORE_DOWNLOAD_LAYOUT_DEFAULT <- list(
     layout = "flat",
     template = NULL,
@@ -3677,6 +3677,7 @@ EsgStore <- R6::R6Class(
                 CREATE TABLE IF NOT EXISTS shift_run_event (
                     event_id VARCHAR PRIMARY KEY,
                     run_id VARCHAR,
+                    step_id VARCHAR,
                     stage VARCHAR,
                     status VARCHAR,
                     message VARCHAR,
@@ -3692,6 +3693,7 @@ EsgStore <- R6::R6Class(
                 CREATE TABLE IF NOT EXISTS shift_run_job (
                     job_id VARCHAR PRIMARY KEY,
                     run_id VARCHAR,
+                    step_id VARCHAR,
                     attempt INTEGER,
                     mode VARCHAR,
                     status VARCHAR,
@@ -3707,6 +3709,30 @@ EsgStore <- R6::R6Class(
                     last_error VARCHAR,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
+                )
+            "
+            )
+            # A step records one independently inspectable stage invocation.
+            # The returned stage carries run/step identity into the next call;
+            # stale or terminal inputs fork a child run instead of mutating it.
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS shift_run_step (
+                    step_id VARCHAR PRIMARY KEY,
+                    run_id VARCHAR,
+                    ordinal INTEGER,
+                    task VARCHAR,
+                    spec_hash VARCHAR,
+                    spec_json VARCHAR,
+                    input_stage_json VARCHAR,
+                    output_stage_json VARCHAR,
+                    status VARCHAR,
+                    resumable BOOLEAN,
+                    nonresumable_reason VARCHAR,
+                    started_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    last_error VARCHAR
                 )
             "
             )

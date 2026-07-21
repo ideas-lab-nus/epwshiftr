@@ -31,6 +31,7 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
     ))
     expect_equal(run$status, 0L)
     expect_true(all(run$result$status == "done"))
+    expect_true(all(c("run_id", "step_id") %in% names(run$result)))
 
     coverage <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "extract", "coverage", "--plan", paste(plan$result$plan_id, collapse = ",")))
     expect_equal(coverage$status, 0L)

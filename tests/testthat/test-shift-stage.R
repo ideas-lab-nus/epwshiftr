@@ -624,6 +624,8 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     datasets <- shift_datasets(req)
     expect_equal(datasets$count(), 1L)
     expect_equal(calls$values, "Dataset")
+    expect_error(shift_collect(req, store = tempfile("shift-store-"),
+        progress = FALSE), "no longer accepts")
 
     files <- req |>
         shift_collect(store = store_path, label = "shift-test")
@@ -633,6 +635,10 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
     expect_true(length(shift_ids(files)$query_id) == 1L)
+    expect_true(nzchar(shift_ids(files)$run_id))
+    expect_true(nzchar(shift_ids(files)$step_id))
+    expect_equal(shift_status(shift_run_get(files)), "waiting")
+    expect_error(shift_resume(files), "waiting for its next stage")
     expect_equal(nrow(data.table::as.data.table(files)), 1L)
     expect_equal(shift_datasets(files)$count(), 1L)
     file_result <- shift_files(files)
@@ -646,6 +652,8 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     store <- shift_store(files)
     store$add_files(shift_test_file_result(shift_test_file_docs("hurs_day.nc", variable_id = "hurs")))
     dl <- shift_download(files, run = FALSE, probe = FALSE)
+    expect_identical(shift_ids(dl)$run_id, shift_ids(files)$run_id)
+    expect_false(identical(shift_ids(dl)$step_id, shift_ids(files)$step_id))
     expect_equal(nrow(data.table::as.data.table(dl)), 1L)
     expect_equal(shift_datasets(dl)$count(), 1L)
     expect_equal(shift_files(dl)$filename, "tas_day.nc")
@@ -655,6 +663,59 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     restored <- readRDS(rds)
     expect_equal(shift_status(restored), "collected")
     expect_equal(nrow(data.table::as.data.table(restored)), 1L)
+
+    completed <- shift_complete(dl)
+    expect_equal(shift_status(completed), "partial")
+})
+
+test_that("failed standalone steps expose recovery identity and resume in place", {
+    skip_if_not_installed("duckdb")
+
+    attempts <- 0L
+    file_docs <- shift_test_file_docs("tas_day.nc")
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params,
+                                  required_fields = NULL, all = FALSE,
+                                  limit = TRUE, constraints = TRUE,
+                                  dict_check = FALSE) {
+            attempts <<- attempts + 1L
+            if (attempts == 1L) stop("temporary catalog failure")
+            type <- query_param__value(params$type())
+            docs <- if (identical(type, "Dataset")) {
+                shift_test_dataset_docs()
+            } else {
+                file_docs
+            }
+            fields <- query_param__value(params$fields())
+            if (is.null(fields) || identical(fields, "*")) fields <- names(docs)
+            params$fields(unique(c(fields, required_fields)))
+            response <- shift_test_response(docs)
+            list(response = response, docs = response$response$docs,
+                parameter = params)
+        },
+        .package = "epwshiftr"
+    )
+    store_path <- tempfile("shift-resume-stage-store-")
+    request <- shift_request(project = "CMIP6", experiment = "ssp585",
+        variables = "tas", frequency = "day")
+    failure <- tryCatch(
+        shift_collect(request, store = store_path, ui = shift_ui("none")),
+        epwshiftr_shift_error = identity
+    )
+
+    expect_s3_class(failure, "epwshiftr_shift_error")
+    expect_match(failure$run_id, "^run_")
+    expect_match(failure$step_id, "^step_")
+    expect_identical(failure$store,
+        normalizePath(store_path, winslash = "/", mustWork = TRUE))
+    expect_equal(shift_status(shift_run_get(failure$run_id,
+        store = store_path)), "failed")
+
+    resumed <- shift_resume(failure$run_id, store = store_path,
+        ui = shift_ui("none"))
+    expect_s7_class(resumed, ShiftFiles)
+    expect_identical(shift_ids(resumed)$run_id, failure$run_id)
+    expect_equal(shift_status(shift_run_get(resumed)), "waiting")
 })
 
 test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
@@ -713,6 +774,12 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_true(S7::S7_inherits(climate_after_download@meta$download, ShiftDownload))
     expect_true(S7::S7_inherits(morphed, ShiftMorphed))
     expect_true(S7::S7_inherits(epws, ShiftOutputs))
+    expect_identical(shift_ids(climate)$run_id, shift_ids(files)$run_id)
+    expect_false(identical(shift_ids(climate_resumed)$run_id,
+        shift_ids(files)$run_id))
+    expect_identical(shift_ids(morphed)$run_id, shift_ids(climate)$run_id)
+    expect_identical(shift_ids(epws)$run_id, shift_ids(morphed)$run_id)
+    expect_equal(shift_status(shift_run_get(epws)), "waiting")
     expect_equal(shift_status(climate), "extracted")
     expect_equal(shift_status(climate_resumed), "extracted")
     expect_equal(shift_status(climate_after_download), "extracted")
@@ -773,6 +840,23 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_named(morphed@meta$workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
+    epw_run <- shift_run_get(epws)
+    expect_identical(epw_run@ids$query_id, shift_ids(files)$query_id)
+    expect_identical(epw_run@ids$morph_id, shift_ids(morphed)$morph_id)
+    expect_true(S7::S7_inherits(shift_result(epw_run),
+        ShiftOutputs))
+    expect_error(shift_complete(climate), "not the latest result")
+    expect_equal(shift_status(shift_complete(epws)), "completed")
+})
+
+test_that("standalone shift APIs carry run context without session arguments", {
+    apis <- list(shift_collect, shift_download, shift_extract, shift_morph,
+        shift_epw, shift_export_epw)
+    for (api in apis) {
+        arguments <- names(formals(api))
+        expect_false("session" %in% arguments)
+        expect_false(".reporter" %in% arguments)
+    }
 })
 
 test_that("shift_future_epw() requires a complete method and returns a task plan", {
@@ -1677,6 +1761,7 @@ test_that("shift_morph() uses complete extraction plans by default", {
     expect_true(any(shift_diagnostics(morphed)$code %in% "ignored_incomplete_extraction"))
     expect_equal(shift_status(morphed), "morphed")
     expect_equal(shift_status(blocked), "blocked")
+    expect_equal(shift_status(shift_complete(morphed)), "partial")
 })
 
 test_that("shift_morph() resolves automatic and manual historical references", {
