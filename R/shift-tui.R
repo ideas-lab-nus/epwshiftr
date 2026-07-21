@@ -84,8 +84,8 @@ ShiftFrameRenderer <- R6::R6Class(
         },
 
         # Commit the last semantic frame to terminal scrollback before
-        # releasing cursor ownership. Terminal failure states use this path so
-        # their workflow context remains visible above the final R condition.
+        # releasing cursor ownership. Every terminal workflow outcome uses this
+        # path so its final receipt remains visible after live animation stops.
         commit = function(result = c("done", "failed", "cancelled")) {
             result <- match.arg(result)
             if (isTRUE(private$closed)) {

@@ -129,6 +129,11 @@
   reporter instead of opening competing native progress bars; remote NetCDF
   reads remain visibly alive through a polled worker and fall back to synchronous
   I/O when that worker cannot be launched.
+* Successful dynamic runs now commit a responsive final receipt to terminal
+  scrollback instead of erasing the dashboard and leaving only two summary
+  lines. Its Results section retains completion counts, the delivery directory,
+  and width-wrapped output filenames; compact and log renderers keep their
+  append-only completion summary.
 * Fixed precipitation morphing summaries to avoid carrying the removed legacy
   `dist` extraction column after grid extraction methods became explicit (#124).
 * `EsgStore` now keeps ESGF query collection and downloader operations outside
