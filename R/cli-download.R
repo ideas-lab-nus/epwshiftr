@@ -17,7 +17,9 @@ epwshiftr_cli_download <- function(store, command, args, json = FALSE, jsonl = F
     if (identical(command, "run")) {
         parsed <- epwshiftr_cli_parse_command(
             args,
-            flags = c("--probe", "--no-probe", "--overwrite", "--no-resume", "--no-progress", "--background"),
+            flags = c("--probe", "--no-probe", "--overwrite", "--no-resume",
+                "--no-progress", "--background", "--reduced-motion",
+                "--verbose", "--debug"),
             options = c("--replica", "--service", "--strategy", "--probe-concurrency", "--probe-cache-seconds", "--session-label", "--mode")
         )
         query_id <- epwshiftr_cli_required_position(parsed, "query_id")
@@ -25,19 +27,34 @@ epwshiftr_cli_download <- function(store, command, args, json = FALSE, jsonl = F
         if (is.null(mode)) {
             mode <- "process"
         }
-        return(do.call(store$download_query, c(
+        catalog <- shift_file_catalog(store, query_id)
+        files <- shift_stage_new(ShiftFiles, "files", store_path = store$path,
+            ids = list(query_id = query_id),
+            meta = list(request = NULL, dataset_count = NA_integer_,
+                file_count = nrow(catalog),
+                variables = unique(catalog$variable_id), fields = names(catalog)))
+        download <- do.call(shift_download, c(
             list(
-                query_id = query_id,
-                downloader = epwshiftr_cli_downloader(store),
+                x = files,
                 session_label = parsed$options[["--session-label"]],
                 overwrite = parsed$flags[["--overwrite"]],
                 resume = !parsed$flags[["--no-resume"]],
-                progress = !parsed$flags[["--no-progress"]],
                 background = parsed$flags[["--background"]],
-                mode = mode
+                mode = mode,
+                ui = epwshiftr_cli_task_ui(parsed, json = json,
+                    jsonl = jsonl, quiet = quiet)
             ),
             epwshiftr_cli_download_plan_args(parsed)
-        )))
+        ))
+        result <- if (is.data.frame(download@meta$session)) {
+            data.table::as.data.table(download@meta$session)
+        } else {
+            data.table::data.table(session_id = as.character(
+                download@ids$session_id))
+        }
+        result[, `:=`(run_id = shift_ids(download)$run_id,
+            step_id = shift_ids(download)$step_id)]
+        return(result[])
     }
     if (identical(command, "status")) {
         parsed <- epwshiftr_cli_parse_command(args, options = c("--query", "--session"))

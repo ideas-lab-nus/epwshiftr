@@ -393,7 +393,9 @@ reference_request
 
 The diagram below is the map for the rest of the article. Each `shift_*()` call
 returns a stage object that can be printed, checked, and passed to the next
-step.
+step. The stage also carries `run_id` and `step_id`, so the next `shift_*()`
+call automatically continues the same persisted run. There is no separate
+session object to create or pass.
 
 <div class="shift-flow" role="img" aria-label="Future EPW workflow from request to EPW outputs">
 <div class="shift-node"><strong>shift_request()</strong><span>Describe ESGF data</span><code>ShiftRequest</code></div>
@@ -866,6 +868,12 @@ data.table::data.table(
     )
 )
 ```
+
+Stage status and run status answer different questions. `shift_status(epws)`
+reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
+is `waiting` because a store-local EPW can still be exported. Calling
+`shift_export_epw(epws, dir)` completes the run. If the store-local file is the
+intentional endpoint, use `shift_complete(epws)` instead.
 
 ## Read Diagnostics When Something Looks Wrong
 

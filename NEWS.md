@@ -2,6 +2,14 @@
 
 ## Breaking changes
 
+* Standalone `shift_*()` stages now carry their persisted `run_id` and
+  `step_id` into the next stage automatically. The public API does not expose a
+  workflow session/current-session object. Intermediate runs are `waiting`,
+  final EPW exports complete automatically, and `shift_complete()` explicitly
+  closes a workflow that intentionally stops at an intermediate artifact.
+  `shift_collect(progress = logical)` was removed in favour of
+  `ui = shift_ui(progress = ...)`.
+
 * Replaced the decomposed high-level future-EPW arguments with the
   task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
   store, dry_run)` interface. Future model, scenarios, member, grid, frequency,
@@ -31,6 +39,17 @@
   `mirai`, S7, and store-managed manifests.
 
 ## New features
+
+* Generalized the Future EPW reporter and run store across standalone collect,
+  download, extract, morph, EPW-write, and export tasks. Each invocation records
+  an ordered step and foreground job; the latest returned stage continues the
+  run, while stale or terminal inputs fork a child lineage. Background download
+  sessions remain `running` and synchronize their completion, cancellation, and
+  logs through the same run ID. `shift_result()` rebuilds the latest successful
+  stage, and CLI extract/morph/download commands expose `run_id` and `step_id`
+  without mixing progress text into quiet, JSON, or JSONL output. Store schema
+  2.8 records these steps and deliberately requires a new store instead of
+  migrating older manifests.
 
 * Added `shift_ui()` and a unified workflow reporter with an in-place plan
   summary; a responsive stage rail, one animated current operation,

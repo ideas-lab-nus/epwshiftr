@@ -2,8 +2,10 @@ epwshiftr_cli_extract <- function(store, command, args, json = FALSE, jsonl = FA
     switch(
         command,
         plan = epwshiftr_cli_extract_plan(store, args),
-        run = epwshiftr_cli_extract_run(store, args),
-        retry = epwshiftr_cli_extract_retry(store, args),
+        run = epwshiftr_cli_extract_run(store, args, json = json,
+            jsonl = jsonl, quiet = quiet),
+        retry = epwshiftr_cli_extract_retry(store, args, json = json,
+            jsonl = jsonl, quiet = quiet),
         coverage = epwshiftr_cli_extract_coverage(store, args),
         artifacts = epwshiftr_cli_extract_artifacts(store, args),
         epwshiftr_cli_usage_abort(sprintf("Unknown extract command: %s", command))
@@ -36,27 +38,38 @@ epwshiftr_cli_extract_plan <- function(store, args) {
 }
 
 
-epwshiftr_cli_extract_run <- function(store, args) {
+epwshiftr_cli_extract_run <- function(store, args, json = FALSE,
+                                      jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--overwrite", "--no-resume"),
+        flags = c("--overwrite", "--no-resume", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--plan", "--fallback")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     fallback <- epwshiftr_cli_choice(parsed$options[["--fallback"]], c("auto", "error"), "--fallback", default = "auto")
-    store$extract(
+    climate <- shift__extract_plans_task(
+        store,
         plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
         fallback = fallback,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl,
+            quiet = quiet)
     )
+    result <- data.table::as.data.table(climate@meta$processed)
+    result[, `:=`(run_id = shift_ids(climate)$run_id,
+        step_id = shift_ids(climate)$step_id)]
+    result[]
 }
 
 
-epwshiftr_cli_extract_retry <- function(store, args) {
+epwshiftr_cli_extract_retry <- function(store, args, json = FALSE,
+                                        jsonl = FALSE, quiet = FALSE) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--run", "--overwrite", "--no-resume"),
+        flags = c("--run", "--overwrite", "--no-resume", "--no-progress",
+            "--reduced-motion", "--verbose", "--debug"),
         options = c("--plan", "--status", "--fallback")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -82,12 +95,19 @@ epwshiftr_cli_extract_retry <- function(store, args) {
         }
         return(candidates)
     }
-    store$extract(
+    climate <- shift__extract_plans_task(
+        store,
         plan_id = unique(candidates$plan_id),
         fallback = fallback,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]])
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl,
+            quiet = quiet)
     )
+    result <- data.table::as.data.table(climate@meta$processed)
+    result[, `:=`(run_id = shift_ids(climate)$run_id,
+        step_id = shift_ids(climate)$step_id)]
+    result[]
 }
 
 

@@ -117,6 +117,29 @@ epwshiftr_cli_parse_globals <- function(args) {
     out
 }
 
+# Translate command flags into the same UI contract used by the R shift APIs.
+# Machine-readable and quiet modes always select the null renderer so progress
+# events remain durable without contaminating stdout.
+epwshiftr_cli_task_ui <- function(parsed, json = FALSE, jsonl = FALSE,
+                                  quiet = FALSE) {
+    flags <- shift_coalesce(parsed$flags, list())
+    progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
+        isTRUE(flags[["--no-progress"]])) {
+        "none"
+    } else {
+        "auto"
+    }
+    detail <- if (isTRUE(flags[["--debug"]])) {
+        "debug"
+    } else if (isTRUE(flags[["--verbose"]])) {
+        "detail"
+    } else {
+        "normal"
+    }
+    motion <- if (isTRUE(flags[["--reduced-motion"]])) "reduced" else "auto"
+    shift_ui(progress = progress, detail = detail, motion = motion)
+}
+
 
 epwshiftr_cli_dispatch <- function(parsed) {
     if (isTRUE(parsed$help)) {

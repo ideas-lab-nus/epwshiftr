@@ -244,8 +244,8 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr extract plan --query QUERY_ID --site-id ID --lon LON --lat LAT --time START,STOP [--variable VARS] [--method METHOD] [--filter key=value]...",
-            "  epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
-            "  epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "  epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
+            "  epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr extract coverage [--plan PLAN_ID]",
             "  epwshiftr extract artifacts --plan PLAN_ID"
         ),
@@ -255,12 +255,12 @@ epwshiftr_cli_help_registry <- function() {
             "Create extraction plan rows for a stored query and target site."
         ),
         "extract run" = c(
-            "Usage: epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr extract run --plan PLAN_ID[,PLAN_ID...] [--fallback auto|error] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Run selected extraction plans and write derived Parquet artifacts."
         ),
         "extract retry" = c(
-            "Usage: epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr extract retry [--plan PLAN_ID[,PLAN_ID...]] [--status failed] [--run] [--fallback auto|error] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Preview or rerun extraction plans with retryable statuses."
         ),
@@ -280,9 +280,9 @@ epwshiftr_cli_help_registry <- function() {
             "Commands:",
             "  epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
             "  epwshiftr morph backends",
-            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
-            "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
-            "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume]",
+            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
+            "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
+            "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph status [--morph MORPH_ID]",
             "  epwshiftr morph outputs [--morph MORPH_ID]"
         ),
@@ -297,18 +297,18 @@ epwshiftr_cli_help_registry <- function() {
             "List registered EPW morphing backends."
         ),
         "morph run" = c(
-            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe belcher] [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Run morphing through hourly Parquet outputs without writing EPW files.",
             "Use --reference historical to resolve matching CMIP historical data from the plan's collected File metadata."
         ),
         "morph epw" = c(
-            "Usage: epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Write future EPW files for an existing morphing plan."
         ),
         "morph retry" = c(
-            "Usage: epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume]",
+            "Usage: epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Preview or rerun existing morphing plans without replanning climate summaries or writing EPW files."
         ),
@@ -327,7 +327,7 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Commands:",
             "  epwshiftr download preflight <query_id> [--replica POLICY] [--strategy STRATEGY] [--no-probe]",
-            "  epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress]",
+            "  epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr download status [--query QUERY_ID] [--session SESSION_ID]",
             "  epwshiftr download sessions",
             "  epwshiftr download tasks [--session SESSION_ID] [--job JOB_ID] [--status STATUS]",
@@ -352,7 +352,7 @@ epwshiftr_cli_help_registry <- function() {
             "Build a replica-aware download plan without enqueuing tasks."
         ),
         "download run" = c(
-            "Usage: epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress]",
+            "Usage: epwshiftr download run <query_id> [--session-label LABEL] [--background] [--mode process|daemon] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
             "Refresh, plan, enqueue, and run downloads for a stored query.",
             "Use --background to create a persistent downloader job instead of blocking the current R session."

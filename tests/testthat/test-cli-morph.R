@@ -28,6 +28,8 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     ))
     expect_equal(run$status, 0L)
     expect_length(run$result$morph_id, 1L)
+    expect_length(run$result$run_id, 1L)
+    expect_length(run$result$step_id, 1L)
     expect_true(nrow(run$result$results) >= 1L)
 
     status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "status", "--morph", run$result$morph_id))
@@ -64,6 +66,7 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     ))
     expect_equal(epw$status, 0L)
     expect_true(nrow(epw$result) >= 1L)
+    expect_true(all(c("run_id", "step_id") %in% names(epw$result)))
     expect_true(all(file.exists(file.path(setup$dir, epw$result$path))))
 
     outputs <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "outputs", "--morph", run$result$morph_id))
