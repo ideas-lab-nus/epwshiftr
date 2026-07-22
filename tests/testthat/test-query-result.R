@@ -1075,8 +1075,13 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
                 invokeRestart("muffleWarning")
             }
         )
-        expect_true(any(grepl("DRS filename", warnings)))
-        expect_true(any(grepl("Could not parse", warnings)))
+        expect_identical(
+            warnings,
+            sprintf(
+                "Could not parse a DRS time range for 1 %s record(s); keeping those records.",
+                tolower(type)
+            )
+        )
         expect_s3_class(filtered, class(result)[[1L]])
         expect_identical(filtered$id, result$id[c(1L, 3L)])
         expect_false("datetime_start" %in% result$fields)
@@ -1093,6 +1098,18 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
         expect_true(is.na(dt$datetime_start[[2L]]))
         expect_true(is.na(dt$datetime_end[[2L]]))
     }
+})
+
+test_that("EsgResult$filter_time() is silent when every DRS range can be parsed", {
+    docs <- query_result_test_file_time_docs("File")[1:2, , drop = FALSE]
+    result <- query_result_test_object(
+        "File", docs, query_result_test_params("File"))
+
+    filtered <- expect_silent(
+        result$filter_time("2050-06-01", "2050-06-30", method = "drs"))
+
+    expect_identical(filtered$id, docs$id[[1L]])
+    expect_identical(filtered$time_filter$unknown_count, 0L)
 })
 
 test_that("EsgResult$filter_time() auto mode preserves metadata and fills DRS gaps", {

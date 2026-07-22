@@ -7,8 +7,8 @@
   workflow session/current-session object. Intermediate runs are `waiting`,
   final EPW exports complete automatically, and `shift_complete()` explicitly
   closes a workflow that intentionally stops at an intermediate artifact.
-  `shift_collect(progress = logical)` was removed in favour of
-  `ui = shift_ui(progress = ...)`.
+  Logical `progress` arguments on `shift_datasets()` and `shift_collect()` were
+  removed in favour of `ui = shift_ui(progress = ...)`.
 
 * Replaced the decomposed high-level future-EPW arguments with the
   task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
@@ -40,16 +40,40 @@
 
 ## New features
 
-* Generalized the Future EPW reporter and run store across standalone collect,
-  download, extract, morph, EPW-write, and export tasks. Each invocation records
-  an ordered step and foreground job; the latest returned stage continues the
-  run, while stale or terminal inputs fork a child lineage. Background download
+* Added `store_reset()` for deliberately incompatible store schemas. Existing
+  stores are moved to timestamped same-filesystem backups by default;
+  permanent removal requires `backup = FALSE, force = TRUE`. Reset targets are
+  validated before any filesystem change, and schema mismatch errors now show
+  a directly runnable recovery command.
+
+* Generalized the Future EPW reporter and run store across standalone Dataset
+  inspection, collect, download, extract, morph, EPW-write, and export tasks.
+  Each invocation records an ordered step and foreground job; the latest
+  returned stage continues the run, while stale or terminal inputs fork a child
+  lineage. `shift_datasets()` preserves its `EsgResultDataset` return value while
+  carrying run coordinates as lightweight attributes. Background download
   sessions remain `running` and synchronize their completion, cancellation, and
   logs through the same run ID. `shift_result()` rebuilds the latest successful
   stage, and CLI extract/morph/download commands expose `run_id` and `step_id`
   without mixing progress text into quiet, JSON, or JSONL output. Store schema
   2.8 records these steps and deliberately requires a new store instead of
   migrating older manifests.
+
+* `ShiftRequest` now follows `EsgQuery`'s double-rule query receipt and canonical
+  parameter renderer. `ShiftFiles` preserves the established
+  `EsgResultFile` double-rule and bullet-summary header while adding a compact,
+  terminal-width-aware CMIP6 preview. It reads only the requested preview rows
+  from the store and accepts `n`, `width`, and `verbose` print controls; the
+  complete catalog remains available through `shift_files()` or
+  `data.table::as.data.table()`.
+
+* Added a shared semantic print design for every public Shift configuration and
+  stage object. Receipts use double-rule titles, bullet facts, bounded
+  width-aware tables, compact periods and references, and common `n`, `width`,
+  and `verbose` controls. `ShiftRun` prints a refreshed, motion-free snapshot
+  through the same dashboard view used by foreground runs and `shift_watch()`;
+  an unavailable store now falls back to the cached snapshot with a diagnostic
+  instead of failing the print method.
 
 * Added `shift_ui()` and a unified workflow reporter with an in-place plan
   summary; a responsive stage rail, one animated current operation,
@@ -116,6 +140,19 @@
   `shift`, `extract`, `morph`, and `esgf` command groups (#114).
 
 ## Bug fixes
+
+* `shift_request()` now preserves provider facet values such as `project` and
+  `frequency` exactly for EsgDict validation instead of silently translating
+  non-standard aliases. A bare numeric `limit` now caps Dataset results instead
+  of silently becoming a pagination size. Empty collections are reported as
+  `partial` rather than as ready for extraction, while successful intermediate
+  receipts display `READY` instead of the internal state-machine term
+  `waiting`.
+
+* Standalone dynamic `shift_*()` stages now translate successful `waiting` and
+  detached `running` workflow states to the framebuffer's `done` terminal
+  outcome. This prevents a completed `shift_collect()` from failing while its
+  final dashboard receipt is committed.
 
 * Belcher CMIP6 resolution now keeps `hurs` as the canonical humidity input but
   can satisfy it from complete `huss`, `tas`, and surface-pressure (`ps`) data

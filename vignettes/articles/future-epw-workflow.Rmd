@@ -174,6 +174,48 @@ Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
 `shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
 supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
 
+## Inspect Shift Objects
+
+Every public Shift object prints as a compact semantic receipt. Configuration
+objects summarize scientific intent without expanding stored rules, function
+environments, yearly vectors, or every ESGF node. Stage objects add a preview
+of the records that matter at that point in the workflow. `ShiftRun` refreshes
+its persisted state and prints the same static dashboard used by
+`shift_watch()`.
+
+
+``` r
+climate <- shift_cmip6(
+    model = "BCC-CSM2-MR",
+    scenarios = c("ssp126", "ssp585")
+)
+method <- belcher(reference = historical_reference(1995:2014))
+plan <- shift_future_epw(
+    epw = epw,
+    climate = climate,
+    periods = list(`2060s` = 2055:2065),
+    method = method,
+    dir = file.path(workflow_root, "future-epw"),
+    dry_run = TRUE
+)
+
+print(climate)
+print(method)
+print(plan, n = 3L, width = 80L)
+```
+
+Data previews show at most 10 rows by default. Use `n = Inf` for every row,
+set `width` when rendering into a constrained console or report, and use
+`verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
+and additional diagnostics. These controls affect presentation only and do not
+change the workflow specification or its `spec_hash`.
+
+
+``` r
+print(plan, n = Inf, width = 120L, verbose = TRUE)
+print(run, verbose = TRUE)
+```
+
 ## Live Feedback and Background Runs
 
 The foreground runner starts reporting before its first ESGF request. Its
@@ -259,10 +301,10 @@ site <- shift_site(
 )
 
 site
-#> <ShiftSite>
-#>   id:     SIN
-#>   lonlat: 103.980000, 1.370000
-#>   label:  Singapore
+#> ══ EPW Site ════════════════════════════════════════════════════════════════════
+#> • ID: SIN
+#> • Label: Singapore
+#> • Coordinates: 103.980000, 1.370000
 ```
 
 Or you can read the same information directly from the EPW LOCATION header:
@@ -271,11 +313,11 @@ Or you can read the same information directly from the EPW LOCATION header:
 ``` r
 epw_site <- shift_site(epw)
 epw_site
-#> <ShiftSite>
-#>   id:     SGP_Singapore.486980_IWEC
-#>   lonlat: 103.980000, 1.370000
-#>   label:  Singapore
-#>   epw:    <tempdir>/epwshiftr-future-epw-workflow/baseline/SGP_Singapore.486980_IWEC.epw
+#> ══ EPW Site ════════════════════════════════════════════════════════════════════
+#> • ID: SGP_Singapore.486980_IWEC
+#> • Label: Singapore
+#> • Coordinates: 103.980000, 1.370000
+#> • EPW: SGP_Singapore.486980_IWEC.epw
 ```
 
 This article keeps using the explicit `site` object so the site ID is short and
@@ -349,16 +391,26 @@ request <- shift_request(
 )
 
 request
-#> <epwshiftr::ShiftRequest>
-#>   stage:  request
-#>   status: new
-#>   project: CMIP6
-#>   source: MPI-ESM1-2-LR
-#>   experiment: ssp585
-#>   variant: r1i1p1f1
-#>   frequency: mon
-#>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
-#>   time:   2060-01-01T00:00:00Z -> 2060-12-31T23:59:59Z
+#> ══ ESGF request ════════════════════════════════════════════════════════════════
+#> • Index node: https://esgf-data.dkrz.de
+#> ── Query parameters ────────────────────────────────────────────────────────────
+#> • project = CMIP6
+#> • activity_id = ScenarioMIP
+#> • experiment_id = ssp585
+#> • source_id = MPI-ESM1-2-LR
+#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • frequency = mon
+#> • variant_label = r1i1p1f1
+#> • data_node = esgf.ceda.ac.uk
+#> • fields = *
+#> • type = Dataset
+#> • offset = 0
+#> • distrib = true
+#> • limit = 10
+#> • format = application/solr+json
+#> • table_id = Amon
+#> • datetime_start: [* TO 2060-01-01T00:00:00Z]
+#> • datetime_stop: [2060-12-31T23:59:59Z TO *]
 
 reference_request <- shift_request(
     project = "CMIP6",
@@ -377,16 +429,26 @@ reference_request <- shift_request(
 )
 
 reference_request
-#> <epwshiftr::ShiftRequest>
-#>   stage:  request
-#>   status: new
-#>   project: CMIP6
-#>   source: MPI-ESM1-2-LR
-#>   experiment: historical
-#>   variant: r1i1p1f1
-#>   frequency: mon
-#>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
-#>   time:   1995-01-01T00:00:00Z -> 1995-12-31T23:59:59Z
+#> ══ ESGF request ════════════════════════════════════════════════════════════════
+#> • Index node: https://esgf-data.dkrz.de
+#> ── Query parameters ────────────────────────────────────────────────────────────
+#> • project = CMIP6
+#> • activity_id = CMIP
+#> • experiment_id = historical
+#> • source_id = MPI-ESM1-2-LR
+#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • frequency = mon
+#> • variant_label = r1i1p1f1
+#> • data_node = esgf.ceda.ac.uk
+#> • fields = *
+#> • type = Dataset
+#> • offset = 0
+#> • distrib = true
+#> • limit = 10
+#> • format = application/solr+json
+#> • table_id = Amon
+#> • datetime_start: [* TO 1995-01-01T00:00:00Z]
+#> • datetime_stop: [1995-12-31T23:59:59Z TO *]
 ```
 
 # Run the Workflow
@@ -428,7 +490,10 @@ broader or narrower than intended, change the request filters before continuing.
 `shift_datasets()` runs the Dataset-level ESGF search described by
 `shift_request()`. The returned `EsgResultDataset` object is not the data to
 download yet; it is the list of Dataset records that will later be expanded into
-File records.
+File records. This standalone query uses the same dashboard, persisted run, and
+query heartbeat reporting as the other `shift_*()` tasks. Use
+`ui = shift_ui(...)` to control its presentation; low-level `EsgQuery$collect()`
+continues to expose its native `progress` control.
 
 For a deeper look at Dataset, File, and Aggregation results, see
 [ESGF query results](esgf-query-results.html).

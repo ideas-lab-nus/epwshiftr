@@ -17,6 +17,23 @@ shift_test_is_absolute_path <- function(path) {
     grepl("^(/|[A-Za-z]:[/\\\\])", path)
 }
 
+shift_test_print_objects <- function(objects, width = 80L, n = 10L,
+                                     verbose = FALSE) {
+    for (object in objects) {
+        print(object, width = width, n = n, verbose = verbose)
+    }
+    invisible(NULL)
+}
+
+shift_test_normalize_print <- function(x) {
+    roots <- unique(c(tempdir(), normalizePath(tempdir(), winslash = "/",
+        mustWork = FALSE)))
+    for (root in roots[nzchar(roots)]) {
+        x <- gsub(root, "<tempdir>", x, fixed = TRUE)
+    }
+    x
+}
+
 shift_test_dataset_docs <- function(variable_id = "tas") {
     data.frame(
         id = "dataset-1",
@@ -101,7 +118,11 @@ shift_test_mock_collect <- function(file_docs, calls) {
         query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
                                   limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             type <- query_param__value(params$type())
+            calls$query_reporter <- c(calls$query_reporter,
+                is.function(getOption("epwshiftr.query.progress_callback")))
             docs <- if (identical(type, "Dataset")) {
+                calls$dataset_all <- c(calls$dataset_all, all)
+                calls$dataset_limit <- c(calls$dataset_limit, limit)
                 shift_test_dataset_docs()
             } else {
                 file_docs
@@ -286,6 +307,91 @@ test_that("shift_request() applies ESGF control filters through typed setters", 
     expect_true(query_param__value(query$latest()))
     expect_false(query_param__value(query$replica()))
     expect_identical(query_param__value(query$params()$table_id), "Amon")
+})
+
+test_that("shift_request() preserves provider facet values", {
+    req <- shift_request(
+        project = "cmip6",
+        frequency = c("monthly", "daily", "3hr")
+    )
+    query <- shift_as_query(req)
+
+    expect_identical(req@meta$project, "cmip6")
+    expect_identical(req@meta$frequency, c("monthly", "daily", "3hr"))
+    expect_identical(query_param__value(query$project()), "cmip6")
+    expect_identical(query_param__value(query$frequency()),
+        c("monthly", "daily", "3hr"))
+})
+
+test_that("ShiftRequest print shares the ESGF query renderer", {
+    req <- shift_request(
+        project = "CMIP6",
+        experiment = c("ssp126", "ssp585"),
+        variables = c("tas", "hurs"),
+        frequency = "mon",
+        filters = list(table_id = "Amon")
+    )
+
+    printed <- capture.output(print(req, width = 60L), type = "message")
+    expect_true(any(grepl("ESGF request", printed, fixed = TRUE)))
+    expect_true(any(grepl("^[=═]{2} ESGF request", printed)))
+    expect_true(any(grepl("^[*•] Index node: auto", printed)))
+    expect_true(any(grepl("Query parameters", printed, fixed = TRUE)))
+    expect_true(any(grepl("experiment_id = ssp126, ssp585", printed, fixed = TRUE)))
+    expect_true(any(grepl("table_id = Amon", printed, fixed = TRUE)))
+    expect_false(any(grepl("stage:  request", printed, fixed = TRUE)))
+
+    verbose <- capture.output(print(req, verbose = TRUE), type = "message")
+    expect_true(any(grepl("Workflow", verbose, fixed = TRUE)))
+    expect_true(any(grepl("Status: new", verbose, fixed = TRUE)))
+})
+
+test_that("Shift configuration printers use compact semantic receipts", {
+    withr::local_options(cli.num_colors = 1L)
+    climate <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
+    control <- shift_control()
+    ui <- shift_ui()
+    reference <- historical_reference(1995:2014)
+    method <- belcher()
+    site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
+
+    climate_text <- capture.output(print(climate, width = 72L),
+        type = "message")
+    expect_true(any(grepl("CMIP6 Climate", climate_text, fixed = TRUE)))
+    expect_true(any(grepl("6-node failover", climate_text, fixed = TRUE)))
+    expect_false(any(grepl("https://", climate_text, fixed = TRUE)))
+    climate_verbose <- capture.output(print(climate, width = 72L,
+        verbose = TRUE, n = 3L), type = "message")
+    expect_true(any(grepl("https://", climate_verbose, fixed = TRUE)))
+    expect_true(any(grepl("3 more rows", climate_verbose, fixed = TRUE)))
+
+    reference_text <- capture.output(print(reference, width = 72L),
+        type = "message")
+    expect_true(any(grepl("reference 1995–2014", reference_text,
+        fixed = TRUE)))
+    expect_false(any(grepl("1996, 1997", reference_text, fixed = TRUE)))
+
+    method_text <- capture.output(print(method, width = 72L),
+        type = "message")
+    expect_true(any(grepl("Reference: baseline EPW", method_text,
+        fixed = TRUE)))
+    expect_false(any(grepl("── Rules", method_text)))
+    method_verbose <- capture.output(print(method, width = 72L,
+        verbose = TRUE, n = 3L), type = "message")
+    expect_true(any(grepl("Rules", method_verbose, fixed = TRUE)))
+    expect_true(any(grepl("10 more rows", method_verbose, fixed = TRUE)))
+
+    visible <- NULL
+    capture.output(visible <- withVisible(print(control, width = 72L)),
+        type = "message")
+    expect_false(visible$visible)
+    expect_identical(visible$value, control)
+
+    expect_snapshot(shift_test_print_objects(
+        list(climate, control, ui, reference, method, site), width = 72L))
+    expect_snapshot(shift_test_print_objects(
+        list(climate, control, ui, reference, method, site),
+        width = 100L, n = 3L, verbose = TRUE))
 })
 
 test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
@@ -621,9 +727,27 @@ test_that("shift_collect() uses Dataset collection before File collection", {
         frequency = "day"
     )
     store_path <- tempfile("shift-store-")
-    datasets <- shift_datasets(req)
+    dataset_store_path <- tempfile("shift-datasets-store-")
+    dataset_output <- capture.output(
+        datasets <- shift_datasets(req, store = dataset_store_path,
+            ui = shift_ui("log")),
+        type = "message"
+    )
     expect_equal(datasets$count(), 1L)
+    expect_true(any(grepl("Collect Datasets", dataset_output, fixed = TRUE)))
     expect_equal(calls$values, "Dataset")
+    expect_true(calls$query_reporter[[1L]])
+    dataset_run <- shift_run_get(datasets)
+    expect_equal(shift_status(dataset_run), "completed")
+    expect_equal(dataset_run@meta$run$task[[1L]], "datasets")
+    expect_equal(shift_result(dataset_run)$count(), 1L)
+    expect_true(nzchar(attr(datasets, "epwshiftr.run_id", exact = TRUE)))
+    expect_true(nzchar(attr(datasets, "epwshiftr.step_id", exact = TRUE)))
+    dataset_event <- dataset_run@meta$events[
+        message == "Collecting Dataset catalog"]
+    dataset_details <- jsonlite::fromJSON(
+        dataset_event$details_json[[1L]], simplifyVector = TRUE)
+    expect_identical(dataset_details$total, 1L)
     expect_error(shift_collect(req, store = tempfile("shift-store-"),
         progress = FALSE), "no longer accepts")
 
@@ -632,12 +756,19 @@ test_that("shift_collect() uses Dataset collection before File collection", {
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
     expect_equal(calls$values, c("Dataset", "Dataset", "File"))
+    expect_true(all(calls$query_reporter))
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
     expect_true(length(shift_ids(files)$query_id) == 1L)
     expect_true(nzchar(shift_ids(files)$run_id))
     expect_true(nzchar(shift_ids(files)$step_id))
     expect_equal(shift_status(shift_run_get(files)), "waiting")
+    collect_run <- shift_run_get(files)
+    collect_event <- collect_run@meta$events[
+        message == "Collecting Dataset catalog"]
+    collect_details <- jsonlite::fromJSON(
+        collect_event$details_json[[1L]], simplifyVector = TRUE)
+    expect_identical(collect_details$total, 2L)
     expect_error(shift_resume(files), "waiting for its next stage")
     expect_equal(nrow(data.table::as.data.table(files)), 1L)
     expect_equal(shift_datasets(files)$count(), 1L)
@@ -648,6 +779,50 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_error(shift_files(req), "No File result")
     expect_named(shift_check(files, strict = TRUE), shift_diagnostic_columns())
     expect_equal(shift_status(shift_refresh(files)), "collected")
+
+    printed <- capture.output(print(files), type = "message")
+    expect_true(any(grepl("ESGF Query Result [File]", printed, fixed = TRUE)))
+    expect_true(any(grepl("^[=═]{2} ESGF Query Result", printed)))
+    expect_true(any(grepl("^[*•] Index Node:", printed)))
+    expect_true(any(grepl("^[*•] Result count: 1", printed)))
+    expect_true(any(grepl("^[*•] Fields:", printed)))
+    expect_true(any(grepl("EC-Earth3", printed, fixed = TRUE)))
+    expect_true(any(grepl("tas", printed, fixed = TRUE)))
+    expect_false(any(grepl("<char>", printed, fixed = TRUE)))
+    expect_false(any(grepl("Catalog:", printed, fixed = TRUE)))
+    expect_false(any(grepl("Identity:", printed, fixed = TRUE)))
+
+    verbose <- capture.output(print(files, width = 60L, verbose = TRUE), type = "message")
+    expect_true(any(grepl("Workflow", verbose, fixed = TRUE)))
+    expect_true(any(grepl("Store:", verbose, fixed = TRUE)))
+    expect_true(any(grepl("Hidden columns", verbose, fixed = TRUE)))
+
+    detached <- shift_stage_new(
+        ShiftFiles,
+        "files",
+        store_path = tempfile("missing-shift-store-"),
+        ids = list(query_id = "query-detached"),
+        meta = list(
+            request = req,
+            file_count = 1L,
+            result_fields = c("source_id", "variable_id")
+        )
+    )
+    detached_text <- capture.output(print(detached), type = "message")
+    expect_true(any(grepl("Result count: 1", detached_text, fixed = TRUE)))
+    expect_true(any(grepl("Persisted preview unavailable", detached_text,
+        fixed = TRUE)))
+
+    capped_calls <- new.env(parent = emptyenv())
+    capped_calls$values <- character()
+    capped_calls$file_fields <- list()
+    capped_calls$dataset_all <- logical()
+    capped_calls$dataset_limit <- list()
+    shift_test_mock_collect(shift_test_file_docs("tas_day.nc"), capped_calls)
+    shift_collect(req, store = tempfile("shift-capped-store-"), limit = 10L,
+        ui = shift_ui("none"))
+    expect_false(capped_calls$dataset_all[[1L]])
+    expect_identical(capped_calls$dataset_limit[[1L]], 10L)
 
     store <- shift_store(files)
     store$add_files(shift_test_file_result(shift_test_file_docs("hurs_day.nc", variable_id = "hurs")))
@@ -666,6 +841,27 @@ test_that("shift_collect() uses Dataset collection before File collection", {
 
     completed <- shift_complete(dl)
     expect_equal(shift_status(completed), "partial")
+})
+
+test_that("empty collection is partial instead of waiting for another stage", {
+    skip_if_not_installed("duckdb")
+
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    calls$file_fields <- list()
+    calls$dataset_all <- logical()
+    calls$dataset_limit <- list()
+    empty <- shift_test_file_docs("empty.nc")[0, , drop = FALSE]
+    shift_test_mock_collect(empty, calls)
+
+    files <- shift_collect(
+        shift_request(project = "CMIP6", frequency = "mon"),
+        store = tempfile("shift-empty-store-"),
+        ui = shift_ui("none")
+    )
+
+    expect_identical(shift_status(files), "partial")
+    expect_identical(shift_status(shift_run_get(files)), "partial")
 })
 
 test_that("failed standalone steps expose recovery identity and resume in place", {
@@ -850,13 +1046,15 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
 })
 
 test_that("standalone shift APIs carry run context without session arguments", {
-    apis <- list(shift_collect, shift_download, shift_extract, shift_morph,
-        shift_epw, shift_export_epw)
+    apis <- list(shift_datasets, shift_collect, shift_download, shift_extract,
+        shift_morph, shift_epw, shift_export_epw)
     for (api in apis) {
         arguments <- names(formals(api))
         expect_false("session" %in% arguments)
         expect_false(".reporter" %in% arguments)
     }
+    expect_false("progress" %in% names(formals(shift_datasets)))
+    expect_true(all(c("store", "ui") %in% names(formals(shift_datasets))))
 })
 
 test_that("shift_future_epw() requires a complete method and returns a task plan", {
@@ -923,6 +1121,210 @@ test_that("shift_future_epw() requires a complete method and returns a task plan
         ),
         "unused arguments"
     )
+})
+
+test_that("Shift plan and stage printers use bounded semantic previews", {
+    withr::local_options(cli.num_colors = 1L)
+    site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
+    periods <- epw_morph_periods(`2060s` = 2055:2065)
+    method <- belcher(reference = historical_reference(1995:2014))
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+        periods = periods,
+        method = method,
+        dir = file.path(tempdir(), "shift-print-output"),
+        store = file.path(tempdir(), "shift-print-store"),
+        dry_run = TRUE
+    )
+    tasks <- data.table::data.table(
+        status = c("done", "done", "queued", "error"),
+        filename = sprintf("tas_%02d.nc", 1:4),
+        bytes_done = c(100, 200, 0, 20),
+        size = c(100, 200, 300, 400),
+        speed_bps = c(10, 20, 0, 0),
+        eta_seconds = c(0, 0, 30, NA),
+        data_node = "example.org",
+        attempts = c(1L, 1L, 0L, 2L),
+        last_error = c(NA, NA, NA, "connection failed")
+    )
+    download <- shift_stage_new(
+        ShiftDownload, "download",
+        ids = list(session_id = "session-print"),
+        meta = list(session = tasks)
+    )
+    coverage <- data.table::data.table(
+        complete = c(TRUE, TRUE, FALSE),
+        status = c("done", "done", "failed"),
+        experiment_id = c("ssp126", "ssp585", "ssp585"),
+        variable_id = c("tas", "tas", "hurs"),
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        time_start = as.POSIXct("2055-01-01", tz = "UTC"),
+        time_stop = as.POSIXct("2065-12-31", tz = "UTC"),
+        output_time_count = c(132L, 132L, 0L),
+        output_rows = c(132L, 132L, 0L),
+        last_error = c(NA, NA, "missing years")
+    )
+    climate <- shift_stage_new(
+        ShiftClimate, "climate",
+        meta = list(site = site, periods = periods, coverage = coverage)
+    )
+    morph_rows <- data.table::data.table(
+        case_id = sprintf("case-%d", 1:4),
+        source_id = "BCC-CSM2-MR",
+        experiment_id = rep(c("ssp126", "ssp585"), each = 2L),
+        variant_label = "r1i1p1f1",
+        period = "2060s",
+        status = "result_done",
+        row_count = 8760L,
+        output_path = sprintf("morph/case-%d.parquet", 1:4)
+    )
+    morphed <- shift_stage_new(
+        ShiftMorphed, "morphed",
+        meta = list(
+            recipe = method@recipe,
+            reference_spec = method@reference,
+            results = morph_rows
+        )
+    )
+    output_rows <- data.table::data.table(
+        source_id = "BCC-CSM2-MR",
+        experiment_id = rep(c("ssp126", "ssp585"), 6L),
+        variant_label = "r1i1p1f1",
+        period = "2060s",
+        path = sprintf("outputs/future-%02d.epw", 1:12),
+        export_path = sprintf("/exports/future-%02d.epw", 1:12),
+        created_at = as.POSIXct("2026-01-01", tz = "UTC")
+    )
+    outputs <- shift_stage_new(
+        ShiftOutputs, "outputs",
+        meta = list(outputs = output_rows, export_dir = "/exports")
+    )
+
+    output_text <- capture.output(print(outputs, width = 72L, n = 3L),
+        type = "message")
+    expect_true(any(grepl("9 more rows", output_text, fixed = TRUE)))
+    output_default <- capture.output(print(outputs, width = 72L),
+        type = "message")
+    expect_true(any(grepl("2 more rows", output_default, fixed = TRUE)))
+    output_all <- capture.output(print(outputs, width = 72L, n = Inf),
+        type = "message")
+    expect_false(any(grepl("more rows", output_all, fixed = TRUE)))
+
+    for (width in c(60L, 80L, 120L)) {
+        for (object in list(plan, download, climate, morphed, outputs)) {
+            lines <- cli::ansi_strip(capture.output(
+                print(object, width = width, n = 3L), type = "message"))
+            expect_lte(max(cli::ansi_nchar(lines, type = "width")), width)
+        }
+    }
+
+    expect_snapshot(shift_test_print_objects(
+        list(plan, download, climate, morphed, outputs),
+        width = 80L, n = 3L), transform = shift_test_normalize_print)
+    expect_snapshot(shift_test_print_objects(
+        list(plan, download, climate, morphed, outputs),
+        width = 100L, n = 3L, verbose = TRUE),
+        transform = shift_test_normalize_print)
+})
+
+test_that("ShiftRun print refreshes state and reuses the static dashboard", {
+    skip_if_not_installed("duckdb")
+    withr::local_options(cli.num_colors = 1L)
+    store_path <- tempfile("shift-print-run-store-")
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+        periods = list(`2060s` = 2055:2065),
+        method = belcher(reference = historical_reference(1995:2014)),
+        dir = tempfile("shift-print-run-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    stale <- shift_run_get(run_id, store = store_path)
+    store <- shift_store(plan)
+    shift__run_update(store, run_id, status = "waiting",
+        current_stage = "collect")
+    store$close()
+
+    printed <- capture.output(print(stale, width = 72L), type = "message")
+    # The persisted state remains `waiting`; the receipt intentionally uses the
+    # user-facing READY label to describe an interactive continuation point.
+    expect_true(any(grepl("READY", printed, fixed = TRUE)))
+    expect_true(any(grepl("Future EPW", printed, fixed = TRUE)))
+    expect_true(any(grepl("Cases", printed, fixed = TRUE)))
+    expect_false(any(grepl("MemberNA|StatusNA|plannedNA", printed)))
+    expect_lte(max(cli::ansi_nchar(cli::ansi_strip(printed), type = "width")),
+        72L)
+
+    view <- shift__ui_run_view(shift_refresh(stale), width = 72L,
+        detail = "normal", motion = "none")
+    direct <- capture.output(shift__ui_print_view(view,
+        include_tables = TRUE), type = "message")
+    expect_identical(printed, direct)
+})
+
+test_that("ShiftRun print falls back to a cached static snapshot", {
+    withr::local_options(cli.num_colors = 1L)
+    spec <- list(
+        task = "future_epw",
+        climate = list(
+            model = "BCC-CSM2-MR",
+            scenarios = c("ssp126", "ssp585"),
+            member = NULL,
+            grid = NULL
+        ),
+        periods = list(`2060s` = 2055:2065),
+        method = list(
+            name = "belcher",
+            reference_mode = "historical",
+            reference = list(periods = list(reference = 1995:2014))
+        ),
+        control = list(download = "auto")
+    )
+    run_row <- data.table::data.table(
+        run_id = "run_print_12345678",
+        task = "future_epw",
+        spec_json = jsonlite::toJSON(spec, auto_unbox = TRUE, null = "null"),
+        status = "completed",
+        current_stage = "write_epw",
+        output_dir = "/exports",
+        started_at = as.POSIXct("2026-01-01 00:00:00", tz = "UTC"),
+        updated_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
+        completed_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
+        last_error = NA_character_
+    )
+    cases <- data.table::data.table(
+        experiment_id = c("ssp126", "ssp585"),
+        variant_label = NA_character_,
+        period = "2060s",
+        status = "completed",
+        required = TRUE,
+        export_path = c("/exports/ssp126.epw", "/exports/ssp585.epw")
+    )
+    events <- data.table::data.table(
+        stage = character(), status = character(), message = character(),
+        details_json = character(), created_at = as.POSIXct(character(),
+            tz = "UTC")
+    )
+    run <- shift_stage_new(
+        ShiftRun, "run",
+        ids = list(run_id = "run_print_12345678"),
+        meta = list(run = run_row, cases = cases, events = events)
+    )
+
+    printed <- capture.output(print(run, width = 72L), type = "message")
+    expect_true(any(grepl("COMPLETED", printed, fixed = TRUE)))
+    expect_true(any(grepl("Persisted preview unavailable", printed,
+        fixed = TRUE)))
+    expect_false(any(grepl("MemberNA|StatusNA|completedNA", printed)))
+    limited <- capture.output(print(run, width = 72L, n = 1L),
+        type = "message")
+    expect_true(any(grepl("1 more case", limited, fixed = TRUE)))
+    expect_snapshot(print(run, width = 72L))
+    expect_snapshot(print(run, width = 100L, verbose = TRUE))
 })
 
 test_that("shift_ui() validates presentation options without changing scientific intent", {

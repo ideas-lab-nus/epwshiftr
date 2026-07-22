@@ -257,16 +257,18 @@ shift_run_get(outputs)
 shift_ids(outputs)[c("run_id", "step_id")]
 ```
 
-Intermediate stages leave the run in `waiting`, which means the work
-succeeded and can continue. `shift_export_epw()` completes it
-automatically. If an intermediate artifact is intentionally the final
-result, close the run with `shift_complete(files)` (or the latest stage
-object). Continuing from an older or already completed stage creates a
-child run rather than rewriting history. For
-`shift_download(..., background = TRUE)`, the run remains `running`
-until the Downloader session finishes; `shift_watch()`,
-`shift_cancel()`, and `shift_logs()` follow that underlying job through
-the same run ID.
+Intermediate stages leave the durable run in `waiting`, which means the
+work succeeded and can continue; the terminal receipt labels this
+user-facing state as `READY`. An empty collection is `partial` instead
+because it cannot feed the next stage. `shift_export_epw()` completes a
+successful run automatically. If an intermediate artifact is
+intentionally the final result, close the run with
+`shift_complete(files)` (or the latest stage object). Continuing from an
+older or already completed stage creates a child run rather than
+rewriting history. For `shift_download(..., background = TRUE)`, the run
+remains `running` until the Downloader session finishes;
+`shift_watch()`, `shift_cancel()`, and `shift_logs()` follow that
+underlying job through the same run ID.
 
 ## Advanced workflows
 

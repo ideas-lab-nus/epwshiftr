@@ -599,8 +599,77 @@ epwshiftr_cli_render_summary <- function(x, title = "Summary") {
 }
 
 
-epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows = 20L, show_types = TRUE) {
+# Render the shared double-line heading used by established ESGF object
+# receipts. Keeping the rule style here prevents high-level Shift facades from
+# drifting away from EsgQuery and EsgResult output again.
+esg__print_header <- function(title) {
+    checkmate::assert_string(title, min.chars = 1L)
+    div <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
+    cli::cli_rule(title)
+    cli::cli_end(div)
+    invisible(NULL)
+}
+
+
+# Render named scalar facts as the bullet summary established by EsgResult.
+# Empty facts are removed so incomplete objects do not display fake values.
+esg__print_facts <- function(x) {
+    if (is.null(x) || !length(x)) {
+        return(invisible(NULL))
+    }
+    checkmate::assert_list(x, names = "named")
+    keep <- vapply(x, function(value) {
+        length(value) && !all(is.na(value)) && any(nzchar(as.character(value)))
+    }, logical(1L))
+    x <- x[keep]
+    if (!length(x)) {
+        return(invisible(NULL))
+    }
+    for (name in names(x)) {
+        value <- paste(as.character(x[[name]]), collapse = " · ")
+        cli::cli_bullets(c("*" = "{name}: {value}"))
+    }
+    invisible(NULL)
+}
+
+
+# Render query parameters through QueryParam's canonical display formatter so
+# EsgQuery and ShiftRequest never diverge on names, ordering, or negation.
+esg__print_parameters <- function(params, title = "Query parameters") {
+    checkmate::assert_string(title, min.chars = 1L)
+    cli::cli_rule(title)
+    rendered <- query_param__display(params)
+    if (!length(rendered)) {
+        cli::cli_alert_info("No query constraints.")
+        return(invisible(NULL))
+    }
+    cli::cli_bullets(stats::setNames(rendered, rep("*", length(rendered))))
+    invisible(NULL)
+}
+
+
+# Compose the high-level Shift request receipt with the canonical QueryParam
+# renderer. Callers decide whether an index node is pinned or auto-selected.
+esg__print_query <- function(index_node, params, title = "ESGF query") {
+    esg__print_header(title)
+    esg__print_facts(list("Index node" = index_node))
+    esg__print_parameters(params)
+    invisible(NULL)
+}
+
+
+epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL,
+                                       max_rows = 20L, show_types = TRUE,
+                                       more_hint = "use --json for full output.",
+                                       hidden_hint = "Use --json for full output.",
+                                       total_rows = NULL) {
     x <- epwshiftr_cli_as_data_frame(x)
+    if (is.null(total_rows)) {
+        total_rows <- nrow(x)
+    } else {
+        checkmate::assert_count(total_rows)
+        total_rows <- max(as.integer(total_rows), nrow(x))
+    }
     augmented <- epwshiftr_cli_add_progress_column(x, columns)
     x <- augmented$x
     columns <- augmented$columns
@@ -640,13 +709,17 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
         row_style = epwshiftr_cli_table_row_styles(shown)
     )
     cli::cli_verbatim(lines)
-    extra <- nrow(x) - nrow(shown)
+    extra <- total_rows - nrow(shown)
     if (extra > 0L) {
-        cli::cli_alert_info("{extra} more rows; use --json for full output.")
+        # cli_bullets wraps long continuation hints to the active console
+        # width, whereas cli_alert_info intentionally keeps one physical line.
+        cli::cli_bullets(c("i" = "{extra} more rows; {more_hint}"))
     }
     if (length(adapted$dropped)) {
         hidden <- paste(adapted$dropped, collapse = ", ")
-        cli::cli_alert_info("Hidden columns for console width: {hidden}. Use --json for full output.")
+        message <- paste0("Hidden columns for console width: ", hidden,
+            ". ", hidden_hint)
+        cli::cli_bullets(stats::setNames(message, "i"))
     }
     invisible(NULL)
 }

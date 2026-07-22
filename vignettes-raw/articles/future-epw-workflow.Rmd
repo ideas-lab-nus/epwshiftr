@@ -243,6 +243,46 @@ Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
 `shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
 supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
 
+## Inspect Shift Objects
+
+Every public Shift object prints as a compact semantic receipt. Configuration
+objects summarize scientific intent without expanding stored rules, function
+environments, yearly vectors, or every ESGF node. Stage objects add a preview
+of the records that matter at that point in the workflow. `ShiftRun` refreshes
+its persisted state and prints the same static dashboard used by
+`shift_watch()`.
+
+```{r print-shift-objects, eval = FALSE}
+climate <- shift_cmip6(
+    model = "BCC-CSM2-MR",
+    scenarios = c("ssp126", "ssp585")
+)
+method <- belcher(reference = historical_reference(1995:2014))
+plan <- shift_future_epw(
+    epw = epw,
+    climate = climate,
+    periods = list(`2060s` = 2055:2065),
+    method = method,
+    dir = file.path(workflow_root, "future-epw"),
+    dry_run = TRUE
+)
+
+print(climate)
+print(method)
+print(plan, n = 3L, width = 80L)
+```
+
+Data previews show at most 10 rows by default. Use `n = Inf` for every row,
+set `width` when rendering into a constrained console or report, and use
+`verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
+and additional diagnostics. These controls affect presentation only and do not
+change the workflow specification or its `spec_hash`.
+
+```{r print-shift-verbose, eval = FALSE}
+print(plan, n = Inf, width = 120L, verbose = TRUE)
+print(run, verbose = TRUE)
+```
+
 ## Live Feedback and Background Runs
 
 The foreground runner starts reporting before its first ESGF request. Its
@@ -312,7 +352,7 @@ remote data reads below still use live ESGF services.
 
 You can provide the site metadata directly:
 
-```{r site}
+```{r site, message = TRUE}
 epw <- write_vignette_epw(
     file.path(workflow_root, "baseline", "SGP_Singapore.486980_IWEC.epw")
 )
@@ -329,7 +369,7 @@ site
 
 Or you can read the same information directly from the EPW LOCATION header:
 
-```{r site-from-epw}
+```{r site-from-epw, message = TRUE}
 epw_site <- shift_site(epw)
 epw_site
 ```
@@ -383,7 +423,7 @@ Read more about the lower-level query object in
 [ESGF query results](esgf-query-results.html), and about request-value
 validation in [ESG dictionaries](esg-dictionaries.html).
 
-```{r request}
+```{r request, message = TRUE}
 request <- shift_request(
     project = "CMIP6",
     time = 2060L,
@@ -425,7 +465,9 @@ reference_request
 
 The diagram below is the map for the rest of the article. Each `shift_*()` call
 returns a stage object that can be printed, checked, and passed to the next
-step.
+step. The stage also carries `run_id` and `step_id`, so the next `shift_*()`
+call automatically continues the same persisted run. There is no separate
+session object to create or pass.
 
 <div class="shift-flow" role="img" aria-label="Future EPW workflow from request to EPW outputs">
 <div class="shift-node"><strong>shift_request()</strong><span>Describe ESGF data</span><code>ShiftRequest</code></div>
@@ -458,7 +500,10 @@ broader or narrower than intended, change the request filters before continuing.
 `shift_datasets()` runs the Dataset-level ESGF search described by
 `shift_request()`. The returned `EsgResultDataset` object is not the data to
 download yet; it is the list of Dataset records that will later be expanded into
-File records.
+File records. This standalone query uses the same dashboard, persisted run, and
+query heartbeat reporting as the other `shift_*()` tasks. Use
+`ui = shift_ui(...)` to control its presentation; low-level `EsgQuery$collect()`
+continues to expose its native `progress` control.
 
 For a deeper look at Dataset, File, and Aggregation results, see
 [ESGF query results](esgf-query-results.html).
@@ -882,6 +927,12 @@ data.table::data.table(
     )
 )
 ```
+
+Stage status and run status answer different questions. `shift_status(epws)`
+reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
+is `waiting` because a store-local EPW can still be exported. Calling
+`shift_export_epw(epws, dir)` completes the run. If the store-local file is the
+intentional endpoint, use `shift_complete(epws)` instead.
 
 ## Read Diagnostics When Something Looks Wrong
 

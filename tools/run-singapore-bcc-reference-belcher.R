@@ -43,6 +43,16 @@ load_current_epwshiftr()
 out_root <- path.expand("~/Downloads/epwshiftr-test")
 dir.create(out_root, recursive = TRUE, showWarnings = FALSE)
 
+request <- shift_request(
+    project = "CMIP6",
+    experiment = c("ssp126", "ssp585"),
+    variables = epw_morph_variables(),
+    frequency = "mon"
+)
+
+files <- shift_collect(request, limit = 10)
+
+
 run <- shift_future_epw(
     epw = system.file(
         "extdata/examples/SGP_Singapore.486980_IWEC.epw",
@@ -56,8 +66,7 @@ run <- shift_future_epw(
     method = belcher(
         reference = historical_reference(1995:2014)
     ),
-    dir = out_root,
-    store = out_root
+    dir = tempdir()
 )
 
 print(shift_outputs(run)[,
