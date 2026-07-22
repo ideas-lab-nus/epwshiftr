@@ -4624,7 +4624,13 @@ shift__climate_spec_value <- function(climate) {
         member = climate@member,
         grid = climate@grid,
         frequency = climate@frequency,
-        table = climate@table,
+        # JSON objects preserve variable names; named atomic vectors do not
+        # when `auto_unbox = TRUE`, so overrides are persisted as a named list.
+        table = if (!is.null(names(climate@table))) {
+            as.list(climate@table)
+        } else {
+            climate@table
+        },
         activity = climate@activity,
         index_nodes = climate@index_nodes,
         data_node = climate@data_node,
@@ -7297,6 +7303,10 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
             reference_files <- shift__files_from_query(store, reference_request, run_row$reference_query_id[[1L]])
         }
         if (!is.null(reporter)) {
+            pinned_selection <- data.table::as.data.table(resolved$selection)
+            pinned_partitions <- shift_coalesce(
+                shift__format_cmip6_partitions(pinned_selection),
+                "partitions unavailable")
             reporter$unit_started(
                 sprintf("Loading pinned future%s catalogs",
                     if (is.null(reference_files)) "" else " + reference"),
@@ -7308,7 +7318,8 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
                 )
             )
             reporter$unit_skipped(
-                sprintf("Reused pinned selection \u00b7 future %d \u00b7 reference %d files",
+                sprintf("Reused pinned selection \u00b7 %s \u00b7 future %d \u00b7 reference %d files",
+                    pinned_partitions,
                     as.integer(files@meta$file_count),
                     if (is.null(reference_files)) 0L else {
                         as.integer(reference_files@meta$file_count)
@@ -7322,7 +7333,9 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
                     reference_files = if (is.null(reference_files)) 0L else {
                         as.integer(reference_files@meta$file_count)
                     },
-                    result = "reused pinned selection"
+                    partitions = pinned_partitions,
+                    result = sprintf("reused pinned selection \u00b7 %s",
+                        pinned_partitions)
                 )
             )
         }
@@ -7429,10 +7442,16 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
         }, error = function(e) e)
         if (!inherits(attempt, "error")) {
             if (!is.null(reporter)) {
+                selected_members <- paste(unique(
+                    attempt$selection$variant_label), collapse = ", ")
+                selected_partitions <- shift_coalesce(
+                    shift__format_cmip6_partitions(attempt$selection),
+                    "partitions unavailable")
+                selected_result <- sprintf("%s \u00b7 %s",
+                    selected_members, selected_partitions)
                 reporter$unit_completed(
-                    sprintf("Selected %s / %s",
-                        paste(unique(attempt$selection$variant_label), collapse = ", "),
-                        paste(unique(attempt$selection$grid_label), collapse = ", ")),
+                    sprintf("Selected member %s \u00b7 %s",
+                        selected_members, selected_partitions),
                     current = node_index,
                     total = length(nodes),
                     outcome = "completed",
@@ -7441,9 +7460,9 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
                         node = node,
                         future_files = node_future_files,
                         reference_files = node_reference_files,
-                        result = sprintf("selected %s / %s",
-                            paste(unique(attempt$selection$variant_label), collapse = ", "),
-                            paste(unique(attempt$selection$grid_label), collapse = ", "))
+                        member = unique(attempt$selection$variant_label),
+                        partitions = selected_partitions,
+                        result = selected_result
                     )
                 )
             }
@@ -8288,12 +8307,14 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         resolved_inputs <- shift__collect_resolved_inputs(x, run_id,
             reporter = reporter, job_id = job_id)
         selection <- data.table::as.data.table(resolved_inputs$selection)
+        selected_partitions <- shift__format_cmip6_partitions(selection)
         cases <- shift__resolved_expected_cases(x, selection)
         resolved <- list(
             index_node = resolved_inputs$index_node,
             selection = as.data.frame(selection),
             member = unique(selection$variant_label),
-            grid = unique(selection$grid_label)
+            grid = unique(selection$grid_label),
+            partitions = selected_partitions
         )
         x@meta$resolved <- resolved
         future_query_id <- resolved_inputs$files@ids$query_id
@@ -8310,10 +8331,10 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         resolved_node_label <- shift__report_node(reporter,
             resolved_inputs$index_node)
         reporter$stage_completed(sprintf(
-            "Resolved %s with member %s and grid %s.",
+            "Resolved %s with member %s and partitions %s.",
             resolved_node_label,
             paste(unique(selection$variant_label), collapse = ", "),
-            paste(unique(selection$grid_label), collapse = ", ")
+            selected_partitions
         ), details = list(
             node = resolved_inputs$index_node,
             future_files = as.integer(resolved_inputs$files@meta$file_count),
@@ -8323,7 +8344,8 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
                 as.integer(resolved_inputs$reference_files@meta$file_count)
             },
             member = unique(selection$variant_label),
-            grid = unique(selection$grid_label)
+            grid = unique(selection$grid_label),
+            partitions = selected_partitions
         ))
 
         future_stage <- resolved_inputs$files
@@ -9250,6 +9272,80 @@ shift__format_auto <- function(x) {
     shift_coalesce(shift__display_values(x), "auto")
 }
 
+# Format the public method name together with its persisted compatibility
+# profile. Old Belcher specs did not carry a profile and must remain visibly
+# legacy when they are rendered without first reconstructing the recipe.
+shift__format_morph_method <- function(name, recipe = NULL,
+                                       missing_belcher_profile = NULL) {
+    name <- as.character(shift_coalesce(name, "method"))[[1L]]
+    backend <- as.character(shift_coalesce(recipe$backend, name))[[1L]]
+    profile <- recipe$profile
+    if ((is.null(profile) || !length(profile)) &&
+        backend %in% c("belcher", "belcher_absolute")) {
+        profile <- missing_belcher_profile
+    }
+    if (is.null(profile) || !length(profile) || is.na(profile[[1L]]) ||
+        !nzchar(as.character(profile[[1L]]))) {
+        return(name)
+    }
+    sprintf("%s [%s]", name, as.character(profile[[1L]]))
+}
+
+# Describe scalar table forcing and named per-variable overrides distinctly.
+# This makes the automatic Amon/LImon routing visible without expanding the
+# complete recipe variable map in normal receipts.
+shift__format_cmip6_tables <- function(table) {
+    if (is.null(table) || !length(table)) {
+        return("auto by variable")
+    }
+    if (is.list(table) && !is.data.frame(table)) {
+        table <- unlist(table, use.names = TRUE)
+    }
+    table_names <- names(table)
+    table <- as.character(table)
+    names(table) <- table_names
+    named <- !is.null(names(table)) && any(nzchar(names(table)))
+    if (!named) {
+        return(sprintf("%s (forced)",
+            shift__display_values(table, max = Inf)))
+    }
+    overrides <- paste(sprintf("%s=%s", names(table), table),
+        collapse = " \u00b7 ")
+    sprintf("auto by variable \u00b7 %s", overrides)
+}
+
+# Render the exact table/grid partitions selected for download and extraction.
+# `grid_label` remains a compatibility summary, while `partition_key` is the
+# authoritative multi-table identity persisted by the resolver.
+shift__format_cmip6_partitions <- function(selection) {
+    selection <- data.table::as.data.table(shift_coalesce(selection,
+        data.table::data.table()))
+    if (!nrow(selection)) {
+        return(NULL)
+    }
+    keys <- if ("partition_key" %in% names(selection)) {
+        as.character(selection$partition_key)
+    } else {
+        character()
+    }
+    keys <- unique(keys[!is.na(keys) & nzchar(keys)])
+    if (!length(keys) && all(c("table_id", "grid_label") %in%
+        names(selection))) {
+        rows <- unique(selection[, .(table_id, grid_label)])
+        rows <- rows[!is.na(table_id) & nzchar(table_id) &
+            !is.na(grid_label) & nzchar(grid_label)]
+        if (nrow(rows)) {
+            data.table::setorderv(rows, c("table_id", "grid_label"))
+            keys <- paste(paste(rows$table_id, rows$grid_label, sep = "="),
+                collapse = ";")
+        }
+    }
+    if (!length(keys)) {
+        return(NULL)
+    }
+    paste(gsub(";", " \u00b7 ", keys, fixed = TRUE), collapse = " / ")
+}
+
 # Format named provider or workflow option lists without printing nested
 # environments or arbitrary objects by structure.
 shift__format_options <- function(x) {
@@ -9522,11 +9618,16 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     shift__print_stage_intro(x, "Future EPW Plan", list(
         "Climate" = paste(climate_parts, collapse = " \u00b7 "),
         "Periods" = shift__format_periods(meta$periods),
-        "Method" = method@name,
+        "Method" = shift__format_morph_method(method@name, method@recipe),
         "Reference" = shift__format_reference(method@reference,
             method@recipe),
-        "Selection" = sprintf("member %s \u00b7 grid %s",
-            shift__format_auto(member), shift__format_auto(grid)),
+        "Selection" = sprintf("member %s \u00b7 grid %s \u00b7 tables %s",
+            shift__format_auto(member), shift__format_auto(grid),
+            shift__format_cmip6_tables(if (!is.null(climate)) {
+                climate@table
+            } else {
+                request$filters$table_id
+            })),
         "Expected outputs" = nrow(cases),
         "Output directory" = shift_display_path(meta$epw$export_dir)
     ))
@@ -9538,8 +9639,9 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         shift__print_facts(list(
             "Frequency" = if (!is.null(climate)) climate@frequency else
                 request$frequency,
-            "Table" = if (!is.null(climate)) climate@table else
-                request$filters$table_id,
+            "Table" = shift__format_cmip6_tables(
+                if (!is.null(climate)) climate@table else
+                    request$filters$table_id),
             "Index nodes" = shift__display_values(nodes, max = Inf),
             "Download" = control@download,
             "Partial outputs" = control@allow_partial,
@@ -9696,7 +9798,9 @@ shift__print_morphed <- function(x, n = 10L, width = NULL,
     reference <- shift_coalesce(x@meta$reference_spec, x@meta$reference)
 
     shift__print_stage_intro(x, "Morphed EPW", list(
-        "Method" = shift_coalesce(recipe$name, recipe$backend),
+        "Method" = shift__format_morph_method(
+            shift_coalesce(recipe$name, recipe$backend), recipe,
+            missing_belcher_profile = "legacy"),
         "Reference" = shift__format_reference(reference, recipe),
         "Cases" = case_count,
         "Results" = nrow(rows)
@@ -9788,7 +9892,7 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         "Member" = shift__format_auto(x@member),
         "Grid" = shift__format_auto(x@grid),
         "Frequency" = x@frequency,
-        "Table" = x@table,
+        "Table" = shift__format_cmip6_tables(x@table),
         "Activity" = x@activity,
         "Index nodes" = sprintf("%d-node failover", length(x@index_nodes)),
         "Data node" = shift__format_auto(x@data_node)
@@ -9864,12 +9968,24 @@ shift__print_morph_method <- function(x, n = 10L, width = NULL,
     shift__print_facts(list(
         "Name" = x@name,
         "Backend" = recipe$backend,
+        "Profile" = recipe$profile,
         "Reference" = shift__format_reference(x@reference, recipe),
         "Requires reference" = x@requires_reference,
         "Accepts reference" = morpher__recipe_accepts_reference(recipe),
         "Variables" = shift__display_values(epw_morph_variables(recipe))
     ))
     if (isTRUE(verbose)) {
+        option_rows <- data.table::data.table(
+            option = names(recipe$options),
+            value = vapply(unclass(recipe$options), function(value) {
+                shift_coalesce(shift__display_values(value, max = Inf),
+                    "<empty>")
+            }, character(1L))
+        )
+        # Options are the durable scientific contract, so verbose output shows
+        # every value even when `n` bounds the longer method and rule previews.
+        shift__print_table(option_rows, "Options", c("option", "value"),
+            n = Inf, empty = "No profile options.")
         methods <- recipe$methods
         method_rows <- data.table::data.table(
             field = names(methods), method = unname(methods)

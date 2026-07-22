@@ -330,9 +330,16 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
         current_stage = "resolve",
         spec_json = shift__spec_json(list(
             climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585",
-                member = NULL, grid = NULL),
+                member = NULL, grid = NULL, table = NULL),
             periods = list(`2060s` = 2055:2065),
-            method = list(name = "belcher", reference_mode = "baseline_epw"),
+            method = list(
+                name = "belcher",
+                recipe = list(
+                    backend = "belcher", profile = "enhanced",
+                    options = unclass(belcher_options())
+                ),
+                reference_mode = "baseline_epw"
+            ),
             control = list(download = "auto")
         )),
         started_at = now,
@@ -345,7 +352,10 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
         message = c(
             "Resolving complete CMIP6 workflow inputs.",
             "ORNL · checking future + reference catalogs",
-            "ORNL · selected r1i1p1f1 / gn"
+            paste(
+                "ORNL · selected member r1i1p1f1",
+                "Amon=gn · LImon=gr", sep = " · "
+            )
         ),
         details_json = vapply(list(
             list(stage = "resolve", phase = "stage", current = 1L, total = 6L,
@@ -356,10 +366,14 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
                 unit_label = "ORNL · checking future + reference catalogs",
                 current = 3L, total = 6L, node = INDEX_NODES[["ORNL"]]),
             list(stage = "resolve", phase = "unit", unit_type = "index_node",
-                unit_label = "ORNL · selected r1i1p1f1 / gn",
+                unit_label = paste(
+                    "ORNL · selected member r1i1p1f1",
+                    "Amon=gn · LImon=gr", sep = " · "
+                ),
                 current = 3L, total = 6L, node = INDEX_NODES[["ORNL"]],
                 future_files = 48L, reference_files = 24L,
-                outcome = "completed", result = "selected r1i1p1f1 / gn")
+                outcome = "completed",
+                result = "r1i1p1f1 · Amon=gn · LImon=gr")
         ), shift__spec_json, character(1L)),
         created_at = now + 0:2
     )
@@ -372,12 +386,17 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
     plain <- cli::ansi_strip(view$lines)
     expect_match(plain[[1L]], "Future EPW", fixed = TRUE)
     expect_match(plain[[2L]], "BCC-CSM2-MR", fixed = TRUE)
+    expect_match(paste(plain, collapse = " "),
+        "belcher \\[enhanced\\]", perl = TRUE)
+    expect_true(any(grepl("tables auto by variable", plain,
+        fixed = TRUE)))
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
     expect_true(any(grepl("Resolve", plain, fixed = TRUE)))
     expect_true(any(grepl("ORNL", plain, fixed = TRUE)))
     expect_true(any(grepl("node 3 of 6", plain, fixed = TRUE)))
     expect_true(any(grepl("Activity", plain, fixed = TRUE)))
-    expect_match(paste(view$nodes, collapse = "\n"), "ORNL.*48.*24.*selected")
+    expect_match(paste(view$nodes, collapse = "\n"),
+        "ORNL.*48.*24.*Amon=gn.*LImon=gr")
     expect_match(paste(view$cases, collapse = "\n"), "ssp126")
 })
 
@@ -842,7 +861,8 @@ test_that("startup plan summaries include output and selection without a full du
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "BCC-CSM2-MR", c("ssp126", "ssp585"),
-            member = "r1i1p1f1", grid = "gn"
+            member = "r1i1p1f1", grid = "gn",
+            table = c(snd = "LImon")
         ),
         periods = list(`2060s` = 2055:2065),
         method = belcher(),
@@ -851,13 +871,46 @@ test_that("startup plan summaries include output and selection without a full du
         dry_run = TRUE
     )
     lines <- unname(shift__ui_plan_summary(plan, "run-test", width = 80L))
-    expect_length(lines, 5L)
+    expect_gte(length(lines), 5L)
     expect_true(all(nchar(lines, type = "width") <= 80L))
     expect_match(lines[[1L]], "Future EPW.*run-test.*STARTING")
     expect_match(lines[[2L]], "BCC-CSM2-MR.*ssp126.*2060s")
-    expect_match(lines[[3L]], "belcher.*baseline EPW.*2 expected")
-    expect_match(lines[[4L]], "Selection.*member r1i1p1f1.*grid gn")
-    expect_match(lines[[5L]], "Output")
+    expect_match(lines[[3L]],
+        "belcher \\[enhanced\\].*baseline EPW.*2 expected")
+    expect_match(paste(lines, collapse = " "),
+        "Selection.*member r1i1p1f1.*grid gn.*tables auto by variable.*snd=LImon")
+    expect_true(any(grepl("Output", lines, fixed = TRUE)))
+
+    detail_lines <- unname(shift__ui_plan_summary(
+        plan, "run-test", width = 80L, detail = "detail"
+    ))
+    detail_text <- paste(detail_lines, collapse = " ")
+    expect_match(detail_text, "Options.*transition_hours=72")
+    expect_match(detail_text, "snow_depth=auto")
+    expect_match(detail_text, "design_conditions=drop")
+})
+
+test_that("persisted plan context marks pre-profile Belcher tasks as legacy", {
+    row <- data.table::data.table(
+        spec_json = shift__spec_json(list(
+            task = "future_epw",
+            climate = list(
+                model = "BCC-CSM2-MR", scenarios = "ssp585",
+                member = "r1i1p1f1", grid = "gn",
+                table = list(snd = "LImon")
+            ),
+            periods = list(`2060s` = 2055:2065),
+            method = list(
+                name = "belcher", reference_mode = "baseline_epw"
+            )
+        )),
+        output_dir = tempfile("future-epw-")
+    )
+    context <- shift__ui_plan_context_from_row(row, cases_total = 1L)
+
+    expect_true("belcher [legacy] / baseline EPW" %in% context$items)
+    expect_match(context$selection,
+        "member r1i1p1f1.*grid gn.*auto by variable.*snd=LImon")
 })
 
 test_that("dynamic startup is a replaceable first frame rather than a transcript", {
