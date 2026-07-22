@@ -610,17 +610,24 @@ morpher__belcher_profile_methods <- function(backend, profile) {
 
 #' Configure enhanced Belcher morphing
 #'
-#' @param transition_hours Width in hours of each cyclic month-boundary
-#'   transition. Must be between 0 and 336.
+#' @param transition_hours Total width in hours of each cyclic transition
+#'   centered on a month boundary. Must be between 0 and 336; `0` disables
+#'   smoothing.
 #' @param humidity_source Humidity state input: `"auto"`, `"huss"`, or
 #'   `"hurs"`.
 #' @param diffuse_model Diffuse-radiation model: `"rbl_2010"` or
 #'   `"preserve_fraction"`.
 #' @param illuminance_model Illuminance model: `"perez_1990"` or `"preserve"`.
 #' @param snow_depth Snow-depth policy: `"auto"`, `"required"`, or `"off"`.
-#' @param ground_temperatures Ground-temperature header policy.
-#' @param typical_extreme_periods Typical/extreme-period header policy.
-#' @param design_conditions Design-condition header policy.
+#' @param ground_temperatures Ground-temperature header policy:
+#'   `"recalculate"` applies the Kusuda--Achenbach model to the morphed year,
+#'   while `"preserve"` retains the baseline EPW header.
+#' @param typical_extreme_periods Typical/extreme-period header policy:
+#'   `"recalculate"` finds six hemisphere-aware periods from the morphed year,
+#'   while `"preserve"` retains the baseline EPW header.
+#' @param design_conditions Design-condition header policy. `"drop"` writes
+#'   `DESIGN CONDITIONS,0` because one morphed year cannot support a new ASHRAE
+#'   design-condition calculation; `"preserve"` retains the baseline header.
 #'
 #' @return A validated `belcher_options` list.
 #'

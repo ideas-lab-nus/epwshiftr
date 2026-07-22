@@ -118,6 +118,26 @@ enhanced_recipe <- epw_morph_recipe(
 legacy_recipe <- epw_morph_recipe("belcher", profile = "legacy")
 ```
 
+The profiles resolve to a complete, persisted option contract:
+
+| Option | Enhanced default | Legacy default | Meaning and allowed values |
+| --- | --- | --- | --- |
+| `transition_hours` | `72` | `0` | Total cyclic smoothing window centered on each month boundary; integer `0`--`336`. Precipitation is never smoothed. |
+| `humidity_source` | `"auto"` | `"hurs"` | Whole-case humidity source: `"auto"`, `"huss"`, or `"hurs"`. |
+| `diffuse_model` | `"rbl_2010"` | `"preserve_fraction"` | Recalculate diffuse radiation with Ridley--Boland--Lauret 2010 or retain the baseline diffuse fraction. |
+| `illuminance_model` | `"perez_1990"` | `"preserve"` | Recalculate illuminance/luminance with Pérez 1990 or preserve the prior relation. |
+| `snow_depth` | `"auto"` | `"off"` | Use `snd` when both future and reference cases contain it, require it, or do not query it: `"auto"`, `"required"`, `"off"`. |
+| `ground_temperatures` | `"recalculate"` | `"preserve"` | Recalculate the EPW ground-temperature header with Kusuda--Achenbach or retain it. |
+| `typical_extreme_periods` | `"recalculate"` | `"preserve"` | Recalculate six hemisphere-aware periods or retain the baseline header. |
+| `design_conditions` | `"drop"` | `"preserve"` | Write `DESIGN CONDITIONS,0` or retain the baseline design conditions. |
+
+`belcher_options()` creates a complete option list using enhanced defaults.
+For a legacy profile, pass a partial named list when only selected legacy
+defaults should change, for example
+`belcher(profile = "legacy", options = list(snow_depth = "auto"))`.
+Use `print(belcher(), verbose = TRUE)` to inspect all resolved values that will
+be stored with a task.
+
 Enhanced `tdb = "auto"` uses combined morphing month by month when complete
 `tasmax` and `tasmin` are available and falls back to shift with a diagnostic
 otherwise. `humidity_source = "auto"` selects one source for the whole case:
@@ -125,6 +145,55 @@ complete `huss + tas + ps` is preferred for the default shift humidity method,
 while an explicit non-shift RH override keeps the HURS path. Radiation and EPW
 header policies are likewise persisted in the recipe so resumed jobs cannot
 change behavior when package defaults evolve.
+
+## Enhanced Calculation Stages
+
+Temperature `"combined"` uses the mean daily range of the baseline EPW,
+
+\[
+R_{epw}=\operatorname{mean}_d(T_{max,d})-
+        \operatorname{mean}_d(T_{min,d}),
+\]
+
+rather than the difference between one absolute monthly maximum and minimum.
+The hourly transformation remains
+
+\[
+T'=T+\Delta\bar{T}+\alpha(T-\bar{T}_{epw}),
+\]
+
+where `alpha` is the future-minus-reference DTR change divided by
+\(R_{epw}\). A month with missing extrema, a non-finite factor, or
+\(R_{epw}\leq0.1\ ^\circ\mathrm{C}\) uses shift for that month and records the
+fallback in factors/diagnostics.
+
+The default 72-hour cyclic transition is centered on every month boundary,
+including December--January. A constrained smoothstep system retains the
+original monthly mean of each factor. Combined temperature also corrects the
+baseline-temperature/time-varying-alpha covariance; precipitation is excluded
+from smoothing so monthly totals and the baseline wet-hour mask remain intact.
+
+For state-based humidity, the baseline EPW dry bulb, RH, and station pressure
+are converted to hourly specific humidity. The monthly future-minus-reference
+`huss` change is applied before RH and dew point are recovered using morphed
+temperature and pressure. Saturation clipping enforces `0 <= RH <= 100` and
+`Tdew <= Tdb`. The `"auto"` source decision is made once for a complete case,
+so future and reference data never mix HUSS and HURS paths.
+
+The enhanced short-wave chain integrates solar geometry at one-minute steps
+over each EPW interval to recalculate extraterrestrial horizontal and direct
+normal irradiation (N10/N11). RBL 2010 partitions morphed GHI into DHI and DNI;
+the result is bounded, non-negative, and closed against the effective solar
+projection. Pérez 1990 then recalculates N16--N19 illuminance/luminance, with
+night values and EPW sentinels handled explicitly.
+
+When enabled, `snd` is converted from CMIP metres to EPW centimetres and scales
+the existing EPW snow-depth sequence by the future/reference monthly ratio.
+Zero reference snow or a baseline without snow does not synthesize new snow
+events. Final writing derives header updates from the persisted hourly Parquet
+artifact: ground temperatures use Kusuda--Achenbach, typical/extreme periods
+use complete rolling seven-day windows and hemisphere-aware seasons, and design
+conditions follow the selected drop/preserve policy.
 
 ```r
 epw_morph_backends()

@@ -92,13 +92,25 @@ creating an implicit historical query.
     "scenarios": ["ssp126", "ssp585"],
     "member": null,
     "grid": null,
-    "frequency": "mon"
+    "frequency": "mon",
+    "table": null
   },
   "periods": {
     "2060s": "2055:2065"
   },
   "method": {
     "name": "belcher",
+    "profile": "enhanced",
+    "options": {
+      "transition_hours": 72,
+      "humidity_source": "auto",
+      "diffuse_model": "rbl_2010",
+      "illuminance_model": "perez_1990",
+      "snow_depth": "auto",
+      "ground_temperatures": "recalculate",
+      "typical_extreme_periods": "recalculate",
+      "design_conditions": "drop"
+    },
     "reference": {
       "mode": "historical",
       "periods": {
@@ -116,6 +128,13 @@ creating an implicit historical query.
   }
 }
 ```
+
+`climate.table = null` enables recipe-aware table selection: atmospheric
+variables normally use `Amon`, while `snd` uses `LImon`. A scalar forces every
+variable into one table; a JSON object such as `{"snd": "LImon"}` overrides
+only the named variable. The method profile and resolved options are persisted
+with the run. Older task records that lack these fields resume as `legacy`
+rather than silently adopting enhanced defaults.
 
 Preview the parsed request and site without writing store state:
 
@@ -201,6 +220,9 @@ epwshiftr --store ~/cmip6-store morph run \
   --epw baseline/SIN.epw \
   --period 2060s=2055:2064 \
   --recipe belcher \
+  --profile enhanced \
+  --option transition_hours=72 \
+  --option snow_depth=auto \
   --reference historical \
   --reference-period reference=1995 \
   --strict true
@@ -211,6 +233,10 @@ epwshiftr --store ~/cmip6-store morph retry --morph <morph_id> --run
 epwshiftr --store ~/cmip6-store morph status --morph <morph_id>
 epwshiftr --store ~/cmip6-store morph outputs --morph <morph_id>
 ```
+
+Repeat `--option KEY=VALUE` for each override. Omitted values come from the
+selected profile; `--profile legacy` restores the pre-enhancement calculation
+and EPW-header policies.
 
 # Search Without Saving
 
