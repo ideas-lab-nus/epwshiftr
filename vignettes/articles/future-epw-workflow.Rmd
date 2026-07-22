@@ -170,6 +170,13 @@ shift_outputs(run)
 shift_missing(run)
 ```
 
+The default `belcher()` profile is enhanced. With `shift_cmip6(table = NULL)`,
+the resolver selects exact table/grid partitions per variable: atmospheric
+inputs normally come from `Amon`, while optional `snd` comes from `LImon` only
+when both future and historical cases provide it. Use
+`belcher(profile = "legacy")` only when reproducing the earlier algorithm and
+headers is required.
+
 Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
 `shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
 supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
@@ -336,8 +343,8 @@ The helper provides three named variable sets:
   demonstrations.
 - `"recommended"`: the current strict Belcher recipe set, including
   precipitation.
-- `"extended"`: the recommended set plus related max/min variables for future
-  recipes.
+- `"extended"`: the recommended set plus related max/min variables and snow
+  depth.
 
 This staged walkthrough explicitly uses the Belcher recipe. It is a
 change-factor backend, so
@@ -348,6 +355,9 @@ extraction.
 ``` r
 shift_recipe <- epw_morph_recipe("belcher")
 variables <- epw_morph_variables(shift_recipe)
+optional_variables <- epw_morph_variables(
+    shift_recipe, include_optional = TRUE
+)
 variables
 #> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
 #> [8] "pr"
@@ -798,7 +808,8 @@ select another registered backend:
 ```r
 shift_recipe <- epw_morph_recipe(
     "belcher",
-    methods = c(tdb = "shift", rh = "shift")
+    methods = c(tdb = "shift", rh = "shift"),
+    options = belcher_options(snow_depth = "off")
 )
 
 shift_morph(

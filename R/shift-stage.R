@@ -9192,7 +9192,7 @@ shift__format_years <- function(years) {
         if (length(value) == 1L) {
             as.character(value)
         } else {
-            sprintf("%d–%d", value[[1L]], value[[length(value)]])
+            sprintf("%d\u2013%d", value[[1L]], value[[length(value)]])
         }
     }, character(1L)), collapse = ", ")
 }
@@ -9209,7 +9209,7 @@ shift__format_periods <- function(periods) {
         }
         return(paste(vapply(names(periods), function(name) {
             sprintf("%s %s", name, shift__format_years(periods[[name]]))
-        }, character(1L)), collapse = " · "))
+        }, character(1L)), collapse = " \u00b7 "))
     }
     periods <- data.table::as.data.table(periods)
     if (!all(c("period", "year") %in% names(periods)) || !nrow(periods)) {
@@ -9219,7 +9219,7 @@ shift__format_periods <- function(periods) {
     paste(vapply(labels, function(label) {
         sprintf("%s %s", label,
             shift__format_years(periods[period == label, year]))
-    }, character(1L)), collapse = " · ")
+    }, character(1L)), collapse = " \u00b7 ")
 }
 
 # Describe an optional workflow reference without exposing its full S7 object,
@@ -9236,7 +9236,7 @@ shift__format_reference <- function(reference, recipe = NULL) {
         periods <- shift__format_periods(reference@periods)
         parts <- c(reference@mode, periods)
         parts <- parts[!is.na(parts) & nzchar(parts)]
-        return(paste(parts, collapse = " · "))
+        return(paste(parts, collapse = " \u00b7 "))
     }
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return("supplied ShiftClimate")
@@ -9265,7 +9265,7 @@ shift__format_options <- function(x) {
             sprintf("%s=<%s>", name, class(value)[[1L]])
         }
     }, character(1L))
-    paste(values, collapse = " · ")
+    paste(values, collapse = " \u00b7 ")
 }
 
 # Read optional persisted data for a receipt and return a printable diagnostic
@@ -9342,7 +9342,7 @@ shift__print_workflow <- function(x, verbose = FALSE) {
         counts <- table(diagnostics$severity)
         cli::cli_rule("Diagnostics")
         esg__print_facts(list(
-            "Counts" = paste(sprintf("%s %s", counts, names(counts)), collapse = " · ")
+            "Counts" = paste(sprintf("%s %s", counts, names(counts)), collapse = " \u00b7 ")
         ))
     }
     invisible(NULL)
@@ -9520,12 +9520,12 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     }
 
     shift__print_stage_intro(x, "Future EPW Plan", list(
-        "Climate" = paste(climate_parts, collapse = " · "),
+        "Climate" = paste(climate_parts, collapse = " \u00b7 "),
         "Periods" = shift__format_periods(meta$periods),
         "Method" = method@name,
         "Reference" = shift__format_reference(method@reference,
             method@recipe),
-        "Selection" = sprintf("member %s · grid %s",
+        "Selection" = sprintf("member %s \u00b7 grid %s",
             shift__format_auto(member), shift__format_auto(grid)),
         "Expected outputs" = nrow(cases),
         "Output directory" = shift_display_path(meta$epw$export_dir)
@@ -9593,9 +9593,9 @@ shift__print_download <- function(x, n = 10L, width = NULL,
     shift__print_stage_intro(x, "CMIP6 Download", list(
         "Session" = ids$session_id,
         "Tasks" = if (nrow(tasks)) sprintf("%d/%d complete%s", complete,
-            nrow(tasks), if (length(counts)) sprintf(" · %s",
+            nrow(tasks), if (length(counts)) sprintf(" \u00b7 %s",
                 paste(sprintf("%s %d", names(counts), counts),
-                    collapse = " · ")) else "") else "none",
+                    collapse = " \u00b7 ")) else "") else "none",
         "Transfer" = if (bytes_total > 0) sprintf("%s / %s",
             format_size_units(bytes_done), format_size_units(bytes_total)) else NULL
     ))
@@ -9739,7 +9739,7 @@ shift__print_outputs_stage <- function(x, n = 10L, width = NULL,
     } else 0L
 
     shift__print_stage_intro(x, "EPW Outputs", list(
-        "Outputs" = sprintf("%d registered · %d path%s", nrow(outputs),
+        "Outputs" = sprintf("%d registered \u00b7 %d path%s", nrow(outputs),
             existing, if (existing == 1L) "" else "s"),
         "Export directory" = if (!is.null(x@meta$export_dir))
             shift_display_path(x@meta$export_dir) else NULL
@@ -9900,7 +9900,7 @@ shift__print_view_rows <- function(lines, n, width, label) {
     if (records <= n) {
         return(lines)
     }
-    hint <- shift__ui_fit(sprintf("  … %d more %s", records - n, label),
+    hint <- shift__ui_fit(sprintf("  \u2026 %d more %s", records - n, label),
         width)
     c(lines[seq_len(prefix + n)], cli::style_dim(hint))
 }

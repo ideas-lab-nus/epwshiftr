@@ -626,7 +626,7 @@ esg__print_facts <- function(x) {
         return(invisible(NULL))
     }
     for (name in names(x)) {
-        value <- paste(as.character(x[[name]]), collapse = " · ")
+        value <- paste(as.character(x[[name]]), collapse = " \u00b7 ")
         cli::cli_bullets(c("*" = "{name}: {value}"))
     }
     invisible(NULL)
