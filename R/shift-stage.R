@@ -1298,6 +1298,72 @@ shift__cmip6_table_id <- function(frequency) {
     )
 }
 
+# Validate the two supported table-selection forms. An unnamed scalar pins all
+# variables to one table, while a fully named vector overrides only the named
+# variables and leaves the remainder on their automatic tables.
+shift__cmip6_table_spec <- function(table, null.ok = TRUE) {
+    if (is.null(table)) {
+        if (isTRUE(null.ok)) {
+            return(NULL)
+        }
+        cli::cli_abort("`table` cannot be `NULL` here.")
+    }
+    if (is.list(table)) {
+        if (is.null(names(table)) || any(!nzchar(names(table)))) {
+            cli::cli_abort("A list supplied as `table` must have one name for every variable override.")
+        }
+        table <- vapply(table, function(value) {
+            checkmate::assert_string(value, min.chars = 1L)
+            value
+        }, character(1L))
+    }
+    checkmate::assert_character(table, any.missing = FALSE, min.len = 1L)
+    table_names <- names(table)
+    table <- as.character(table)
+    names(table) <- table_names
+    named <- !is.null(names(table)) && any(nzchar(names(table)))
+    if (isTRUE(named) && any(!nzchar(names(table)))) {
+        cli::cli_abort("A named `table` vector must name every element.")
+    }
+    if (!isTRUE(named) && length(table) != 1L) {
+        cli::cli_abort("An unnamed `table` value must be a single table ID.")
+    }
+    if (isTRUE(named) && anyDuplicated(names(table))) {
+        cli::cli_abort("Variable names in `table` must be unique.")
+    }
+    table
+}
+
+# Resolve each requested source variable to its CMIP6 table. Snow depth is a
+# land-state variable in LImon; all other monthly inputs retain the atmospheric
+# Amon default unless the caller pins or overrides them explicitly.
+shift__cmip6_variable_tables <- function(variables, frequency, table = NULL) {
+    variables <- unique(as.character(variables))
+    checkmate::assert_character(variables, any.missing = FALSE, min.len = 1L)
+    table <- shift__cmip6_table_spec(table)
+    default <- shift__cmip6_table_id(frequency)
+    if (is.null(default)) {
+        cli::cli_abort("Cannot infer a CMIP6 table for frequency {.val {frequency}}; set `table` explicitly.")
+    }
+    out <- stats::setNames(rep(default, length(variables)), variables)
+    if (identical(as.character(frequency)[[1L]], "mon") && "snd" %in% variables) {
+        out[["snd"]] <- "LImon"
+    }
+    if (is.null(table)) {
+        return(out)
+    }
+    if (is.null(names(table))) {
+        out[] <- table[[1L]]
+        return(out)
+    }
+    unknown <- setdiff(names(table), variables)
+    if (length(unknown)) {
+        cli::cli_abort("`table` contains override(s) for variables not used by the recipe: {.val {unknown}}.")
+    }
+    out[names(table)] <- unname(table)
+    out
+}
+
 # Collapse a possibly long vector into a stable console summary while retaining
 # its cardinality for scientific identities such as variables and scenarios.
 shift__display_values <- function(x, max = 7L) {
@@ -1698,7 +1764,10 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' @param member Optional CMIP6 variant labels. `NULL` asks the task workflow to
 #'   choose one complete member.
 #' @param grid Optional single CMIP6 grid label.
-#' @param table Optional CMIP6 table ID inferred from `frequency` when `NULL`.
+#' @param table Optional CMIP6 table selection. `NULL` automatically maps each
+#'   recipe input to its native table (including `snd` to `LImon`); an unnamed
+#'   scalar pins every variable to one table; a named character vector
+#'   overrides individual variables.
 #' @param activity CMIP6 activity ID.
 #' @param index_nodes Ordered ESGF index nodes used for failover.
 #' @param data_node Optional ESGF data-node filter.
@@ -1712,7 +1781,7 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
     checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(frequency, min.chars = 1L)
-    checkmate::assert_string(table, min.chars = 1L, null.ok = TRUE)
+    table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_character(index_nodes, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
     checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
@@ -1730,7 +1799,7 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
         member = member,
         grid = grid,
         frequency = frequency,
-        table = shift_coalesce(table, shift__cmip6_table_id(frequency)),
+        table = table,
         activity = activity,
         index_nodes = index_nodes,
         data_node = data_node,
@@ -1741,15 +1810,19 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
 # Translate one complete CMIP6 climate specification into the lower-level
 # request consumed by the staged workflow and ESGF collector.
 shift__request_from_cmip6 <- function(climate, periods, method) {
+    variables <- morpher__input_variables(method@recipe)
+    tables <- shift__cmip6_variable_tables(
+        variables, climate@frequency, climate@table
+    )
     shift_cmip6_scenario(
         source = climate@model,
         scenario = climate@scenarios,
         member = climate@member,
         years = periods$year,
-        variables = morpher__input_variables(method@recipe),
+        variables = variables,
         frequency = climate@frequency,
         activity = climate@activity,
-        table_id = climate@table,
+        table_id = unique(unname(tables)),
         grid_label = climate@grid,
         data_node = climate@data_node,
         index_node = climate@index_nodes[[1L]],
@@ -1799,8 +1872,8 @@ shift_control <- function(strict = TRUE, allow_partial = FALSE,
 #' @param years Optional years used to constrain the future request time window.
 #' @param activity CMIP6 activity ID. `shift_cmip6_scenario()` defaults to
 #'   `"ScenarioMIP"` and `shift_reference_historical()` defaults to `"CMIP"`.
-#' @param table_id CMIP6 table ID. If `NULL`, a common atmospheric table is
-#'   inferred from `frequency`.
+#' @param table_id One or more CMIP6 table IDs. If `NULL`, a common atmospheric
+#'   table is inferred from `frequency`.
 #' @param grid_label Optional CMIP6 grid label.
 #' @param data_node Optional ESGF data node filter.
 #' @param index_node Optional ESGF index node.
@@ -1814,7 +1887,8 @@ shift_cmip6_scenario <- function(source, scenario, member = NULL,
     checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
     checkmate::assert_character(frequency, any.missing = FALSE, min.len = 1L)
     checkmate::assert_string(activity, min.chars = 1L, null.ok = TRUE)
-    checkmate::assert_string(table_id, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_character(table_id, any.missing = FALSE, min.len = 1L,
+        unique = TRUE, null.ok = TRUE)
     checkmate::assert_string(grid_label, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(index_node, min.chars = 1L, null.ok = TRUE)
@@ -6081,111 +6155,336 @@ shift__catalog_years <- function(rows) {
     sort(unique(years))
 }
 
-# Compute complete member/grid candidates for one experiment set and exact
-# required year/variable contract.
+# Serialize selected table/grid/variable partitions as row-oriented JSON. The
+# scalar representation is stable inside persisted run specs and avoids list
+# columns whose one-row shape changes during jsonlite simplification.
+shift__cmip6_partition_json <- function(partitions) {
+    partitions <- data.table::as.data.table(data.table::copy(partitions))
+    columns <- c("variable_id", "table_id", "grid_label", "required")
+    for (name in setdiff(columns, names(partitions))) {
+        partitions[[name]] <- if (identical(name, "required")) {
+            logical(nrow(partitions))
+        } else {
+            character(nrow(partitions))
+        }
+    }
+    partitions <- unique(partitions[, columns, with = FALSE])
+    if (nrow(partitions)) {
+        data.table::setorderv(partitions,
+            c("table_id", "grid_label", "variable_id"))
+    }
+    # jsonlite marks its scalar result with class `json`; stripping that class
+    # keeps complete and empty candidate tables type-compatible in rbindlist().
+    as.character(jsonlite::toJSON(
+        as.data.frame(partitions), dataframe = "rows",
+        auto_unbox = TRUE, null = "null", na = "null"
+    ))
+}
+
+# Restore a persisted partition map and normalize the zero/one-row cases to the
+# same typed table used by fresh resolution.
+shift__cmip6_partitions <- function(value) {
+    value <- as.character(value)
+    value <- value[!is.na(value) & nzchar(value)]
+    if (!length(value)) {
+        return(data.table::data.table(
+            variable_id = character(), table_id = character(),
+            grid_label = character(), required = logical()
+        ))
+    }
+    out <- jsonlite::fromJSON(value[[1L]], simplifyDataFrame = TRUE)
+    out <- data.table::as.data.table(out)
+    for (name in c("variable_id", "table_id", "grid_label")) {
+        out[[name]] <- as.character(out[[name]])
+    }
+    out[["required"]] <- as.logical(out[["required"]])
+    out[]
+}
+
+# Test one variable at one table/grid against every requested year for a single
+# experiment. File ranges are expanded rather than inferred from min/max so a
+# gap in the middle cannot satisfy the contract.
+shift__cmip6_input_complete <- function(catalog, identity, experiment,
+                                        variable, table, grid, years) {
+    files <- catalog[
+        shift__catalog_match(source_id, identity$source_id[[1L]]) &
+            shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
+            shift__catalog_match(experiment_id, experiment) &
+            shift__catalog_match(variable_id, variable) &
+            shift__catalog_match(table_id, table) &
+            shift__catalog_match(grid_label, grid)
+    ]
+    nrow(files) > 0L && !length(setdiff(years, shift__catalog_years(files)))
+}
+
+# Expand the per-table grid choices for one model/member. Missing tables retain
+# an explicit NA choice so the resolver can report the absent requirement
+# instead of discarding the near-match identity entirely.
+shift__cmip6_grid_combinations <- function(catalog, identity, tables,
+                                            grid = NULL) {
+    choices <- stats::setNames(vector("list", length(tables)), tables)
+    for (table_id in tables) {
+        wanted_table_id <- table_id
+        values <- unique(catalog[
+            shift__catalog_match(source_id, identity$source_id[[1L]]) &
+                shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
+                shift__catalog_match(table_id, wanted_table_id)
+        ]$grid_label)
+        values <- sort(values[!is.na(values) & nzchar(values)])
+        if (!is.null(grid)) {
+            values <- intersect(values, grid)
+            if (!length(values)) {
+                values <- as.character(grid)
+            }
+        }
+        if (!length(values)) {
+            values <- NA_character_
+        }
+        choices[[table_id]] <- values
+    }
+    as.data.frame(do.call(expand.grid, c(
+        choices,
+        list(KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    )), check.names = FALSE, stringsAsFactors = FALSE)
+}
+
+# Compute complete model/member candidates while allowing each CMIP table to
+# use its own grid. The selected partition JSON is subsequently authoritative
+# for both download and extraction, so broad catalog queries cannot create
+# table/grid cross-products downstream.
 shift__cmip6_candidates <- function(catalog, models, experiments, variables,
-                                    years, frequency, table,
-                                    requirements = NULL) {
+                                    years, frequency, table = NULL,
+                                    requirements = NULL, grid = NULL) {
     catalog <- shift__catalog_current(catalog)
     models <- as.character(models)
     experiments <- as.character(experiments)
-    variables <- as.character(variables)
+    variables <- unique(as.character(variables))
+    years <- sort(unique(as.integer(years)))
+    wanted_frequency <- as.character(frequency)
     if (is.null(requirements)) {
         requirements <- stats::setNames(
             lapply(variables, function(variable) list(variable)),
             variables
         )
     }
-    input_variables <- unique(unlist(requirements, recursive = TRUE,
+    table_map <- shift__cmip6_variable_tables(variables, frequency, table)
+    required_inputs <- unique(unlist(requirements, recursive = TRUE,
         use.names = FALSE))
-    years <- sort(unique(as.integer(years)))
-    wanted_frequency <- as.character(frequency)
-    wanted_table <- as.character(table)
+    if (!all(required_inputs %in% names(table_map))) {
+        cli::cli_abort("CMIP6 table mapping is missing one or more required recipe inputs.")
+    }
+    required_tables <- unique(unname(table_map[required_inputs]))
+    wanted_tables <- unique(unname(table_map))
     catalog <- catalog[
         source_id %in% models &
             experiment_id %in% experiments &
-            variable_id %in% input_variables &
+            variable_id %in% variables &
             frequency %in% wanted_frequency &
-            table_id %in% wanted_table
+            table_id %in% wanted_tables
     ]
-    identities <- unique(catalog[, .(
-        source_id, variant_label, grid_label, frequency, table_id
-    )])
+    identities <- unique(catalog[, .(source_id, variant_label, frequency)])
+    empty <- data.table::data.table(
+        source_id = character(), variant_label = character(),
+        grid_label = character(), frequency = character(),
+        table_id = character(), required_partition_key = character(),
+        requirement_key = character(), partition_key = character(),
+        partitions_json = character(), required_native_grid = logical(),
+        all_native_grid = logical(),
+        complete = logical(), missing = character()
+    )
     if (!nrow(identities)) {
-        return(data.table::data.table(
-            source_id = character(), variant_label = character(), grid_label = character(),
-            frequency = character(), table_id = character(), complete = logical(),
-            missing = character()
-        ))
+        return(empty)
     }
 
-    rows <- vector("list", nrow(identities))
-    for (i in seq_len(nrow(identities))) {
-        identity <- identities[i]
-        selected <- catalog[
-            shift__catalog_match(source_id, identity$source_id[[1L]]) &
-                shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
-                shift__catalog_match(grid_label, identity$grid_label[[1L]]) &
-                shift__catalog_match(frequency, identity$frequency[[1L]]) &
-                shift__catalog_match(table_id, identity$table_id[[1L]])
-        ]
-        missing <- character()
-        for (experiment in experiments) {
-            for (variable in names(requirements)) {
-                alternatives <- requirements[[variable]]
-                matched <- FALSE
+    rows <- list()
+    for (identity_index in seq_len(nrow(identities))) {
+        identity <- identities[identity_index]
+        combinations <- shift__cmip6_grid_combinations(
+            catalog, identity, required_tables, grid = grid
+        )
+        for (combination_index in seq_len(nrow(combinations))) {
+            grid_map <- stats::setNames(
+                as.character(combinations[combination_index, , drop = TRUE]),
+                names(combinations)
+            )
+            missing <- character()
+            selected_sources <- list()
+
+            # One alternative must work for every future scenario. This is the
+            # whole-case source rule that prevents future/reference or
+            # scenario-level mixing of HUSS and HURS.
+            for (canonical in names(requirements)) {
+                alternatives <- requirements[[canonical]]
+                matched <- NULL
                 for (alternative in alternatives) {
-                    complete <- vapply(alternative, function(input) {
-                        files <- selected[
-                            experiment_id == experiment & variable_id == input
-                        ]
-                        nrow(files) > 0L &&
-                            !length(setdiff(years, shift__catalog_years(files)))
+                    input_ok <- vapply(experiments, function(experiment) {
+                        all(vapply(alternative, function(input) {
+                            shift__cmip6_input_complete(
+                                catalog, identity, experiment, input,
+                                table_map[[input]], grid_map[[table_map[[input]]]],
+                                years
+                            )
+                        }, logical(1L)))
                     }, logical(1L))
-                    if (all(complete)) {
-                        matched <- TRUE
+                    if (all(input_ok)) {
+                        matched <- as.character(alternative)
                         break
                     }
                 }
-                if (isTRUE(matched)) {
-                    next
-                }
-
-                if (length(alternatives) == 1L &&
-                    length(alternatives[[1L]]) == 1L) {
-                    input <- alternatives[[1L]][[1L]]
-                    files <- selected[
-                        experiment_id == experiment & variable_id == input
-                    ]
-                    absent_years <- setdiff(years, shift__catalog_years(files))
-                    if (!nrow(files)) {
-                        missing <- c(missing,
-                            sprintf("%s/%s: no files", experiment, input))
-                    } else {
-                        missing <- c(missing, sprintf(
-                            "%s/%s: missing years %s", experiment, input,
-                            paste(absent_years, collapse = ",")
-                        ))
-                    }
-                } else {
+                if (is.null(matched)) {
                     labels <- vapply(alternatives, paste, character(1L),
                         collapse = "+")
-                    missing <- c(missing, sprintf(
-                        "%s/%s: requires %s",
-                        experiment, variable, paste(labels, collapse = " or ")
-                    ))
+                    for (experiment in experiments) {
+                        missing <- c(missing, sprintf(
+                            "%s/%s: requires %s", experiment, canonical,
+                            paste(labels, collapse = " or ")
+                        ))
+                    }
+                    matched <- as.character(alternatives[[1L]])
                 }
+                selected_sources[[canonical]] <- matched
             }
-        }
-        rows[[i]] <- cbind(
-            identity,
-            data.table::data.table(
-                complete = !length(missing),
-                missing = if (length(missing)) paste(missing, collapse = "; ") else NA_character_
+
+            required_variables <- unique(unlist(selected_sources,
+                use.names = FALSE))
+            required_partitions <- data.table::data.table(
+                variable_id = required_variables,
+                table_id = unname(table_map[required_variables]),
+                grid_label = unname(vapply(
+                    unname(table_map[required_variables]),
+                    function(value) grid_map[[value]], character(1L)
+                )),
+                required = TRUE
             )
-        )
+
+            optional_variables <- setdiff(variables, required_inputs)
+            optional_partitions <- list()
+            for (table_id in unique(unname(table_map[optional_variables]))) {
+                wanted_table_id <- table_id
+                table_variables <- optional_variables[
+                    unname(table_map[optional_variables]) == table_id
+                ]
+                if (!length(table_variables)) {
+                    next
+                }
+                if (table_id %in% names(grid_map)) {
+                    optional_grids <- grid_map[[table_id]]
+                } else {
+                    optional_grids <- unique(catalog[
+                        shift__catalog_match(source_id, identity$source_id[[1L]]) &
+                            shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
+                            shift__catalog_match(table_id, wanted_table_id)
+                    ]$grid_label)
+                    optional_grids <- sort(optional_grids[
+                        !is.na(optional_grids) & nzchar(optional_grids)
+                    ])
+                    if (!is.null(grid)) {
+                        optional_grids <- intersect(optional_grids, grid)
+                    }
+                }
+                if (!length(optional_grids) || all(is.na(optional_grids))) {
+                    next
+                }
+                scored <- lapply(optional_grids, function(optional_grid) {
+                    complete_variables <- table_variables[vapply(
+                        table_variables,
+                        function(variable) all(vapply(experiments,
+                            function(experiment) {
+                                shift__cmip6_input_complete(
+                                    catalog, identity, experiment, variable,
+                                    table_id, optional_grid, years
+                                )
+                            }, logical(1L))),
+                        logical(1L)
+                    )]
+                    list(grid = optional_grid,
+                        variables = complete_variables,
+                        score = length(complete_variables))
+                })
+                scores <- vapply(scored, `[[`, integer(1L), "score")
+                if (!length(scores) || max(scores) == 0L) {
+                    next
+                }
+                scored <- scored[scores == max(scores)]
+                primary_grid <- if (length(grid_map)) grid_map[[1L]] else NA_character_
+                preferred <- vapply(scored, function(value) {
+                    if (!is.na(primary_grid) && identical(value$grid, primary_grid)) {
+                        return(1L)
+                    }
+                    if (identical(value$grid, "gn")) 2L else 3L
+                }, integer(1L))
+                chosen <- scored[[order(preferred,
+                    vapply(scored, `[[`, character(1L), "grid"))[[1L]]]]
+                optional_partitions[[length(optional_partitions) + 1L]] <-
+                    data.table::data.table(
+                        variable_id = chosen$variables,
+                        table_id = table_id,
+                        grid_label = chosen$grid,
+                        required = FALSE
+                    )
+            }
+            partitions <- data.table::rbindlist(
+                c(list(required_partitions), optional_partitions),
+                use.names = TRUE, fill = TRUE
+            )
+            partitions <- unique(partitions,
+                by = c("variable_id", "table_id", "grid_label"))
+            required_grid_rows <- unique(required_partitions[, .(
+                table_id, grid_label
+            )])
+            data.table::setorderv(required_grid_rows,
+                c("table_id", "grid_label"))
+            required_partition_key <- paste(
+                paste(required_grid_rows$table_id,
+                    required_grid_rows$grid_label, sep = "="),
+                collapse = ";"
+            )
+            all_grid_rows <- unique(partitions[, .(table_id, grid_label)])
+            data.table::setorderv(all_grid_rows, c("table_id", "grid_label"))
+            partition_key <- paste(
+                paste(all_grid_rows$table_id, all_grid_rows$grid_label,
+                    sep = "="),
+                collapse = ";"
+            )
+            requirement_key <- paste(vapply(names(selected_sources),
+                function(canonical) sprintf("%s=%s", canonical,
+                    paste(selected_sources[[canonical]], collapse = "+")),
+                character(1L)), collapse = ";")
+            primary_table <- shift__cmip6_table_id(frequency)
+            if (is.null(primary_table) || !primary_table %in% required_grid_rows$table_id) {
+                primary_table <- required_grid_rows$table_id[[1L]]
+            }
+            primary_grid <- required_grid_rows[
+                table_id == primary_table, grid_label
+            ][[1L]]
+            display_tables <- sort(unique(partitions$table_id))
+            rows[[length(rows) + 1L]] <- data.table::data.table(
+                source_id = identity$source_id[[1L]],
+                variant_label = identity$variant_label[[1L]],
+                grid_label = primary_grid,
+                frequency = identity$frequency[[1L]],
+                table_id = paste(display_tables, collapse = "+"),
+                required_partition_key = required_partition_key,
+                requirement_key = requirement_key,
+                partition_key = partition_key,
+                partitions_json = shift__cmip6_partition_json(partitions),
+                required_native_grid = all(
+                    !is.na(required_grid_rows$grid_label) &
+                        required_grid_rows$grid_label == "gn"
+                ),
+                all_native_grid = all(!is.na(all_grid_rows$grid_label) &
+                    all_grid_rows$grid_label == "gn"),
+                complete = !length(missing),
+                missing = if (length(missing)) {
+                    paste(unique(missing), collapse = "; ")
+                } else {
+                    NA_character_
+                }
+            )
+        }
     }
-    data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
+    if (!length(rows)) empty else
+        data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 
 # Apply explicit selection constraints and the locked r1i1p1f1/gn preference;
@@ -6231,27 +6530,35 @@ shift__choose_cmip6_candidates <- function(candidates, models, member = NULL,
             if (length(missing_members)) {
                 cli::cli_abort("Explicit member(s) are incomplete for model {.val {model}}: {.val {missing_members}}.")
             }
-            common_grids <- Reduce(
+            common_partitions <- Reduce(
                 intersect,
-                lapply(member, function(value) unique(available[variant_label == value]$grid_label))
+                lapply(member, function(value) unique(
+                    available[variant_label == value]$required_partition_key
+                ))
             )
-            common_grids <- common_grids[!is.na(common_grids) & nzchar(common_grids)]
-            if (!is.null(grid)) {
-                common_grids <- intersect(common_grids, grid)
-            } else if ("gn" %in% common_grids) {
-                common_grids <- "gn"
+            common_partitions <- common_partitions[
+                !is.na(common_partitions) & nzchar(common_partitions)
+            ]
+            if (is.null(grid) && length(common_partitions) > 1L) {
+                native <- common_partitions[vapply(common_partitions,
+                    function(value) all(grepl("=gn$", strsplit(
+                        value, ";", fixed = TRUE)[[1L]])), logical(1L))]
+                if (length(native)) {
+                    common_partitions <- native
+                }
             }
-            if (length(common_grids) != 1L) {
+            if (length(common_partitions) != 1L) {
                 cli::cli_abort(
                     c(
-                        "CMIP6 grid selection is ambiguous for model {.val {model}} and explicit member(s) {.val {member}}.",
-                        "i" = "Candidate grids: {.val {common_grids}}. Set `grid` explicitly."
+                        "CMIP6 table/grid selection is ambiguous for model {.val {model}} and explicit member(s) {.val {member}}.",
+                        "i" = "Candidate partitions: {.val {common_partitions}}. Set `grid` explicitly."
                     ),
                     class = "epwshiftr_shift_resolution_ambiguity"
                 )
             }
             selected[[model]] <- available[
-                variant_label %in% member & grid_label == common_grids[[1L]]
+                variant_label %in% member &
+                    required_partition_key == common_partitions[[1L]]
             ]
             next
         }
@@ -6259,14 +6566,15 @@ shift__choose_cmip6_candidates <- function(candidates, models, member = NULL,
         if (any(available$variant_label %in% "r1i1p1f1")) {
             available <- available[variant_label == "r1i1p1f1"]
         }
-        if (is.null(grid) && any(available$grid_label %in% "gn")) {
-            available <- available[grid_label == "gn"]
+        if (is.null(grid) && any(available$required_native_grid %in% TRUE)) {
+            available <- available[required_native_grid %in% TRUE]
         }
         if ("case_count" %in% names(available) && nrow(available)) {
             available <- available[case_count == max(case_count)]
         }
         if (nrow(available) != 1L) {
-            labels <- sprintf("%s/%s", available$variant_label, available$grid_label)
+            labels <- sprintf("%s/%s", available$variant_label,
+                available$partition_key)
             cli::cli_abort(
                 c(
                     "CMIP6 member/grid selection is ambiguous for model {.val {model}}.",
@@ -6284,7 +6592,7 @@ shift__choose_cmip6_candidates <- function(candidates, models, member = NULL,
 # scenario and record how many requested scenarios each identity can fulfil.
 shift__cmip6_partial_candidates <- function(catalog, models, experiments,
                                              variables, years, frequency, table,
-                                             requirements = NULL) {
+                                             requirements = NULL, grid = NULL) {
     parts <- lapply(experiments, function(experiment) {
         rows <- shift__cmip6_candidates(
             catalog,
@@ -6294,7 +6602,8 @@ shift__cmip6_partial_candidates <- function(catalog, models, experiments,
             years = years,
             frequency = frequency,
             table = table,
-            requirements = requirements
+            requirements = requirements,
+            grid = grid
         )
         rows[, requested_experiment := experiment]
         rows
@@ -6307,7 +6616,11 @@ shift__cmip6_partial_candidates <- function(catalog, models, experiments,
         complete = any(complete %in% TRUE),
         case_count = sum(complete %in% TRUE),
         missing = paste(stats::na.omit(missing), collapse = "; ")
-    ), by = .(source_id, variant_label, grid_label, frequency, table_id)]
+    ), by = .(
+        source_id, variant_label, grid_label, frequency, table_id,
+        required_partition_key, requirement_key, partition_key,
+        partitions_json, required_native_grid, all_native_grid
+    )]
 }
 
 # Split the candidate contract into individual missing requirements while
@@ -6328,37 +6641,47 @@ shift__cmip6_resolution_diagnostic <- function(future, reference = NULL,
                                                 models,
                                                 reference_required = FALSE) {
     identity <- c(
-        "source_id", "variant_label", "grid_label", "frequency", "table_id"
+        "source_id", "variant_label", "frequency",
+        "required_partition_key", "requirement_key"
     )
+    display <- c("grid_label", "table_id")
     future <- data.table::as.data.table(data.table::copy(future))
-    for (name in setdiff(c(identity, "complete", "missing"), names(future))) {
+    for (name in setdiff(c(identity, display, "complete", "missing"), names(future))) {
         future[[name]] <- if (identical(name, "complete")) {
             logical(nrow(future))
         } else {
             rep(NA_character_, nrow(future))
         }
     }
-    future <- future[, c(identity, "complete", "missing"), with = FALSE]
-    data.table::setnames(future, c("complete", "missing"),
-        c("future_complete", "future_missing"))
+    future <- future[, c(identity, display, "complete", "missing"),
+        with = FALSE]
+    data.table::setnames(future,
+        c(display, "complete", "missing"),
+        c("future_grid_label", "future_table_id",
+            "future_complete", "future_missing"))
 
     if (isTRUE(reference_required)) {
         reference <- data.table::as.data.table(data.table::copy(reference))
-        for (name in setdiff(c(identity, "complete", "missing"), names(reference))) {
+        for (name in setdiff(c(identity, display, "complete", "missing"), names(reference))) {
             reference[[name]] <- if (identical(name, "complete")) {
                 logical(nrow(reference))
             } else {
                 rep(NA_character_, nrow(reference))
             }
         }
-        reference <- reference[, c(identity, "complete", "missing"), with = FALSE]
-        data.table::setnames(reference, c("complete", "missing"),
-            c("reference_complete", "reference_missing"))
+        reference <- reference[, c(identity, display, "complete", "missing"),
+            with = FALSE]
+        data.table::setnames(reference,
+            c(display, "complete", "missing"),
+            c("reference_grid_label", "reference_table_id",
+                "reference_complete", "reference_missing"))
         combined <- merge(future, reference, by = identity, all = TRUE,
             sort = FALSE)
     } else {
         combined <- data.table::copy(future)
         combined[, `:=`(
+            reference_grid_label = future_grid_label,
+            reference_table_id = future_table_id,
             reference_complete = TRUE,
             reference_missing = NA_character_
         )]
@@ -6441,23 +6764,38 @@ shift__cmip6_resolution_diagnostic <- function(future, reference = NULL,
                 !is.na(combined[["reference_complete"]]))
         combined[["preferred_member"]] <-
             combined[["variant_label"]] %in% "r1i1p1f1"
-        combined[["preferred_grid"]] <- combined[["grid_label"]] %in% "gn"
+        combined[["preferred_grid"]] <- vapply(
+            combined[["required_partition_key"]], function(value) {
+                if (is.na(value) || !nzchar(value)) {
+                    return(FALSE)
+                }
+                all(grepl("=gn$", strsplit(value, ";", fixed = TRUE)[[1L]]))
+            }, logical(1L))
         data.table::setorderv(
             combined,
             c("future_available", "shared_available", "missing_count",
                 "preferred_member", "preferred_grid", "source_id",
-                "variant_label", "grid_label"),
+                "variant_label", "required_partition_key"),
             order = c(-1L, -1L, 1L, -1L, -1L, 1L, 1L, 1L),
             na.last = TRUE
         )
         row <- combined[1L]
         missing <- c(row$future_items[[1L]], row$reference_items[[1L]])
+        closest_grid <- row$future_grid_label[[1L]]
+        if (is.na(closest_grid) || !nzchar(closest_grid)) {
+            closest_grid <- row$reference_grid_label[[1L]]
+        }
+        closest_table <- row$future_table_id[[1L]]
+        if (is.na(closest_table) || !nzchar(closest_table)) {
+            closest_table <- row$reference_table_id[[1L]]
+        }
         closest <- list(
             model = as.character(row$source_id[[1L]]),
             member = as.character(row$variant_label[[1L]]),
-            grid = as.character(row$grid_label[[1L]]),
+            grid = as.character(closest_grid),
             frequency = as.character(row$frequency[[1L]]),
-            table = as.character(row$table_id[[1L]])
+            table = as.character(closest_table),
+            partitions = as.character(row$required_partition_key[[1L]])
         )
     }
     list(
@@ -6501,8 +6839,70 @@ shift__abort_cmip6_resolution <- function(diagnostic) {
     )
 }
 
+# Intersect optional future/reference variables on their exact table and grid
+# while retaining each side's required rows. This makes optional SND and
+# extrema available only when both periods can support the same calculation.
+shift__cmip6_shared_partitions <- function(future, reference) {
+    future <- shift__cmip6_partitions(future)
+    reference <- shift__cmip6_partitions(reference)
+    keys <- c("variable_id", "table_id", "grid_label")
+    future_required <- future[required %in% TRUE]
+    reference_required <- reference[required %in% TRUE]
+    shared_optional <- merge(
+        future[required %in% FALSE], reference[required %in% FALSE],
+        by = keys, all = FALSE, sort = FALSE
+    )
+    shared_optional <- if (nrow(shared_optional)) {
+        shared_optional[, c(keys), with = FALSE][, required := FALSE]
+    } else {
+        future[0L]
+    }
+    list(
+        future = unique(data.table::rbindlist(
+            list(future_required, shared_optional),
+            use.names = TRUE, fill = TRUE
+        )),
+        reference = unique(data.table::rbindlist(
+            list(reference_required, shared_optional),
+            use.names = TRUE, fill = TRUE
+        ))
+    )
+}
+
+# Recompute display fields after optional partitions have been intersected.
+# Required partitions remain the selection identity; all partitions describe
+# the exact files that download and extraction are allowed to consume.
+shift__cmip6_partition_summary <- function(partitions, frequency) {
+    partitions <- data.table::as.data.table(partitions)
+    grids <- unique(partitions[, .(table_id, grid_label)])
+    data.table::setorderv(grids, c("table_id", "grid_label"))
+    required_grids <- unique(partitions[required %in% TRUE,
+        .(table_id, grid_label)])
+    data.table::setorderv(required_grids, c("table_id", "grid_label"))
+    primary_table <- shift__cmip6_table_id(frequency)
+    if (is.null(primary_table) || !primary_table %in% required_grids$table_id) {
+        primary_table <- required_grids$table_id[[1L]]
+    }
+    list(
+        grid_label = required_grids[table_id == primary_table,
+            grid_label][[1L]],
+        table_id = paste(sort(unique(partitions$table_id)), collapse = "+"),
+        required_partition_key = paste(
+            paste(required_grids$table_id, required_grids$grid_label,
+                sep = "="), collapse = ";"
+        ),
+        partition_key = paste(
+            paste(grids$table_id, grids$grid_label, sep = "="),
+            collapse = ";"
+        ),
+        required_native_grid = all(required_grids$grid_label == "gn"),
+        all_native_grid = all(grids$grid_label == "gn")
+    )
+}
+
 # Resolve future and, only when explicitly requested by the method, historical
-# catalogs against one shared model/member/frequency/table/grid identity.
+# catalogs against one shared model/member/frequency identity and a matching
+# grid for every required table.
 shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catalog = NULL) {
     meta <- plan@meta
     request <- meta$request@meta
@@ -6524,7 +6924,8 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
             years = meta$periods$year,
             frequency = frequency,
             table = table,
-            requirements = requirements
+            requirements = requirements,
+            grid = grid
         )
     } else {
         shift__cmip6_candidates(
@@ -6535,7 +6936,8 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
             years = meta$periods$year,
             frequency = frequency,
             table = table,
-            requirements = requirements
+            requirements = requirements,
+            grid = grid
         )
     }
 
@@ -6550,8 +6952,13 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
             activity_label <- shift_coalesce(reference@activity, "<any activity>")
             frequency_label <- paste(shift_coalesce(frequency, "<any frequency>"),
                 collapse = ", ")
-            table_label <- paste(shift_coalesce(table, "<any table>"),
-                collapse = ", ")
+            table_label <- if (is.null(climate)) {
+                paste(shift_coalesce(table, "<any table>"), collapse = ", ")
+            } else {
+                paste(unique(unname(shift__cmip6_variable_tables(
+                    variables, frequency, table
+                ))), collapse = ", ")
+            }
             cli::cli_abort(
                 c(
                     "Historical reference catalog is empty for model(s) {.val {models}}.",
@@ -6577,7 +6984,8 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
             years = reference@periods$year,
             frequency = frequency,
             table = table,
-            requirements = requirements
+            requirements = requirements,
+            grid = grid
         )
         diagnostic <- shift__cmip6_resolution_diagnostic(
             future,
@@ -6588,16 +6996,39 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
         if (!diagnostic$shared_complete_candidates) {
             shift__abort_cmip6_resolution(diagnostic)
         }
-        historical <- historical_candidates[complete %in% TRUE, .(
-            source_id, variant_label, grid_label, frequency, table_id
-        )]
+        identity <- c(
+            "source_id", "variant_label", "frequency",
+            "required_partition_key", "requirement_key"
+        )
+        historical <- historical_candidates[complete %in% TRUE,
+            c(identity, "partitions_json"), with = FALSE]
+        data.table::setnames(historical, "partitions_json",
+            "reference_partitions_json")
         future <- merge(
-            future,
+            future[complete %in% TRUE],
             historical,
-            by = c("source_id", "variant_label", "grid_label", "frequency", "table_id"),
+            by = identity,
             all = FALSE,
             sort = FALSE
         )
+        if (nrow(future)) {
+            for (i in seq_len(nrow(future))) {
+                shared <- shift__cmip6_shared_partitions(
+                    future$partitions_json[[i]],
+                    future$reference_partitions_json[[i]]
+                )
+                future$partitions_json[[i]] <-
+                    shift__cmip6_partition_json(shared$future)
+                future$reference_partitions_json[[i]] <-
+                    shift__cmip6_partition_json(shared$reference)
+                summary <- shift__cmip6_partition_summary(
+                    shared$future, future$frequency[[i]]
+                )
+                for (name in names(summary)) {
+                    future[[name]][[i]] <- summary[[name]]
+                }
+            }
+        }
     } else {
         diagnostic <- shift__cmip6_resolution_diagnostic(
             future,
@@ -6607,14 +7038,17 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
         if (!diagnostic$shared_complete_candidates) {
             shift__abort_cmip6_resolution(diagnostic)
         }
+        future[, reference_partitions_json := NA_character_]
     }
-    shift__choose_cmip6_candidates(
+    selected <- shift__choose_cmip6_candidates(
         future,
         models,
         member = member,
         grid = grid,
         diagnostic = diagnostic
     )
+    selected[, future_partitions_json := partitions_json]
+    selected[]
 }
 
 # Clone a request with a specific index node while preserving every scientific
@@ -6649,10 +7083,19 @@ shift__historical_request <- function(plan, node) {
     climate <- meta$climate
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
+    variables <- morpher__input_variables(meta$method@recipe)
+    frequency <- if (is.null(climate)) request$frequency else climate@frequency
+    tables <- if (is.null(climate)) {
+        as.character(request$filters$table_id)
+    } else {
+        unique(unname(shift__cmip6_variable_tables(
+            variables, frequency, climate@table
+        )))
+    }
     filters <- utils::modifyList(
         shift__compact_list(list(
             activity_id = reference@activity,
-            table_id = if (is.null(climate)) request$filters$table_id else climate@table,
+            table_id = tables,
             grid_label = grid,
             data_node = if (is.null(climate)) request$filters$data_node else climate@data_node
         )),
@@ -6664,8 +7107,8 @@ shift__historical_request <- function(plan, node) {
         source = request$source,
         experiment = reference@experiment,
         variant = member,
-        variables = morpher__input_variables(meta$method@recipe),
-        frequency = if (is.null(climate)) request$frequency else climate@frequency,
+        variables = variables,
+        frequency = frequency,
         # Do not turn calendar-year intent into exact Dataset datetime bounds.
         # CMIP monthly metadata commonly ends on December 16, so requiring a
         # stop at December 31 incorrectly removes otherwise complete datasets.
@@ -7078,6 +7521,222 @@ shift__resolved_expected_cases <- function(plan, selection) {
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 
+# Expand persisted selection JSON into exact variable/table/grid rows and attach
+# the model/member identity that owns each partition.
+shift__selection_partition_rows <- function(selection,
+                                             role = c("future", "reference")) {
+    role <- match.arg(role)
+    selection <- data.table::as.data.table(selection)
+    field <- if (identical(role, "future")) {
+        if ("future_partitions_json" %in% names(selection)) {
+            "future_partitions_json"
+        } else {
+            "partitions_json"
+        }
+    } else {
+        "reference_partitions_json"
+    }
+    if (!field %in% names(selection)) {
+        cli::cli_abort("Resolved CMIP6 selection has no {role} partition map.")
+    }
+    rows <- list()
+    for (i in seq_len(nrow(selection))) {
+        partitions <- data.table::copy(
+            shift__cmip6_partitions(selection[[field]][[i]])
+        )
+        if (!nrow(partitions)) {
+            next
+        }
+        partitions[, `:=`(
+            source_id = selection$source_id[[i]],
+            variant_label = selection$variant_label[[i]],
+            frequency = selection$frequency[[i]]
+        )]
+        rows[[length(rows) + 1L]] <- partitions
+    }
+    if (!length(rows)) {
+        cli::cli_abort("Resolved CMIP6 selection contains no {role} partitions.")
+    }
+    unique(data.table::rbindlist(rows, use.names = TRUE, fill = TRUE))
+}
+
+# Match File-result or catalog rows against the resolved partitions. Every
+# facet is tested together, preventing a union of tables and grids from
+# admitting combinations that the resolver never selected.
+shift__partition_row_match <- function(rows, partitions, experiments) {
+    rows <- data.table::as.data.table(rows)
+    keep <- rep(FALSE, nrow(rows))
+    for (i in seq_len(nrow(partitions))) {
+        partition <- partitions[i]
+        keep <- keep | (
+            shift__catalog_match(rows$source_id,
+                partition$source_id[[1L]]) &
+            shift__catalog_match(rows$variant_label,
+                partition$variant_label[[1L]]) &
+            shift__catalog_match(rows$frequency,
+                partition$frequency[[1L]]) &
+            shift__catalog_match(rows$table_id,
+                partition$table_id[[1L]]) &
+            shift__catalog_match(rows$grid_label,
+                partition$grid_label[[1L]]) &
+            shift__catalog_match(rows$variable_id,
+                partition$variable_id[[1L]]) &
+            rows$experiment_id %in% experiments
+        )
+    }
+    keep
+}
+
+# Create a stored child File result containing only resolved partitions. The
+# downloader accepts this child query ID, so an explicit download cannot fetch
+# unrelated table/grid combinations from the broad discovery query.
+shift__files_for_partitions <- function(files, selection, experiments,
+                                        role = c("future", "reference")) {
+    role <- match.arg(role)
+    partitions <- shift__selection_partition_rows(selection, role)
+    store <- shift_store(files)
+    result <- shift_stage_query_result(
+        store, files@ids$query_id, result_type = "File"
+    )
+    selected <- result$filter(function(rows) {
+        shift__partition_row_match(rows, partitions, experiments)
+    })
+    if (!selected$count()) {
+        cli::cli_abort("Resolved {role} CMIP6 partitions contain no downloadable File records.")
+    }
+    query_id <- store$add_files(selected,
+        label = sprintf("resolved-%s", role))
+    selected_rows <- selected$to_data_table()
+    shift_stage_new(
+        ShiftFiles,
+        "files",
+        store_path = files@store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = files@meta$request,
+            dataset_count = files@meta$dataset_count,
+            datasets = NULL,
+            file_count = selected$count(),
+            variables = unique(as.character(selected_rows$variable_id)),
+            fields = files@meta$fields,
+            result_fields = selected$fields
+        )
+    )
+}
+
+# Combine independently planned extraction partitions into one climate stage.
+# Coverage is re-read from the store for the union of plan IDs so resume and
+# diagnostics use the same durable view as an ordinary shift_extract() call.
+shift__combine_climate_stages <- function(stages) {
+    stages <- Filter(function(stage) S7::S7_inherits(stage, ShiftClimate),
+        stages)
+    if (!length(stages)) {
+        cli::cli_abort("No CMIP6 extraction partition produced a climate stage.")
+    }
+    if (length(stages) == 1L) {
+        return(stages[[1L]])
+    }
+    first <- stages[[1L]]
+    plan_id <- unique(unlist(lapply(stages,
+        function(stage) stage@ids$plan_id), use.names = FALSE))
+    query_id <- unique(unlist(lapply(stages,
+        function(stage) stage@ids$query_id), use.names = FALSE))
+    store <- shift_store(first)
+    coverage <- store$coverage(plan_id = plan_id)
+    bind_meta <- function(name) {
+        values <- lapply(stages, function(stage) stage@meta[[name]])
+        values <- Filter(is.data.frame, values)
+        if (!length(values)) NULL else
+            data.table::rbindlist(values, use.names = TRUE, fill = TRUE)
+    }
+    upstream_name <- if (S7::S7_inherits(first@meta$download, ShiftDownload)) {
+        "download"
+    } else {
+        "files"
+    }
+    upstream <- first@meta[[upstream_name]]
+    shift_stage_new(
+        ShiftClimate,
+        "climate",
+        store_path = first@store_path,
+        ids = list(query_id = query_id, plan_id = plan_id),
+        meta = c(stats::setNames(list(upstream), upstream_name), list(
+            site = first@meta$site,
+            periods = first@meta$periods,
+            variables = unique(unlist(lapply(stages,
+                function(stage) stage@meta$variables), use.names = FALSE)),
+            plan = bind_meta("plan"),
+            processed = bind_meta("processed"),
+            coverage = coverage
+        )),
+        diagnostics = shift_diagnostics_from_coverage(coverage)
+    )
+}
+
+# Extract each exact source/member/table/grid partition separately and merge the
+# resulting plan IDs only after planning. Selection facets are re-applied after
+# user extraction overrides so workflow intent cannot be widened accidentally.
+shift__extract_selected_partitions <- function(
+    stage, selection, experiments, site, periods,
+    role = c("future", "reference"), time = NULL,
+    method = "nearest", fallback = "auto", overwrite = FALSE,
+    resume = TRUE, overrides = list(), reporter = NULL
+) {
+    role <- match.arg(role)
+    partitions <- shift__selection_partition_rows(selection, role)
+    groups <- unique(partitions[, .(
+        source_id, variant_label, frequency, table_id, grid_label
+    )])
+    stages <- vector("list", nrow(groups))
+    custom_filters <- shift_coalesce(overrides$filters, list())
+    overrides$filters <- NULL
+    for (i in seq_len(nrow(groups))) {
+        group <- groups[i]
+        variables <- unique(partitions[
+            shift__catalog_match(source_id, group$source_id[[1L]]) &
+                shift__catalog_match(variant_label,
+                    group$variant_label[[1L]]) &
+                shift__catalog_match(frequency, group$frequency[[1L]]) &
+                shift__catalog_match(table_id, group$table_id[[1L]]) &
+                shift__catalog_match(grid_label, group$grid_label[[1L]]),
+            variable_id
+        ])
+        exact_filters <- list(
+            source_id = group$source_id[[1L]],
+            experiment_id = experiments,
+            variant_label = group$variant_label[[1L]],
+            grid_label = group$grid_label[[1L]],
+            frequency = group$frequency[[1L]],
+            table_id = group$table_id[[1L]]
+        )
+        args <- utils::modifyList(list(
+            site = site,
+            periods = periods,
+            variables = variables,
+            time = time,
+            filters = utils::modifyList(custom_filters, exact_filters),
+            method = method,
+            fallback = fallback,
+            overwrite = overwrite,
+            resume = resume
+        ), overrides)
+        # Re-pin scientific selection fields after generic overrides.
+        args$site <- site
+        args$periods <- periods
+        args$variables <- variables
+        args$filters <- utils::modifyList(custom_filters, exact_filters)
+        args$overwrite <- overwrite
+        args$resume <- resume
+        if (identical(fallback, "error")) {
+            args$fallback <- "error"
+        }
+        stages[[i]] <- shift__do_call_with_reporter(
+            reporter, shift_extract, c(list(stage), args)
+        )
+    }
+    shift__combine_climate_stages(stages)
+}
+
 # Build a compact, user-facing execution plan without touching remote services.
 shift__plan_explain <- function(x) {
     meta <- x@meta
@@ -7358,9 +8017,9 @@ shift__case_fulfilment <- function(cases, future_coverage, reference_coverage,
     match_identity <- function(rows, case, include_experiment = TRUE) {
         keep <- shift__catalog_match(rows$source_id, case$source_id[[1L]]) &
             shift__catalog_match(rows$variant_label, case$variant_label[[1L]])
-        if ("grid_label" %in% names(rows)) {
-            keep <- keep & shift__catalog_match(rows$grid_label, case$grid_label[[1L]])
-        }
+        # Grid is a per-table selection in enhanced workflows. Exact
+        # partitions already restrict the climate stage, so case fulfilment is
+        # intentionally keyed only by model/member (and future experiment).
         if (isTRUE(include_experiment)) {
             keep <- keep & shift__catalog_match(rows$experiment_id, case$experiment_id[[1L]])
         }
@@ -7416,9 +8075,8 @@ shift__climate_for_cases <- function(climate, cases, reference = FALSE) {
         case <- ready[i]
         identity <- shift__catalog_match(coverage$source_id, case$source_id[[1L]]) &
             shift__catalog_match(coverage$variant_label, case$variant_label[[1L]])
-        if ("grid_label" %in% names(coverage)) {
-            identity <- identity & shift__catalog_match(coverage$grid_label, case$grid_label[[1L]])
-        }
+        # Coverage may legitimately contain different grids for Amon and
+        # LImon; the selected plan IDs, not one display grid, are authoritative.
         if (!isTRUE(reference)) {
             identity <- identity & shift__catalog_match(coverage$experiment_id, case$experiment_id[[1L]])
         }
@@ -7672,6 +8330,22 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         reference_stage <- resolved_inputs$reference_files
         if (identical(control@download, "always")) {
             current_stage <- next_stage("download", "Downloading selected CMIP6 source files.")
+            future_stage <- shift__files_for_partitions(
+                future_stage, selection,
+                experiments = if (is.null(meta$climate)) {
+                    meta$request@meta$experiment
+                } else {
+                    meta$climate@scenarios
+                },
+                role = "future"
+            )
+            if (!is.null(reference_stage)) {
+                reference_stage <- shift__files_for_partitions(
+                    reference_stage, selection,
+                    experiments = meta$method@reference@experiment,
+                    role = "reference"
+                )
+            }
             download_args <- utils::modifyList(
                 list(
                     run = TRUE,
@@ -7699,49 +8373,28 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         }
 
         current_stage <- next_stage("extract_future", "Extracting future climate data.")
-        selection_filters <- list(
-            source_id = unique(selection$source_id),
-            experiment_id = if (is.null(meta$climate)) {
-                meta$request@meta$experiment
-            } else {
-                meta$climate@scenarios
-            },
-            variant_label = unique(selection$variant_label),
-            grid_label = unique(selection$grid_label),
-            frequency = unique(selection$frequency),
-            table_id = unique(selection$table_id)
-        )
+        future_experiments <- if (is.null(meta$climate)) {
+            meta$request@meta$experiment
+        } else {
+            meta$climate@scenarios
+        }
         fallback <- if (identical(control@download, "never")) "error" else "auto"
         extract_overrides <- meta$extract
-        if (!is.null(extract_overrides$filters)) {
-            selection_filters <- utils::modifyList(selection_filters, extract_overrides$filters)
-        }
-        extract_overrides$filters <- NULL
-        extract_args <- utils::modifyList(
-            list(
-                site = meta$site,
-                periods = meta$periods,
-                variables = morpher__input_variables(meta$method@recipe),
-                time = NULL,
-                filters = selection_filters,
-                method = control@extraction_method,
-                fallback = fallback,
-                overwrite = overwrite,
-                resume = resume
-            ),
-            extract_overrides
+        climate <- shift__extract_selected_partitions(
+            future_stage,
+            selection = selection,
+            experiments = future_experiments,
+            site = meta$site,
+            periods = meta$periods,
+            role = "future",
+            time = NULL,
+            method = control@extraction_method,
+            fallback = fallback,
+            overwrite = overwrite,
+            resume = resume,
+            overrides = extract_overrides,
+            reporter = reporter
         )
-        # `download = "never"` is a workflow run policy, so a middle-layer
-        # extraction override must not silently re-enable HTTP fallback.
-        if (identical(control@download, "never")) {
-            extract_args$fallback <- "error"
-        }
-        extract_args$site <- meta$site
-        extract_args$periods <- meta$periods
-        extract_args$overwrite <- overwrite
-        extract_args$resume <- resume
-        climate <- shift__do_call_with_reporter(reporter, shift_extract,
-            c(list(future_stage), extract_args))
         climate <- shift__derive_hurs_climate(
             climate,
             meta$method@recipe,
@@ -7765,23 +8418,21 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         if (!is.null(reference_stage)) {
             current_stage <- next_stage("extract_reference", "Extracting historical reference climate data.")
             reference_spec <- method_reference
-            reference_filters <- utils::modifyList(
-                selection_filters,
-                list(experiment_id = reference_spec@experiment)
-            )
-            reference_args <- list(
+            reference_climate <- shift__extract_selected_partitions(
+                reference_stage,
+                selection = selection,
+                experiments = reference_spec@experiment,
                 site = meta$site,
                 periods = reference_spec@periods,
-                variables = morpher__input_variables(meta$method@recipe),
+                role = "reference",
                 time = shift_periods_time(reference_spec@periods),
-                filters = reference_filters,
                 method = control@extraction_method,
                 fallback = fallback,
                 overwrite = overwrite,
-                resume = resume
+                resume = resume,
+                overrides = reference_spec@extract,
+                reporter = reporter
             )
-            reference_climate <- shift__do_call_with_reporter(reporter,
-                shift_extract, c(list(reference_stage), reference_args))
             reference_climate <- shift__derive_hurs_climate(
                 reference_climate,
                 meta$method@recipe,

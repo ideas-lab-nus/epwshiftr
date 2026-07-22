@@ -10,7 +10,6 @@
       * Member: auto
       * Grid: auto
       * Frequency: mon
-      * Table: Amon
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
       * Data node: auto
@@ -58,7 +57,6 @@
       * Member: auto
       * Grid: auto
       * Frequency: mon
-      * Table: Amon
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
       * Data node: auto
@@ -117,7 +115,7 @@
       | rh   | relative_humidity    | hurs        | shift  | yes      |
       | p    | atmospheric_pressure | psl         | shift  | yes      |
       +------+----------------------+-------------+--------+----------+
-      i 10 more rows; increase `n` to show every backend rule.
+      i 11 more rows; increase `n` to show every backend rule.
       == EPW Site ========================================================================================
       * ID: SIN
       * Label: Singapore
@@ -234,7 +232,6 @@
       * Output directory: <tempdir>/shift-print-output
       -- Discovery ---------------------------------------------------------------------------------------
       * Frequency: mon
-      * Table: Amon
       * Index nodes: https://esgf-data.dkrz.de, https://esgf.ceda.ac.uk,
         https://esgf-node.ornl.gov/esgf-1-5-bridge, https://esgf.nci.org.au,
         https://esgf-node.ipsl.upmc.fr, https://esg-dn1.nsc.liu.se

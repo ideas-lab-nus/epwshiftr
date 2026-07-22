@@ -22,7 +22,6 @@
         "member": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "grid": {"check": {"kind": "string", "null.ok": true}},
         "frequency": {"check": {"kind": "string"}},
-        "table": {"check": {"kind": "string", "null.ok": true}},
         "activity": {"check": {"kind": "string"}},
         "index_nodes": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "data_node": {"check": {"kind": "string", "null.ok": true}},

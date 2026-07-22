@@ -361,7 +361,10 @@ change-factor morphing.}
 
 \item{grid}{Optional single CMIP6 grid label.}
 
-\item{table}{Optional CMIP6 table ID inferred from \code{frequency} when \code{NULL}.}
+\item{table}{Optional CMIP6 table selection. \code{NULL} automatically maps each
+recipe input to its native table (including \code{snd} to \code{LImon}); an unnamed
+scalar pins every variable to one table; a named character vector
+overrides individual variables.}
 
 \item{activity}{CMIP6 activity ID. \code{shift_cmip6_scenario()} defaults to
 \code{"ScenarioMIP"} and \code{shift_reference_historical()} defaults to \code{"CMIP"}.}
@@ -393,8 +396,8 @@ morphing results, or EPW outputs.}
 
 \item{years}{Optional years used to constrain the future request time window.}
 
-\item{table_id}{CMIP6 table ID. If \code{NULL}, a common atmospheric table is
-inferred from \code{frequency}.}
+\item{table_id}{One or more CMIP6 table IDs. If \code{NULL}, a common atmospheric
+table is inferred from \code{frequency}.}
 
 \item{grid_label}{Optional CMIP6 grid label.}
 

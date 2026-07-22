@@ -379,7 +379,7 @@ test_that("Shift configuration printers use compact semantic receipts", {
     method_verbose <- capture.output(print(method, width = 72L,
         verbose = TRUE, n = 3L), type = "message")
     expect_true(any(grepl("Rules", method_verbose, fixed = TRUE)))
-    expect_true(any(grepl("10 more rows", method_verbose, fixed = TRUE)))
+    expect_true(any(grepl("11 more rows", method_verbose, fixed = TRUE)))
 
     visible <- NULL
     capture.output(visible <- withVisible(print(control, width = 72L)),
