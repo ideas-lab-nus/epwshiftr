@@ -52,5 +52,21 @@ jobs:
           needs: coverage
 
       - name: Test coverage
-        run: covr::codecov(quiet = FALSE)
+        run: |
+          tryCatch(
+            covr::codecov(quiet = FALSE),
+            error = function(error) {
+              failures <- list.files(
+                tempdir(),
+                pattern = "\\.Rout\\.fail$",
+                recursive = TRUE,
+                full.names = TRUE
+              )
+              for (path in failures) {
+                message("Test failure log: ", path)
+                cat(readLines(path, warn = FALSE), sep = "\n")
+              }
+              stop(error)
+            }
+          )
         shell: Rscript {0}
