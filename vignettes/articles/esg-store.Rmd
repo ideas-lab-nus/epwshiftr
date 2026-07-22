@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -138,7 +138,8 @@ store$query("
 #> 22:         shift_run_case
 #> 23:        shift_run_event
 #> 24:          shift_run_job
-#> 25:             store_meta
+#> 25:         shift_run_step
+#> 26:             store_meta
 #>                 table_name
 #>                     <char>
 ```
@@ -162,7 +163,7 @@ through `store$downloader()`, that manifest lives under `tmp/downloads/`.
 
 ``` r
 store$get_meta("schema_version")
-#> [1] "2.7.0"
+#> [1] "2.8.0"
 store$download_layout()
 #> $layout
 #> [1] "flat"
@@ -263,9 +264,9 @@ store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-19 17:37:00
-#> 2: future-weather 2026-07-19 17:37:00
-#> 3:      singapore 2026-07-19 17:37:00
+#> 1:          cmip6 2026-07-21 16:53:12
+#> 2: future-weather 2026-07-21 16:53:12
+#> 3:      singapore 2026-07-21 16:53:12
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
@@ -274,7 +275,7 @@ select_cols(store$queries(), c(
 #> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-19 17:37:00
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-21 16:53:12
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
@@ -288,9 +289,9 @@ store$query_tags(query_id)
 #> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-19 17:37:00
-#> 2: future-weather 2026-07-19 17:37:00
-#> 3:      singapore 2026-07-19 17:37:00
+#> 1:          cmip6 2026-07-21 16:53:12
+#> 2: future-weather 2026-07-21 16:53:12
+#> 3:      singapore 2026-07-21 16:53:12
 ```
 
 The query snapshot is written under `queries/`, while the query identity and
@@ -526,6 +527,27 @@ store$cleanup_downloads(
 Checksum validation is useful, but it must read files and can be expensive on a
 large store. Layout validation is cheaper and catches many broken local-path or
 artifact-record problems.
+
+## Recreate an Incompatible Store
+
+Store schemas are not migrated between incompatible development versions. If a
+package update rejects an older manifest, recreate the default store with:
+
+```r
+store_reset()
+```
+
+The previous store is moved to a timestamped sibling, so its queries,
+downloads, extracts, generated EPWs, and run history remain available for
+manual recovery. Permanent removal requires both safeguards explicitly:
+
+```r
+store_reset(backup = FALSE, force = TRUE)
+```
+
+Close open `EsgStore` objects and stop active jobs before resetting. To retain
+the old store in place, pass a new directory through the `store` argument or
+change `epwshiftr.dir_store` instead.
 
 # Store Boundaries
 

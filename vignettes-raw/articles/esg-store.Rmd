@@ -405,6 +405,27 @@ Checksum validation is useful, but it must read files and can be expensive on a
 large store. Layout validation is cheaper and catches many broken local-path or
 artifact-record problems.
 
+## Recreate an Incompatible Store
+
+Store schemas are not migrated between incompatible development versions. If a
+package update rejects an older manifest, recreate the default store with:
+
+```r
+store_reset()
+```
+
+The previous store is moved to a timestamped sibling, so its queries,
+downloads, extracts, generated EPWs, and run history remain available for
+manual recovery. Permanent removal requires both safeguards explicitly:
+
+```r
+store_reset(backup = FALSE, force = TRUE)
+```
+
+Close open `EsgStore` objects and stop active jobs before resetting. To retain
+the old store in place, pass a new directory through the `store` argument or
+change `epwshiftr.dir_store` instead.
+
 # Store Boundaries
 
 - Use `shift_*()` for the normal end-to-end future EPW workflow.

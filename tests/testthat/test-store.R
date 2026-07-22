@@ -394,8 +394,93 @@ test_that("EsgStore$new() rejects older manifests", {
 
     expect_error(
         EsgStore$new(dir, create = FALSE),
-        "does not match the required version"
+        "store_reset"
     )
+})
+
+test_that("store_reset() preserves an old store and creates the current schema", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-reset-")
+    store <- EsgStore$new(dir)
+    sentinel <- file.path(dir, "sentinel.txt")
+    writeLines("keep", sentinel)
+    store$close()
+
+    conn <- ddb_connect(file.path(dir, "manifest.duckdb"), read_only = FALSE)
+    ddb_exec(conn, "UPDATE store_meta SET value = '2.7.0' WHERE key = 'schema_version'")
+    ddb_disconnect(conn, shutdown = TRUE)
+
+    result <- store_reset(dir)
+    on.exit(unlink(c(dir, result$backup_path), recursive = TRUE, force = TRUE), add = TRUE)
+
+    expect_identical(result$path, normalizePath(dir, winslash = "/", mustWork = TRUE))
+    expect_identical(result$previous_schema, "2.7.0")
+    expect_identical(result$schema, STORE_SCHEMA_VERSION)
+    expect_identical(result$action, "backed_up")
+    expect_true(dir.exists(result$backup_path))
+    expect_true(file.exists(file.path(result$backup_path, "sentinel.txt")))
+    expect_false(dir.exists(file.path(result$backup_path, "manifest.duckdb.lock")))
+
+    current <- EsgStore$new(dir, create = FALSE)
+    on.exit(current$close(), add = TRUE)
+    expect_identical(current$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+})
+
+test_that("store_reset() requires force for permanent removal", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-reset-force-")
+    store <- EsgStore$new(dir)
+    sentinel <- file.path(dir, "sentinel.txt")
+    writeLines("remove", sentinel)
+    store$close()
+    on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    expect_error(
+        store_reset(dir, backup = FALSE),
+        "Permanent store removal requires explicit confirmation"
+    )
+
+    result <- store_reset(dir, backup = FALSE, force = TRUE)
+    expect_null(result$backup_path)
+    expect_identical(result$action, "removed")
+    expect_false(file.exists(sentinel))
+
+    current <- EsgStore$new(dir, create = FALSE)
+    on.exit(current$close(), add = TRUE)
+    expect_identical(current$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+})
+
+test_that("store_reset() refuses non-store and protected directories", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("not-an-esg-store-")
+    dir.create(dir)
+    writeLines("unrelated", file.path(dir, "keep.txt"))
+    on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    expect_error(
+        store_reset(dir),
+        "not an epwshiftr store"
+    )
+    expect_true(file.exists(file.path(dir, "keep.txt")))
+    expect_error(
+        store_reset(getwd()),
+        "protected or overly broad"
+    )
+})
+
+test_that("store_reset() initializes a missing store", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("missing-esg-store-")
+    on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    result <- store_reset(dir)
+    expect_identical(result$action, "created")
+    expect_null(result$backup_path)
+    expect_true(file.exists(file.path(dir, "manifest.duckdb")))
 })
 # }}}
 # EsgStore$close() {{{

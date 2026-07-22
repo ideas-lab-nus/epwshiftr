@@ -10,6 +10,233 @@ STORE_DOWNLOAD_LAYOUT_CHOICES <- c("flat", "dataset", "drs", "template")
 STORE_DOWNLOAD_COLLISION_CHOICES <- c("error", "checksum", "suffix")
 STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 
+# Canonicalize reset targets and reject broad directories whose replacement
+# could damage a user profile, R installation, temporary session, or project.
+store__reset_path <- function(path) {
+    checkmate::assert_string(path, min.chars = 1L)
+    path <- store_normalize_path(path)
+    protected <- unique(vapply(
+        c(path.expand("~"), getwd(), R.home(), tempdir()),
+        store_normalize_path,
+        character(1L)
+    ))
+    prefix <- if (endsWith(path, "/")) path else paste0(path, "/")
+    contains_protected <- vapply(protected, function(candidate) {
+        identical(path, candidate) || startsWith(candidate, prefix)
+    }, logical(1L))
+    project_root <- dir.exists(file.path(path, ".git")) ||
+        (file.exists(file.path(path, "DESCRIPTION")) && dir.exists(file.path(path, "R")))
+
+    if (identical(dirname(path), path) || any(contains_protected) || isTRUE(project_root)) {
+        cli::cli_abort(c(
+            "Refusing to reset a protected or overly broad directory.",
+            "x" = "Reset target: {.path {path}}",
+            "i" = "Choose the dedicated epwshiftr store directory instead."
+        ))
+    }
+    path
+}
+
+# Inspect the manifest without opening EsgStore, because an older schema is
+# intentionally rejected by the normal constructor before it can be queried.
+store__reset_inspect <- function(path) {
+    if (!dir.exists(path)) {
+        return(list(populated = FALSE, version = NA_character_))
+    }
+    entries <- list.files(path, all.files = TRUE, no.. = TRUE)
+    if (!length(entries)) {
+        return(list(populated = FALSE, version = NA_character_))
+    }
+
+    manifest <- file.path(path, "manifest.duckdb")
+    if (!file.exists(manifest)) {
+        cli::cli_abort(c(
+            "Refusing to reset a non-empty directory that is not an epwshiftr store.",
+            "x" = "No store manifest was found at {.path {manifest}}."
+        ))
+    }
+
+    conn <- tryCatch(ddb_connect(manifest, read_only = TRUE), error = identity)
+    if (inherits(conn, "condition")) {
+        cli::cli_abort(c(
+            "The epwshiftr store manifest could not be inspected.",
+            "x" = conditionMessage(conn),
+            "i" = "Close open EsgStore objects and stop active workers before resetting the store."
+        ), parent = conn)
+    }
+    on.exit(try(ddb_disconnect(conn, shutdown = TRUE), silent = TRUE), add = TRUE)
+
+    tables <- ddb_list_tables(conn)
+    recognized <- "store_meta" %in% tables &&
+        any(c("artifact", "esg_query", "file_catalog") %in% tables)
+    if (!isTRUE(recognized)) {
+        cli::cli_abort(c(
+            "Refusing to reset a DuckDB database that is not an epwshiftr store.",
+            "x" = "Manifest: {.path {manifest}}"
+        ))
+    }
+    version <- NA_character_
+    if ("store_meta" %in% tables) {
+        meta <- ddb_read_table(conn, "store_meta")
+        row <- meta[meta[["key"]] == "schema_version", , drop = FALSE]
+        if (nrow(row)) {
+            version <- as.character(row[["value"]][[1L]])
+        }
+    }
+    list(populated = TRUE, version = version)
+}
+
+# Choose a same-filesystem sibling for the backup so replacement is atomic and
+# does not copy potentially large downloaded and extracted climate artifacts.
+store__reset_backup_path <- function(path, version = NA_character_) {
+    version <- if (is.na(version) || !nzchar(version)) {
+        "unknown"
+    } else {
+        gsub("[^A-Za-z0-9._-]", "-", version)
+    }
+    stem <- sprintf(
+        "%s-schema-%s-%s",
+        path,
+        version,
+        format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC")
+    )
+    candidate <- stem
+    suffix <- 1L
+    while (file.exists(candidate)) {
+        candidate <- sprintf("%s-%d", stem, suffix)
+        suffix <- suffix + 1L
+    }
+    candidate
+}
+
+# Format a discoverable recovery command without forcing users to repeat the
+# default platform-specific store path printed in an error message.
+store__reset_command <- function(path) {
+    default <- tryCatch(
+        store_normalize_path(store_dir(init = FALSE)),
+        error = function(e) NA_character_
+    )
+    if (!is.na(default) && identical(store_normalize_path(path), default)) {
+        return("store_reset()")
+    }
+    sprintf("store_reset(path = %s)", encodeString(path, quote = "\""))
+}
+
+#' Recreate an epwshiftr store
+#'
+#' `store_reset()` creates a current-schema store at `path`. Existing stores are
+#' moved to a timestamped sibling by default, preserving query snapshots,
+#' downloads, extracted climate data, generated EPWs, and run history for
+#' manual recovery. Permanent removal requires both `backup = FALSE` and
+#' `force = TRUE`.
+#'
+#' This function does not migrate older manifests. Close open [EsgStore]
+#' objects and stop active foreground or background jobs before resetting.
+#'
+#' @param path Store directory to recreate. Defaults to [store_dir()].
+#' @param backup Whether to move an existing store to a timestamped sibling
+#'   before creating the replacement. Default: `TRUE`.
+#' @param force Required when `backup = FALSE` would permanently remove an
+#'   existing populated store. Default: `FALSE`.
+#'
+#' @return Invisibly, a list containing the new `path`, optional `backup_path`,
+#'   previous and current schema versions, and the performed `action`.
+#'
+#' @export
+store_reset <- function(path = store_dir(init = FALSE), backup = TRUE, force = FALSE) {
+    checkmate::assert_flag(backup)
+    checkmate::assert_flag(force)
+    path <- store__reset_path(path)
+    state <- store__reset_inspect(path)
+
+    if (isTRUE(state$populated) && !isTRUE(backup) && !isTRUE(force)) {
+        cli::cli_abort(c(
+            "Permanent store removal requires explicit confirmation.",
+            "x" = "The existing store at {.path {path}} would be deleted.",
+            "i" = "Use {.code backup = TRUE}, or set both {.code backup = FALSE} and {.code force = TRUE}."
+        ))
+    }
+
+    backup_path <- NULL
+    action <- "created"
+    if (isTRUE(state$populated)) {
+        manifest <- file.path(path, "manifest.duckdb")
+        release <- manifest_acquire_lock(manifest, timeout = 1)
+        lock_held <- TRUE
+        on.exit(if (isTRUE(lock_held)) release(), add = TRUE)
+
+        if (isTRUE(backup)) {
+            backup_path <- store__reset_backup_path(path, state$version)
+            moved <- file.rename(path, backup_path)
+            if (!isTRUE(moved)) {
+                cli::cli_abort(c(
+                    "Failed to back up the existing epwshiftr store.",
+                    "x" = "Could not move {.path {path}} to {.path {backup_path}}."
+                ))
+            }
+            # The manifest lock moves with the directory. From this point the
+            # original release closure must not target the replacement store.
+            lock_held <- FALSE
+            action <- "backed_up"
+        } else {
+            removed <- unlink(path, recursive = TRUE, force = TRUE) == 0L
+            if (!isTRUE(removed) || dir.exists(path)) {
+                cli::cli_abort("Failed to remove the existing store at {.path {path}}.")
+            }
+            lock_held <- FALSE
+            action <- "removed"
+        }
+    }
+
+    created <- tryCatch(EsgStore$new(path, create = TRUE), error = identity)
+    if (inherits(created, "condition")) {
+        restored <- FALSE
+        if (!is.null(backup_path) && dir.exists(backup_path)) {
+            if (dir.exists(path)) {
+                unlink(path, recursive = TRUE, force = TRUE)
+            }
+            restored <- isTRUE(file.rename(backup_path, path))
+            # A reset lock may have moved back with the restored directory.
+            lock <- manifest_lock_path(file.path(path, "manifest.duckdb"))
+            if (dir.exists(lock)) {
+                unlink(lock, recursive = TRUE, force = TRUE)
+            }
+        }
+        message <- c(
+            "Failed to create the replacement epwshiftr store.",
+            "x" = conditionMessage(created)
+        )
+        if (isTRUE(restored)) {
+            message <- c(message, "i" = "The previous store was restored.")
+        } else if (!is.null(backup_path) && dir.exists(backup_path)) {
+            message <- c(message, "i" = "The previous store remains at {.path {backup_path}}.")
+        }
+        cli::cli_abort(message, parent = created)
+    }
+    created$close()
+
+    # Remove the lock directory that moved into the preserved backup after the
+    # replacement is known to be usable.
+    if (!is.null(backup_path)) {
+        backup_lock <- manifest_lock_path(file.path(backup_path, "manifest.duckdb"))
+        if (dir.exists(backup_lock)) {
+            unlink(backup_lock, recursive = TRUE, force = TRUE)
+        }
+    }
+
+    cli::cli_alert_success("Created epwshiftr store schema {STORE_SCHEMA_VERSION} at {.path {path}}.")
+    if (!is.null(backup_path)) {
+        cli::cli_alert_info("Previous store preserved at {.path {backup_path}}.")
+    }
+    invisible(list(
+        path = path,
+        backup_path = backup_path,
+        previous_schema = state$version,
+        schema = STORE_SCHEMA_VERSION,
+        action = action
+    ))
+}
+
 # EsgStore {{{
 #' Local ESGF Store
 #'
@@ -3443,10 +3670,12 @@ EsgStore <- R6::R6Class(
             if (is.na(current) || !identical(current, STORE_SCHEMA_VERSION)) {
                 shown <- if (is.na(current)) "missing" else current
                 path <- private$store_path
+                reset_command <- store__reset_command(path)
                 private$disconnect()
                 cli::cli_abort(c(
                     "Store schema version {.val {shown}} does not match the required version {.val {STORE_SCHEMA_VERSION}}.",
-                    "i" = "Create a new store instead of reusing {.path {path}}."
+                    "i" = "Use a different {.arg store} path, or rebuild this one with {.code {reset_command}}.",
+                    "i" = "The reset helper preserves the previous store as a backup by default."
                 ))
             }
             invisible(NULL)
