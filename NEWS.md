@@ -8,7 +8,7 @@
   final EPW exports complete automatically, and `shift_complete()` explicitly
   closes a workflow that intentionally stops at an intermediate artifact.
   Logical `progress` arguments on `shift_datasets()` and `shift_collect()` were
-  removed in favour of `ui = shift_ui(progress = ...)`.
+  removed in favour of `ui = shift_ui(progress = ...)` (#126).
 
 * Replaced the decomposed high-level future-EPW arguments with the
   task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
@@ -47,7 +47,7 @@
   illuminance, optional `snd` scaling, and recalculated ground-temperature and
   typical/extreme-period headers. Use `profile = "legacy"` for byte-compatible
   pre-enhancement output, and configure individual policies with
-  `belcher_options()`.
+  `belcher_options()` (#126).
 
 * `shift_cmip6(table = NULL)` now resolves exact variable/table/grid
   partitions. Atmospheric inputs remain in `Amon`, `snd` is discovered in
