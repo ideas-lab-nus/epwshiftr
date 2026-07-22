@@ -55,7 +55,7 @@ EPW_FILE_HEADER_NAMES <- c(
 
 # Split a comma record while preserving a final empty field, which base
 # strsplit() otherwise discards. Exact untouched text is retained separately
-# for legacy byte-for-byte header round trips.
+# for field-for-field legacy header round trips independent of platform EOLs.
 epw_file__split_header <- function(line) {
     marker <- "\u001f"
     fields <- strsplit(paste0(line, marker), ",", fixed = TRUE)[[1L]]

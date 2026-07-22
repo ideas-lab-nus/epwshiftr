@@ -517,24 +517,61 @@ shift_read_epw_output_data <- function(store, outputs, n, columns) {
     data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
 }
 
-shift_display_path <- function(path) {
+# Compact paths below the session temp directory before they reach cli's fact
+# renderer. Lexical comparison handles planned paths that do not exist yet;
+# normalized parent comparison covers Windows short/long path aliases.
+shift__display_path <- function(path, temp_root = tempdir()) {
     if (is.null(path) || !nzchar(path)) {
         return(path)
     }
-    expanded <- path.expand(path)
-    temp_expanded <- path.expand(tempdir())
-    # A planned output directory often does not exist yet, so normalizePath()
-    # cannot resolve macOS's /var -> /private/var alias consistently. Compare
-    # the original expanded forms first to retain the compact tempdir label.
-    if (startsWith(expanded, temp_expanded)) {
-        return(sub(temp_expanded, "<tempdir>", expanded, fixed = TRUE))
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(temp_root, min.chars = 1L)
+
+    # Use one separator for lexical comparison. Drive-letter paths are
+    # case-insensitive even when this pure branch is exercised on Unix CI.
+    lexical <- function(value) {
+        sub("/+$", "", gsub("\\\\", "/", path.expand(value)))
     }
-    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
-    temp <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
-    if (startsWith(path, temp)) {
-        return(sub(temp, "<tempdir>", path, fixed = TRUE))
+    compact <- function(candidate, root) {
+        windows_path <- grepl("^[A-Za-z]:/", candidate) ||
+            grepl("^[A-Za-z]:/", root)
+        candidate_key <- if (windows_path) tolower(candidate) else candidate
+        root_key <- if (windows_path) tolower(root) else root
+        inside <- identical(candidate_key, root_key) ||
+            startsWith(candidate_key, paste0(root_key, "/"))
+        if (!inside) {
+            return(NULL)
+        }
+        paste0("<tempdir>", substring(candidate, nchar(root) + 1L))
     }
-    path
+
+    expanded <- lexical(path)
+    temp_expanded <- lexical(temp_root)
+    displayed <- compact(expanded, temp_expanded)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+
+    normalized <- lexical(normalizePath(path, winslash = "/",
+        mustWork = FALSE))
+    temp_normalized <- lexical(normalizePath(temp_root, winslash = "/",
+        mustWork = FALSE))
+    displayed <- compact(normalized, temp_normalized)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+
+    # On Windows an existing temp root may normalize to an 8.3 alias while its
+    # not-yet-created child retains the long form. Normalize the existing
+    # parent independently and then reconstruct the planned child path.
+    parent <- lexical(normalizePath(dirname(expanded), winslash = "/",
+        mustWork = FALSE))
+    reconstructed <- paste0(parent, "/", basename(expanded))
+    displayed <- compact(reconstructed, temp_normalized)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+    normalized
 }
 
 shift_periods_time <- function(periods) {
@@ -7822,8 +7859,8 @@ shift__plan_explain <- function(x) {
             ),
             shift_coalesce(shift__display_values(nodes), "<provider default>"),
             if (isTRUE(control@allow_partial)) "allow partial outputs" else "all requested cases required",
-            shift_display_path(x@store_path),
-            shift_display_path(shift_coalesce(epw$export_dir, epw$dir))
+            shift__display_path(x@store_path),
+            shift__display_path(shift_coalesce(epw$export_dir, epw$dir))
         )
     )
 }
@@ -9428,7 +9465,7 @@ shift__print_workflow <- function(x, verbose = FALSE) {
         cli::cli_rule("Workflow")
         esg__print_facts(list(
             "Status" = tryCatch(shift_status(x), error = function(e) "unknown"),
-            "Store" = x@store_path,
+            "Store" = shift__display_path(x@store_path),
             "Query ID" = ids$query_id,
             "Run ID" = ids$run_id,
             "Step ID" = ids$step_id
@@ -9629,7 +9666,7 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
                 request$filters$table_id
             })),
         "Expected outputs" = nrow(cases),
-        "Output directory" = shift_display_path(meta$epw$export_dir)
+        "Output directory" = shift__display_path(meta$epw$export_dir)
     ))
     if (isTRUE(verbose)) {
         nodes <- if (!is.null(climate)) climate@index_nodes else
@@ -9846,7 +9883,7 @@ shift__print_outputs_stage <- function(x, n = 10L, width = NULL,
         "Outputs" = sprintf("%d registered \u00b7 %d path%s", nrow(outputs),
             existing, if (existing == 1L) "" else "s"),
         "Export directory" = if (!is.null(x@meta$export_dir))
-            shift_display_path(x@meta$export_dir) else NULL
+            shift__display_path(x@meta$export_dir) else NULL
     ))
     shift__print_table(
         outputs,

@@ -45,8 +45,8 @@
   case-wide specific-humidity state path when complete `huss + tas + ps` data
   are available, integrated EPW solar geometry, RBL diffuse radiation, Perez
   illuminance, optional `snd` scaling, and recalculated ground-temperature and
-  typical/extreme-period headers. Use `profile = "legacy"` for byte-compatible
-  pre-enhancement output, and configure individual policies with
+  typical/extreme-period headers. Use `profile = "legacy"` for compatible
+  pre-enhancement numerical results and EPW headers, and configure policies with
   `belcher_options()` (#126).
 
 * `shift_cmip6(table = NULL)` now resolves exact variable/table/grid

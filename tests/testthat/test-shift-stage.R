@@ -1169,6 +1169,19 @@ test_that("shift_future_epw() requires a complete method and returns a task plan
     )
 })
 
+test_that("Shift display paths compact Windows temp roots lexically", {
+    root <- "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\Rtmp123"
+    path <- paste0(
+        "c:/users/runneradmin/AppData/Local/Temp/Rtmp123/",
+        "shift-print-output"
+    )
+    expect_identical(
+        shift__display_path(path, temp_root = root),
+        "<tempdir>/shift-print-output"
+    )
+})
+
+
 test_that("Shift plan and stage printers use bounded semantic previews", {
     withr::local_options(cli.num_colors = 1L)
     site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")

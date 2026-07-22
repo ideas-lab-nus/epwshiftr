@@ -29,8 +29,8 @@ enhanced_test__catalog <- function(experiment, variables, years,
 }
 
 
-# Build the deterministic monthly case whose full legacy EPW hash was captured
-# from the historical implementation before the enhanced profile was introduced.
+# Build the deterministic monthly case whose full legacy EPW result is checked
+# against the real Singapore IWEC baseline fixture below.
 enhanced_test__legacy_climate <- function() {
     month <- 1:12
     phase <- 2 * pi * (month - 1) / 12
@@ -56,6 +56,28 @@ enhanced_test__legacy_climate <- function() {
             value = spec[[variable_id]]$value
         )
     }))
+}
+
+
+# Hash all 35 EPW fields after fixed-decimal canonicalization. This preserves a
+# full-year golden regression while ignoring platform line endings and harmless
+# sub-micro-unit floating-point differences from R and system math libraries.
+enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
+    weather <- data.table::as.data.table(weather)[,
+        EPW_FILE_COLUMNS, with = FALSE]
+    encoded <- lapply(weather, function(value) {
+        missing <- is.na(value)
+        if (is.numeric(value) || is.integer(value)) {
+            output <- formatC(as.numeric(value), format = "f",
+                digits = digits, decimal.mark = ".")
+        } else {
+            output <- as.character(value)
+        }
+        output[missing] <- "<NA>"
+        output
+    })
+    rows <- do.call(paste, c(encoded, sep = "\u001f"))
+    checksum_bytes(charToRaw(paste(rows, collapse = "\n")), "sha256")
 }
 
 
@@ -135,7 +157,8 @@ test_that("enhanced profiles and persisted legacy recipes have explicit semantic
 
 
 test_that("legacy profile preserves the historical 35-field EPW golden output", {
-    epw <- epw_file_read(get_cache_epw())
+    input <- get_cache_epw()
+    epw <- epw_file_read(input)
     context <- morpher__context(
         epw, enhanced_test__legacy_climate(),
         recipe = suppressWarnings(epw_morph_recipe(
@@ -149,9 +172,16 @@ test_that("legacy profile preserves the historical 35-field EPW golden output", 
 
     output <- tempfile(fileext = ".epw")
     result$epw$set(result$data)$save(output, overwrite = TRUE)
-    expect_equal(
-        store_hash_file(output, "sha256"),
-        "046a9445f632f0c3b050393f04fd1703c5444b27cd448c4d852a16fdff0d145c"
+    expect_identical(
+        readLines(output, n = 8L, warn = FALSE),
+        readLines(input, n = 8L, warn = FALSE)
+    )
+    written <- epw_file_read(output)$data()
+    expect_equal(nrow(written), 8760L)
+    expect_equal(ncol(written) - 1L, 35L)
+    expect_identical(
+        enhanced_test__legacy_weather_digest(written),
+        "d8730e0039d5e44c3c942103abc10f4c8b915d9ef17714613cd6ee4439ed9abd"
     )
 })
 
