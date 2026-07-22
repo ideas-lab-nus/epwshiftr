@@ -99,6 +99,41 @@ enhanced_test__change_climate <- function(reference = FALSE) {
 }
 
 
+test_that("enhanced profiles and persisted legacy recipes have explicit semantics", {
+    enhanced <- epw_morph_recipe("belcher")
+    legacy <- epw_morph_recipe("belcher", profile = "legacy")
+
+    expect_identical(enhanced$profile, "enhanced")
+    expect_identical(enhanced$methods[["tdb"]], "auto")
+    expect_identical(enhanced$options$transition_hours, 72L)
+    expect_identical(legacy$profile, "legacy")
+    expect_identical(legacy$options$transition_hours, 0L)
+    expect_identical(legacy$options$design_conditions, "preserve")
+    expect_error(belcher_options(transition_hours = 337L), "0 and 336")
+
+    restored <- shift__recipe_from_ref(list(
+        name = "belcher", backend = "belcher", methods = NULL
+    ))
+    expect_identical(restored$profile, "legacy")
+    expect_true(all(c("tasmax", "tasmin", "snd") %in%
+        epw_morph_variables(enhanced, include_optional = TRUE)))
+
+    named_json <- morpher__json(epw_morph_recipe(
+        "belcher", methods = c(tdb = "shift")
+    ))
+    named_recipe <- epwshiftr_cli_recipe_from_json(named_json)
+    expect_identical(unname(named_recipe$methods[["tdb"]]), "shift")
+
+    old_array_json <- jsonlite::toJSON(list(
+        name = "belcher", backend = "belcher",
+        methods = unname(legacy$methods)
+    ), auto_unbox = TRUE, null = "null")
+    old_array_recipe <- epwshiftr_cli_recipe_from_json(old_array_json)
+    expect_identical(old_array_recipe$profile, "legacy")
+    expect_identical(old_array_recipe$methods, legacy$methods)
+})
+
+
 test_that("legacy profile preserves the historical 35-field EPW golden output", {
     epw <- epw_file_read(get_cache_epw())
     context <- morpher__context(
@@ -226,6 +261,8 @@ test_that("specific humidity round trips and saturates at physical bounds", {
     dew <- morpher__dew_point_from_rh(temperature, humidity / 100)
     expect_true(all(dew <= temperature))
 })
+
+
 test_that("integrated solar geometry and radiation models obey EPW closure", {
     hours <- data.table::data.table(
         year = 2001L, month = 3L, day = 21L, hour = 1:24
@@ -260,4 +297,268 @@ test_that("integrated solar geometry and radiation models obey EPW closure", {
     night <- geometry$effective_solar_projection <= .Machine$double.eps
     expect_true(all(unlist(light[night]) == 0))
     expect_true(all(unlist(light[!night]) >= 0, na.rm = TRUE))
+})
+
+
+test_that("snow depth uses metres-to-centimetres ratios without new events", {
+    epw <- epw_file_read(get_cache_epw())
+    weather <- epw$data()
+    weather[, snow_depth := 0]
+    # Place the synthetic event away from the month-boundary transition so the
+    # monthly ratio itself is tested independently of cyclic smoothing.
+    weather[day == 15L & hour == 12L, snow_depth := 10]
+    months <- 1:12
+    climate <- data.table::data.table(
+        time = as.POSIXct(sprintf("2060-%02d-15", months), tz = "UTC"),
+        variable_id = "snd", period = "future", year = 2060L,
+        lon = 0, lat = 45, units = "m", value = 0.2,
+        source_id = "Model-A", experiment_id = "ssp585",
+        variant_label = "r1i1p1f1", table_id = "LImon"
+    )
+    reference <- data.table::copy(climate)
+    reference[, `:=`(
+        time = as.POSIXct(sprintf("1995-%02d-15", months), tz = "UTC"),
+        period = "reference", year = 1995L,
+        experiment_id = "historical", value = 0.1
+    )]
+    reference[as.integer(format(time, "%m", tz = "UTC")) == 1L,
+        value := 0]
+    context <- morpher__context(
+        epw, climate,
+        recipe = epw_morph_recipe("belcher"),
+        reference_climate = reference,
+        years = 2060L, labels = "future",
+        reference_years = 1995L, reference_labels = "reference",
+        strict = TRUE
+    )
+    snow <- morpher__belcher_snow_depth(weather, context)$data
+
+    expect_equal(snow[month == 1L, mean(alpha)], 1, tolerance = 1e-10)
+    expect_equal(snow[month == 2L, mean(alpha)], 2, tolerance = 1e-10)
+    expect_equal(snow[month == 1L & snow_depth > 0]$snow_depth, 10, tolerance = 0.25)
+    expect_equal(snow[month == 2L & snow_depth > 0]$snow_depth, 20, tolerance = 0.25)
+    zero_time <- weather[snow_depth == 0, datetime]
+    expect_true(all(snow[datetime %in% zero_time]$snow_depth == 0))
+})
+
+
+test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", {
+    method <- belcher(reference = historical_reference(1995:2014))
+    variables <- morpher__input_variables(method@recipe)
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("Model-A", "ssp585"),
+        periods = list(`2060s` = 2055:2065),
+        method = method,
+        dir = tempfile("enhanced-multitable-output-"),
+        store = tempfile("enhanced-multitable-store-"),
+        dry_run = TRUE
+    )
+    future <- enhanced_test__catalog(
+        "ssp585", variables, 2055:2065
+    )
+    reference <- enhanced_test__catalog(
+        "historical", variables, 1995:2014
+    )
+    selection <- shift__resolve_cmip6_selection(plan, future, reference)
+    partitions <- shift__selection_partition_rows(selection, "future")
+
+    expect_identical(selection$grid_label, "gn")
+    expect_true(any(partitions$variable_id == "snd" &
+        partitions$table_id == "LImon" & partitions$grid_label == "gr"))
+    expect_true(any(partitions$variable_id == "tas" &
+        partitions$table_id == "Amon" & partitions$grid_label == "gn"))
+    expect_false("hurs" %in% partitions$variable_id)
+    expect_true(all(c("huss", "tas", "ps") %in% partitions$variable_id))
+
+    without_reference_snd <- shift__resolve_cmip6_selection(
+        plan, future,
+        enhanced_test__catalog("historical", variables, 1995:2014,
+            include_snd = FALSE)
+    )
+    expect_false("snd" %in% shift__selection_partition_rows(
+        without_reference_snd, "future"
+    )$variable_id)
+
+    required_method <- belcher(
+        reference = historical_reference(1995:2014),
+        options = belcher_options(snow_depth = "required")
+    )
+    required_plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("Model-A", "ssp585"),
+        periods = list(`2060s` = 2055:2065),
+        method = required_method,
+        dir = tempfile("required-snd-output-"),
+        store = tempfile("required-snd-store-"),
+        dry_run = TRUE
+    )
+    expect_error(
+        shift__resolve_cmip6_selection(
+            required_plan, future,
+            enhanced_test__catalog("historical", variables, 1995:2014,
+                include_snd = FALSE)
+        ),
+        class = "epwshiftr_shift_resolution_error"
+    )
+})
+
+
+test_that("exact Amon and LImon partitions gate File rows and extraction plans", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    file_doc <- function(path, variable_id) {
+        data.frame(
+            id = sprintf("%s|dataset", basename(path)),
+            dataset_id = "dataset", size = 123, checksum = "abc",
+            checksum_type = "SHA256", instance_id = "instance",
+            master_id = "master", replica = FALSE,
+            tracking_id = "hdl:test/file", title = basename(path),
+            version = 20260101L, latest = TRUE, retracted = FALSE,
+            deprecated = FALSE,
+            datetime_start = "2060-01-01T00:00:00Z",
+            datetime_end = "2060-12-31T23:59:59Z",
+            data_node = "example.org", activity_id = "ScenarioMIP",
+            institution_id = "Test", source_id = "Model-A",
+            experiment_id = "ssp585", variant_label = "r1i1p1f1",
+            frequency = "mon", table_id = "Amon",
+            variable_id = variable_id, grid_label = "gn",
+            url = I(list(c(
+                sprintf("%s|application/netcdf|OPENDAP", path),
+                sprintf("%s|application/netcdf|HTTPServer", path)
+            ))), check.names = FALSE
+        )
+    }
+    file_result <- function(docs) {
+        params <- query_param__as_store(list(
+            project = "CMIP6", distrib = TRUE, limit = 10L,
+            type = "File", format = QUERY_PARAM__FORMAT_JSON
+        ))
+        response <- list(
+            responseHeader = list(status = 0L, QTime = 0L,
+                params = stats::setNames(list(), character())),
+            response = list(numFound = nrow(docs), start = 0L,
+                docs = docs, maxScore = 1),
+            facet_counts = list(
+                facet_queries = stats::setNames(list(), character()),
+                facet_fields = stats::setNames(list(), character()),
+                facet_ranges = stats::setNames(list(), character()),
+                facet_intervals = stats::setNames(list(), character()),
+                facet_heatmaps = stats::setNames(list(), character())
+            ),
+            timestamp = as.POSIXct("2026-01-01", tz = "UTC")
+        )
+        query_result__new(
+            EsgResultFile, index_node = "https://example.org",
+            params = params, result = response
+        )
+    }
+
+    paths <- c(tas = tempfile(fileext = ".nc"),
+        snd = tempfile(fileext = ".nc"))
+    write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
+    write_local_cmip6_netcdf_fixture(paths[["snd"]], 2060L, "snd")
+    on.exit(unlink(paths), add = TRUE)
+
+    # Include the two tempting cross-combinations that union-style table/grid
+    # filtering used to admit; only Amon/gn tas and LImon/gr snd are selected.
+    combinations <- data.table::data.table(
+        variable_id = c("tas", "tas", "snd", "snd"),
+        table_id = c("Amon", "Amon", "LImon", "LImon"),
+        grid_label = c("gn", "gr", "gr", "gn")
+    )
+    docs <- data.table::rbindlist(lapply(seq_len(nrow(combinations)), function(i) {
+        variable_id <- combinations$variable_id[[i]]
+        row <- file_doc(paths[[variable_id]], variable_id)
+        suffix <- sprintf("%s-%s-%s", variable_id,
+            combinations$table_id[[i]], combinations$grid_label[[i]])
+        row$source_id <- "Model-A"
+        row$frequency <- "mon"
+        row$table_id <- combinations$table_id[[i]]
+        row$grid_label <- combinations$grid_label[[i]]
+        row$dataset_id <- paste0("dataset-", suffix)
+        row$master_id <- paste0("master-", suffix)
+        row$instance_id <- paste0("instance-", suffix)
+        row$tracking_id <- paste0("hdl:test/", suffix)
+        row$id <- paste0("file-", suffix, "|", row$dataset_id)
+        row$title <- paste0(suffix, ".nc")
+        row
+    }), fill = TRUE)
+
+    store_path <- tempfile("enhanced-partition-store-")
+    store <- EsgStore$new(store_path)
+    query_id <- store$add_files(file_result(as.data.frame(docs)))
+    store$close()
+    request <- shift_request(
+        project = "CMIP6", source = "Model-A", experiment = "ssp585",
+        variant = "r1i1p1f1", variables = c("tas", "snd"),
+        frequency = "mon"
+    )
+    files <- shift_stage_new(
+        ShiftFiles, "files", store_path = store_path,
+        ids = list(query_id = query_id),
+        meta = list(request = request, dataset_count = 4L,
+            file_count = 4L, variables = c("tas", "snd"), fields = "*",
+            result_fields = names(docs))
+    )
+    partitions <- data.table::data.table(
+        variable_id = c("tas", "snd"),
+        table_id = c("Amon", "LImon"),
+        grid_label = c("gn", "gr"),
+        required = c(TRUE, FALSE)
+    )
+    expect_identical(class(shift__cmip6_partition_json(partitions)),
+        "character")
+    selection <- data.table::data.table(
+        source_id = "Model-A", variant_label = "r1i1p1f1",
+        frequency = "mon",
+        future_partitions_json = shift__cmip6_partition_json(partitions)
+    )
+
+    selected <- shift__files_for_partitions(
+        files, selection, "ssp585", role = "future"
+    )
+    selected_rows <- shift_files(selected)$to_data_table()
+    expect_equal(nrow(selected_rows), 2L)
+    expect_setequal(
+        paste(selected_rows$variable_id, selected_rows$table_id,
+            selected_rows$grid_label, sep = "/"),
+        c("tas/Amon/gn", "snd/LImon/gr")
+    )
+
+    climate <- shift__extract_selected_partitions(
+        selected, selection, "ssp585",
+        site = shift_site("SIN", 103.98, 1.37),
+        periods = epw_morph_periods(future = 2060L),
+        role = "future", fallback = "error"
+    )
+    coverage <- shift_coverage(climate)
+    expect_equal(length(shift_ids(climate)$plan_id), 2L)
+    expect_true(all(coverage$complete))
+    expect_setequal(coverage$variable_id, c("tas", "snd"))
+})
+
+
+test_that("CMIP6 table pins and named overrides persist through task specs", {
+    pinned <- shift_cmip6("Model-A", "ssp585", table = "Amon")
+    overridden <- shift_cmip6(
+        "Model-A", "ssp585", table = c(snd = "LImon")
+    )
+    expect_identical(
+        unname(unique(shift__cmip6_variable_tables(
+            c("tas", "snd"), "mon", pinned@table
+        ))),
+        "Amon"
+    )
+    expect_identical(
+        unname(shift__cmip6_variable_tables(
+            c("tas", "snd"), "mon", overridden@table
+        )),
+        c("Amon", "LImon")
+    )
+    expect_identical(
+        cli_shift__table_spec(list(snd = "LImon")),
+        c(snd = "LImon")
+    )
 })

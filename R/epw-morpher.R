@@ -5,7 +5,7 @@ NULL
 EPW_MORPH_VARIABLE_LEVELS <- list(
     minimal = c("tas", "hurs"),
     recommended = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"),
-    extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
+    extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "snd")
 )
 
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
@@ -134,6 +134,23 @@ EPW_MORPH_BELCHER_RULES[, method_choices := lapply(step, function(step_name) {
         method[step == step_name]
     }
 })]
+
+# Snow depth is an optional state variable rather than a required atmospheric
+# input. Recipe options decide whether it is queried, required, or disabled.
+EPW_MORPH_BELCHER_RULES <- data.table::rbindlist(list(
+    EPW_MORPH_BELCHER_RULES[seq_len(8L)],
+    data.table::data.table(
+        step = "snow_depth",
+        epw_field = "snow_depth",
+        variable_id = "snd",
+        optional_variable_id = NA_character_,
+        method = "ratio",
+        required = FALSE,
+        derived = FALSE,
+        method_choices = list("ratio")
+    ),
+    EPW_MORPH_BELCHER_RULES[-seq_len(8L)]
+), use.names = TRUE, fill = TRUE)
 
 morpher__split_rule_variables <- function(x) {
     if (is.list(x) && length(x) == 1L) {
@@ -724,6 +741,11 @@ morpher__variable_requirements <- function(recipe) {
             list(c("huss", "tas", "ps"), "hurs")
         }
     }
+    if (inherits(recipe, "epw_morph_recipe") &&
+        recipe$backend %in% c("belcher", "belcher_absolute") &&
+        identical(recipe$options$snow_depth, "required")) {
+        requirements[["snd"]] <- list("snd")
+    }
     requirements
 }
 
@@ -1045,6 +1067,12 @@ morpher__unit_alias <- function(x) {
         "Wh/m^2" = "W/m^2",
         "m s-1" = "m/s",
         "m/s" = "m/s",
+        "m" = "m",
+        "meter" = "m",
+        "metre" = "m",
+        "cm" = "cm",
+        "centimeter" = "cm",
+        "centimetre" = "cm",
         "mm" = "mm",
         "millimeter" = "mm",
         "millimetre" = "mm",
@@ -1084,6 +1112,12 @@ morpher__convert_value_checked <- function(value, from, to) {
         return(list(value = as.numeric(value) * 100, ok = TRUE, message = NA_character_))
     }
     if (identical(from, "%") && identical(to, "1")) {
+        return(list(value = as.numeric(value) / 100, ok = TRUE, message = NA_character_))
+    }
+    if (identical(from, "m") && identical(to, "cm")) {
+        return(list(value = as.numeric(value) * 100, ok = TRUE, message = NA_character_))
+    }
+    if (identical(from, "cm") && identical(to, "m")) {
         return(list(value = as.numeric(value) / 100, ok = TRUE, message = NA_character_))
     }
     list(
@@ -3681,6 +3715,125 @@ morpher__belcher_change_total_sky_cover <- function(data_epw, context) {
     morpher__belcher_total_sky_cover(data_epw, context, data_mean = data_mean, change_factor = TRUE)
 }
 
+# Return a non-blocking diagnostic when optional snow data cannot form the
+# required future/reference pair; the required policy promotes the same state
+# to an error before any hourly values are changed.
+morpher__snow_unavailable <- function(context, message) {
+    if (identical(context$recipe$options$snow_depth, "required")) {
+        cli::cli_abort(message, class = "epwshiftr_snow_required_error")
+    }
+    list(
+        data = data.table::data.table(),
+        diagnostics = morpher__diagnostic(
+            stage = "runtime",
+            severity = "warning",
+            code = "optional_snd_unavailable",
+            message = message,
+            variable_id = "snd",
+            epw_field = "snow_depth",
+            action = "Provide matching future and historical snd from CMIP6 LImon, or set snow_depth = 'off'."
+        )
+    )
+}
+
+# Scale existing EPW snow events by the monthly future/reference SND ratio.
+# CMIP SND is converted from metres to EPW centimetres; zero reference or a
+# snow-free EPW month never synthesizes new event timing.
+morpher__belcher_snow_depth <- function(data_epw, context) {
+    policy <- context$recipe$options$snow_depth
+    if (!identical(context$recipe$profile, "enhanced") || identical(policy, "off")) {
+        return(list(data = data.table::data.table(), diagnostics = morpher__empty_diagnostics()))
+    }
+    if (is.null(context$reference_climate)) {
+        return(morpher__snow_unavailable(
+            context,
+            "Snow-depth morphing requires an explicit historical climate reference containing snd."
+        ))
+    }
+    future <- morpher__belcher_monthly_variable(context, "snd")
+    reference <- morpher__belcher_monthly_reference_variable(context, "snd")
+    future_complete <- nrow(future) && all(1:12 %in% unique(future$month)) &&
+        all(is.finite(as.numeric(future$value)))
+    reference_complete <- nrow(reference) && all(1:12 %in% unique(reference$month)) &&
+        all(is.finite(as.numeric(reference$value)))
+    if (!future_complete || !reference_complete) {
+        return(morpher__snow_unavailable(
+            context,
+            "Snow-depth morphing was skipped because future and historical snd are not both complete."
+        ))
+    }
+    future <- morpher__belcher_align_units(data.table::copy(future), "cm")
+    reference <- morpher__belcher_align_units(data.table::copy(reference), "cm")
+    future <- morpher__belcher_attach_reference(future, reference, "reference_value")
+    future <- morpher__belcher_handle_missing_reference(
+        future, "snd", strict = identical(policy, "required")
+    )
+    future[, `:=`(
+        delta_target = as.numeric(value - reference_value),
+        alpha_target = ifelse(
+            is.finite(reference_value) & reference_value > .Machine$double.eps,
+            as.numeric(value / reference_value),
+            ifelse(is.finite(value) & value <= .Machine$double.eps, 0, 1)
+        ),
+        factor_status = ifelse(
+            reference_value <= .Machine$double.eps & value > .Machine$double.eps,
+            "zero_reference_snow_preserved",
+            "ok"
+        )
+    )]
+    hourly <- data_epw[, .SD, .SDcols = c(
+        "datetime", "year", "month", "day", "hour", "minute", "snow_depth"
+    )][future, on = "month", allow.cartesian = TRUE]
+    hourly[, .snow_order := .I]
+    case_cols <- morpher__factor_case_columns(hourly)
+    groups <- if (length(case_cols)) unique(hourly[, ..case_cols]) else data.table::data.table(.case = 1L)
+    pieces <- vector("list", nrow(groups))
+    for (i in seq_len(nrow(groups))) {
+        rows <- if (length(case_cols)) {
+            keep <- rep(TRUE, nrow(hourly))
+            for (name in case_cols) {
+                value <- groups[[name]][[i]]
+                keep <- keep & if (is.na(value)) is.na(hourly[[name]]) else hourly[[name]] == value
+            }
+            hourly[keep]
+        } else {
+            data.table::copy(hourly)
+        }
+        data.table::setorder(rows, datetime)
+        alpha_target <- morpher__monthly_target_vector(rows, "alpha_target")
+        alpha <- morpher__constrained_month_series(
+            rows$month, alpha_target,
+            context$recipe$options$transition_hours
+        )
+        rows[, alpha := alpha]
+        pieces[[i]] <- rows
+    }
+    hourly <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+    data.table::setorder(hourly, .snow_order)
+    hourly[, .snow_order := NULL]
+    baseline_snow <- as.numeric(hourly$snow_depth)
+    valid_baseline <- is.finite(baseline_snow) & baseline_snow >= 0 & baseline_snow < 999
+    scaled <- baseline_snow
+    scaled[valid_baseline] <- baseline_snow[valid_baseline] * pmax(0, hourly$alpha[valid_baseline])
+    # Multiplication cannot create snow where the baseline event state is zero.
+    scaled[valid_baseline & baseline_snow <= .Machine$double.eps] <- 0
+    hourly[, `:=`(
+        snow_depth = scaled,
+        delta = delta_target,
+        method_applied = "ratio"
+    )]
+    keep <- c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "interval", "datetime", "year", "month",
+        "day", "hour", "minute", "snow_depth", "delta", "alpha",
+        "method_applied", "factor_status"
+    )
+    list(
+        data = hourly[, .SD, .SDcols = intersect(keep, names(hourly))],
+        diagnostics = morpher__empty_diagnostics()
+    )
+}
+
 # Normalize precipitation units before manually converting fluxes to monthly
 # water-equivalent depth; udunits does not know the density convention.
 morpher__precip_unit_kind <- function(units) {
@@ -4048,6 +4201,7 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     total_cover <- morpher__belcher_total_sky_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
     precip <- morpher__belcher_precip(data_epw, context)
+    snow <- morpher__belcher_snow_depth(data_epw, context)
 
     parts <- list(
         tdb = tdb,
@@ -4063,6 +4217,7 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
         wind = wind,
         total_cover = total_cover,
         opaque_cover = opaque_cover,
+        snow_depth = snow$data,
         precip = precip
     )
     suppressMessages(epw$drop_unit())
@@ -4072,7 +4227,10 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     metadata <- morpher__enhanced_factor_metadata(context, parts)
     morpher__engine_output(
         context, epw, parts,
-        diagnostics = metadata$diagnostics,
+        diagnostics = morpher__bind_diagnostics(
+            metadata$diagnostics,
+            snow$diagnostics
+        ),
         factors = metadata$factors
     )
 }
@@ -4143,6 +4301,7 @@ morpher__belcher_run <- function(context, backend = NULL) {
     total_cover <- morpher__belcher_change_total_sky_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
     precip <- morpher__belcher_change_precip(data_epw, context)
+    snow <- morpher__belcher_snow_depth(data_epw, context)
 
     parts <- list(
         tdb = tdb,
@@ -4158,6 +4317,7 @@ morpher__belcher_run <- function(context, backend = NULL) {
         wind = wind,
         total_cover = total_cover,
         opaque_cover = opaque_cover,
+        snow_depth = snow$data,
         precip = precip
     )
     suppressMessages(epw$drop_unit())
@@ -4167,7 +4327,10 @@ morpher__belcher_run <- function(context, backend = NULL) {
     metadata <- morpher__enhanced_factor_metadata(context, parts)
     morpher__engine_output(
         context, epw, parts,
-        diagnostics = metadata$diagnostics,
+        diagnostics = morpher__bind_diagnostics(
+            metadata$diagnostics,
+            snow$diagnostics
+        ),
         factors = metadata$factors
     )
 }

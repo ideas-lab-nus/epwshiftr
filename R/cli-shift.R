@@ -432,12 +432,43 @@ epwshiftr_cli_config_climate <- function(config) {
         member = epwshiftr_cli_config_character(config$member, default = NULL),
         grid = epwshiftr_cli_config_string(config$grid, default = NULL),
         frequency = epwshiftr_cli_config_string(config$frequency, default = "mon"),
-        table = epwshiftr_cli_config_string(config$table, default = NULL),
+        table = cli_shift__table_spec(config$table),
         activity = epwshiftr_cli_config_string(config$activity, default = "ScenarioMIP"),
         index_nodes = epwshiftr_cli_config_character(config$index_nodes, default = NULL),
         data_node = epwshiftr_cli_config_string(config$data_node, default = NULL),
         filters = epwshiftr_cli_config_named_list(config$filters)
     )
+}
+
+
+# Decode either a scalar table pin or a JSON object of variable-specific table
+# overrides without flattening away object names.
+cli_shift__table_spec <- function(value) {
+    if (is.null(value)) {
+        return(NULL)
+    }
+    if (is.list(value)) {
+        nms <- names(value)
+        if (is.null(nms) || any(!nzchar(nms))) {
+            epwshiftr_cli_usage_abort(
+                "climate.table must be a string or a named variable-to-table object."
+            )
+        }
+        value <- vapply(value, epwshiftr_cli_config_string,
+            character(1L))
+    }
+    value_names <- names(value)
+    value <- as.character(value)
+    names(value) <- value_names
+    if (length(value) == 1L && is.null(names(value))) {
+        return(value[[1L]])
+    }
+    if (is.null(names(value)) || any(!nzchar(names(value)))) {
+        epwshiftr_cli_usage_abort(
+            "climate.table must be a string or a named variable-to-table object."
+        )
+    }
+    value
 }
 
 

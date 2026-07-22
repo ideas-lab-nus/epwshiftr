@@ -85,7 +85,7 @@ epwshiftr_cli_shift_example_config <- function() {
             member = NULL,
             grid = NULL,
             frequency = "mon",
-            table = "Amon"
+            table = NULL
         ),
         periods = list(`2060s` = "2055:2065"),
         # Prefer a matching historical climate reference. Users may omit this
