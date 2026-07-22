@@ -401,7 +401,7 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
             nrow(plan@meta$expected_cases)), width),
         shift__ui_prefixed_lines("Selection ", shift__ui_selection(plan),
             width),
-        shift__ui_fit(sprintf("Output %s", shift_display_path(output_dir)), width)
+        shift__ui_fit(sprintf("Output %s", shift__display_path(output_dir)), width)
     )
     if (!identical(detail, "normal")) {
         option_summary <- shift__format_options(
@@ -415,7 +415,7 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
             } else {
                 "all cases required"
             },
-            shift_display_path(plan@store_path)), width))
+            shift__display_path(plan@store_path)), width))
     }
     lines
 }
@@ -905,7 +905,7 @@ shift__ui_result_lines <- function(state, width = shift__ui_width()) {
     if (!is.null(output_dir) && length(output_dir) &&
         !is.na(output_dir[[1L]]) && nzchar(output_dir[[1L]])) {
         lines <- c(lines, shift__ui_labeled_lines(
-            "Output", shift_display_path(output_dir[[1L]]), width))
+            "Output", shift__display_path(output_dir[[1L]]), width))
     }
 
     paths <- as.character(shift_coalesce(state$output_paths, character()))
@@ -1495,7 +1495,7 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
             title = label,
             line = label,
             items = c(label, sprintf("store %s",
-                shift_display_path(shift_coalesce(spec$store, "<store>")))),
+                shift__display_path(shift_coalesce(spec$store, "<store>")))),
             selection = NULL,
             output = if ("output_dir" %in% names(row)) row$output_dir[[1L]] else NULL
         ))
@@ -1919,7 +1919,7 @@ ShiftReporter <- R6::R6Class(
             private$plan_context <- utils::modifyList(list(
                 title = label,
                 items = c(label, sprintf("store %s",
-                    shift_display_path(shift_coalesce(context$store, "<store>")))),
+                    shift__display_path(shift_coalesce(context$store, "<store>")))),
                 selection = NULL,
                 output = NULL
             ), context)
@@ -2347,7 +2347,7 @@ ShiftReporter <- R6::R6Class(
                 if (!is.null(output_dir) && length(output_dir) &&
                     !is.na(output_dir[[1L]]) && nzchar(output_dir[[1L]])) {
                     private$emit("text", sprintf("Output directory: %s",
-                        shift_display_path(output_dir[[1L]])))
+                        shift__display_path(output_dir[[1L]])))
                 }
                 if (shift__ui_at_least(private$ui_value, "detail")) {
                     for (path in paths) {
