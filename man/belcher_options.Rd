@@ -16,8 +16,9 @@ belcher_options(
 )
 }
 \arguments{
-\item{transition_hours}{Width in hours of each cyclic month-boundary
-transition. Must be between 0 and 336.}
+\item{transition_hours}{Total width in hours of each cyclic transition
+centered on a month boundary. Must be between 0 and 336; \code{0} disables
+smoothing.}
 
 \item{humidity_source}{Humidity state input: \code{"auto"}, \code{"huss"}, or
 \code{"hurs"}.}
@@ -29,11 +30,17 @@ transition. Must be between 0 and 336.}
 
 \item{snow_depth}{Snow-depth policy: \code{"auto"}, \code{"required"}, or \code{"off"}.}
 
-\item{ground_temperatures}{Ground-temperature header policy.}
+\item{ground_temperatures}{Ground-temperature header policy:
+\code{"recalculate"} applies the Kusuda--Achenbach model to the morphed year,
+while \code{"preserve"} retains the baseline EPW header.}
 
-\item{typical_extreme_periods}{Typical/extreme-period header policy.}
+\item{typical_extreme_periods}{Typical/extreme-period header policy:
+\code{"recalculate"} finds six hemisphere-aware periods from the morphed year,
+while \code{"preserve"} retains the baseline EPW header.}
 
-\item{design_conditions}{Design-condition header policy.}
+\item{design_conditions}{Design-condition header policy. \code{"drop"} writes
+\verb{DESIGN CONDITIONS,0} because one morphed year cannot support a new ASHRAE
+design-condition calculation; \code{"preserve"} retains the baseline header.}
 }
 \value{
 A validated \code{belcher_options} list.

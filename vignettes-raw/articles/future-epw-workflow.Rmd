@@ -246,6 +246,31 @@ when both future and historical cases provide it. Use
 `belcher(profile = "legacy")` only when reproducing the earlier algorithm and
 headers is required.
 
+Profile options are part of the scientific task specification rather than UI
+preferences. Configure them on the method and keep `table = NULL` unless a
+dataset requires an explicit override:
+
+```{r enhanced-method-options, eval = FALSE}
+method <- belcher(
+    reference = historical_reference(1995:2014),
+    options = belcher_options(
+        transition_hours = 72L,
+        humidity_source = "auto",
+        snow_depth = "auto"
+    )
+)
+
+# Named values override individual variables; unnamed scalars force every
+# variable into one table and are rarely suitable when snd is enabled.
+climate <- shift_cmip6(
+    "BCC-CSM2-MR", "ssp585",
+    table = c(snd = "LImon")
+)
+```
+
+See [Inspect EPW Morphing](epw-morpher.html) for the complete option matrix and
+the enhanced/legacy defaults.
+
 Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
 `shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
 supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
@@ -276,14 +301,19 @@ plan <- shift_future_epw(
 
 print(climate)
 print(method)
+print(method, verbose = TRUE)
 print(plan, n = 3L, width = 80L)
 ```
 
 Data previews show at most 10 rows by default. Use `n = Inf` for every row,
 set `width` when rendering into a constrained console or report, and use
 `verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
-and additional diagnostics. These controls affect presentation only and do not
-change the workflow specification or its `spec_hash`.
+resolved profile options, and additional diagnostics. Normal receipts identify
+the active method profile and whether CMIP tables are automatic or forced.
+After resolution, progress and watch views report exact partitions such as
+`Amon=gn · LImon=gr` instead of collapsing them to one representative grid.
+These controls affect presentation only and do not change the workflow
+specification or its `spec_hash`.
 
 ```{r print-shift-verbose, eval = FALSE}
 print(plan, n = Inf, width = 120L, verbose = TRUE)
@@ -343,8 +373,8 @@ shift_cancel(run, force = TRUE)
 
 Interrupting `shift_watch()` stops only the monitor. It does not cancel the
 worker. A failed, cancelled, or partial run can create a new attempt with
-`shift_resume(run, background = TRUE)`; resolved node/member/grid choices remain
-pinned.
+`shift_resume(run, background = TRUE)`; the resolved node, member, and exact
+per-table grid partitions remain pinned.
 
 # Site and Request
 
