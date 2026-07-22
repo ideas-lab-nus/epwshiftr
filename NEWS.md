@@ -40,6 +40,21 @@
 
 ## New features
 
+* Belcher morphing now defaults to the `"enhanced"` profile. It uses guarded
+  combined temperature morphing with cyclic month-boundary smoothing, a
+  case-wide specific-humidity state path when complete `huss + tas + ps` data
+  are available, integrated EPW solar geometry, RBL diffuse radiation, Perez
+  illuminance, optional `snd` scaling, and recalculated ground-temperature and
+  typical/extreme-period headers. Use `profile = "legacy"` for byte-compatible
+  pre-enhancement output, and configure individual policies with
+  `belcher_options()`.
+
+* `shift_cmip6(table = NULL)` now resolves exact variable/table/grid
+  partitions. Atmospheric inputs remain in `Amon`, `snd` is discovered in
+  `LImon`, and future/reference optional inputs are retained only when both
+  cases provide a matching partition. Scalar tables still pin every variable;
+  named vectors override individual variables.
+
 * Added `store_reset()` for deliberately incompatible store schemas. Existing
   stores are moved to timestamped same-filesystem backups by default;
   permanent removal requires `backup = FALSE, force = TRUE`. Reset targets are

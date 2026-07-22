@@ -16,4 +16,6 @@
 ^vignettes-raw$
 ^inst/extdata/vignettes($|/)
 ^data-raw$
+^cache$
+^reports$
 ^OPENDAP_IMPLEMENTATION\.md$

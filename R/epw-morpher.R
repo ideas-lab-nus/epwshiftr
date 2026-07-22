@@ -5021,6 +5021,12 @@ EpwMorpher <- R6::R6Class(
                         data.table::setcolorder(set_data, base_cols)
                         suppressMessages(new_epw$drop_unit())
                         suppressMessages(new_epw$set(set_data))
+                        # Header policies are evaluated from the persisted
+                        # hourly result just read above, keeping fresh and
+                        # resumed EPW writes scientifically identical.
+                        epw_file__apply_morph_headers(
+                            new_epw, set_data, private$recipe$options
+                        )
                         case_label <- paste(unlist(meta, use.names = FALSE), collapse = "-")
                         new_epw$comment1(disclaimer_comment(case_label))
                         new_epw$fill_abnormal(missing = TRUE, out_of_range = TRUE, special = TRUE)

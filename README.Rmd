@@ -120,6 +120,14 @@ run <- shift_future_epw(
 )
 ```
 
+`belcher()` now uses the enhanced profile by default. It automatically uses
+combined temperature morphing when matching `tasmax` and `tasmin` are complete,
+prefers a complete `huss + tas + ps` humidity state, recalculates the radiation
+chain and relevant EPW headers, and queries `snd` from `LImon` when it is
+available in both future and historical cases. Reproduce the previous numerical
+path with `belcher(profile = "legacy")`; use `belcher_options()` for individual
+policies such as transition width, snow requirements, or header preservation.
+
 The representative terminal recording below is generated from deterministic
 workflow states, so README builds do not depend on live ESGF services. A real
 run uses the same dashboard; the selected node, timings, and file counts vary.
@@ -224,8 +232,9 @@ shift_logs(run) # `source` distinguishes process logs from persisted events
 Use `force = TRUE` only if the worker does not respond to the normal
 cancellation request; it terminates the recorded worker process immediately.
 
-This example uses monthly CMIP6 `Amon` records and the variables required by the
-Belcher recipe. The committed asciicast SVG demonstrates the production
+This example automatically resolves monthly CMIP6 inputs by variable: the
+atmospheric fields use `Amon`, while optional snow depth uses `LImon` when a
+matching future/reference pair exists. The committed asciicast SVG demonstrates the production
 dashboard without performing remote data reads during documentation builds.
 
 If no suitable historical CMIP6 reference is available, use `belcher()` as a

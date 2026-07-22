@@ -1254,7 +1254,7 @@ shift__ui_node_table <- function(rows, width = shift__ui_width(),
     # before measuring widths so the table remains stable.
     shift__display_max <- function(x) {
         x <- as.character(x)
-        x[is.na(x) | !nzchar(x)] <- "—"
+        x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
     node_width <- min(12L, max(4L, shift__display_max(c("Node", rows$node))))
@@ -1319,7 +1319,7 @@ shift__ui_case_table <- function(rows, width = shift__ui_width(),
     # a literal "NA" suffix in the static dashboard table.
     shift__display_max <- function(x) {
         x <- as.character(x)
-        x[is.na(x) | !nzchar(x)] <- "—"
+        x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
     scenario_width <- min(14L, max(8L, shift__display_max(c("Scenario", scenario))))

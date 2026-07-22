@@ -263,6 +263,56 @@ test_that("specific humidity round trips and saturates at physical bounds", {
 })
 
 
+test_that("enhanced runner integrates HUSS, radiation, snow, and final headers", {
+    epw <- epw_file_read(get_cache_epw())
+    context <- morpher__context(
+        epw, enhanced_test__change_climate(),
+        recipe = epw_morph_recipe("belcher"),
+        reference_climate = enhanced_test__change_climate(reference = TRUE),
+        years = 2060L, labels = "future",
+        reference_years = 1995L, reference_labels = "reference",
+        strict = TRUE
+    )
+    expect_identical(morpher__belcher_humidity_source(context), "huss")
+    result <- morpher__run_context(context)
+    weather <- result$data
+
+    expect_equal(nrow(weather), 8760L)
+    expect_true(all(weather$relative_humidity >= 0 &
+        weather$relative_humidity <= 100))
+    expect_true(all(weather$dew_point_temperature <=
+        weather$dry_bulb_temperature + 1e-10))
+    expect_true(all(weather$diffuse_horizontal_radiation >= 0 &
+        weather$diffuse_horizontal_radiation <=
+            weather$global_horizontal_radiation + 1e-10))
+    expect_true(all(weather$direct_normal_radiation >= 0 &
+        weather$direct_normal_radiation <=
+            weather$extraterrestrial_direct_normal_radiation + 1e-10))
+
+    geometry <- solar__epw_interval_geometry(
+        weather, latitude = 1.37, longitude = 103.98, timezone = 8
+    )
+    expect_equal(
+        weather$global_horizontal_radiation,
+        weather$diffuse_horizontal_radiation +
+            weather$direct_normal_radiation *
+                geometry$effective_solar_projection,
+        tolerance = 1e-8
+    )
+    result$epw$set(weather)
+    epw_file__apply_morph_headers(
+        result$epw, weather, context$recipe$options
+    )
+    output <- tempfile(fileext = ".epw")
+    result$epw$fill_abnormal()$save(output, overwrite = TRUE)
+    reread <- epw_file_read(output)
+    expect_equal(nrow(reread$data()), 8760L)
+    expect_identical(reread$header("DESIGN CONDITIONS"), "0")
+    expect_identical(reread$header("GROUND TEMPERATURES")[[1L]], "3")
+    expect_identical(reread$header("TYPICAL/EXTREME PERIODS")[[1L]], "6")
+})
+
+
 test_that("integrated solar geometry and radiation models obey EPW closure", {
     hours <- data.table::data.table(
         year = 2001L, month = 3L, day = 21L, hour = 1:24
@@ -339,6 +389,29 @@ test_that("snow depth uses metres-to-centimetres ratios without new events", {
     expect_equal(snow[month == 2L & snow_depth > 0]$snow_depth, 20, tolerance = 0.25)
     zero_time <- weather[snow_depth == 0, datetime]
     expect_true(all(snow[datetime %in% zero_time]$snow_depth == 0))
+})
+
+
+test_that("structured EPW headers round trip and enhanced policies recalculate", {
+    path <- get_cache_epw()
+    epw <- epw_file_read(path)
+    untouched <- tempfile(fileext = ".epw")
+    epw$save(untouched, overwrite = TRUE)
+    expect_identical(readLines(path, n = 8L), readLines(untouched, n = 8L))
+
+    weather <- epw$data()
+    epw_file__apply_morph_headers(epw, weather, belcher_options())
+    expect_identical(epw$header("DESIGN CONDITIONS"), "0")
+    expect_identical(epw$header("GROUND TEMPERATURES")[[1L]], "3")
+    expect_length(epw$header("GROUND TEMPERATURES"), 49L)
+    expect_identical(epw$header("TYPICAL/EXTREME PERIODS")[[1L]], "6")
+    expect_length(epw$header("TYPICAL/EXTREME PERIODS"), 25L)
+
+    north <- epw_file__typical_extreme_periods(weather, 45)
+    south <- epw_file__typical_extreme_periods(weather, -45)
+    expect_length(north, 25L)
+    expect_length(south, 25L)
+    expect_false(identical(north, south))
 })
 
 
