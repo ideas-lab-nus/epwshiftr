@@ -226,3 +226,38 @@ test_that("specific humidity round trips and saturates at physical bounds", {
     dew <- morpher__dew_point_from_rh(temperature, humidity / 100)
     expect_true(all(dew <= temperature))
 })
+test_that("integrated solar geometry and radiation models obey EPW closure", {
+    hours <- data.table::data.table(
+        year = 2001L, month = 3L, day = 21L, hour = 1:24
+    )
+    geometry <- solar__epw_interval_geometry(
+        hours, latitude = 0, longitude = 0, timezone = 0
+    )
+    expect_true(all(geometry$extraterrestrial_horizontal_radiation >= 0))
+    expect_true(all(geometry$extraterrestrial_direct_normal_radiation >= 0))
+    expect_true(any(geometry$extraterrestrial_horizontal_radiation == 0))
+    expect_gt(max(geometry$extraterrestrial_horizontal_radiation), 1000)
+
+    ghi <- 0.55 * geometry$extraterrestrial_horizontal_radiation
+    dhi <- radiation__rbl_2010_diffuse(
+        ghi, geometry, rep("2001-03-21", 24L)
+    )
+    closed <- radiation__close_components(ghi, dhi, geometry)
+    expect_true(all(closed$dhi >= 0 & closed$dhi <= closed$ghi))
+    expect_true(all(closed$dni >= 0 &
+        closed$dni <= geometry$extraterrestrial_direct_normal_radiation +
+            1e-10))
+    expect_equal(
+        closed$ghi,
+        closed$dhi + closed$dni * geometry$effective_solar_projection,
+        tolerance = 1e-10
+    )
+
+    light <- illuminance__perez_1990(
+        closed$ghi, closed$dhi, closed$dni, geometry,
+        dew_point = rep(15, 24L)
+    )
+    night <- geometry$effective_solar_projection <= .Machine$double.eps
+    expect_true(all(unlist(light[night]) == 0))
+    expect_true(all(unlist(light[!night]) >= 0, na.rm = TRUE))
+})

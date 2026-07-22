@@ -2324,6 +2324,368 @@ morpher__belcher_direct_normal_radiation <- function(glob_rad, diff_rad, latitud
     norm_rad[, c("lat_calc", "lon_calc") := NULL]
 }
 
+# Integrate solar geometry at one-minute midpoints over the EPW interval that
+# precedes each record time. Irradiance multiplied by 1/60 hour yields the
+# Wh/m2 values required by EPW N10 and N11.
+solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
+                                          solar_constant = 1367) {
+    n <- nrow(data)
+    if (!n) {
+        return(data.table::data.table())
+    }
+    latitude <- as.numeric(latitude)
+    longitude <- as.numeric(longitude)
+    timezone <- as.numeric(timezone)
+    if (!is.finite(latitude) || !is.finite(longitude) || !is.finite(timezone)) {
+        cli::cli_abort("EPW LOCATION must provide finite latitude, longitude, and time zone for enhanced solar geometry.")
+    }
+
+    minute_midpoint <- (seq_len(60L) - 0.5) / 60
+    clock_hour <- outer(as.numeric(data$hour) - 1, rep(1, 60L)) +
+        matrix(rep(minute_midpoint, each = n), nrow = n)
+    day_of_year <- as.integer(format(
+        as.Date(sprintf(
+            "%04d-%02d-%02d",
+            as.integer(data$year), as.integer(data$month), as.integer(data$day)
+        )),
+        "%j"
+    ))
+    day_matrix <- matrix(rep(day_of_year, 60L), nrow = n)
+
+    # Spencer's Fourier series supplies Earth-Sun distance, declination, and
+    # equation of time at every minute midpoint without external dependencies.
+    gamma <- 2 * pi / 365 * (day_matrix - 1 + (clock_hour - 12) / 24)
+    eccentricity <- 1.000110 +
+        0.034221 * cos(gamma) +
+        0.001280 * sin(gamma) +
+        0.000719 * cos(2 * gamma) +
+        0.000077 * sin(2 * gamma)
+    declination <- 0.006918 -
+        0.399912 * cos(gamma) +
+        0.070257 * sin(gamma) -
+        0.006758 * cos(2 * gamma) +
+        0.000907 * sin(2 * gamma) -
+        0.002697 * cos(3 * gamma) +
+        0.001480 * sin(3 * gamma)
+    equation_of_time <- 229.18 * (
+        0.000075 +
+            0.001868 * cos(gamma) -
+            0.032077 * sin(gamma) -
+            0.014615 * cos(2 * gamma) -
+            0.040849 * sin(2 * gamma)
+    )
+    apparent_solar_minutes <- clock_hour * 60 +
+        4 * (longitude - 15 * timezone) + equation_of_time
+    hour_angle <- (apparent_solar_minutes / 4 - 180) * pi / 180
+    latitude_radian <- latitude * pi / 180
+    cos_zenith <- sin(latitude_radian) * sin(declination) +
+        cos(latitude_radian) * cos(declination) * cos(hour_angle)
+    daylight <- cos_zenith > 0
+    extraterrestrial_direct <- solar_constant * eccentricity
+
+    horizontal <- rowSums(extraterrestrial_direct * pmax(cos_zenith, 0)) / 60
+    direct_normal <- rowSums(extraterrestrial_direct * daylight) / 60
+    projection <- ifelse(direct_normal > .Machine$double.eps,
+        horizontal / direct_normal, 0)
+    apparent_hour <- rowMeans(apparent_solar_minutes) / 60
+    apparent_hour <- apparent_hour %% 24
+    data.table::data.table(
+        extraterrestrial_horizontal_radiation = pmax(0, horizontal),
+        extraterrestrial_direct_normal_radiation = pmax(0, direct_normal),
+        effective_solar_projection = pmin(1, pmax(0, projection)),
+        solar_zenith = acos(pmin(1, pmax(-1, projection))),
+        solar_altitude = asin(pmin(1, pmax(-1, projection))) * 180 / pi,
+        apparent_solar_time = apparent_hour
+    )
+}
+
+# Compute relative optical air mass using the Kasten expression used with the
+# Perez daylight parameterization; values at and below the horizon are absent.
+solar__relative_air_mass <- function(zenith_radian) {
+    zenith_degree <- as.numeric(zenith_radian) * 180 / pi
+    out <- rep(NA_real_, length(zenith_degree))
+    daylight <- is.finite(zenith_degree) & zenith_degree < 90
+    out[daylight] <- 1 / (
+        cos(zenith_radian[daylight]) +
+            0.15 * (93.885 - zenith_degree[daylight])^(-1.253)
+    )
+    out
+}
+
+# Ridley-Boland-Lauret (2010) expresses hourly diffuse fraction as a logistic
+# function of hourly/daily clearness, apparent solar time, solar altitude, and
+# persistence. The output is clamped to the physically admissible [0, 1].
+radiation__rbl_2010_diffuse <- function(ghi, geometry, day_key,
+                                        case_key = rep("case", length(ghi))) {
+    ghi <- pmax(0, as.numeric(ghi))
+    ext_horizontal <- as.numeric(geometry$extraterrestrial_horizontal_radiation)
+    kt <- ifelse(ext_horizontal > .Machine$double.eps,
+        ghi / ext_horizontal, 0)
+    state <- data.table::data.table(
+        row = seq_along(ghi),
+        case_key = as.character(case_key),
+        day_key = as.character(day_key),
+        ghi = ghi,
+        ext = ext_horizontal,
+        kt = kt
+    )
+    daily <- state[, .(
+        daily_kt = if (sum(ext, na.rm = TRUE) > .Machine$double.eps) {
+            sum(ghi, na.rm = TRUE) / sum(ext, na.rm = TRUE)
+        } else {
+            0
+        }
+    ), by = c("case_key", "day_key")]
+    state[daily, on = c("case_key", "day_key"), daily_kt := i.daily_kt]
+    state[, persistence := {
+        previous <- data.table::shift(kt, 1L, type = "lag")
+        following <- data.table::shift(kt, 1L, type = "lead")
+        value <- rowMeans(cbind(previous, following), na.rm = TRUE)
+        value[!is.finite(value)] <- kt[!is.finite(value)]
+        value
+    }, by = "case_key"]
+    data.table::setorder(state, row)
+
+    linear_predictor <- -5.38 +
+        6.63 * kt +
+        0.006 * as.numeric(geometry$apparent_solar_time) +
+        -0.007 * as.numeric(geometry$solar_altitude) +
+        1.75 * state$daily_kt +
+        1.31 * state$persistence
+    diffuse_fraction <- 1 / (1 + exp(linear_predictor))
+    diffuse_fraction <- pmin(1, pmax(0, diffuse_fraction))
+    diffuse <- ghi * diffuse_fraction
+    diffuse[ext_horizontal <= .Machine$double.eps] <- ghi[ext_horizontal <= .Machine$double.eps]
+    pmin(ghi, pmax(0, diffuse))
+}
+
+# Preserve the baseline diffuse fraction as an explicit compatibility option.
+# Zero-GHI hours use a fully diffuse fraction so no beam is synthesized.
+radiation__preserved_diffuse <- function(data_epw, ghi) {
+    baseline_ghi <- pmax(0, as.numeric(data_epw$global_horizontal_radiation))
+    baseline_dhi <- pmax(0, as.numeric(data_epw$diffuse_horizontal_radiation))
+    fraction <- ifelse(
+        baseline_ghi > .Machine$double.eps,
+        pmin(1, baseline_dhi / baseline_ghi),
+        1
+    )
+    pmin(ghi, pmax(0, as.numeric(ghi) * fraction))
+}
+
+# Enforce the EPW radiation invariants jointly. If the initial beam component
+# exceeds extraterrestrial direct normal energy, excess horizontal energy is
+# reassigned to diffuse so closure remains exact rather than independently
+# clipping DNI and breaking GHI = DHI + DNI * projection.
+radiation__close_components <- function(ghi, dhi, geometry) {
+    ghi <- pmax(0, as.numeric(ghi))
+    dhi <- pmin(ghi, pmax(0, as.numeric(dhi)))
+    projection <- as.numeric(geometry$effective_solar_projection)
+    ext_direct <- pmax(0, as.numeric(geometry$extraterrestrial_direct_normal_radiation))
+    beam_horizontal <- pmax(0, ghi - dhi)
+    max_beam_horizontal <- projection * ext_direct
+    beam_horizontal <- pmin(beam_horizontal, max_beam_horizontal)
+    no_projection <- !is.finite(projection) | projection <= .Machine$double.eps
+    beam_horizontal[no_projection] <- 0
+    dhi <- ghi - beam_horizontal
+    dni <- ifelse(no_projection, 0, beam_horizontal / projection)
+    dni <- pmin(ext_direct, pmax(0, dni))
+    list(
+        ghi = ghi,
+        dhi = dhi,
+        dni = dni
+    )
+}
+
+# Perez et al. (1990), Table 4. Rows correspond to the eight sky-clearness
+# bins; columns are the four coefficients in each published transfer equation.
+ILLUMINANCE__PEREZ_GLOBAL <- rbind(
+    c(96.63, -0.47, 11.50, -9.16),
+    c(107.54, 0.79, 1.79, -1.19),
+    c(98.73, 0.70, 4.40, -6.95),
+    c(92.72, 0.56, 8.36, -8.31),
+    c(86.73, 0.98, 7.10, -10.94),
+    c(88.34, 1.39, 6.06, -7.60),
+    c(78.63, 1.47, 4.93, -11.37),
+    c(99.65, 1.86, -4.46, -3.15)
+)
+ILLUMINANCE__PEREZ_DIFFUSE <- rbind(
+    c(97.24, -0.46, 12.00, -8.91),
+    c(107.22, 1.15, 0.59, -3.95),
+    c(104.97, 2.96, -5.53, -8.77),
+    c(102.39, 5.59, -13.95, -13.90),
+    c(100.71, 5.94, -22.75, -23.74),
+    c(106.42, 3.83, -36.15, -28.83),
+    c(141.88, 1.90, -53.24, -14.03),
+    c(152.23, 0.35, -45.27, -7.98)
+)
+ILLUMINANCE__PEREZ_DIRECT <- rbind(
+    c(57.20, -4.55, -2.98, 117.12),
+    c(98.99, -3.46, -1.21, 12.38),
+    c(109.83, -4.90, -1.71, -8.81),
+    c(110.34, -5.84, -1.99, -4.56),
+    c(106.36, -3.97, -1.75, -6.16),
+    c(107.19, -1.25, -1.51, -26.73),
+    c(105.75, 0.77, -1.26, -34.44),
+    c(101.18, 1.58, -1.10, -8.29)
+)
+ILLUMINANCE__PEREZ_ZENITH <- rbind(
+    c(40.86, 26.77, -29.59, -45.75),
+    c(26.58, 14.73, 58.46, -21.25),
+    c(19.34, 2.28, 100.00, 0.25),
+    c(13.25, -1.39, 124.79, 15.66),
+    c(14.47, -5.09, 160.09, 9.13),
+    c(19.76, -3.88, 154.61, -19.21),
+    c(28.39, -9.67, 151.58, -69.39),
+    c(42.91, -19.62, 130.80, -164.08)
+)
+
+# Map Perez sky clearness to the eight published bins.
+illuminance__perez_bin <- function(clearness) {
+    findInterval(
+        as.numeric(clearness),
+        c(1.065, 1.230, 1.500, 1.950, 2.800, 4.500, 6.200),
+        left.open = FALSE
+    ) + 1L
+}
+
+# Recalculate EPW N16-N19 with the Perez 1990 luminous-efficacy and zenith
+# luminance equations. Nighttime values are zero; invalid daytime inputs remain
+# NA so EpwFile can serialize the field-specific missing sentinel.
+illuminance__perez_1990 <- function(ghi, dhi, dni, geometry, dew_point) {
+    ghi <- as.numeric(ghi)
+    dhi <- as.numeric(dhi)
+    dni <- as.numeric(dni)
+    zenith <- as.numeric(geometry$solar_zenith)
+    ext_direct <- as.numeric(geometry$extraterrestrial_direct_normal_radiation)
+    projection <- as.numeric(geometry$effective_solar_projection)
+    daylight <- projection > .Machine$double.eps & ext_direct > .Machine$double.eps
+    air_mass <- solar__relative_air_mass(zenith)
+    brightness <- dhi * air_mass / pmax(ext_direct, .Machine$double.eps)
+    brightness <- pmax(brightness, 0.01)
+    clearness <- ((dhi + dni) / pmax(dhi, .Machine$double.eps) +
+        1.041 * zenith^3) / (1 + 1.041 * zenith^3)
+    clearness[!is.finite(clearness)] <- 6.201
+    bin <- illuminance__perez_bin(clearness)
+    water <- exp(0.07 * as.numeric(dew_point) - 0.075)
+    coefficient <- function(table) table[bin, , drop = FALSE]
+    global_coef <- coefficient(ILLUMINANCE__PEREZ_GLOBAL)
+    diffuse_coef <- coefficient(ILLUMINANCE__PEREZ_DIFFUSE)
+    direct_coef <- coefficient(ILLUMINANCE__PEREZ_DIRECT)
+    zenith_coef <- coefficient(ILLUMINANCE__PEREZ_ZENITH)
+
+    global_efficacy <- global_coef[, 1L] + global_coef[, 2L] * water +
+        global_coef[, 3L] * cos(zenith) + global_coef[, 4L] * log(brightness)
+    diffuse_efficacy <- diffuse_coef[, 1L] + diffuse_coef[, 2L] * water +
+        diffuse_coef[, 3L] * cos(zenith) + diffuse_coef[, 4L] * log(brightness)
+    direct_efficacy <- direct_coef[, 1L] + direct_coef[, 2L] * water +
+        direct_coef[, 3L] * exp(5.73 * zenith - 5) + direct_coef[, 4L] * brightness
+    zenith_for_model <- ifelse(bin == 1L, pmax(zenith, 0.6), zenith)
+    zenith_efficacy <- zenith_coef[, 1L] + zenith_coef[, 2L] * cos(zenith_for_model) +
+        zenith_coef[, 3L] * exp(-3 * zenith_for_model) + zenith_coef[, 4L] * brightness
+
+    output <- data.table::data.table(
+        global_horizontal_illuminance = pmax(0, ghi * global_efficacy),
+        direct_normal_illuminance = pmax(0, dni * direct_efficacy),
+        diffuse_horizontal_illuminance = pmax(0, dhi * diffuse_efficacy),
+        zenith_luminance = pmax(0, dhi * zenith_efficacy)
+    )
+    for (field in names(output)) {
+        output[!daylight, (field) := 0]
+        output[daylight & !is.finite(get(field)), (field) := NA_real_]
+    }
+    output[]
+}
+
+# Execute the enhanced radiation chain once so N10-N19 share the same integrated
+# solar geometry and the GHI/DHI/DNI closure is exact by construction.
+radiation__enhanced_chain <- function(data_epw, glob_rad, epw, tdew,
+                                       diffuse_model = "rbl_2010",
+                                       illuminance_model = "perez_1990") {
+    if (!nrow(glob_rad)) {
+        empty <- data.table::data.table()
+        return(list(solar = empty, glob_rad = empty, diff_rad = empty,
+            norm_rad = empty, illuminance = empty))
+    }
+    latitude <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
+    longitude <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
+    timezone <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
+    geometry <- solar__epw_interval_geometry(
+        glob_rad, latitude = latitude, longitude = longitude, timezone = timezone
+    )
+    ghi <- pmax(0, as.numeric(glob_rad$global_horizontal_radiation))
+    if (identical(diffuse_model, "rbl_2010")) {
+        day_key <- sprintf("%04d-%02d-%02d", glob_rad$year, glob_rad$month, glob_rad$day)
+        case_columns <- intersect(
+            c("source_id", "experiment_id", "member_id", "interval"),
+            names(glob_rad)
+        )
+        case_key <- if (length(case_columns)) {
+            do.call(paste, c(glob_rad[, ..case_columns], sep = "\r"))
+        } else {
+            rep("case", nrow(glob_rad))
+        }
+        dhi <- radiation__rbl_2010_diffuse(ghi, geometry, day_key, case_key)
+    } else {
+        baseline_match <- data_epw[glob_rad,
+            on = c("datetime", "year", "month", "day", "hour", "minute")]
+        dhi <- radiation__preserved_diffuse(baseline_match, ghi)
+    }
+    closed <- radiation__close_components(ghi, dhi, geometry)
+    glob_rad[, global_horizontal_radiation := closed$ghi]
+
+    identity <- c(
+        "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
+        "table_id", "lon", "lat", "interval", "datetime", "year", "month",
+        "day", "hour", "minute", "delta", "alpha"
+    )
+    solar <- data.table::copy(glob_rad)[, .SD, .SDcols = intersect(identity, names(glob_rad))]
+    solar[, `:=`(
+        extraterrestrial_horizontal_radiation = geometry$extraterrestrial_horizontal_radiation,
+        extraterrestrial_direct_normal_radiation = geometry$extraterrestrial_direct_normal_radiation
+    )]
+    diff_rad <- data.table::copy(glob_rad)[, .SD, .SDcols = intersect(identity, names(glob_rad))]
+    diff_rad[, diffuse_horizontal_radiation := closed$dhi]
+    norm_rad <- data.table::copy(glob_rad)[, .SD, .SDcols = intersect(identity, names(glob_rad))]
+    norm_rad[, direct_normal_radiation := closed$dni]
+
+    illuminance <- data.table::data.table()
+    if (identical(illuminance_model, "perez_1990")) {
+        dew_point <- rep(NA_real_, nrow(glob_rad))
+        if (nrow(tdew)) {
+            join_cols <- intersect(
+                c("source_id", "experiment_id", "member_id", "interval",
+                  "datetime", "year", "month", "day", "hour", "minute"),
+                intersect(names(glob_rad), names(tdew))
+            )
+            dew_rows <- data.table::copy(glob_rad)[, .SD,
+                .SDcols = intersect(identity, names(glob_rad))]
+            dew_rows[tdew, on = join_cols, dew_point := i.dew_point_temperature]
+            dew_point <- dew_rows$dew_point
+        }
+        missing_dew <- !is.finite(dew_point)
+        if (any(missing_dew)) {
+            baseline_match <- data_epw[glob_rad,
+                on = c("datetime", "year", "month", "day", "hour", "minute")]
+            dew_point[missing_dew] <- baseline_match$dew_point_temperature[missing_dew]
+        }
+        values <- illuminance__perez_1990(
+            closed$ghi, closed$dhi, closed$dni, geometry, dew_point
+        )
+        illuminance <- data.table::copy(glob_rad)[, .SD,
+            .SDcols = intersect(identity, names(glob_rad))]
+        for (field in names(values)) {
+            illuminance[, (field) := values[[field]]]
+        }
+    }
+    list(
+        solar = solar,
+        glob_rad = glob_rad,
+        diff_rad = diff_rad,
+        norm_rad = norm_rad,
+        illuminance = illuminance
+    )
+}
+
 morpher__belcher_opaque_sky_cover <- function(data_epw, total_sky_cover) {
     if (!nrow(total_sky_cover)) {
         return(data.table::data.table())
@@ -3650,20 +4012,35 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
 
     data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
     glob_rad <- morpher__belcher_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
-    diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
-    epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
-    epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
-    epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
-    norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
-        data.table::data.table()
-    } else {
-        morpher__belcher_direct_normal_radiation(
-            glob_rad,
-            diff_rad,
-            latitude = epw_lat,
-            longitude = epw_lon,
-            timezone = epw_tz
+    if (identical(context$recipe$profile, "enhanced")) {
+        radiation <- radiation__enhanced_chain(
+            data_epw, glob_rad, epw, tdew,
+            diffuse_model = context$recipe$options$diffuse_model,
+            illuminance_model = context$recipe$options$illuminance_model
         )
+        solar <- radiation$solar
+        glob_rad <- radiation$glob_rad
+        diff_rad <- radiation$diff_rad
+        norm_rad <- radiation$norm_rad
+        illuminance <- radiation$illuminance
+    } else {
+        solar <- data.table::data.table()
+        illuminance <- data.table::data.table()
+        diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
+        epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
+        epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
+        epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
+        norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
+            data.table::data.table()
+        } else {
+            morpher__belcher_direct_normal_radiation(
+                glob_rad,
+                diff_rad,
+                latitude = epw_lat,
+                longitude = epw_lon,
+                timezone = epw_tz
+            )
+        }
     }
 
     wind <- morpher__belcher_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
@@ -3678,9 +4055,11 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
         rh = rh,
         p = p,
         hor_ir = hor_ir,
+        solar = solar,
         glob_rad = glob_rad,
         norm_rad = norm_rad,
         diff_rad = diff_rad,
+        illuminance = illuminance,
         wind = wind,
         total_cover = total_cover,
         opaque_cover = opaque_cover,
@@ -3728,20 +4107,35 @@ morpher__belcher_run <- function(context, backend = NULL) {
 
     data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
     glob_rad <- morpher__belcher_change_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
-    diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
-    epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
-    epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
-    epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
-    norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
-        data.table::data.table()
-    } else {
-        morpher__belcher_direct_normal_radiation(
-            glob_rad,
-            diff_rad,
-            latitude = epw_lat,
-            longitude = epw_lon,
-            timezone = epw_tz
+    if (identical(context$recipe$profile, "enhanced")) {
+        radiation <- radiation__enhanced_chain(
+            data_epw, glob_rad, epw, tdew,
+            diffuse_model = context$recipe$options$diffuse_model,
+            illuminance_model = context$recipe$options$illuminance_model
         )
+        solar <- radiation$solar
+        glob_rad <- radiation$glob_rad
+        diff_rad <- radiation$diff_rad
+        norm_rad <- radiation$norm_rad
+        illuminance <- radiation$illuminance
+    } else {
+        solar <- data.table::data.table()
+        illuminance <- data.table::data.table()
+        diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
+        epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
+        epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
+        epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
+        norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
+            data.table::data.table()
+        } else {
+            morpher__belcher_direct_normal_radiation(
+                glob_rad,
+                diff_rad,
+                latitude = epw_lat,
+                longitude = epw_lon,
+                timezone = epw_tz
+            )
+        }
     }
 
     wind <- morpher__belcher_change_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
@@ -3756,9 +4150,11 @@ morpher__belcher_run <- function(context, backend = NULL) {
         rh = rh,
         p = p,
         hor_ir = hor_ir,
+        solar = solar,
         glob_rad = glob_rad,
         norm_rad = norm_rad,
         diff_rad = diff_rad,
+        illuminance = illuminance,
         wind = wind,
         total_cover = total_cover,
         opaque_cover = opaque_cover,
