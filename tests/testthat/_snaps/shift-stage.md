@@ -104,7 +104,7 @@
       +-------+--------+
       | Field | Method |
       +-------+--------+
-      | tdb   | shift  |
+      | tdb   | auto   |
       | rh    | shift  |
       | p     | shift  |
       +-------+--------+
@@ -113,7 +113,7 @@
       +------+----------------------+-------------+--------+----------+
       | Step | Epw Field            | Variable Id | Method | Required |
       +------+----------------------+-------------+--------+----------+
-      | tdb  | dry_bulb_temperature | tas         | shift  | yes      |
+      | tdb  | dry_bulb_temperature | tas         | auto   | yes      |
       | rh   | relative_humidity    | hurs        | shift  | yes      |
       | p    | atmospheric_pressure | psl         | shift  | yes      |
       +------+----------------------+-------------+--------+----------+

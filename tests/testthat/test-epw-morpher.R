@@ -261,7 +261,13 @@ test_that("Belcher humidity capabilities keep hurs canonical and derive from sur
     requirements <- morpher__variable_requirements(recipe)
     guidance <- morpher__missing_variable_guidance("hurs", present_variables = c("tas", "huss"))
 
-    expect_equal(requirements$hurs, list("hurs", c("huss", "tas", "ps")))
+    expect_equal(requirements$hurs, list(c("huss", "tas", "ps"), "hurs"))
+    expect_equal(
+        morpher__variable_requirements(
+            epw_morph_recipe("belcher", profile = "legacy")
+        )$hurs,
+        list("hurs", c("huss", "tas", "ps"))
+    )
     expect_true(all(c("hurs", "huss", "tas", "ps") %in%
         morpher__input_variables(recipe)))
     expect_match(guidance$suffix, "huss \\+ tas \\+ ps")
@@ -700,7 +706,9 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_false(identical(override$morph_id, strict$morph_id))
     override_results <- override_morpher$run(override$morph_id, overwrite = TRUE)
     override_data <- read_test_parquet(store_abs_path(override_results$output_path, root = store$path))
-    expect_true(any(abs(override_data$dry_bulb_temperature - result_data$dry_bulb_temperature) > 1e-6, na.rm = TRUE))
+    # Enhanced auto temperature intentionally degrades to shift when optional
+    # tasmax/tasmin are absent, so this explicit override is numerically equal.
+    expect_equal(override_data$dry_bulb_temperature, result_data$dry_bulb_temperature)
     expect_true(any(abs(override_data$relative_humidity - result_data$relative_humidity) > 1e-6, na.rm = TRUE))
 
     change_morpher <- epw_morpher(
