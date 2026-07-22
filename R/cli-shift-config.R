@@ -93,6 +93,8 @@ epwshiftr_cli_shift_example_config <- function() {
         # never triggers an implicit historical request.
         method = list(
             name = "belcher",
+            profile = "enhanced",
+            options = unclass(belcher_options()),
             reference = list(
                 mode = "historical",
                 periods = list(reference = "1995:2014")

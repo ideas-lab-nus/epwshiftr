@@ -394,12 +394,25 @@ epwshiftr_cli_config_method <- function(config) {
     config <- epwshiftr_cli_config_section(list(method = config), "method")
     name <- tolower(epwshiftr_cli_config_string(config$name))
     methods <- epwshiftr_cli_recipe_methods(config$methods)
+    profile <- epwshiftr_cli_config_string(config$profile, default = NULL)
+    options <- cli_shift__belcher_options(epwshiftr_cli_config_named_list(config$options))
     reference <- epwshiftr_cli_config_reference(config$reference)
     if (identical(name, "belcher")) {
-        return(belcher(reference = reference, methods = methods))
+        return(belcher(
+            reference = reference,
+            methods = methods,
+            profile = shift_coalesce(profile, "enhanced"),
+            options = options
+        ))
     }
     shift_morph_method(
-        epw_morph_recipe(name = name, backend = name, methods = methods),
+        epw_morph_recipe(
+            name = name,
+            backend = name,
+            methods = methods,
+            profile = profile,
+            options = options
+        ),
         reference = reference
     )
 }
@@ -584,18 +597,44 @@ epwshiftr_cli_download_args_from_config <- function(config) {
 }
 
 
-epwshiftr_cli_recipe <- function(value = "belcher", methods = NULL) {
+epwshiftr_cli_recipe <- function(value = "belcher", methods = NULL,
+                                 profile = NULL, options = NULL) {
     value <- tolower(epwshiftr_cli_config_string(value, default = "belcher"))
     if (!value %in% epw_morph_backends()) {
         epwshiftr_cli_usage_abort(sprintf("Unknown morph recipe/backend: %s", value))
     }
     methods <- epwshiftr_cli_recipe_methods(methods)
-    epw_morph_recipe(value, methods = methods)
+    epw_morph_recipe(
+        value,
+        methods = methods,
+        profile = profile,
+        options = cli_shift__belcher_options(options)
+    )
+}
+
+
+# Coerce only the typed Belcher values accepted by command-line key/value
+# inputs. Other option values remain character strings for central validation.
+cli_shift__belcher_options <- function(options) {
+    if (is.null(options) || !length(options)) {
+        return(NULL)
+    }
+    if (!is.list(options)) {
+        options <- as.list(options)
+    }
+    if ("transition_hours" %in% names(options)) {
+        transition_hours <- suppressWarnings(as.integer(options$transition_hours[[1L]]))
+        if (is.na(transition_hours)) {
+            epwshiftr_cli_usage_abort("Belcher option transition_hours must be an integer between 0 and 336.")
+        }
+        options$transition_hours <- transition_hours
+    }
+    options
 }
 
 
 epwshiftr_cli_recipe_methods <- function(methods) {
-    if (is.null(methods)) {
+    if (is.null(methods) || !length(methods)) {
         return(NULL)
     }
     if (is.list(methods)) {
@@ -829,11 +868,42 @@ epwshiftr_cli_recipe_from_json <- function(json) {
     if (is.null(parsed) || is.null(parsed$name)) {
         return(epw_morph_recipe("belcher"))
     }
-    methods <- parsed$methods
-    if (!is.null(methods) && (is.null(names(methods)) || any(!nzchar(names(methods))))) {
-        methods <- NULL
+    backend <- if (is.null(parsed$backend)) parsed$name else parsed$backend
+    is_belcher <- backend %in% c("belcher", "belcher_absolute")
+    # Records written before profiles existed remain on the historical
+    # numerical path instead of adopting enhanced defaults during recovery.
+    profile <- if (is.null(parsed$profile)) {
+        if (is_belcher) "legacy" else "default"
+    } else {
+        parsed$profile
     }
-    epw_morph_recipe(parsed$name, backend = if (is.null(parsed$backend)) parsed$name else parsed$backend, methods = methods)
+    methods <- parsed$methods
+    if (is.list(methods) && !is.data.frame(methods)) {
+        methods <- unlist(methods, use.names = TRUE)
+    }
+    # Pre-profile recipe JSON encoded the full named vector as an unnamed
+    # array. Recover those positions from the backend method contract; newer
+    # records use a named JSON object and do not enter this compatibility path.
+    if (!is.null(methods) && (is.null(names(methods)) || any(!nzchar(names(methods))))) {
+        backend_spec <- suppressWarnings(epw_morph_backend(backend))
+        defaults <- if (is_belcher) {
+            morpher__belcher_profile_methods(backend_spec, profile)
+        } else {
+            backend_spec$methods()
+        }
+        if (length(methods) == length(defaults)) {
+            names(methods) <- names(defaults)
+        } else {
+            methods <- NULL
+        }
+    }
+    epw_morph_recipe(
+        parsed$name,
+        backend = backend,
+        methods = methods,
+        profile = profile,
+        options = cli_shift__belcher_options(parsed$options)
+    )
 }
 
 

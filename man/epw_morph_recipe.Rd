@@ -4,7 +4,13 @@
 \alias{epw_morph_recipe}
 \title{EPW morphing recipe}
 \usage{
-epw_morph_recipe(name = "belcher", backend = name, methods = NULL)
+epw_morph_recipe(
+  name = "belcher",
+  backend = name,
+  methods = NULL,
+  profile = NULL,
+  options = NULL
+)
 }
 \arguments{
 \item{name}{Recipe name. Defaults to \code{"belcher"}.}
@@ -13,6 +19,13 @@ epw_morph_recipe(name = "belcher", backend = name, methods = NULL)
 
 \item{methods}{Optional named character vector overriding morphing methods for
 backend steps.}
+
+\item{profile}{Built-in Belcher compatibility profile. \code{NULL} selects
+\code{"enhanced"}; old serialized recipes are reconstructed explicitly as
+\code{"legacy"}.}
+
+\item{options}{Optional named Belcher option list, usually created by
+\code{\link[=belcher_options]{belcher_options()}}.}
 }
 \value{
 A recipe list.

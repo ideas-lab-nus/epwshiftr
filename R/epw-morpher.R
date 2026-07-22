@@ -31,6 +31,60 @@ EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS <- c(
 
 EPW_MORPH_BELCHER_METHOD_CHOICES <- c("shift", "stretch", "combined")
 
+# Profiles make the numerical compatibility boundary explicit. Both profiles
+# initially share the historical calculation path; the enhanced profile also
+# records the durable option contract for enhanced numerical behavior.
+EPW_MORPH_BELCHER_PROFILES <- c("enhanced", "legacy")
+EPW_MORPH_BELCHER_PROFILE_METHODS <- list(
+    enhanced = utils::modifyList(
+        as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS),
+        list(tdb = "shift")
+    ),
+    legacy = as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS)
+)
+EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS <- list(
+    enhanced = utils::modifyList(
+        as.list(EPW_MORPH_BELCHER_METHOD_DEFAULTS),
+        list(tdb = "stretch")
+    ),
+    legacy = as.list(EPW_MORPH_BELCHER_METHOD_DEFAULTS)
+)
+
+# Each profile owns a complete option set so recipe JSON never depends on
+# process-global defaults when a queued or resumed task is reconstructed.
+EPW_MORPH_BELCHER_PROFILE_OPTIONS <- list(
+    enhanced = list(
+        transition_hours = 72L,
+        humidity_source = "auto",
+        diffuse_model = "rbl_2010",
+        illuminance_model = "perez_1990",
+        snow_depth = "auto",
+        ground_temperatures = "recalculate",
+        typical_extreme_periods = "recalculate",
+        design_conditions = "drop"
+    ),
+    legacy = list(
+        transition_hours = 0L,
+        humidity_source = "hurs",
+        diffuse_model = "preserve_fraction",
+        illuminance_model = "preserve",
+        snow_depth = "off",
+        ground_temperatures = "preserve",
+        typical_extreme_periods = "preserve",
+        design_conditions = "preserve"
+    )
+)
+
+EPW_MORPH_BELCHER_OPTION_CHOICES <- list(
+    humidity_source = c("auto", "huss", "hurs"),
+    diffuse_model = c("rbl_2010", "preserve_fraction"),
+    illuminance_model = c("perez_1990", "preserve"),
+    snow_depth = c("auto", "required", "off"),
+    ground_temperatures = c("recalculate", "preserve"),
+    typical_extreme_periods = c("recalculate", "preserve"),
+    design_conditions = c("drop", "preserve")
+)
+
 EPW_MORPH_BELCHER_RULES <- data.table::data.table(
     step = c(
         "tdb",
@@ -369,7 +423,7 @@ morpher__default_backend_specs <- function() {
         belcher = EpwMorphBackend$new(
             name = "belcher",
             label = "Belcher statistical downscaling with optional external reference",
-            methods = EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS,
+            methods = unlist(EPW_MORPH_BELCHER_PROFILE_METHODS$enhanced, use.names = TRUE),
             method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
             rules = EPW_MORPH_BELCHER_RULES,
             accepts_reference = TRUE,
@@ -378,7 +432,7 @@ morpher__default_backend_specs <- function() {
         belcher_absolute = EpwMorphBackend$new(
             name = "belcher_absolute",
             label = "Belcher absolute-target statistical downscaling",
-            methods = EPW_MORPH_BELCHER_METHOD_DEFAULTS,
+            methods = unlist(EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS$enhanced, use.names = TRUE),
             method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
             rules = EPW_MORPH_BELCHER_RULES,
             runner = morpher__belcher_absolute_run
@@ -463,25 +517,168 @@ epw_morph_register_backend <- function(name, backend, overwrite = FALSE) {
     invisible(backend)
 }
 
+# Validate one complete Belcher option list before it enters a recipe. Keeping
+# this check at construction time prevents workers from interpreting malformed
+# task JSON differently after a resume.
+morpher__belcher_validate_options <- function(options) {
+    if (!is.list(options) || is.null(names(options)) || any(!nzchar(names(options)))) {
+        cli::cli_abort("Belcher `options` must be a named list or the result of {.fn belcher_options}.")
+    }
+    unknown <- setdiff(names(options), names(EPW_MORPH_BELCHER_PROFILE_OPTIONS$enhanced))
+    if (length(unknown)) {
+        cli::cli_abort("Unknown Belcher option(s): {.val {unknown}}.")
+    }
+    transition_hours <- options$transition_hours
+    checkmate::assert_count(transition_hours, na.ok = FALSE)
+    if (transition_hours > 336L) {
+        cli::cli_abort("`transition_hours` must be between 0 and 336.")
+    }
+    options$transition_hours <- as.integer(transition_hours)
+    for (name in names(EPW_MORPH_BELCHER_OPTION_CHOICES)) {
+        value <- options[[name]]
+        checkmate::assert_string(value, min.chars = 1L)
+        value <- tolower(value)
+        allowed <- EPW_MORPH_BELCHER_OPTION_CHOICES[[name]]
+        if (!value %in% allowed) {
+            cli::cli_abort(
+                "Unsupported Belcher option value {.val {value}} for {.field {name}}. Allowed value(s): {.val {allowed}}."
+            )
+        }
+        options[[name]] <- value
+    }
+    class(options) <- unique(c("belcher_options", class(options)))
+    options
+}
+
+# Resolve partial user options against the selected profile. This function is
+# also the single compatibility boundary used when old serialized recipes are
+# reconstructed explicitly with `profile = "legacy"`.
+morpher__belcher_resolve_options <- function(profile, options = NULL) {
+    defaults <- EPW_MORPH_BELCHER_PROFILE_OPTIONS[[profile]]
+    if (is.null(options)) {
+        return(morpher__belcher_validate_options(defaults))
+    }
+    if (!is.list(options)) {
+        cli::cli_abort("Belcher `options` must be a named list or the result of {.fn belcher_options}.")
+    }
+    unknown <- setdiff(names(options), names(defaults))
+    if (length(unknown)) {
+        cli::cli_abort("Unknown Belcher option(s): {.val {unknown}}.")
+    }
+    morpher__belcher_validate_options(utils::modifyList(defaults, unclass(options)))
+}
+
+# Resolve the profile-specific method baseline independently of the backend's
+# registry default so legacy recipes retain their historical methods.
+morpher__belcher_profile_methods <- function(backend, profile) {
+    methods <- if (identical(backend$name, "belcher_absolute")) {
+        EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS[[profile]]
+    } else {
+        EPW_MORPH_BELCHER_PROFILE_METHODS[[profile]]
+    }
+    unlist(methods, use.names = TRUE)
+}
+
+#' Configure enhanced Belcher morphing
+#'
+#' @param transition_hours Width in hours of each cyclic month-boundary
+#'   transition. Must be between 0 and 336.
+#' @param humidity_source Humidity state input: `"auto"`, `"huss"`, or
+#'   `"hurs"`.
+#' @param diffuse_model Diffuse-radiation model: `"rbl_2010"` or
+#'   `"preserve_fraction"`.
+#' @param illuminance_model Illuminance model: `"perez_1990"` or `"preserve"`.
+#' @param snow_depth Snow-depth policy: `"auto"`, `"required"`, or `"off"`.
+#' @param ground_temperatures Ground-temperature header policy.
+#' @param typical_extreme_periods Typical/extreme-period header policy.
+#' @param design_conditions Design-condition header policy.
+#'
+#' @return A validated `belcher_options` list.
+#'
+#' @references
+#' Ridley B, Boland J, Lauret P (2010), "Modelling of diffuse solar fraction
+#' with multiple predictors", *Renewable Energy*.
+#' \doi{10.1016/j.renene.2009.07.018}
+#'
+#' Perez R, Ineichen P, Seals R, Michalsky J, Stewart R (1990), "Modeling
+#' daylight availability and irradiance components from direct and global
+#' irradiance", *Solar Energy*.
+#'
+#' EnergyPlus Weather File Data Dictionary:
+#' <https://bigladdersoftware.com/epx/docs/22-2/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html>
+#' @export
+belcher_options <- function(
+    transition_hours = 72L,
+    humidity_source = "auto",
+    diffuse_model = "rbl_2010",
+    illuminance_model = "perez_1990",
+    snow_depth = "auto",
+    ground_temperatures = "recalculate",
+    typical_extreme_periods = "recalculate",
+    design_conditions = "drop"
+) {
+    morpher__belcher_validate_options(list(
+        transition_hours = transition_hours,
+        humidity_source = humidity_source,
+        diffuse_model = diffuse_model,
+        illuminance_model = illuminance_model,
+        snow_depth = snow_depth,
+        ground_temperatures = ground_temperatures,
+        typical_extreme_periods = typical_extreme_periods,
+        design_conditions = design_conditions
+    ))
+}
+
 #' EPW morphing variable sets
 #'
 #' @param level Variable set level, an [EpwMorphBackend] object, or an
 #'        [epw_morph_recipe()] object.
+#' @param include_optional Whether to include optional source variables used by
+#'   enhanced methods.
 #'
 #' @return A character vector of CMIP variable IDs.
 #' @export
-epw_morph_variables <- function(level = c("recommended", "minimal", "extended")) {
+epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
+                                include_optional = FALSE) {
+    checkmate::assert_flag(include_optional)
     if (inherits(level, "epw_morph_recipe")) {
-        return(morpher__rules_required_variables(morpher__recipe_rules(level)[required == TRUE & !derived]))
+        rules <- morpher__recipe_rules(level)
+        required <- morpher__rules_required_variables(rules[required == TRUE & !derived])
+        if (!isTRUE(include_optional)) {
+            return(required)
+        }
+        optional <- unique(unlist(c(
+            rules[required == TRUE & !derived, optional_variables],
+            rules[required == FALSE & !derived, required_variables]
+        ), use.names = FALSE))
+        if (identical(level$backend, "belcher") || identical(level$backend, "belcher_absolute")) {
+            if (identical(level$options$snow_depth, "off")) {
+                optional <- setdiff(optional, "snd")
+            }
+        }
+        return(unique(c(required, optional)))
     }
     if (inherits(level, "EpwMorphBackend")) {
-        return(level$required_variables())
+        required <- level$required_variables()
+        if (!isTRUE(include_optional)) {
+            return(required)
+        }
+        rules <- level$rules()
+        optional <- unique(unlist(c(
+            rules[required == TRUE & !derived, optional_variables],
+            rules[required == FALSE & !derived, required_variables]
+        ), use.names = FALSE))
+        return(unique(c(required, optional)))
     }
     if (is.character(level) && length(level) == 1L && !level %in% names(EPW_MORPH_VARIABLE_LEVELS)) {
-        return(epw_morph_backend(level)$required_variables())
+        return(epw_morph_variables(epw_morph_backend(level), include_optional = include_optional))
     }
     level <- match.arg(level)
-    EPW_MORPH_VARIABLE_LEVELS[[level]]
+    variables <- EPW_MORPH_VARIABLE_LEVELS[[level]]
+    if (isTRUE(include_optional) && !identical(level, "extended")) {
+        variables <- unique(c(variables, setdiff(EPW_MORPH_VARIABLE_LEVELS$extended, variables)))
+    }
+    variables
 }
 
 # Describe canonical morph variables separately from the source-variable
@@ -533,23 +730,61 @@ morpher__requirement_match <- function(available, alternatives) {
 #' @param backend Backend name. Defaults to `name`.
 #' @param methods Optional named character vector overriding morphing methods for
 #'        backend steps.
+#' @param profile Built-in Belcher compatibility profile. `NULL` selects
+#'   `"enhanced"`; old serialized recipes are reconstructed explicitly as
+#'   `"legacy"`.
+#' @param options Optional named Belcher option list, usually created by
+#'   [belcher_options()].
 #'
 #' @return A recipe list.
 #' @export
-epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL) {
+epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
+                             profile = NULL, options = NULL) {
     checkmate::assert_string(name, min.chars = 1L)
     checkmate::assert_string(backend, min.chars = 1L)
     name <- tolower(name)
     backend <- tolower(backend)
     backend_spec <- epw_morph_backend(backend)
 
+    is_belcher <- backend %in% c("belcher", "belcher_absolute")
+    if (is_belcher) {
+        if (is.null(profile)) {
+            profile <- "enhanced"
+        }
+        checkmate::assert_choice(profile, EPW_MORPH_BELCHER_PROFILES)
+        profile <- tolower(profile)
+        base_methods <- morpher__belcher_profile_methods(backend_spec, profile)
+        if (!is.null(methods)) {
+            checkmate::assert_character(methods, any.missing = FALSE, names = "named")
+            methods <- unlist(utils::modifyList(as.list(base_methods), as.list(methods)), use.names = TRUE)
+        } else {
+            methods <- base_methods
+        }
+        options <- morpher__belcher_resolve_options(profile, options)
+    } else {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort("Custom EPW morphing backends only support {.val default} profile metadata.")
+        }
+        profile <- "default"
+        if (is.null(options)) {
+            options <- list()
+        } else if (!is.list(options)) {
+            cli::cli_abort("Custom backend `options` must be a named list.")
+        }
+    }
+
     methods <- morpher__recipe_methods(methods, backend_spec)
     rules <- backend_spec$rules_with_methods(methods)
+    if (is_belcher && identical(options$snow_depth, "required")) {
+        rules[step == "snow_depth", required := TRUE]
+    }
 
     structure(
         list(
             name = name,
             backend = backend,
+            profile = profile,
+            options = options,
             methods = methods,
             rules = rules
         ),
@@ -609,7 +844,12 @@ morpher__json <- function(x) {
         x <- list(
             name = x$name,
             backend = x$backend,
-            methods = x$methods,
+            profile = x$profile,
+            options = unclass(x$options),
+            # Named atomic vectors become JSON arrays and lose their step
+            # identity. A named list deliberately serializes as an object so
+            # queued and resumed jobs retain every method override.
+            methods = as.list(x$methods),
             rules = as.data.frame(rules)
         )
     }
@@ -655,7 +895,11 @@ morpher__recipe_method_overrides <- function(recipe) {
     if (is.null(methods)) {
         return(NULL)
     }
-    defaults <- backend$methods()
+    defaults <- if (recipe$backend %in% c("belcher", "belcher_absolute")) {
+        morpher__belcher_profile_methods(backend, recipe$profile)
+    } else {
+        backend$methods()
+    }
     overrides <- methods[names(methods) %in% names(defaults) & methods != defaults[names(methods)]]
     if (!length(overrides)) NULL else overrides
 }
