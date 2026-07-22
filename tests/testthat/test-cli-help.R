@@ -43,6 +43,15 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
     expect_match(morph_retry_help$result[[1L]], "Usage: epwshiftr morph retry")
     expect_false(dir.exists(missing_dir))
 
+    morph_run_help <- epwshiftr_cli(c(
+        "--quiet", "--store", missing_dir, "help", "morph", "run"
+    ))
+    expect_equal(morph_run_help$status, 0L)
+    expect_match(morph_run_help$result[[1L]], "--profile enhanced|legacy",
+        fixed = TRUE)
+    expect_match(morph_run_help$result[[1L]], "--method STEP=METHOD",
+        fixed = TRUE)
+
     help_topic <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "help", "storage", "validate"))
     expect_equal(help_topic$status, 0L)
     expect_match(help_topic$result[[1L]], "Usage: epwshiftr storage validate")

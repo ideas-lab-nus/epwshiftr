@@ -52,8 +52,8 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
         args,
         flags = c("--overwrite", "--no-resume", "--no-progress",
             "--reduced-motion", "--verbose", "--debug"),
-        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--strict", "--by"),
-        multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option")
+        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--profile", "--strict", "--by"),
+        multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option", "--method", "--option")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
@@ -77,7 +77,12 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
     strict <- epwshiftr_cli_bool(parsed$options[["--strict"]], "--strict", default = TRUE)
     plan_id <- epwshiftr_cli_required_ids(parsed, "--plan")
     epw <- epwshiftr_cli_required_option(parsed, "--epw")
-    recipe <- epwshiftr_cli_recipe(epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"))
+    recipe <- epwshiftr_cli_recipe(
+        epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"),
+        methods = epwshiftr_cli_key_value_list(parsed$options[["--method"]], "--method"),
+        profile = epwshiftr_cli_config_string(parsed$options[["--profile"]], default = NULL),
+        options = epwshiftr_cli_key_value_list(parsed$options[["--option"]], "--option")
+    )
     by <- epwshiftr_cli_config_character(
         parsed$options[["--by"]],
         default = c("source_id", "experiment_id", "variant_label", "period")

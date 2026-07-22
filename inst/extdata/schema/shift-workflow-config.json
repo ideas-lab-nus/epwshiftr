@@ -38,10 +38,12 @@
       "keys": {
         "type": "named",
         "must.include": ["name"],
-        "subset.of": ["name", "methods", "reference"]
+        "subset.of": ["name", "profile", "options", "methods", "reference"]
       },
       "fields": {
         "name": {"check": {"kind": "string"}},
+        "profile": {"check": {"kind": "choice", "choices": ["enhanced", "legacy"]}},
+        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "methods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "reference": {
           "check": {"kind": "list", "null.ok": true},

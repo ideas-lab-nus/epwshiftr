@@ -75,7 +75,7 @@ shift_site(
 
 shift_morph_method(recipe, reference = NULL)
 
-belcher(reference = NULL, methods = NULL)
+belcher(reference = NULL, methods = NULL, profile = "enhanced", options = NULL)
 
 shift_cmip6(
   model,
@@ -324,8 +324,9 @@ date-time values accepted by the provider/store.}
 \item{filters}{Provider-specific query filters in \code{\link[=shift_request]{shift_request()}}, or
 extraction filters in \code{\link[=shift_extract]{shift_extract()}}.}
 
-\item{options}{Provider-specific request options. For ESGF, \code{index_node} and
-\code{time_filter_method} are recognized.}
+\item{options}{For \code{\link[=belcher]{belcher()}}, an optional named list created by
+\code{\link[=belcher_options]{belcher_options()}}. For \code{\link[=shift_request]{shift_request()}}, provider-specific request
+options; ESGF recognizes \code{index_node} and \code{time_filter_method}.}
 
 \item{...}{Additional provider-specific filters or workflow options.}
 
@@ -349,6 +350,8 @@ EPW export option list.}
 change-factor morphing.}
 
 \item{methods}{Optional named Belcher step method overrides.}
+
+\item{profile}{Belcher compatibility profile, \code{"enhanced"} by default.}
 
 \item{model}{CMIP6 source/model IDs.}
 

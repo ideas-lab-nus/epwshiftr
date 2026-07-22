@@ -1674,10 +1674,20 @@ shift_morph_method <- function(recipe, reference = NULL) {
 
 #' @rdname shift_api
 #' @param methods Optional named Belcher step method overrides.
+#' @param profile Belcher compatibility profile, `"enhanced"` by default.
+#' @param options For [belcher()], an optional named list created by
+#'   [belcher_options()]. For [shift_request()], provider-specific request
+#'   options; ESGF recognizes `index_node` and `time_filter_method`.
 #' @export
-belcher <- function(reference = NULL, methods = NULL) {
+belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
+                    options = NULL) {
     shift_morph_method(
-        epw_morph_recipe(name = "belcher", methods = methods),
+        epw_morph_recipe(
+            name = "belcher",
+            methods = methods,
+            profile = profile,
+            options = options
+        ),
         reference = reference
     )
 }
@@ -4593,6 +4603,8 @@ shift__plan_spec <- function(x) {
             recipe = list(
                 name = method@recipe$name,
                 backend = method@recipe$backend,
+                profile = method@recipe$profile,
+                options = unclass(method@recipe$options),
                 methods = as.list(method@recipe$methods),
                 rules_identity = store__hash(morpher__json(method@recipe))
             ),
@@ -4679,19 +4691,31 @@ shift__recipe_ref <- function(recipe) {
     list(
         name = recipe$name,
         backend = recipe$backend,
+        profile = recipe$profile,
+        options = unclass(recipe$options),
         methods = as.list(recipe$methods)
     )
 }
 
-# Rebuild a package recipe from its stable name/backend/method override fields.
+# Rebuild a package recipe from stable fields. Recipes persisted before profile
+# support are deliberately interpreted as legacy rather than silently upgraded.
 shift__recipe_from_ref <- function(ref) {
     if (is.null(ref)) return(NULL)
     methods <- unlist(ref$methods, use.names = TRUE)
     if (!length(methods)) methods <- NULL
+    backend <- as.character(ref$backend)
+    is_belcher <- backend %in% c("belcher", "belcher_absolute")
+    profile <- if (is.null(ref$profile)) {
+        if (is_belcher) "legacy" else "default"
+    } else {
+        as.character(ref$profile)
+    }
     epw_morph_recipe(
         name = as.character(ref$name),
-        backend = as.character(ref$backend),
-        methods = methods
+        backend = backend,
+        methods = methods,
+        profile = profile,
+        options = shift_coalesce(ref$options, NULL)
     )
 }
 
@@ -5010,15 +5034,7 @@ shift__plan_from_spec <- function(spec, store = NULL) {
         metadata = shift_coalesce(site_spec$metadata, list())
     )
     recipe_spec <- spec$method$recipe
-    methods <- unlist(recipe_spec$methods, use.names = TRUE)
-    if (!length(methods)) {
-        methods <- NULL
-    }
-    recipe <- epw_morph_recipe(
-        name = as.character(recipe_spec$name),
-        backend = as.character(recipe_spec$backend),
-        methods = methods
-    )
+    recipe <- shift__recipe_from_ref(recipe_spec)
     reference <- shift__reference_from_spec(spec$method$reference)
     method <- shift_morph_method(recipe, reference = reference)
     control <- do.call(shift_control, spec$control)
