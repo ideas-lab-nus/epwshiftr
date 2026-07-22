@@ -674,14 +674,8 @@ EsgResult <- R6::R6Class(
 
         # filter_time_ranges_drs {{{
         filter_time_ranges_drs = function(docs, result_label = "file") {
-            warning(
-                sprintf(
-                    "Time filtering with method = 'drs' uses DRS filename conventions for %s records. Files whose time range cannot be parsed are kept.",
-                    result_label
-                ),
-                call. = FALSE
-            )
-
+            # Warn only about records that actually cannot be interpreted;
+            # selecting the documented DRS strategy is not itself exceptional.
             labels <- query_result__drs_labels(docs)
             ranges <- query_result__drs_ranges(labels$value)
             unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)

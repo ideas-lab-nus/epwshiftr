@@ -25,5 +25,6 @@
       ├────────┼──────────────────────────────────────────┤
       │ queued │ very-long-climate-file-name-for-cli-o... │
       └────────┴──────────────────────────────────────────┘
-      ℹ Hidden columns for console width: bytes_done, size, progress, attempts, last_error, session_id, task_id, file_key. Use --json for full output.
+      ℹ Hidden columns for console width: bytes_done, size, progress, attempts,
+        last_error, session_id, task_id, file_key. Use --json for full output.
 

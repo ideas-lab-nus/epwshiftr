@@ -264,12 +264,7 @@ shift_cancel(x, store = NULL, force = FALSE)
 
 shift_logs(x, store = NULL, tail = 100L)
 
-shift_datasets(
-  x,
-  all = TRUE,
-  limit = FALSE,
-  progress = getOption("epwshiftr.progress", interactive())
-)
+shift_datasets(x, all = TRUE, limit = FALSE, store = NULL, ui = NULL)
 
 shift_files(x)
 
@@ -312,9 +307,11 @@ shift_ui(
 
 \item{project}{Optional provider project, for example \code{"CMIP6"}.}
 
-\item{source, experiment, variant, frequency}{Provider-neutral request aliases.
+\item{source, experiment, variant, frequency}{Provider-neutral request fields.
+Values must use the selected provider's controlled vocabulary.
 In \code{shift_reference_historical()}, \code{experiment} is the historical
-reference experiment filter.}
+reference experiment filter. Values are not translated; for ESGF, use
+exact facet values such as \code{project = "CMIP6"} and \code{frequency = "mon"}.}
 
 \item{variables}{Provider-neutral request alias in \code{\link[=shift_request]{shift_request()}}, optional
 extraction variables in \code{\link[=shift_extract]{shift_extract()}}, or optional variables to read in
@@ -453,7 +450,10 @@ resolving an automatic historical reference.}
 requests all fields and lets the result/store layers preserve and validate
 provider response metadata.}
 
-\item{all, limit}{Collection controls passed to \link{EsgQuery} / \link{EsgResultDataset}.}
+\item{all, limit}{Collection controls passed to \link{EsgQuery} /
+\link{EsgResultDataset}. If a numeric \code{limit} is supplied without explicitly
+setting \code{all}, it caps the Dataset result count. With \code{all = TRUE}, a
+numeric \code{limit} retains the low-level meaning of pagination page size.}
 
 \item{downloader}{Optional \link{Downloader} instance.}
 
@@ -500,10 +500,6 @@ background worker process immediately.}
 
 \item{tail}{Maximum number of trailing execution log lines to return.}
 
-\item{progress}{In \code{\link[=shift_ui]{shift_ui()}}, workflow presentation mode: \code{"auto"},
-\code{"dynamic"}, \code{"log"}, or \code{"none"}. In low-level collect helpers, a
-logical controlling their native query progress display.}
-
 \item{n}{Maximum number of data rows to read. Use \code{Inf} to read all rows.}
 
 \item{case_id}{Optional morphing case IDs to read from morphed or EPW output
@@ -514,6 +510,9 @@ stages.}
 \item{severity}{Optional diagnostic severities to keep.}
 
 \item{create}{Whether to create a store when \code{x} is a path.}
+
+\item{progress}{In \code{\link[=shift_ui]{shift_ui()}}, workflow presentation mode: \code{"auto"},
+\code{"dynamic"}, \code{"log"}, or \code{"none"}.}
 
 \item{detail}{Presentation detail level. \code{"normal"} shows task progress,
 \code{"detail"} adds selection, reuse, and fallback decisions, and \code{"debug"}

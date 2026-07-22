@@ -268,6 +268,13 @@ test_that("motion frames animate only in full mode", {
     expect_identical(shift__ui_spinner("none", 0L), "")
 })
 
+test_that("stage labels cover Dataset tasks and safely format extensions", {
+    expect_identical(shift__ui_stage_label("datasets"), "Datasets")
+    expect_identical(shift__task_label("datasets"), "Collect Datasets")
+    expect_identical(shift__ui_stage_label("custom_stage"), "custom stage")
+    expect_identical(shift__task_label("custom_stage"), "custom stage")
+})
+
 test_that("recent activity keeps three semantic milestones", {
     reporter <- shift__reporter(shift_ui("none"))
     reporter$stage_started("resolve", "Resolving inputs.")
@@ -1074,7 +1081,7 @@ test_that("generic operation reporters preserve receipts in log and dynamic mode
         reporter$operation_waiting("12 files collected")
     }, type = "message")
     expect_true(any(grepl("Collect CMIP6", log_output, fixed = TRUE)))
-    expect_true(any(grepl("waiting: 12 files collected", log_output,
+    expect_true(any(grepl("ready: 12 files collected", log_output,
         fixed = TRUE)))
 
     quiet_output <- capture.output({
@@ -1086,15 +1093,16 @@ test_that("generic operation reporters preserve receipts in log and dynamic mode
     expect_length(quiet_output, 0L)
 
     draws <- 0L
-    commits <- 0L
+    commits <- character()
     testthat::local_mocked_bindings(
         shift__ui_renderer = function(...) list(
             draw = function(...) {
                 draws <<- draws + 1L
                 TRUE
             },
-            commit = function(...) {
-                commits <<- commits + 1L
+            commit = function(result = c("done", "failed", "cancelled")) {
+                result <- match.arg(result)
+                commits <<- c(commits, result)
                 invisible(NULL)
             },
             close = function(...) invisible(NULL),
@@ -1105,12 +1113,35 @@ test_that("generic operation reporters preserve receipts in log and dynamic mode
     )
     reporter <- ShiftReporter$new(shift_ui("dynamic"),
         run_id = "run-generic-dynamic")
-    reporter$operation_started("morph", "Morph EPW",
-        stage_sequence = c("collect", "extract", "morph"),
-        completed_stages = c("collect", "extract"))
-    reporter$operation_completed("2 cases morphed")
+    reporter$operation_started("datasets", "Collect Datasets",
+        stage_sequence = "datasets")
+    reporter$operation_completed("1 dataset collected")
     expect_gte(draws, 2L)
-    expect_identical(commits, 1L)
+    expect_identical(commits, "done")
+
+    # A successful intermediate operation keeps the workflow waiting for the
+    # next R call, but releases the terminal renderer through its done state.
+    reporter <- ShiftReporter$new(shift_ui("dynamic"),
+        run_id = "run-generic-waiting")
+    reporter$operation_started("collect", "Collect CMIP6")
+    reporter$operation_waiting("12 files collected")
+    expect_identical(commits, c("done", "done"))
+
+    # Incomplete artifacts keep a durable receipt but do not advertise that a
+    # downstream stage is ready to start.
+    reporter <- ShiftReporter$new(shift_ui("dynamic"),
+        run_id = "run-generic-partial")
+    reporter$operation_started("collect", "Collect CMIP6")
+    reporter$operation_partial("0 files collected")
+    expect_identical(commits, rep("done", 3L))
+
+    # Detached background work likewise leaves the run active after the local
+    # operation ends without turning renderer cleanup into a workflow failure.
+    reporter <- ShiftReporter$new(shift_ui("dynamic"),
+        run_id = "run-generic-running")
+    reporter$operation_started("download", "Download CMIP6")
+    reporter$operation_detached("download continues in background")
+    expect_identical(commits, rep("done", 4L))
 })
 
 test_that("dynamic watch animates cached state between store polls", {

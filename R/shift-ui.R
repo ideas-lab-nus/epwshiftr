@@ -17,8 +17,7 @@ SHIFT_UI_DETAIL_LEVELS <- c("normal", "detail", "debug")
 
 #' @rdname shift_api
 #' @param progress In [shift_ui()], workflow presentation mode: `"auto"`,
-#'   `"dynamic"`, `"log"`, or `"none"`. In low-level collect helpers, a
-#'   logical controlling their native query progress display.
+#'   `"dynamic"`, `"log"`, or `"none"`.
 #' @param detail Presentation detail level. `"normal"` shows task progress,
 #'   `"detail"` adds selection, reuse, and fallback decisions, and `"debug"`
 #'   also shows full URLs, paths, and low-level transfer context.
@@ -47,6 +46,28 @@ shift_ui <- function(progress = c("auto", "dynamic", "log", "none"),
         refresh = as.numeric(refresh),
         heartbeat = as.numeric(heartbeat)
     )
+}
+
+# Render runtime presentation policy separately from scientific workflow intent
+# so users can inspect TUI behaviour without seeing a raw S7 property dump.
+shift__print_ui_options <- function(x, width = NULL, verbose = FALSE) {
+    shift__print_use_width(width)
+    shift__print_header("Shift UI")
+    shift__print_facts(list(
+        "Progress" = x@progress,
+        "Detail" = x@detail,
+        "Motion" = x@motion,
+        "Refresh" = sprintf("%.2f s", x@refresh),
+        "Heartbeat" = sprintf("%g s", x@heartbeat)
+    ))
+    invisible(x)
+}
+
+# ShiftUiOptions participates in the same width/verbose print contract as all
+# other public Shift configuration objects.
+S7::method(print, ShiftUiOptions) <- function(x, ...) {
+    opts <- shift__print_options(list(...))
+    shift__print_ui_options(x, width = opts$width, verbose = opts$verbose)
 }
 
 # Resolve auto mode once per reporter so a run does not switch presentation
@@ -350,8 +371,8 @@ shift__ui_selection <- function(plan) {
 shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
                                    width = shift__ui_width(), detail = "normal") {
     request <- plan@meta$request@meta
-    model <- shift_coalesce(shift_display_values(request$source), "<model>")
-    scenarios <- shift_coalesce(shift_display_values(request$experiment), "<scenario>")
+    model <- shift_coalesce(shift__display_values(request$source), "<model>")
+    scenarios <- shift_coalesce(shift__display_values(request$experiment), "<scenario>")
     status <- if (isTRUE(background)) "QUEUED" else "STARTING"
     output_dir <- shift_coalesce(plan@meta$epw$export_dir, "<output directory>")
     lines <- c(
@@ -406,7 +427,8 @@ shift__ui_plan_context <- function(plan) {
 # fixed status region and in redirected logs.
 shift__ui_stage_label <- function(stage) {
     labels <- c(
-        planned = "Plan", collect = "Collect", resolve = "Resolve",
+        planned = "Plan", datasets = "Datasets", collect = "Collect",
+        resolve = "Resolve",
         download = "Download", extract = "Extract",
         extract_future = "Extract future",
         extract_reference = "Extract reference", coverage = "Coverage",
@@ -414,8 +436,13 @@ shift__ui_stage_label <- function(stage) {
         completed = "Completed",
         resume = "Resume"
     )
-    value <- labels[[as.character(shift_coalesce(stage, "planned"))]]
-    shift_coalesce(value, gsub("_", " ", as.character(stage), fixed = TRUE))
+    key <- as.character(shift_coalesce(stage, "planned"))[[1L]]
+    # Named atomic vectors throw on an unknown `[[` key, so extension stages
+    # must be checked before lookup and then rendered through the generic label.
+    if (key %in% names(labels)) {
+        return(unname(labels[[key]]))
+    }
+    gsub("_", " ", key, fixed = TRUE)
 }
 
 # Abbreviate a run identity to the stable suffix users need when reading a live
@@ -512,16 +539,19 @@ shift__ui_panel_rule <- function(label = NULL, width,
 # Apply colour only to semantic state. Ordinary configuration values remain in
 # the terminal's default foreground colour instead of becoming a wall of green.
 shift__ui_status_style <- function(status) {
-    status <- toupper(as.character(shift_coalesce(status, "running"))[[1L]])
-    styled <- switch(tolower(status),
-        completed = cli::col_green(status),
-        partial = cli::col_yellow(status),
-        failed = cli::col_red(status),
-        cancelled = cli::col_red(status),
-        stopping = cli::col_yellow(status),
-        waiting = cli::col_blue(status),
-        queued = cli::col_blue(status),
-        cli::col_cyan(status)
+    state <- tolower(as.character(shift_coalesce(status, "running"))[[1L]])
+    # `waiting` is the durable state-machine term; users see READY because the
+    # command has finished and its result can be passed to the next stage.
+    label <- if (identical(state, "waiting")) "READY" else toupper(state)
+    styled <- switch(state,
+        completed = cli::col_green(label),
+        partial = cli::col_yellow(label),
+        failed = cli::col_red(label),
+        cancelled = cli::col_red(label),
+        stopping = cli::col_yellow(label),
+        waiting = cli::col_blue(label),
+        queued = cli::col_blue(label),
+        cli::col_cyan(label)
     )
     cli::style_bold(styled)
 }
@@ -1060,6 +1090,9 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     }
     current_status <- if (status %in% c("queued", "waiting", "stopping", "completed",
         "partial", "failed", "cancelled")) status else "running"
+    if (identical(current_status, "waiting")) {
+        current_status <- "completed"
+    }
     current_label_name <- if (identical(status, "failed")) {
         "Failure"
     } else if (identical(status, "cancelled")) {
@@ -1148,6 +1181,9 @@ shift__ui_compact_line <- function(state, width = shift__ui_width(),
     }
     marker <- if (status %in% c("failed", "cancelled", "partial", "stopping", "waiting",
         "completed")) status else "running"
+    if (identical(marker, "waiting")) {
+        marker <- "completed"
+    }
     parts <- c(
         paste(shift__ui_state_symbol(marker, motion, frame), stage),
         counter,
@@ -1214,8 +1250,14 @@ shift__ui_node_table <- function(rows, width = shift__ui_width(),
         return(character())
     }
     width <- shift__ui_width(width)
-    display_max <- function(x) max(cli::ansi_nchar(as.character(x), type = "width"))
-    node_width <- min(12L, max(4L, display_max(c("Node", rows$node))))
+    # Persisted resolver events may omit counts or labels. Replace missing cells
+    # before measuring widths so the table remains stable.
+    shift__display_max <- function(x) {
+        x <- as.character(x)
+        x[is.na(x) | !nzchar(x)] <- "—"
+        max(cli::ansi_nchar(x, type = "width"))
+    }
+    node_width <- min(12L, max(4L, shift__display_max(c("Node", rows$node))))
     include_counts <- width >= 56L
     include_duration <- width >= 72L && "duration" %in% names(rows)
     columns <- c("Node")
@@ -1272,11 +1314,18 @@ shift__ui_case_table <- function(rows, width = shift__ui_width(),
     member <- if ("variant_label" %in% names(rows)) rows$variant_label else rep("\u2014", nrow(rows))
     status <- if ("status" %in% names(rows)) rows$status else rep("unknown", nrow(rows))
     include_member <- width >= 68L
-    display_max <- function(x) max(cli::ansi_nchar(as.character(x), type = "width"))
-    scenario_width <- min(14L, max(8L, display_max(c("Scenario", scenario))))
-    period_width <- min(12L, max(6L, display_max(c("Period", period))))
+    # Planned cases legitimately carry unresolved member/grid values. Replace
+    # them before measuring columns so NA cannot propagate into ansi_align() as
+    # a literal "NA" suffix in the static dashboard table.
+    shift__display_max <- function(x) {
+        x <- as.character(x)
+        x[is.na(x) | !nzchar(x)] <- "—"
+        max(cli::ansi_nchar(x, type = "width"))
+    }
+    scenario_width <- min(14L, max(8L, shift__display_max(c("Scenario", scenario))))
+    period_width <- min(12L, max(6L, shift__display_max(c("Period", period))))
     member_width <- if (include_member) min(14L, max(6L,
-        display_max(c("Member", member)))) else 0L
+        shift__display_max(c("Member", member)))) else 0L
     fixed <- scenario_width + period_width + member_width +
         if (include_member) 10L else 7L
     status_width <- max(10L, width - fixed)
@@ -1522,7 +1571,7 @@ shift__ui_table_state <- function(row, events, cases) {
     }
     fallback_stage_message <- switch(row$status[[1L]],
         queued = "Waiting for background worker",
-        waiting = "Waiting for the next shift stage",
+        waiting = "Ready for the next shift stage",
         completed = "Workflow completed",
         partial = "Workflow completed with missing cases",
         failed = "Workflow failed",
@@ -1866,6 +1915,15 @@ ShiftReporter <- R6::R6Class(
         operation_completed = function(summary, output_paths = character(),
                                        output_dir = NULL) {
             private$finish_operation("completed", summary,
+                output_paths = output_paths, output_dir = output_dir)
+            invisible(self)
+        },
+
+        # Commit a scientifically incomplete stage as a visible terminal
+        # receipt instead of presenting it as ready for the next operation.
+        operation_partial = function(summary, output_paths = character(),
+                                     output_dir = NULL) {
+            private$finish_operation("partial", summary,
                 output_paths = output_paths, output_dir = output_dir)
             invisible(self)
         },
@@ -2539,7 +2597,8 @@ ShiftReporter <- R6::R6Class(
         # receipts share identical rendering and persistence semantics.
         finish_operation = function(status, summary, output_paths = character(),
                                     output_dir = NULL) {
-            checkmate::assert_choice(status, c("completed", "waiting", "running"))
+            checkmate::assert_choice(status,
+                c("completed", "partial", "waiting", "running"))
             checkmate::assert_string(summary, min.chars = 1L)
             private$status <- status
             private$result_summary <- summary
@@ -2561,12 +2620,21 @@ ShiftReporter <- R6::R6Class(
                 tryCatch(private$renderer$backend(), error = function(e) NULL)
             committed_frame <- identical(private$mode_value, "dynamic") &&
                 identical(renderer_backend, "frame")
-            private$close_renderer(result = status, preserve = TRUE)
+            # Workflow states such as waiting and running are successful UI
+            # terminations. The framebuffer owns only terminal outcomes, so
+            # translate every non-error operation receipt to its `done` state.
+            private$close_renderer(result = "done", preserve = TRUE)
             if (!isTRUE(committed_frame) &&
                 !identical(private$mode_value, "none")) {
+                display_status <- if (identical(status, "waiting")) {
+                    "ready"
+                } else {
+                    status
+                }
                 private$emit(if (identical(status, "completed")) "success" else "info",
                     sprintf("%s run %s %s: %s",
-                        private$task_label, private$run_id_value, status,
+                        private$task_label, private$run_id_value,
+                        display_status,
                         summary))
             }
             invisible(NULL)
