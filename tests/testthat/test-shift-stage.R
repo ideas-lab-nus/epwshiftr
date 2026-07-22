@@ -359,6 +359,8 @@ test_that("Shift configuration printers use compact semantic receipts", {
         type = "message")
     expect_true(any(grepl("CMIP6 Climate", climate_text, fixed = TRUE)))
     expect_true(any(grepl("6-node failover", climate_text, fixed = TRUE)))
+    expect_true(any(grepl("Table: auto by variable", climate_text,
+        fixed = TRUE)))
     expect_false(any(grepl("https://", climate_text, fixed = TRUE)))
     climate_verbose <- capture.output(print(climate, width = 72L,
         verbose = TRUE, n = 3L), type = "message")
@@ -375,10 +377,13 @@ test_that("Shift configuration printers use compact semantic receipts", {
         type = "message")
     expect_true(any(grepl("Reference: baseline EPW", method_text,
         fixed = TRUE)))
+    expect_true(any(grepl("Profile: enhanced", method_text, fixed = TRUE)))
     expect_false(any(grepl("── Rules", method_text)))
     method_verbose <- capture.output(print(method, width = 72L,
         verbose = TRUE, n = 3L), type = "message")
     expect_true(any(grepl("Rules", method_verbose, fixed = TRUE)))
+    expect_true(any(grepl("Options", method_verbose, fixed = TRUE)))
+    expect_true(any(grepl("snow_depth", method_verbose, fixed = TRUE)))
     expect_true(any(grepl("11 more rows", method_verbose, fixed = TRUE)))
 
     visible <- NULL
@@ -392,6 +397,47 @@ test_that("Shift configuration printers use compact semantic receipts", {
     expect_snapshot(shift_test_print_objects(
         list(climate, control, ui, reference, method, site),
         width = 100L, n = 3L, verbose = TRUE))
+})
+
+test_that("Shift scientific labels preserve profiles, table policy, and partitions", {
+    expect_identical(
+        shift__format_morph_method("belcher", belcher()@recipe),
+        "belcher [enhanced]"
+    )
+    expect_identical(
+        shift__format_morph_method(
+            "belcher", list(backend = "belcher"),
+            missing_belcher_profile = "legacy"
+        ),
+        "belcher [legacy]"
+    )
+    expect_identical(shift__format_cmip6_tables(NULL), "auto by variable")
+    expect_identical(shift__format_cmip6_tables("Amon"), "Amon (forced)")
+    expect_identical(
+        shift__format_cmip6_tables(c(snd = "LImon")),
+        "auto by variable · snd=LImon"
+    )
+    selection <- data.table::data.table(
+        source_id = "BCC-CSM2-MR",
+        partition_key = "Amon=gn;LImon=gr"
+    )
+    expect_identical(
+        shift__format_cmip6_partitions(selection),
+        "Amon=gn · LImon=gr"
+    )
+
+    climate <- shift_cmip6(
+        "BCC-CSM2-MR", "ssp585", table = c(snd = "LImon")
+    )
+    encoded <- shift__spec_json(list(
+        climate = shift__climate_spec_value(climate)
+    ))
+    decoded <- jsonlite::fromJSON(encoded, simplifyVector = TRUE)$climate
+    expect_identical(decoded$table$snd, "LImon")
+    expect_identical(
+        shift__climate_from_spec(decoded)@table,
+        c(snd = "LImon")
+    )
 })
 
 test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {

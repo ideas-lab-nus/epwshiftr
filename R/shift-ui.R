@@ -349,20 +349,35 @@ shift__ui_stage_sequence <- function(plan) {
     )
 }
 
-# Format unresolved or explicit CMIP6 selections for the startup summary.
+# Format unresolved or explicit CMIP6 selections for the startup summary. The
+# table strategy is part of the scientific selection because enhanced Belcher
+# recipes may resolve Amon and LImon on different grids.
 shift__ui_selection <- function(plan) {
     climate <- plan@meta$climate
-    member <- if (is.null(climate) || is.null(climate@member)) {
+    request <- plan@meta$request@meta
+    member_value <- if (is.null(climate)) request$variant else climate@member
+    grid_value <- if (is.null(climate)) {
+        request$filters$grid_label
+    } else {
+        climate@grid
+    }
+    table_value <- if (is.null(climate)) {
+        request$filters$table_id
+    } else {
+        climate@table
+    }
+    member <- if (is.null(member_value)) {
         "member auto"
     } else {
-        sprintf("member %s", paste(climate@member, collapse = ", "))
+        sprintf("member %s", paste(member_value, collapse = ", "))
     }
-    grid <- if (is.null(climate) || is.null(climate@grid)) {
+    grid <- if (is.null(grid_value)) {
         "grid auto"
     } else {
-        sprintf("grid %s", climate@grid)
+        sprintf("grid %s", paste(grid_value, collapse = ", "))
     }
-    paste(member, grid, sep = " \u00b7 ")
+    tables <- sprintf("tables %s", shift__format_cmip6_tables(table_value))
+    paste(member, grid, tables, sep = " \u00b7 ")
 }
 
 # Build the compact startup summary shown before any network request. Normal
@@ -375,18 +390,26 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
     scenarios <- shift_coalesce(shift__display_values(request$experiment), "<scenario>")
     status <- if (isTRUE(background)) "QUEUED" else "STARTING"
     output_dir <- shift_coalesce(plan@meta$epw$export_dir, "<output directory>")
+    method_label <- shift__format_morph_method(plan@meta$method@name,
+        plan@meta$method@recipe)
     lines <- c(
         shift__ui_fit(sprintf("Future EPW \u00b7 %s \u00b7 %s", run_id, status), width),
         shift__ui_fit(sprintf("%s \u00b7 %s \u00b7 %s",
             model, scenarios, shift__ui_periods(plan@meta$periods)), width),
         shift__ui_fit(sprintf("%s \u00b7 %s \u00b7 %d expected output(s)",
-            plan@meta$method@name, shift__ui_reference(plan@meta$method),
+            method_label, shift__ui_reference(plan@meta$method),
             nrow(plan@meta$expected_cases)), width),
-        shift__ui_fit(sprintf("Selection %s", shift__ui_selection(plan)), width),
+        shift__ui_prefixed_lines("Selection ", shift__ui_selection(plan),
+            width),
         shift__ui_fit(sprintf("Output %s", shift_display_path(output_dir)), width)
     )
     if (!identical(detail, "normal")) {
-        lines <- c(lines, shift__ui_fit(sprintf("Policy %s \u00b7 store %s",
+        option_summary <- shift__format_options(
+            unclass(plan@meta$method@recipe$options))
+        lines <- c(lines,
+            if (!is.null(option_summary)) shift__ui_labeled_lines(
+                "Options", option_summary, width),
+            shift__ui_fit(sprintf("Policy %s \u00b7 store %s",
             if (isTRUE(plan@meta$control@allow_partial)) {
                 "partial cases allowed"
             } else {
@@ -408,11 +431,13 @@ shift__ui_plan_context <- function(plan) {
         request$experiment, "<scenario>")), collapse = " + ")
     reference <- shift__ui_reference(plan@meta$method)
     expected <- nrow(plan@meta$expected_cases)
+    method_label <- shift__format_morph_method(plan@meta$method@name,
+        plan@meta$method@recipe)
     items <- c(
             model,
             scenarios,
             shift__ui_periods(plan@meta$periods),
-            sprintf("%s / %s", plan@meta$method@name, reference),
+            sprintf("%s / %s", method_label, reference),
             sprintf("%d EPW%s", expected, if (expected == 1L) "" else "s")
         )
     list(
@@ -1480,7 +1505,10 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         climate$model, climate$source)), collapse = ", ")
     scenarios <- paste(as.character(shift_coalesce(
         climate$scenarios, climate$experiment)), collapse = " + ")
-    method <- as.character(shift_coalesce(spec$method$name, "method"))[[1L]]
+    method <- shift__format_morph_method(
+        shift_coalesce(spec$method$name, "method"),
+        spec$method$recipe,
+        missing_belcher_profile = "legacy")
     reference <- shift__ui_reference_from_spec(spec$method)
     expected <- as.integer(cases_total)
     line <- c(
@@ -1491,14 +1519,24 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         if (expected > 0L) sprintf("%d EPW%s", expected,
             if (expected == 1L) "" else "s")
     )
-    member <- if (is.null(spec$climate$member)) "member auto" else
-        sprintf("member %s", paste(spec$climate$member, collapse = ", "))
-    grid <- if (is.null(spec$climate$grid)) "grid auto" else
-        sprintf("grid %s", paste(spec$climate$grid, collapse = ", "))
+    member_value <- shift_coalesce(spec$climate$member,
+        spec$request$variant)
+    grid_value <- shift_coalesce(spec$climate$grid,
+        spec$request$filters$grid_label)
+    table_value <- if (!is.null(spec$climate)) {
+        spec$climate$table
+    } else {
+        spec$request$filters$table_id
+    }
+    member <- if (is.null(member_value)) "member auto" else
+        sprintf("member %s", paste(member_value, collapse = ", "))
+    grid <- if (is.null(grid_value)) "grid auto" else
+        sprintf("grid %s", paste(grid_value, collapse = ", "))
+    tables <- sprintf("tables %s", shift__format_cmip6_tables(table_value))
     list(
         line = paste(line, collapse = " \u00b7 "),
         items = line,
-        selection = paste(member, grid, sep = " \u00b7 "),
+        selection = paste(member, grid, tables, sep = " \u00b7 "),
         output = if ("output_dir" %in% names(row)) row$output_dir[[1L]] else NULL
     )
 }

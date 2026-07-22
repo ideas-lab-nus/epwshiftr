@@ -10,6 +10,7 @@
       * Member: auto
       * Grid: auto
       * Frequency: mon
+      * Table: auto by variable
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
       * Data node: auto
@@ -36,6 +37,7 @@
       == Morph Method ========================================================
       * Name: belcher
       * Backend: belcher
+      * Profile: enhanced
       * Reference: baseline EPW
       * Requires reference: FALSE
       * Accepts reference: TRUE
@@ -57,6 +59,7 @@
       * Member: auto
       * Grid: auto
       * Frequency: mon
+      * Table: auto by variable
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
       * Data node: auto
@@ -94,10 +97,24 @@
       == Morph Method ====================================================================================
       * Name: belcher
       * Backend: belcher
+      * Profile: enhanced
       * Reference: baseline EPW
       * Requires reference: FALSE
       * Accepts reference: TRUE
       * Variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
+      -- Options -----------------------------------------------------------------------------------------
+      +-------------------------+-------------+
+      | Option                  | Value       |
+      +-------------------------+-------------+
+      | transition_hours        | 72          |
+      | humidity_source         | auto        |
+      | diffuse_model           | rbl_2010    |
+      | illuminance_model       | perez_1990  |
+      | snow_depth              | auto        |
+      | ground_temperatures     | recalculate |
+      | typical_extreme_periods | recalculate |
+      | design_conditions       | drop        |
+      +-------------------------+-------------+
       -- Method overrides --------------------------------------------------------------------------------
       +-------+--------+
       | Field | Method |
@@ -133,9 +150,9 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Method: belcher
+      * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
-      * Selection: member auto · grid auto
+      * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
       * Output directory: <tempdir>/shift-print-output
       -- Expected outputs ------------------------------------------------------------
@@ -183,7 +200,7 @@
         columns.
       == Morphed EPW =================================================================
       * Status: partial
-      * Method: belcher
+      * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -225,13 +242,14 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Method: belcher
+      * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
-      * Selection: member auto · grid auto
+      * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
       * Output directory: <tempdir>/shift-print-output
       -- Discovery ---------------------------------------------------------------------------------------
       * Frequency: mon
+      * Table: auto by variable
       * Index nodes: https://esgf-data.dkrz.de, https://esgf.ceda.ac.uk,
         https://esgf-node.ornl.gov/esgf-1-5-bridge, https://esgf.nci.org.au,
         https://esgf-node.ipsl.upmc.fr, https://esg-dn1.nsc.liu.se
@@ -289,7 +307,7 @@
       * Status: partial
       == Morphed EPW =====================================================================================
       * Status: partial
-      * Method: belcher
+      * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -331,7 +349,7 @@
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────╮
       │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)          │
-      │          belcher / historical 1995–2014 · 2 EPWs                    │
+      │          belcher [legacy] / historical 1995–2014 · 2 EPWs           │
       ├─ Workflow ──────────────────────────────────────────────────────────┤
       │ Flow     [6/6] ✔ EPW · final stage                                  │
       │ Now      ✔ Workflow completed                                       │
@@ -355,8 +373,8 @@
       print(run, width = 100L, verbose = TRUE)
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────────────────────────────────╮
-      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065) · belcher / historical 1995–2014     │
-      │          2 EPWs                                                                                 │
+      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)                                      │
+      │          belcher [legacy] / historical 1995–2014 · 2 EPWs                                       │
       ├─ Workflow ──────────────────────────────────────────────────────────────────────────────────────┤
       │ Flow     ✔ Resolve  ›  ✔ Future  ›  ✔ Reference  ›  ✔ Coverage  ›  ✔ Morph  ›  ✔ EPW            │
       │ Now      ✔ Workflow completed                                                                   │
