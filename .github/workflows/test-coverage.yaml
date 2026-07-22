@@ -53,11 +53,16 @@ jobs:
 
       - name: Test coverage
         run: |
+          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
           tryCatch(
-            covr::codecov(quiet = FALSE),
+            covr::codecov(
+              quiet = FALSE,
+              clean = FALSE,
+              install_path = install_path
+            ),
             error = function(error) {
               failures <- list.files(
-                tempdir(),
+                install_path,
                 pattern = "\\.Rout\\.fail$",
                 recursive = TRUE,
                 full.names = TRUE
