@@ -2897,6 +2897,18 @@ shift__as_run <- function(x, store = NULL) {
     shift_run_get(x, store = store)
 }
 
+# Isolate watch-loop wall-clock reads so cadence tests can advance a deterministic
+# clock without depending on runner speed or covr instrumentation overhead.
+shift__watch_now <- function() {
+    Sys.time()
+}
+
+# Isolate frame waiting for the same deterministic watch-loop tests while the
+# production path continues to yield normally between dashboard updates.
+shift__watch_sleep <- function(seconds) {
+    Sys.sleep(seconds)
+}
+
 #' @rdname shift_api
 #' @param follow Whether to continue watching until the run reaches a terminal
 #'   status.
@@ -3003,7 +3015,7 @@ shift_watch <- function(x, store = NULL, follow = TRUE, interval = 1,
             interval
         }
         repeat {
-            now <- Sys.time()
+            now <- shift__watch_now()
             poll_due <- isTRUE(first) || is.na(last_poll) ||
                 as.numeric(difftime(now, last_poll, units = "secs")) >= interval
             if (isTRUE(poll_due)) {
@@ -3019,7 +3031,7 @@ shift_watch <- function(x, store = NULL, follow = TRUE, interval = 1,
             }
             first <- FALSE
             if (done) break
-            Sys.sleep(frame_interval)
+            shift__watch_sleep(frame_interval)
         }
     }, interrupt = function(e) {
         close_dynamic(result = "cancelled")

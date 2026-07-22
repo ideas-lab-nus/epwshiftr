@@ -1230,10 +1230,16 @@ test_that("dynamic watch animates cached state between store polls", {
     polls <- 0L
     updates <- 0L
     closes <- 0L
+    clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
     testthat::local_mocked_bindings(
         shift_run_get = function(...) {
             polls <<- polls + 1L
             if (polls >= 3L) completed else running
+        },
+        shift__watch_now = function() clock,
+        shift__watch_sleep = function(seconds) {
+            clock <<- clock + seconds
+            invisible(NULL)
         },
         .package = "epwshiftr"
     )
@@ -1253,16 +1259,16 @@ test_that("dynamic watch animates cached state between store polls", {
 
     capture.output(
         result <- shift_watch(
-            running, follow = TRUE, interval = 0.2,
-            ui = shift_ui("dynamic", refresh = 0.05)
+            running, follow = TRUE, interval = 0.5,
+            ui = shift_ui("dynamic", refresh = 0.125)
         ),
         type = "message"
     )
     expect_equal(shift_status(result, refresh = FALSE), "completed")
-    # Initial/final handle refreshes surround two workflow polls, while four
-    # dashboard frames render from the cached snapshot in that interval.
+    # Initial/final handle refreshes surround two workflow polls. The fake
+    # clock advances four dashboard frames before the completion poll.
     expect_equal(polls, 4L)
-    expect_gt(updates, polls - 2L)
+    expect_equal(updates, 4L)
     expect_gte(closes, 1L)
 })
 
