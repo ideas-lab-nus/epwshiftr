@@ -7943,7 +7943,10 @@ shift__derive_hurs_climate <- function(climate, recipe, overwrite = FALSE,
         source_rows <- lapply(inputs, function(variable) {
             rows[variable_id == variable & complete %in% TRUE]
         })
-        if (!all(lengths(source_rows) > 0L)) {
+        # A zero-row data.table still has a non-zero length because `length()`
+        # counts columns. Check rows so optional table partitions without the
+        # three humidity inputs are skipped instead of being derived.
+        if (!all(vapply(source_rows, nrow, integer(1L)) > 0L)) {
             next
         }
         source_plan_ids <- sort(unique(unlist(lapply(source_rows,

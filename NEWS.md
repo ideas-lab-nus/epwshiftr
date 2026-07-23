@@ -156,6 +156,10 @@
 
 ## Bug fixes
 
+* Humidity fallback now skips resolved CMIP table partitions that do not
+  contain complete `huss`, `tas`, and `ps` extraction rows, avoiding false
+  derivation attempts for optional partitions such as `LImon` `snd` (#126).
+
 * `shift_request()` now preserves provider facet values such as `project` and
   `frequency` exactly for EsgDict validation instead of silently translating
   non-standard aliases. A bare numeric `limit` now caps Dataset results instead
