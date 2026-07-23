@@ -664,14 +664,15 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     skip_if_not_installed("RNetCDF")
 
     inputs <- c("huss", "tas", "ps")
-    paths <- stats::setNames(vapply(inputs, function(variable) {
+    variables <- c(inputs, "snd")
+    paths <- stats::setNames(vapply(variables, function(variable) {
         path <- tempfile(fileext = ".nc")
         write_local_cmip6_netcdf_fixture(path, 2060L,
             variable_id = variable)
         path
-    }, character(1L)), inputs)
+    }, character(1L)), variables)
     on.exit(unlink(paths), add = TRUE)
-    docs <- data.table::rbindlist(lapply(inputs, function(variable) {
+    docs <- data.table::rbindlist(lapply(variables, function(variable) {
         row <- shift_test_file_docs(
             basename(paths[[variable]]),
             opendap_url = paths[[variable]],
@@ -683,6 +684,12 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
         row$id <- sprintf("humidity-%s|dataset", variable)
         row
     }), fill = TRUE)
+    # Model the production layout where optional snow depth is a separate
+    # complete identity that has no atmospheric humidity source variables.
+    docs[variable_id == "snd", `:=`(
+        frequency = "mon",
+        table_id = "LImon"
+    )]
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
     calls$file_fields <- list()
@@ -691,7 +698,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     request <- shift_request(
         project = "CMIP6",
         experiment = "ssp585",
-        variables = inputs,
+        variables = variables,
         frequency = "day"
     )
     site <- shift_site("SIN", lon = 103.98, lat = 1.37,
@@ -708,10 +715,13 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     )
     coverage <- shift_coverage(derived)
     hurs <- coverage[variable_id == "hurs"]
+    snd <- coverage[variable_id == "snd"]
     data <- shift_data(derived, variables = "hurs")
 
     expect_equal(nrow(hurs), 1L)
     expect_true(hurs$complete[[1L]])
+    expect_equal(nrow(snd), 1L)
+    expect_identical(snd$table_id[[1L]], "LImon")
     expect_true(all(data$units == "%"))
     expect_true(all(is.finite(data$value)))
     expect_true(all(data$derived_from == "huss,tas,ps"))
