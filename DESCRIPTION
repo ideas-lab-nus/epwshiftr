@@ -58,7 +58,7 @@ Collate:
     'cli-storage.R'
     'cli.R'
     'cmip6-availability.R'
-    'daily-morph.R'
+    'daily-climatology.R'
     'data-node.R'
     'dataset.R'
     'dict-check.R'

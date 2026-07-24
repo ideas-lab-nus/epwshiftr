@@ -1,4 +1,4 @@
-test_that("daily phase grid uses calendar-neutral day midpoints", {
+test_that("daily climatology grid uses calendar-neutral day midpoints", {
     phase <- daily__phase_grid(365L)
 
     expect_length(phase, 365L)
