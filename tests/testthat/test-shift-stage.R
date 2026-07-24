@@ -620,6 +620,38 @@ test_that("resolver coverage defensively repairs cached catalogs without times",
     expect_true(is.na(candidates$missing[[1L]]))
 })
 
+test_that("resolver inputs are not masked by provider convenience columns", {
+    catalog <- data.table::as.data.table(shift_test_file_docs(
+        "tas_day_Model-A_ssp245_r1i1p1f1_gn_20410101-20411231.nc",
+        variable_id = "tas",
+        datetime_start = "2041-01-01T00:00:00Z",
+        datetime_end = "2041-12-31T23:59:59Z"
+    ))
+    catalog$source_id <- "Model-A"
+    catalog$experiment_id <- "ssp245"
+    catalog$variant_label <- "r1i1p1f1"
+    catalog$frequency <- "day"
+    catalog$table_id <- "day"
+    catalog$grid_label <- "gn"
+    # These provider aliases deliberately disagree with the canonical fields.
+    catalog$variable <- "provider-variable"
+    catalog$grid <- "provider-grid"
+    identity <- data.table::data.table(
+        source_id = "Model-A",
+        variant_label = "r1i1p1f1"
+    )
+
+    expect_true(shift__cmip6_input_complete(
+        catalog,
+        identity,
+        experiment = "ssp245",
+        variable = "tas",
+        table = "day",
+        grid = "gn",
+        years = 2041L
+    ))
+})
+
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
     make_catalog <- function(variables) {
         data.table::rbindlist(lapply(variables, function(variable) {

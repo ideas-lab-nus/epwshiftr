@@ -156,6 +156,10 @@
 
 ## Bug fixes
 
+* CMIP6 coverage checks now keep requested variable and grid values distinct
+  from same-named convenience columns returned by ESGF providers, preventing
+  complete catalog identities from being rejected (#130, #132).
+
 * ESGF result persistence now recognizes the current bridge-provided
   `datetime_stop`, `geo`, and `mod_time` document fields. Nodes that ignore an
   explicit `fields` request no longer fail while saving otherwise valid
