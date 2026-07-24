@@ -47,6 +47,15 @@
   provenance, and diagnostics while existing `EpwMorphBackend` runners remain
   compatible (#143).
 
+* Added the built-in `daily_temperature()` method for complete future-EPW
+  workflows using daily future and historical CMIP6 temperature data. It
+  estimates circular daily `tas` changes, constrains each hourly profile to
+  daily mean/minimum/maximum targets when paired `tasmin` and `tasmax` are
+  available, and otherwise inherits the baseline daily range explicitly.
+  Baseline specific humidity is retained subject to saturation, relative
+  humidity and dew point are recomputed, and hourly numerical and physical
+  diagnostics remain available in the persisted result (#141).
+
 * Added calendar-neutral daily temperature targets and constrained 24-hour
   temperature projection. Matching future and historical `tas`, `tasmin`, and
   `tasmax` climatologies provide daily mean, minimum, maximum, and DTR changes.
