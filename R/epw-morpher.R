@@ -1337,6 +1337,62 @@ morpher__reference_case_by <- function(by) {
     setdiff(by, c("experiment_id", "period"))
 }
 
+# Resolve calendar columns with row-level compatibility for old extraction
+# artifacts. Canonical CF fields take precedence; missing values fall back to
+# existing columns and finally to the surrogate POSIXct timestamp.
+morpher__resolve_calendar_columns <- function(climate, month = FALSE, day = FALSE) {
+    n <- nrow(climate)
+    time <- if ("time" %in% names(climate)) climate$time else NULL
+
+    # Resolve one field without replacing usable legacy values when a mixed
+    # collection contains both old and current Parquet schemas.
+    resolve <- function(target, canonical, fallback) {
+        value <- if (target %in% names(climate)) {
+            as.integer(climate[[target]])
+        } else {
+            rep.int(NA_integer_, n)
+        }
+        missing <- is.na(value)
+        value[missing] <- fallback[missing]
+        if (canonical %in% names(climate)) {
+            canonical_value <- as.integer(climate[[canonical]])
+            present <- !is.na(canonical_value)
+            value[present] <- canonical_value[present]
+        }
+        data.table::set(climate, j = target, value = value)
+    }
+
+    if (any(c("year", "cf_year") %in% names(climate)) || !is.null(time)) {
+        fallback_year <- if (is.null(time)) {
+            rep.int(NA_integer_, n)
+        } else {
+            as.integer(format(time, "%Y", tz = "UTC"))
+        }
+        resolve("year", "cf_year", fallback_year)
+    }
+
+    if (isTRUE(month) &&
+        (any(c("month", "cf_month") %in% names(climate)) || !is.null(time))) {
+        fallback_month <- if (is.null(time)) {
+            rep.int(NA_integer_, n)
+        } else {
+            as.integer(format(time, "%m", tz = "UTC"))
+        }
+        resolve("month", "cf_month", fallback_month)
+    }
+    if (isTRUE(day) &&
+        (any(c("day", "cf_day") %in% names(climate)) || !is.null(time))) {
+        fallback_day <- if (is.null(time)) {
+            rep.int(NA_integer_, n)
+        } else {
+            as.integer(format(time, "%d", tz = "UTC"))
+        }
+        resolve("day", "cf_day", fallback_day)
+    }
+
+    climate[]
+}
+
 morpher__normalize_context_climate <- function(climate, years = NULL, labels = NULL) {
     climate <- data.table::as.data.table(data.table::copy(climate))
     if (!"time" %in% names(climate) && "datetime" %in% names(climate)) {
@@ -1351,9 +1407,7 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     if (!"period" %in% names(climate) && "interval" %in% names(climate)) {
         climate[, period := as.character(interval)]
     }
-    if (!"year" %in% names(climate) && "time" %in% names(climate)) {
-        climate[, year := as.integer(format(time, "%Y", tz = "UTC"))]
-    }
+    climate <- morpher__resolve_calendar_columns(climate)
     if (!"period" %in% names(climate) && "year" %in% names(climate)) {
         if (!is.null(years) && !is.null(labels)) {
             label_map <- data.table::data.table(year = as.integer(years), period = as.character(labels))
@@ -1496,11 +1550,8 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
     if (length(missing)) {
         cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
     }
-    data[, `:=`(
-        year = as.integer(year),
-        month = data.table::month(time),
-        day = data.table::mday(time)
-    )]
+    data <- morpher__resolve_calendar_columns(data, month = TRUE, day = TRUE)
+    data[, year := as.integer(year)]
     data <- data[!(month == 2L & day == 29L)]
 
     checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
@@ -3933,11 +3984,8 @@ morpher__belcher_monthly_precip_variable <- function(context, variable_id, refer
         return(data.table::data.table())
     }
     data <- data.table::as.data.table(data.table::copy(data))
-    data[, `:=`(
-        year = as.integer(year),
-        month = data.table::month(time),
-        day = data.table::mday(time)
-    )]
+    data <- morpher__resolve_calendar_columns(data, month = TRUE, day = TRUE)
+    data[, year := as.integer(year)]
     data <- data[!(month == 2L & day == 29L)]
 
     identity <- morpher__context_identity_rows(data)
@@ -4518,8 +4566,7 @@ EpwMorpher <- R6::R6Class(
                 pieces[[i]] <- dt
             }
             climate <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-            climate[, year := as.integer(format(time, "%Y", tz = "UTC"))]
-            climate[, month := as.integer(format(time, "%m", tz = "UTC"))]
+            climate <- morpher__resolve_calendar_columns(climate, month = TRUE)
             periods <- data.table::as.data.table(periods)
             periods[, year := as.integer(year)]
             period_years <- periods[, .(
@@ -5385,7 +5432,7 @@ EpwMorpher <- R6::R6Class(
             if (!nrow(climate)) {
                 cli::cli_abort("No extracted climate rows were found for climate summary ID {.val {summary_id}}.")
             }
-            climate[, year := as.integer(format(time, "%Y", tz = "UTC"))]
+            climate <- morpher__resolve_calendar_columns(climate)
             period_years <- private$summary_period_years(summary_id)
             climate <- climate[period_years, on = "year", nomatch = 0L, allow.cartesian = TRUE]
             if (!nrow(climate)) {
@@ -5535,8 +5582,7 @@ EpwMorpher <- R6::R6Class(
             }
 
             climate <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-            climate[, year := as.integer(format(time, "%Y", tz = "UTC"))]
-            climate[, month := as.integer(format(time, "%m", tz = "UTC"))]
+            climate <- morpher__resolve_calendar_columns(climate, month = TRUE)
             periods <- data.table::as.data.table(periods)
             periods[, year := as.integer(year)]
             climate <- climate[periods, on = "year", nomatch = 0L]
