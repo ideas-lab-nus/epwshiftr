@@ -84,6 +84,7 @@ Collate:
     'schema.R'
     'shift-path.R'
     'shift-stage.R'
+    'daily-cmip6.R'
     'shift-tui.R'
     'shift-ui.R'
     'standalone-cache.R'
