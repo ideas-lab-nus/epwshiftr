@@ -20,6 +20,16 @@ local_cmip6_variable_spec <- function(variable_id) {
             long_name = "Near-Surface Relative Humidity",
             units = "%"
         ),
+        huss = list(
+            standard_name = "specific_humidity",
+            long_name = "Near-Surface Specific Humidity",
+            units = "1"
+        ),
+        ps = list(
+            standard_name = "surface_air_pressure",
+            long_name = "Surface Air Pressure",
+            units = "Pa"
+        ),
         psl = list(
             standard_name = "air_pressure_at_mean_sea_level",
             long_name = "Sea Level Pressure",
@@ -49,6 +59,11 @@ local_cmip6_variable_spec <- function(variable_id) {
             standard_name = "precipitation_flux",
             long_name = "Precipitation",
             units = "kg m-2 s-1"
+        ),
+        snd = list(
+            standard_name = "surface_snow_thickness",
+            long_name = "Surface Snow Thickness",
+            units = "m"
         )
     )
     spec <- specs[[variable_id]]
@@ -69,6 +84,8 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
                 variable_id,
                 tas = 299 + 5 * sin(phase) + spatial,
                 hurs = pmin(95, pmax(40, 72 + 10 * cos(phase) + spatial)),
+                huss = pmax(0.001, 0.016 + 0.003 * cos(phase) + spatial * 1e-5),
+                ps = 100800 + 220 * sin(phase / 2) + 10 * spatial,
                 psl = 101000 + 250 * sin(phase / 2) + 10 * spatial,
                 rlds = 340 + 18 * sin(phase) + spatial,
                 rsds = pmax(0, 260 + 180 * sin(phase - pi / 3) + 3 * spatial),
@@ -77,6 +94,9 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
                 # Keep fixture precipitation positive and seasonal so monthly
                 # flux-to-depth conversion has predictable non-zero totals.
                 pr = pmax(0, 4e-5 + 2e-5 * sin(phase - pi / 5) + spatial * 1e-6),
+                # Snow depth remains non-negative and seasonal while retaining
+                # a small spatial gradient for nearest-grid assertions.
+                snd = pmax(0, 0.08 + 0.04 * cos(phase) + spatial * 1e-3),
                 stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
             )
         }

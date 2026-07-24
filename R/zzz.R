@@ -3,6 +3,13 @@
 .onLoad <- function(libname, pkgname) {
     S7::methods_register()
     registerS3method("as.data.table", "epwshiftr::ShiftStage", shift_stage_as_data_table, envir = asNamespace("data.table"))
+    # S7 refreshes the package method table during load. Re-register the
+    # dependency-free byte vector methods afterwards so base format()/print()
+    # keep the established human-readable EsgResult size contract.
+    registerS3method("format", "epwshiftr_bytes",
+        format.epwshiftr_bytes, envir = asNamespace("base"))
+    registerS3method("print", "epwshiftr_bytes",
+        print.epwshiftr_bytes, envir = asNamespace("base"))
     cache__configure(pkgname)
 
     # set package options
@@ -18,14 +25,6 @@
     missing <- setdiff(names(.opts), names(options()))
     if (length(missing)) {
         do.call(options, .opts[missing])
-    }
-
-    # install IEC style Byte units
-    IEC <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
-    big <- IEC[-1L]
-    small <- IEC[-length(IEC)]
-    for (i in seq_along(big)) {
-        try(units::install_unit(big[[i]], sprintf("1024 %s", small[[i]])), silent = TRUE)
     }
 
     invisible()

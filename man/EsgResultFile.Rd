@@ -112,7 +112,7 @@ The requested time filter is recorded on the returned result and is
 carried into \code{EsgDataset$read_region()} when a dataset is opened from
 the filtered result.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap", "auto"))}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -121,8 +121,10 @@ the filtered result.
 \item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
 \code{POSIXt} inputs are accepted and parsed in UTC.}
 
-\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
-\code{"opendap"}. Default: \code{"drs"}.}
+\item{\code{method}}{How to determine file time ranges. \code{"auto"} prefers
+ESGF metadata and fills absent ranges from DRS filenames;
+\code{"drs"} always parses filenames, and \code{"opendap"} reads the
+remote time axis. Default: \code{"drs"}.}
 }
 \if{html}{\out{</div>}}
 }

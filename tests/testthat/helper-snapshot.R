@@ -75,7 +75,7 @@ transform_json_response <- function(response) {
 
 transform_print <- function(lines) {
     lines[grepl("^\\* Collected at: \\d", lines)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
-    lines[grepl("^\\* Total size: [1-9]", lines)] <- "* Total size: XX [GiB]"
+    lines[grepl("^\\* Total size: [1-9]", lines)] <- "* Total size: XX GB"
 
     # replace date and data node
     # datasets
@@ -89,12 +89,12 @@ transform_print <- function(lines) {
     # replace file size and access methods
     lines <- gsub("^\\* Fields: [0-9]+ \\| \\[", "* Fields: XX | [", lines)
     # datasets
-    lines <- gsub("\\d+ Files, \\d+\\.\\d+ [MG]iB \\| \\d+ Aggregation[s]?", "XX Files, XX GiB | X Aggregations", lines)
+    lines <- gsub("\\d+ Files, \\d+\\.\\d+ [KMGT]i?B \\| \\d+ Aggregation[s]?", "XX Files, XX GB | X Aggregations", lines)
     lines <- gsub("\\[ Access: <.+> \\]$", "[ Access: <...> ]", lines)
     # files
-    lines <- gsub("\\d+\\.\\d+ [MGT]iB \\| Access: <.+>", "XX MiB | Access: <...>", lines)
+    lines <- gsub("\\d+\\.\\d+ [KMGT]i?B \\| Access: <.+>", "XX MB | Access: <...>", lines)
     # aggregations
-    lines <- gsub("(<Unknown> Byte \\| Access: )<.+>", "\\1<...>", lines)
+    lines <- gsub("(<Unknown> \\| Access: )<.+>", "\\1<...>", lines)
 
     dataset_param <- grepl("^\\s+CMIP6\\.", lines)
     duplicated_previous <- c(FALSE, lines[-1L] == lines[-length(lines)])

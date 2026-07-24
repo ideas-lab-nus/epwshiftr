@@ -95,7 +95,11 @@ Filter aggregation records by the time range covered by each file
 
 See \code{EsgResultFile$filter_time()} for the method semantics.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$filter_time(start, stop, method = c("drs", "opendap"))}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EsgResultAggregation$filter_time(
+  start,
+  stop,
+  method = c("drs", "opendap", "auto")
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -104,8 +108,10 @@ See \code{EsgResultFile$filter_time()} for the method semantics.
 \item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
 \code{POSIXt} inputs are accepted and parsed in UTC.}
 
-\item{\code{method}}{How to determine file time ranges. One of \code{"drs"} or
-\code{"opendap"}. Default: \code{"drs"}.}
+\item{\code{method}}{How to determine file time ranges. \code{"auto"} prefers
+ESGF metadata and fills absent ranges from DRS filenames;
+\code{"drs"} always parses filenames, and \code{"opendap"} reads the
+remote time axis. Default: \code{"drs"}.}
 }
 \if{html}{\out{</div>}}
 }

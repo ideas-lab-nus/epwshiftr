@@ -114,8 +114,9 @@ store-native shift workflow from ESGF File records to generated EPW files. It
 uses monthly `Amon` data so the live remote reads are much smaller than an
 equivalent daily workflow.
 
-The examples below use the high-level `shift_*()` facade. When a step touches a
-lower-level engine, this article links to the companion article for that layer:
+The first example uses the task-oriented API. The staged walkthrough that
+follows exposes the lower-level `shift_*()` facade for inspection and teaching.
+When a step touches a lower-level engine, this article links to the companion article for that layer:
 [ESGF query results](esgf-query-results.html), [ESG dictionaries](esg-dictionaries.html),
 [ESG stores](esg-store.html), [Downloader](downloader.html), [EpwMorpher](epw-morpher.html),
 [CLI operations](cli-esgf-store.html), and [ESGF troubleshooting](esgf-troubleshooting.html).
@@ -135,6 +136,181 @@ options(
     epwshiftr.dir_cache = file.path(workflow_root, "cache")
 )
 ```
+
+# Recommended Task API
+
+The recommended user call gives Belcher an explicit matching historical CMIP6
+reference. When no suitable reference data exist, `belcher()` can instead use
+the baseline EPW climatology; `reference = NULL` never creates a historical
+CMIP6 request implicitly.
+
+
+``` r
+epw <- system.file(
+    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = file.path(workflow_root, "future-epw")
+)
+
+shift_status(run)
+shift_outputs(run)
+shift_missing(run)
+```
+
+The default `belcher()` profile is enhanced. With `shift_cmip6(table = NULL)`,
+the resolver selects exact table/grid partitions per variable: atmospheric
+inputs normally come from `Amon`, while optional `snd` comes from `LImon` only
+when both future and historical cases provide it. Use
+`belcher(profile = "legacy")` only when reproducing the earlier algorithm and
+headers is required.
+
+Profile options are part of the scientific task specification rather than UI
+preferences. Configure them on the method and keep `table = NULL` unless a
+dataset requires an explicit override:
+
+
+``` r
+method <- belcher(
+    reference = historical_reference(1995:2014),
+    options = belcher_options(
+        transition_hours = 72L,
+        humidity_source = "auto",
+        snow_depth = "auto"
+    )
+)
+
+# Named values override individual variables; unnamed scalars force every
+# variable into one table and are rarely suitable when snd is enabled.
+climate <- shift_cmip6(
+    "BCC-CSM2-MR", "ssp585",
+    table = c(snd = "LImon")
+)
+```
+
+See [Inspect EPW Morphing](epw-morpher.html) for the complete option matrix and
+the enhanced/legacy defaults.
+
+Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
+`shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
+supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
+
+## Inspect Shift Objects
+
+Every public Shift object prints as a compact semantic receipt. Configuration
+objects summarize scientific intent without expanding stored rules, function
+environments, yearly vectors, or every ESGF node. Stage objects add a preview
+of the records that matter at that point in the workflow. `ShiftRun` refreshes
+its persisted state and prints the same static dashboard used by
+`shift_watch()`.
+
+
+``` r
+climate <- shift_cmip6(
+    model = "BCC-CSM2-MR",
+    scenarios = c("ssp126", "ssp585")
+)
+method <- belcher(reference = historical_reference(1995:2014))
+plan <- shift_future_epw(
+    epw = epw,
+    climate = climate,
+    periods = list(`2060s` = 2055:2065),
+    method = method,
+    dir = file.path(workflow_root, "future-epw"),
+    dry_run = TRUE
+)
+
+print(climate)
+print(method)
+print(method, verbose = TRUE)
+print(plan, n = 3L, width = 80L)
+```
+
+Data previews show at most 10 rows by default. Use `n = Inf` for every row,
+set `width` when rendering into a constrained console or report, and use
+`verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
+resolved profile options, and additional diagnostics. Normal receipts identify
+the active method profile and whether CMIP tables are automatic or forced.
+After resolution, progress and watch views report exact partitions such as
+`Amon=gn · LImon=gr` instead of collapsing them to one representative grid.
+These controls affect presentation only and do not change the workflow
+specification or its `spec_hash`.
+
+
+``` r
+print(plan, n = Inf, width = 120L, verbose = TRUE)
+print(run, verbose = TRUE)
+```
+
+## Live Feedback and Background Runs
+
+The foreground runner starts reporting before its first ESGF request. Its
+shared stage vocabulary is `resolve`, optional `download`, `extract_future`,
+optional `extract_reference`, `coverage`, `morph`, and `write_epw`. Within a
+stage it identifies the node, future/reference role, variable, scenario,
+period, reuse/fallback outcome, and output count.
+
+`shift_ui()` controls only presentation. `"auto"` selects a fixed four-row
+stage/current/case/last-event view in a capable terminal and scoped log lines
+elsewhere; `"none"` suppresses non-error Console output while retaining
+persisted events. The `detail` levels are `"normal"`, `"detail"`, and
+`"debug"`; only debug output includes full URLs and internal paths.
+
+
+``` r
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = file.path(workflow_root, "future-epw"),
+    ui = shift_ui(progress = "log", detail = "detail", heartbeat = 10)
+)
+```
+
+Use a detached `Rscript` worker when the run should outlive the current R
+session. The call returns a queued `ShiftRun` immediately. Inspectors refresh
+that handle from the store, and `shift_watch()` follows the same structured
+events shown by the foreground reporter.
+
+
+``` r
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = file.path(workflow_root, "future-epw"),
+    background = TRUE
+)
+
+shift_status(run)
+shift_watch(run)
+shift_logs(run, tail = 50)
+
+# Request cancellation at the next workflow boundary:
+shift_cancel(run)
+
+# Terminate the recorded worker PID after persisting the request:
+shift_cancel(run, force = TRUE)
+```
+
+Interrupting `shift_watch()` stops only the monitor. It does not cancel the
+worker. A failed, cancelled, or partial run can create a new attempt with
+`shift_resume(run, background = TRUE)`; the resolved node, member, and exact
+per-table grid partitions remain pinned.
 
 # Site and Request
 
@@ -163,23 +339,23 @@ site <- shift_site(
 )
 
 site
-#> <ShiftSite>
-#>   id:     SIN
-#>   lonlat: 103.980000, 1.370000
-#>   label:  Singapore
+#> ══ EPW Site ════════════════════════════════════════════════════════════════════
+#> • ID: SIN
+#> • Label: Singapore
+#> • Coordinates: 103.980000, 1.370000
 ```
 
-Or you can read the same information from an `eplusr::Epw` object:
+Or you can read the same information directly from the EPW LOCATION header:
 
 
 ``` r
-epw_site <- shift_site(eplusr::read_epw(epw))
+epw_site <- shift_site(epw)
 epw_site
-#> <ShiftSite>
-#>   id:     486980
-#>   lonlat: 103.980000, 1.370000
-#>   label:  Singapore
-#>   epw:    Epw
+#> ══ EPW Site ════════════════════════════════════════════════════════════════════
+#> • ID: SGP_Singapore.486980_IWEC
+#> • Label: Singapore
+#> • Coordinates: 103.980000, 1.370000
+#> • EPW: SGP_Singapore.486980_IWEC.epw
 ```
 
 This article keeps using the explicit `site` object so the site ID is short and
@@ -198,10 +374,11 @@ The helper provides three named variable sets:
   demonstrations.
 - `"recommended"`: the current strict Belcher recipe set, including
   precipitation.
-- `"extended"`: the recommended set plus related max/min variables for future
-  recipes.
+- `"extended"`: the recommended set plus related max/min variables and snow
+  depth.
 
-This article uses the default Belcher recipe. It is a change-factor backend, so
+This staged walkthrough explicitly uses the Belcher recipe. It is a
+change-factor backend, so
 the morphing step needs both a future climate extraction and a reference climate
 extraction.
 
@@ -209,6 +386,9 @@ extraction.
 ``` r
 shift_recipe <- epw_morph_recipe("belcher")
 variables <- epw_morph_variables(shift_recipe)
+optional_variables <- epw_morph_variables(
+    shift_recipe, include_optional = TRUE
+)
 variables
 #> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
 #> [8] "pr"
@@ -252,16 +432,26 @@ request <- shift_request(
 )
 
 request
-#> <epwshiftr::ShiftRequest>
-#>   stage:  request
-#>   status: new
-#>   project: CMIP6
-#>   source: MPI-ESM1-2-LR
-#>   experiment: ssp585
-#>   variant: r1i1p1f1
-#>   frequency: mon
-#>   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
-#>   time:   2060-01-01T00:00:00Z -> 2060-12-31T23:59:59Z
+#> ══ ESGF request ════════════════════════════════════════════════════════════════
+#> • Index node: https://esgf-data.dkrz.de
+#> ── Query parameters ────────────────────────────────────────────────────────────
+#> • project = CMIP6
+#> • activity_id = ScenarioMIP
+#> • experiment_id = ssp585
+#> • source_id = MPI-ESM1-2-LR
+#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • frequency = mon
+#> • variant_label = r1i1p1f1
+#> • data_node = esgf.ceda.ac.uk
+#> • fields = *
+#> • type = Dataset
+#> • offset = 0
+#> • distrib = true
+#> • limit = 10
+#> • format = application/solr+json
+#> • table_id = Amon
+#> • datetime_start: [* TO 2060-01-01T00:00:00Z]
+#> • datetime_stop: [2060-12-31T23:59:59Z TO *]
 
 reference_request <- shift_request(
     project = "CMIP6",
@@ -280,13 +470,35 @@ reference_request <- shift_request(
 )
 
 reference_request
+#> ══ ESGF request ════════════════════════════════════════════════════════════════
+#> • Index node: https://esgf-data.dkrz.de
+#> ── Query parameters ────────────────────────────────────────────────────────────
+#> • project = CMIP6
+#> • activity_id = CMIP
+#> • experiment_id = historical
+#> • source_id = MPI-ESM1-2-LR
+#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • frequency = mon
+#> • variant_label = r1i1p1f1
+#> • data_node = esgf.ceda.ac.uk
+#> • fields = *
+#> • type = Dataset
+#> • offset = 0
+#> • distrib = true
+#> • limit = 10
+#> • format = application/solr+json
+#> • table_id = Amon
+#> • datetime_start: [* TO 1995-01-01T00:00:00Z]
+#> • datetime_stop: [1995-12-31T23:59:59Z TO *]
 ```
 
 # Run the Workflow
 
 The diagram below is the map for the rest of the article. Each `shift_*()` call
 returns a stage object that can be printed, checked, and passed to the next
-step.
+step. The stage also carries `run_id` and `step_id`, so the next `shift_*()`
+call automatically continues the same persisted run. There is no separate
+session object to create or pass.
 
 <div class="shift-flow" role="img" aria-label="Future EPW workflow from request to EPW outputs">
 <div class="shift-node"><strong>shift_request()</strong><span>Describe ESGF data</span><code>ShiftRequest</code></div>
@@ -319,36 +531,25 @@ broader or narrower than intended, change the request filters before continuing.
 `shift_datasets()` runs the Dataset-level ESGF search described by
 `shift_request()`. The returned `EsgResultDataset` object is not the data to
 download yet; it is the list of Dataset records that will later be expanded into
-File records.
+File records. This standalone query uses the same dashboard, persisted run, and
+query heartbeat reporting as the other `shift_*()` tasks. Use
+`ui = shift_ui(...)` to control its presentation; low-level `EsgQuery$collect()`
+continues to expose its native `progress` control.
 
 For a deeper look at Dataset, File, and Aggregation results, see
 [ESGF query results](esgf-query-results.html).
+
+The remaining chunks are a live ESGF walkthrough. They are displayed but not
+executed while the package documentation is precompiled, which keeps installed
+vignettes deterministic and avoids turning documentation builds into remote
+network jobs. Run them interactively to reproduce the workflow.
+
+
 
 
 ``` r
 datasets <- shift_datasets(request)
 datasets
-#> [1] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 50.15 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [2] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk
-#>     [ 5 Files, 45.55 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [3] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 33.85 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [4] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 37.41 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [5] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 36.4 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [6] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 40.27 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
-#> [7] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk
-#>     [ 5 Files, 32.91 MiB | No Aggregations ]
-#>     [ Access: <HTTPServer, OPENDAP> ]
 ```
 
 Use `$to_data_table()` when you want row-level details for decisions such as
@@ -363,33 +564,6 @@ dataset_table <- datasets$to_data_table(fields = c(
 ), formatted = TRUE)
 
 dataset_table
-#>                                                                                                 id
-#>                                                                                             <char>
-#> 1:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk
-#> 2:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk
-#> 3:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk
-#> 4:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk
-#> 5:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk
-#> 6: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk
-#> 7:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk
-#>        source_id experiment_id variant_label variable_id       data_node
-#>           <char>        <char>        <char>      <char>          <char>
-#> 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1         clt esgf.ceda.ac.uk
-#> 2: MPI-ESM1-2-LR        ssp585      r1i1p1f1        hurs esgf.ceda.ac.uk
-#> 3: MPI-ESM1-2-LR        ssp585      r1i1p1f1         psl esgf.ceda.ac.uk
-#> 4: MPI-ESM1-2-LR        ssp585      r1i1p1f1        rlds esgf.ceda.ac.uk
-#> 5: MPI-ESM1-2-LR        ssp585      r1i1p1f1        rsds esgf.ceda.ac.uk
-#> 6: MPI-ESM1-2-LR        ssp585      r1i1p1f1     sfcWind esgf.ceda.ac.uk
-#> 7: MPI-ESM1-2-LR        ssp585      r1i1p1f1         tas esgf.ceda.ac.uk
-#>    number_of_files
-#>              <int>
-#> 1:               5
-#> 2:               5
-#> 3:               5
-#> 4:               5
-#> 5:               5
-#> 6:               5
-#> 7:               5
 ```
 
 Summarise the table before moving on. In this request, each variable should have
@@ -402,12 +576,6 @@ dataset_table[, .(
     files = sum(number_of_files, na.rm = TRUE),
     variables = paste(sort(unique(variable_id)), collapse = ", ")
 ), by = .(source_id, experiment_id, variant_label, data_node)]
-#>        source_id experiment_id variant_label       data_node datasets files
-#>           <char>        <char>        <char>          <char>    <int> <int>
-#> 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1 esgf.ceda.ac.uk        7    35
-#>                                   variables
-#>                                      <char>
-#> 1: clt, hurs, psl, rlds, rsds, sfcWind, tas
 ```
 
 The Dataset result can also be filtered locally before collecting child File
@@ -425,14 +593,6 @@ selected_datasets <- datasets$filter(function(x) {
 selected_datasets$to_data_table(fields = c(
     "id", "variable_id", "data_node", "number_of_files"
 ))
-#>                                                                                              id
-#>                                                                                          <char>
-#> 1: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk
-#> 2:  CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk
-#>    variable_id       data_node number_of_files
-#>         <char>          <char>           <int>
-#> 1:        hurs esgf.ceda.ac.uk               5
-#> 2:         tas esgf.ceda.ac.uk               5
 ```
 
 For a lower-level workflow, you can collect File records from that subset
@@ -470,13 +630,6 @@ files <- shift_collect(
 )
 
 files
-#> <epwshiftr::ShiftFiles>
-#>   stage:  files
-#>   status: collected
-#>   store:  <tempdir>/epwshiftr-future-epw-workflow/singapore-store
-#>   files:  7
-#>   variables: clt, hurs, psl, rlds, rsds, sfcWind, tas
-#>   ids:    query_id
 
 reference_files <- shift_collect(
     reference_request,
@@ -494,20 +647,6 @@ summary as a direct ESGF File query result.
 ``` r
 file_result <- shift_files(files)
 file_result
-#> [1] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 11.65 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [2] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 10.58 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [3] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 7.86 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [4] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710.rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 8.68 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [5] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710.rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 8.44 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [6] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710.sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 9.35 MiB | Access: <HTTPServer, OPENDAP> ]
-#> [7] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk
-#>     [ 7.64 MiB | Access: <HTTPServer, OPENDAP> ]
 ```
 
 Convert the File result to a table when you want to inspect exactly which files
@@ -529,24 +668,6 @@ file_table[, .(
     opendap = !is.na(url_opendap) & nzchar(url_opendap),
     http = !is.na(url_download) & nzchar(url_download)
 )]
-#>                                                          filename variable_id
-#>                                                            <char>      <char>
-#> 1:     clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         clt
-#> 2:    hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs
-#> 3:     psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         psl
-#> 4:    rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rlds
-#> 5:    rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rsds
-#> 6: sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc     sfcWind
-#> 7:     tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         tas
-#>          data_node            size opendap   http
-#>             <char>         <units>  <lgcl> <lgcl>
-#> 1: esgf.ceda.ac.uk 11.652859 [MiB]    TRUE   TRUE
-#> 2: esgf.ceda.ac.uk 10.582312 [MiB]    TRUE   TRUE
-#> 3: esgf.ceda.ac.uk  7.863685 [MiB]    TRUE   TRUE
-#> 4: esgf.ceda.ac.uk  8.684435 [MiB]    TRUE   TRUE
-#> 5: esgf.ceda.ac.uk  8.441223 [MiB]    TRUE   TRUE
-#> 6: esgf.ceda.ac.uk  9.353412 [MiB]    TRUE   TRUE
-#> 7: esgf.ceda.ac.uk  7.640529 [MiB]    TRUE   TRUE
 ```
 
 ## Optional: Prefetch NetCDF Files
@@ -648,12 +769,6 @@ extracted <- shift_extract(
 )
 
 extracted
-#> <epwshiftr::ShiftClimate>
-#>   stage:  climate
-#>   status: extracted
-#>   store:  <tempdir>/epwshiftr-future-epw-workflow/singapore-store
-#>   coverage: 7/7 complete
-#>   ids:    query_id, plan_id
 
 reference <- shift_extract(
     reference_files,
@@ -673,15 +788,6 @@ for the selected site and period. This is the main sanity check before morphing.
 ``` r
 coverage <- shift_coverage(extracted)
 coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
-#>    variable_id complete status output_rows output_file_count
-#>         <char>   <lgcl> <char>       <int>             <int>
-#> 1:        rlds     TRUE   done          12                 1
-#> 2:        rsds     TRUE   done          12                 1
-#> 3:         psl     TRUE   done          12                 1
-#> 4:         tas     TRUE   done          12                 1
-#> 5:         clt     TRUE   done          12                 1
-#> 6:     sfcWind     TRUE   done          12                 1
-#> 7:        hurs     TRUE   done          12                 1
 ```
 
 The extracted values are not stored inside the small stage object. They are
@@ -692,24 +798,6 @@ manifest. `shift_artifacts()` shows those registered files:
 ``` r
 extract_artifacts <- shift_artifacts(extracted)
 extract_artifacts[kind == "extract", .(kind, role, relative_path)]
-#>       kind    role
-#>     <char>  <char>
-#> 1: extract derived
-#> 2: extract derived
-#> 3: extract derived
-#> 4: extract derived
-#> 5: extract derived
-#> 6: extract derived
-#> 7: extract derived
-#>                                                                                                                                                                                                           relative_path
-#>                                                                                                                                                                                                                  <char>
-#> 1:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=clt/year=2060/part-d442dc702cdbdbb9df13f618bef50a49fe8cbdb6391357d637cbbfcc4e1d02ad.parquet
-#> 2:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=hurs/year=2060/part-d8f84ee054ee73ba2c20a6bbcd155510eea876556d4c1a08a1324d496b72b7ab.parquet
-#> 3:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=psl/year=2060/part-53c9ac1d43c5aff19881432f5380a5d10dba8fb0952df8fd7f30a7d027ad0922.parquet
-#> 4:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=rlds/year=2060/part-0529c672b2743d596b4ce567f20bc7da8679879d78416f84bbfa6a1c9d833bb3.parquet
-#> 5:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=rsds/year=2060/part-47485cadca0ce1317db7c1cf9db32e49dfa14fe931ee7b9aaa7a295f2167f38e.parquet
-#> 6: extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=sfcWind/year=2060/part-d7e5fe8f877b0fd8ce0ec12d3c7fec7e446804f67338fdbbdf6acd7b08a93aef.parquet
-#> 7:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=tas/year=2060/part-7d32f39b9de114229f4abf5d8255ec18fdcbc882887b22ccb212ed4444dd303f.parquet
 ```
 
 Use `shift_data()` when you want to inspect the actual extracted table without
@@ -725,30 +813,6 @@ extracted_data <- shift_data(
 )
 
 extracted_data
-#>     site_id variable_id                time     lon     lat    value  units
-#>      <char>      <char>              <POSc>   <num>   <num>    <num> <char>
-#>  1:     SIN         clt 2060-01-16 12:00:00 103.125 0.93263 82.30624      %
-#>  2:     SIN         clt 2060-02-15 12:00:00 103.125 0.93263 64.81476      %
-#>  3:     SIN         clt 2060-03-16 12:00:00 103.125 0.93263 57.06557      %
-#>  4:     SIN         clt 2060-04-16 00:00:00 103.125 0.93263 45.10655      %
-#>  5:     SIN         clt 2060-05-16 12:00:00 103.125 0.93263 58.98287      %
-#>  6:     SIN         clt 2060-06-16 00:00:00 103.125 0.93263 87.22534      %
-#>  7:     SIN         clt 2060-07-16 12:00:00 103.125 0.93263 92.17834      %
-#>  8:     SIN         clt 2060-08-16 12:00:00 103.125 0.93263 87.00104      %
-#>  9:     SIN         clt 2060-09-16 00:00:00 103.125 0.93263 93.51807      %
-#> 10:     SIN         clt 2060-10-16 12:00:00 103.125 0.93263 80.29469      %
-#> 11:     SIN         clt 2060-11-16 00:00:00 103.125 0.93263 63.98064      %
-#> 12:     SIN         clt 2060-12-16 12:00:00 103.125 0.93263 88.22657      %
-#> 13:     SIN        hurs 2060-01-16 12:00:00 103.125 0.93263 87.63216      %
-#> 14:     SIN        hurs 2060-02-15 12:00:00 103.125 0.93263 79.58945      %
-#> 15:     SIN        hurs 2060-03-16 12:00:00 103.125 0.93263 76.78159      %
-#> 16:     SIN        hurs 2060-04-16 00:00:00 103.125 0.93263 81.37238      %
-#> 17:     SIN        hurs 2060-05-16 12:00:00 103.125 0.93263 76.57287      %
-#> 18:     SIN        hurs 2060-06-16 00:00:00 103.125 0.93263 80.83648      %
-#> 19:     SIN        hurs 2060-07-16 12:00:00 103.125 0.93263 79.76086      %
-#> 20:     SIN        hurs 2060-08-16 12:00:00 103.125 0.93263 81.98067      %
-#>     site_id variable_id                time     lon     lat    value  units
-#>      <char>      <char>              <POSc>   <num>   <num>    <num> <char>
 ```
 
 ## Morph Hourly Weather
@@ -762,9 +826,11 @@ coverage are blocking errors instead of warnings.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
 factor diagnostics, case grouping, or custom backend registration.
 
-For Belcher change-factor morphing, pass either an extracted historical
-`ShiftClimate` stage or an automatic reference spec such as
-`shift_reference_historical(reference_periods)`.
+When available, matching historical CMIP6 data should be supplied so Belcher
+computes future-versus-historical change factors. Pass either an extracted
+historical `ShiftClimate` stage or an explicit reference spec such as
+`historical_reference(1995:2014)`. If no suitable reference data exist,
+`reference = NULL` falls back to monthly statistics from the baseline EPW.
 
 The same `shift_recipe` used to choose request variables can be passed into
 `shift_morph()`. Adjust the recipe when you want to change Belcher methods or
@@ -773,7 +839,8 @@ select another registered backend:
 ```r
 shift_recipe <- epw_morph_recipe(
     "belcher",
-    methods = c(tdb = "shift", rh = "shift")
+    methods = c(tdb = "shift", rh = "shift"),
+    options = belcher_options(snow_depth = "off")
 )
 
 shift_morph(
@@ -796,13 +863,6 @@ morphed <- shift_morph(
 )
 
 morphed
-#> <epwshiftr::ShiftMorphed>
-#>   stage:  morphed
-#>   status: morphed
-#>   store:  <tempdir>/epwshiftr-future-epw-workflow/singapore-store
-#>   morph: planned
-#>   cases:  1
-#>   ids:    query_id, plan_id, summary_id, baseline_id, morph_id
 ```
 
 The `morphed` stage is still store-native. It contains hourly future weather
@@ -813,12 +873,6 @@ you want to see where those intermediate results live:
 ``` r
 morph_artifacts <- shift_artifacts(morphed)
 morph_artifacts[, .(kind, role, relative_path)]
-#>      kind    role
-#>    <char>  <char>
-#> 1: output derived
-#>                                                                                                                                                       relative_path
-#>                                                                                                                                                              <char>
-#> 1: outputs/epw-morph/7151ba639a04006fccc4809f2754db0c5111217b4b2083cb7cc8c02bb90875ca/case=449d8e0e3db38f5e39681257d5f5c78d802a31e5bdcaeb40f9045f798938b76e.parquet
 ```
 
 Use the same `shift_data()` helper to preview the hourly morphed weather table.
@@ -839,62 +893,6 @@ morphed_data <- shift_data(
 )
 
 morphed_data
-#>     period  year month   day  hour dry_bulb_temperature relative_humidity
-#>     <char> <int> <int> <int> <int>                <num>             <num>
-#>  1:  2060s  2001     1     1     1             23.91930          98.86706
-#>  2:  2060s  2001     1     1     2             23.81837         100.00000
-#>  3:  2060s  2001     1     1     3             23.71744         100.00000
-#>  4:  2060s  2001     1     1     4             23.81837         100.00000
-#>  5:  2060s  2001     1     1     5             23.91930          98.86706
-#>  6:  2060s  2001     1     1     6             24.22207          96.62008
-#>  7:  2060s  2001     1     1     7             24.52485          94.37310
-#>  8:  2060s  2001     1     1     8             24.82762          91.00263
-#>  9:  2060s  2001     1     1     9             25.23132          87.63216
-#> 10:  2060s  2001     1     1    10             25.63503          84.26170
-#> 11:  2060s  2001     1     1    11             26.03873          80.89123
-#> 12:  2060s  2001     1     1    12             26.34150          78.64425
-#> 13:  2060s  2001     1     1    13             26.54335          76.39727
-#> 14:  2060s  2001     1     1    14             26.74520          74.15029
-#> 15:  2060s  2001     1     1    15             26.74520          74.15029
-#> 16:  2060s  2001     1     1    16             26.74520          74.15029
-#> 17:  2060s  2001     1     1    17             26.54335          76.39727
-#> 18:  2060s  2001     1     1    18             26.34150          78.64425
-#> 19:  2060s  2001     1     1    19             26.03873          80.89123
-#> 20:  2060s  2001     1     1    20             25.63503          84.26170
-#> 21:  2060s  2001     1     1    21             25.23132          87.63216
-#> 22:  2060s  2001     1     1    22             24.82762          91.00263
-#> 23:  2060s  2001     1     1    23             24.52485          94.37310
-#> 24:  2060s  2001     1     1    24             24.22207          96.62008
-#>     period  year month   day  hour dry_bulb_temperature relative_humidity
-#>     <char> <int> <int> <int> <int>                <num>             <num>
-#>     wind_speed
-#>          <num>
-#>  1:  1.0653853
-#>  2:  1.1506162
-#>  3:  1.2358470
-#>  4:  1.3210778
-#>  5:  1.3636932
-#>  6:  1.4063087
-#>  7:  1.4063087
-#>  8:  1.4063087
-#>  9:  1.3636932
-#> 10:  1.3210778
-#> 11:  1.2358470
-#> 12:  1.1506162
-#> 13:  1.0653853
-#> 14:  0.9801545
-#> 15:  0.8949237
-#> 16:  0.8096929
-#> 17:  0.7670774
-#> 18:  0.7244620
-#> 19:  0.7244620
-#> 20:  0.7244620
-#> 21:  0.7670774
-#> 22:  0.8096929
-#> 23:  0.8949237
-#> 24:  0.9801545
-#>     wind_speed
-#>          <num>
 ```
 
 ## Write EPW Files
@@ -914,27 +912,15 @@ epws <- shift_epw(morphed)
 
 ``` r
 epws
-#> <epwshiftr::ShiftOutputs>
-#>   stage:  outputs
-#>   status: written
-#>   store:  <tempdir>/epwshiftr-future-epw-workflow/singapore-store
-#>   outputs: 1
-#>   ids:    query_id, plan_id, summary_id, baseline_id, morph_id
 ```
 
 `shift_outputs()` lists the EPW files written by `shift_epw()`. These are the
-files you can pass to EnergyPlus or open with `eplusr::read_epw()`.
+files you can pass directly to EnergyPlus.
 
 
 ``` r
 outputs <- shift_outputs(epws)
 outputs[, .(path, source_id, experiment_id, variant_label, period)]
-#>                                                                                                                                     path
-#>                                                                                                                                   <char>
-#> 1: outputs/future-epw/MPI-ESM1-2-LR/ssp585/r1i1p1f1/2060s/ae36a1702acd-SGP_Singapore.486980_IWEC.MPI-ESM1-2-LR.ssp585.r1i1p1f1.2060s.epw
-#>        source_id experiment_id variant_label period
-#>           <char>        <char>        <char> <char>
-#> 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1  2060s
 ```
 
 `shift_data(epws)` reads the written EPW file back and returns its hourly weather
@@ -956,62 +942,6 @@ epw_data <- shift_data(
 )
 
 epw_data
-#>     period  year month   day  hour dry_bulb_temperature relative_humidity
-#>     <char> <int> <int> <int> <int>                <num>             <num>
-#>  1:  2060s  2001     1     1     1                 23.9                98
-#>  2:  2060s  2001     1     1     2                 23.8               100
-#>  3:  2060s  2001     1     1     3                 23.7               100
-#>  4:  2060s  2001     1     1     4                 23.8               100
-#>  5:  2060s  2001     1     1     5                 23.9                98
-#>  6:  2060s  2001     1     1     6                 24.2                96
-#>  7:  2060s  2001     1     1     7                 24.5                94
-#>  8:  2060s  2001     1     1     8                 24.8                91
-#>  9:  2060s  2001     1     1     9                 25.2                87
-#> 10:  2060s  2001     1     1    10                 25.6                84
-#> 11:  2060s  2001     1     1    11                 26.0                80
-#> 12:  2060s  2001     1     1    12                 26.3                78
-#> 13:  2060s  2001     1     1    13                 26.5                76
-#> 14:  2060s  2001     1     1    14                 26.7                74
-#> 15:  2060s  2001     1     1    15                 26.7                74
-#> 16:  2060s  2001     1     1    16                 26.7                74
-#> 17:  2060s  2001     1     1    17                 26.5                76
-#> 18:  2060s  2001     1     1    18                 26.3                78
-#> 19:  2060s  2001     1     1    19                 26.0                80
-#> 20:  2060s  2001     1     1    20                 25.6                84
-#> 21:  2060s  2001     1     1    21                 25.2                87
-#> 22:  2060s  2001     1     1    22                 24.8                91
-#> 23:  2060s  2001     1     1    23                 24.5                94
-#> 24:  2060s  2001     1     1    24                 24.2                96
-#>     period  year month   day  hour dry_bulb_temperature relative_humidity
-#>     <char> <int> <int> <int> <int>                <num>             <num>
-#>     wind_speed
-#>          <num>
-#>  1:        1.1
-#>  2:        1.2
-#>  3:        1.2
-#>  4:        1.3
-#>  5:        1.4
-#>  6:        1.4
-#>  7:        1.4
-#>  8:        1.4
-#>  9:        1.4
-#> 10:        1.3
-#> 11:        1.2
-#> 12:        1.2
-#> 13:        1.1
-#> 14:        1.0
-#> 15:        0.9
-#> 16:        0.8
-#> 17:        0.8
-#> 18:        0.7
-#> 19:        0.7
-#> 20:        0.7
-#> 21:        0.8
-#> 22:        0.8
-#> 23:        0.9
-#> 24:        1.0
-#>     wind_speed
-#>          <num>
 ```
 
 # Validate and Reuse the Result
@@ -1044,15 +974,13 @@ data.table::data.table(
         shift_status(epws)
     )
 )
-#>      stage    status
-#>     <char>    <char>
-#> 1: request       new
-#> 2: collect collected
-#> 3: extract extracted
-#> 4: reference extracted
-#> 5:   morph   morphed
-#> 6:     epw   written
 ```
+
+Stage status and run status answer different questions. `shift_status(epws)`
+reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
+is `waiting` because a store-local EPW can still be exported. Calling
+`shift_export_epw(epws, dir)` completes the run. If the store-local file is the
+intentional endpoint, use `shift_complete(epws)` instead.
 
 ## Read Diagnostics When Something Looks Wrong
 
@@ -1067,7 +995,6 @@ For common causes and the first place to look for each class of failure, see
 
 ``` r
 shift_diagnostics(epws)
-#> Empty data.table (0 rows and 16 cols): stage,severity,code,message,query_id,session_id...
 ```
 
 ## Confirm Extraction Coverage
@@ -1086,22 +1013,13 @@ collects those checks in one place.
 ``` r
 coverage <- shift_coverage(epws)
 coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
-#>    variable_id complete status output_rows output_file_count
-#>         <char>   <lgcl> <char>       <int>             <int>
-#> 1:        rlds     TRUE   done          12                 1
-#> 2:        rsds     TRUE   done          12                 1
-#> 3:         psl     TRUE   done          12                 1
-#> 4:         tas     TRUE   done          12                 1
-#> 5:         clt     TRUE   done          12                 1
-#> 6:     sfcWind     TRUE   done          12                 1
-#> 7:        hurs     TRUE   done          12                 1
 ```
 
 ## Locate Reusable Files
 
 `shift_outputs()` lists the written EPW files and their case metadata. These are
 the files to pass to EnergyPlus, archive with a simulation run, or reopen with
-`eplusr::read_epw()`. The store also keeps the intermediate Parquet artifacts so
+the package's internal EPW reader. The store also keeps the intermediate Parquet artifacts so
 the workflow can be inspected or reused without repeating the remote query.
 
 
@@ -1114,12 +1032,6 @@ outputs[, .(
     variant_label,
     period
 )]
-#>                                                                              file
-#>                                                                            <char>
-#> 1: ae36a1702acd-SGP_Singapore.486980_IWEC.MPI-ESM1-2-LR.ssp585.r1i1p1f1.2060s.epw
-#>        source_id experiment_id variant_label period
-#>           <char>        <char>        <char> <char>
-#> 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1  2060s
 ```
 
 ## Advanced: Manifest IDs
@@ -1131,5 +1043,4 @@ tables directly.
 
 ``` r
 names(shift_ids(epws))
-#> [1] "query_id"    "plan_id"     "summary_id"  "baseline_id" "morph_id"
 ```

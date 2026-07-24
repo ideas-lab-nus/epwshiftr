@@ -4,11 +4,17 @@
 \alias{epw_morph_variables}
 \title{EPW morphing variable sets}
 \usage{
-epw_morph_variables(level = c("recommended", "minimal", "extended"))
+epw_morph_variables(
+  level = c("recommended", "minimal", "extended"),
+  include_optional = FALSE
+)
 }
 \arguments{
 \item{level}{Variable set level, an \link{EpwMorphBackend} object, or an
 \code{\link[=epw_morph_recipe]{epw_morph_recipe()}} object.}
+
+\item{include_optional}{Whether to include optional source variables used by
+enhanced methods.}
 }
 \value{
 A character vector of CMIP variable IDs.

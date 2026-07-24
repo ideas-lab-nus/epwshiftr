@@ -136,6 +136,33 @@ test_that("epwshiftr_cli_render_table() adapts table output to console width", {
     expect_true(any(grepl("Hidden columns for console width", text)))
     expect_true(any(grepl("Status", text)))
 })
+
+test_that("epwshiftr_cli_render_table() reports rows beyond a limited preview", {
+    testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
+    withr::local_options(cli.num_colors = 1L, width = 96L)
+
+    # A store-backed caller can read only the preview rows while still
+    # reporting the complete catalog size accurately.
+    rows <- data.frame(
+        source_id = c("BCC-CSM2-MR", "ACCESS-ESM1-5"),
+        variable_id = c("tas", "hurs"),
+        stringsAsFactors = FALSE
+    )
+    text <- capture.output(
+        epwshiftr:::epwshiftr_cli_render_table(
+            rows,
+            title = "Files",
+            columns = names(rows),
+            max_rows = 2L,
+            total_rows = 5L,
+            more_hint = "use `shift_files(x)` for the complete catalog."
+        ),
+        type = "message"
+    )
+
+    expect_true(any(grepl("3 more rows", text, fixed = TRUE)))
+    expect_true(any(grepl("shift_files(x)", text, fixed = TRUE)))
+})
 # }}}
 # epwshiftr_cli_color_status() {{{
 test_that("epwshiftr_cli_color_status() highlights statuses", {

@@ -204,6 +204,60 @@ If coverage is incomplete:
 - rerun `shift_extract()` after fixing file selection or access;
 - reduce to a single variable or shorter period to isolate the failing record.
 
+# Multi-Table Selection and Snow Depth
+
+Enhanced Belcher recipes can combine atmospheric variables from `Amon` with
+snow depth (`snd`, metres) from `LImon`. Keep both table and grid automatic for
+the first resolution attempt:
+
+```r
+recipe <- epw_morph_recipe("belcher")
+epw_morph_variables(recipe)
+epw_morph_variables(recipe, include_optional = TRUE)
+
+climate <- shift_cmip6(
+    "BCC-CSM2-MR", "ssp585",
+    table = NULL,
+    grid = NULL
+)
+print(climate)
+```
+
+The plan receipt reports `tables auto by variable`. After resolution, progress,
+watch, and verbose receipts show the authoritative partitions, for example
+`Amon=gn · LImon=gr`. A single `grid_label` in a case table is only the primary
+compatibility summary; use the partition result when diagnosing multi-table
+selection.
+
+Common causes of avoidable resolution failures are:
+
+- `table = "Amon"` forces every variable, including `snd`, into `Amon`;
+- `grid = "gn"` can reject an otherwise complete case when its `LImon` data
+  exists only on `gr`;
+- a named table value lost its variable name in hand-written JSON. Use
+  `"table": {"snd": "LImon"}`, not `"table": "LImon"`, for an override;
+- future `snd` exists but the matching historical reference does not, or vice
+  versa.
+
+With `snow_depth = "auto"`, the last case is informational: snow morphing is
+disabled and the EPW is still produced. Use `snow_depth = "required"` to make
+missing future/reference `snd` block resolution, or `"off"` to avoid querying
+it altogether.
+
+```r
+required_snow <- belcher(
+    reference = historical_reference(1995:2014),
+    options = list(snow_depth = "required")
+)
+
+no_snow <- belcher(options = list(snow_depth = "off"))
+```
+
+If automatic mapping is correct but a particular catalog needs a pin, override
+only that variable with `table = c(snd = "LImon")`. Normal and verbose prints
+preserve the distinction between an automatic mapping, a named override, and a
+scalar table forced across all variables.
+
 # Morphing Diagnostics
 
 Strict morphing blocks on missing recipe variables, missing baseline EPW fields,
@@ -227,3 +281,5 @@ summaries, baseline summaries, factors, and morphing plan diagnostics directly.
 6. Downloader sessions/tasks/events if full downloads are involved.
 7. Store validation if local files or manifest state look wrong.
 8. `shift_coverage()` before strict morphing.
+9. For enhanced recipes, inspect the selected table/grid partitions and whether
+   optional or required `snd` is available on both sides of the comparison.

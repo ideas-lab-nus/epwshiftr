@@ -185,8 +185,9 @@ store-native shift workflow from ESGF File records to generated EPW files. It
 uses monthly `Amon` data so the live remote reads are much smaller than an
 equivalent daily workflow.
 
-The examples below use the high-level `shift_*()` facade. When a step touches a
-lower-level engine, this article links to the companion article for that layer:
+The first example uses the task-oriented API. The staged walkthrough that
+follows exposes the lower-level `shift_*()` facade for inspection and teaching.
+When a step touches a lower-level engine, this article links to the companion article for that layer:
 [ESGF query results](esgf-query-results.html), [ESG dictionaries](esg-dictionaries.html),
 [ESG stores](esg-store.html), [Downloader](downloader.html), [EpwMorpher](epw-morpher.html),
 [CLI operations](cli-esgf-store.html), and [ESGF troubleshooting](esgf-troubleshooting.html).
@@ -206,6 +207,175 @@ options(
 )
 ```
 
+# Recommended Task API
+
+The recommended user call gives Belcher an explicit matching historical CMIP6
+reference. When no suitable reference data exist, `belcher()` can instead use
+the baseline EPW climatology; `reference = NULL` never creates a historical
+CMIP6 request implicitly.
+
+```{r task-api, eval = FALSE}
+epw <- system.file(
+    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
+)
+
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = file.path(workflow_root, "future-epw")
+)
+
+shift_status(run)
+shift_outputs(run)
+shift_missing(run)
+```
+
+The default `belcher()` profile is enhanced. With `shift_cmip6(table = NULL)`,
+the resolver selects exact table/grid partitions per variable: atmospheric
+inputs normally come from `Amon`, while optional `snd` comes from `LImon` only
+when both future and historical cases provide it. Use
+`belcher(profile = "legacy")` only when reproducing the earlier algorithm and
+headers is required.
+
+Profile options are part of the scientific task specification rather than UI
+preferences. Configure them on the method and keep `table = NULL` unless a
+dataset requires an explicit override:
+
+```{r enhanced-method-options, eval = FALSE}
+method <- belcher(
+    reference = historical_reference(1995:2014),
+    options = belcher_options(
+        transition_hours = 72L,
+        humidity_source = "auto",
+        snow_depth = "auto"
+    )
+)
+
+# Named values override individual variables; unnamed scalars force every
+# variable into one table and are rarely suitable when snd is enabled.
+climate <- shift_cmip6(
+    "BCC-CSM2-MR", "ssp585",
+    table = c(snd = "LImon")
+)
+```
+
+See [Inspect EPW Morphing](epw-morpher.html) for the complete option matrix and
+the enhanced/legacy defaults.
+
+Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
+`shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
+supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
+
+## Inspect Shift Objects
+
+Every public Shift object prints as a compact semantic receipt. Configuration
+objects summarize scientific intent without expanding stored rules, function
+environments, yearly vectors, or every ESGF node. Stage objects add a preview
+of the records that matter at that point in the workflow. `ShiftRun` refreshes
+its persisted state and prints the same static dashboard used by
+`shift_watch()`.
+
+```{r print-shift-objects, eval = FALSE}
+climate <- shift_cmip6(
+    model = "BCC-CSM2-MR",
+    scenarios = c("ssp126", "ssp585")
+)
+method <- belcher(reference = historical_reference(1995:2014))
+plan <- shift_future_epw(
+    epw = epw,
+    climate = climate,
+    periods = list(`2060s` = 2055:2065),
+    method = method,
+    dir = file.path(workflow_root, "future-epw"),
+    dry_run = TRUE
+)
+
+print(climate)
+print(method)
+print(method, verbose = TRUE)
+print(plan, n = 3L, width = 80L)
+```
+
+Data previews show at most 10 rows by default. Use `n = Inf` for every row,
+set `width` when rendering into a constrained console or report, and use
+`verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
+resolved profile options, and additional diagnostics. Normal receipts identify
+the active method profile and whether CMIP tables are automatic or forced.
+After resolution, progress and watch views report exact partitions such as
+`Amon=gn · LImon=gr` instead of collapsing them to one representative grid.
+These controls affect presentation only and do not change the workflow
+specification or its `spec_hash`.
+
+```{r print-shift-verbose, eval = FALSE}
+print(plan, n = Inf, width = 120L, verbose = TRUE)
+print(run, verbose = TRUE)
+```
+
+## Live Feedback and Background Runs
+
+The foreground runner starts reporting before its first ESGF request. Its
+shared stage vocabulary is `resolve`, optional `download`, `extract_future`,
+optional `extract_reference`, `coverage`, `morph`, and `write_epw`. Within a
+stage it identifies the node, future/reference role, variable, scenario,
+period, reuse/fallback outcome, and output count.
+
+`shift_ui()` controls only presentation. `"auto"` selects a fixed four-row
+stage/current/case/last-event view in a capable terminal and scoped log lines
+elsewhere; `"none"` suppresses non-error Console output while retaining
+persisted events. The `detail` levels are `"normal"`, `"detail"`, and
+`"debug"`; only debug output includes full URLs and internal paths.
+
+```{r ui-options, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = file.path(workflow_root, "future-epw"),
+    ui = shift_ui(progress = "log", detail = "detail", heartbeat = 10)
+)
+```
+
+Use a detached `Rscript` worker when the run should outlive the current R
+session. The call returns a queued `ShiftRun` immediately. Inspectors refresh
+that handle from the store, and `shift_watch()` follows the same structured
+events shown by the foreground reporter.
+
+```{r background-run, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = file.path(workflow_root, "future-epw"),
+    background = TRUE
+)
+
+shift_status(run)
+shift_watch(run)
+shift_logs(run, tail = 50)
+
+# Request cancellation at the next workflow boundary:
+shift_cancel(run)
+
+# Terminate the recorded worker PID after persisting the request:
+shift_cancel(run, force = TRUE)
+```
+
+Interrupting `shift_watch()` stops only the monitor. It does not cancel the
+worker. A failed, cancelled, or partial run can create a new attempt with
+`shift_resume(run, background = TRUE)`; the resolved node, member, and exact
+per-table grid partitions remain pinned.
+
 # Site and Request
 
 `shift_site()` describes the location that will be extracted from climate
@@ -219,7 +389,7 @@ remote data reads below still use live ESGF services.
 
 You can provide the site metadata directly:
 
-```{r site}
+```{r site, message = TRUE}
 epw <- write_vignette_epw(
     file.path(workflow_root, "baseline", "SGP_Singapore.486980_IWEC.epw")
 )
@@ -234,10 +404,10 @@ site <- shift_site(
 site
 ```
 
-Or you can read the same information from an `eplusr::Epw` object:
+Or you can read the same information directly from the EPW LOCATION header:
 
-```{r site-from-epw}
-epw_site <- shift_site(eplusr::read_epw(epw))
+```{r site-from-epw, message = TRUE}
+epw_site <- shift_site(epw)
 epw_site
 ```
 
@@ -257,16 +427,20 @@ The helper provides three named variable sets:
   demonstrations.
 - `"recommended"`: the current strict Belcher recipe set, including
   precipitation.
-- `"extended"`: the recommended set plus related max/min variables for future
-  recipes.
+- `"extended"`: the recommended set plus related max/min variables and snow
+  depth.
 
-This article uses the default Belcher recipe. It is a change-factor backend, so
+This staged walkthrough explicitly uses the Belcher recipe. It is a
+change-factor backend, so
 the morphing step needs both a future climate extraction and a reference climate
 extraction.
 
 ```{r variables}
 shift_recipe <- epw_morph_recipe("belcher")
 variables <- epw_morph_variables(shift_recipe)
+optional_variables <- epw_morph_variables(
+    shift_recipe, include_optional = TRUE
+)
 variables
 ```
 
@@ -289,7 +463,7 @@ Read more about the lower-level query object in
 [ESGF query results](esgf-query-results.html), and about request-value
 validation in [ESG dictionaries](esg-dictionaries.html).
 
-```{r request}
+```{r request, message = TRUE}
 request <- shift_request(
     project = "CMIP6",
     time = 2060L,
@@ -331,7 +505,9 @@ reference_request
 
 The diagram below is the map for the rest of the article. Each `shift_*()` call
 returns a stage object that can be printed, checked, and passed to the next
-step.
+step. The stage also carries `run_id` and `step_id`, so the next `shift_*()`
+call automatically continues the same persisted run. There is no separate
+session object to create or pass.
 
 <div class="shift-flow" role="img" aria-label="Future EPW workflow from request to EPW outputs">
 <div class="shift-node"><strong>shift_request()</strong><span>Describe ESGF data</span><code>ShiftRequest</code></div>
@@ -364,10 +540,23 @@ broader or narrower than intended, change the request filters before continuing.
 `shift_datasets()` runs the Dataset-level ESGF search described by
 `shift_request()`. The returned `EsgResultDataset` object is not the data to
 download yet; it is the list of Dataset records that will later be expanded into
-File records.
+File records. This standalone query uses the same dashboard, persisted run, and
+query heartbeat reporting as the other `shift_*()` tasks. Use
+`ui = shift_ui(...)` to control its presentation; low-level `EsgQuery$collect()`
+continues to expose its native `progress` control.
 
 For a deeper look at Dataset, File, and Aggregation results, see
 [ESGF query results](esgf-query-results.html).
+
+The remaining chunks are a live ESGF walkthrough. They are displayed but not
+executed while the package documentation is precompiled, which keeps installed
+vignettes deterministic and avoids turning documentation builds into remote
+network jobs. Run them interactively to reproduce the workflow.
+
+```{r disable-live-esgf, include = FALSE}
+# Live ESGF calls remain opt-in for readers and release checks.
+knitr::opts_chunk$set(eval = FALSE)
+```
 
 ```{r datasets}
 datasets <- shift_datasets(request)
@@ -638,9 +827,11 @@ coverage are blocking errors instead of warnings.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
 factor diagnostics, case grouping, or custom backend registration.
 
-For Belcher change-factor morphing, pass either an extracted historical
-`ShiftClimate` stage or an automatic reference spec such as
-`shift_reference_historical(reference_periods)`.
+When available, matching historical CMIP6 data should be supplied so Belcher
+computes future-versus-historical change factors. Pass either an extracted
+historical `ShiftClimate` stage or an explicit reference spec such as
+`historical_reference(1995:2014)`. If no suitable reference data exist,
+`reference = NULL` falls back to monthly statistics from the baseline EPW.
 
 The same `shift_recipe` used to choose request variables can be passed into
 `shift_morph()`. Adjust the recipe when you want to change Belcher methods or
@@ -649,7 +840,8 @@ select another registered backend:
 ```r
 shift_recipe <- epw_morph_recipe(
     "belcher",
-    methods = c(tdb = "shift", rh = "shift")
+    methods = c(tdb = "shift", rh = "shift"),
+    options = belcher_options(snow_depth = "off")
 )
 
 shift_morph(
@@ -719,7 +911,7 @@ epws
 ```
 
 `shift_outputs()` lists the EPW files written by `shift_epw()`. These are the
-files you can pass to EnergyPlus or open with `eplusr::read_epw()`.
+files you can pass directly to EnergyPlus.
 
 ```{r epw-output-rows}
 outputs <- shift_outputs(epws)
@@ -777,6 +969,12 @@ data.table::data.table(
 )
 ```
 
+Stage status and run status answer different questions. `shift_status(epws)`
+reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
+is `waiting` because a store-local EPW can still be exported. Calling
+`shift_export_epw(epws, dir)` completes the run. If the store-local file is the
+intentional endpoint, use `shift_complete(epws)` instead.
+
 ## Read Diagnostics When Something Looks Wrong
 
 Diagnostics are the first place to look when a stage is blocked, failed, or
@@ -812,7 +1010,7 @@ coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
 
 `shift_outputs()` lists the written EPW files and their case metadata. These are
 the files to pass to EnergyPlus, archive with a simulation run, or reopen with
-`eplusr::read_epw()`. The store also keeps the intermediate Parquet artifacts so
+the package's internal EPW reader. The store also keeps the intermediate Parquet artifacts so
 the workflow can be inspected or reused without repeating the remote query.
 
 ```{r outputs}

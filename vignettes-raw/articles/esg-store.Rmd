@@ -203,6 +203,16 @@ store$query("
 Previewing asks ESGF for current File records and compares them with the
 store's current links. It does not modify the store.
 
+The remaining chunks are live ESGF operations. They are displayed but not
+executed when the package documentation is precompiled, so rendering remains
+deterministic and does not depend on the availability of a remote index node.
+Run them interactively against your store when following the workflow.
+
+```{r disable-live-esgf, include = FALSE}
+# Keep release documentation builds offline after the local store setup.
+knitr::opts_chunk$set(eval = FALSE)
+```
+
 ```{r preview-update}
 preview <- store$preview_update_queries(
     query_id = query_id,
@@ -323,7 +333,7 @@ region <- store$plan_region(
     time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
     site_id = "SIN",
     variable_id = variables,
-    nearest = 1L
+    method = "nearest"
 )
 
 select_cols(region, c(
@@ -394,6 +404,27 @@ store$cleanup_downloads(
 Checksum validation is useful, but it must read files and can be expensive on a
 large store. Layout validation is cheaper and catches many broken local-path or
 artifact-record problems.
+
+## Recreate an Incompatible Store
+
+Store schemas are not migrated between incompatible development versions. If a
+package update rejects an older manifest, recreate the default store with:
+
+```r
+store_reset()
+```
+
+The previous store is moved to a timestamped sibling, so its queries,
+downloads, extracts, generated EPWs, and run history remain available for
+manual recovery. Permanent removal requires both safeguards explicitly:
+
+```r
+store_reset(backup = FALSE, force = TRUE)
+```
+
+Close open `EsgStore` objects and stop active jobs before resetting. To retain
+the old store in place, pass a new directory through the `store` argument or
+change `epwshiftr.dir_store` instead.
 
 # Store Boundaries
 

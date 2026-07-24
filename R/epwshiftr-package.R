@@ -38,14 +38,10 @@
 #' @importFrom cli cli_rule
 #' @importFrom data.table :=
 #' @importFrom data.table data.table
-#' @importFrom eplusr read_epw
 #' @importFrom jsonlite fromJSON
 #' @importFrom mirai daemons mirai
-#' @importFrom psychrolib GetTDewPointFromRelHum
-#' @importFrom psychrolib SetUnitSystem
 #' @importFrom R6 R6Class
 #' @importFrom RNetCDF utcal.nc
-#' @importFrom units set_units
 #' @importFrom utils flush.console head menu tail
 #' @importFrom S7 convert
 #' @rawNamespace if (getRversion() < "4.3.0") importFrom("S7", "@")

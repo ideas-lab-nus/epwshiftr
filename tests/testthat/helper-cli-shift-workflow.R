@@ -30,7 +30,10 @@ cli_shift_test_dataset_docs <- function(variable_id = "tas") {
     )
 }
 
-cli_shift_test_file_docs <- function(path, opendap_url = path, download_url = path, variable_id = "tas") {
+# Build resolver-complete File documents for CLI workflow tests.
+cli_shift_test_file_docs <- function(path, opendap_url = path, download_url = path, variable_id = "tas",
+                                     datetime_start = "2060-01-01T00:00:00Z",
+                                     datetime_end = "2060-12-31T23:59:59Z") {
     docs <- data.frame(
         id = sprintf("%s|dataset-1", basename(path)),
         dataset_id = "dataset-1",
@@ -43,6 +46,11 @@ cli_shift_test_file_docs <- function(path, opendap_url = path, download_url = pa
         tracking_id = sprintf("hdl:21.14100/cli-shift-%s", variable_id),
         title = basename(path),
         version = 20260101L,
+        latest = TRUE,
+        retracted = FALSE,
+        deprecated = FALSE,
+        datetime_start = datetime_start,
+        datetime_end = datetime_end,
         data_node = "example.org",
         activity_id = "ScenarioMIP",
         institution_id = "EC-Earth-Consortium",
@@ -106,33 +114,31 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
 
 cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
     config <- list(
-        request = list(
-            project = "CMIP6",
-            experiment = "ssp585",
-            variables = "tas",
-            frequency = "day"
+        version = 1L,
+        epw = epw,
+        climate = list(
+            provider = "cmip6",
+            model = "EC-Earth3",
+            scenarios = "ssp585",
+            member = "r1i1p1f1",
+            grid = "gr",
+            frequency = "day",
+            table = "day",
+            index_nodes = "https://example.org"
         ),
-        site = list(
-            id = "SIN",
-            lon = 103.98,
-            lat = 1.37,
-            label = "singapore",
-            epw = epw
-        ),
-        collect = Filter(Negate(is.null), list(store = store, label = "cli-shift")),
-        extract = list(
-            periods = list(`2060s` = 2060L),
-            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-            fallback = "auto"
-        ),
-        morph = list(
-            recipe = "belcher_absolute",
-            strict = FALSE,
+        periods = list(`2060s` = 2060L),
+        method = list(
+            name = "belcher_absolute",
             methods = list(tdb = "shift")
         ),
-        epw = list(
-            dir = "cli-shift-epw",
-            separate = FALSE
+        dir = tempfile("cli-shift-export-"),
+        control = list(
+            strict = FALSE,
+            allow_partial = FALSE,
+            download = "auto",
+            resume = TRUE,
+            overwrite = TRUE,
+            output_layout = "flat"
         )
     )
     jsonlite::write_json(config, path, auto_unbox = TRUE, pretty = TRUE)

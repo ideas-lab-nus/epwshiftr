@@ -2,6 +2,29 @@
 
 ## Breaking changes
 
+* Standalone `shift_*()` stages now carry their persisted `run_id` and
+  `step_id` into the next stage automatically. The public API does not expose a
+  workflow session/current-session object. Intermediate runs are `waiting`,
+  final EPW exports complete automatically, and `shift_complete()` explicitly
+  closes a workflow that intentionally stops at an intermediate artifact.
+  Logical `progress` arguments on `shift_datasets()` and `shift_collect()` were
+  removed in favour of `ui = shift_ui(progress = ...)` (#126).
+
+* Replaced the decomposed high-level future-EPW arguments with the
+  task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
+  store, dry_run)` interface. Future model, scenarios, member, grid, frequency,
+  and discovery constraints now form one complete `ShiftCmip6Spec` created by
+  `shift_cmip6()`. Morphing methods are explicit `ShiftMorphMethod` objects.
+  `belcher(reference = historical_reference(...))` is the recommended path
+  when matching historical CMIP6 data are available. `belcher()` remains a
+  fallback that uses the baseline EPW climatology; `NULL` never infers a
+  historical request.
+* Removed the `eplusr`, `psychrolib`, and `units` runtime dependencies. EPW files
+  are parsed and written directly, while objects inheriting from `Epw` remain
+  accepted through a dependency-free conversion to the internal `EpwFile`.
+  The required ASHRAE saturation-pressure and dew-point equations are
+  implemented internally, and climate-value conversion uses explicit supported
+  unit pairs.
 * Replaced the extraction `nearest` count option with explicit grid extraction
   methods: `"nearest"`, `"idw"`, `"bilinear"`, and `"mean"` (#123).
 * Replaced the legacy data.table-oriented workflow with the new store-native
@@ -17,6 +40,96 @@
 
 ## New features
 
+* Belcher morphing now defaults to the `"enhanced"` profile. It uses guarded
+  combined temperature morphing with cyclic month-boundary smoothing, a
+  case-wide specific-humidity state path when complete `huss + tas + ps` data
+  are available, integrated EPW solar geometry, RBL diffuse radiation, Perez
+  illuminance, optional `snd` scaling, and recalculated ground-temperature and
+  typical/extreme-period headers. Use `profile = "legacy"` for compatible
+  pre-enhancement numerical results and EPW headers, and configure policies with
+  `belcher_options()` (#126).
+
+* `shift_cmip6(table = NULL)` now resolves exact variable/table/grid
+  partitions. Atmospheric inputs remain in `Amon`, `snd` is discovered in
+  `LImon`, and future/reference optional inputs are retained only when both
+  cases provide a matching partition. Scalar tables still pin every variable;
+  named vectors override individual variables.
+
+* Added `store_reset()` for deliberately incompatible store schemas. Existing
+  stores are moved to timestamped same-filesystem backups by default;
+  permanent removal requires `backup = FALSE, force = TRUE`. Reset targets are
+  validated before any filesystem change, and schema mismatch errors now show
+  a directly runnable recovery command.
+
+* Generalized the Future EPW reporter and run store across standalone Dataset
+  inspection, collect, download, extract, morph, EPW-write, and export tasks.
+  Each invocation records an ordered step and foreground job; the latest
+  returned stage continues the run, while stale or terminal inputs fork a child
+  lineage. `shift_datasets()` preserves its `EsgResultDataset` return value while
+  carrying run coordinates as lightweight attributes. Background download
+  sessions remain `running` and synchronize their completion, cancellation, and
+  logs through the same run ID. `shift_result()` rebuilds the latest successful
+  stage, and CLI extract/morph/download commands expose `run_id` and `step_id`
+  without mixing progress text into quiet, JSON, or JSONL output. Store schema
+  2.8 records these steps and deliberately requires a new store instead of
+  migrating older manifests.
+
+* `ShiftRequest` now follows `EsgQuery`'s double-rule query receipt and canonical
+  parameter renderer. `ShiftFiles` preserves the established
+  `EsgResultFile` double-rule and bullet-summary header while adding a compact,
+  terminal-width-aware CMIP6 preview. It reads only the requested preview rows
+  from the store and accepts `n`, `width`, and `verbose` print controls; the
+  complete catalog remains available through `shift_files()` or
+  `data.table::as.data.table()`.
+
+* Added a shared semantic print design for every public Shift configuration and
+  stage object. Receipts use double-rule titles, bullet facts, bounded
+  width-aware tables, compact periods and references, and common `n`, `width`,
+  and `verbose` controls. `ShiftRun` prints a refreshed, motion-free snapshot
+  through the same dashboard view used by foreground runs and `shift_watch()`;
+  an unavailable store now falls back to the cached snapshot with a diagnostic
+  instead of failing the print method.
+
+* Added `shift_ui()` and a unified workflow reporter with an in-place plan
+  summary; a responsive stage rail, one animated current operation,
+  stage-specific measured progress, terse resolver attempts, and a two-item
+  activity feed; aggregate download bytes, speed, ETA, and active files; and
+  ordered `normal`, `detail`, and `debug` output. Resolver failover no longer
+  presents node attempts as a workflow percentage. ANSI terminals paint the
+  complete dashboard atomically through a cli-capability-aware framebuffer,
+  add a quiet panel border with labelled workflow and activity sections at 60
+  columns and above, reserve the final terminal column against autowrap, and
+  reflow plan, current operation, status, and diagnosis fields at semantic
+  boundaries instead of clipping them. Flow falls back from the complete rail
+  to current-plus-next and current-only forms as space contracts. Semantic
+  colours remain reserved for state instead of ordinary plan values. Narrow
+  terminals retain the same content without decorative chrome. Constrained dynamic IDE
+  consoles use one compact cli status row. Failed runs now commit their final
+  panel to terminal scrollback and replace repeated resolver exceptions with a
+  structured diagnosis: attempt counts, one cause, the closest CMIP6 identity,
+  and the first missing requirement. Recovery text distinguishes transient
+  retryable failures from scientific coverage failures and omits the default
+  store path from copyable commands. Title-like dashboard labels now use a
+  consistent bold accent, while failure labels use the danger colour and
+  secondary labels remain quiet. `motion` and `refresh` control presentation
+  independently from durable job heartbeats, and `shift_watch()` advances
+  cached animation frames without increasing store polling frequency. Reporter
+  milestones remain structured run events while throttled sidecars carry
+  transient state without recording animation-only events. CI, `TERM=dumb`,
+  redirected, and captured output use complete append-only logs.
+* Added detached Future EPW jobs with live `ShiftRun` refresh,
+  `shift_watch()`, `shift_cancel()`, and `shift_logs()`. Background attempts
+  retain their PID, heartbeat, log, cancellation, and terminal state, while a
+  lock-free live snapshot keeps watch/cancel responsive when the worker owns
+  DuckDB's process lock. `shift_logs()` identifies process-log and persisted-
+  event rows, and CLI JSONL follow emits typed snapshot, event-delta, gap, and
+  terminal records.
+* Added persisted `ShiftRun` workflow records, expected-case state and events,
+  plus `shift_runs()`, `shift_run_get()`, `shift_cases()`, `shift_missing()`, and
+  `shift_resume()` for run-ID-based inspection and cross-session recovery.
+* Added typed `shift_cmip6()` and `shift_control()` configuration,
+  complete future/reference CMIP6 resolution, strict expected-case coverage,
+  and explicit partial-output policy.
 * Added the store-native `shift_request()` -> `shift_collect()` ->
   `shift_download()` -> `shift_extract()` -> `shift_morph()` -> `shift_epw()`
   workflow, with inspection helpers such as `shift_status()`,
@@ -43,6 +156,59 @@
 
 ## Bug fixes
 
+* Humidity fallback now skips resolved CMIP table partitions that do not
+  contain complete `huss`, `tas`, and `ps` extraction rows, avoiding false
+  derivation attempts for optional partitions such as `LImon` `snd` (#126).
+
+* `shift_request()` now preserves provider facet values such as `project` and
+  `frequency` exactly for EsgDict validation instead of silently translating
+  non-standard aliases. A bare numeric `limit` now caps Dataset results instead
+  of silently becoming a pagination size. Empty collections are reported as
+  `partial` rather than as ready for extraction, while successful intermediate
+  receipts display `READY` instead of the internal state-machine term
+  `waiting`.
+
+* Standalone dynamic `shift_*()` stages now translate successful `waiting` and
+  detached `running` workflow states to the framebuffer's `done` terminal
+  outcome. This prevents a completed `shift_collect()` from failing while its
+  final dashboard receipt is committed.
+
+* Belcher CMIP6 resolution now keeps `hurs` as the canonical humidity input but
+  can satisfy it from complete `huss`, `tas`, and surface-pressure (`ps`) data
+  when direct relative humidity is unavailable. The derived `hurs` values use
+  the package's ASHRAE saturation-pressure equation, are persisted as normal
+  extraction plans and Parquet artifacts with source-plan provenance, and are
+  reused on resume. Mean sea-level pressure (`psl`) is never substituted for
+  surface pressure. High-level Future EPW plans also reject equal or nested
+  delivery/store paths so internal manifests, catalogs, and logs cannot enter
+  the exported-EPW directory.
+* Future-EPW collection now preserves ESGF File time metadata and fills missing
+  ranges from CMIP/DRS filenames before storing or filtering records. Resolver
+  coverage also repairs older cached catalogs defensively, preventing complete
+  member/grid combinations from being rejected as if every requested year were
+  absent. Closest-identity diagnostics prefer identities present in the future
+  catalog, and a mixed set of coverage failures plus one timed-out mirror no
+  longer presents an unconditional `Retry` action.
+* Historical-reference discovery no longer turns requested calendar years into
+  exact ESGF Dataset end timestamps. This keeps complete monthly datasets whose
+  metadata ends on a representative December date (for example December 16)
+  eligible for resolution; the requested years are still enforced during
+  candidate selection, extraction, and coverage checks. Empty reference
+  catalogs now report a dedicated diagnostic before member/grid matching.
+* Future-EPW progress now degrades to readable line logs when a dynamic Console
+  region cannot be recreated, keeps the current business-unit label in sync,
+  freezes elapsed time for every terminal run state, and preserves every unseen
+  event between R or CLI watch polls. Expected resolver-node rejection no longer
+  creates an error diagnostic, and foreground runs expose their durable events
+  through `shift_logs()`. Extraction fallback downloads now share the workflow
+  reporter instead of opening competing native progress bars; remote NetCDF
+  reads remain visibly alive through a polled worker and fall back to synchronous
+  I/O when that worker cannot be launched.
+* Successful dynamic runs now commit a responsive final receipt to terminal
+  scrollback instead of erasing the dashboard and leaving only two summary
+  lines. Its Results section retains completion counts, the delivery directory,
+  and width-wrapped output filenames; compact and log renderers keep their
+  append-only completion summary.
 * Fixed precipitation morphing summaries to avoid carrying the removed legacy
   `dist` extraction column after grid extraction methods became explicit (#124).
 * `EsgStore` now keeps ESGF query collection and downloader operations outside

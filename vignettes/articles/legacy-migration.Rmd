@@ -26,9 +26,12 @@ epwshiftr's recommended workflow is now
 [Create Future EPW Files](future-epw-workflow.html), built around `shift_*()`,
 `EsgStore`, `Downloader`, and `EpwMorpher`.
 
-The older data.table-oriented workflow is available from the `legacy` branch or
+The older data.table-oriented API is available from the `legacy` branch or
 epwshiftr v0.1.4. Those functions are no longer exported by the current package.
-This article maps old concepts to new store-native concepts.
+The current package does, however, retain a `belcher(profile = "legacy")`
+compatibility profile for reproducing the earlier morphing calculations and
+eight EPW headers. This article separates numerical compatibility from API and
+file-layout compatibility while mapping old concepts to store-native concepts.
 
 # Concept Map
 
@@ -97,6 +100,34 @@ epws <- request |>
 Use `shift_status()`, `shift_diagnostics()`, `shift_coverage()`,
 `shift_outputs()`, and `shift_data()` to inspect stage state.
 
+## Reproduce Legacy Numerical Output with the Current API
+
+Use the compatibility profile when a validation study needs the previous
+35-column hourly result and header policies but can migrate to durable task and
+store objects:
+
+```r
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "MPI-ESM1-2-LR",
+        scenarios = "ssp585",
+        member = "r1i1p1f1"
+    ),
+    periods = list(`2060s` = 2060L),
+    method = belcher(
+        profile = "legacy",
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "outputs/future-epw"
+)
+```
+
+The legacy profile disables cyclic smoothing and snow-depth morphing, uses the
+historical HURS and radiation paths, and preserves ground temperatures,
+typical/extreme periods, and design conditions. It does not restore removed
+function names, legacy object classes, or legacy output-file naming.
+
 # New Lower-Level Shape
 
 If your legacy script needed tight control over indexing, downloads, extraction,
@@ -150,6 +181,10 @@ Before replacing a legacy script, make these choices explicit:
 
 - Use `shift_request()` filters that match the old scenario, source, variant,
   frequency, table, and variables.
+- Select `belcher(profile = "legacy")` when numerical/header compatibility is
+  required; the default enhanced profile intentionally changes those results.
+- In new enhanced high-level workflows, prefer `shift_cmip6(table = NULL)` so
+  atmospheric variables and optional `snd` can use their native CMIP tables.
 - Decide whether you need full NetCDF downloads. The new default reads OPeNDAP
   first; insert `shift_download()` only when you intentionally want local source
   files.
@@ -162,8 +197,10 @@ Before replacing a legacy script, make these choices explicit:
 # When to Keep the Legacy Branch
 
 Keep using the legacy branch or epwshiftr `v0.1.4` only when a project depends
-on exact legacy object classes, old file naming, or an already validated
-historical workflow that should not change mid-study.
+on removed function signatures, exact legacy object classes, old file naming,
+or a frozen software environment that cannot migrate. Exact Belcher numerical
+and EPW-header behavior alone no longer requires the old branch; use
+`profile = "legacy"` in the current API.
 
 For new work, use the store-native API. It gives better diagnostics, durable
 metadata, resumable downloads, artifact tracking, and a clearer route from ESGF

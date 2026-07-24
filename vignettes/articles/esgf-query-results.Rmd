@@ -119,7 +119,7 @@ query$state(null = FALSE)
 #> =MPI-ESM1-2-LR
 #>
 #> $parameter$variable_id
-#> =tas,hurs,psl,rlds,rsds,sfcWind,clt
+#> =tas,hurs,psl,rlds,rsds,sfcWind,clt,pr
 #>
 #> $parameter$frequency
 #> =mon
@@ -151,7 +151,7 @@ query$state(null = FALSE)
 #> $parameter$table_id
 #> =Amon
 query$url()
-#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon"
+#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt,pr&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon"
 ```
 
 The small `new_dataset_query()` factory is deliberate. `EsgQuery` methods mutate
@@ -169,7 +169,7 @@ many Dataset records match the query.
 
 ``` r
 query$count()
-#> [1] 7
+#> [1] 8
 ```
 
 # Constrain Dataset Search Ranges
@@ -281,9 +281,9 @@ coverage_query$datetime_range()
 #> $stop
 #> [2060-12-31T23:59:59Z TO *]
 coverage_query$url()
-#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=datetime_start%3A%5B%2A%20TO%202060-01-01T00%3A00%3A00Z%5D%20AND%20datetime_stop%3A%5B2060-12-31T23%3A59%3A59Z%20TO%20%2A%5D"
+#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt,pr&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=datetime_start%3A%5B%2A%20TO%202060-01-01T00%3A00%3A00Z%5D%20AND%20datetime_stop%3A%5B2060-12-31T23%3A59%3A59Z%20TO%20%2A%5D"
 coverage_query$count()
-#> [1] 7
+#> [1] 8
 ```
 
 `datetime_range()` accepts complete ISO datetimes, simplified dates such as
@@ -307,7 +307,7 @@ custom_coverage_query$datetime_range()
 #> $stop
 #> [NOW+100YEARS TO *]
 custom_coverage_query$url()
-#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=datetime_start%3A%5B2055-01-01T00%3A00%3A00Z%20TO%202075-01-01T00%3A00%3A00Z%5D%20AND%20datetime_stop%3A%5BNOW%2B100YEARS%20TO%20%2A%5D"
+#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt,pr&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=datetime_start%3A%5B2055-01-01T00%3A00%3A00Z%20TO%202075-01-01T00%3A00%3A00Z%5D%20AND%20datetime_stop%3A%5BNOW%2B100YEARS%20TO%20%2A%5D"
 ```
 
 Use full range expressions only when you intentionally need raw Solr range
@@ -329,9 +329,9 @@ timestamp_query$timestamp_range()
 #> $to
 #> NOW
 timestamp_query$url()
-#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=_timestamp%3A%5BNOW%2FYEAR-10YEARS%20TO%20NOW%5D"
+#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt,pr&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=_timestamp%3A%5BNOW%2FYEAR-10YEARS%20TO%20NOW%5D"
 timestamp_query$count()
-#> [1] 7
+#> [1] 8
 ```
 
 Use `timestamp_range()` when the question is about index freshness, not climate
@@ -354,9 +354,9 @@ version_query$version_range()
 #> $max
 #> [* TO 2019-08-31T00:00:00Z]
 version_query$url()
-#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=version%3A%5B20190701%20TO%20%2A%5D%20AND%20version%3A%5B%2A%20TO%2020190831%5D"
+#> [1] "https://esgf-data.dkrz.de/esg-search/search?project=CMIP6&activity_id=ScenarioMIP&experiment_id=ssp585&source_id=MPI-ESM1-2-LR&variable_id=tas,hurs,psl,rlds,rsds,sfcWind,clt,pr&frequency=mon&variant_label=r1i1p1f1&data_node=esgf.ceda.ac.uk&fields=id,source_id,experiment_id,variant_label,frequency,table_id,variable_id,data_node,number_of_files,number_of_aggregations,access&type=Dataset&offset=0&distrib=true&limit=20&format=application%2Fsolr%2Bjson&table_id=Amon&query=version%3A%5B20190701%20TO%20%2A%5D%20AND%20version%3A%5B%2A%20TO%2020190831%5D"
 version_query$count()
-#> [1] 7
+#> [1] 8
 ```
 
 Use `version_range()` when you need to select ESGF publication versions. It is a
@@ -441,7 +441,7 @@ collect File or Aggregation child records.
 datasets <- query$collect(type = "Dataset", all = FALSE, limit = TRUE)
 
 datasets$count()
-#> [1] 7
+#> [1] 8
 result_table(datasets, c(
     "id", "source_id", "experiment_id", "variant_label",
     "table_id", "variable_id", "data_node", "number_of_files",
@@ -451,20 +451,22 @@ result_table(datasets, c(
 #>                                                                                             <char>
 #> 1:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk
 #> 2:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk
-#> 3:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk
-#> 4:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk
-#> 5:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk
-#> 6: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk
-#> 7:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk
+#> 3:      CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.pr.gn.v20190710|esgf.ceda.ac.uk
+#> 4:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk
+#> 5:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk
+#> 6:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk
+#> 7: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk
+#> 8:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk
 #>        source_id experiment_id variant_label table_id variable_id
 #>           <char>        <char>        <char>   <char>      <char>
 #> 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon         clt
 #> 2: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon        hurs
-#> 3: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon         psl
-#> 4: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon        rlds
-#> 5: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon        rsds
-#> 6: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon     sfcWind
-#> 7: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon         tas
+#> 3: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon          pr
+#> 4: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon         psl
+#> 5: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon        rlds
+#> 6: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon        rsds
+#> 7: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon     sfcWind
+#> 8: MPI-ESM1-2-LR        ssp585      r1i1p1f1     Amon         tas
 #>          data_node number_of_files             access
 #>             <char>           <int>             <list>
 #> 1: esgf.ceda.ac.uk               5 HTTPServer,OPENDAP
@@ -474,6 +476,7 @@ result_table(datasets, c(
 #> 5: esgf.ceda.ac.uk               5 HTTPServer,OPENDAP
 #> 6: esgf.ceda.ac.uk               5 HTTPServer,OPENDAP
 #> 7: esgf.ceda.ac.uk               5 HTTPServer,OPENDAP
+#> 8: esgf.ceda.ac.uk               5 HTTPServer,OPENDAP
 ```
 
 Use Dataset inspection before asking for all child files. If the table is too
@@ -493,12 +496,12 @@ result_table(first_datasets, c("id", "variable_id", "data_node", "access"))
 #>                                                                                          <char>
 #> 1:  CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk
 #> 2: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk
-#> 3:  CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk
+#> 3:   CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.pr.gn.v20190710|esgf.ceda.ac.uk
 #>    variable_id       data_node             access
 #>         <char>          <char>             <list>
 #> 1:         clt esgf.ceda.ac.uk HTTPServer,OPENDAP
 #> 2:        hurs esgf.ceda.ac.uk HTTPServer,OPENDAP
-#> 3:         psl esgf.ceda.ac.uk HTTPServer,OPENDAP
+#> 3:          pr esgf.ceda.ac.uk HTTPServer,OPENDAP
 
 tas_datasets <- datasets$filter(function(x) x$variable_id == "tas")
 result_table(tas_datasets, c("id", "variable_id", "number_of_files", "access"))
@@ -511,13 +514,13 @@ result_table(tas_datasets, c("id", "variable_id", "number_of_files", "access"))
 
 tas_datasets$selection()
 #> $source_count
-#> [1] 7
+#> [1] 8
 #>
 #> $source_num_found
-#> [1] 7
+#> [1] 8
 #>
 #> $source_indices
-#> [1] 7
+#> [1] 8
 ```
 
 # Collect File Records
@@ -535,7 +538,7 @@ files <- datasets$collect(
 )
 
 files$count()
-#> [1] 35
+#> [1] 40
 result_table(files, c(
     "filename", "variable_id", "data_node", "datetime_start",
     "datetime_end", "size", "url_opendap", "url_download"
@@ -552,22 +555,22 @@ result_table(files, c(
 #>  8: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs
 #>  9: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc        hurs
 #> 10: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc        hurs
-#> 11:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         psl
-#> 12:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         psl
-#>           data_node            size
-#>              <char>         <units>
-#>  1: esgf.ceda.ac.uk 11.655127 [MiB]
-#>  2: esgf.ceda.ac.uk 11.661527 [MiB]
-#>  3: esgf.ceda.ac.uk 11.652859 [MiB]
-#>  4: esgf.ceda.ac.uk 11.648442 [MiB]
-#>  5: esgf.ceda.ac.uk  3.531520 [MiB]
-#>  6: esgf.ceda.ac.uk 10.593455 [MiB]
-#>  7: esgf.ceda.ac.uk 10.588588 [MiB]
-#>  8: esgf.ceda.ac.uk 10.582312 [MiB]
-#>  9: esgf.ceda.ac.uk 10.572694 [MiB]
-#> 10: esgf.ceda.ac.uk  3.215569 [MiB]
-#> 11: esgf.ceda.ac.uk  7.863791 [MiB]
-#> 12: esgf.ceda.ac.uk  7.866961 [MiB]
+#> 11:   pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc          pr
+#> 12:   pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc          pr
+#>           data_node      size
+#>              <char>    <char>
+#>  1: esgf.ceda.ac.uk 11.66 MiB
+#>  2: esgf.ceda.ac.uk 11.66 MiB
+#>  3: esgf.ceda.ac.uk 11.65 MiB
+#>  4: esgf.ceda.ac.uk 11.65 MiB
+#>  5: esgf.ceda.ac.uk  3.53 MiB
+#>  6: esgf.ceda.ac.uk 10.59 MiB
+#>  7: esgf.ceda.ac.uk 10.59 MiB
+#>  8: esgf.ceda.ac.uk 10.58 MiB
+#>  9: esgf.ceda.ac.uk 10.57 MiB
+#> 10: esgf.ceda.ac.uk  3.22 MiB
+#> 11: esgf.ceda.ac.uk 12.66 MiB
+#> 12: esgf.ceda.ac.uk 12.66 MiB
 #>                                                                                                                                                                                  url_opendap
 #>                                                                                                                                                                                       <char>
 #>  1:   https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
@@ -580,8 +583,8 @@ result_table(files, c(
 #>  8: https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 #>  9: https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
 #> 10: https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
+#> 11:     https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
+#> 12:     https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
 #>                                                                                                                                                                                      url_download
 #>                                                                                                                                                                                            <char>
 #>  1:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
@@ -594,8 +597,8 @@ result_table(files, c(
 #>  8: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 #>  9: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
 #> 10: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
+#> 11:     https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
+#> 12:     https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
 ```
 
 `filter_time(method = "drs")` parses CMIP-style filename and DRS time ranges.
@@ -611,7 +614,7 @@ files_2060 <- files$filter_time(
 )
 
 files_2060$count()
-#> [1] 7
+#> [1] 8
 result_table(files_2060, c(
     "filename", "variable_id", "datetime_start", "datetime_end",
     "data_node", "url_opendap", "url_download"
@@ -620,11 +623,12 @@ result_table(files_2060, c(
 #>                                                            <char>      <char>
 #> 1:     clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         clt
 #> 2:    hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs
-#> 3:     psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         psl
-#> 4:    rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rlds
-#> 5:    rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rsds
-#> 6: sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc     sfcWind
-#> 7:     tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         tas
+#> 3:      pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc          pr
+#> 4:     psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         psl
+#> 5:    rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rlds
+#> 6:    rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rsds
+#> 7: sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc     sfcWind
+#> 8:     tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         tas
 #>          datetime_start         datetime_end       data_node
 #>                  <char>               <char>          <char>
 #> 1: 2055-01-01T00:00:00Z 2074-12-31T23:59:59Z esgf.ceda.ac.uk
@@ -634,24 +638,27 @@ result_table(files_2060, c(
 #> 5: 2055-01-01T00:00:00Z 2074-12-31T23:59:59Z esgf.ceda.ac.uk
 #> 6: 2055-01-01T00:00:00Z 2074-12-31T23:59:59Z esgf.ceda.ac.uk
 #> 7: 2055-01-01T00:00:00Z 2074-12-31T23:59:59Z esgf.ceda.ac.uk
+#> 8: 2055-01-01T00:00:00Z 2074-12-31T23:59:59Z esgf.ceda.ac.uk
 #>                                                                                                                                                                                       url_opendap
 #>                                                                                                                                                                                            <char>
 #> 1:         https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 #> 2:       https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 3:         https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 4:       https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rlds/gn/v20190710/rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 5:       https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rsds/gn/v20190710/rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 6: https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/sfcWind/gn/v20190710/sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 7:         https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 3:           https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 4:         https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 5:       https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rlds/gn/v20190710/rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 6:       https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rsds/gn/v20190710/rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 7: https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/sfcWind/gn/v20190710/sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 8:         https://esgf.ceda.ac.uk/thredds/dodsC/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 #>                                                                                                                                                                                           url_download
 #>                                                                                                                                                                                                 <char>
 #> 1:         https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 #> 2:       https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 3:         https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 4:       https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rlds/gn/v20190710/rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 5:       https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rsds/gn/v20190710/rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 6: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/sfcWind/gn/v20190710/sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#> 7:         https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 3:           https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/pr/gn/v20190710/pr_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 4:         https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 5:       https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rlds/gn/v20190710/rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 6:       https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/rsds/gn/v20190710/rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 7: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/sfcWind/gn/v20190710/sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
+#> 8:         https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 ```
 
 Use `filter_time(method = "opendap")` only when filename-derived time coverage
@@ -728,9 +735,9 @@ query_path <- file.path(workflow_root, "query.json")
 files_path <- file.path(workflow_root, "files-2060.json")
 
 query$save(query_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esgf-query-results/query.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esgf-query-results/query.json"
 files_2060$save(files_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esgf-query-results/files-2060.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esgf-query-results/files-2060.json"
 
 query_copy <- esg_query()$load(query_path)
 files_copy <- esg_result("file")$load(files_path)
@@ -753,7 +760,7 @@ query_copy$state(null = FALSE)
 #> =MPI-ESM1-2-LR
 #>
 #> $parameter$variable_id
-#> =tas,hurs,psl,rlds,rsds,sfcWind,clt
+#> =tas,hurs,psl,rlds,rsds,sfcWind,clt,pr
 #>
 #> $parameter$frequency
 #> =mon
@@ -785,7 +792,7 @@ query_copy$state(null = FALSE)
 #> $parameter$table_id
 #> =Amon
 files_copy$count()
-#> [1] 7
+#> [1] 8
 ```
 
 The next layer is [ESG stores](esg-store.html), where these query and file

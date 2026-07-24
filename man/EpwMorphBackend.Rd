@@ -14,7 +14,12 @@ selected by \code{\link[=epw_morph_recipe]{epw_morph_recipe()}} and executed by 
 
 \item{\code{label}}{Human-readable backend label.}
 
-\item{\code{requires_reference}}{Whether the backend requires reference climate data.}
+\item{\code{requires_reference}}{Whether external reference climate data are
+mandatory for this backend.}
+
+\item{\code{accepts_reference}}{Whether the backend can consume external
+reference climate data. A backend may accept a reference without
+requiring one.}
 }
 \if{html}{\out{</div>}}
 }
@@ -45,6 +50,7 @@ Create an EPW morphing backend.
   method_choices = NULL,
   rules,
   requires_reference = FALSE,
+  accepts_reference = requires_reference,
   runner
 )}\if{html}{\out{</div>}}
 }
@@ -62,7 +68,13 @@ Create an EPW morphing backend.
 
 \item{\code{rules}}{Backend rule table.}
 
-\item{\code{requires_reference}}{Whether reference climate data are required.}
+\item{\code{requires_reference}}{Whether external reference climate data are
+mandatory. This can be \code{TRUE} only when \code{accepts_reference} is also
+\code{TRUE}.}
+
+\item{\code{accepts_reference}}{Whether external reference climate data can
+be consumed. \code{TRUE} with \code{requires_reference = FALSE} defines an
+optional-reference backend such as Belcher.}
 
 \item{\code{runner}}{Function taking \verb{(context, backend)} and returning an
 \code{epw_morph_result}.}

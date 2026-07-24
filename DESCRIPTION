@@ -26,13 +26,10 @@ Imports:
     curl,
     data.table (>= 1.12.4),
     duckdb,
-    eplusr (>= 0.15.2),
     jsonlite,
     mirai,
-    psychrolib,
     R6,
     RNetCDF,
-    units,
     S7
 Suggests:
     testthat (>= 3.0.0),
@@ -40,7 +37,8 @@ Suggests:
     withr
 License: MIT + file LICENSE
 Encoding: UTF-8
-URL: https://github.com/ideas-lab-nus/epwshiftr
+URL: https://ideas-lab-nus.github.io/epwshiftr/,
+    https://github.com/ideas-lab-nus/epwshiftr
 BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
@@ -69,6 +67,7 @@ Collate:
     'dict-store.R'
     'dict.R'
     'downloader.R'
+    'epw-file.R'
     'utils.R'
     'store.R'
     'epw-morpher.R'
@@ -83,7 +82,11 @@ Collate:
     'query-result.R'
     'query.R'
     'schema.R'
+    'shift-path.R'
     'shift-stage.R'
+    'shift-tui.R'
+    'shift-ui.R'
     'standalone-cache.R'
     'zzz.R'
 Config/testthat/edition: 3
+Config/Needs/website: r-lib/asciicast, r-lib/pkgload
