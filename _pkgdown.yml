@@ -94,6 +94,7 @@ reference:
     desc: Run the high-level staged workflow from request collection to future EPW output.
     contents:
       - shift_request
+      - shift_cmip6_avail
       - shift_site
       - shift_collect
       - shift_download
