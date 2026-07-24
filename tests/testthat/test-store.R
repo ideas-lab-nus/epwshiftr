@@ -2268,6 +2268,73 @@ test_that("EsgStore$extract()", {
     expect_equal(nrow(ddb_read_table(conn, "extraction_result")), 1L)
 })
 
+test_that("EsgStore$extract() persists and partitions calendar-native years", {
+    skip_if_not_installed("duckdb")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        nc,
+        2060L,
+        calendar = "360_day",
+        n_years = 2L
+    )
+    on.exit(unlink(nc), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- store_test__file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(store_test__result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z"),
+        site_id = "SIN"
+    )
+
+    processed <- store$extract(plan_id = plan$plan_id)
+    conn <- priv(store)$conn
+    results <- data.table::as.data.table(
+        ddb_read_table(conn, "extraction_result")
+    )
+    data.table::setorder(results, year)
+
+    expect_equal(processed$status, "done")
+    expect_equal(processed$available_time_count, 2L)
+    expect_identical(results$year, c(2060L, 2061L))
+    expect_identical(results$row_count, c(1L, 1L))
+    expect_true(grepl("year=2060", results$output_path[[1L]], fixed = TRUE))
+    expect_true(grepl("year=2061", results$output_path[[2L]], fixed = TRUE))
+
+    rows <- data.table::rbindlist(lapply(results$output_path, function(path) {
+        parquet <- store_abs_path(path, root = dir)
+        ddb_query(conn, sprintf(
+            paste(
+                "SELECT year, cf_calendar, cf_year, cf_month, cf_day,",
+                "cf_day_of_year, cf_year_days, annual_phase",
+                "FROM read_parquet(%s)"
+            ),
+            ddb_literal(conn, parquet)
+        ))
+    }))
+    data.table::setorder(rows, cf_year)
+
+    expect_equal(rows$year, c(2060L, 2061L))
+    expect_identical(rows$cf_calendar, rep.int("360_day", 2L))
+    expect_equal(rows$cf_year, c(2060L, 2061L))
+    expect_equal(rows$cf_month, c(12L, 1L))
+    expect_equal(rows$cf_day, c(30L, 1L))
+    expect_equal(rows$cf_day_of_year, c(360L, 1L))
+    expect_equal(rows$cf_year_days, rep.int(360L, 2L))
+    expect_equal(rows$annual_phase, c(359.5 / 360, 0.5 / 360))
+})
+
 test_that("EsgStore$extract() records failed plans", {
     skip_if_not_installed("duckdb")
 

@@ -143,6 +143,90 @@ test_that("epw_morph_recipe() accepts morph.R statistical downscaling method ove
     expect_error(epw_morph_recipe(methods = c(tdb = "scale")), "Unsupported")
 })
 
+test_that("morpher calendar columns prefer CF identity with legacy fallback", {
+    climate <- data.table::data.table(
+        time = as.POSIXct(
+            c("2060-12-25 12:00:00", "2060-12-26 12:00:00"),
+            tz = "UTC"
+        ),
+        year = c(2060L, 2062L),
+        cf_year = c(2061L, NA_integer_),
+        cf_month = c(1L, NA_integer_),
+        cf_day = c(1L, NA_integer_)
+    )
+
+    resolved <- morpher__resolve_calendar_columns(
+        climate,
+        month = TRUE,
+        day = TRUE
+    )
+
+    expect_identical(resolved$year, c(2061L, 2062L))
+    expect_identical(resolved$month, c(1L, 12L))
+    expect_identical(resolved$day, c(1L, 26L))
+
+    legacy <- data.table::data.table(
+        time = as.POSIXct("2061-02-03 12:00:00", tz = "UTC")
+    )
+    legacy <- morpher__resolve_calendar_columns(
+        legacy,
+        month = TRUE,
+        day = TRUE
+    )
+    expect_identical(legacy$year, 2061L)
+    expect_identical(legacy$month, 2L)
+    expect_identical(legacy$day, 3L)
+})
+
+test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        nc,
+        2060L,
+        calendar = "360_day",
+        n_years = 2L
+    )
+    on.exit(unlink(nc), add = TRUE)
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- epw_morpher_test_file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(epw_morpher_test_result(docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z"),
+        site_id = "SIN"
+    )
+    expect_equal(store$extract(plan_id = plan$plan_id)$status, "done")
+
+    morpher <- epw_morpher(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+    )
+    climate <- morpher$summarise_climate(
+        plan$plan_id,
+        epw_morph_periods(`2061` = 2061L),
+        strict = FALSE
+    )
+
+    expect_identical(unique(climate$period), "2061")
+    expect_identical(unique(climate$month), 1L)
+    expect_true(all(climate$n_records == 1L))
+})
+
 test_that("R6 EPW morphing backends can be looked up, registered, and selected", {
     expect_true("belcher" %in% epw_morph_backends())
     expect_true("belcher_absolute" %in% epw_morph_backends())

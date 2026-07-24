@@ -163,6 +163,12 @@
 
 ## Bug fixes
 
+* Point extraction now retains canonical CF calendar coordinates and annual
+  phase, uses them for non-Gregorian range selection and yearly Parquet
+  partitions, and prefers them in morphing summaries with legacy artifact
+  fallback. Multi-year extraction partitions no longer duplicate every row
+  into every year (#134, #135).
+
 * CMIP6 coverage checks now keep requested variable and grid values distinct
   from same-named convenience columns returned by ESGF providers, preventing
   complete catalog identities from being rejected (#130, #132).

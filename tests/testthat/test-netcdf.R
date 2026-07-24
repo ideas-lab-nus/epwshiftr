@@ -45,6 +45,60 @@ test_that("parse_cf_time() returns POSIXct for common CF calendars", {
     }
 })
 
+test_that("parse_cf_time() retains calendar-native coordinates and annual phase", {
+    year_lengths <- c(
+        standard = 366L,
+        gregorian = 366L,
+        proleptic_gregorian = 366L,
+        noleap = 365L,
+        `365_day` = 365L,
+        `360_day` = 360L,
+        `366_day` = 366L,
+        all_leap = 366L
+    )
+
+    for (calendar in names(year_lengths)) {
+        year_days <- year_lengths[[calendar]]
+        time <- parse_cf_time(
+            c(0, year_days - 1L, year_days),
+            "days since 2000-01-01 00:00:00",
+            calendar
+        )
+        coordinates <- attr(time, "cf_coordinates", exact = TRUE)
+
+        expect_named(coordinates, CF_TIME_COORDINATE_COLUMNS, info = calendar)
+        expect_identical(
+            coordinates$cf_calendar,
+            rep.int(calendar, 3L),
+            info = calendar
+        )
+        expect_identical(coordinates$cf_year, c(2000L, 2000L, 2001L), info = calendar)
+        expect_identical(coordinates$cf_month, c(1L, 12L, 1L), info = calendar)
+        expect_identical(
+            coordinates$cf_day,
+            c(1L, if (identical(calendar, "360_day")) 30L else 31L, 1L),
+            info = calendar
+        )
+        expect_identical(
+            coordinates$cf_day_of_year,
+            c(1L, year_days, 1L),
+            info = calendar
+        )
+        expect_identical(
+            coordinates$cf_year_days,
+            cf_time__year_days(c(2000L, 2000L, 2001L), calendar),
+            info = calendar
+        )
+        expect_equal(
+            coordinates$annual_phase,
+            c(0, (year_days - 1L) / year_days, 0),
+            info = calendar
+        )
+        expect_true(all(coordinates$annual_phase >= 0), info = calendar)
+        expect_true(all(coordinates$annual_phase < 1), info = calendar)
+    }
+})
+
 test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", {
     path <- local_nc_time_file(
         time_vals = c(0, 1.5),
@@ -73,6 +127,10 @@ test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", 
     expect_equal(as.numeric(time_info$values), as.numeric(expected))
     expect_identical(attr(time_info$values, "cf_units"), time_info$units)
     expect_identical(attr(time_info$values, "cf_calendar"), time_info$calendar)
+    expect_identical(
+        time_info$coordinates,
+        attr(time_info$values, "cf_coordinates", exact = TRUE)
+    )
 })
 
 test_that("get_nc_time() and EsgDataset$get_time_axis() return POSIXct for 360_day", {
@@ -100,6 +158,32 @@ test_that("get_nc_time() and EsgDataset$get_time_axis() return POSIXct for 360_d
     expect_equal(as.numeric(time_info$values), as.numeric(time))
     expect_identical(attr(time_info$values, "cf_units"), time_info$units)
     expect_identical(attr(time_info$values, "cf_calendar"), time_info$calendar)
+    expect_identical(
+        time_info$coordinates,
+        attr(time_info$values, "cf_coordinates", exact = TRUE)
+    )
+    expect_identical(time_info$coordinates$cf_month, c(2L, 2L, 3L, 3L, 3L))
+    expect_identical(time_info$coordinates$cf_day, c(29L, 30L, 1L, 2L, 3L))
+})
+
+test_that("match_nc_time() groups non-Gregorian axes by CF year", {
+    path <- local_nc_time_file(
+        time_vals = 0:719,
+        units = "days since 2000-01-01 00:00:00",
+        calendar = "360_day"
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    matched <- match_nc_time(path, 2001L)
+    coordinates <- attr(
+        matched$datetime[[1L]],
+        "cf_coordinates",
+        exact = TRUE
+    )
+
+    expect_identical(matched$which[[1L]], 361:720)
+    expect_identical(unique(coordinates$cf_year), 2001L)
+    expect_identical(coordinates$cf_day_of_year, 1:360)
 })
 
 test_that("get_nc_meta()", {

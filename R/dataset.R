@@ -625,7 +625,8 @@ EsgDataset <- R6::R6Class(
         #'
         #' @param index File index for multi-file datasets. Default: `1L`.
         #'
-        #' @return A list containing time values, units, and calendar.
+        #' @return A list containing time values, units, calendar, canonical CF
+        #' coordinates, and axis length.
         #'
         #' @examples
         #' \dontrun{
@@ -658,11 +659,13 @@ EsgDataset <- R6::R6Class(
                 time_units,
                 time_calendar
             )
+            time_coordinates <- attr(time_vals, "cf_coordinates", exact = TRUE)
 
             result <- list(
                 values = time_vals,
                 units = time_units,
                 calendar = normalize_cf_calendar(time_calendar),
+                coordinates = time_coordinates,
                 length = time_dim$length
             )
 
@@ -849,9 +852,10 @@ EsgDataset <- R6::R6Class(
         #'        read. Only supported when `async = TRUE`.
         #'
         #' @return A data.table or list of data.tables with columns including
-        #' `file_index`, `variable`, `time`, `lon`, `lat`, `method`, and
-        #' `value`. The `"grid_sources"` attribute records contributing grid
-        #' coordinates and weights.
+        #' `file_index`, `variable`, `time`, canonical `cf_*` calendar
+        #' coordinates, `annual_phase`, `lon`, `lat`, `method`, and `value`.
+        #' The `"grid_sources"` attribute records contributing grid coordinates
+        #' and weights.
         #'
         #' @examples
         #' \dontrun{
@@ -1465,6 +1469,13 @@ EsgDataset <- R6::R6Class(
                 file_index = integer(),
                 variable = character(),
                 time = as.POSIXct(character(), tz = "UTC"),
+                cf_calendar = character(),
+                cf_year = integer(),
+                cf_month = integer(),
+                cf_day = integer(),
+                cf_day_of_year = integer(),
+                cf_year_days = integer(),
+                annual_phase = numeric(),
                 lon = numeric(),
                 lat = numeric(),
                 method = character(),
@@ -1729,12 +1740,16 @@ EsgDataset <- R6::R6Class(
                 }
             }
 
-            time_axis <- self$get_time_axis(index = index)$values
-            time_idx <- if (is.null(time)) {
-                seq_along(time_axis)
-            } else {
-                base::which(time_axis >= time[[1L]] & time_axis <= time[[2L]])
-            }
+            time_info <- self$get_time_axis(index = index)
+            time_axis <- time_info$values
+            time_coordinates <- time_info$coordinates
+            # Calendar-native range matching is required for 360-day and other
+            # non-Gregorian axes whose POSIXct values are only surrogates.
+            time_idx <- cf_time__range_indices(
+                time_axis,
+                time_coordinates,
+                time
+            )
             if (!length(time_idx)) {
                 empty <- private$empty_region_data_table()
                 attr(empty, "grid_sources") <- private$empty_grid_sources_data_table()
@@ -1824,7 +1839,28 @@ EsgDataset <- R6::R6Class(
                 lat = lat,
                 method = method
             )]
-            data.table::setcolorder(out, c("file_index", "variable", "time", "lon", "lat", "method", "value"))
+            coordinate_idx <- match(as.numeric(out$time), as.numeric(time_axis))
+            if (anyNA(coordinate_idx)) {
+                stop("Extracted timestamps could not be matched to the CF time axis.", call. = FALSE)
+            }
+            coordinate_rows <- time_coordinates[
+                coordinate_idx,
+                CF_TIME_COORDINATE_COLUMNS,
+                drop = FALSE
+            ]
+            for (name in CF_TIME_COORDINATE_COLUMNS) {
+                data.table::set(out, j = name, value = coordinate_rows[[name]])
+            }
+            data.table::setcolorder(out, c(
+                "file_index",
+                "variable",
+                "time",
+                CF_TIME_COORDINATE_COLUMNS,
+                "lon",
+                "lat",
+                "method",
+                "value"
+            ))
 
             grid_sources <- sources[, .(
                 file_index = index,

@@ -5895,7 +5895,8 @@ EsgStore <- R6::R6Class(
             ds <- opened$dataset
             on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
 
-            time_axis <- ds$get_time_axis(index = 1L)$values
+            time_info <- ds$get_time_axis(index = 1L)
+            time_axis <- time_info$values
             valid_time <- time_axis[!is.na(time_axis)]
             if (!length(valid_time)) {
                 stop("The NetCDF time axis is empty or unavailable.", call. = FALSE)
@@ -5903,7 +5904,13 @@ EsgStore <- R6::R6Class(
             actual_start <- min(valid_time)
             actual_end <- max(valid_time)
             requested_time <- c(plan$time_start[[1L]], plan$time_stop[[1L]])
-            available_time_count <- sum(valid_time >= requested_time[[1L]] & valid_time <= requested_time[[2L]])
+            # Count the same calendar-native indices that read_region() will
+            # extract; surrogate POSIXct years are wrong at 360-day boundaries.
+            available_time_count <- length(cf_time__range_indices(
+                time_axis,
+                time_info$coordinates,
+                requested_time
+            ))
             private$update_file_actual_time(file, actual_start, actual_end)
 
             # Remote reads run in the existing one-shot dataset worker so the
@@ -6143,6 +6150,7 @@ EsgStore <- R6::R6Class(
 
         # decorate_extract {{{
         decorate_extract = function(dt, plan, file) {
+            calendar_columns <- intersect(CF_TIME_COORDINATE_COLUMNS, names(dt))
             dt[, `:=`(
                 plan_id = plan$plan_id[[1L]],
                 file_key = plan$file_key[[1L]],
@@ -6173,6 +6181,7 @@ EsgStore <- R6::R6Class(
                     "variable",
                     "grid_label",
                     "time",
+                    calendar_columns,
                     "lon",
                     "lat",
                     "method",
@@ -6193,6 +6202,7 @@ EsgStore <- R6::R6Class(
                             "variable",
                             "grid_label",
                             "time",
+                            calendar_columns,
                             "lon",
                             "lat",
                             "method",
@@ -6272,13 +6282,22 @@ EsgStore <- R6::R6Class(
 
         # write_extract_partitions {{{
         write_extract_partitions = function(dt, plan, file, overwrite = FALSE) {
-            dt[, year := as.integer(format(time, "%Y", tz = "UTC"))]
+            # Preserve the historical `year` column while making it agree with
+            # the source CF calendar for new extraction artifacts.
+            partition_year <- if ("cf_year" %in% names(dt)) {
+                as.integer(dt$cf_year)
+            } else {
+                as.integer(format(dt$time, "%Y", tz = "UTC"))
+            }
+            dt[, year := partition_year]
             years <- sort(unique(dt$year))
             results <- vector("list", length(years))
             for (i in seq_along(years)) {
-                year <- years[[i]]
-                chunk <- dt[dt$year == year]
-                output_path <- private$output_path(plan, file, year)
+                target_year <- years[[i]]
+                # Use a non-column variable name so data.table does not resolve
+                # both sides of the predicate to `dt$year`.
+                chunk <- dt[dt[["year"]] == target_year]
+                output_path <- private$output_path(plan, file, target_year)
                 private$write_parquet(chunk, output_path, overwrite = overwrite)
                 artifact_id <- self$register_artifact(
                     kind = "extract",
@@ -6289,7 +6308,7 @@ EsgStore <- R6::R6Class(
                     file_key = plan$file_key[[1L]],
                     metadata = list(
                         plan_id = plan$plan_id[[1L]],
-                        year = as.integer(year),
+                        year = as.integer(target_year),
                         # Derived-variable rows carry their scientific lineage
                         # in both the Parquet data and artifact manifest. Raw
                         # extraction chunks simply record null provenance.
@@ -6310,7 +6329,13 @@ EsgStore <- R6::R6Class(
                         }
                     )
                 )
-                results[[i]] <- private$extract_result_row(plan, chunk, output_path, year, artifact_id)
+                results[[i]] <- private$extract_result_row(
+                    plan,
+                    chunk,
+                    output_path,
+                    target_year,
+                    artifact_id
+                )
             }
 
             data.table::rbindlist(results, use.names = TRUE, fill = TRUE)
