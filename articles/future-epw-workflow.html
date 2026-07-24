@@ -13,7 +13,7 @@
 <!-- clipboard.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.6/clipboard.min.js" integrity="sha256-inc5kl9MA1hkeYUt+EC3BhlIgyp/2jDIyBLS6k3UxPI=" crossorigin="anonymous"></script><!-- headroom.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/headroom.min.js" integrity="sha256-AsUX4SJE1+yuDu5+mAVzJbuYNPHj/WroHuZ8Ir/CkE0=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/jQuery.headroom.min.js" integrity="sha256-ZX/yNShbjqsohH1k95liqY9Gd8uOiE1S4vZc+9KQ1K4=" crossorigin="anonymous"></script><!-- pkgdown --><link href="../pkgdown.css" rel="stylesheet">
 <script src="../pkgdown.js"></script><meta property="og:title" content="Create Future EPW Files">
 <meta property="og:description" content="Run the recommended shift workflow from ESGF data selection to generated future EnergyPlus Weather files.">
-<meta property="og:image" content="/logo.svg">
+<meta property="og:image" content="https://ideas-lab-nus.github.io/epwshiftr/logo.svg">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
@@ -129,7 +129,7 @@ Jia</h4>
   =====================================================================
 -->
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/ideas-lab-nus/epwshiftr" class="external-link">epwshiftr</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ideas-lab-nus.github.io/epwshiftr/">epwshiftr</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/exists.html" class="external-link">exists</a></span><span class="op">(</span><span class="st">"shift_request"</span>, mode <span class="op">=</span> <span class="st">"function"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
 <span>    <span class="kw"><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop</a></span><span class="op">(</span></span>
@@ -211,11 +211,10 @@ Jia</h4>
 a real store-native shift workflow from ESGF File records to generated
 EPW files. It uses monthly <code>Amon</code> data so the live remote
 reads are much smaller than an equivalent daily workflow.</p>
-<p>The examples below use the high-level <code>shift_*()</code> facade.
-When a step touches a lower-level engine, this article links to the
-companion article for that layer: <a href="esgf-query-results.html">ESGF
-query results</a>, <a href="esg-dictionaries.html">ESG dictionaries</a>,
-<a href="esg-store.html">ESG stores</a>, <a href="downloader.html">Downloader</a>, <a href="epw-morpher.html">EpwMorpher</a>, <a href="cli-esgf-store.html">CLI operations</a>, and <a href="esgf-troubleshooting.html">ESGF troubleshooting</a>.</p>
+<p>The first example uses the task-oriented API. The staged walkthrough
+that follows exposes the lower-level <code>shift_*()</code> facade for
+inspection and teaching. When a step touches a lower-level engine, this
+article links to the companion article for that layer: <a href="esgf-query-results.html">ESGF query results</a>, <a href="esg-dictionaries.html">ESG dictionaries</a>, <a href="esg-store.html">ESG stores</a>, <a href="downloader.html">Downloader</a>, <a href="epw-morpher.html">EpwMorpher</a>, <a href="cli-esgf-store.html">CLI operations</a>, and <a href="esgf-troubleshooting.html">ESGF troubleshooting</a>.</p>
 <p>Use a temporary store for this article run. For a real project,
 replace this with a persistent project cache path.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
@@ -229,6 +228,171 @@ replace this with a persistent project cache path.</p>
 <span>    epwshiftr.dir_cache <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"cache"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="section level2">
+<h2 id="recommended-task-api">Recommended Task API<a class="anchor" aria-label="anchor" href="#recommended-task-api"></a>
+</h2>
+<p>The recommended user call gives Belcher an explicit matching
+historical CMIP6 reference. When no suitable reference data exist,
+<code><a href="../reference/shift_api.html">belcher()</a></code> can instead use the baseline EPW climatology;
+<code>reference = NULL</code> never creates a historical CMIP6 request
+implicitly.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>    <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
+<span>    package <span class="op">=</span> <span class="st">"epwshiftr"</span>,</span>
+<span>    mustWork <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
+<span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
+<span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
+<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
+<span>        reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"future-epw"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_missing</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span></code></pre></div>
+<p>The default <code><a href="../reference/shift_api.html">belcher()</a></code> profile is enhanced. With
+<code>shift_cmip6(table = NULL)</code>, the resolver selects exact
+table/grid partitions per variable: atmospheric inputs normally come
+from <code>Amon</code>, while optional <code>snd</code> comes from
+<code>LImon</code> only when both future and historical cases provide
+it. Use <code>belcher(profile = "legacy")</code> only when reproducing
+the earlier algorithm and headers is required.</p>
+<p>Profile options are part of the scientific task specification rather
+than UI preferences. Configure them on the method and keep
+<code>table = NULL</code> unless a dataset requires an explicit
+override:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
+<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span>    options <span class="op">=</span> <span class="fu"><a href="../reference/belcher_options.html">belcher_options</a></span><span class="op">(</span></span>
+<span>        transition_hours <span class="op">=</span> <span class="fl">72L</span>,</span>
+<span>        humidity_source <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>        snow_depth <span class="op">=</span> <span class="st">"auto"</span></span>
+<span>    <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Named values override individual variables; unnamed scalars force every</span></span>
+<span><span class="co"># variable into one table and are rarely suitable when snd is enabled.</span></span>
+<span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
+<span>    <span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span>,</span>
+<span>    table <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>snd <span class="op">=</span> <span class="st">"LImon"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>See <a href="epw-morpher.html">Inspect EPW Morphing</a> for the
+complete option matrix and the enhanced/legacy defaults.</p>
+<p>Use the same call with <code>dry_run = TRUE</code> to obtain a
+<code>ShiftPlan</code>, inspect it with <code><a href="../reference/shift_api.html">shift_explain()</a></code>,
+and execute it later with <code><a href="../reference/shift_api.html">shift_run()</a></code>. The persisted run ID
+supports <code><a href="../reference/shift_api.html">shift_status()</a></code>, <code><a href="../reference/shift_api.html">shift_resume()</a></code>, and
+the corresponding CLI commands.</p>
+<div class="section level3">
+<h3 id="inspect-shift-objects">Inspect Shift Objects<a class="anchor" aria-label="anchor" href="#inspect-shift-objects"></a>
+</h3>
+<p>Every public Shift object prints as a compact semantic receipt.
+Configuration objects summarize scientific intent without expanding
+stored rules, function environments, yearly vectors, or every ESGF node.
+Stage objects add a preview of the records that matter at that point in
+the workflow. <code>ShiftRun</code> refreshes its persisted state and
+prints the same static dashboard used by <code><a href="../reference/shift_api.html">shift_watch()</a></code>.</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
+<span>    model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
+<span>    scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="va">climate</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
+<span>    method <span class="op">=</span> <span class="va">method</span>,</span>
+<span>    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"future-epw"</span><span class="op">)</span>,</span>
+<span>    dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">climate</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">method</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">method</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">plan</span>, n <span class="op">=</span> <span class="fl">3L</span>, width <span class="op">=</span> <span class="fl">80L</span><span class="op">)</span></span></code></pre></div>
+<p>Data previews show at most 10 rows by default. Use
+<code>n = Inf</code> for every row, set <code>width</code> when
+rendering into a constrained console or report, and use
+<code>verbose = TRUE</code> for store paths, stable IDs, filters, nodes,
+method overrides, resolved profile options, and additional diagnostics.
+Normal receipts identify the active method profile and whether CMIP
+tables are automatic or forced. After resolution, progress and watch
+views report exact partitions such as <code>Amon=gn · LImon=gr</code>
+instead of collapsing them to one representative grid. These controls
+affect presentation only and do not change the workflow specification or
+its <code>spec_hash</code>.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">plan</span>, n <span class="op">=</span> <span class="cn">Inf</span>, width <span class="op">=</span> <span class="fl">120L</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">run</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="live-feedback-and-background-runs">Live Feedback and Background Runs<a class="anchor" aria-label="anchor" href="#live-feedback-and-background-runs"></a>
+</h3>
+<p>The foreground runner starts reporting before its first ESGF request.
+Its shared stage vocabulary is <code>resolve</code>, optional
+<code>download</code>, <code>extract_future</code>, optional
+<code>extract_reference</code>, <code>coverage</code>,
+<code>morph</code>, and <code>write_epw</code>. Within a stage it
+identifies the node, future/reference role, variable, scenario, period,
+reuse/fallback outcome, and output count.</p>
+<p><code><a href="../reference/shift_api.html">shift_ui()</a></code> controls only presentation.
+<code>"auto"</code> selects a fixed four-row
+stage/current/case/last-event view in a capable terminal and scoped log
+lines elsewhere; <code>"none"</code> suppresses non-error Console output
+while retaining persisted events. The <code>detail</code> levels are
+<code>"normal"</code>, <code>"detail"</code>, and <code>"debug"</code>;
+only debug output includes full URLs and internal paths.</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
+<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"future-epw"</span><span class="op">)</span>,</span>
+<span>    ui <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_ui</a></span><span class="op">(</span>progress <span class="op">=</span> <span class="st">"log"</span>, detail <span class="op">=</span> <span class="st">"detail"</span>, heartbeat <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Use a detached <code>Rscript</code> worker when the run should
+outlive the current R session. The call returns a queued
+<code>ShiftRun</code> immediately. Inspectors refresh that handle from
+the store, and <code><a href="../reference/shift_api.html">shift_watch()</a></code> follows the same structured
+events shown by the foreground reporter.</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
+<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"future-epw"</span><span class="op">)</span>,</span>
+<span>    background <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_watch</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_logs</a></span><span class="op">(</span><span class="va">run</span>, tail <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Request cancellation at the next workflow boundary:</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_cancel</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Terminate the recorded worker PID after persisting the request:</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_cancel</a></span><span class="op">(</span><span class="va">run</span>, force <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p>Interrupting <code><a href="../reference/shift_api.html">shift_watch()</a></code> stops only the monitor. It
+does not cancel the worker. A failed, cancelled, or partial run can
+create a new attempt with
+<code>shift_resume(run, background = TRUE)</code>; the resolved node,
+member, and exact per-table grid partitions remain pinned.</p>
+</div>
+</div>
+<div class="section level2">
 <h2 id="site-and-request">Site and Request<a class="anchor" aria-label="anchor" href="#site-and-request"></a>
 </h2>
 <p><code><a href="../reference/shift_api.html">shift_site()</a></code> describes the location that will be
@@ -241,7 +405,7 @@ temporary workflow directory so the raw render is self-contained. The
 climate query and remote data reads below still use live ESGF
 services.</p>
 <p>You can provide the site metadata directly:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu">write_vignette_epw</span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"baseline"</span>, <span class="st">"SGP_Singapore.486980_IWEC.epw"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
@@ -254,20 +418,20 @@ services.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">site</span></span>
-<span><span class="co">#&gt; &lt;ShiftSite&gt;</span></span>
-<span><span class="co">#&gt;   id:     SIN</span></span>
-<span><span class="co">#&gt;   lonlat: 103.980000, 1.370000</span></span>
-<span><span class="co">#&gt;   label:  Singapore</span></span></code></pre></div>
-<p>Or you can read the same information from an <code><a href="https://hongyuanjia.github.io/eplusr/reference/Epw.html" class="external-link">eplusr::Epw</a></code>
-object:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">epw_site</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="fu">eplusr</span><span class="fu">::</span><span class="fu"><a href="https://hongyuanjia.github.io/eplusr/reference/read_epw.html" class="external-link">read_epw</a></span><span class="op">(</span><span class="va">epw</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ══ EPW Site ════════════════════════════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; • ID: SIN</span></span>
+<span><span class="co">#&gt; • Label: Singapore</span></span>
+<span><span class="co">#&gt; • Coordinates: 103.980000, 1.370000</span></span></code></pre></div>
+<p>Or you can read the same information directly from the EPW LOCATION
+header:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">epw_site</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="va">epw</span><span class="op">)</span></span>
 <span><span class="va">epw_site</span></span>
-<span><span class="co">#&gt; &lt;ShiftSite&gt;</span></span>
-<span><span class="co">#&gt;   id:     486980</span></span>
-<span><span class="co">#&gt;   lonlat: 103.980000, 1.370000</span></span>
-<span><span class="co">#&gt;   label:  Singapore</span></span>
-<span><span class="co">#&gt;   epw:    Epw</span></span></code></pre></div>
+<span><span class="co">#&gt; ══ EPW Site ════════════════════════════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; • ID: SGP_Singapore.486980_IWEC</span></span>
+<span><span class="co">#&gt; • Label: Singapore</span></span>
+<span><span class="co">#&gt; • Coordinates: 103.980000, 1.370000</span></span>
+<span><span class="co">#&gt; • EPW: SGP_Singapore.486980_IWEC.epw</span></span></code></pre></div>
 <p>This article keeps using the explicit <code>site</code> object so the
 site ID is short and predictable, while the EPW file itself is passed
 later as the morphing baseline.</p>
@@ -288,14 +452,17 @@ useful for relaxed demonstrations.</li>
 including precipitation.</li>
 <li>
 <code>"extended"</code>: the recommended set plus related max/min
-variables for future recipes.</li>
+variables and snow depth.</li>
 </ul>
-<p>This article uses the default Belcher recipe. It is a change-factor
-backend, so the morphing step needs both a future climate extraction and
-a reference climate extraction.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<p>This staged walkthrough explicitly uses the Belcher recipe. It is a
+change-factor backend, so the morphing step needs both a future climate
+extraction and a reference climate extraction.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
 <span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">shift_recipe</span><span class="op">)</span></span>
+<span><span class="va">optional_variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span></span>
+<span>    <span class="va">shift_recipe</span>, include_optional <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
 <span><span class="va">variables</span></span>
 <span><span class="co">#&gt; [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"</span></span>
 <span><span class="co">#&gt; [8] "pr"</span></span></code></pre></div>
@@ -319,7 +486,7 @@ expanded to that whole calendar year.</p>
 <p>Read more about the lower-level query object in <a href="esgf-query-results.html">ESGF query results</a>, and about
 request-value validation in <a href="esg-dictionaries.html">ESG
 dictionaries</a>.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_request</a></span><span class="op">(</span></span>
 <span>    project <span class="op">=</span> <span class="st">"CMIP6"</span>,</span>
 <span>    time <span class="op">=</span> <span class="fl">2060L</span>,</span>
@@ -337,16 +504,26 @@ dictionaries</a>.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">request</span></span>
-<span><span class="co">#&gt; &lt;epwshiftr::ShiftRequest&gt;</span></span>
-<span><span class="co">#&gt;   stage:  request</span></span>
-<span><span class="co">#&gt;   status: new</span></span>
-<span><span class="co">#&gt;   project: CMIP6</span></span>
-<span><span class="co">#&gt;   source: MPI-ESM1-2-LR</span></span>
-<span><span class="co">#&gt;   experiment: ssp585</span></span>
-<span><span class="co">#&gt;   variant: r1i1p1f1</span></span>
-<span><span class="co">#&gt;   frequency: mon</span></span>
-<span><span class="co">#&gt;   variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)</span></span>
-<span><span class="co">#&gt;   time:   2060-01-01T00:00:00Z -&gt; 2060-12-31T23:59:59Z</span></span>
+<span><span class="co">#&gt; ══ ESGF request ════════════════════════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; • Index node: https://esgf-data.dkrz.de</span></span>
+<span><span class="co">#&gt; ── Query parameters ────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; • project = CMIP6</span></span>
+<span><span class="co">#&gt; • activity_id = ScenarioMIP</span></span>
+<span><span class="co">#&gt; • experiment_id = ssp585</span></span>
+<span><span class="co">#&gt; • source_id = MPI-ESM1-2-LR</span></span>
+<span><span class="co">#&gt; • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr</span></span>
+<span><span class="co">#&gt; • frequency = mon</span></span>
+<span><span class="co">#&gt; • variant_label = r1i1p1f1</span></span>
+<span><span class="co">#&gt; • data_node = esgf.ceda.ac.uk</span></span>
+<span><span class="co">#&gt; • fields = *</span></span>
+<span><span class="co">#&gt; • type = Dataset</span></span>
+<span><span class="co">#&gt; • offset = 0</span></span>
+<span><span class="co">#&gt; • distrib = true</span></span>
+<span><span class="co">#&gt; • limit = 10</span></span>
+<span><span class="co">#&gt; • format = application/solr+json</span></span>
+<span><span class="co">#&gt; • table_id = Amon</span></span>
+<span><span class="co">#&gt; • datetime_start: [* TO 2060-01-01T00:00:00Z]</span></span>
+<span><span class="co">#&gt; • datetime_stop: [2060-12-31T23:59:59Z TO *]</span></span>
 <span></span>
 <span><span class="va">reference_request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_request</a></span><span class="op">(</span></span>
 <span>    project <span class="op">=</span> <span class="st">"CMIP6"</span>,</span>
@@ -364,14 +541,37 @@ dictionaries</a>.</p>
 <span>    options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>index_node <span class="op">=</span> <span class="st">"https://esgf-data.dkrz.de"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">reference_request</span></span></code></pre></div>
+<span><span class="va">reference_request</span></span>
+<span><span class="co">#&gt; ══ ESGF request ════════════════════════════════════════════════════════════════</span></span>
+<span><span class="co">#&gt; • Index node: https://esgf-data.dkrz.de</span></span>
+<span><span class="co">#&gt; ── Query parameters ────────────────────────────────────────────────────────────</span></span>
+<span><span class="co">#&gt; • project = CMIP6</span></span>
+<span><span class="co">#&gt; • activity_id = CMIP</span></span>
+<span><span class="co">#&gt; • experiment_id = historical</span></span>
+<span><span class="co">#&gt; • source_id = MPI-ESM1-2-LR</span></span>
+<span><span class="co">#&gt; • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr</span></span>
+<span><span class="co">#&gt; • frequency = mon</span></span>
+<span><span class="co">#&gt; • variant_label = r1i1p1f1</span></span>
+<span><span class="co">#&gt; • data_node = esgf.ceda.ac.uk</span></span>
+<span><span class="co">#&gt; • fields = *</span></span>
+<span><span class="co">#&gt; • type = Dataset</span></span>
+<span><span class="co">#&gt; • offset = 0</span></span>
+<span><span class="co">#&gt; • distrib = true</span></span>
+<span><span class="co">#&gt; • limit = 10</span></span>
+<span><span class="co">#&gt; • format = application/solr+json</span></span>
+<span><span class="co">#&gt; • table_id = Amon</span></span>
+<span><span class="co">#&gt; • datetime_start: [* TO 1995-01-01T00:00:00Z]</span></span>
+<span><span class="co">#&gt; • datetime_stop: [1995-12-31T23:59:59Z TO *]</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="run-the-workflow">Run the Workflow<a class="anchor" aria-label="anchor" href="#run-the-workflow"></a>
 </h2>
 <p>The diagram below is the map for the rest of the article. Each
 <code>shift_*()</code> call returns a stage object that can be printed,
-checked, and passed to the next step.</p>
+checked, and passed to the next step. The stage also carries
+<code>run_id</code> and <code>step_id</code>, so the next
+<code>shift_*()</code> call automatically continues the same persisted
+run. There is no separate session object to create or pass.</p>
 <div class="shift-flow" role="img" aria-label="Future EPW workflow from request to EPW outputs">
 <div class="shift-node">
 <strong>shift_request()</strong><span>Describe ESGF
@@ -430,110 +630,57 @@ before continuing. <code><a href="../reference/shift_api.html">shift_datasets()<
 ESGF search described by <code><a href="../reference/shift_api.html">shift_request()</a></code>. The returned
 <code>EsgResultDataset</code> object is not the data to download yet; it
 is the list of Dataset records that will later be expanded into File
-records.</p>
+records. This standalone query uses the same dashboard, persisted run,
+and query heartbeat reporting as the other <code>shift_*()</code> tasks.
+Use <code>ui = shift_ui(...)</code> to control its presentation;
+low-level <code>EsgQuery$collect()</code> continues to expose its native
+<code>progress</code> control.</p>
 <p>For a deeper look at Dataset, File, and Aggregation results, see <a href="esgf-query-results.html">ESGF query results</a>.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<p>The remaining chunks are a live ESGF walkthrough. They are displayed
+but not executed while the package documentation is precompiled, which
+keeps installed vignettes deterministic and avoids turning documentation
+builds into remote network jobs. Run them interactively to reproduce the
+workflow.</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">datasets</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_datasets</a></span><span class="op">(</span><span class="va">request</span><span class="op">)</span></span>
-<span><span class="va">datasets</span></span>
-<span><span class="co">#&gt; [1] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 50.15 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [2] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 45.55 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [3] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 33.85 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [4] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 37.41 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [5] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 36.4 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [6] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 40.27 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [7] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 5 Files, 32.91 MiB | No Aggregations ]</span></span>
-<span><span class="co">#&gt;     [ Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span></code></pre></div>
+<span><span class="va">datasets</span></span></code></pre></div>
 <p>Use <code>$to_data_table()</code> when you want row-level details for
 decisions such as whether the request matched the expected variables,
 model, variant, and data node.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dataset_table</span> <span class="op">&lt;-</span> <span class="va">datasets</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"id"</span>, <span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>,</span>
 <span>    <span class="st">"variable_id"</span>, <span class="st">"data_node"</span>, <span class="st">"number_of_files"</span></span>
 <span><span class="op">)</span>, formatted <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">dataset_table</span></span>
-<span><span class="co">#&gt;                                                                                                 id</span></span>
-<span><span class="co">#&gt;                                                                                             &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 2:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 3:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 4:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 5:    CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 6: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 7:     CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;        source_id experiment_id variant_label variable_id       data_node</span></span>
-<span><span class="co">#&gt;           &lt;char&gt;        &lt;char&gt;        &lt;char&gt;      &lt;char&gt;          &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1         clt esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 2: MPI-ESM1-2-LR        ssp585      r1i1p1f1        hurs esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 3: MPI-ESM1-2-LR        ssp585      r1i1p1f1         psl esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 4: MPI-ESM1-2-LR        ssp585      r1i1p1f1        rlds esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 5: MPI-ESM1-2-LR        ssp585      r1i1p1f1        rsds esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 6: MPI-ESM1-2-LR        ssp585      r1i1p1f1     sfcWind esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 7: MPI-ESM1-2-LR        ssp585      r1i1p1f1         tas esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;    number_of_files</span></span>
-<span><span class="co">#&gt;              &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:               5</span></span>
-<span><span class="co">#&gt; 2:               5</span></span>
-<span><span class="co">#&gt; 3:               5</span></span>
-<span><span class="co">#&gt; 4:               5</span></span>
-<span><span class="co">#&gt; 5:               5</span></span>
-<span><span class="co">#&gt; 6:               5</span></span>
-<span><span class="co">#&gt; 7:               5</span></span></code></pre></div>
+<span><span class="va">dataset_table</span></span></code></pre></div>
 <p>Summarise the table before moving on. In this request, each variable
 should have one matching Dataset record on the selected data node.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dataset_table</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
 <span>    datasets <span class="op">=</span> <span class="va">.N</span>,</span>
 <span>    files <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">number_of_files</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>    variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">variable_id</span><span class="op">)</span><span class="op">)</span>, collapse <span class="op">=</span> <span class="st">", "</span><span class="op">)</span></span>
-<span><span class="op">)</span>, by <span class="op">=</span> <span class="fu">.</span><span class="op">(</span><span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">data_node</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;        source_id experiment_id variant_label       data_node datasets files</span></span>
-<span><span class="co">#&gt;           &lt;char&gt;        &lt;char&gt;        &lt;char&gt;          &lt;char&gt;    &lt;int&gt; &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1 esgf.ceda.ac.uk        7    35</span></span>
-<span><span class="co">#&gt;                                   variables</span></span>
-<span><span class="co">#&gt;                                      &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: clt, hurs, psl, rlds, rsds, sfcWind, tas</span></span></code></pre></div>
+<span><span class="op">)</span>, by <span class="op">=</span> <span class="fu">.</span><span class="op">(</span><span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">data_node</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>The Dataset result can also be filtered locally before collecting
 child File records. This is useful when a broad request intentionally
 returns several models, variants, data nodes, or variables and you want
 to inspect or keep only part of the match. The example below keeps only
 two variables so the effect is easy to see.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">selected_datasets</span> <span class="op">&lt;-</span> <span class="va">datasets</span><span class="op">$</span><span class="fu">filter</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">{</span></span>
 <span>    <span class="va">x</span><span class="op">$</span><span class="va">variable_id</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"hurs"</span><span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">selected_datasets</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"id"</span>, <span class="st">"variable_id"</span>, <span class="st">"data_node"</span>, <span class="st">"number_of_files"</span></span>
-<span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                                                              id</span></span>
-<span><span class="co">#&gt;                                                                                          &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt; 2:  CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;    variable_id       data_node number_of_files</span></span>
-<span><span class="co">#&gt;         &lt;char&gt;          &lt;char&gt;           &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:        hurs esgf.ceda.ac.uk               5</span></span>
-<span><span class="co">#&gt; 2:         tas esgf.ceda.ac.uk               5</span></span></code></pre></div>
+<span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>For a lower-level workflow, you can collect File records from that
 subset directly. The staged <code><a href="../reference/shift_api.html">shift_collect()</a></code> call below
 performs the same Dataset-to-File expansion for the original request and
 stores the result in an <code>EsgStore</code>, so the main workflow
 continues with <code><a href="../reference/shift_api.html">shift_collect()</a></code>.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">selected_files</span> <span class="op">&lt;-</span> <span class="va">selected_datasets</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span></span>
 <span>    type <span class="op">=</span> <span class="st">"File"</span>,</span>
 <span>    fields <span class="op">=</span> <span class="st">"*"</span>,</span>
@@ -556,20 +703,13 @@ pass file paths or manifest IDs.</p>
 <p>For store internals such as query snapshots, file catalogs,
 artifacts, and tracked updates, see <a href="esg-store.html">ESG
 stores</a>.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">files</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_collect</a></span><span class="op">(</span></span>
 <span>    <span class="va">request</span>,</span>
 <span>    store <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"singapore-store"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">files</span></span>
-<span><span class="co">#&gt; &lt;epwshiftr::ShiftFiles&gt;</span></span>
-<span><span class="co">#&gt;   stage:  files</span></span>
-<span><span class="co">#&gt;   status: collected</span></span>
-<span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
-<span><span class="co">#&gt;   files:  7</span></span>
-<span><span class="co">#&gt;   variables: clt, hurs, psl, rlds, rsds, sfcWind, tas</span></span>
-<span><span class="co">#&gt;   ids:    query_id</span></span>
 <span></span>
 <span><span class="va">reference_files</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_collect</a></span><span class="op">(</span></span>
 <span>    <span class="va">reference_request</span>,</span>
@@ -581,28 +721,14 @@ stores</a>.</p>
 underlying <code>EsgResultFile</code> object that was saved into the
 store. Printing it gives the same high-level summary as a direct ESGF
 File query result.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">file_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_files</a></span><span class="op">(</span><span class="va">files</span><span class="op">)</span></span>
-<span><span class="va">file_result</span></span>
-<span><span class="co">#&gt; [1] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.v20190710.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 11.65 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [2] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.v20190815.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 10.58 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [3] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.v20190710.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 7.86 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [4] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rlds.gn.v20190710.rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 8.68 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [5] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.rsds.gn.v20190710.rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 8.44 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [6] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.sfcWind.gn.v20190710.sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 9.35 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span>
-<span><span class="co">#&gt; [7] CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.v20190710.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc|esgf.ceda.ac.uk</span></span>
-<span><span class="co">#&gt;     [ 7.64 MiB | Access: &lt;HTTPServer, OPENDAP&gt; ]</span></span></code></pre></div>
+<span><span class="va">file_result</span></span></code></pre></div>
 <p>Convert the File result to a table when you want to inspect exactly
 which files were found. The URL columns are long, so this view shows
 whether each file has OPeNDAP and HTTPServer access instead of printing
 the full URLs.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">file_table</span> <span class="op">&lt;-</span> <span class="va">file_result</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"filename"</span>, <span class="st">"variable_id"</span>, <span class="st">"data_node"</span>, <span class="st">"size"</span>,</span>
 <span>    <span class="st">"url_opendap"</span>, <span class="st">"url_download"</span></span>
@@ -615,25 +741,7 @@ the full URLs.</p>
 <span>    <span class="va">size</span>,</span>
 <span>    opendap <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">url_opendap</span><span class="op">)</span> <span class="op">&amp;</span> <span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nzchar</a></span><span class="op">(</span><span class="va">url_opendap</span><span class="op">)</span>,</span>
 <span>    http <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">url_download</span><span class="op">)</span> <span class="op">&amp;</span> <span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nzchar</a></span><span class="op">(</span><span class="va">url_download</span><span class="op">)</span></span>
-<span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;                                                          filename variable_id</span></span>
-<span><span class="co">#&gt;                                                            &lt;char&gt;      &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:     clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         clt</span></span>
-<span><span class="co">#&gt; 2:    hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs</span></span>
-<span><span class="co">#&gt; 3:     psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         psl</span></span>
-<span><span class="co">#&gt; 4:    rlds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rlds</span></span>
-<span><span class="co">#&gt; 5:    rsds_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        rsds</span></span>
-<span><span class="co">#&gt; 6: sfcWind_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc     sfcWind</span></span>
-<span><span class="co">#&gt; 7:     tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         tas</span></span>
-<span><span class="co">#&gt;          data_node            size opendap   http</span></span>
-<span><span class="co">#&gt;             &lt;char&gt;         &lt;units&gt;  &lt;lgcl&gt; &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt; 1: esgf.ceda.ac.uk 11.652859 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 2: esgf.ceda.ac.uk 10.582312 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 3: esgf.ceda.ac.uk  7.863685 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 4: esgf.ceda.ac.uk  8.684435 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 5: esgf.ceda.ac.uk  8.441223 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 6: esgf.ceda.ac.uk  9.353412 [MiB]    TRUE   TRUE</span></span>
-<span><span class="co">#&gt; 7: esgf.ceda.ac.uk  7.640529 [MiB]    TRUE   TRUE</span></span></code></pre></div>
+<span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="optional-prefetch-netcdf-files">Optional: Prefetch NetCDF Files<a class="anchor" aria-label="anchor" href="#optional-prefetch-netcdf-files"></a>
@@ -673,7 +781,7 @@ history. If you run the optional chunk below, inspect the result with
 node history, see <a href="downloader.html">Downloader</a>. For the same
 operations from a terminal, see <a href="cli-esgf-store.html">CLI
 operations</a>.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">downloads</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_download</a></span><span class="op">(</span></span>
 <span>    <span class="va">files</span>,</span>
 <span>    replica <span class="op">=</span> <span class="st">"current"</span>,</span>
@@ -701,10 +809,10 @@ one or more years. The name, such as <code>2060s</code>, becomes the
 period label in summaries, morphing cases, and output paths. The numeric
 value is the year or years used to calculate that period. This article
 uses one year so the remote extraction stays small:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span></code></pre></div>
 <p>A wider period is also valid, for example:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2064</span><span class="op">)</span></span></code></pre></div>
 <p>The collected files must cover every year used by the period.</p>
 <p><code>fallback = "auto"</code> means extraction tries OPeNDAP first
@@ -713,7 +821,7 @@ unavailable. Use <code>"error"</code> when you want remote access
 failures to stop the extraction instead.</p>
 <p>Extraction is recorded in the local <code>EsgStore</code>; see <a href="esg-store.html">ESG stores</a> for the lower-level API. If
 OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooting.html">ESGF troubleshooting</a>.</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span>
 <span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995L</span><span class="op">)</span></span>
 <span></span>
@@ -726,12 +834,6 @@ OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooti
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">extracted</span></span>
-<span><span class="co">#&gt; &lt;epwshiftr::ShiftClimate&gt;</span></span>
-<span><span class="co">#&gt;   stage:  climate</span></span>
-<span><span class="co">#&gt;   status: extracted</span></span>
-<span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
-<span><span class="co">#&gt;   coverage: 7/7 complete</span></span>
-<span><span class="co">#&gt;   ids:    query_id, plan_id</span></span>
 <span></span>
 <span><span class="va">reference</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_extract</a></span><span class="op">(</span></span>
 <span>    <span class="va">reference_files</span>,</span>
@@ -745,79 +847,28 @@ OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooti
 <p><code><a href="../reference/shift_api.html">shift_coverage()</a></code> checks whether every requested variable
 has extracted rows for the selected site and period. This is the main
 sanity check before morphing.</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_coverage</a></span><span class="op">(</span><span class="va">extracted</span><span class="op">)</span></span>
-<span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;    variable_id complete status output_rows output_file_count</span></span>
-<span><span class="co">#&gt;         &lt;char&gt;   &lt;lgcl&gt; &lt;char&gt;       &lt;int&gt;             &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:        rlds     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 2:        rsds     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 3:         psl     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 4:         tas     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 5:         clt     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 6:     sfcWind     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 7:        hurs     TRUE   done          12                 1</span></span></code></pre></div>
+<span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>The extracted values are not stored inside the small stage object.
 They are written as partitioned Parquet files under the store and
 registered in the store manifest. <code><a href="../reference/shift_api.html">shift_artifacts()</a></code> shows
 those registered files:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">extract_artifacts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_artifacts</a></span><span class="op">(</span><span class="va">extracted</span><span class="op">)</span></span>
-<span><span class="va">extract_artifacts</span><span class="op">[</span><span class="va">kind</span> <span class="op">==</span> <span class="st">"extract"</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;       kind    role</span></span>
-<span><span class="co">#&gt;     &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: extract derived</span></span>
-<span><span class="co">#&gt; 2: extract derived</span></span>
-<span><span class="co">#&gt; 3: extract derived</span></span>
-<span><span class="co">#&gt; 4: extract derived</span></span>
-<span><span class="co">#&gt; 5: extract derived</span></span>
-<span><span class="co">#&gt; 6: extract derived</span></span>
-<span><span class="co">#&gt; 7: extract derived</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                                                           relative_path</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                                                                  &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=clt/year=2060/part-d442dc702cdbdbb9df13f618bef50a49fe8cbdb6391357d637cbbfcc4e1d02ad.parquet</span></span>
-<span><span class="co">#&gt; 2:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=hurs/year=2060/part-d8f84ee054ee73ba2c20a6bbcd155510eea876556d4c1a08a1324d496b72b7ab.parquet</span></span>
-<span><span class="co">#&gt; 3:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=psl/year=2060/part-53c9ac1d43c5aff19881432f5380a5d10dba8fb0952df8fd7f30a7d027ad0922.parquet</span></span>
-<span><span class="co">#&gt; 4:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=rlds/year=2060/part-0529c672b2743d596b4ce567f20bc7da8679879d78416f84bbfa6a1c9d833bb3.parquet</span></span>
-<span><span class="co">#&gt; 5:    extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=rsds/year=2060/part-47485cadca0ce1317db7c1cf9db32e49dfa14fe931ee7b9aaa7a295f2167f38e.parquet</span></span>
-<span><span class="co">#&gt; 6: extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=sfcWind/year=2060/part-d7e5fe8f877b0fd8ce0ec12d3c7fec7e446804f67338fdbbdf6acd7b08a93aef.parquet</span></span>
-<span><span class="co">#&gt; 7:     extracts/project=CMIP6/source_id=MPI-ESM1-2-LR/experiment_id=ssp585/variant_label=r1i1p1f1/frequency=mon/variable_id=tas/year=2060/part-7d32f39b9de114229f4abf5d8255ec18fdcbc882887b22ccb212ed4444dd303f.parquet</span></span></code></pre></div>
+<span><span class="va">extract_artifacts</span><span class="op">[</span><span class="va">kind</span> <span class="op">==</span> <span class="st">"extract"</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>Use <code><a href="../reference/shift_api.html">shift_data()</a></code> when you want to inspect the actual
 extracted table without manually finding or reading those Parquet files.
 By default it returns a preview instead of loading everything into
 memory.</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">extracted_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>    columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"site_id"</span>, <span class="st">"variable_id"</span>, <span class="st">"time"</span>, <span class="st">"lon"</span>, <span class="st">"lat"</span>, <span class="st">"value"</span>, <span class="st">"units"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">extracted_data</span></span>
-<span><span class="co">#&gt;     site_id variable_id                time     lon     lat    value  units</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;      &lt;char&gt;              &lt;POSc&gt;   &lt;num&gt;   &lt;num&gt;    &lt;num&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:     SIN         clt 2060-01-16 12:00:00 103.125 0.93263 82.30624      %</span></span>
-<span><span class="co">#&gt;  2:     SIN         clt 2060-02-15 12:00:00 103.125 0.93263 64.81476      %</span></span>
-<span><span class="co">#&gt;  3:     SIN         clt 2060-03-16 12:00:00 103.125 0.93263 57.06557      %</span></span>
-<span><span class="co">#&gt;  4:     SIN         clt 2060-04-16 00:00:00 103.125 0.93263 45.10655      %</span></span>
-<span><span class="co">#&gt;  5:     SIN         clt 2060-05-16 12:00:00 103.125 0.93263 58.98287      %</span></span>
-<span><span class="co">#&gt;  6:     SIN         clt 2060-06-16 00:00:00 103.125 0.93263 87.22534      %</span></span>
-<span><span class="co">#&gt;  7:     SIN         clt 2060-07-16 12:00:00 103.125 0.93263 92.17834      %</span></span>
-<span><span class="co">#&gt;  8:     SIN         clt 2060-08-16 12:00:00 103.125 0.93263 87.00104      %</span></span>
-<span><span class="co">#&gt;  9:     SIN         clt 2060-09-16 00:00:00 103.125 0.93263 93.51807      %</span></span>
-<span><span class="co">#&gt; 10:     SIN         clt 2060-10-16 12:00:00 103.125 0.93263 80.29469      %</span></span>
-<span><span class="co">#&gt; 11:     SIN         clt 2060-11-16 00:00:00 103.125 0.93263 63.98064      %</span></span>
-<span><span class="co">#&gt; 12:     SIN         clt 2060-12-16 12:00:00 103.125 0.93263 88.22657      %</span></span>
-<span><span class="co">#&gt; 13:     SIN        hurs 2060-01-16 12:00:00 103.125 0.93263 87.63216      %</span></span>
-<span><span class="co">#&gt; 14:     SIN        hurs 2060-02-15 12:00:00 103.125 0.93263 79.58945      %</span></span>
-<span><span class="co">#&gt; 15:     SIN        hurs 2060-03-16 12:00:00 103.125 0.93263 76.78159      %</span></span>
-<span><span class="co">#&gt; 16:     SIN        hurs 2060-04-16 00:00:00 103.125 0.93263 81.37238      %</span></span>
-<span><span class="co">#&gt; 17:     SIN        hurs 2060-05-16 12:00:00 103.125 0.93263 76.57287      %</span></span>
-<span><span class="co">#&gt; 18:     SIN        hurs 2060-06-16 00:00:00 103.125 0.93263 80.83648      %</span></span>
-<span><span class="co">#&gt; 19:     SIN        hurs 2060-07-16 12:00:00 103.125 0.93263 79.76086      %</span></span>
-<span><span class="co">#&gt; 20:     SIN        hurs 2060-08-16 12:00:00 103.125 0.93263 81.98067      %</span></span>
-<span><span class="co">#&gt;     site_id variable_id                time     lon     lat    value  units</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;      &lt;char&gt;              &lt;POSc&gt;   &lt;num&gt;   &lt;num&gt;    &lt;num&gt; &lt;char&gt;</span></span></code></pre></div>
+<span><span class="va">extracted_data</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="morph-hourly-weather">Morph Hourly Weather<a class="anchor" aria-label="anchor" href="#morph-hourly-weather"></a>
@@ -831,18 +882,21 @@ coverage are blocking errors instead of warnings.</p>
 <code>EpwMorpher</code> planning and execution API. See <a href="epw-morpher.html">EpwMorpher</a> when you need to inspect monthly
 summaries, factor diagnostics, case grouping, or custom backend
 registration.</p>
-<p>For Belcher change-factor morphing, pass either an extracted
-historical <code>ShiftClimate</code> stage or an automatic reference
-spec such as
-<code>shift_reference_historical(reference_periods)</code>.</p>
+<p>When available, matching historical CMIP6 data should be supplied so
+Belcher computes future-versus-historical change factors. Pass either an
+extracted historical <code>ShiftClimate</code> stage or an explicit
+reference spec such as <code>historical_reference(1995:2014)</code>. If
+no suitable reference data exist, <code>reference = NULL</code> falls
+back to monthly statistics from the baseline EPW.</p>
 <p>The same <code>shift_recipe</code> used to choose request variables
 can be passed into <code><a href="../reference/shift_api.html">shift_morph()</a></code>. Adjust the recipe when
 you want to change Belcher methods or select another registered
 backend:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"belcher"</span>,</span>
-<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>tdb <span class="op">=</span> <span class="st">"shift"</span>, rh <span class="op">=</span> <span class="st">"shift"</span><span class="op">)</span></span>
+<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>tdb <span class="op">=</span> <span class="st">"shift"</span>, rh <span class="op">=</span> <span class="st">"shift"</span><span class="op">)</span>,</span>
+<span>    options <span class="op">=</span> <span class="fu"><a href="../reference/belcher_options.html">belcher_options</a></span><span class="op">(</span>snow_depth <span class="op">=</span> <span class="st">"off"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
@@ -852,7 +906,7 @@ backend:</p>
 <span>    recipe <span class="op">=</span> <span class="va">shift_recipe</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    reference <span class="op">=</span> <span class="va">reference</span>,</span>
@@ -861,34 +915,21 @@ backend:</p>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">morphed</span></span>
-<span><span class="co">#&gt; &lt;epwshiftr::ShiftMorphed&gt;</span></span>
-<span><span class="co">#&gt;   stage:  morphed</span></span>
-<span><span class="co">#&gt;   status: morphed</span></span>
-<span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
-<span><span class="co">#&gt;   morph: planned</span></span>
-<span><span class="co">#&gt;   cases:  1</span></span>
-<span><span class="co">#&gt;   ids:    query_id, plan_id, summary_id, baseline_id, morph_id</span></span></code></pre></div>
+<span><span class="va">morphed</span></span></code></pre></div>
 <p>The <code>morphed</code> stage is still store-native. It contains
 hourly future weather data as Parquet artifacts, not EPW text files yet.
 Inspect the artifact rows when you want to see where those intermediate
 results live:</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_artifacts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_artifacts</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span>
-<span><span class="va">morph_artifacts</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;      kind    role</span></span>
-<span><span class="co">#&gt;    &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: output derived</span></span>
-<span><span class="co">#&gt;                                                                                                                                                       relative_path</span></span>
-<span><span class="co">#&gt;                                                                                                                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: outputs/epw-morph/7151ba639a04006fccc4809f2754db0c5111217b4b2083cb7cc8c02bb90875ca/case=449d8e0e3db38f5e39681257d5f5c78d802a31e5bdcaeb40f9045f798938b76e.parquet</span></span></code></pre></div>
+<span><span class="va">morph_artifacts</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>Use the same <code><a href="../reference/shift_api.html">shift_data()</a></code> helper to preview the hourly
 morphed weather table. The metadata columns identify the morphing case;
 the weather columns are the hourly EPW-style values that will be written
 to the final EPW. The preview below omits long IDs to keep the table
 readable; include <code>case_id</code> in <code>columns</code> when you
 need to join rows back to a specific morphing case.</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">morphed</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -898,63 +939,7 @@ need to join rows back to a specific morphing case.</p>
 <span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">morphed_data</span></span>
-<span><span class="co">#&gt;     period  year month   day  hour dry_bulb_temperature relative_humidity</span></span>
-<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt;                &lt;num&gt;             &lt;num&gt;</span></span>
-<span><span class="co">#&gt;  1:  2060s  2001     1     1     1             23.91930          98.86706</span></span>
-<span><span class="co">#&gt;  2:  2060s  2001     1     1     2             23.81837         100.00000</span></span>
-<span><span class="co">#&gt;  3:  2060s  2001     1     1     3             23.71744         100.00000</span></span>
-<span><span class="co">#&gt;  4:  2060s  2001     1     1     4             23.81837         100.00000</span></span>
-<span><span class="co">#&gt;  5:  2060s  2001     1     1     5             23.91930          98.86706</span></span>
-<span><span class="co">#&gt;  6:  2060s  2001     1     1     6             24.22207          96.62008</span></span>
-<span><span class="co">#&gt;  7:  2060s  2001     1     1     7             24.52485          94.37310</span></span>
-<span><span class="co">#&gt;  8:  2060s  2001     1     1     8             24.82762          91.00263</span></span>
-<span><span class="co">#&gt;  9:  2060s  2001     1     1     9             25.23132          87.63216</span></span>
-<span><span class="co">#&gt; 10:  2060s  2001     1     1    10             25.63503          84.26170</span></span>
-<span><span class="co">#&gt; 11:  2060s  2001     1     1    11             26.03873          80.89123</span></span>
-<span><span class="co">#&gt; 12:  2060s  2001     1     1    12             26.34150          78.64425</span></span>
-<span><span class="co">#&gt; 13:  2060s  2001     1     1    13             26.54335          76.39727</span></span>
-<span><span class="co">#&gt; 14:  2060s  2001     1     1    14             26.74520          74.15029</span></span>
-<span><span class="co">#&gt; 15:  2060s  2001     1     1    15             26.74520          74.15029</span></span>
-<span><span class="co">#&gt; 16:  2060s  2001     1     1    16             26.74520          74.15029</span></span>
-<span><span class="co">#&gt; 17:  2060s  2001     1     1    17             26.54335          76.39727</span></span>
-<span><span class="co">#&gt; 18:  2060s  2001     1     1    18             26.34150          78.64425</span></span>
-<span><span class="co">#&gt; 19:  2060s  2001     1     1    19             26.03873          80.89123</span></span>
-<span><span class="co">#&gt; 20:  2060s  2001     1     1    20             25.63503          84.26170</span></span>
-<span><span class="co">#&gt; 21:  2060s  2001     1     1    21             25.23132          87.63216</span></span>
-<span><span class="co">#&gt; 22:  2060s  2001     1     1    22             24.82762          91.00263</span></span>
-<span><span class="co">#&gt; 23:  2060s  2001     1     1    23             24.52485          94.37310</span></span>
-<span><span class="co">#&gt; 24:  2060s  2001     1     1    24             24.22207          96.62008</span></span>
-<span><span class="co">#&gt;     period  year month   day  hour dry_bulb_temperature relative_humidity</span></span>
-<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt;                &lt;num&gt;             &lt;num&gt;</span></span>
-<span><span class="co">#&gt;     wind_speed</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;</span></span>
-<span><span class="co">#&gt;  1:  1.0653853</span></span>
-<span><span class="co">#&gt;  2:  1.1506162</span></span>
-<span><span class="co">#&gt;  3:  1.2358470</span></span>
-<span><span class="co">#&gt;  4:  1.3210778</span></span>
-<span><span class="co">#&gt;  5:  1.3636932</span></span>
-<span><span class="co">#&gt;  6:  1.4063087</span></span>
-<span><span class="co">#&gt;  7:  1.4063087</span></span>
-<span><span class="co">#&gt;  8:  1.4063087</span></span>
-<span><span class="co">#&gt;  9:  1.3636932</span></span>
-<span><span class="co">#&gt; 10:  1.3210778</span></span>
-<span><span class="co">#&gt; 11:  1.2358470</span></span>
-<span><span class="co">#&gt; 12:  1.1506162</span></span>
-<span><span class="co">#&gt; 13:  1.0653853</span></span>
-<span><span class="co">#&gt; 14:  0.9801545</span></span>
-<span><span class="co">#&gt; 15:  0.8949237</span></span>
-<span><span class="co">#&gt; 16:  0.8096929</span></span>
-<span><span class="co">#&gt; 17:  0.7670774</span></span>
-<span><span class="co">#&gt; 18:  0.7244620</span></span>
-<span><span class="co">#&gt; 19:  0.7244620</span></span>
-<span><span class="co">#&gt; 20:  0.7244620</span></span>
-<span><span class="co">#&gt; 21:  0.7670774</span></span>
-<span><span class="co">#&gt; 22:  0.8096929</span></span>
-<span><span class="co">#&gt; 23:  0.8949237</span></span>
-<span><span class="co">#&gt; 24:  0.9801545</span></span>
-<span><span class="co">#&gt;     wind_speed</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;</span></span></code></pre></div>
+<span><span class="va">morphed_data</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
@@ -964,28 +949,16 @@ morphed hourly results. It returns a <code>ShiftOutputs</code> stage.
 The first chunk assigns the result while hiding verbose writer output;
 the second prints the stage object.</p>
 <p>For the lower-level write path and output registry, see <a href="epw-morpher.html">EpwMorpher</a>.</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">epws</span></span>
-<span><span class="co">#&gt; &lt;epwshiftr::ShiftOutputs&gt;</span></span>
-<span><span class="co">#&gt;   stage:  outputs</span></span>
-<span><span class="co">#&gt;   status: written</span></span>
-<span><span class="co">#&gt;   store:  &lt;tempdir&gt;/epwshiftr-future-epw-workflow/singapore-store</span></span>
-<span><span class="co">#&gt;   outputs: 1</span></span>
-<span><span class="co">#&gt;   ids:    query_id, plan_id, summary_id, baseline_id, morph_id</span></span></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">epws</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_outputs()</a></code> lists the EPW files written by
-<code><a href="../reference/shift_api.html">shift_epw()</a></code>. These are the files you can pass to EnergyPlus
-or open with <code><a href="https://hongyuanjia.github.io/eplusr/reference/read_epw.html" class="external-link">eplusr::read_epw()</a></code>.</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<code><a href="../reference/shift_api.html">shift_epw()</a></code>. These are the files you can pass directly to
+EnergyPlus.</p>
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
-<span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">path</span>, <span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">period</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;                                                                                                                                     path</span></span>
-<span><span class="co">#&gt;                                                                                                                                   &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: outputs/future-epw/MPI-ESM1-2-LR/ssp585/r1i1p1f1/2060s/ae36a1702acd-SGP_Singapore.486980_IWEC.MPI-ESM1-2-LR.ssp585.r1i1p1f1.2060s.epw</span></span>
-<span><span class="co">#&gt;        source_id experiment_id variant_label period</span></span>
-<span><span class="co">#&gt;           &lt;char&gt;        &lt;char&gt;        &lt;char&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1  2060s</span></span></code></pre></div>
+<span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">path</span>, <span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">period</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p><code>shift_data(epws)</code> reads the written EPW file back and
 returns its hourly weather data with output metadata attached. This is
 useful for confirming that the final file contains the same kind of
@@ -994,7 +967,7 @@ step. Output metadata such as <code>output_id</code>,
 <code>case_id</code>, and <code>path</code> are available in
 <code>shift_data(epws)</code>; they are omitted here so the weather
 values stay visible.</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">epws</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -1004,63 +977,7 @@ values stay visible.</p>
 <span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">epw_data</span></span>
-<span><span class="co">#&gt;     period  year month   day  hour dry_bulb_temperature relative_humidity</span></span>
-<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt;                &lt;num&gt;             &lt;num&gt;</span></span>
-<span><span class="co">#&gt;  1:  2060s  2001     1     1     1                 23.9                98</span></span>
-<span><span class="co">#&gt;  2:  2060s  2001     1     1     2                 23.8               100</span></span>
-<span><span class="co">#&gt;  3:  2060s  2001     1     1     3                 23.7               100</span></span>
-<span><span class="co">#&gt;  4:  2060s  2001     1     1     4                 23.8               100</span></span>
-<span><span class="co">#&gt;  5:  2060s  2001     1     1     5                 23.9                98</span></span>
-<span><span class="co">#&gt;  6:  2060s  2001     1     1     6                 24.2                96</span></span>
-<span><span class="co">#&gt;  7:  2060s  2001     1     1     7                 24.5                94</span></span>
-<span><span class="co">#&gt;  8:  2060s  2001     1     1     8                 24.8                91</span></span>
-<span><span class="co">#&gt;  9:  2060s  2001     1     1     9                 25.2                87</span></span>
-<span><span class="co">#&gt; 10:  2060s  2001     1     1    10                 25.6                84</span></span>
-<span><span class="co">#&gt; 11:  2060s  2001     1     1    11                 26.0                80</span></span>
-<span><span class="co">#&gt; 12:  2060s  2001     1     1    12                 26.3                78</span></span>
-<span><span class="co">#&gt; 13:  2060s  2001     1     1    13                 26.5                76</span></span>
-<span><span class="co">#&gt; 14:  2060s  2001     1     1    14                 26.7                74</span></span>
-<span><span class="co">#&gt; 15:  2060s  2001     1     1    15                 26.7                74</span></span>
-<span><span class="co">#&gt; 16:  2060s  2001     1     1    16                 26.7                74</span></span>
-<span><span class="co">#&gt; 17:  2060s  2001     1     1    17                 26.5                76</span></span>
-<span><span class="co">#&gt; 18:  2060s  2001     1     1    18                 26.3                78</span></span>
-<span><span class="co">#&gt; 19:  2060s  2001     1     1    19                 26.0                80</span></span>
-<span><span class="co">#&gt; 20:  2060s  2001     1     1    20                 25.6                84</span></span>
-<span><span class="co">#&gt; 21:  2060s  2001     1     1    21                 25.2                87</span></span>
-<span><span class="co">#&gt; 22:  2060s  2001     1     1    22                 24.8                91</span></span>
-<span><span class="co">#&gt; 23:  2060s  2001     1     1    23                 24.5                94</span></span>
-<span><span class="co">#&gt; 24:  2060s  2001     1     1    24                 24.2                96</span></span>
-<span><span class="co">#&gt;     period  year month   day  hour dry_bulb_temperature relative_humidity</span></span>
-<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt; &lt;int&gt;                &lt;num&gt;             &lt;num&gt;</span></span>
-<span><span class="co">#&gt;     wind_speed</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;</span></span>
-<span><span class="co">#&gt;  1:        1.1</span></span>
-<span><span class="co">#&gt;  2:        1.2</span></span>
-<span><span class="co">#&gt;  3:        1.2</span></span>
-<span><span class="co">#&gt;  4:        1.3</span></span>
-<span><span class="co">#&gt;  5:        1.4</span></span>
-<span><span class="co">#&gt;  6:        1.4</span></span>
-<span><span class="co">#&gt;  7:        1.4</span></span>
-<span><span class="co">#&gt;  8:        1.4</span></span>
-<span><span class="co">#&gt;  9:        1.4</span></span>
-<span><span class="co">#&gt; 10:        1.3</span></span>
-<span><span class="co">#&gt; 11:        1.2</span></span>
-<span><span class="co">#&gt; 12:        1.2</span></span>
-<span><span class="co">#&gt; 13:        1.1</span></span>
-<span><span class="co">#&gt; 14:        1.0</span></span>
-<span><span class="co">#&gt; 15:        0.9</span></span>
-<span><span class="co">#&gt; 16:        0.8</span></span>
-<span><span class="co">#&gt; 17:        0.8</span></span>
-<span><span class="co">#&gt; 18:        0.7</span></span>
-<span><span class="co">#&gt; 19:        0.7</span></span>
-<span><span class="co">#&gt; 20:        0.7</span></span>
-<span><span class="co">#&gt; 21:        0.8</span></span>
-<span><span class="co">#&gt; 22:        0.8</span></span>
-<span><span class="co">#&gt; 23:        0.9</span></span>
-<span><span class="co">#&gt; 24:        1.0</span></span>
-<span><span class="co">#&gt;     wind_speed</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;</span></span></code></pre></div>
+<span><span class="va">epw_data</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -1083,7 +1000,7 @@ first?</li>
 check. It returns a single status string so it can be used in scripts,
 reports, or simple guards. For a successful run, the sequence should end
 with an EPW stage marked <code>written</code>.</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
 <span>    stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"request"</span>, <span class="st">"collect"</span>, <span class="st">"extract"</span>, <span class="st">"reference"</span>, <span class="st">"morph"</span>, <span class="st">"epw"</span><span class="op">)</span>,</span>
 <span>    status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -1094,15 +1011,14 @@ with an EPW stage marked <code>written</code>.</p>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span>    <span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt;      stage    status</span></span>
-<span><span class="co">#&gt;     &lt;char&gt;    &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: request       new</span></span>
-<span><span class="co">#&gt; 2: collect collected</span></span>
-<span><span class="co">#&gt; 3: extract extracted</span></span>
-<span><span class="co">#&gt; 4: reference extracted</span></span>
-<span><span class="co">#&gt; 5:   morph   morphed</span></span>
-<span><span class="co">#&gt; 6:     epw   written</span></span></code></pre></div>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Stage status and run status answer different questions.
+<code>shift_status(epws)</code> reports that the EPW artifact is
+<code>written</code>; <code>shift_status(shift_run_get(epws))</code> is
+<code>waiting</code> because a store-local EPW can still be exported.
+Calling <code>shift_export_epw(epws, dir)</code> completes the run. If
+the store-local file is the intentional endpoint, use
+<code>shift_complete(epws)</code> instead.</p>
 </div>
 <div class="section level3">
 <h3 id="read-diagnostics-when-something-looks-wrong">Read Diagnostics When Something Looks Wrong<a class="anchor" aria-label="anchor" href="#read-diagnostics-when-something-looks-wrong"></a>
@@ -1115,9 +1031,8 @@ manifest IDs first.</p>
 <p>For common causes and the first place to look for each class of
 failure, see <a href="esgf-troubleshooting.html">ESGF
 troubleshooting</a>.</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 16 cols): stage,severity,code,message,query_id,session_id...</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="confirm-extraction-coverage">Confirm Extraction Coverage<a class="anchor" aria-label="anchor" href="#confirm-extraction-coverage"></a>
@@ -1130,28 +1045,19 @@ selection, or extraction period needs to be adjusted.</p>
 <p>Coverage problems usually originate in query selection, time
 filtering, or remote access. The <a href="esgf-troubleshooting.html">ESGF troubleshooting</a> article
 collects those checks in one place.</p>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_coverage</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
-<span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;    variable_id complete status output_rows output_file_count</span></span>
-<span><span class="co">#&gt;         &lt;char&gt;   &lt;lgcl&gt; &lt;char&gt;       &lt;int&gt;             &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:        rlds     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 2:        rsds     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 3:         psl     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 4:         tas     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 5:         clt     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 6:     sfcWind     TRUE   done          12                 1</span></span>
-<span><span class="co">#&gt; 7:        hurs     TRUE   done          12                 1</span></span></code></pre></div>
+<span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="locate-reusable-files">Locate Reusable Files<a class="anchor" aria-label="anchor" href="#locate-reusable-files"></a>
 </h3>
 <p><code><a href="../reference/shift_api.html">shift_outputs()</a></code> lists the written EPW files and their
 case metadata. These are the files to pass to EnergyPlus, archive with a
-simulation run, or reopen with <code><a href="https://hongyuanjia.github.io/eplusr/reference/read_epw.html" class="external-link">eplusr::read_epw()</a></code>. The
+simulation run, or reopen with the package’s internal EPW reader. The
 store also keeps the intermediate Parquet artifacts so the workflow can
 be inspected or reused without repeating the remote query.</p>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
 <span>    file <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">basename</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span>,</span>
@@ -1159,13 +1065,7 @@ be inspected or reused without repeating the remote query.</p>
 <span>    <span class="va">experiment_id</span>,</span>
 <span>    <span class="va">variant_label</span>,</span>
 <span>    <span class="va">period</span></span>
-<span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;                                                                              file</span></span>
-<span><span class="co">#&gt;                                                                            &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: ae36a1702acd-SGP_Singapore.486980_IWEC.MPI-ESM1-2-LR.ssp585.r1i1p1f1.2060s.epw</span></span>
-<span><span class="co">#&gt;        source_id experiment_id variant_label period</span></span>
-<span><span class="co">#&gt;           &lt;char&gt;        &lt;char&gt;        &lt;char&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: MPI-ESM1-2-LR        ssp585      r1i1p1f1  2060s</span></span></code></pre></div>
+<span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="advanced-manifest-ids">Advanced: Manifest IDs<a class="anchor" aria-label="anchor" href="#advanced-manifest-ids"></a>
@@ -1174,9 +1074,8 @@ be inspected or reused without repeating the remote query.</p>
 for advanced users who want to inspect the lower-level
 <code>EsgStore</code>, <code>EpwMorpher</code>, or manifest tables
 directly.</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="fu"><a href="../reference/shift_api.html">shift_ids</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "query_id"    "plan_id"     "summary_id"  "baseline_id" "morph_id"</span></span></code></pre></div>
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="fu"><a href="../reference/shift_api.html">shift_ids</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
   </div>
@@ -1196,7 +1095,7 @@ directly.</p>
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer>

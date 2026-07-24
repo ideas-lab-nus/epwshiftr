@@ -13,7 +13,7 @@
 <!-- clipboard.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.6/clipboard.min.js" integrity="sha256-inc5kl9MA1hkeYUt+EC3BhlIgyp/2jDIyBLS6k3UxPI=" crossorigin="anonymous"></script><!-- headroom.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/headroom.min.js" integrity="sha256-AsUX4SJE1+yuDu5+mAVzJbuYNPHj/WroHuZ8Ir/CkE0=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/jQuery.headroom.min.js" integrity="sha256-ZX/yNShbjqsohH1k95liqY9Gd8uOiE1S4vZc+9KQ1K4=" crossorigin="anonymous"></script><!-- pkgdown --><link href="../pkgdown.css" rel="stylesheet">
 <script src="../pkgdown.js"></script><meta property="og:title" content="Manage ESG Stores">
 <meta property="og:description" content="Use EsgStore to keep live query snapshots, file catalogs, download plans, extraction plans, artifacts, and generated outputs connected.">
-<meta property="og:image" content="/logo.svg">
+<meta property="og:image" content="https://ideas-lab-nus.github.io/epwshiftr/logo.svg">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
@@ -129,7 +129,7 @@ Jia</h4>
   =====================================================================
 -->
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/ideas-lab-nus/epwshiftr" class="external-link">epwshiftr</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ideas-lab-nus.github.io/epwshiftr/">epwshiftr</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">workflow_root</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"epwshiftr-esg-store"</span><span class="op">)</span></span>
 <span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.exists</a></span><span class="op">(</span><span class="va">workflow_root</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
@@ -174,9 +174,9 @@ reproducible.</p>
 <span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="va">store_path</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">path</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store"</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">manifest</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, all.files <span class="op">=</span> <span class="cn">TRUE</span>, no.. <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "dicts"               "downloads"           "extracts"</span></span>
 <span><span class="co">#&gt;  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"</span></span>
@@ -220,30 +220,36 @@ safe read path for ad-hoc inspection.</p>
 <span><span class="st">    WHERE table_schema = 'main'</span></span>
 <span><span class="st">    ORDER BY table_name</span></span>
 <span><span class="st">"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                table_name</span></span>
-<span><span class="co">#&gt;                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:              artifact</span></span>
-<span><span class="co">#&gt;  2:  epw_baseline_summary</span></span>
-<span><span class="co">#&gt;  3:   epw_climate_summary</span></span>
-<span><span class="co">#&gt;  4:      epw_morph_factor</span></span>
-<span><span class="co">#&gt;  5:        epw_morph_plan</span></span>
-<span><span class="co">#&gt;  6:      epw_morph_result</span></span>
-<span><span class="co">#&gt;  7:            epw_output</span></span>
-<span><span class="co">#&gt;  8:            epw_source</span></span>
-<span><span class="co">#&gt;  9:              esg_file</span></span>
-<span><span class="co">#&gt; 10:             esg_query</span></span>
-<span><span class="co">#&gt; 11:  esg_query_dependency</span></span>
-<span><span class="co">#&gt; 12:        esg_query_file</span></span>
-<span><span class="co">#&gt; 13:         esg_query_tag</span></span>
-<span><span class="co">#&gt; 14:      esg_query_update</span></span>
-<span><span class="co">#&gt; 15: esg_query_update_file</span></span>
-<span><span class="co">#&gt; 16:       extraction_plan</span></span>
-<span><span class="co">#&gt; 17:     extraction_result</span></span>
-<span><span class="co">#&gt; 18:          file_catalog</span></span>
-<span><span class="co">#&gt; 19:             query_run</span></span>
-<span><span class="co">#&gt; 20:            store_meta</span></span>
-<span><span class="co">#&gt;                table_name</span></span>
-<span><span class="co">#&gt;                    &lt;char&gt;</span></span></code></pre></div>
+<span><span class="co">#&gt;                 table_name</span></span>
+<span><span class="co">#&gt;                     &lt;char&gt;</span></span>
+<span><span class="co">#&gt;  1:               artifact</span></span>
+<span><span class="co">#&gt;  2:   epw_baseline_summary</span></span>
+<span><span class="co">#&gt;  3:    epw_climate_summary</span></span>
+<span><span class="co">#&gt;  4:       epw_morph_factor</span></span>
+<span><span class="co">#&gt;  5:         epw_morph_plan</span></span>
+<span><span class="co">#&gt;  6:       epw_morph_result</span></span>
+<span><span class="co">#&gt;  7:             epw_output</span></span>
+<span><span class="co">#&gt;  8:             epw_source</span></span>
+<span><span class="co">#&gt;  9:               esg_file</span></span>
+<span><span class="co">#&gt; 10:              esg_query</span></span>
+<span><span class="co">#&gt; 11:   esg_query_dependency</span></span>
+<span><span class="co">#&gt; 12:         esg_query_file</span></span>
+<span><span class="co">#&gt; 13:          esg_query_tag</span></span>
+<span><span class="co">#&gt; 14:       esg_query_update</span></span>
+<span><span class="co">#&gt; 15:  esg_query_update_file</span></span>
+<span><span class="co">#&gt; 16: extraction_grid_source</span></span>
+<span><span class="co">#&gt; 17:        extraction_plan</span></span>
+<span><span class="co">#&gt; 18:      extraction_result</span></span>
+<span><span class="co">#&gt; 19:           file_catalog</span></span>
+<span><span class="co">#&gt; 20:              query_run</span></span>
+<span><span class="co">#&gt; 21:              shift_run</span></span>
+<span><span class="co">#&gt; 22:         shift_run_case</span></span>
+<span><span class="co">#&gt; 23:        shift_run_event</span></span>
+<span><span class="co">#&gt; 24:          shift_run_job</span></span>
+<span><span class="co">#&gt; 25:         shift_run_step</span></span>
+<span><span class="co">#&gt; 26:             store_meta</span></span>
+<span><span class="co">#&gt;                 table_name</span></span>
+<span><span class="co">#&gt;                     &lt;char&gt;</span></span></code></pre></div>
 <p>The core table families are:</p>
 <ul>
 <li>metadata: <code>store_meta</code>;</li>
@@ -266,7 +272,7 @@ create it through <code>store$downloader()</code>, that manifest lives
 under <code>tmp/downloads/</code>.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">store</span><span class="op">$</span><span class="fu">get_meta</span><span class="op">(</span><span class="st">"schema_version"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "2.2.0"</span></span>
+<span><span class="co">#&gt; [1] "2.8.0"</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">download_layout</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; $layout</span></span>
 <span><span class="co">#&gt; [1] "flat"</span></span>
@@ -358,49 +364,49 @@ tagged, and used to build download plans.</p>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">tag_query</span><span class="op">(</span><span class="va">query_id</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"cmip6"</span>, <span class="st">"future-weather"</span>, <span class="st">"singapore"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 90fd88e61cc8ac71279f6c493c5187893509f1d68bd44253b43e8af7719935fa</span></span>
-<span><span class="co">#&gt; 2: d3995f016f00eabd83ed647a46f22b5478edd220b0b4f6404ad2d53e12f767b6</span></span>
-<span><span class="co">#&gt; 3: e99dfabf0021b3cbe46813a0018d9984d652141ee0daf895a6a882dc073a0644</span></span>
+<span><span class="co">#&gt; 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3</span></span>
+<span><span class="co">#&gt; 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71</span></span>
+<span><span class="co">#&gt; 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
+<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-06-24 18:15:15</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-06-24 18:15:15</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 1:          cmip6 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-07-21 16:53:12</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">queries</span><span class="op">(</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"label"</span>, <span class="st">"index_node"</span>, <span class="st">"tracked"</span>, <span class="st">"created_at"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
+<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;                    label                index_node tracked          created_at</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;                    &lt;char&gt;  &lt;lgcl&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 18:15:15</span></span>
+<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-21 16:53:12</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query_tags</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 90fd88e61cc8ac71279f6c493c5187893509f1d68bd44253b43e8af7719935fa</span></span>
-<span><span class="co">#&gt; 2: d3995f016f00eabd83ed647a46f22b5478edd220b0b4f6404ad2d53e12f767b6</span></span>
-<span><span class="co">#&gt; 3: e99dfabf0021b3cbe46813a0018d9984d652141ee0daf895a6a882dc073a0644</span></span>
+<span><span class="co">#&gt; 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3</span></span>
+<span><span class="co">#&gt; 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71</span></span>
+<span><span class="co">#&gt; 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
+<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-06-24 18:15:15</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-06-24 18:15:15</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-06-24 18:15:15</span></span></code></pre></div>
+<span><span class="co">#&gt; 1:          cmip6 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-07-21 16:53:12</span></span></code></pre></div>
 <p>The query snapshot is written under <code>queries/</code>, while the
 query identity and tracking state are recorded in the manifest.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, <span class="st">"queries"</span><span class="op">)</span>, recursive <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json"</span></span>
+<span><span class="co">#&gt; [1] "query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json"</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query</span><span class="op">(</span><span class="st">"</span></span>
 <span><span class="st">    SELECT query_id, label, tracked, query_file</span></span>
@@ -408,19 +414,24 @@ query identity and tracking state are recorded in the manifest.</p>
 <span><span class="st">"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
+<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;                    label tracked</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;  &lt;lgcl&gt;</span></span>
 <span><span class="co">#&gt; 1: singapore-ssp585-amon    TRUE</span></span>
 <span><span class="co">#&gt;                                                                             query_file</span></span>
 <span><span class="co">#&gt;                                                                                 &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: queries/query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="preview-and-update-query-files">Preview and Update Query Files<a class="anchor" aria-label="anchor" href="#preview-and-update-query-files"></a>
 </h2>
 <p>Previewing asks ESGF for current File records and compares them with
 the store’s current links. It does not modify the store.</p>
+<p>The remaining chunks are live ESGF operations. They are displayed but
+not executed when the package documentation is precompiled, so rendering
+remains deterministic and does not depend on the availability of a
+remote index node. Run them interactively against your store when
+following the workflow.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">preview_update_queries</span><span class="op">(</span></span>
 <span>    query_id <span class="op">=</span> <span class="va">query_id</span>,</span>
@@ -431,78 +442,10 @@ the store’s current links. It does not modify the store.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">preview</span><span class="op">$</span><span class="va">summary</span></span>
-<span><span class="co">#&gt;                                                            query_id</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;                    label file_total current_count new_count stale_count</span></span>
-<span><span class="co">#&gt;                   &lt;char&gt;      &lt;int&gt;         &lt;int&gt;     &lt;int&gt;       &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon         20             0        20           0</span></span>
-<span><span class="co">#&gt;    changed_count deprecated_count retracted_count version_changed_count</span></span>
-<span><span class="co">#&gt;            &lt;int&gt;            &lt;int&gt;           &lt;int&gt;                 &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:             0                0               0                    20</span></span>
-<span><span class="co">#&gt;    bytes_total bytes_new bytes_changed</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;     &lt;num&gt;         &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:   175082403 175082403             0</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">preview</span><span class="op">$</span><span class="va">changes</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"change_type"</span>, <span class="st">"file_key"</span>, <span class="st">"previous_status"</span>, <span class="st">"current_status"</span>,</span>
 <span>    <span class="st">"current_version"</span>, <span class="st">"data_node_changed"</span>, <span class="st">"url_changed"</span></span>
-<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     change_type</span></span>
-<span><span class="co">#&gt;          &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:         new</span></span>
-<span><span class="co">#&gt;  2:         new</span></span>
-<span><span class="co">#&gt;  3:         new</span></span>
-<span><span class="co">#&gt;  4:         new</span></span>
-<span><span class="co">#&gt;  5:         new</span></span>
-<span><span class="co">#&gt;  6:         new</span></span>
-<span><span class="co">#&gt;  7:         new</span></span>
-<span><span class="co">#&gt;  8:         new</span></span>
-<span><span class="co">#&gt;  9:         new</span></span>
-<span><span class="co">#&gt; 10:         new</span></span>
-<span><span class="co">#&gt; 11:         new</span></span>
-<span><span class="co">#&gt; 12:         new</span></span>
-<span><span class="co">#&gt;                                                                                                                                  file_key</span></span>
-<span><span class="co">#&gt;                                                                                                                                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;     previous_status current_status current_version data_node_changed</span></span>
-<span><span class="co">#&gt;              &lt;char&gt;         &lt;char&gt;          &lt;char&gt;            &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt;  1:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  2:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  3:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  4:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  5:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  6:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  7:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  8:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;  9:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt; 10:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt; 11:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt; 12:            &lt;NA&gt;        current               1              TRUE</span></span>
-<span><span class="co">#&gt;     url_changed</span></span>
-<span><span class="co">#&gt;          &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt;  1:        TRUE</span></span>
-<span><span class="co">#&gt;  2:        TRUE</span></span>
-<span><span class="co">#&gt;  3:        TRUE</span></span>
-<span><span class="co">#&gt;  4:        TRUE</span></span>
-<span><span class="co">#&gt;  5:        TRUE</span></span>
-<span><span class="co">#&gt;  6:        TRUE</span></span>
-<span><span class="co">#&gt;  7:        TRUE</span></span>
-<span><span class="co">#&gt;  8:        TRUE</span></span>
-<span><span class="co">#&gt;  9:        TRUE</span></span>
-<span><span class="co">#&gt; 10:        TRUE</span></span>
-<span><span class="co">#&gt; 11:        TRUE</span></span>
-<span><span class="co">#&gt; 12:        TRUE</span></span></code></pre></div>
+<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span></code></pre></div>
 <p>Updating writes the current File identities, file metadata,
 query-file links, and an update record.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
@@ -517,91 +460,11 @@ query-file links, and an update record.</p>
 <span>    <span class="st">"query_id"</span>, <span class="st">"update_id"</span>, <span class="st">"status"</span>, <span class="st">"file_total"</span>,</span>
 <span>    <span class="st">"new_count"</span>, <span class="st">"changed_count"</span>, <span class="st">"stale_count"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                             query_id</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;                                                            update_id  status</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  2: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  3: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  4: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  5: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  6: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  7: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  8: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt;  9: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
-<span><span class="co">#&gt; 10: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current</span></span>
 <span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">query_files</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"file_key"</span>, <span class="st">"status"</span>, <span class="st">"filename"</span>, <span class="st">"variable_id"</span>,</span>
 <span>    <span class="st">"data_node"</span>, <span class="st">"datetime_start"</span>, <span class="st">"datetime_end"</span></span>
-<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                             query_id</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 11: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 12: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;                                                                                                                                  file_key</span></span>
-<span><span class="co">#&gt;                                                                                                                                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;      status                                                    filename</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;                                                      &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11: current  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12: current  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;     variable_id       data_node datetime_start datetime_end</span></span>
-<span><span class="co">#&gt;          &lt;char&gt;          &lt;char&gt;         &lt;POSc&gt;       &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt;  1:         clt esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  2:         clt esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  3:         clt esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  4:         clt esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  5:         clt esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  6:        hurs esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  7:        hurs esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  8:        hurs esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt;  9:        hurs esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 10:        hurs esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 11:         psl esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 12:         psl esgf.ceda.ac.uk           &lt;NA&gt;         &lt;NA&gt;</span></span></code></pre></div>
+<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span></code></pre></div>
 <p><code>query_updates()</code> and <code>query_changes()</code> make
 update history reviewable.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
@@ -610,64 +473,13 @@ update history reviewable.</p>
 <span>    <span class="st">"update_id"</span>, <span class="st">"query_id"</span>, <span class="st">"status"</span>, <span class="st">"file_total"</span>,</span>
 <span>    <span class="st">"new_count"</span>, <span class="st">"changed_count"</span>, <span class="st">"completed_at"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                           update_id</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a</span></span>
-<span><span class="co">#&gt;                                                            query_id status</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c   done</span></span>
-<span><span class="co">#&gt;    file_total new_count changed_count        completed_at</span></span>
-<span><span class="co">#&gt;         &lt;int&gt;     &lt;int&gt;         &lt;int&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:         20        20             0 2026-06-24 18:15:20</span></span>
 <span></span>
 <span><span class="va">latest_update</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">query_updates</span><span class="op">(</span><span class="va">query_id</span>, latest <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span></span>
 <span>    <span class="va">store</span><span class="op">$</span><span class="fu">query_changes</span><span class="op">(</span>update_id <span class="op">=</span> <span class="va">latest_update</span><span class="op">$</span><span class="va">update_id</span><span class="op">)</span>,</span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"change_type"</span>, <span class="st">"file_key"</span>, <span class="st">"current_status"</span>, <span class="st">"current_version"</span><span class="op">)</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">12L</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt;     change_type</span></span>
-<span><span class="co">#&gt;          &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:         new</span></span>
-<span><span class="co">#&gt;  2:         new</span></span>
-<span><span class="co">#&gt;  3:         new</span></span>
-<span><span class="co">#&gt;  4:         new</span></span>
-<span><span class="co">#&gt;  5:         new</span></span>
-<span><span class="co">#&gt;  6:         new</span></span>
-<span><span class="co">#&gt;  7:         new</span></span>
-<span><span class="co">#&gt;  8:         new</span></span>
-<span><span class="co">#&gt;  9:         new</span></span>
-<span><span class="co">#&gt; 10:         new</span></span>
-<span><span class="co">#&gt; 11:         new</span></span>
-<span><span class="co">#&gt; 12:         new</span></span>
-<span><span class="co">#&gt;                                                                                                                                  file_key</span></span>
-<span><span class="co">#&gt;                                                                                                                                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;     current_status current_version</span></span>
-<span><span class="co">#&gt;             &lt;char&gt;          &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:        current               1</span></span>
-<span><span class="co">#&gt;  2:        current               1</span></span>
-<span><span class="co">#&gt;  3:        current               1</span></span>
-<span><span class="co">#&gt;  4:        current               1</span></span>
-<span><span class="co">#&gt;  5:        current               1</span></span>
-<span><span class="co">#&gt;  6:        current               1</span></span>
-<span><span class="co">#&gt;  7:        current               1</span></span>
-<span><span class="co">#&gt;  8:        current               1</span></span>
-<span><span class="co">#&gt;  9:        current               1</span></span>
-<span><span class="co">#&gt; 10:        current               1</span></span>
-<span><span class="co">#&gt; 11:        current               1</span></span>
-<span><span class="co">#&gt; 12:        current               1</span></span></code></pre></div>
+<span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="plan-downloads-without-downloading">Plan Downloads Without Downloading<a class="anchor" aria-label="anchor" href="#plan-downloads-without-downloading"></a>
@@ -696,115 +508,13 @@ back into <code>esg_file</code>, <code>file_catalog</code>, and
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">download_preview</span><span class="op">$</span><span class="va">summary</span></span>
-<span><span class="co">#&gt;                                                            query_id</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;                    label file_total current_count candidate_count bytes_total</span></span>
-<span><span class="co">#&gt;                   &lt;char&gt;      &lt;int&gt;         &lt;int&gt;           &lt;int&gt;       &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon         20            20              20   175082403</span></span>
-<span><span class="co">#&gt;    local_available needs_download no_httpserver cooldown_nodes</span></span>
-<span><span class="co">#&gt;              &lt;int&gt;          &lt;int&gt;         &lt;int&gt;          &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:               0             20             0              0</span></span>
-<span><span class="co">#&gt;    target_path_collision_count missing_layout_field_count required_bytes</span></span>
-<span><span class="co">#&gt;                          &lt;int&gt;                      &lt;int&gt;          &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:                           0                          0      175082403</span></span>
-<span><span class="co">#&gt;    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok</span></span>
-<span><span class="co">#&gt;                 &lt;int&gt;           &lt;num&gt;          &lt;num&gt;          &lt;num&gt;  &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt; 1:                  0    298175320064   298175320064              0    TRUE</span></span>
-<span><span class="co">#&gt;    disk_would_block disk_preflight</span></span>
-<span><span class="co">#&gt;              &lt;lgcl&gt;         &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt; 1:            FALSE           TRUE</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">download_preview</span><span class="op">$</span><span class="va">files</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"file_key"</span>, <span class="st">"filename"</span>, <span class="st">"variable_id"</span>, <span class="st">"size"</span>,</span>
 <span>    <span class="st">"local_path"</span>, <span class="st">"status"</span></span>
 <span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                                                                                                  file_key</span></span>
-<span><span class="co">#&gt;                                                                                                                                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;                                                        filename variable_id</span></span>
-<span><span class="co">#&gt;                                                          &lt;char&gt;      &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         clt</span></span>
-<span><span class="co">#&gt;  2:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         clt</span></span>
-<span><span class="co">#&gt;  3:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         clt</span></span>
-<span><span class="co">#&gt;  4:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc         clt</span></span>
-<span><span class="co">#&gt;  5:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc         clt</span></span>
-<span><span class="co">#&gt;  6: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc        hurs</span></span>
-<span><span class="co">#&gt;  7: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc        hurs</span></span>
-<span><span class="co">#&gt;  8: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs</span></span>
-<span><span class="co">#&gt;  9: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc        hurs</span></span>
-<span><span class="co">#&gt; 10: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc        hurs</span></span>
-<span><span class="co">#&gt; 11:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         psl</span></span>
-<span><span class="co">#&gt; 12:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         psl</span></span>
-<span><span class="co">#&gt;         size local_path  status</span></span>
-<span><span class="co">#&gt;        &lt;num&gt;     &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 12221286       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  2: 12227997       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  3: 12218908       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  4: 12214277       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  5:  3703067       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  6: 11108043       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  7: 11102939       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  8: 11096358       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt;  9: 11086273       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt; 10:  3371769       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt; 11:  8245782       &lt;NA&gt; current</span></span>
-<span><span class="co">#&gt; 12:  8249107       &lt;NA&gt; current</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">download_preview</span><span class="op">$</span><span class="va">candidates</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"filename"</span>, <span class="st">"service"</span>, <span class="st">"data_node"</span>, <span class="st">"size"</span>, <span class="st">"url"</span></span>
-<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                        filename    service</span></span>
-<span><span class="co">#&gt;                                                          &lt;char&gt;     &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  2:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  3:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  4:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  5:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  6: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  7: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  8: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;  9: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc HTTPServer</span></span>
-<span><span class="co">#&gt; 10: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc HTTPServer</span></span>
-<span><span class="co">#&gt; 11:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer</span></span>
-<span><span class="co">#&gt; 12:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer</span></span>
-<span><span class="co">#&gt;           data_node     size</span></span>
-<span><span class="co">#&gt;              &lt;char&gt;    &lt;num&gt;</span></span>
-<span><span class="co">#&gt;  1: esgf.ceda.ac.uk 12221286</span></span>
-<span><span class="co">#&gt;  2: esgf.ceda.ac.uk 12227997</span></span>
-<span><span class="co">#&gt;  3: esgf.ceda.ac.uk 12218908</span></span>
-<span><span class="co">#&gt;  4: esgf.ceda.ac.uk 12214277</span></span>
-<span><span class="co">#&gt;  5: esgf.ceda.ac.uk  3703067</span></span>
-<span><span class="co">#&gt;  6: esgf.ceda.ac.uk 11108043</span></span>
-<span><span class="co">#&gt;  7: esgf.ceda.ac.uk 11102939</span></span>
-<span><span class="co">#&gt;  8: esgf.ceda.ac.uk 11096358</span></span>
-<span><span class="co">#&gt;  9: esgf.ceda.ac.uk 11086273</span></span>
-<span><span class="co">#&gt; 10: esgf.ceda.ac.uk  3371769</span></span>
-<span><span class="co">#&gt; 11: esgf.ceda.ac.uk  8245782</span></span>
-<span><span class="co">#&gt; 12: esgf.ceda.ac.uk  8249107</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                                               url</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                                            &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span></code></pre></div>
+<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span></code></pre></div>
 <p>To enqueue or run downloads, use <code>download_query()</code> or
 <code>download_files()</code>. This article stops at preflight because
 CMIP NetCDF files are large.</p>
@@ -824,9 +534,9 @@ CMIP NetCDF files are large.</p>
 <h2 id="plan-extraction">Plan Extraction<a class="anchor" aria-label="anchor" href="#plan-extraction"></a>
 </h2>
 <p>Extraction plans connect query files to a site, time range,
-variables, and a grid method. Planning is metadata-only; extraction
-reads OPeNDAP or local NetCDF data and writes Parquet outputs under
-<code>extracts/</code>.</p>
+variables, and a nearest-grid rule. Planning is metadata-only;
+extraction reads OPeNDAP or local NetCDF data and writes Parquet outputs
+under <code>extracts/</code>.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">region</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">plan_region</span><span class="op">(</span></span>
 <span>    query_id <span class="op">=</span> <span class="va">query_id</span>,</span>
@@ -842,96 +552,11 @@ reads OPeNDAP or local NetCDF data and writes Parquet outputs under
 <span>    <span class="st">"plan_id"</span>, <span class="st">"query_id"</span>, <span class="st">"file_key"</span>, <span class="st">"site_id"</span>, <span class="st">"variable_id"</span>,</span>
 <span>    <span class="st">"lon"</span>, <span class="st">"lat"</span>, <span class="st">"time_start"</span>, <span class="st">"time_stop"</span>, <span class="st">"status"</span></span>
 <span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                              plan_id</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: d4b50b7d552817c501600ca65f64fcc60a548546e4ad2d828b20b1e3021741a1</span></span>
-<span><span class="co">#&gt;  2: 715b1a8cec66779da8d546715ab6e824517da364158b4b2a2c69752723200139</span></span>
-<span><span class="co">#&gt;  3: d442dc702cdbdbb9df13f618bef50a49fe8cbdb6391357d637cbbfcc4e1d02ad</span></span>
-<span><span class="co">#&gt;  4: 0a263f5d9db5417a3fe9314f1ae0dee679884eb562f1076a20b07270ddb58335</span></span>
-<span><span class="co">#&gt;  5: 40f27b3b430cec3c0d7cacb05dd1c54d1fcc6835e235a14331959a67579861d6</span></span>
-<span><span class="co">#&gt;  6: 522ddd2e6fa8cf79406dcf023abf420c723c56f4f654542a6ed82a279db6ded1</span></span>
-<span><span class="co">#&gt;  7: a34f33ffaceef15381cdcff4fd36b0e3dd6a6d4791a47da3ccec1f64c5c087bc</span></span>
-<span><span class="co">#&gt;  8: d8f84ee054ee73ba2c20a6bbcd155510eea876556d4c1a08a1324d496b72b7ab</span></span>
-<span><span class="co">#&gt;  9: da20cf96521b8dd55b458d12ceb1e23f14ad1e62bd21e7c754d534543dd31bb1</span></span>
-<span><span class="co">#&gt; 10: a225a8f9ccade673e8c185121f9ae9899a620715d918cb940481ca340b78c6ee</span></span>
-<span><span class="co">#&gt; 11: f34dfebd56e7a029ad5a526c787f8efe49e464b85f8107262ddffd301742be4f</span></span>
-<span><span class="co">#&gt; 12: ba680e4ecadb371e20ad67a8e60770e9ca89795323f44bb0ffc4bf3d438c9599</span></span>
-<span><span class="co">#&gt;                                                             query_id</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 11: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt; 12: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;                                                                                                                                  file_key</span></span>
-<span><span class="co">#&gt;                                                                                                                                    &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt;  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt;  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt;  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc</span></span>
-<span><span class="co">#&gt;  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc</span></span>
-<span><span class="co">#&gt; 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc</span></span>
-<span><span class="co">#&gt; 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc</span></span>
-<span><span class="co">#&gt; 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc</span></span>
-<span><span class="co">#&gt;     site_id variable_id    lon   lat time_start           time_stop  status</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;      &lt;char&gt;  &lt;num&gt; &lt;num&gt;     &lt;POSc&gt;              &lt;POSc&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  2:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  3:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  4:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  5:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  6:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  7:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  8:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt;  9:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt; 10:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt; 11:     SIN         psl 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
-<span><span class="co">#&gt; 12:     SIN         psl 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending</span></span>
 <span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">coverage</span><span class="op">(</span>plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"plan_id"</span>, <span class="st">"site_id"</span>, <span class="st">"variable_id"</span>, <span class="st">"status"</span>,</span>
 <span>    <span class="st">"complete"</span>, <span class="st">"output_rows"</span>, <span class="st">"output_time_count"</span></span>
-<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Key: &lt;plan_id&gt;</span></span>
-<span><span class="co">#&gt;                                                              plan_id site_id</span></span>
-<span><span class="co">#&gt;                                                               &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1: 0529c672b2743d596b4ce567f20bc7da8679879d78416f84bbfa6a1c9d833bb3     SIN</span></span>
-<span><span class="co">#&gt;  2: 0a263f5d9db5417a3fe9314f1ae0dee679884eb562f1076a20b07270ddb58335     SIN</span></span>
-<span><span class="co">#&gt;  3: 0ca43af5a197ef5976f6352dfd22e56dcaf56c426d73d32880f0041f5564c131     SIN</span></span>
-<span><span class="co">#&gt;  4: 40f27b3b430cec3c0d7cacb05dd1c54d1fcc6835e235a14331959a67579861d6     SIN</span></span>
-<span><span class="co">#&gt;  5: 522ddd2e6fa8cf79406dcf023abf420c723c56f4f654542a6ed82a279db6ded1     SIN</span></span>
-<span><span class="co">#&gt;  6: 53c9ac1d43c5aff19881432f5380a5d10dba8fb0952df8fd7f30a7d027ad0922     SIN</span></span>
-<span><span class="co">#&gt;  7: 715b1a8cec66779da8d546715ab6e824517da364158b4b2a2c69752723200139     SIN</span></span>
-<span><span class="co">#&gt;  8: a225a8f9ccade673e8c185121f9ae9899a620715d918cb940481ca340b78c6ee     SIN</span></span>
-<span><span class="co">#&gt;  9: a34f33ffaceef15381cdcff4fd36b0e3dd6a6d4791a47da3ccec1f64c5c087bc     SIN</span></span>
-<span><span class="co">#&gt; 10: ba680e4ecadb371e20ad67a8e60770e9ca89795323f44bb0ffc4bf3d438c9599     SIN</span></span>
-<span><span class="co">#&gt; 11: c5335281c01d7170c990eefa1a330328b3c771fd93589ceacb75df7da5c3f8c2     SIN</span></span>
-<span><span class="co">#&gt; 12: c7e04cbed64b8eb7273d603c4db731e2779b3bb7b7db4e80a54a76ce77914b6d     SIN</span></span>
-<span><span class="co">#&gt;     variable_id  status complete output_rows output_time_count</span></span>
-<span><span class="co">#&gt;          &lt;char&gt;  &lt;char&gt;   &lt;lgcl&gt;       &lt;int&gt;             &lt;int&gt;</span></span>
-<span><span class="co">#&gt;  1:        rlds pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  2:         clt pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  3:         psl pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  4:         clt pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  5:        hurs pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  6:         psl pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  7:         clt pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  8:        hurs pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt;  9:        hurs pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt; 10:         psl pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt; 11:        rlds pending    FALSE           0                 0</span></span>
-<span><span class="co">#&gt; 12:        rlds pending    FALSE           0                 0</span></span></code></pre></div>
+<span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">12L</span><span class="op">)</span></span></code></pre></div>
 <p>Use <code>store$extract()</code> when you want to execute the plan.
 With <code>fallback = "auto"</code>, extraction tries OPeNDAP first and
 may fall back to local or HTTP downloads when needed.</p>
@@ -944,33 +569,12 @@ dictionaries, NetCDF downloads, extracted Parquet files, morphing
 intermediates, and EPW outputs all use the same artifact table.</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">store</span><span class="op">$</span><span class="fu">validate</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                                                         artifact_id   kind</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt; &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 0ba5c9b45f6e79375ad1cf96f9b5e6409123f14c07ea6552b4a10a1082cacdf4  query</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                        expected_path</span></span>
-<span><span class="co">#&gt;                                                                                                                                                                               &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json</span></span>
-<span><span class="co">#&gt;    exists checksum_ok size_ok    status</span></span>
-<span><span class="co">#&gt;    &lt;lgcl&gt;      &lt;lgcl&gt;  &lt;lgcl&gt;    &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:   TRUE        TRUE    TRUE available</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query</span><span class="op">(</span><span class="st">"</span></span>
 <span><span class="st">    SELECT kind, role, project, relative_path, status, query_id, file_key</span></span>
 <span><span class="st">    FROM artifact</span></span>
 <span><span class="st">    ORDER BY kind, relative_path</span></span>
-<span><span class="st">"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;      kind   role project</span></span>
-<span><span class="co">#&gt;    &lt;char&gt; &lt;char&gt;  &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:  query  input   CMIP6</span></span>
-<span><span class="co">#&gt;                                                                          relative_path</span></span>
-<span><span class="co">#&gt;                                                                                 &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json</span></span>
-<span><span class="co">#&gt;       status                                                         query_id</span></span>
-<span><span class="co">#&gt;       &lt;char&gt;                                                           &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: available 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c</span></span>
-<span><span class="co">#&gt;    file_key</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:     &lt;NA&gt;</span></span></code></pre></div>
+<span><span class="st">"</span><span class="op">)</span></span></code></pre></div>
 <p>When you have an <code>artifact_id</code>, use
 <code>artifact_path()</code> to resolve the absolute path instead of
 assembling paths by hand.</p>
@@ -984,19 +588,8 @@ and dry-run cleanup before changing anything.</p>
 <code class="sourceCode R"><span><span class="va">report</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">storage_report</span><span class="op">(</span>detail <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">report</span><span class="op">$</span><span class="va">summary</span></span>
-<span><span class="co">#&gt;    download_file_count download_bytes registered_file_count registered_bytes</span></span>
-<span><span class="co">#&gt;                  &lt;int&gt;          &lt;num&gt;                 &lt;int&gt;            &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:                   0              0                     0                0</span></span>
-<span><span class="co">#&gt;    tmp_file_count tmp_bytes untracked_file_count untracked_bytes</span></span>
-<span><span class="co">#&gt;             &lt;int&gt;     &lt;num&gt;                &lt;int&gt;           &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:              0         0                    0               0</span></span>
-<span><span class="co">#&gt;    missing_record_count orphan_record_count</span></span>
-<span><span class="co">#&gt;                   &lt;int&gt;               &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:                    0                   0</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">report</span><span class="op">$</span><span class="va">downloads</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"relative_path"</span>, <span class="st">"size"</span>, <span class="st">"mtime"</span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">8L</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 3 cols): relative_path,size,mtime</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">report</span><span class="op">$</span><span class="va">registered</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source"</span>, <span class="st">"file_key"</span>, <span class="st">"relative_path"</span>, <span class="st">"size"</span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">8L</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 4 cols): source,file_key,relative_path,size</span></span>
 <span></span>
 <span><span class="va">validation</span> <span class="op">&lt;-</span> <span class="va">store</span><span class="op">$</span><span class="fu">validate_files</span><span class="op">(</span></span>
 <span>    query_id <span class="op">=</span> <span class="va">query_id</span>,</span>
@@ -1005,34 +598,38 @@ and dry-run cleanup before changing anything.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">validation</span><span class="op">$</span><span class="va">summary</span></span>
-<span><span class="co">#&gt;                                                            query_id file_count</span></span>
-<span><span class="co">#&gt;                                                              &lt;char&gt;      &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c         20</span></span>
-<span><span class="co">#&gt;    registered_file_count existing_file_count missing_file_count bad_size_count</span></span>
-<span><span class="co">#&gt;                    &lt;int&gt;               &lt;int&gt;              &lt;int&gt;          &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:                     0                   0                  0              0</span></span>
-<span><span class="co">#&gt;    bad_checksum_count artifact_mismatch_count layout_mismatch_count</span></span>
-<span><span class="co">#&gt;                 &lt;int&gt;                   &lt;int&gt;                 &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:                  0                       0                     0</span></span>
-<span><span class="co">#&gt;    untracked_file_count action_count</span></span>
-<span><span class="co">#&gt;                   &lt;int&gt;        &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:                    0            0</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">validation</span><span class="op">$</span><span class="va">actions</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"action"</span>, <span class="st">"file_key"</span>, <span class="st">"artifact_id"</span>, <span class="st">"from_path"</span>, <span class="st">"to_path"</span>, <span class="st">"reason"</span></span>
 <span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 6 cols): action,file_key,artifact_id,from_path,to_path,reason</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">repair_files</span><span class="op">(</span><span class="va">validation</span><span class="op">$</span><span class="va">actions</span>, dry_run <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 10 cols): action_id,action,file_key,artifact_id,from_path,to_path...</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">cleanup_downloads</span><span class="op">(</span></span>
 <span>    scope <span class="op">=</span> <span class="st">"tmp"</span>,</span>
 <span>    older_than <span class="op">=</span> <span class="fl">7</span> <span class="op">*</span> <span class="fl">24</span> <span class="op">*</span> <span class="fl">3600</span>,</span>
 <span>    dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Empty data.table (0 rows and 10 cols): scope,action,path,relative_path,file_key,artifact_id...</span></span></code></pre></div>
+<span><span class="op">)</span></span></code></pre></div>
 <p>Checksum validation is useful, but it must read files and can be
 expensive on a large store. Layout validation is cheaper and catches
 many broken local-path or artifact-record problems.</p>
+<div class="section level3">
+<h3 id="recreate-an-incompatible-store">Recreate an Incompatible Store<a class="anchor" aria-label="anchor" href="#recreate-an-incompatible-store"></a>
+</h3>
+<p>Store schemas are not migrated between incompatible development
+versions. If a package update rejects an older manifest, recreate the
+default store with:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/store_reset.html">store_reset</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>The previous store is moved to a timestamped sibling, so its queries,
+downloads, extracts, generated EPWs, and run history remain available
+for manual recovery. Permanent removal requires both safeguards
+explicitly:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/store_reset.html">store_reset</a></span><span class="op">(</span>backup <span class="op">=</span> <span class="cn">FALSE</span>, force <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p>Close open <code>EsgStore</code> objects and stop active jobs before
+resetting. To retain the old store in place, pass a new directory
+through the <code>store</code> argument or change
+<code>epwshiftr.dir_store</code> instead.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="store-boundaries">Store Boundaries<a class="anchor" aria-label="anchor" href="#store-boundaries"></a>
@@ -1069,7 +666,7 @@ climate summaries, morphing factors, diagnostics, and EPW writing.</li>
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer>

@@ -13,7 +13,7 @@
 <!-- clipboard.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.6/clipboard.min.js" integrity="sha256-inc5kl9MA1hkeYUt+EC3BhlIgyp/2jDIyBLS6k3UxPI=" crossorigin="anonymous"></script><!-- headroom.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/headroom.min.js" integrity="sha256-AsUX4SJE1+yuDu5+mAVzJbuYNPHj/WroHuZ8Ir/CkE0=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/jQuery.headroom.min.js" integrity="sha256-ZX/yNShbjqsohH1k95liqY9Gd8uOiE1S4vZc+9KQ1K4=" crossorigin="anonymous"></script><!-- pkgdown --><link href="../pkgdown.css" rel="stylesheet">
 <script src="../pkgdown.js"></script><meta property="og:title" content="Migrate from the Legacy Workflow">
 <meta property="og:description" content="Map init_cmip6_index(), summary_database(), extract_data(), morphing_epw(), and future_epw() workflows to the store-native API.">
-<meta property="og:image" content="/logo.svg">
+<meta property="og:image" content="https://ideas-lab-nus.github.io/epwshiftr/logo.svg">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
@@ -131,10 +131,14 @@ Jia</h4>
 <p>epwshiftr’s recommended workflow is now <a href="future-epw-workflow.html">Create Future EPW Files</a>, built
 around <code>shift_*()</code>, <code>EsgStore</code>,
 <code>Downloader</code>, and <code>EpwMorpher</code>.</p>
-<p>The older data.table-oriented workflow is available from the
+<p>The older data.table-oriented API is available from the
 <code>legacy</code> branch or epwshiftr v0.1.4. Those functions are no
-longer exported by the current package. This article maps old concepts
-to new store-native concepts.</p>
+longer exported by the current package. The current package does,
+however, retain a <code>belcher(profile = "legacy")</code> compatibility
+profile for reproducing the earlier morphing calculations and eight EPW
+headers. This article separates numerical compatibility from API and
+file-layout compatibility while mapping old concepts to store-native
+concepts.</p>
 <div class="section level2">
 <h2 id="concept-map">Concept Map<a class="anchor" aria-label="anchor" href="#concept-map"></a>
 </h2>
@@ -256,6 +260,33 @@ small stage objects between steps.</p>
 <p>Use <code><a href="../reference/shift_api.html">shift_status()</a></code>, <code><a href="../reference/shift_api.html">shift_diagnostics()</a></code>,
 <code><a href="../reference/shift_api.html">shift_coverage()</a></code>, <code><a href="../reference/shift_api.html">shift_outputs()</a></code>, and
 <code><a href="../reference/shift_api.html">shift_data()</a></code> to inspect stage state.</p>
+<div class="section level3">
+<h3 id="reproduce-legacy-numerical-output-with-the-current-api">Reproduce Legacy Numerical Output with the Current API<a class="anchor" aria-label="anchor" href="#reproduce-legacy-numerical-output-with-the-current-api"></a>
+</h3>
+<p>Use the compatibility profile when a validation study needs the
+previous 35-column hourly result and header policies but can migrate to
+durable task and store objects:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
+<span>        model <span class="op">=</span> <span class="st">"MPI-ESM1-2-LR"</span>,</span>
+<span>        scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
+<span>        member <span class="op">=</span> <span class="st">"r1i1p1f1"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span>,</span>
+<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
+<span>        profile <span class="op">=</span> <span class="st">"legacy"</span>,</span>
+<span>        reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The legacy profile disables cyclic smoothing and snow-depth morphing,
+uses the historical HURS and radiation paths, and preserves ground
+temperatures, typical/extreme periods, and design conditions. It does
+not restore removed function names, legacy object classes, or legacy
+output-file naming.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="new-lower-level-shape">New Lower-Level Shape<a class="anchor" aria-label="anchor" href="#new-lower-level-shape"></a>
@@ -263,7 +294,7 @@ small stage objects between steps.</p>
 <p>If your legacy script needed tight control over indexing, downloads,
 extraction, or morphing, split it into the lower-level engines instead
 of recreating the old global index.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">query</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/EsgQuery.html">esg_query</a></span><span class="op">(</span><span class="st">"https://esgf-data.dkrz.de"</span><span class="op">)</span><span class="op">$</span></span>
 <span>    <span class="fu">activity_id</span><span class="op">(</span><span class="st">"ScenarioMIP"</span><span class="op">)</span><span class="op">$</span></span>
 <span>    <span class="fu">experiment_id</span><span class="op">(</span><span class="st">"ssp585"</span><span class="op">)</span><span class="op">$</span></span>
@@ -309,6 +340,12 @@ layer.</p>
 <ul>
 <li>Use <code><a href="../reference/shift_api.html">shift_request()</a></code> filters that match the old
 scenario, source, variant, frequency, table, and variables.</li>
+<li>Select <code>belcher(profile = "legacy")</code> when
+numerical/header compatibility is required; the default enhanced profile
+intentionally changes those results.</li>
+<li>In new enhanced high-level workflows, prefer
+<code>shift_cmip6(table = NULL)</code> so atmospheric variables and
+optional <code>snd</code> can use their native CMIP tables.</li>
 <li>Decide whether you need full NetCDF downloads. The new default reads
 OPeNDAP first; insert <code><a href="../reference/shift_api.html">shift_download()</a></code> only when you
 intentionally want local source files.</li>
@@ -326,9 +363,11 @@ conventions.</li>
 <h2 id="when-to-keep-the-legacy-branch">When to Keep the Legacy Branch<a class="anchor" aria-label="anchor" href="#when-to-keep-the-legacy-branch"></a>
 </h2>
 <p>Keep using the legacy branch or epwshiftr <code>v0.1.4</code> only
-when a project depends on exact legacy object classes, old file naming,
-or an already validated historical workflow that should not change
-mid-study.</p>
+when a project depends on removed function signatures, exact legacy
+object classes, old file naming, or a frozen software environment that
+cannot migrate. Exact Belcher numerical and EPW-header behavior alone no
+longer requires the old branch; use <code>profile = "legacy"</code> in
+the current API.</p>
 <p>For new work, use the store-native API. It gives better diagnostics,
 durable metadata, resumable downloads, artifact tracking, and a clearer
 route from ESGF records to generated EPW files.</p>
@@ -350,7 +389,7 @@ route from ESGF records to generated EPW files.</p>
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
       </footer>
