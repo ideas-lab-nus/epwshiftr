@@ -6261,13 +6261,22 @@ shift__cmip6_partitions <- function(value) {
 # gap in the middle cannot satisfy the contract.
 shift__cmip6_input_complete <- function(catalog, identity, experiment,
                                         variable, table, grid, years) {
+    # ESGF providers may return convenience columns named `variable` and
+    # `grid`. Local aliases prevent data.table from resolving those columns
+    # instead of this helper's scalar arguments inside the row expression.
+    wanted_source_id <- identity$source_id[[1L]]
+    wanted_variant_label <- identity$variant_label[[1L]]
+    wanted_experiment <- experiment
+    wanted_variable <- variable
+    wanted_table <- table
+    wanted_grid <- grid
     files <- catalog[
-        shift__catalog_match(source_id, identity$source_id[[1L]]) &
-            shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
-            shift__catalog_match(experiment_id, experiment) &
-            shift__catalog_match(variable_id, variable) &
-            shift__catalog_match(table_id, table) &
-            shift__catalog_match(grid_label, grid)
+        shift__catalog_match(source_id, wanted_source_id) &
+            shift__catalog_match(variant_label, wanted_variant_label) &
+            shift__catalog_match(experiment_id, wanted_experiment) &
+            shift__catalog_match(variable_id, wanted_variable) &
+            shift__catalog_match(table_id, wanted_table) &
+            shift__catalog_match(grid_label, wanted_grid)
     ]
     nrow(files) > 0L && !length(setdiff(years, shift__catalog_years(files)))
 }
