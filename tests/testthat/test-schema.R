@@ -214,6 +214,48 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     expect_true(schema_validate(SCHEMA_RESULT_FILE, file_json, mode = "test", name = "file-result"))
     expect_true(schema_validate(SCHEMA_RESULT_AGGREGATION, aggregation_json, mode = "test", name = "aggregation-result"))
 
+    # Current bridge nodes may ignore `fields` and return these legitimate Solr
+    # columns, which must remain distinct from arbitrary unknown saved fields.
+    provider_json <- dataset_json
+    provider_json$response$response$docs$datetime_stop <-
+        "2100-12-31T23:59:59Z"
+    provider_json$response$response$docs$geo <- "POINT (0 0)"
+    provider_json$response$response$docs$mod_time <-
+        "2026-07-24T00:00:00Z"
+    expect_true(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        provider_json,
+        mode = "test",
+        name = "current-provider-fields"
+    ))
+    expect_true(schema_validate(
+        SCHEMA_RESPONSE,
+        provider_json$response,
+        mode = "test",
+        name = "current-provider-response-fields"
+    ))
+    provider_file_json <- file_json
+    provider_file_json$response$response$docs$datetime_stop <-
+        "2100-12-31T23:59:59Z"
+    provider_file_json$response$response$docs$geo <- "POINT (0 0)"
+    provider_file_json$response$response$docs$mod_time <-
+        "2026-07-24T00:00:00Z"
+    expect_true(schema_validate(
+        SCHEMA_RESULT_FILE,
+        provider_file_json,
+        mode = "test",
+        name = "current-provider-file-fields"
+    ))
+    provider_aggregation_json <- aggregation_json
+    provider_aggregation_json$response$response$docs <-
+        provider_file_json$response$response$docs
+    expect_true(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        provider_aggregation_json,
+        mode = "test",
+        name = "current-provider-aggregation-fields"
+    ))
+
     expect_false(schema_validate(SCHEMA_RESULT_DATASET, file_json, mode = "test", name = "file-as-dataset"))
     expect_false(schema_validate(SCHEMA_RESULT_FILE, aggregation_json, mode = "test", name = "aggregation-as-file"))
 
