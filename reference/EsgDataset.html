@@ -607,7 +607,8 @@ dims &lt;- ds$get_dimensions()
 </div>
 <div class="section">
 <h4 id="returns-12">Returns<a class="anchor" aria-label="anchor" href="#returns-12"></a></h4>
-<p>A list containing time values, units, and calendar.</p>
+<p>A list containing time values, units, calendar, canonical CF
+coordinates, and axis length.</p>
 </div>
 <div class="section">
 <h4 id="examples-10">Examples<a class="anchor" aria-label="anchor" href="#examples-10"></a></h4>
@@ -838,9 +839,10 @@ read. Only supported when <code>async = TRUE</code>.</p></dd>
 <div class="section">
 <h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
 <p>A data.table or list of data.tables with columns including
-<code>file_index</code>, <code>variable</code>, <code>time</code>, <code>lon</code>, <code>lat</code>, <code>method</code>, and
-<code>value</code>. The <code>"grid_sources"</code> attribute records contributing grid
-coordinates and weights.</p>
+<code>file_index</code>, <code>variable</code>, <code>time</code>, canonical <code>cf_*</code> calendar
+coordinates, <code>annual_phase</code>, <code>lon</code>, <code>lat</code>, <code>method</code>, and <code>value</code>.
+The <code>"grid_sources"</code> attribute records contributing grid coordinates
+and weights.</p>
 </div>
 <div class="section">
 <h4 id="examples-14">Examples<a class="anchor" aria-label="anchor" href="#examples-14"></a></h4>
