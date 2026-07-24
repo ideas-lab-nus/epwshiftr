@@ -156,6 +156,11 @@
 
 ## Bug fixes
 
+* ESGF result persistence now recognizes the current bridge-provided
+  `datetime_stop`, `geo`, and `mod_time` document fields. Nodes that ignore an
+  explicit `fields` request no longer fail while saving otherwise valid
+  Dataset or File metadata (#129, #131).
+
 * Humidity fallback now skips resolved CMIP table partitions that do not
   contain complete `huss`, `tas`, and `ps` extraction rows, avoiding false
   derivation attempts for optional partitions such as `LImon` `snd` (#126).
