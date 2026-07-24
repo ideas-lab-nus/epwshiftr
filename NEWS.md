@@ -40,6 +40,13 @@
 
 ## New features
 
+* Added calendar-neutral daily temperature targets and constrained 24-hour
+  temperature projection. Matching future and historical `tas`, `tasmin`, and
+  `tasmax` climatologies provide daily mean, minimum, maximum, and DTR changes.
+  Feasible target statistics are closed while hourly order and extrema timing
+  are preserved; missing extrema and flat template days use explicit, reported
+  fallbacks (#139).
+
 * Added calendar-neutral circular daily-climatology primitives. Odd 21-, 31-,
   and 61-day windows operate on `annual_phase` and map 360-, 365-, and 366-day
   inputs onto a common target grid without date pairing (#137).
