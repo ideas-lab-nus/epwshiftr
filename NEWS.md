@@ -46,7 +46,7 @@
   for core candidates. It requires one model/member/grid and humidity path
   across historical and all future scenarios, records per-variable year and
   access coverage, and writes checksummed CSV/JSON receipts without downloading
-  NetCDF payloads (#127).
+  NetCDF payloads (#127, #128).
 
 * Belcher morphing now defaults to the `"enhanced"` profile. It uses guarded
   combined temperature morphing with cyclic month-boundary smoothing, a
@@ -167,7 +167,7 @@
 * ESGF result persistence now recognizes the current bridge-provided
   `datetime_stop`, `geo`, and `mod_time` document fields. Nodes that ignore an
   explicit `fields` request no longer fail while saving otherwise valid
-  Dataset or File metadata (#127).
+  Dataset or File metadata (#127, #128).
 
 * Humidity fallback now skips resolved CMIP table partitions that do not
   contain complete `huss`, `tas`, and `ps` extraction rows, avoiding false
