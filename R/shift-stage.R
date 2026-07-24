@@ -1795,6 +1795,42 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
     )
 }
 
+#' Daily temperature projection method
+#'
+#' @description
+#' `daily_temperature()` creates a future-EPW method from matching future and
+#' historical daily CMIP temperature data. It requires `frequency = "day"`.
+#'
+#' Daily `tas` changes are estimated with a circular climatology on a common
+#' 365-day phase grid. When paired `tasmin` and `tasmax` are available for both
+#' periods, each baseline 24-hour profile is constrained to the requested daily
+#' mean, minimum, and maximum while retaining its hourly ordering. Otherwise,
+#' the daily mean change is applied additively and the baseline daily range is
+#' inherited.
+#'
+#' EPW fields outside dry-bulb temperature and its coupled humidity state remain
+#' unchanged. After dry-bulb temperature is projected, baseline specific
+#' humidity is retained and relative humidity and dew point are recomputed;
+#' moisture is clipped only when necessary to avoid supersaturation.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
+#' @param window_days Odd circular climatology-window width in days.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @seealso [shift_cmip6()], [shift_future_epw()]
+#' @export
+daily_temperature <- function(reference = NULL, window_days = 31L) {
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "daily_temperature",
+            options = list(window_days = window_days)
+        ),
+        reference = reference
+    )
+}
+
 #' @rdname shift_api
 #' @param model CMIP6 source/model IDs.
 #' @param scenarios CMIP6 future scenario experiment IDs.
@@ -1986,6 +2022,29 @@ historical_reference <- function(years = 1995:2014, period = "reference", ...) {
     shift_reference_historical(shift__periods_from_years(years, period = period, arg = "years"), ...)
 }
 
+# Validate a method-specific frequency contract before a task writes store state
+# or attempts remote CMIP6 discovery.
+shift__validate_method_frequency <- function(method, frequency) {
+    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
+        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}.")
+    }
+    required <- morpher__recipe_required_frequency(method@recipe)
+    if (is.null(required)) {
+        return(invisible(TRUE))
+    }
+    actual <- unique(tolower(as.character(frequency)))
+    actual <- actual[!is.na(actual) & nzchar(actual)]
+    if (!identical(actual, required)) {
+        shown <- if (length(actual)) actual else "<missing>"
+        cli::cli_abort(c(
+            "Morphing method {.val {method@name}} requires CMIP frequency {.val {required}}.",
+            "x" = "The climate request uses {.val {shown}}.",
+            "i" = "Set {.code frequency = \"{required}\"} in the climate specification."
+        ))
+    }
+    invisible(TRUE)
+}
+
 #' @rdname shift_api
 #' @param request A [shift_request()] object, commonly from
 #'   `shift_cmip6_scenario()`.
@@ -2008,6 +2067,7 @@ shift_plan <- function(request, site, periods, store, method,
     if (!S7::S7_inherits(control, ShiftControl)) {
         cli::cli_abort("`control` must be created by {.fn shift_control}.")
     }
+    shift__validate_method_frequency(method, request@meta$frequency)
     periods <- shift__periods_from_input(periods)
     store_path <- shift__store_path_value(store, create = FALSE)
     if (shift_is_epw_object(site@epw)) {

@@ -59,6 +59,7 @@ Collate:
     'cli.R'
     'cmip6-availability.R'
     'daily-climatology.R'
+    'daily-temperature-backend.R'
     'daily-temperature.R'
     'data-node.R'
     'dataset.R'
