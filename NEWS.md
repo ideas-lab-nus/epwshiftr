@@ -40,6 +40,13 @@
 
 ## New features
 
+* Added `shift_cmip6_avail()` to discover all CMIP6
+  model/member/grid identities that provide every requested Dataset variable
+  across future scenarios and optional historical data. The query accepts
+  `frequency`, `table_id`, and `variable_id` constraints, accepts known ESGF
+  node names including the ORNL/LLNL Bridge, and reports incomplete identities
+  without downloading NetCDF payloads (#127, #133).
+
 * Belcher morphing now defaults to the `"enhanced"` profile. It uses guarded
   combined temperature morphing with cyclic month-boundary smoothing, a
   case-wide specific-humidity state path when complete `huss + tas + ps` data

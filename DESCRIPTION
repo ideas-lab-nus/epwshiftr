@@ -57,6 +57,7 @@ Collate:
     'cli-shift.R'
     'cli-storage.R'
     'cli.R'
+    'cmip6-availability.R'
     'data-node.R'
     'dataset.R'
     'dict-check.R'
