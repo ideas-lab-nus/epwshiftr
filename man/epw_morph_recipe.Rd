@@ -24,8 +24,8 @@ backend steps.}
 \code{"enhanced"}; old serialized recipes are reconstructed explicitly as
 \code{"legacy"}.}
 
-\item{options}{Optional named Belcher option list, usually created by
-\code{\link[=belcher_options]{belcher_options()}}.}
+\item{options}{Optional named backend option list. Belcher options are
+usually created by \code{\link[=belcher_options]{belcher_options()}}.}
 }
 \value{
 A recipe list.

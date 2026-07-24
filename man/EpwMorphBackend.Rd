@@ -20,6 +20,8 @@ mandatory for this backend.}
 \item{\code{accepts_reference}}{Whether the backend can consume external
 reference climate data. A backend may accept a reference without
 requiring one.}
+
+\item{\code{required_frequency}}{Optional required CMIP frequency.}
 }
 \if{html}{\out{</div>}}
 }
@@ -51,6 +53,7 @@ Create an EPW morphing backend.
   rules,
   requires_reference = FALSE,
   accepts_reference = requires_reference,
+  required_frequency = NULL,
   runner
 )}\if{html}{\out{</div>}}
 }
@@ -75,6 +78,8 @@ mandatory. This can be \code{TRUE} only when \code{accepts_reference} is also
 \item{\code{accepts_reference}}{Whether external reference climate data can
 be consumed. \code{TRUE} with \code{requires_reference = FALSE} defines an
 optional-reference backend such as Belcher.}
+
+\item{\code{required_frequency}}{Optional required CMIP frequency.}
 
 \item{\code{runner}}{Function taking \verb{(context, backend)} and returning an
 \code{epw_morph_result}.}

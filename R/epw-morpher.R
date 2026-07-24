@@ -315,6 +315,8 @@ EpwMorphBackend <- R6::R6Class(
         #'   reference climate data. A backend may accept a reference without
         #'   requiring one.
         accepts_reference = FALSE,
+        #' @field required_frequency Optional required CMIP frequency.
+        required_frequency = NULL,
 
         #' @description
         #' Create an EPW morphing backend.
@@ -330,15 +332,22 @@ EpwMorphBackend <- R6::R6Class(
         #' @param accepts_reference Whether external reference climate data can
         #'   be consumed. `TRUE` with `requires_reference = FALSE` defines an
         #'   optional-reference backend such as Belcher.
+        #' @param required_frequency Optional required CMIP frequency.
         #' @param runner Function taking `(context, backend)` and returning an
         #'        `epw_morph_result`.
         initialize = function(name, label = NULL, methods = NULL, method_choices = NULL, rules,
                               requires_reference = FALSE,
-                              accepts_reference = requires_reference, runner) {
+                              accepts_reference = requires_reference,
+                              required_frequency = NULL, runner) {
             checkmate::assert_string(name, min.chars = 1L)
             checkmate::assert_string(label, null.ok = TRUE)
             checkmate::assert_flag(requires_reference)
             checkmate::assert_flag(accepts_reference)
+            checkmate::assert_string(
+                required_frequency,
+                min.chars = 1L,
+                null.ok = TRUE
+            )
             if (isTRUE(requires_reference) && !isTRUE(accepts_reference)) {
                 cli::cli_abort("A backend that requires reference climate must also accept it.")
             }
@@ -355,6 +364,11 @@ EpwMorphBackend <- R6::R6Class(
             self$label <- if (is.null(label)) self$name else label
             self$requires_reference <- requires_reference
             self$accepts_reference <- accepts_reference
+            self$required_frequency <- if (is.null(required_frequency)) {
+                NULL
+            } else {
+                tolower(required_frequency)
+            }
             private$method_defaults <- methods
             private$allowed_methods <- method_choices
             private$rule_table <- morpher__normalize_backend_rules(
@@ -465,6 +479,16 @@ morpher__default_backend_specs <- function() {
             method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
             rules = EPW_MORPH_BELCHER_RULES,
             runner = morpher__belcher_absolute_run
+        ),
+        daily_temperature = EpwMorphBackend$new(
+            name = "daily_temperature",
+            label = "Calendar-neutral constrained daily temperature projection",
+            methods = EPW_MORPH_DAILY_TEMPERATURE_METHODS,
+            method_choices = "constrained",
+            rules = EPW_MORPH_DAILY_TEMPERATURE_RULES,
+            requires_reference = TRUE,
+            required_frequency = "day",
+            runner = daily__temperature_run
         )
     )
 }
@@ -801,8 +825,8 @@ morpher__requirement_match <- function(available, alternatives) {
 #' @param profile Built-in Belcher compatibility profile. `NULL` selects
 #'   `"enhanced"`; old serialized recipes are reconstructed explicitly as
 #'   `"legacy"`.
-#' @param options Optional named Belcher option list, usually created by
-#'   [belcher_options()].
+#' @param options Optional named backend option list. Belcher options are
+#'   usually created by [belcher_options()].
 #'
 #' @return A recipe list.
 #' @export
@@ -815,6 +839,7 @@ epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
     backend_spec <- epw_morph_backend(backend)
 
     is_belcher <- backend %in% c("belcher", "belcher_absolute")
+    is_daily_temperature <- identical(backend, "daily_temperature")
     if (is_belcher) {
         if (is.null(profile)) {
             profile <- "enhanced"
@@ -829,6 +854,14 @@ epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
             methods <- base_methods
         }
         options <- morpher__belcher_resolve_options(profile, options)
+    } else if (is_daily_temperature) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Daily temperature recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- daily__temperature_backend_options(options)
     } else {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort("Custom EPW morphing backends only support {.val default} profile metadata.")
@@ -952,6 +985,50 @@ morpher__recipe_accepts_reference <- function(recipe) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     epw_morph_backend(recipe$backend)$accepts_reference
+}
+
+# Return a backend's required CMIP frequency without exposing registry internals
+# to the staged workflow.
+morpher__recipe_required_frequency <- function(recipe) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    epw_morph_backend(recipe$backend)$required_frequency
+}
+
+# Build a structural diagnostic when extracted or summarized climate data do not
+# match a backend's declared CMIP frequency.
+morpher__frequency_diagnostic <- function(
+    recipe, frequency, stage, plan_id = NA_character_,
+    summary_id = NA_character_
+) {
+    required <- morpher__recipe_required_frequency(recipe)
+    if (is.null(required)) {
+        return(morpher__empty_diagnostics())
+    }
+    actual <- unique(tolower(as.character(frequency)))
+    actual <- actual[!is.na(actual) & nzchar(actual)]
+    if (identical(actual, required)) {
+        return(morpher__empty_diagnostics())
+    }
+    shown <- if (length(actual)) paste(actual, collapse = ", ") else "<missing>"
+    morpher__diagnostic(
+        stage = stage,
+        severity = "error",
+        code = "unsupported_climate_frequency",
+        message = sprintf(
+            "Backend %s requires CMIP frequency %s; found %s.",
+            recipe$backend,
+            required,
+            shown
+        ),
+        plan_id = plan_id,
+        summary_id = summary_id,
+        action = sprintf(
+            "Extract climate data with frequency %s before morphing.",
+            required
+        )
+    )
 }
 
 morpher__recipe_method_overrides <- function(recipe) {
@@ -5537,6 +5614,17 @@ EpwMorpher <- R6::R6Class(
                 )
             }
             present_variables <- unique(coverage$variable_id)
+            diagnostics[[length(diagnostics) + 1L]] <-
+                morpher__frequency_diagnostic(
+                    private$recipe,
+                    if ("frequency" %in% names(coverage)) {
+                        coverage$frequency
+                    } else {
+                        character()
+                    },
+                    stage = "extraction",
+                    plan_id = paste(plan_id, collapse = ", ")
+                )
             missing_variables <- setdiff(self$required_variables(), present_variables)
             for (variable_id in missing_variables) {
                 guidance <- morpher__missing_variable_guidance(variable_id, present_variables)
@@ -5671,6 +5759,17 @@ EpwMorpher <- R6::R6Class(
             if (length(missing_by)) {
                 return(morpher__bind_diagnostics(diagnostics))
             }
+            diagnostics[[length(diagnostics) + 1L]] <-
+                morpher__frequency_diagnostic(
+                    private$recipe,
+                    if ("frequency" %in% names(climate)) {
+                        climate$frequency
+                    } else {
+                        character()
+                    },
+                    stage = "climate_summary",
+                    summary_id = summary_id
+                )
             present_variables <- unique(climate$variable_id)
             missing_variables <- setdiff(self$required_variables(), present_variables)
             for (variable_id in missing_variables) {
