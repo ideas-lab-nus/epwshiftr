@@ -40,10 +40,9 @@
 
 ## New features
 
-* Added calendar-neutral circular daily-climatology primitives for the upcoming
-  daily morphing backend. Odd 21-, 31-, and 61-day windows operate on
-  `annual_phase` and map 360-, 365-, and 366-day inputs onto a common target
-  grid without date pairing (#137).
+* Added calendar-neutral circular daily-climatology primitives. Odd 21-, 31-,
+  and 61-day windows operate on `annual_phase` and map 360-, 365-, and 366-day
+  inputs onto a common target grid without date pairing (#137).
 
 * Added `shift_cmip6_avail()` to discover all CMIP6
   model/member/grid identities that provide every requested Dataset variable

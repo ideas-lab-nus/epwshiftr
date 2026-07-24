@@ -1,4 +1,4 @@
-# daily morphing statistical primitives {{{
+# Daily climatology statistical primitives {{{
 
 # Build a calendar-neutral daily grid at day midpoints. Midpoints avoid making
 # phase zero belong preferentially to either side of the circular year boundary.
