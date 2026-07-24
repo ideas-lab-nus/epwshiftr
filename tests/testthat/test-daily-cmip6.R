@@ -63,6 +63,20 @@ daily_test__datasets <- function(model = "Model-A", experiment, variables,
     }), use.names = TRUE, fill = TRUE)
 }
 
+# Load the installed probe implementation so source, package-check, and
+# coverage environments exercise the same script without repository paths.
+daily_test__probe_environment <- function() {
+    script <- system.file(
+        "tools",
+        "probe-daily-cmip6-availability.R",
+        package = "epwshiftr",
+        mustWork = TRUE
+    )
+    environment <- new.env(parent = globalenv())
+    sys.source(script, envir = environment)
+    environment
+}
+
 test_that("daily profiles declare the M1 variable contracts", {
     core <- daily__requirements("core")
     enhanced <- daily__requirements("enhanced")
@@ -357,10 +371,7 @@ test_that("Dataset discovery handles empty global query results", {
 })
 
 test_that("Dataset discovery request leaves source open and keeps variable OR", {
-    script <- testthat::test_path(
-        "..", "..", "tools", "probe-daily-cmip6-availability.R")
-    environment <- new.env(parent = globalenv())
-    sys.source(script, envir = environment)
+    environment <- daily_test__probe_environment()
     variables <- c("tas", "hurs", "pr")
 
     request <- environment$daily_probe__discovery_request(
@@ -385,10 +396,7 @@ test_that("Dataset discovery request leaves source open and keeps variable OR", 
 })
 
 test_that("File verification applies years after Dataset discovery", {
-    script <- testthat::test_path(
-        "..", "..", "tools", "probe-daily-cmip6-availability.R")
-    environment <- new.env(parent = globalenv())
-    sys.source(script, envir = environment)
+    environment <- daily_test__probe_environment()
 
     request <- environment$daily_probe__request(
         model = "Model-A",
@@ -413,10 +421,7 @@ test_that("File verification applies years after Dataset discovery", {
 })
 
 test_that("daily probe CLI parsing is deterministic and offline", {
-    script <- testthat::test_path(
-        "..", "..", "tools", "probe-daily-cmip6-availability.R")
-    environment <- new.env(parent = globalenv())
-    sys.source(script, envir = environment)
+    environment <- daily_test__probe_environment()
     now <- as.POSIXct("2026-07-24 00:00:00", tz = "UTC")
 
     config <- environment$daily_probe__parse_args(c(
@@ -462,10 +467,7 @@ test_that("daily probe CLI parsing is deterministic and offline", {
 })
 
 test_that("daily probe marks the selected node without NSE ambiguity", {
-    script <- testthat::test_path(
-        "..", "..", "tools", "probe-daily-cmip6-availability.R")
-    environment <- new.env(parent = globalenv())
-    sys.source(script, envir = environment)
+    environment <- daily_test__probe_environment()
     environment$daily_probe__evaluate_node <- function(
             model, node, config, store_path, ui) {
         list(
