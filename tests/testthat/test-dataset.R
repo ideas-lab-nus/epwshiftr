@@ -407,7 +407,9 @@ test_that("EsgDataset$get_time_axis()", {
     expect_true("values" %in% names(time_info))
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
+    expect_true("coordinates" %in% names(time_info))
     expect_s3_class(time_info$values, "POSIXct")
+    expect_named(time_info$coordinates, CF_TIME_COORDINATE_COLUMNS)
 })
 # }}}
 # EsgDataset$get_spatial_grid() {{{
@@ -615,10 +617,26 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
         sources <- attr(dt, "grid_sources")
 
         expect_s3_class(dt, "data.table")
-        expect_named(dt, c("file_index", "variable", "time", "lon", "lat", "method", "value"))
+        expect_named(dt, c(
+            "file_index",
+            "variable",
+            "time",
+            CF_TIME_COORDINATE_COLUMNS,
+            "lon",
+            "lat",
+            "method",
+            "value"
+        ))
         expect_identical(unique(dt$file_index), 1L)
         expect_identical(unique(dt$variable), "tas")
         expect_identical(unique(dt$method), method)
+        expect_identical(unique(dt$cf_calendar), "proleptic_gregorian")
+        expect_identical(dt$cf_year, rep.int(2060L, 2L))
+        expect_identical(dt$cf_month, rep.int(1L, 2L))
+        expect_identical(dt$cf_day, 2:3)
+        expect_identical(dt$cf_day_of_year, 2:3)
+        expect_identical(dt$cf_year_days, rep.int(366L, 2L))
+        expect_equal(dt$annual_phase, c(1.5, 2.5) / 366)
         expect_equal(unique(dt$lon), 103.98)
         expect_equal(unique(dt$lat), 1.37)
         expect_equal(nrow(dt), 2L)
@@ -660,6 +678,43 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
     expect_error(
         ds$read_region("hurs", lon = 103.98, lat = 1.37),
         "None of the requested variable"
+    )
+})
+
+test_that("EsgDataset$read_region() selects and exposes 360-day CF boundaries", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        path,
+        2060L,
+        calendar = "360_day",
+        n_years = 2L
+    )
+    on.exit(unlink(path), add = TRUE)
+
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    dt <- ds$read_region(
+        variable = "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z")
+    )
+
+    expect_equal(nrow(dt), 2L)
+    expect_identical(dt$cf_calendar, rep.int("360_day", 2L))
+    expect_identical(dt$cf_year, c(2060L, 2061L))
+    expect_identical(dt$cf_month, c(12L, 1L))
+    expect_identical(dt$cf_day, c(30L, 1L))
+    expect_identical(dt$cf_day_of_year, c(360L, 1L))
+    expect_identical(dt$cf_year_days, rep.int(360L, 2L))
+    expect_equal(dt$annual_phase, c(359.5 / 360, 0.5 / 360))
+    # Both surrogate timestamps remain in Gregorian 2060; the CF columns are
+    # therefore the authoritative year/month identity.
+    expect_identical(
+        as.integer(format(dt$time, "%Y", tz = "UTC")),
+        rep.int(2060L, 2L)
     )
 })
 

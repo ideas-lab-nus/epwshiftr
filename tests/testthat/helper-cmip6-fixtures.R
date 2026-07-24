@@ -105,11 +105,21 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
     values
 }
 
-write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas") {
+write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
+                                              calendar = "proleptic_gregorian",
+                                              n_years = 1L) {
     spec <- local_cmip6_variable_spec(variable_id)
     lat <- c(1.0, 2.0, 41.0)
     lon <- c(103.5, 104.0, 104.5, 254.0)
-    time <- seq_len(if (local_is_leap_year(year)) 366L else 365L) - 0.5
+    calendar <- normalize_cf_calendar(calendar)
+    calendar <- cf_time_check_calendar(calendar)
+    n_years <- as.integer(n_years)
+    stopifnot(length(n_years) == 1L, !is.na(n_years), n_years >= 1L)
+    fixture_years <- as.integer(year) + seq_len(n_years) - 1L
+    # Generate the exact source-calendar length so multi-year fixtures expose
+    # calendar boundaries that surrogate POSIXct dates cannot represent.
+    n_days <- sum(cf_time__year_days(fixture_years, calendar))
+    time <- seq_len(n_days) - 0.5
     time_bnds <- rbind(time - 0.5, time + 0.5)
     lat_step <- min(diff(sort(lat)))
     lon_step <- min(diff(sort(lon)))
@@ -148,7 +158,7 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas") {
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "tracking_id", "NC_CHAR", sprintf("hdl:21.14100/local-test-%s-%s", variable_id, year))
 
     RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", sprintf("days since %s-01-01 00:00:00", year))
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "proleptic_gregorian")
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
     RNetCDF::att.put.nc(nc, "time", "axis", "NC_CHAR", "T")
     RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
     RNetCDF::att.put.nc(nc, "lat", "units", "NC_CHAR", "degrees_north")

@@ -178,6 +178,18 @@ CF_TIME_UNIT_SECONDS <- c(
     days = 86400
 )
 
+# Canonical CF coordinates remain valid after non-Gregorian timestamps are
+# represented by surrogate POSIXct values for compatibility with existing APIs.
+CF_TIME_COORDINATE_COLUMNS <- c(
+    "cf_calendar",
+    "cf_year",
+    "cf_month",
+    "cf_day",
+    "cf_day_of_year",
+    "cf_year_days",
+    "annual_phase"
+)
+
 cf_time_check_calendar <- function (calendar) {
     if (!calendar %in% CF_TIME_CALENDARS) {
         stop("Invalid calendar specification", call. = FALSE)
@@ -476,6 +488,90 @@ cf_time_fields2posix <- function (fields, origin, calendar, tz) {
     as.POSIXct(origin_time + day_offsets * 86400 + second_offsets, tz = tz)
 }
 
+# Return the number of days in each requested CF calendar year so annual phase
+# is computed from the model calendar rather than the surrogate Gregorian date.
+cf_time__year_days <- function(year, calendar) {
+    year <- as.integer(year)
+    switch(
+        calendar,
+        "360_day" = rep.int(360L, length(year)),
+        "365_day" = rep.int(365L, length(year)),
+        "noleap" = rep.int(365L, length(year)),
+        "366_day" = rep.int(366L, length(year)),
+        "all_leap" = rep.int(366L, length(year)),
+        ifelse(cf_time_is_leap_gregorian(year), 366L, 365L)
+    )
+}
+
+# Build calendar-native coordinates for persistence and daily morphing. The
+# phase includes the sub-day position, which keeps 3-hourly and 6-hourly axes
+# ordered while mapping every supported calendar onto the same [0, 1) cycle.
+cf_time__coordinates <- function(fields, calendar) {
+    year_start <- data.frame(
+        year = as.integer(fields$year),
+        month = 1L,
+        day = 1L
+    )
+    day_of_year <- as.integer(
+        cf_time_date2offset(fields, year_start, calendar) + 1L
+    )
+    year_days <- cf_time__year_days(fields$year, calendar)
+    day_fraction <- (
+        as.numeric(fields$hour) * 3600 +
+            as.numeric(fields$minute) * 60 +
+            as.numeric(fields$second)
+    ) / 86400
+
+    data.frame(
+        cf_calendar = rep.int(calendar, nrow(fields)),
+        cf_year = as.integer(fields$year),
+        cf_month = as.integer(fields$month),
+        cf_day = as.integer(fields$day),
+        cf_day_of_year = day_of_year,
+        cf_year_days = as.integer(year_days),
+        annual_phase = (day_of_year - 1 + day_fraction) / year_days,
+        stringsAsFactors = FALSE
+    )
+}
+
+# Select a user-supplied time range against calendar-native fields. Comparing
+# the CF date tuple avoids assigning the end of a 360-day year to the preceding
+# Gregorian year merely because its POSIXct value is a continuous surrogate.
+cf_time__range_indices <- function(time, coordinates, range) {
+    if (is.null(range)) {
+        return(seq_along(time))
+    }
+    if (length(time) != nrow(coordinates)) {
+        stop("CF time coordinates do not match the time axis length.", call. = FALSE)
+    }
+
+    # Encode calendar date tuples into sortable day-scale keys. Month and day
+    # bases exceed their legal maxima, so numeric ordering is lexicographic.
+    coordinate_fraction <- coordinates$annual_phase * coordinates$cf_year_days -
+        (coordinates$cf_day_of_year - 1L)
+    coordinate_key <- (
+        (as.numeric(coordinates$cf_year) * 13 + coordinates$cf_month) * 32 +
+            coordinates$cf_day
+    ) + coordinate_fraction
+
+    boundary <- as.POSIXlt(range, tz = "UTC")
+    boundary_fraction <- (
+        as.numeric(boundary$hour) * 3600 +
+            as.numeric(boundary$min) * 60 +
+            as.numeric(boundary$sec)
+    ) / 86400
+    boundary_key <- (
+        (as.numeric(boundary$year + 1900L) * 13 + boundary$mon + 1L) * 32 +
+            boundary$mday
+    ) + boundary_fraction
+
+    which(
+        !is.na(time) &
+            coordinate_key >= boundary_key[[1L]] &
+            coordinate_key <= boundary_key[[2L]]
+    )
+}
+
 parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
     calendar <- normalize_cf_calendar(calendar)
     calendar <- cf_time_check_calendar(calendar)
@@ -489,9 +585,11 @@ parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
     parsed <- cf_time_parse_definition(units, calendar)
     fields <- cf_time_offsets2fields(offsets, parsed$unit, parsed$origin, calendar)
     posix_time <- cf_time_fields2posix(fields, parsed$origin, calendar, tz)
+    coordinates <- cf_time__coordinates(fields, calendar)
 
     data.table::setattr(posix_time, "cf_units", units)
     data.table::setattr(posix_time, "cf_calendar", calendar)
+    data.table::setattr(posix_time, "cf_coordinates", coordinates)
     posix_time
 }
 
@@ -533,7 +631,8 @@ match_nc_time <- function (x, years = NULL) {
     if (is.null(years)) {
         list(datetime = list(time), which = list(seq_along(time)))
     } else {
-        y <- data.table::year(time)
+        coordinates <- attr(time, "cf_coordinates", exact = TRUE)
+        y <- coordinates$cf_year
         i <- lapply(as.integer(years), function (x) which(y == x))
 
         j <- 1L
@@ -549,7 +648,18 @@ match_nc_time <- function (x, years = NULL) {
             }
         }
 
-        list(datetime = lapply(l, function (idx) time[idx]), which = l)
+        datetime <- lapply(l, function (idx) {
+            value <- time[idx]
+            data.table::setattr(value, "cf_units", attr(time, "cf_units", exact = TRUE))
+            data.table::setattr(value, "cf_calendar", attr(time, "cf_calendar", exact = TRUE))
+            data.table::setattr(
+                value,
+                "cf_coordinates",
+                coordinates[idx, , drop = FALSE]
+            )
+            value
+        })
+        list(datetime = datetime, which = l)
     }
 }
 # }}}

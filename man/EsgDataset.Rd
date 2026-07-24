@@ -641,7 +641,8 @@ Get time axis information
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A list containing time values, units, and calendar.
+A list containing time values, units, calendar, canonical CF
+coordinates, and axis length.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
@@ -846,9 +847,10 @@ read. Only supported when \code{async = TRUE}.}
 }
 \subsection{Returns}{
 A data.table or list of data.tables with columns including
-\code{file_index}, \code{variable}, \code{time}, \code{lon}, \code{lat}, \code{method}, and
-\code{value}. The \code{"grid_sources"} attribute records contributing grid
-coordinates and weights.
+\code{file_index}, \code{variable}, \code{time}, canonical \verb{cf_*} calendar
+coordinates, \code{annual_phase}, \code{lon}, \code{lat}, \code{method}, and \code{value}.
+The \code{"grid_sources"} attribute records contributing grid coordinates
+and weights.
 }
 \subsection{Examples}{
 \if{html}{\out{<div class="r example copy">}}
