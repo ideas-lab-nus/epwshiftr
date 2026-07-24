@@ -50,7 +50,8 @@ Create an EPW morpher.
 \describe{
 \item{\code{store}}{An \link{EsgStore} object.}
 
-\item{\code{epw}}{EPW path or an \link[eplusr:Epw]{eplusr::Epw} object.}
+\item{\code{epw}}{Baseline EPW path, internal \code{EpwFile}, or an external
+object inheriting from \code{"Epw"}.}
 
 \item{\code{site_id}}{Optional site identifier.}
 
@@ -269,7 +270,7 @@ Abort if a morphing plan has blocking diagnostics.
 \subsection{Method \code{run()}}{
 Execute a morphing plan and write hourly result Parquet files.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE, reporter = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -280,6 +281,8 @@ Execute a morphing plan and write hourly result Parquet files.
 \item{\code{overwrite}}{Whether to overwrite existing result files.}
 
 \item{\code{resume}}{Whether to reuse complete existing results.}
+
+\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
 }
 \if{html}{\out{</div>}}
 }
@@ -295,7 +298,8 @@ Write future EPW files from morphing results.
   dir,
   separate = TRUE,
   overwrite = FALSE,
-  resume = TRUE
+  resume = TRUE,
+  reporter = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -304,15 +308,18 @@ Write future EPW files from morphing results.
 \describe{
 \item{\code{morph_id}}{Morphing plan ID.}
 
-\item{\code{dir}}{Output directory. Relative paths are resolved under the store
-root. If \code{NULL}, the workflow stops after writing morph result
-Parquet files and does not write EPW outputs.}
+\item{\code{dir}}{Output directory inside the store root. Relative paths are
+resolved under the store root. If \code{NULL}, the workflow stops
+after writing morph result Parquet files and does not write EPW
+outputs.}
 
 \item{\code{separate}}{Whether to create case subdirectories.}
 
 \item{\code{overwrite}}{Whether to overwrite existing EPW files.}
 
 \item{\code{resume}}{Whether to reuse complete existing EPW outputs.}
+
+\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
 }
 \if{html}{\out{</div>}}
 }
@@ -333,7 +340,8 @@ Run the store-native EPW morphing workflow.
   dir = "outputs/future-epw",
   separate = TRUE,
   overwrite = FALSE,
-  resume = TRUE
+  resume = TRUE,
+  reporter = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -361,6 +369,8 @@ change-factor backends.}
 \item{\code{overwrite}}{Whether to overwrite existing plan, result, and EPW outputs.}
 
 \item{\code{resume}}{Whether to reuse complete existing result and EPW outputs.}
+
+\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
 }
 \if{html}{\out{</div>}}
 }

@@ -372,8 +372,8 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
 epwshiftr_cli_render_shift <- function(result, command) {
     if (identical(command, "run")) {
         cli::cli_h1("Shift workflow")
-        epwshiftr_cli_render_summary(result[intersect(c("status", "query_id", "morph_id", "diagnostic_count"), names(result))], "Summary")
-        epwshiftr_cli_render_table(result$coverage, "Coverage", c("plan_count", "complete", "failed", "output_rows"))
+        epwshiftr_cli_render_summary(result[intersect(c("status", "run_id", "query_id", "morph_id", "diagnostic_count"), names(result))], "Summary")
+        epwshiftr_cli_render_table(result$cases, "Cases", c("status", "source_id", "experiment_id", "variant_label", "grid_label", "period", "missing_reason"))
         epwshiftr_cli_render_table(result$outputs, "Outputs", c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"))
         epwshiftr_cli_render_table(result$next_steps, "Next steps", c("step", "command"), show_types = FALSE)
         return(invisible(NULL))
@@ -389,10 +389,13 @@ epwshiftr_cli_render_shift <- function(result, command) {
     }
     title <- switch(
         command,
+        cancel = "Shift cancellation",
+        logs = "Shift job logs",
         status = "Shift status",
         diagnostics = "Shift diagnostics",
         outputs = "Shift outputs",
         data = "Shift data",
+        resume = "Shift resume",
         "Shift result"
     )
     epwshiftr_cli_render_default(result, title = title)
@@ -400,82 +403,12 @@ epwshiftr_cli_render_shift <- function(result, command) {
 
 
 epwshiftr_cli_render_shift_show <- function(result) {
-    cli::cli_h1("Shift workflow graph")
-    epwshiftr_cli_render_summary(result$summary, "Summary")
-    epwshiftr_cli_render_shift_tree(result)
-    epwshiftr_cli_render_table(
-        result$queries,
-        "Queries",
-        c("query_id", "label", "tracked", "file_current", "file_total", "download_incomplete", "download_retryable"),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$plans,
-        "Extraction plans",
-        c("plan_id", "complete", "status", "query_id", "site_id", "variable_id", "output_rows", "last_error"),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$morphs,
-        "Morph plans",
-        c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error"),
-        show_types = FALSE
-    )
-    if (isTRUE(result$include_outputs) || nrow(result$outputs)) {
-        epwshiftr_cli_render_table(
-            result$outputs,
-            "Outputs",
-            c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"),
-            show_types = FALSE
-        )
-    }
-    if (isTRUE(result$include_files)) {
-        epwshiftr_cli_render_table(
-            result$files,
-            "Files",
-            c("query_id", "file_key", "source_id", "experiment_id", "variant_label", "variable_id", "local_path"),
-            show_types = FALSE
-        )
-    }
-    invisible(NULL)
-}
-
-
-epwshiftr_cli_render_shift_tree <- function(result) {
-    queries <- data.table::as.data.table(result$queries)
-    plans <- data.table::as.data.table(result$plans)
-    morphs <- data.table::as.data.table(result$morphs)
-    links <- data.table::as.data.table(result$links)
-    outputs <- data.table::as.data.table(result$outputs)
-    if (!nrow(queries) && !nrow(plans) && !nrow(morphs)) {
-        return(invisible(NULL))
-    }
-    cli::cli_h2("Graph")
-    query_ids <- unique(c(
-        if (nrow(queries) && "query_id" %in% names(queries)) queries$query_id else character(),
-        if (nrow(plans) && "query_id" %in% names(plans)) plans$query_id else character()
-    ))
-    query_ids <- query_ids[!is.na(query_ids) & nzchar(query_ids)]
-    for (query_id in query_ids) {
-        cli::cli_text("query {query_id}")
-        plan_rows <- if (nrow(plans) && "query_id" %in% names(plans)) plans[plans$query_id == query_id] else plans[0]
-        for (i in seq_len(nrow(plan_rows))) {
-            plan_id <- plan_rows$plan_id[[i]]
-            plan_status <- epwshiftr_cli_string_default(plan_rows$status[[i]], "unknown")
-            cli::cli_text("  -> plan {plan_id} [{plan_status}]")
-            summary_ids <- if (nrow(links)) links$summary_id[links$plan_id == plan_id] else character()
-            morph_rows <- if (nrow(morphs) && length(summary_ids)) morphs[morphs$summary_id %in% summary_ids] else morphs[0]
-            for (j in seq_len(nrow(morph_rows))) {
-                morph_id <- morph_rows$morph_id[[j]]
-                morph_status <- epwshiftr_cli_string_default(morph_rows$status[[j]], "unknown")
-                cli::cli_text("     -> morph {morph_id} [{morph_status}]")
-                output_rows <- if (nrow(outputs)) outputs[outputs$morph_id == morph_id] else outputs[0]
-                if (nrow(output_rows)) {
-                    cli::cli_text("        -> outputs {nrow(output_rows)}")
-                }
-            }
-        }
-    }
+    cli::cli_h1("Shift workflow run")
+    epwshiftr_cli_render_summary(result$run, "Run")
+    epwshiftr_cli_render_table(result$cases, "Cases", c("status", "source_id", "experiment_id", "variant_label", "grid_label", "period", "missing_reason"), show_types = FALSE)
+    epwshiftr_cli_render_table(result$outputs, "Outputs", c("path", "export_path", "source_id", "experiment_id", "variant_label", "period"), show_types = FALSE)
+    epwshiftr_cli_render_table(result$events, "Events", c("created_at", "stage", "status", "message"), show_types = FALSE)
+    epwshiftr_cli_render_table(result$diagnostics, "Diagnostics", c("stage", "severity", "code", "message", "action"), show_types = FALSE)
     invisible(NULL)
 }
 
@@ -495,36 +428,36 @@ epwshiftr_cli_render_shift_config <- function(result) {
     if (identical(result$action, "validate")) {
         cli::cli_h1("Shift config validation")
         epwshiftr_cli_render_summary(result[intersect(c("status", "config"), names(result))], "Summary")
-        epwshiftr_cli_render_table(result$request, "Request")
-        epwshiftr_cli_render_table(result$site, "Site")
-        epwshiftr_cli_render_table(result$periods, "Periods")
+        epwshiftr_cli_render_table(result$cases, "Cases")
+        epwshiftr_cli_render_table(result$explain, "Plan")
         return(invisible(NULL))
     }
     epwshiftr_cli_render_default(result, title = "Shift config")
 }
 
 
-epwshiftr_cli_render_shift_watch <- function(result) {
+# Render CLI watch snapshots with the same live dashboard as the foreground R
+# reporter, then append terminal artifacts when they exist.
+epwshiftr_cli_render_shift_watch <- function(
+    result,
+    detail = shift_coalesce(attr(result, "shift_ui_detail"), "normal")
+) {
     cli::cli_h1("Shift activity")
-    epwshiftr_cli_render_summary(result$summary, "Summary")
-    epwshiftr_cli_render_table(
-        result$downloads,
-        "Downloads",
-        c("status", "filename", "bytes_done", "size", "speed_bps", "eta_seconds", "attempts", "last_error", "session_id", "task_id", "file_key"),
-        show_types = FALSE
+    view_events <- shift_coalesce(attr(result, "shift_ui_events"),
+        result$events)
+    view <- shift__ui_table_view(
+        row = result$run,
+        cases = result$cases,
+        events = view_events,
+        width = shift__ui_width(),
+        detail = detail
     )
-    epwshiftr_cli_render_table(
-        result$plans,
-        "Extraction plans",
-        c("plan_id", "complete", "status", "query_id", "site_id", "variable_id", "output_rows", "last_error"),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$morphs,
-        "Morph plans",
-        c("morph_id", "status", "label", "summary_id", "baseline_id", "strict", "last_error"),
-        show_types = FALSE
-    )
+    ui_state <- attr(result, "shift_ui_state")
+    if (!is.null(ui_state) && length(ui_state)) {
+        view$lines <- shift__ui_status_lines(ui_state,
+            width = shift__ui_width())
+    }
+    shift__ui_print_view(view, include_tables = TRUE)
     epwshiftr_cli_render_table(
         result$outputs,
         "Outputs",
@@ -535,12 +468,6 @@ epwshiftr_cli_render_shift_watch <- function(result) {
         result$diagnostics,
         "Diagnostics",
         c("stage", "severity", "code", "message", "query_id", "plan_id", "morph_id", "action"),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$events,
-        "Recent events",
-        c("created_at", "event", "status", "error", "job_id", "session_id", "task_id", "file_key"),
         show_types = FALSE
     )
     invisible(NULL)
@@ -672,8 +599,77 @@ epwshiftr_cli_render_summary <- function(x, title = "Summary") {
 }
 
 
-epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows = 20L, show_types = TRUE) {
+# Render the shared double-line heading used by established ESGF object
+# receipts. Keeping the rule style here prevents high-level Shift facades from
+# drifting away from EsgQuery and EsgResult output again.
+esg__print_header <- function(title) {
+    checkmate::assert_string(title, min.chars = 1L)
+    div <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
+    cli::cli_rule(title)
+    cli::cli_end(div)
+    invisible(NULL)
+}
+
+
+# Render named scalar facts as the bullet summary established by EsgResult.
+# Empty facts are removed so incomplete objects do not display fake values.
+esg__print_facts <- function(x) {
+    if (is.null(x) || !length(x)) {
+        return(invisible(NULL))
+    }
+    checkmate::assert_list(x, names = "named")
+    keep <- vapply(x, function(value) {
+        length(value) && !all(is.na(value)) && any(nzchar(as.character(value)))
+    }, logical(1L))
+    x <- x[keep]
+    if (!length(x)) {
+        return(invisible(NULL))
+    }
+    for (name in names(x)) {
+        value <- paste(as.character(x[[name]]), collapse = " \u00b7 ")
+        cli::cli_bullets(c("*" = "{name}: {value}"))
+    }
+    invisible(NULL)
+}
+
+
+# Render query parameters through QueryParam's canonical display formatter so
+# EsgQuery and ShiftRequest never diverge on names, ordering, or negation.
+esg__print_parameters <- function(params, title = "Query parameters") {
+    checkmate::assert_string(title, min.chars = 1L)
+    cli::cli_rule(title)
+    rendered <- query_param__display(params)
+    if (!length(rendered)) {
+        cli::cli_alert_info("No query constraints.")
+        return(invisible(NULL))
+    }
+    cli::cli_bullets(stats::setNames(rendered, rep("*", length(rendered))))
+    invisible(NULL)
+}
+
+
+# Compose the high-level Shift request receipt with the canonical QueryParam
+# renderer. Callers decide whether an index node is pinned or auto-selected.
+esg__print_query <- function(index_node, params, title = "ESGF query") {
+    esg__print_header(title)
+    esg__print_facts(list("Index node" = index_node))
+    esg__print_parameters(params)
+    invisible(NULL)
+}
+
+
+epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL,
+                                       max_rows = 20L, show_types = TRUE,
+                                       more_hint = "use --json for full output.",
+                                       hidden_hint = "Use --json for full output.",
+                                       total_rows = NULL) {
     x <- epwshiftr_cli_as_data_frame(x)
+    if (is.null(total_rows)) {
+        total_rows <- nrow(x)
+    } else {
+        checkmate::assert_count(total_rows)
+        total_rows <- max(as.integer(total_rows), nrow(x))
+    }
     augmented <- epwshiftr_cli_add_progress_column(x, columns)
     x <- augmented$x
     columns <- augmented$columns
@@ -713,13 +709,17 @@ epwshiftr_cli_render_table <- function(x, title = NULL, columns = NULL, max_rows
         row_style = epwshiftr_cli_table_row_styles(shown)
     )
     cli::cli_verbatim(lines)
-    extra <- nrow(x) - nrow(shown)
+    extra <- total_rows - nrow(shown)
     if (extra > 0L) {
-        cli::cli_alert_info("{extra} more rows; use --json for full output.")
+        # cli_bullets wraps long continuation hints to the active console
+        # width, whereas cli_alert_info intentionally keeps one physical line.
+        cli::cli_bullets(c("i" = "{extra} more rows; {more_hint}"))
     }
     if (length(adapted$dropped)) {
         hidden <- paste(adapted$dropped, collapse = ", ")
-        cli::cli_alert_info("Hidden columns for console width: {hidden}. Use --json for full output.")
+        message <- paste0("Hidden columns for console width: ", hidden,
+            ". ", hidden_hint)
+        cli::cli_bullets(stats::setNames(message, "i"))
     }
     invisible(NULL)
 }

@@ -1,5 +1,6 @@
 ---
 output: github_document
+always_allow_html: yes
 ---
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
@@ -8,8 +9,28 @@ output: github_document
 knitr::opts_chunk$set(
     collapse = TRUE,
     comment = "#>",
-    fig.path = "man/figures/README-",
-    out.width = "100%"
+    fig.path = "man/figures/README",
+    out.width = "100%",
+    cache.path = "cache/README-",
+    cache.extra = unname(tools::md5sum("tools/readme-asciicast.R")),
+    asciicast_theme = if (Sys.getenv("IN_PKGDOWN") == "true") {
+        "pkgdown"
+    } else {
+        "readme"
+    }
+)
+
+# Register the same SVG terminal-recording engine used by r-lib/cli's README.
+# Loading from source and replaying deterministic workflow states keep README
+# builds independent of ESGF availability and the persistent DuckDB store.
+asciicast::init_knitr_engine(
+    startup = quote({
+        pkgload::load_all(".", quiet = TRUE)
+        source("tools/readme-asciicast.R", local = .GlobalEnv)
+    }),
+    echo = TRUE,
+    echo_input = FALSE,
+    timeout = 120
 )
 ```
 
@@ -71,77 +92,182 @@ use the `legacy` branch on GitHub or install epwshiftr `v0.1.4`.
 
 ## Quick start
 
-The `shift_*` workflow keeps the complete process readable: create a site,
-request climate data, collect file records, extract the needed site data, morph,
-and write EPW outputs. Each stage returns an inspectable object and carries the
-internal store IDs forward automatically.
+For the common baseline-to-future EPW workflow, use
+`shift_future_epw()`. When matching historical CMIP6 data are available, the
+recommended Belcher method supplies them explicitly with
+`historical_reference()`. The function resolves files, extracts the site time
+series, persists a resumable run, and copies only the final EPWs to `dir`.
+
+Run the complete workflow with the scientific intent kept in one call:
 
 ```{r shift-workflow, eval = FALSE}
 library(epwshiftr)
 
-epw <- system.file(
-    "extdata/vignettes/future-weather/SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
+run <- shift_future_epw(
+    epw = system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr"
+    ),
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = tempdir()
 )
-
-site <- shift_site(
-    id = "SIN",
-    label = "singapore",
-    epw = epw
-)
-
-req <- shift_request(
-    provider = "esgf",
-    project = "CMIP6",
-    source = "EC-Earth3",
-    experiment = "ssp585",
-    variant = "r1i1p1f1",
-    variables = epw_morph_variables("recommended"),
-    frequency = "mon",
-    time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
-    filters = list(activity_id = "ScenarioMIP", table_id = "Amon")
-)
-
-epws <-
-    req |>
-    shift_collect(store = "cache/singapore-store") |>
-    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L)) |>
-    shift_morph(baseline = site, strict = TRUE) |>
-    shift_epw()
-
-shift_status(epws)
-shift_outputs(epws)
 ```
 
-This example uses monthly CMIP6 `Amon` records and the recommended EPW morphing
-variable set, including precipitation. The code is not evaluated when building
-the README because it performs live ESGF queries and remote data reads.
+`belcher()` now uses the enhanced profile by default. It automatically uses
+combined temperature morphing when matching `tasmax` and `tasmin` are complete,
+prefers a complete `huss + tas + ps` humidity state, recalculates the radiation
+chain and relevant EPW headers, and queries `snd` from `LImon` when it is
+available in both future and historical cases. Reproduce the previous numerical
+path with `belcher(profile = "legacy")`; use `belcher_options()` for individual
+policies such as transition width, snow requirements, or header preservation.
+
+The representative terminal recording below is generated from deterministic
+workflow states, so README builds do not depend on live ESGF services. A real
+run uses the same dashboard; the selected node, timings, and file counts vary.
+
+```{asciicast shift-workflow-output}
+#| echo: false
+#| cache: true
+#| asciicast_knitr_output: "svg"
+#| asciicast_at: "all"
+#| asciicast_cols: 112
+#| asciicast_rows: 14
+#| asciicast_cursor: false
+#| asciicast_speed: 1
+#| asciicast_idle_time_limit: 1
+#| asciicast_end_wait: 4
+readme_future_epw_demo()
+```
+
+Inspect the persisted run and its delivered files with the same handle:
+
+```{r shift-workflow-checks, eval = FALSE}
+shift_status(run)
+outputs <- shift_outputs(run)
+outputs[, .(
+    experiment_id,
+    period,
+    file = basename(export_path)
+)]
+shift_missing(run)
+shift_diagnostics(run)
+```
+
+Dynamic foreground runs start directly inside one atomic live panel; the plan
+context is replaced in place instead of leaving a duplicate startup transcript.
+On terminals at least 60 columns wide, a quiet border and labelled `Workflow`
+and `Activity` rules separate the run identity, active work, and recent results.
+Narrow terminals omit that decoration and preserve the same semantic rows. The
+dashboard keeps one animated current operation, a static stage rail,
+stage-specific measured progress, and two recent resolver or workflow outcomes.
+Resolver failover reports node attempts and elapsed time without presenting the
+attempt count as a workflow percentage. The live region is capped at 112
+columns, uses short normal-mode diagnostics, and reserves green, yellow, and red
+for semantic outcomes. Dynamic IDE consoles without cursor-up support receive
+one compact status row, while redirected output uses complete append-only logs.
+Downloads add aggregate bytes, speed, ETA, active-file counts, and filenames at
+higher detail levels. Successful and partial runs leave a final `Results`
+receipt with output counts, the delivery directory, and exported filenames in
+terminal scrollback. If a run fails, its final panel remains in terminal
+scrollback and changes `Activity` to `Diagnosis`: repeated mirror failures are
+collapsed into attempt counts, one cause, the closest CMIP6 identity, and the
+first missing requirement. Transient failures offer `Retry`; incomplete
+scientific coverage instead asks you to change the selection or reference,
+because resuming the unchanged request would produce the same result.
+`shift_ui()` controls only presentation and never changes the workflow
+specification or its `spec_hash`:
+
+```{r shift-ui, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = "~/Downloads/epwshiftr-test",
+    ui = shift_ui(
+        progress = "auto",
+        detail = "detail",
+        motion = "auto"
+    )
+)
+```
+
+Use `detail = "normal"` for task-level progress, `"detail"` for selection,
+reuse, fallback, and all output paths, or `"debug"` to additionally include
+full URLs and internal paths. Live renderers use full animation by default;
+`motion = "reduced"` keeps a stable active marker, while `motion = "none"`
+removes motion without disabling the dashboard or compact status row. Terminal
+capability, width, Unicode, styling, and cursor visibility follow `cli`'s public
+APIs; the multi-line framebuffer owns only atomic frame painting. `refresh`
+controls only visual frames and `heartbeat` controls durable job liveness. Use
+`progress = "log"` for screen readers, redirected output, and stable captured
+logs. `"auto"` selects log mode automatically in CI, `TERM=dumb`, and
+non-dynamic terminals.
+
+For a long run that should survive the current R session, launch a detached
+worker. Registration returns immediately; the same `ShiftRun` handle reads live
+state from the store:
+
+```{r shift-background, eval = FALSE}
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(reference = historical_reference(1995:2014)),
+    dir = "~/Downloads/epwshiftr-test",
+    background = TRUE
+)
+shift_watch(run)
+shift_logs(run) # `source` distinguishes process logs from persisted events
+# shift_cancel(run) # stop at the next safe workflow boundary
+```
+
+Use `force = TRUE` only if the worker does not respond to the normal
+cancellation request; it terminates the recorded worker process immediately.
+
+This example automatically resolves monthly CMIP6 inputs by variable: the
+atmospheric fields use `Amon`, while optional snow depth uses `LImon` when a
+matching future/reference pair exists. The committed asciicast SVG demonstrates the production
+dashboard without performing remote data reads during documentation builds.
+
+If no suitable historical CMIP6 reference is available, use `belcher()` as a
+fallback. It then uses the input EPW climatology and does not infer or query a
+historical reference.
 
 ## Inspect a workflow
 
-Use these helpers when you want to inspect a stage before continuing or diagnose
-why a stage is blocked.
+Set `dry_run = TRUE` and use `shift_explain()` when you want to inspect the
+workflow before touching ESGF services.
 
 ```{r inspect-workflow, eval = FALSE}
-shift_status(epws)
-shift_diagnostics(epws)
-shift_outputs(epws)
+plan <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test",
+    dry_run = TRUE
+)
 
-extracted <- req |>
-    shift_collect(store = "cache/singapore-store") |>
-    shift_extract(site = site, periods = epw_morph_periods(`2060s` = 2060L))
+shift_explain(plan)
+run <- shift_run(plan, ui = shift_ui("auto"))
 
-shift_coverage(extracted)
-shift_data(extracted)
-shift_ids(extracted)
-
-morphed <- shift_morph(extracted, baseline = site, strict = TRUE)
-shift_data(morphed)
-
-epws <- shift_epw(morphed)
-shift_outputs(epws)
-shift_data(epws)
+shift_status(run)
+shift_diagnostics(run)
+shift_outputs(run)
+shift_data(run)
 ```
 
 `shift_ids()` exposes underlying manifest IDs for advanced debugging, but normal
@@ -153,6 +279,31 @@ To keep a complete local copy of the source NetCDF files, insert
 single-site workflow because `shift_extract()` reads through OPeNDAP first and
 only falls back to HTTP downloads when `fallback = "auto"` and remote access is
 unavailable.
+
+Standalone stages use the same dashboard and persisted run model. No session
+object is required: the latest returned stage carries its `run_id` and
+`step_id` into the next call automatically.
+
+```{r shift-stages, eval = FALSE}
+files <- shift_collect(request, store = store)
+climate <- shift_extract(files, site, periods)
+morphed <- shift_morph(climate, baseline = epw)
+outputs <- shift_export_epw(morphed, dir = output_dir)
+
+shift_run_get(outputs)
+shift_ids(outputs)[c("run_id", "step_id")]
+```
+
+Intermediate stages leave the durable run in `waiting`, which means the work
+succeeded and can continue; the terminal receipt labels this user-facing state
+as `READY`. An empty collection is `partial` instead because it cannot feed the
+next stage. `shift_export_epw()` completes a successful run automatically. If an
+intermediate artifact is intentionally the final result, close the run with
+`shift_complete(files)` (or the latest stage object). Continuing from an older
+or already completed stage creates a child run rather than rewriting history.
+For `shift_download(..., background = TRUE)`, the run remains `running` until
+the Downloader session finishes; `shift_watch()`, `shift_cancel()`, and
+`shift_logs()` follow that underlying job through the same run ID.
 
 ## Advanced workflows
 

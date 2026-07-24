@@ -126,6 +126,7 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_equal(background$status, 0L)
     expect_equal(background$result$status, "queued")
     expect_match(background$result$job_id, "^job-")
+    expect_true(all(c("run_id", "step_id") %in% names(background$result)))
     expect_length(launched, 1L)
     expect_equal(launched[[1L]]$kind, "job")
 
@@ -157,9 +158,13 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_equal(job_logs$status, 0L)
     expect_true(all(c("job_id", "line", "message") %in% names(job_logs$result)))
 
+    shift_background <- shift_run_get(background$result$run_id, store = dir)
+    expect_equal(shift_status(shift_background), "running")
     stopped <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "stop", "--job", background$result$job_id))
     expect_equal(stopped$status, 0L)
     expect_equal(stopped$result$status, "cancelled")
+    shift_cancelled <- shift_run_get(background$result$run_id, store = dir)
+    expect_equal(shift_status(shift_cancelled), "cancelled")
 
     nodes <- epwshiftr_cli(c("--quiet", "--store", dir, "download", "nodes", "--service", "HTTPServer"))
     expect_equal(nodes$status, 0L)

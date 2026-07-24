@@ -117,6 +117,29 @@ epwshiftr_cli_parse_globals <- function(args) {
     out
 }
 
+# Translate command flags into the same UI contract used by the R shift APIs.
+# Machine-readable and quiet modes always select the null renderer so progress
+# events remain durable without contaminating stdout.
+epwshiftr_cli_task_ui <- function(parsed, json = FALSE, jsonl = FALSE,
+                                  quiet = FALSE) {
+    flags <- shift_coalesce(parsed$flags, list())
+    progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
+        isTRUE(flags[["--no-progress"]])) {
+        "none"
+    } else {
+        "auto"
+    }
+    detail <- if (isTRUE(flags[["--debug"]])) {
+        "debug"
+    } else if (isTRUE(flags[["--verbose"]])) {
+        "detail"
+    } else {
+        "normal"
+    }
+    motion <- if (isTRUE(flags[["--reduced-motion"]])) "reduced" else "auto"
+    shift_ui(progress = progress, detail = detail, motion = motion)
+}
+
 
 epwshiftr_cli_dispatch <- function(parsed) {
     if (isTRUE(parsed$help)) {
@@ -137,12 +160,26 @@ epwshiftr_cli_dispatch <- function(parsed) {
         epwshiftr_cli_usage_abort(epwshiftr_cli_usage())
     }
 
-    store <- EsgStore$new(path = parsed$store)
-    on.exit(store$close(), add = TRUE)
-
     group <- args[[1L]]
     command <- args[[2L]]
     rest <- args[-seq_len(2L)]
+
+    if (identical(group, "shift")) {
+        # Shift status/watch/cancel/log commands must be able to fall back to
+        # atomic live sidecars while a detached worker owns DuckDB's process
+        # lock. Passing the path keeps that fallback reachable; eagerly opening
+        # EsgStore here would fail before the shift command could inspect it.
+        store_path <- if (is.null(parsed$store)) {
+            store_dir(init = TRUE)
+        } else {
+            store_normalize_path(parsed$store)
+        }
+        return(epwshiftr_cli_shift(store_path, command, rest,
+            json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
+
+    store <- EsgStore$new(path = parsed$store)
+    on.exit(store$close(), add = TRUE)
 
     if (identical(group, "query")) {
         return(epwshiftr_cli_query(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
@@ -155,9 +192,6 @@ epwshiftr_cli_dispatch <- function(parsed) {
     }
     if (identical(group, "storage")) {
         return(epwshiftr_cli_storage(store, command, rest))
-    }
-    if (identical(group, "shift")) {
-        return(epwshiftr_cli_shift(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
     }
     if (identical(group, "extract")) {
         return(epwshiftr_cli_extract(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))

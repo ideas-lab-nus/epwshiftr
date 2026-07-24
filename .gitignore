@@ -15,3 +15,4 @@ outputs/
 *.duckdb.lock
 *.part
 *.epw
+!inst/extdata/examples/*.epw

@@ -52,5 +52,26 @@ jobs:
           needs: coverage
 
       - name: Test coverage
-        run: covr::codecov(quiet = FALSE)
+        run: |
+          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
+          tryCatch(
+            covr::codecov(
+              quiet = FALSE,
+              clean = FALSE,
+              install_path = install_path
+            ),
+            error = function(error) {
+              failures <- list.files(
+                install_path,
+                pattern = "\\.Rout\\.fail$",
+                recursive = TRUE,
+                full.names = TRUE
+              )
+              for (path in failures) {
+                message("Test failure log: ", path)
+                cat(readLines(path, warn = FALSE), sep = "\n")
+              }
+              stop(error)
+            }
+          )
         shell: Rscript {0}

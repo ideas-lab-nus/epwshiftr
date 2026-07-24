@@ -22,12 +22,17 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
         "--plan", paste(setup$plan_id, collapse = ","),
         "--epw", get_cache_epw(),
         "--recipe", "belcher_absolute",
+        "--profile", "legacy",
+        "--method", "tdb=shift",
+        "--option", "transition_hours=0",
         "--period", "2060s=2060",
         "--strict", "false",
         "--overwrite"
     ))
     expect_equal(run$status, 0L)
     expect_length(run$result$morph_id, 1L)
+    expect_length(run$result$run_id, 1L)
+    expect_length(run$result$step_id, 1L)
     expect_true(nrow(run$result$results) >= 1L)
 
     status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "status", "--morph", run$result$morph_id))
@@ -35,6 +40,13 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     expect_equal(status$result$status, "result_done")
 
     store <- EsgStore$new(setup$dir)
+    persisted <- shift_morph_plan(store, run$result$morph_id)
+    persisted_recipe <- epwshiftr_cli_recipe_from_json(
+        persisted$recipe_json[[1L]]
+    )
+    expect_identical(persisted_recipe$profile, "legacy")
+    expect_identical(persisted_recipe$options$transition_hours, 0L)
+    expect_identical(unname(persisted_recipe$methods[["tdb"]]), "shift")
     suppressWarnings(store$query(sprintf(
         "UPDATE epw_morph_plan SET status = 'failed', last_error = 'forced failure' WHERE morph_id = %s",
         shift_sql_string(run$result$morph_id)
@@ -64,6 +76,7 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     ))
     expect_equal(epw$status, 0L)
     expect_true(nrow(epw$result) >= 1L)
+    expect_true(all(c("run_id", "step_id") %in% names(epw$result)))
     expect_true(all(file.exists(file.path(setup$dir, epw$result$path))))
 
     outputs <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "outputs", "--morph", run$result$morph_id))

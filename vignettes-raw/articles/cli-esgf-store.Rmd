@@ -76,57 +76,65 @@ location used by the R API.
 
 Use `shift run --config` when you want one command to execute the main workflow:
 request, collect, optional download, extract, morph, and write EPW files. The
-configuration file is JSON and is validated before work starts. The default
-Belcher backend uses change factors, so the morph section points to a reference
-extraction plan that you prepared beforehand.
+configuration file is JSON and is validated before work starts. Morphing
+methods own their structural inputs. A matching historical reference is the
+recommended Belcher configuration. Omit `method.reference` only when no
+suitable reference data exist; that fallback uses the baseline EPW without
+creating an implicit historical query.
 
 ```json
 {
-  "request": {
-    "project": "CMIP6",
-    "experiment": "ssp585",
-    "variables": ["tas", "hurs", "psl", "rsds", "rlds", "sfcWind", "clt"],
-    "frequency": "day",
-    "filters": {
-      "source_id": "EC-Earth3",
-      "variant_label": "r1i1p1f1"
-    }
+  "version": 1,
+  "epw": "baseline/SIN.epw",
+  "climate": {
+    "provider": "cmip6",
+    "model": "BCC-CSM2-MR",
+    "scenarios": ["ssp126", "ssp585"],
+    "member": null,
+    "grid": null,
+    "frequency": "mon",
+    "table": null
   },
-  "site": {
-    "id": "SIN",
-    "lon": 103.98,
-    "lat": 1.37,
-    "label": "singapore",
-    "epw": "baseline/SIN.epw"
+  "periods": {
+    "2060s": "2055:2065"
   },
-  "collect": {
-    "label": "singapore-ssp585"
-  },
-  "extract": {
-    "periods": {
-      "2060s": [2055, 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063, 2064]
+  "method": {
+    "name": "belcher",
+    "profile": "enhanced",
+    "options": {
+      "transition_hours": 72,
+      "humidity_source": "auto",
+      "diffuse_model": "rbl_2010",
+      "illuminance_model": "perez_1990",
+      "snow_depth": "auto",
+      "ground_temperatures": "recalculate",
+      "typical_extreme_periods": "recalculate",
+      "design_conditions": "drop"
     },
-    "time": ["2055-01-01T00:00:00Z", "2064-12-31T23:59:59Z"],
-    "nearest": 1,
-    "fallback": "auto"
-  },
-  "morph": {
-    "recipe": "belcher",
-    "strict": true,
     "reference": {
       "mode": "historical",
       "periods": {
-        "reference": [1995]
+        "reference": "1995:2014"
       }
-    },
-    "by": ["source_id", "experiment_id", "variant_label", "period"]
+    }
   },
-  "epw": {
-    "dir": "outputs/future-epw",
-    "separate": true
+  "dir": "outputs/future-epw",
+  "control": {
+    "strict": true,
+    "allow_partial": false,
+    "download": "auto",
+    "resume": true,
+    "overwrite": false
   }
 }
 ```
+
+`climate.table = null` enables recipe-aware table selection: atmospheric
+variables normally use `Amon`, while `snd` uses `LImon`. A scalar forces every
+variable into one table; a JSON object such as `{"snd": "LImon"}` overrides
+only the named variable. The method profile and resolved options are persisted
+with the run. Older task records that lack these fields resume as `legacy`
+rather than silently adopting enhanced defaults.
 
 Preview the parsed request and site without writing store state:
 
@@ -134,24 +142,41 @@ Preview the parsed request and site without writing store state:
 epwshiftr --store ~/cmip6-store shift run --config shift-workflow.json --dry-run
 ```
 
-Run the workflow. Add `--download` when the workflow should download files
-before extraction; otherwise extraction can use OPeNDAP or previously cataloged
-local files.
+Run the workflow. `control.download` owns the access policy; `"auto"` prefers
+OPeNDAP and falls back to HTTP downloads.
 
 ```sh
-epwshiftr --store ~/cmip6-store shift run --config shift-workflow.json --download
+epwshiftr --store ~/cmip6-store shift run --config shift-workflow.json
 ```
 
-The result includes the durable IDs needed to inspect or continue the workflow:
+For a detached worker, add `--background`. Progress presentation is a CLI
+concern rather than part of the JSON scientific configuration:
 
 ```sh
-epwshiftr --store ~/cmip6-store shift status --query <query_id>
-epwshiftr --store ~/cmip6-store shift show --query <query_id> --outputs
-epwshiftr --store ~/cmip6-store shift watch --morph <morph_id>
-epwshiftr --store ~/cmip6-store shift diagnostics --plan <plan_id>
-epwshiftr --store ~/cmip6-store shift outputs --morph <morph_id>
-epwshiftr --store ~/cmip6-store shift data --morph <morph_id> --limit 5
+epwshiftr --store ~/cmip6-store shift run \
+  --config shift-workflow.json \
+  --background
 ```
+
+The result includes one durable run ID. All workflow inspection and recovery
+commands use that ID, so they do not need users to coordinate query, extraction,
+and morph identifiers manually:
+
+```sh
+epwshiftr --store ~/cmip6-store shift status --run <run_id>
+epwshiftr --store ~/cmip6-store shift show --run <run_id>
+epwshiftr --store ~/cmip6-store shift watch --run <run_id> --follow
+epwshiftr --store ~/cmip6-store shift diagnostics --run <run_id>
+epwshiftr --store ~/cmip6-store shift outputs --run <run_id>
+epwshiftr --store ~/cmip6-store shift data --run <run_id> --limit 5
+epwshiftr --store ~/cmip6-store shift logs --run <run_id> --tail 100
+epwshiftr --store ~/cmip6-store shift cancel --run <run_id>
+epwshiftr --store ~/cmip6-store shift resume --run <run_id> --background
+```
+
+`Ctrl-C` during `shift watch --follow` stops watching without cancelling the
+worker. A normal `shift cancel` stops at the next safe workflow boundary. Use
+`shift cancel --force` only when the worker does not respond to that request.
 
 You can generate and validate workflow JSON from the CLI:
 
@@ -195,6 +220,9 @@ epwshiftr --store ~/cmip6-store morph run \
   --epw baseline/SIN.epw \
   --period 2060s=2055:2064 \
   --recipe belcher \
+  --profile enhanced \
+  --option transition_hours=72 \
+  --option snow_depth=auto \
   --reference historical \
   --reference-period reference=1995 \
   --strict true
@@ -205,6 +233,10 @@ epwshiftr --store ~/cmip6-store morph retry --morph <morph_id> --run
 epwshiftr --store ~/cmip6-store morph status --morph <morph_id>
 epwshiftr --store ~/cmip6-store morph outputs --morph <morph_id>
 ```
+
+Repeat `--option KEY=VALUE` for each override. Omitted values come from the
+selected profile; `--profile legacy` restores the pre-enhancement calculation
+and EPW-header policies.
 
 # Search Without Saving
 

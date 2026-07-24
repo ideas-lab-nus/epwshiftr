@@ -1,131 +1,84 @@
 {
-  "check": {
-    "kind": "list"
-  },
+  "check": {"kind": "list"},
   "keys": {
     "type": "named",
-    "must.include": ["request", "site"],
-    "subset.of": ["request", "site", "collect", "download", "extract", "morph", "epw"]
+    "must.include": ["version", "epw", "climate", "periods", "method", "dir"],
+    "subset.of": ["version", "epw", "climate", "periods", "method", "dir", "control"]
   },
   "fields": {
-    "request": {
+    "version": {"check": {"kind": "count", "positive": true}},
+    "epw": {"check": {"kind": "string"}},
+    "climate": {
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["provider", "project", "source", "experiment", "variant", "variables", "frequency", "time", "filters", "options"]
+        "must.include": ["provider", "model", "scenarios"],
+        "subset.of": ["provider", "model", "scenarios", "member", "grid", "frequency", "table", "activity", "index_nodes", "data_node", "filters"]
       },
       "fields": {
-        "provider": {"check": {"kind": "string"}},
-        "project": {"check": {"kind": "string"}},
-        "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+        "provider": {"check": {"kind": "choice", "choices": ["cmip6"]}},
+        "model": {"check": {"kind": "character", "any.missing": false}},
+        "scenarios": {"check": {"kind": "character", "any.missing": false}},
+        "member": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
+        "grid": {"check": {"kind": "string", "null.ok": true}},
+        "frequency": {"check": {"kind": "string"}},
+        "activity": {"check": {"kind": "string"}},
+        "index_nodes": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
+        "data_node": {"check": {"kind": "string", "null.ok": true}},
+        "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}}
       }
     },
-    "site": {
+    "periods": {
       "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "must.include": ["id", "lon", "lat"],
-        "subset.of": ["id", "lon", "lat", "label", "epw", "metadata"]
-      },
-      "fields": {
-        "id": {"check": {"kind": "string"}},
-        "lon": {"check": {"kind": "number", "lower": -180, "upper": 360, "finite": true}},
-        "lat": {"check": {"kind": "number", "lower": -90, "upper": 90, "finite": true}},
-        "label": {"check": {"kind": "string"}},
-        "epw": {"check": {"kind": "string"}},
-        "metadata": {"check": {"kind": "list"}, "keys": {"type": "named"}}
-      }
+      "keys": {"type": "named"}
     },
-    "collect": {
+    "method": {
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["store", "fields", "all", "limit", "label"]
+        "must.include": ["name"],
+        "subset.of": ["name", "profile", "options", "methods", "reference"]
       },
       "fields": {
-        "store": {"check": {"kind": "string"}},
-        "all": {"check": {"kind": "flag"}},
-        "label": {"check": {"kind": "string"}}
-      }
-    },
-    "download": {
-      "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "subset.of": ["run", "background", "session_label", "replica", "service", "probe", "probe_concurrency", "probe_cache_seconds", "strategy", "mode"]
-      },
-      "fields": {
-        "run": {"check": {"kind": "flag"}},
-        "background": {"check": {"kind": "flag"}},
-        "session_label": {"check": {"kind": "string"}},
-        "replica": {"check": {"kind": "string"}},
-        "service": {"check": {"kind": "string"}},
-        "probe": {"check": {"kind": "flag"}},
-        "probe_concurrency": {"check": {"kind": "count", "positive": true}},
-        "probe_cache_seconds": {"check": {"kind": "count", "positive": true}},
-        "strategy": {"check": {"kind": "choice", "choices": ["fastest", "first", "stable"]}},
-        "mode": {"check": {"kind": "choice", "choices": ["process", "daemon"]}}
-      }
-    },
-    "extract": {
-      "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "must.include": ["periods"],
-        "subset.of": ["periods", "variables", "time", "filters", "method", "fallback"]
-      },
-      "fields": {
-        "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "method": {"check": {"kind": "choice", "choices": ["nearest", "idw", "bilinear", "mean"]}},
-        "fallback": {"check": {"kind": "choice", "choices": ["auto", "error"]}}
-      }
-    },
-    "morph": {
-      "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "subset.of": ["recipe", "strict", "by", "methods", "reference", "reference_plan", "reference_periods"]
-      },
-      "fields": {
-        "recipe": {"check": {"kind": "string"}},
-        "strict": {"check": {"kind": "flag"}},
+        "name": {"check": {"kind": "string"}},
+        "profile": {"check": {"kind": "choice", "choices": ["enhanced", "legacy"]}},
+        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "methods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
         "reference": {
-          "check": {"kind": "list"},
+          "check": {"kind": "list", "null.ok": true},
           "keys": {
             "type": "named",
             "must.include": ["mode", "periods"],
-            "subset.of": ["mode", "periods", "plan", "plan_id", "experiment", "activity", "match", "filters", "options", "collect", "extract"]
+            "subset.of": ["mode", "periods", "plan_id", "experiment", "activity", "match", "filters", "options"]
           },
           "fields": {
             "mode": {"check": {"kind": "choice", "choices": ["historical", "plan"]}},
             "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "plan": {"check": {"kind": "character", "any.missing": false}},
             "plan_id": {"check": {"kind": "character", "any.missing": false}},
             "experiment": {"check": {"kind": "string"}},
             "activity": {"check": {"kind": "string"}},
             "match": {"check": {"kind": "character", "any.missing": false}},
             "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "options": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "collect": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "extract": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+            "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
           }
-        },
-        "reference_plan": {"check": {"kind": "character", "any.missing": false}},
-        "reference_periods": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+        }
       }
     },
-    "epw": {
+    "dir": {"check": {"kind": "string"}},
+    "control": {
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "subset.of": ["dir", "separate"]
+        "subset.of": ["strict", "allow_partial", "download", "resume", "overwrite", "extraction_method", "output_layout"]
       },
       "fields": {
-        "dir": {"check": {"kind": "string"}},
-        "separate": {"check": {"kind": "flag"}}
+        "strict": {"check": {"kind": "flag"}},
+        "allow_partial": {"check": {"kind": "flag"}},
+        "download": {"check": {"kind": "choice", "choices": ["auto", "always", "never"]}},
+        "resume": {"check": {"kind": "flag"}},
+        "overwrite": {"check": {"kind": "flag"}},
+        "extraction_method": {"check": {"kind": "choice", "choices": ["nearest", "idw", "bilinear", "mean"]}},
+        "output_layout": {"check": {"kind": "choice", "choices": ["nested", "flat"]}}
       }
     }
   }

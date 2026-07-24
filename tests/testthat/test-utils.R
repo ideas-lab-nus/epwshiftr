@@ -276,19 +276,11 @@ test_that("checkmate_property() union spec supports NULL branches", {
 
 test_that("set_size_units()", {
     expect_null(set_size_units(logical()))
-    expect_warning(set_size_units(units::set_units(1:3, "Kelvin")))
-
-    suppressWarnings(
-        expect_equal(
-            set_size_units(units::set_units(1, "Kelvin")),
-            units::set_units(1, "Kelvin")
-        )
-    )
-
-    expect_equal(
-        units(set_size_units(units::set_units(1, "GByte")))$numerator,
-        "MiB"
-    )
+    sizes <- set_size_units(c(0, 1024, 1024^2, NA_real_))
+    expect_s3_class(sizes, "epwshiftr_bytes")
+    expect_equal(as.numeric(sizes), c(0, 1024, 1024^2, NA_real_))
+    expect_equal(format(sizes), c("0 Byte", "1.00 KiB", "1.00 MiB", NA_character_))
+    expect_output(print(sizes), "1.00 MiB", fixed = TRUE)
 
     expect_equal(attr(now(), "tzone"), "UTC")
 })

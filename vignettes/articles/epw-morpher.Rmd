@@ -22,9 +22,11 @@ description: >
   =====================================================================
 -->
 
-`shift_morph()` and `shift_epw()` are the recommended user-facing interface in
-[Create Future EPW Files](future-epw-workflow.html). They wrap `EpwMorpher`, the
-lower-level store-native morphing engine.
+`shift_future_epw()` is the recommended user-facing interface in
+[Create Future EPW Files](future-epw-workflow.html). Use `shift_plan()` and
+`shift_explain()` when you want to inspect the stages before running them.
+`shift_morph()` and `shift_epw()` remain the lower-level wrappers around
+`EpwMorpher`, the store-native morphing engine.
 
 Use `EpwMorpher` directly when you need to inspect monthly summaries, preview
 factor calculations, diagnose missing variables, choose morphing case grouping,
@@ -42,8 +44,7 @@ extraction plan named `region` and a historical reference extraction plan named
 store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
 
 epw <- system.file(
-    "extdata", "vignettes", "future-weather",
-    "SGP_Singapore.486980_IWEC.epw",
+    "extdata", "examples", "SGP_Singapore.486980_IWEC.epw",
     package = "epwshiftr",
     mustWork = TRUE
 )
@@ -65,8 +66,15 @@ epw_morph_variables("recommended")
 epw_morph_variables("extended")
 
 periods <- epw_morph_periods(`2060s` = 2060L)
-reference_periods <- epw_morph_periods(reference = 1995L)
-reference_spec <- shift_reference_historical(reference_periods)
+reference_spec <- historical_reference(1995:2014)
+
+request <- shift_cmip6_scenario(
+    source = "BCC-CSM2-MR",
+    scenario = c("ssp126", "ssp585"),
+    years = 2055:2065,
+    variables = "belcher",
+    frequency = "mon"
+)
 ```
 
 `"recommended"` is the strict Belcher recipe set used by the main workflow.
@@ -79,14 +87,113 @@ variables instead of choosing a named set manually:
 ```r
 belcher_recipe <- epw_morph_recipe("belcher")
 epw_morph_variables(belcher_recipe)
+epw_morph_variables(belcher_recipe, include_optional = TRUE)
 epw_morph_variables(epw_morph_backend("belcher"))
 ```
 
+The enhanced Belcher profile is the default. Required variables block strict
+execution when absent; optional `tasmax`, `tasmin`, and `snd` inputs improve the
+result when matching future/reference data exist but do not otherwise block it.
+The high-level `shift_cmip6(table = NULL)` workflow maps atmospheric variables
+to `Amon` and `snd` to `LImon` automatically.
+
 # Recipes and Backends
 
-A recipe selects a backend and carries backend-specific method overrides. The
+A recipe selects a backend and carries backend-specific profile, options, and
+method overrides. The
 default recipe is `"belcher"`, which applies the Belcher-style statistical
 downscaling steps used by the high-level workflow.
+
+```r
+enhanced_recipe <- epw_morph_recipe(
+    "belcher",
+    options = belcher_options(
+        transition_hours = 72L,
+        snow_depth = "auto",
+        design_conditions = "drop"
+    )
+)
+
+# Reproduce the numerical and header behavior from before enhanced profiles.
+legacy_recipe <- epw_morph_recipe("belcher", profile = "legacy")
+```
+
+The profiles resolve to a complete, persisted option contract:
+
+| Option | Enhanced default | Legacy default | Meaning and allowed values |
+| --- | --- | --- | --- |
+| `transition_hours` | `72` | `0` | Total cyclic smoothing window centered on each month boundary; integer `0`--`336`. Precipitation is never smoothed. |
+| `humidity_source` | `"auto"` | `"hurs"` | Whole-case humidity source: `"auto"`, `"huss"`, or `"hurs"`. |
+| `diffuse_model` | `"rbl_2010"` | `"preserve_fraction"` | Recalculate diffuse radiation with Ridley--Boland--Lauret 2010 or retain the baseline diffuse fraction. |
+| `illuminance_model` | `"perez_1990"` | `"preserve"` | Recalculate illuminance/luminance with Pérez 1990 or preserve the prior relation. |
+| `snow_depth` | `"auto"` | `"off"` | Use `snd` when both future and reference cases contain it, require it, or do not query it: `"auto"`, `"required"`, `"off"`. |
+| `ground_temperatures` | `"recalculate"` | `"preserve"` | Recalculate the EPW ground-temperature header with Kusuda--Achenbach or retain it. |
+| `typical_extreme_periods` | `"recalculate"` | `"preserve"` | Recalculate six hemisphere-aware periods or retain the baseline header. |
+| `design_conditions` | `"drop"` | `"preserve"` | Write `DESIGN CONDITIONS,0` or retain the baseline design conditions. |
+
+`belcher_options()` creates a complete option list using enhanced defaults.
+For a legacy profile, pass a partial named list when only selected legacy
+defaults should change, for example
+`belcher(profile = "legacy", options = list(snow_depth = "auto"))`.
+Use `print(belcher(), verbose = TRUE)` to inspect all resolved values that will
+be stored with a task.
+
+Enhanced `tdb = "auto"` uses combined morphing month by month when complete
+`tasmax` and `tasmin` are available and falls back to shift with a diagnostic
+otherwise. `humidity_source = "auto"` selects one source for the whole case:
+complete `huss + tas + ps` is preferred for the default shift humidity method,
+while an explicit non-shift RH override keeps the HURS path. Radiation and EPW
+header policies are likewise persisted in the recipe so resumed jobs cannot
+change behavior when package defaults evolve.
+
+## Enhanced Calculation Stages
+
+Temperature `"combined"` uses the mean daily range of the baseline EPW,
+
+\[
+R_{epw}=\operatorname{mean}_d(T_{max,d})-
+        \operatorname{mean}_d(T_{min,d}),
+\]
+
+rather than the difference between one absolute monthly maximum and minimum.
+The hourly transformation remains
+
+\[
+T'=T+\Delta\bar{T}+\alpha(T-\bar{T}_{epw}),
+\]
+
+where `alpha` is the future-minus-reference DTR change divided by
+\(R_{epw}\). A month with missing extrema, a non-finite factor, or
+\(R_{epw}\leq0.1\ ^\circ\mathrm{C}\) uses shift for that month and records the
+fallback in factors/diagnostics.
+
+The default 72-hour cyclic transition is centered on every month boundary,
+including December--January. A constrained smoothstep system retains the
+original monthly mean of each factor. Combined temperature also corrects the
+baseline-temperature/time-varying-alpha covariance; precipitation is excluded
+from smoothing so monthly totals and the baseline wet-hour mask remain intact.
+
+For state-based humidity, the baseline EPW dry bulb, RH, and station pressure
+are converted to hourly specific humidity. The monthly future-minus-reference
+`huss` change is applied before RH and dew point are recovered using morphed
+temperature and pressure. Saturation clipping enforces `0 <= RH <= 100` and
+`Tdew <= Tdb`. The `"auto"` source decision is made once for a complete case,
+so future and reference data never mix HUSS and HURS paths.
+
+The enhanced short-wave chain integrates solar geometry at one-minute steps
+over each EPW interval to recalculate extraterrestrial horizontal and direct
+normal irradiation (N10/N11). RBL 2010 partitions morphed GHI into DHI and DNI;
+the result is bounded, non-negative, and closed against the effective solar
+projection. Pérez 1990 then recalculates N16--N19 illuminance/luminance, with
+night values and EPW sentinels handled explicitly.
+
+When enabled, `snd` is converted from CMIP metres to EPW centimetres and scales
+the existing EPW snow-depth sequence by the future/reference monthly ratio.
+Zero reference snow or a baseline without snow does not synthesize new snow
+events. Final writing derives header updates from the persisted hourly Parquet
+artifact: ground temperatures use Kusuda--Achenbach, typical/extreme periods
+use complete rolling seven-day windows and hemisphere-aware seasons, and design
+conditions follow the selected drop/preserve policy.
 
 ```r
 epw_morph_backends()
@@ -128,7 +235,8 @@ morpher <- epw_morpher(
 
 The override names must be backend step names. For the built-in Belcher backend,
 the primary overrideable steps are `tdb`, `rh`, `p`, `hor_ir`, `glob_rad`, and
-`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`.
+`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`, with
+`"auto"` additionally available for `tdb`.
 Precipitation is handled by a dedicated conservative step that preserves the
 baseline wet-hour timing. Derived steps such as dew point, direct normal
 radiation, and precipitation rate are declared in the rules but are not
@@ -143,9 +251,9 @@ first registration; it is not a special execution path.
 
 The runner receives one canonical context:
 
-- `context$epw`: the baseline `eplusr::Epw` object;
+- `context$epw`: the package's internal baseline EPW representation;
 - `context$climate`: store-native climate rows with `variable_id`, `time`,
-  `period`, `year`, `lon`, `lat`, `units`, `value`, and case metadata;
+  `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
 - `context$recipe`: the selected recipe, including method overrides and rules;
 - `context$by`, `context$case`, `context$strict`, and `context$warning`.
 
@@ -350,10 +458,42 @@ The high-level `shift_epw()` function wraps this step and returns a
 `ShiftOutputs` stage. Use `shift_outputs()` and `shift_data()` when you do not
 need lower-level manifest IDs.
 
+For the enhanced profile, final EPW writing uses the persisted hourly Parquet
+artifact to recalculate ground temperatures and six hemisphere-aware
+typical/extreme periods. Stale design conditions are written as
+`DESIGN CONDITIONS,0`; set the corresponding `belcher_options()` policies to
+`"preserve"` when the original headers must remain untouched.
+
 # One-Call Workflow
 
-For scripts that need the lower-level engine but not every intermediate object,
-use `workflow()`.
+For most scripts, use the task-oriented API and supply matching historical
+CMIP6 data when they are available. epwshiftr resolves the store stages, EPW
+writing, and final export path:
+
+```r
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test"
+)
+
+shift_status(run)
+shift_outputs(run)
+shift_missing(run)
+```
+
+If no suitable historical reference data exist, `belcher()` is the fallback:
+it uses the EPW climatology directly and does not infer a historical request.
+
+When you already have lower-level extraction plan IDs and need direct control of
+the morphing engine, use `workflow()`.
 
 ```r
 result <- morpher$workflow(
@@ -374,15 +514,23 @@ names(result)
 For most users, the equivalent high-level path is still clearer:
 
 ```r
-epws <- files |>
-    shift_extract(site = site, periods = periods) |>
-    shift_morph(
-        baseline = epw,
-        reference = shift_reference_historical(reference_periods),
-        recipe = epw_morph_recipe("belcher"),
-        strict = TRUE
-    ) |>
-    shift_epw()
+plan <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6(
+        model = "BCC-CSM2-MR",
+        scenarios = c("ssp126", "ssp585")
+    ),
+    periods = list(`2060s` = 2055:2065),
+    method = belcher(
+        reference = historical_reference(1995:2014)
+    ),
+    dir = "~/Downloads/epwshiftr-test",
+    store = "~/cmip6-singapore-store",
+    dry_run = TRUE
+)
+
+shift_explain(plan)
+run <- shift_run(plan)
 ```
 
 # Relationship to Other Layers

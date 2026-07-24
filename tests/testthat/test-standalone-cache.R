@@ -776,30 +776,37 @@ test_that("cache__read_json() honors explicit cache mode", {
     )
 })
 
-test_that("cache__read_json() parses long HTTP URLs through an explicit connection", {
+test_that("cache__read_json() parses long HTTP URLs through curl", {
     cache <- local_test_cache()
     local_cache_mode("normal")
     long_url <- paste0("https://example.org/esg-search/search?", paste(rep("a", 2100), collapse = ""))
     seen <- NULL
+    states <- character()
 
     testthat::local_mocked_bindings(
-        fromJSON = function(txt, bigint_as_char = FALSE, ...) {
-            seen <<- list(
-                is_connection = inherits(txt, "connection"),
-                is_character = is.character(txt),
-                bigint_as_char = bigint_as_char
+        curl_fetch_memory = function(url, handle) {
+            seen <<- list(url = url, handle = handle)
+            list(
+                content = charToRaw('{"response":{"numFound":1,"docs":[]}}'),
+                status_code = 200L,
+                headers = raw(),
+                url = url
             )
-            close(txt)
-            list(response = list(numFound = 1L, docs = list()))
         },
-        .package = "jsonlite"
+        .package = "curl"
     )
 
     expect_gt(nchar(long_url, type = "bytes"), 2084L)
-    res <- cache__read_json(long_url, simplifyVector = FALSE)
-    expect_true(seen$is_connection)
-    expect_false(seen$is_character)
-    expect_true(seen$bigint_as_char)
+    res <- cache__read_json(
+        long_url,
+        simplifyVector = FALSE,
+        progress_callback = function(progress) {
+            states <<- c(states, progress$state)
+        }
+    )
+    expect_equal(seen$url, long_url)
+    expect_s3_class(seen$handle, "curl_handle")
+    expect_equal(states, c("started", "completed"))
     expect_equal(res$response$numFound, 1L)
     expect_equal(cache$size(), 1L)
 })

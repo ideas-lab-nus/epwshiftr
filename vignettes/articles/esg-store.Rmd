@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -112,30 +112,36 @@ store$query("
     WHERE table_schema = 'main'
     ORDER BY table_name
 ")
-#>                table_name
-#>                    <char>
-#>  1:              artifact
-#>  2:  epw_baseline_summary
-#>  3:   epw_climate_summary
-#>  4:      epw_morph_factor
-#>  5:        epw_morph_plan
-#>  6:      epw_morph_result
-#>  7:            epw_output
-#>  8:            epw_source
-#>  9:              esg_file
-#> 10:             esg_query
-#> 11:  esg_query_dependency
-#> 12:        esg_query_file
-#> 13:         esg_query_tag
-#> 14:      esg_query_update
-#> 15: esg_query_update_file
-#> 16:       extraction_plan
-#> 17:     extraction_result
-#> 18:          file_catalog
-#> 19:             query_run
-#> 20:            store_meta
-#>                table_name
-#>                    <char>
+#>                 table_name
+#>                     <char>
+#>  1:               artifact
+#>  2:   epw_baseline_summary
+#>  3:    epw_climate_summary
+#>  4:       epw_morph_factor
+#>  5:         epw_morph_plan
+#>  6:       epw_morph_result
+#>  7:             epw_output
+#>  8:             epw_source
+#>  9:               esg_file
+#> 10:              esg_query
+#> 11:   esg_query_dependency
+#> 12:         esg_query_file
+#> 13:          esg_query_tag
+#> 14:       esg_query_update
+#> 15:  esg_query_update_file
+#> 16: extraction_grid_source
+#> 17:        extraction_plan
+#> 18:      extraction_result
+#> 19:           file_catalog
+#> 20:              query_run
+#> 21:              shift_run
+#> 22:         shift_run_case
+#> 23:        shift_run_event
+#> 24:          shift_run_job
+#> 25:         shift_run_step
+#> 26:             store_meta
+#>                 table_name
+#>                     <char>
 ```
 
 The core table families are:
@@ -157,7 +163,7 @@ through `store$downloader()`, that manifest lives under `tmp/downloads/`.
 
 ``` r
 store$get_meta("schema_version")
-#> [1] "2.2.0"
+#> [1] "2.8.0"
 store$download_layout()
 #> $layout
 #> [1] "flat"
@@ -248,44 +254,44 @@ query_id <- store$add_query(
 store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #>                                                              tag_id
 #>                                                              <char>
-#> 1: 90fd88e61cc8ac71279f6c493c5187893509f1d68bd44253b43e8af7719935fa
-#> 2: d3995f016f00eabd83ed647a46f22b5478edd220b0b4f6404ad2d53e12f767b6
-#> 3: e99dfabf0021b3cbe46813a0018d9984d652141ee0daf895a6a882dc073a0644
+#> 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3
+#> 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71
+#> 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
+#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-06-24 18:15:15
-#> 2: future-weather 2026-06-24 18:15:15
-#> 3:      singapore 2026-06-24 18:15:15
+#> 1:          cmip6 2026-07-21 16:53:12
+#> 2: future-weather 2026-07-21 16:53:12
+#> 3:      singapore 2026-07-21 16:53:12
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
+#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-06-24 18:15:15
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-21 16:53:12
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
-#> 1: 90fd88e61cc8ac71279f6c493c5187893509f1d68bd44253b43e8af7719935fa
-#> 2: d3995f016f00eabd83ed647a46f22b5478edd220b0b4f6404ad2d53e12f767b6
-#> 3: e99dfabf0021b3cbe46813a0018d9984d652141ee0daf895a6a882dc073a0644
+#> 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3
+#> 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71
+#> 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
+#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-06-24 18:15:15
-#> 2: future-weather 2026-06-24 18:15:15
-#> 3:      singapore 2026-06-24 18:15:15
+#> 1:          cmip6 2026-07-21 16:53:12
+#> 2: future-weather 2026-07-21 16:53:12
+#> 3:      singapore 2026-07-21 16:53:12
 ```
 
 The query snapshot is written under `queries/`, while the query identity and
@@ -294,7 +300,7 @@ tracking state are recorded in the manifest.
 
 ``` r
 list.files(file.path(store$path, "queries"), recursive = TRUE)
-#> [1] "query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json"
+#> [1] "query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json"
 
 store$query("
     SELECT query_id, label, tracked, query_file
@@ -302,19 +308,26 @@ store$query("
 ")
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
+#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>                    label tracked
 #>                   <char>  <lgcl>
 #> 1: singapore-ssp585-amon    TRUE
 #>                                                                             query_file
 #>                                                                                 <char>
-#> 1: queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json
+#> 1: queries/query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json
 ```
 
 # Preview and Update Query Files
 
 Previewing asks ESGF for current File records and compares them with the
 store's current links. It does not modify the store.
+
+The remaining chunks are live ESGF operations. They are displayed but not
+executed when the package documentation is precompiled, so rendering remains
+deterministic and does not depend on the availability of a remote index node.
+Run them interactively against your store when following the workflow.
+
+
 
 
 ``` r
@@ -327,78 +340,10 @@ preview <- store$preview_update_queries(
 )
 
 preview$summary
-#>                                                            query_id
-#>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>                    label file_total current_count new_count stale_count
-#>                   <char>      <int>         <int>     <int>       <int>
-#> 1: singapore-ssp585-amon         20             0        20           0
-#>    changed_count deprecated_count retracted_count version_changed_count
-#>            <int>            <int>           <int>                 <int>
-#> 1:             0                0               0                    20
-#>    bytes_total bytes_new bytes_changed
-#>          <num>     <num>         <num>
-#> 1:   175082403 175082403             0
 select_cols(preview$changes, c(
     "change_type", "file_key", "previous_status", "current_status",
     "current_version", "data_node_changed", "url_changed"
 ), n = 12L)
-#>     change_type
-#>          <char>
-#>  1:         new
-#>  2:         new
-#>  3:         new
-#>  4:         new
-#>  5:         new
-#>  6:         new
-#>  7:         new
-#>  8:         new
-#>  9:         new
-#> 10:         new
-#> 11:         new
-#> 12:         new
-#>                                                                                                                                  file_key
-#>                                                                                                                                    <char>
-#>  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>     previous_status current_status current_version data_node_changed
-#>              <char>         <char>          <char>            <lgcl>
-#>  1:            <NA>        current               1              TRUE
-#>  2:            <NA>        current               1              TRUE
-#>  3:            <NA>        current               1              TRUE
-#>  4:            <NA>        current               1              TRUE
-#>  5:            <NA>        current               1              TRUE
-#>  6:            <NA>        current               1              TRUE
-#>  7:            <NA>        current               1              TRUE
-#>  8:            <NA>        current               1              TRUE
-#>  9:            <NA>        current               1              TRUE
-#> 10:            <NA>        current               1              TRUE
-#> 11:            <NA>        current               1              TRUE
-#> 12:            <NA>        current               1              TRUE
-#>     url_changed
-#>          <lgcl>
-#>  1:        TRUE
-#>  2:        TRUE
-#>  3:        TRUE
-#>  4:        TRUE
-#>  5:        TRUE
-#>  6:        TRUE
-#>  7:        TRUE
-#>  8:        TRUE
-#>  9:        TRUE
-#> 10:        TRUE
-#> 11:        TRUE
-#> 12:        TRUE
 ```
 
 Updating writes the current File identities, file metadata, query-file links,
@@ -417,91 +362,11 @@ select_cols(updated, c(
     "query_id", "update_id", "status", "file_total",
     "new_count", "changed_count", "stale_count"
 ))
-#>                                                             query_id
-#>                                                               <char>
-#>  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>                                                            update_id  status
-#>                                                               <char>  <char>
-#>  1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  2: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  3: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  4: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  5: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  6: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  7: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  8: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#>  9: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
-#> 10: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a current
 
 select_cols(store$query_files(query_id), c(
     "query_id", "file_key", "status", "filename", "variable_id",
     "data_node", "datetime_start", "datetime_end"
 ), n = 12L)
-#>                                                             query_id
-#>                                                               <char>
-#>  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 11: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 12: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>                                                                                                                                  file_key
-#>                                                                                                                                    <char>
-#>  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>      status                                                    filename
-#>      <char>                                                      <char>
-#>  1: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5: current  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: current hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11: current  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12: current  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>     variable_id       data_node datetime_start datetime_end
-#>          <char>          <char>         <POSc>       <POSc>
-#>  1:         clt esgf.ceda.ac.uk           <NA>         <NA>
-#>  2:         clt esgf.ceda.ac.uk           <NA>         <NA>
-#>  3:         clt esgf.ceda.ac.uk           <NA>         <NA>
-#>  4:         clt esgf.ceda.ac.uk           <NA>         <NA>
-#>  5:         clt esgf.ceda.ac.uk           <NA>         <NA>
-#>  6:        hurs esgf.ceda.ac.uk           <NA>         <NA>
-#>  7:        hurs esgf.ceda.ac.uk           <NA>         <NA>
-#>  8:        hurs esgf.ceda.ac.uk           <NA>         <NA>
-#>  9:        hurs esgf.ceda.ac.uk           <NA>         <NA>
-#> 10:        hurs esgf.ceda.ac.uk           <NA>         <NA>
-#> 11:         psl esgf.ceda.ac.uk           <NA>         <NA>
-#> 12:         psl esgf.ceda.ac.uk           <NA>         <NA>
 ```
 
 `query_updates()` and `query_changes()` make update history reviewable.
@@ -513,15 +378,6 @@ select_cols(updates, c(
     "update_id", "query_id", "status", "file_total",
     "new_count", "changed_count", "completed_at"
 ))
-#>                                                           update_id
-#>                                                              <char>
-#> 1: a05379ab2febbbf61b3f0c1b16cca9cae1e287bdf18225f12352804243132a6a
-#>                                                            query_id status
-#>                                                              <char> <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c   done
-#>    file_total new_count changed_count        completed_at
-#>         <int>     <int>         <int>              <POSc>
-#> 1:         20        20             0 2026-06-24 18:15:20
 
 latest_update <- store$query_updates(query_id, latest = TRUE)
 select_cols(
@@ -529,48 +385,6 @@ select_cols(
     c("change_type", "file_key", "current_status", "current_version"),
     n = 12L
 )
-#>     change_type
-#>          <char>
-#>  1:         new
-#>  2:         new
-#>  3:         new
-#>  4:         new
-#>  5:         new
-#>  6:         new
-#>  7:         new
-#>  8:         new
-#>  9:         new
-#> 10:         new
-#> 11:         new
-#> 12:         new
-#>                                                                                                                                  file_key
-#>                                                                                                                                    <char>
-#>  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>     current_status current_version
-#>             <char>          <char>
-#>  1:        current               1
-#>  2:        current               1
-#>  3:        current               1
-#>  4:        current               1
-#>  5:        current               1
-#>  6:        current               1
-#>  7:        current               1
-#>  8:        current               1
-#>  9:        current               1
-#> 10:        current               1
-#> 11:        current               1
-#> 12:        current               1
 ```
 
 # Plan Downloads Without Downloading
@@ -600,115 +414,13 @@ download_preview <- store$download_preflight(
 )
 
 download_preview$summary
-#>                                                            query_id
-#>                                                              <char>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>                    label file_total current_count candidate_count bytes_total
-#>                   <char>      <int>         <int>           <int>       <num>
-#> 1: singapore-ssp585-amon         20            20              20   175082403
-#>    local_available needs_download no_httpserver cooldown_nodes
-#>              <int>          <int>         <int>          <int>
-#> 1:               0             20             0              0
-#>    target_path_collision_count missing_layout_field_count required_bytes
-#>                          <int>                      <int>          <num>
-#> 1:                           0                          0      175082403
-#>    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok
-#>                 <int>           <num>          <num>          <num>  <lgcl>
-#> 1:                  0    298175320064   298175320064              0    TRUE
-#>    disk_would_block disk_preflight
-#>              <lgcl>         <lgcl>
-#> 1:            FALSE           TRUE
 select_cols(download_preview$files, c(
     "file_key", "filename", "variable_id", "size",
     "local_path", "status"
 ), n = 12L)
-#>                                                                                                                                  file_key
-#>                                                                                                                                    <char>
-#>  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>                                                        filename variable_id
-#>                                                          <char>      <char>
-#>  1:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         clt
-#>  2:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         clt
-#>  3:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         clt
-#>  4:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc         clt
-#>  5:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc         clt
-#>  6: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc        hurs
-#>  7: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc        hurs
-#>  8: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc        hurs
-#>  9: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc        hurs
-#> 10: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc        hurs
-#> 11:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         psl
-#> 12:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         psl
-#>         size local_path  status
-#>        <num>     <char>  <char>
-#>  1: 12221286       <NA> current
-#>  2: 12227997       <NA> current
-#>  3: 12218908       <NA> current
-#>  4: 12214277       <NA> current
-#>  5:  3703067       <NA> current
-#>  6: 11108043       <NA> current
-#>  7: 11102939       <NA> current
-#>  8: 11096358       <NA> current
-#>  9: 11086273       <NA> current
-#> 10:  3371769       <NA> current
-#> 11:  8245782       <NA> current
-#> 12:  8249107       <NA> current
 select_cols(download_preview$candidates, c(
     "filename", "service", "data_node", "size", "url"
 ), n = 12L)
-#>                                                        filename    service
-#>                                                          <char>     <char>
-#>  1:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer
-#>  2:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer
-#>  3:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer
-#>  4:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc HTTPServer
-#>  5:  clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc HTTPServer
-#>  6: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer
-#>  7: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer
-#>  8: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer
-#>  9: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc HTTPServer
-#> 10: hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc HTTPServer
-#> 11:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer
-#> 12:  psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer
-#>           data_node     size
-#>              <char>    <num>
-#>  1: esgf.ceda.ac.uk 12221286
-#>  2: esgf.ceda.ac.uk 12227997
-#>  3: esgf.ceda.ac.uk 12218908
-#>  4: esgf.ceda.ac.uk 12214277
-#>  5: esgf.ceda.ac.uk  3703067
-#>  6: esgf.ceda.ac.uk 11108043
-#>  7: esgf.ceda.ac.uk 11102939
-#>  8: esgf.ceda.ac.uk 11096358
-#>  9: esgf.ceda.ac.uk 11086273
-#> 10: esgf.ceda.ac.uk  3371769
-#> 11: esgf.ceda.ac.uk  8245782
-#> 12: esgf.ceda.ac.uk  8249107
-#>                                                                                                                                                                                               url
-#>                                                                                                                                                                                            <char>
-#>  1:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/clt/gn/v20190710/clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/hurs/gn/v20190815/hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/psl/gn/v20190710/psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
 ```
 
 To enqueue or run downloads, use `download_query()` or `download_files()`. This
@@ -730,7 +442,7 @@ store$sync_downloads(downloader)
 # Plan Extraction
 
 Extraction plans connect query files to a site, time range, variables, and a
-grid method. Planning is metadata-only; extraction reads OPeNDAP or local
+nearest-grid rule. Planning is metadata-only; extraction reads OPeNDAP or local
 NetCDF data and writes Parquet outputs under `extracts/`.
 
 
@@ -749,96 +461,11 @@ select_cols(region, c(
     "plan_id", "query_id", "file_key", "site_id", "variable_id",
     "lon", "lat", "time_start", "time_stop", "status"
 ), n = 12L)
-#>                                                              plan_id
-#>                                                               <char>
-#>  1: d4b50b7d552817c501600ca65f64fcc60a548546e4ad2d828b20b1e3021741a1
-#>  2: 715b1a8cec66779da8d546715ab6e824517da364158b4b2a2c69752723200139
-#>  3: d442dc702cdbdbb9df13f618bef50a49fe8cbdb6391357d637cbbfcc4e1d02ad
-#>  4: 0a263f5d9db5417a3fe9314f1ae0dee679884eb562f1076a20b07270ddb58335
-#>  5: 40f27b3b430cec3c0d7cacb05dd1c54d1fcc6835e235a14331959a67579861d6
-#>  6: 522ddd2e6fa8cf79406dcf023abf420c723c56f4f654542a6ed82a279db6ded1
-#>  7: a34f33ffaceef15381cdcff4fd36b0e3dd6a6d4791a47da3ccec1f64c5c087bc
-#>  8: d8f84ee054ee73ba2c20a6bbcd155510eea876556d4c1a08a1324d496b72b7ab
-#>  9: da20cf96521b8dd55b458d12ceb1e23f14ad1e62bd21e7c754d534543dd31bb1
-#> 10: a225a8f9ccade673e8c185121f9ae9899a620715d918cb940481ca340b78c6ee
-#> 11: f34dfebd56e7a029ad5a526c787f8efe49e464b85f8107262ddffd301742be4f
-#> 12: ba680e4ecadb371e20ad67a8e60770e9ca89795323f44bb0ffc4bf3d438c9599
-#>                                                             query_id
-#>                                                               <char>
-#>  1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  2: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  3: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  4: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  5: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  6: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  7: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  8: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>  9: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 10: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 11: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#> 12: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>                                                                                                                                  file_key
-#>                                                                                                                                    <char>
-#>  1:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  2:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  3:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  4:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#>  5:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.clt.gn.clt_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#>  6: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#>  7: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>  8: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>  9: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_207501-209412.nc
-#> 10: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.hurs.gn.hurs_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_209501-210012.nc
-#> 11:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 12:   master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.psl.gn.psl_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#>     site_id variable_id    lon   lat time_start           time_stop  status
-#>      <char>      <char>  <num> <num>     <POSc>              <POSc>  <char>
-#>  1:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  2:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  3:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  4:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  5:     SIN         clt 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  6:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  7:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  8:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#>  9:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#> 10:     SIN        hurs 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#> 11:     SIN         psl 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
-#> 12:     SIN         psl 103.98  1.37 2060-01-01 2060-12-31 23:59:59 pending
 
 select_cols(store$coverage(plan_id = region$plan_id), c(
     "plan_id", "site_id", "variable_id", "status",
     "complete", "output_rows", "output_time_count"
 ), n = 12L)
-#> Key: <plan_id>
-#>                                                              plan_id site_id
-#>                                                               <char>  <char>
-#>  1: 0529c672b2743d596b4ce567f20bc7da8679879d78416f84bbfa6a1c9d833bb3     SIN
-#>  2: 0a263f5d9db5417a3fe9314f1ae0dee679884eb562f1076a20b07270ddb58335     SIN
-#>  3: 0ca43af5a197ef5976f6352dfd22e56dcaf56c426d73d32880f0041f5564c131     SIN
-#>  4: 40f27b3b430cec3c0d7cacb05dd1c54d1fcc6835e235a14331959a67579861d6     SIN
-#>  5: 522ddd2e6fa8cf79406dcf023abf420c723c56f4f654542a6ed82a279db6ded1     SIN
-#>  6: 53c9ac1d43c5aff19881432f5380a5d10dba8fb0952df8fd7f30a7d027ad0922     SIN
-#>  7: 715b1a8cec66779da8d546715ab6e824517da364158b4b2a2c69752723200139     SIN
-#>  8: a225a8f9ccade673e8c185121f9ae9899a620715d918cb940481ca340b78c6ee     SIN
-#>  9: a34f33ffaceef15381cdcff4fd36b0e3dd6a6d4791a47da3ccec1f64c5c087bc     SIN
-#> 10: ba680e4ecadb371e20ad67a8e60770e9ca89795323f44bb0ffc4bf3d438c9599     SIN
-#> 11: c5335281c01d7170c990eefa1a330328b3c771fd93589ceacb75df7da5c3f8c2     SIN
-#> 12: c7e04cbed64b8eb7273d603c4db731e2779b3bb7b7db4e80a54a76ce77914b6d     SIN
-#>     variable_id  status complete output_rows output_time_count
-#>          <char>  <char>   <lgcl>       <int>             <int>
-#>  1:        rlds pending    FALSE           0                 0
-#>  2:         clt pending    FALSE           0                 0
-#>  3:         psl pending    FALSE           0                 0
-#>  4:         clt pending    FALSE           0                 0
-#>  5:        hurs pending    FALSE           0                 0
-#>  6:         psl pending    FALSE           0                 0
-#>  7:         clt pending    FALSE           0                 0
-#>  8:        hurs pending    FALSE           0                 0
-#>  9:        hurs pending    FALSE           0                 0
-#> 10:         psl pending    FALSE           0                 0
-#> 11:        rlds pending    FALSE           0                 0
-#> 12:        rlds pending    FALSE           0                 0
 ```
 
 Use `store$extract()` when you want to execute the plan. With
@@ -854,33 +481,12 @@ and EPW outputs all use the same artifact table.
 
 ``` r
 store$validate()
-#>                                                         artifact_id   kind
-#>                                                              <char> <char>
-#> 1: 0ba5c9b45f6e79375ad1cf96f9b5e6409123f14c07ea6552b4a10a1082cacdf4  query
-#>                                                                                                                                                                        expected_path
-#>                                                                                                                                                                               <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp3Hed7X/epwshiftr-esg-store/store/queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json
-#>    exists checksum_ok size_ok    status
-#>    <lgcl>      <lgcl>  <lgcl>    <char>
-#> 1:   TRUE        TRUE    TRUE available
 
 store$query("
     SELECT kind, role, project, relative_path, status, query_id, file_key
     FROM artifact
     ORDER BY kind, relative_path
 ")
-#>      kind   role project
-#>    <char> <char>  <char>
-#> 1:  query  input   CMIP6
-#>                                                                          relative_path
-#>                                                                                 <char>
-#> 1: queries/query-013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c.json
-#>       status                                                         query_id
-#>       <char>                                                           <char>
-#> 1: available 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c
-#>    file_key
-#>      <char>
-#> 1:     <NA>
 ```
 
 When you have an `artifact_id`, use `artifact_path()` to resolve the absolute
@@ -896,19 +502,8 @@ cleanup before changing anything.
 report <- store$storage_report(detail = TRUE)
 
 report$summary
-#>    download_file_count download_bytes registered_file_count registered_bytes
-#>                  <int>          <num>                 <int>            <num>
-#> 1:                   0              0                     0                0
-#>    tmp_file_count tmp_bytes untracked_file_count untracked_bytes
-#>             <int>     <num>                <int>           <num>
-#> 1:              0         0                    0               0
-#>    missing_record_count orphan_record_count
-#>                   <int>               <int>
-#> 1:                    0                   0
 select_cols(report$downloads, c("relative_path", "size", "mtime"), n = 8L)
-#> Empty data.table (0 rows and 3 cols): relative_path,size,mtime
 select_cols(report$registered, c("source", "file_key", "relative_path", "size"), n = 8L)
-#> Empty data.table (0 rows and 4 cols): source,file_key,relative_path,size
 
 validation <- store$validate_files(
     query_id = query_id,
@@ -917,36 +512,42 @@ validation <- store$validate_files(
 )
 
 validation$summary
-#>                                                            query_id file_count
-#>                                                              <char>      <int>
-#> 1: 013ab6378cd53b86049fed1e762eb4f1338bc3f641e7b3ecb26d5ac0d533c37c         20
-#>    registered_file_count existing_file_count missing_file_count bad_size_count
-#>                    <int>               <int>              <int>          <int>
-#> 1:                     0                   0                  0              0
-#>    bad_checksum_count artifact_mismatch_count layout_mismatch_count
-#>                 <int>                   <int>                 <int>
-#> 1:                  0                       0                     0
-#>    untracked_file_count action_count
-#>                   <int>        <int>
-#> 1:                    0            0
 select_cols(validation$actions, c(
     "action", "file_key", "artifact_id", "from_path", "to_path", "reason"
 ), n = 10L)
-#> Empty data.table (0 rows and 6 cols): action,file_key,artifact_id,from_path,to_path,reason
 
 store$repair_files(validation$actions, dry_run = TRUE)
-#> Empty data.table (0 rows and 10 cols): action_id,action,file_key,artifact_id,from_path,to_path...
 store$cleanup_downloads(
     scope = "tmp",
     older_than = 7 * 24 * 3600,
     dry_run = TRUE
 )
-#> Empty data.table (0 rows and 10 cols): scope,action,path,relative_path,file_key,artifact_id...
 ```
 
 Checksum validation is useful, but it must read files and can be expensive on a
 large store. Layout validation is cheaper and catches many broken local-path or
 artifact-record problems.
+
+## Recreate an Incompatible Store
+
+Store schemas are not migrated between incompatible development versions. If a
+package update rejects an older manifest, recreate the default store with:
+
+```r
+store_reset()
+```
+
+The previous store is moved to a timestamped sibling, so its queries,
+downloads, extracts, generated EPWs, and run history remain available for
+manual recovery. Permanent removal requires both safeguards explicitly:
+
+```r
+store_reset(backup = FALSE, force = TRUE)
+```
+
+Close open `EsgStore` objects and stop active jobs before resetting. To retain
+the old store in place, pass a new directory through the `store` argument or
+change `epwshiftr.dir_store` instead.
 
 # Store Boundaries
 

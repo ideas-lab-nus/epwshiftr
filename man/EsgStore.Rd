@@ -1346,7 +1346,8 @@ Execute pending or failed regional extraction plans.
   status = c("pending", "failed"),
   fallback = c("auto", "error"),
   overwrite = FALSE,
-  resume = TRUE
+  resume = TRUE,
+  reporter = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -1367,6 +1368,8 @@ Default: \code{FALSE}.}
 
 \item{\code{resume}}{Whether to reuse complete existing extraction outputs.
 Default: \code{TRUE}.}
+
+\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
 }
 \if{html}{\out{</div>}}
 }

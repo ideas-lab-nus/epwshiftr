@@ -365,8 +365,7 @@ EsgResult <- R6::R6Class(
         # }}}
 
         # size {{{
-        #' @field size A vector of [units][units::as_units()] indicating the
-        #'        file sizes.
+        #' @field size A numeric vector of file sizes in bytes.
         size = function() {
             size <- private$get_field("size")
             set_size_units(size)
@@ -557,7 +556,9 @@ EsgResult <- R6::R6Class(
         # }}}
 
         # filter_time_result {{{
-        filter_time_result = function(start, stop, method = c("drs", "opendap"), result_label = "file") {
+        filter_time_result = function(start, stop,
+                                      method = c("drs", "opendap", "auto"),
+                                      result_label = "file") {
             method <- match.arg(method)
             window <- query_result__time_window(start, stop)
             docs <- private$get_docs()
@@ -579,7 +580,8 @@ EsgResult <- R6::R6Class(
             ranges <- switch(
                 method,
                 drs = private$filter_time_ranges_drs(docs, result_label),
-                opendap = private$filter_time_ranges_opendap(result_label)
+                opendap = private$filter_time_ranges_opendap(result_label),
+                auto = private$filter_time_ranges_auto(docs, result_label)
             )
             known <- !is.na(ranges$datetime_start) & !is.na(ranges$datetime_end)
             keep <- !known | (ranges$datetime_start <= window$stop & ranges$datetime_end >= window$start)
@@ -672,14 +674,8 @@ EsgResult <- R6::R6Class(
 
         # filter_time_ranges_drs {{{
         filter_time_ranges_drs = function(docs, result_label = "file") {
-            warning(
-                sprintf(
-                    "Time filtering with method = 'drs' uses DRS filename conventions for %s records. Files whose time range cannot be parsed are kept.",
-                    result_label
-                ),
-                call. = FALSE
-            )
-
+            # Warn only about records that actually cannot be interpreted;
+            # selecting the documented DRS strategy is not itself exceptional.
             labels <- query_result__drs_labels(docs)
             ranges <- query_result__drs_ranges(labels$value)
             unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)
@@ -695,6 +691,55 @@ EsgResult <- R6::R6Class(
             }
 
             ranges
+        },
+        # }}}
+
+        # filter_time_ranges_auto {{{
+        # Prefer authoritative File metadata and fill only absent ranges from
+        # CMIP/DRS filenames. ESGF nodes commonly omit the requested datetime
+        # fields, while local fixtures and some providers already supply them.
+        filter_time_ranges_auto = function(docs, result_label = "file") {
+            n <- nrow(docs)
+            # Normalize a potentially absent provider field to one value per
+            # result row before parsing it as a UTC timestamp.
+            field <- function(name) {
+                value <- docs[[name]]
+                if (is.null(value)) {
+                    return(rep(NA_character_, n))
+                }
+                value <- as.character(value)
+                if (length(value) < n) {
+                    value <- c(value, rep(NA_character_, n - length(value)))
+                }
+                value[seq_len(n)]
+            }
+            start <- solrdate__parse(field("datetime_start"), tz = "UTC")
+            end <- solrdate__parse(field("datetime_end"), tz = "UTC")
+            missing <- is.na(start) | is.na(end)
+            if (any(missing)) {
+                labels <- query_result__drs_labels(docs)
+                drs <- query_result__drs_ranges(labels$value)
+                start[missing] <- drs$datetime_start[missing]
+                end[missing] <- drs$datetime_end[missing]
+            }
+            unknown <- is.na(start) | is.na(end)
+            if (any(unknown)) {
+                warning(
+                    sprintf(
+                        paste(
+                            "Could not determine a metadata or DRS time range",
+                            "for %d %s record(s); keeping those records."
+                        ),
+                        sum(unknown), result_label
+                    ),
+                    call. = FALSE
+                )
+            }
+            data.frame(
+                datetime_start = start,
+                datetime_end = end,
+                check.names = FALSE
+            )
         },
         # }}}
 
@@ -888,6 +933,11 @@ EsgResult <- R6::R6Class(
         get_output_field = function(field, formatted = FALSE) {
             docs <- private$get_docs()
             value <- docs[[field]]
+            if (isTRUE(formatted) && identical(field, "size")) {
+                # Keep the default table numeric, but make the explicitly
+                # formatted table human-readable without a units dependency.
+                return(format_size_units(self$size))
+            }
             if (isTRUE(formatted) || is.null(value)) {
                 return(self[[field]])
             }
@@ -1018,7 +1068,7 @@ EsgResult <- R6::R6Class(
             if (type == "Aggregation") {
                 cli::cli_bullets(c("*" = "Total size: <{.emph Unknown}> [Byte]"))
             } else {
-                cli::cli_bullets(c("*" = "Total size: {format(round(set_size_units(sum(self$size)), 2L))}"))
+                cli::cli_bullets(c("*" = "Total size: {format_size_units(sum(self$size))}"))
             }
             if (!length(fields)) {
                 cli::cli_bullets(c("*" = "Fields: 0"))
@@ -1047,8 +1097,11 @@ EsgResult <- R6::R6Class(
 
             if (self$count() == 0L) {
                 cli::cli_bullets(c(" " = "{.strong <Empty>}"))
+                result_type <- tolower(type)
+                # Include the result type so cli does not coalesce identical
+                # empty-result notes from consecutive result objects.
                 cli::cli_bullets(c(
-                    " " = "{.emph NOTE: No matched data found. Please update query parameters and try again.}"
+                    " " = "{.emph NOTE: No matching {result_type} records. Update the query and try again.}"
                 ))
                 return()
             }
@@ -1068,11 +1121,10 @@ EsgResult <- R6::R6Class(
                 access <- private$get_field("access")
 
                 size <- sprintf(
-                    "%s   [ %s Files, %s %s | %s ]\n%s   [ Access: <%s> ]",
+                    "%s   [ %s Files, %s | %s ]\n%s   [ Access: <%s> ]",
                     spc,
                     number_of_files[ind],
-                    round(self$size[ind], 2),
-                    units(self$size)$numerator,
+                    format_size_units(self$size[ind]),
                     if (is.null(number_of_aggregations)) {
                         "No Aggregations"
                     } else {
@@ -1091,10 +1143,9 @@ EsgResult <- R6::R6Class(
                 url <- self$url
 
                 size <- sprintf(
-                    "%s   [ %s %s | Access: <%s> ]",
+                    "%s   [ %s | Access: <%s> ]",
                     spc,
-                    if (type == "Aggregation") "<Unknown>" else round(self$size[ind], 2),
-                    units(self$size)$numerator,
+                    if (type == "Aggregation") "<Unknown>" else format_size_units(self$size[ind]),
                     if (is.null(url)) {
                         "NONE"
                     } else {
@@ -4133,11 +4184,14 @@ EsgResultFile <- R6::R6Class(
         #'
         #' @param start,stop Time range boundaries. Character, `Date`, and
         #'        `POSIXt` inputs are accepted and parsed in UTC.
-        #' @param method How to determine file time ranges. One of `"drs"` or
-        #'        `"opendap"`. Default: `"drs"`.
+        #' @param method How to determine file time ranges. `"auto"` prefers
+        #'        ESGF metadata and fills absent ranges from DRS filenames;
+        #'        `"drs"` always parses filenames, and `"opendap"` reads the
+        #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultFile` object.
-        filter_time = function(start, stop, method = c("drs", "opendap")) {
+        filter_time = function(start, stop,
+                               method = c("drs", "opendap", "auto")) {
             private$filter_time_result(start, stop, method = method, result_label = "file")
         },
         # }}}
@@ -4519,11 +4573,14 @@ EsgResultAggregation <- R6::R6Class(
         #'
         #' @param start,stop Time range boundaries. Character, `Date`, and
         #'        `POSIXt` inputs are accepted and parsed in UTC.
-        #' @param method How to determine file time ranges. One of `"drs"` or
-        #'        `"opendap"`. Default: `"drs"`.
+        #' @param method How to determine file time ranges. `"auto"` prefers
+        #'        ESGF metadata and fills absent ranges from DRS filenames;
+        #'        `"drs"` always parses filenames, and `"opendap"` reads the
+        #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultAggregation` object.
-        filter_time = function(start, stop, method = c("drs", "opendap")) {
+        filter_time = function(start, stop,
+                               method = c("drs", "opendap", "auto")) {
             private$filter_time_result(start, stop, method = method, result_label = "aggregation")
         },
         # }}}
@@ -4780,6 +4837,27 @@ EsgResultAggregation <- R6::R6Class(
 # }}}
 
 # query_result__response {{{
+# Normalize empty ESGF facet buckets to named empty lists so saved-result schema
+# validation sees a JSON object instead of an unnamed array.
+query_result__named_empty_facets <- function(x) {
+    if (is.null(x) || (is.list(x) && !length(x))) {
+        return(stats::setNames(list(), character()))
+    }
+    x
+}
+
+# Normalize the parts of an ESGF response whose JSON shape is ambiguous when
+# ESGF returns no records or no facet counts.
+query_result__response_facets <- function(response) {
+    if (is.null(response$facet_counts)) {
+        response$facet_counts <- list()
+    }
+    for (name in c("facet_queries", "facet_fields", "facet_ranges", "facet_intervals", "facet_heatmaps")) {
+        response$facet_counts[[name]] <- query_result__named_empty_facets(response$facet_counts[[name]])
+    }
+    response
+}
+
 query_result__response <- function(response) {
     if (is.null(response)) {
         return(response)
@@ -4790,7 +4868,7 @@ query_result__response <- function(response) {
         response$response$docs <- data.frame(check.names = FALSE)
     }
 
-    response
+    query_result__response_facets(response)
 }
 # }}}
 
@@ -4811,11 +4889,11 @@ query_result__empty_response <- function(params) {
             maxScore = 0
         ),
         facet_counts = list(
-            facet_queries = list(),
-            facet_fields = list(),
-            facet_ranges = list(),
-            facet_intervals = list(),
-            facet_heatmaps = list()
+            facet_queries = stats::setNames(list(), character()),
+            facet_fields = stats::setNames(list(), character()),
+            facet_ranges = stats::setNames(list(), character()),
+            facet_intervals = stats::setNames(list(), character()),
+            facet_heatmaps = stats::setNames(list(), character())
         ),
         timestamp = Sys.time()
     )

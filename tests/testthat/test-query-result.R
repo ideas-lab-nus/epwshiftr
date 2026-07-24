@@ -1075,8 +1075,13 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
                 invokeRestart("muffleWarning")
             }
         )
-        expect_true(any(grepl("DRS filename", warnings)))
-        expect_true(any(grepl("Could not parse", warnings)))
+        expect_identical(
+            warnings,
+            sprintf(
+                "Could not parse a DRS time range for 1 %s record(s); keeping those records.",
+                tolower(type)
+            )
+        )
         expect_s3_class(filtered, class(result)[[1L]])
         expect_identical(filtered$id, result$id[c(1L, 3L)])
         expect_false("datetime_start" %in% result$fields)
@@ -1093,6 +1098,48 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
         expect_true(is.na(dt$datetime_start[[2L]]))
         expect_true(is.na(dt$datetime_end[[2L]]))
     }
+})
+
+test_that("EsgResult$filter_time() is silent when every DRS range can be parsed", {
+    docs <- query_result_test_file_time_docs("File")[1:2, , drop = FALSE]
+    result <- query_result_test_object(
+        "File", docs, query_result_test_params("File"))
+
+    filtered <- expect_silent(
+        result$filter_time("2050-06-01", "2050-06-30", method = "drs"))
+
+    expect_identical(filtered$id, docs$id[[1L]])
+    expect_identical(filtered$time_filter$unknown_count, 0L)
+})
+
+test_that("EsgResult$filter_time() auto mode preserves metadata and fills DRS gaps", {
+    docs <- query_result_test_file_time_docs("File")
+    docs$datetime_start <- c(
+        "2050-01-01T00:00:00Z", NA_character_, NA_character_
+    )
+    docs$datetime_end <- c(
+        "2050-12-31T23:59:59Z", NA_character_, NA_character_
+    )
+    result <- query_result_test_object(
+        "File", docs, query_result_test_params("File"))
+
+    warnings <- character()
+    filtered <- withCallingHandlers(
+        result$filter_time("2050-06-01", "2050-06-30", method = "auto"),
+        warning = function(w) {
+            warnings <<- c(warnings, conditionMessage(w))
+            invokeRestart("muffleWarning")
+        }
+    )
+    ranges <- filtered$to_data_table(
+        c("id", "datetime_start", "datetime_end"))
+
+    expect_identical(filtered$time_filter$method, "auto")
+    expect_identical(filtered$id, docs$id[c(1L, 3L)])
+    expect_identical(ranges$datetime_start[[1L]],
+        "2050-01-01T00:00:00Z")
+    expect_true(is.na(ranges$datetime_start[[2L]]))
+    expect_true(any(grepl("metadata or DRS", warnings, fixed = TRUE)))
 })
 
 test_that("EsgResult$filter_time() context persists through save/load", {
@@ -1265,6 +1312,7 @@ test_that("EsgResult$save() / EsgResult$load() preserve empty child results", {
         generator <- switch(case_name, file = EsgResultFile, aggregation = EsgResultAggregation)
         response <- query_result_test_response(empty_file_docs)
         response$response$docs <- list()
+        response$facet_counts$facet_fields <- list()
         result <- query_result__new(
             generator,
             "https://example.org",
@@ -2399,7 +2447,8 @@ test_that("EsgResultDataset$to_data_table() supports offline fixtures", {
     expect_true(withVisible(datasets$to_data_table())$visible)
     expect_s3_class(datasets$to_data_table(c("source_id", "frequency")), "data.table")
     expect_equal(names(datasets$to_data_table(c("source_id", "frequency"))), c("source_id", "frequency"))
-    expect_s3_class(datasets$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(datasets$to_data_table(formatted = TRUE)$size, "character")
+    expect_equal(datasets$to_data_table(formatted = TRUE)$size, c("1.00 GiB", "2.00 GiB"))
 })
 # }}}
 # EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url / EsgResultDataset$size / EsgResultDataset$index_node / EsgResultDataset$access / EsgResultDataset$number_of_files / EsgResultDataset$has_opendap() / EsgResultDataset$has_download() / EsgResultDataset$count() {{{
@@ -2456,8 +2505,10 @@ test_that("EsgResultDataset$fields / EsgResultDataset$id / EsgResultDataset$url 
 
     expect_null(datasets$url)
 
-    expect_s3_class(datasets$size, "units")
+    expect_type(datasets$size, "double")
     expect_length(datasets$size, 2L)
+    expect_s3_class(datasets$size, "epwshiftr_bytes")
+    expect_equal(format(datasets$size), c("1.00 GiB", "2.00 GiB"))
 
     expect_type(datasets$index_node, "character")
     expect_length(datasets$index_node, 2L)
@@ -2664,7 +2715,8 @@ test_that("EsgResultFile$to_data_table() supports offline fixtures", {
     expect_true(withVisible(files$to_data_table())$visible)
     expect_s3_class(files$to_data_table(c("checksum", "checksum_type")), "data.table")
     expect_equal(names(files$to_data_table(c("checksum", "checksum_type"))), c("checksum", "checksum_type"))
-    expect_s3_class(files$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(files$to_data_table(formatted = TRUE)$size, "character")
+    expect_equal(files$to_data_table(formatted = TRUE)$size, "1.00 MiB")
     expect_s3_class(files$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 })
 # }}}
@@ -2688,7 +2740,7 @@ test_that("EsgResultFile$fields / EsgResultFile$id / EsgResultFile$url / EsgResu
     expect_length(files$url, 1L)
     expect_s3_class(files$url[[1L]], "data.table")
 
-    expect_s3_class(files$size, "units")
+    expect_type(files$size, "double")
     expect_length(files$size, 1L)
 
     expect_type(files$dataset_id, "character")
@@ -2753,7 +2805,7 @@ test_that("EsgResultAggregation$to_data_table() supports offline fixtures", {
     expect_true(withVisible(aggs$to_data_table())$visible)
     expect_s3_class(aggs$to_data_table(c("url", "size")), "data.table")
     expect_equal(names(aggs$to_data_table(c("url", "size"))), c("url", "size"))
-    expect_s3_class(aggs$to_data_table(formatted = TRUE)$size, "units")
+    expect_type(aggs$to_data_table(formatted = TRUE)$size, "character")
     expect_s3_class(aggs$to_data_table(formatted = TRUE)$url[[1L]], "data.table")
 })
 # }}}
@@ -2777,7 +2829,7 @@ test_that("EsgResultAggregation$fields / EsgResultAggregation$id / EsgResultAggr
     expect_length(aggs$url, 2L)
     expect_s3_class(aggs$url[[1L]], "data.table")
 
-    expect_s3_class(aggs$size, "units")
+    expect_type(aggs$size, "double")
     expect_length(aggs$size, 2L)
 
     expect_type(aggs$dataset_id, "character")
@@ -2820,7 +2872,6 @@ test_that("esg_result() constructs typed empty query results", {
     expect_s3_class(esg_result(), "EsgResultDataset")
 
     expect_snapshot(esg_result("file")$print(), transform = transform_print)
-    expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
     expect_snapshot(esg_result("aggregation")$print(), transform = transform_print)
 })
 # }}}

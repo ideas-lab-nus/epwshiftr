@@ -395,23 +395,50 @@ set_size_units <- function(x) {
     if (!length(x)) {
         return(NULL)
     }
-    base <- 1024L
-    iec <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
-    if (!inherits(x, "units")) {
-        x <- units::set_units(x, iec[[1L]], mode = "standard")
-    } else {
-        bytes <- try(units::set_units(x, iec[[1L]], mode = "standard"), silent = TRUE)
-        if (inherits(bytes, "try-error")) {
-            warning("Failed to set input units to 'Byte'. Conversion skipped.")
-            return(x)
-        }
-        x <- bytes
-    }
+    # Keep byte values numeric for arithmetic while attaching a lightweight
+    # display class that does not require the units package.
+    structure(as.numeric(x), class = c("epwshiftr_bytes", "numeric"))
+}
 
-    power <- log(units::drop_units(x), base = base)
-    power[is.infinite(power)] <- 0
-    power <- min(as.integer(power), length(iec))
-    units::set_units(x, iec[power + 1L], mode = "standard")
+# Format byte counts with IEC prefixes so result tables remain readable after
+# removing the units package dependency.
+#' @export
+format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
+    checkmate::assert_count(digits)
+    labels <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
+    vapply(as.numeric(x), function(value) {
+        if (is.na(value)) {
+            return(NA_character_)
+        }
+        power <- if (!is.finite(value) || value == 0) {
+            0L
+        } else {
+            max(0L, min(as.integer(floor(log(abs(value), base = 1024))), length(labels) - 1L))
+        }
+        scaled <- value / 1024^power
+        if (power == 0L) {
+            sprintf("%.0f %s", scaled, labels[[power + 1L]])
+        } else {
+            sprintf(paste0("%.", digits, "f %s"), scaled, labels[[power + 1L]])
+        }
+    }, character(1L))
+}
+
+# Print the lightweight byte vector through its human-readable formatter while
+# retaining the original numeric values invisibly.
+#' @export
+print.epwshiftr_bytes <- function(x, ...) {
+    print(format(x, ...), quote = FALSE)
+    invisible(x)
+}
+
+# Format raw byte counts for query summaries and formatted result tables using
+# the same dependency-free IEC representation as the public size vector.
+format_size_units <- function(x, digits = 2L) {
+    if (!length(x)) {
+        return(character())
+    }
+    format(set_size_units(x), digits = digits)
 }
 
 # store_is_abs_path {{{
@@ -986,41 +1013,68 @@ utils::globalVariables(c(
     ".I",
     ".N",
     ".SD",
+    "..case_cols",
+    "..case_columns",
     "..cols",
     ".baseline_precip_depth",
     ".epw_order",
+    ".extreme_value",
+    ".factor_order",
+    ".humidity_order",
+    ".reference_extreme",
+    ".snow_order",
     "J",
     "activity_drs",
     "all_candidates_cooling",
+    "all_native_grid",
     "alpha",
     "attribute",
     "avg_latency",
     "baseline_opaque_sky_cover",
+    "baseline_huss",
+    "baseline_pressure",
+    "baseline_rh",
+    "baseline_tdb",
     "baseline_total",
     "baseline_total_sky_cover",
+    "case_count",
+    "case_id",
+    "climate_huss_target",
+    "complete",
     "cooldown_until",
     "country",
+    "created_at",
     "data_node",
     "datetime",
     "datetime_end",
     "datetime_start",
     "day",
     "day_of_year",
+    "daily_kt",
+    "daily_max",
+    "daily_min",
     "degree_Celsius",
     "delta",
+    "delta_target",
+    "deprecated",
     "derived",
     "dew_point_temperature",
     "diffuse_horizontal_radiation",
     "direct_normal_radiation",
     "dl_percent",
     "dist",
+    "distance",
     "dry_run",
     "dry_bulb_temperature",
     "epw_field",
+    "epw_dtr",
     "epw_max",
     "epw_mean",
     "epw_min",
     "experiment_id",
+    "export_path",
+    "ext",
+    "factor_status",
     "failure_count",
     "file_id",
     "file_mtime",
@@ -1028,20 +1082,40 @@ utils::globalVariables(c(
     "file_realsize",
     "file_size",
     "frequency",
+    "future_grid_label",
+    "future_huss",
+    "future_partitions_json",
+    "future_pressure",
+    "future_table_id",
     "future_total",
     "global_horizontal_radiation",
+    "grid_label",
     "horizontal_infrared_radiation_intensity_from_sky",
     "hour",
+    "huss_delta",
+    "huss_target",
+    "huss_unclipped",
+    "i..extreme_value",
+    "i..reference_extreme",
+    "i.atmospheric_pressure",
     "i.baseline_total",
+    "i.daily_kt",
     "i.datetime_end",
     "i.datetime_start",
+    "i.dew_point_temperature",
     "i.diffuse_horizontal_radiation",
+    "i.dry_bulb_temperature",
+    "i.epw_mean",
     "i.file_path",
     "i.interval",
+    "i.huss_target",
     "i.opaque_sky_cover",
     "i.relative_humidity",
     "i.total_sky_cover",
     "i.val_max",
+    "i.val_daily_max",
+    "i.val_daily_min",
+    "i.val_dtr",
     "i.val_mean",
     "i.val_min",
     "i.value",
@@ -1055,6 +1129,7 @@ utils::globalVariables(c(
     "interval",
     "kind",
     "last_probe_at",
+    "latest",
     "lat",
     "lat_calc",
     "latitude",
@@ -1085,10 +1160,15 @@ utils::globalVariables(c(
     "num_years",
     "opaque_sky_cover",
     "optional_variable_id",
+    "optional_variables",
     "ord_lat",
     "ord_lon",
     "overlap",
+    "output_id",
     "period",
+    "partition_key",
+    "partitions_json",
+    "persistence",
     "ping",
     "plan_id",
     "priority",
@@ -1105,12 +1185,22 @@ utils::globalVariables(c(
     "record_index",
     "reference_total",
     "reference_value",
+    "reference_partitions_json",
     "relative_humidity",
     "required",
+    "required_native_grid",
+    "required_partition_key",
+    "required_variables",
+    "requirement_key",
+    "requested_experiment",
+    "retracted",
     "site_id",
+    "saturation_huss",
     "solar_angle",
     "source_id",
     "source_type",
+    "start",
+    "started_at",
     "stat",
     "status",
     "step",
@@ -1119,6 +1209,8 @@ utils::globalVariables(c(
     "table_id",
     "target_total",
     "target_total_sky_cover",
+    "target_mean",
+    "temperature",
     "title",
     "time",
     "time_calendar",
@@ -1130,6 +1222,9 @@ utils::globalVariables(c(
     "val_max",
     "val_mean",
     "val_min",
+    "val_daily_max",
+    "val_daily_min",
+    "val_dtr",
     "value",
     "value_reference_tmp",
     "value_max",
@@ -1138,5 +1233,7 @@ utils::globalVariables(c(
     "variable_id",
     "variant_label",
     "wmo_number",
-    "year"
+    "year",
+    "years",
+    "years_json"
 ))
