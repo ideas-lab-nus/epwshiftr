@@ -596,13 +596,17 @@ recipe__default_specs <- function() {
             required_inputs = sobie_inputs,
             calendar_policy = "cf_annual_phase_365",
             components = pipeline__records(sobie_pipeline),
-            policy_profiles = c(paper_faithful = "default"),
+            policy_profiles = c(
+                paper_faithful = "default",
+                harmonized = "default"
+            ),
             default_policy = "paper_faithful",
             diagnostics = c(
                 "daily_mean_dtr_closure",
                 "dew_point_mean_closure",
                 "zero_denominator_fallback",
-                "independent_thermodynamic_state"
+                "independent_thermodynamic_state",
+                "specific_humidity_closure"
             ),
             provenance = c(
                 "source_method",
@@ -613,7 +617,8 @@ recipe__default_specs <- function() {
                 "equation_interpretation",
                 "physical_policy"
             ),
-            status = "comparison"
+            status = "comparison",
+            version = 2L
         )
     )
 }

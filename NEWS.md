@@ -40,6 +40,15 @@
 
 ## New features
 
+* Added a `harmonized` policy to `sobie_curry_daily()`. It retains the
+  Sobie-Curry calendar-neutral factors, circular 21-day smoothing, baseline
+  sequence, and hourly temperature transformation while applying the smoothed
+  daily `huss` change through a shared specific-humidity closure. The target is
+  bounded at zero and saturation before relative humidity and dew point are
+  derived from projected temperature and pressure; closure states and clipped
+  targets are retained as diagnostics. The existing `paper_faithful` output
+  remains the default (#148).
+
 * Added the registered `sobie_curry_daily()` paper-faithful comparison method.
   Its seven-stage pipeline derives daily thermodynamic factors from matching
   historical and future `tas`, `tasmin`, `tasmax`, `huss`, and `ps`, smooths

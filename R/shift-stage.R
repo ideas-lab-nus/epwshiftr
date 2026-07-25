@@ -1839,30 +1839,42 @@ daily_temperature <- function(reference = NULL, window_days = 31L) {
 #' Sobie-Curry daily morphing method
 #'
 #' @description
-#' `sobie_curry_daily()` creates the paper-faithful daily method described by
-#' Sobie and Curry (2025). It requires matching historical and future daily
-#' `tas`, `tasmin`, `tasmax`, `huss`, and `ps` inputs.
+#' `sobie_curry_daily()` creates the daily method described by Sobie and Curry
+#' (2025). It requires matching historical and future daily `tas`, `tasmin`,
+#' `tasmax`, `huss`, and `ps` inputs.
 #'
 #' The method estimates calendar-neutral change factors with the published
 #' 21-day circular window, preserves the baseline CWEC/EPW sequence, and
-#' independently transforms dry-bulb temperature, dew point, relative humidity,
-#' and surface pressure. Other hourly EPW fields remain unchanged.
+#' transforms dry-bulb temperature and surface pressure. The default
+#' `"paper_faithful"` policy independently transforms dew point and relative
+#' humidity as published. The `"harmonized"` policy instead applies the
+#' smoothed daily specific-humidity change and derives a physically closed
+#' humidity state from projected temperature and pressure. Other hourly EPW
+#' fields remain unchanged.
 #'
 #' @param reference A required [historical_reference()],
 #'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
 #' @param window_days Odd circular climatology-window width in days. The
 #'   published setting is `21`.
+#' @param policy Physical execution policy: `"paper_faithful"` reproduces the
+#'   published independent thermodynamic transformations; `"harmonized"` uses
+#'   epwshiftr's specific-humidity closure.
 #'
 #' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
 #'
 #' @seealso [daily_temperature()], [shift_cmip6()], [shift_future_epw()]
 #' @export
-sobie_curry_daily <- function(reference = NULL, window_days = 21L) {
+sobie_curry_daily <- function(
+    reference = NULL,
+    window_days = 21L,
+    policy = c("paper_faithful", "harmonized")
+) {
+    policy <- match.arg(policy)
     shift_morph_method(
         epw_morph_recipe(
             name = "sobie_curry_daily",
             options = list(window_days = window_days),
-            policy = "paper_faithful"
+            policy = policy
         ),
         reference = reference
     )
