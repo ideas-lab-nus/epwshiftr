@@ -218,6 +218,73 @@ downscaling steps used by the high-level workflow.</p>
 <span></span>
 <span><span class="co"># Reproduce the numerical and header behavior from before enhanced profiles.</span></span>
 <span><span class="va">legacy_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span>, profile <span class="op">=</span> <span class="st">"legacy"</span><span class="op">)</span></span></code></pre></div>
+<div class="section level3">
+<h3 id="complete-recipe-catalog">Complete Recipe Catalog<a class="anchor" aria-label="anchor" href="#complete-recipe-catalog"></a>
+</h3>
+<p>Backends describe executable statistical engines, while the complete
+recipe catalog describes named scientific methods assembled from those
+engines and the seven component stages. Inspecting the catalog does not
+run a method or serialize any function:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_recipes.html">epw_morph_recipes</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_power"</span><span class="op">)</span></span></code></pre></div>
+<p>The initial catalog distinguishes the following complete methods:</p>
+<table class="table">
+<colgroup>
+<col width="19%">
+<col width="19%">
+<col width="39%">
+<col width="21%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Recipe</th>
+<th align="left">Policy</th>
+<th align="left">Implementation</th>
+<th align="left">Purpose</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left"><code>belcher_monthly</code></td>
+<td align="left"><code>paper_faithful</code></td>
+<td align="left">Existing backend adapter</td>
+<td align="left">Belcher monthly comparison with matching historical and
+future model data</td>
+</tr>
+<tr class="even">
+<td align="left"><code>epwshiftr_monthly</code></td>
+<td align="left"><code>harmonized</code></td>
+<td align="left">Existing backend adapter</td>
+<td align="left">Enhanced monthly workflow with shared epwshiftr
+physical and output policies</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>epwshiftr_daily_power</code></td>
+<td align="left"><code>harmonized</code></td>
+<td align="left">Seven-stage pipeline</td>
+<td align="left">Calendar-neutral daily temperature signal and
+constrained power projection</td>
+</tr>
+</tbody>
+</table>
+<p>Create a configured recipe by its stable catalog name. The selected
+policy, catalog version, backend profile, and component names are
+persisted with the workflow:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">monthly_comparison</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"belcher_monthly"</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">daily_power</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"epwshiftr_daily_power"</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Catalog input roles are validated before backend execution. The two
+monthly entries remain explicitly labelled backend adapters because
+their established runner has not yet been decomposed into executable
+components; the daily entry is checked against the registered
+seven-stage pipeline. Ad hoc recipes such as
+<code>epw_morph_recipe("belcher")</code> remain supported and preserve
+their previous defaults.</p>
 <p>The profiles resolve to a complete, persisted option contract:</p>
 <table class="table">
 <colgroup>
@@ -308,6 +375,7 @@ shift humidity method, while an explicit non-shift RH override keeps the
 HURS path. Radiation and EPW header policies are likewise persisted in
 the recipe so resumed jobs cannot change behavior when package defaults
 evolve.</p>
+</div>
 <div class="section level3">
 <h3 id="enhanced-calculation-stages">Enhanced Calculation Stages<a class="anchor" aria-label="anchor" href="#enhanced-calculation-stages"></a>
 </h3>
@@ -358,7 +426,7 @@ header updates from the persisted hourly Parquet artifact: ground
 temperatures use Kusuda–Achenbach, typical/extreme periods use complete
 rolling seven-day windows and hemisphere-aware seasons, and design
 conditions follow the selected drop/preserve policy.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_backends.html">epw_morph_backends</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">belcher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
@@ -375,7 +443,7 @@ whether the step is derived from other backend outputs.
 separate hard-coded list of Belcher fields.</p>
 <p>Use method overrides when the algorithm is still Belcher but you want
 a different transformation for selected primary variables:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">belcher_shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"belcher"</span>,</span>
 <span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -568,7 +636,7 @@ narrower set of method values than the backend as a whole.</p>
 temperature. It is deliberately simple: a real backend would read
 <code>context$climate</code>, validate its required variables, and
 calculate weather fields from those rows.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">offset_rules</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
 <span>    step <span class="op">=</span> <span class="st">"dry"</span>,</span>
 <span>    epw_field <span class="op">=</span> <span class="st">"dry_bulb_temperature"</span>,</span>
@@ -614,7 +682,7 @@ calculate weather fields from those rows.</p>
 <span></span>
 <span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">offset_recipe</span><span class="op">)</span></span></code></pre></div>
 <p>Use the recipe exactly like the built-in one:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
 <span>    store <span class="op">=</span> <span class="va">store</span>,</span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
@@ -633,7 +701,7 @@ intentional.</p>
 </h2>
 <p>Preflight checks extraction coverage and baseline readiness without
 modifying store state.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">diagnostics</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -654,7 +722,7 @@ extracted climate data.</p>
 <p>Morphing uses monthly summary statistics. The climate summary comes
 from store extraction outputs; the baseline summary comes from the EPW
 file.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -684,7 +752,7 @@ later stages without re-extracting climate data.</p>
 <p><code>preview_plan()</code> calculates plan rows, factor rows, and
 diagnostics without writing them. <code>plan()</code> persists the
 selected plan and factor rows.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
 <span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
 <span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
@@ -713,7 +781,7 @@ summary and reflect the cases you intend to write.</p>
 <h2 id="diagnose-and-run">Diagnose and Run<a class="anchor" aria-label="anchor" href="#diagnose-and-run"></a>
 </h2>
 <p>Run diagnostics before executing strict plans.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_id</span> <span class="op">&lt;-</span> <span class="va">plan</span><span class="op">$</span><span class="va">morph_id</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span></span>
 <span><span class="va">morpher</span><span class="op">$</span><span class="fu">diagnose</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
@@ -731,7 +799,7 @@ under the store. It does not write EPW text files yet.</p>
 <h2 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
 </h2>
 <p>Write EnergyPlus Weather files after morphing succeeds.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">write_epw</span><span class="op">(</span></span>
 <span>    <span class="va">morph_id</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
@@ -759,7 +827,7 @@ the original headers must remain untouched.</p>
 <p>For most scripts, use the task-oriented API and supply matching
 historical CMIP6 data when they are available. epwshiftr resolves the
 store stages, EPW writing, and final export path:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
@@ -781,7 +849,7 @@ store stages, EPW writing, and final export path:</p>
 directly and does not infer a historical request.</p>
 <p>When you already have lower-level extraction plan IDs and need direct
 control of the morphing engine, use <code>workflow()</code>.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -796,7 +864,7 @@ control of the morphing engine, use <code>workflow()</code>.</p>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></code></pre></div>
 <p>For most users, the equivalent high-level path is still clearer:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>

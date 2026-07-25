@@ -95,10 +95,13 @@
     <div id="ref-usage">
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">epw_morph_recipe</span><span class="op">(</span></span>
 <span>  name <span class="op">=</span> <span class="st">"belcher"</span>,</span>
-<span>  backend <span class="op">=</span> <span class="va">name</span>,</span>
+<span>  backend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  methods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  profile <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  options <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  options <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  version <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  spec <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -111,7 +114,8 @@
 
 
 <dt id="arg-backend">backend<a class="anchor" aria-label="anchor" href="#arg-backend"></a></dt>
-<dd><p>Backend name. Defaults to <code>name</code>.</p></dd>
+<dd><p>Backend name. Ad hoc recipes default to <code>name</code>; registered
+recipes use the backend declared by their specification.</p></dd>
 
 
 <dt id="arg-methods">methods<a class="anchor" aria-label="anchor" href="#arg-methods"></a></dt>
@@ -128,6 +132,24 @@ backend steps.</p></dd>
 <dt id="arg-options">options<a class="anchor" aria-label="anchor" href="#arg-options"></a></dt>
 <dd><p>Optional named backend option list. Belcher options are
 usually created by <code><a href="belcher_options.html">belcher_options()</a></code>.</p></dd>
+
+
+<dt id="arg-policy">policy<a class="anchor" aria-label="anchor" href="#arg-policy"></a></dt>
+<dd><p>Optional registered complete-recipe execution policy,
+<code>"paper_faithful"</code> or <code>"harmonized"</code>. Registered recipes select their
+declared default when <code>NULL</code>; ad hoc backend recipes do not accept it.</p></dd>
+
+
+<dt id="arg-version">version<a class="anchor" aria-label="anchor" href="#arg-version"></a></dt>
+<dd><p>Optional persisted registered-recipe definition version.
+Normally leave this <code>NULL</code>; resumed workflows use it to reject an
+incompatible catalog definition.</p></dd>
+
+
+<dt id="arg-spec">spec<a class="anchor" aria-label="anchor" href="#arg-spec"></a></dt>
+<dd><p>Optional registered complete-recipe identifier. This allows a
+stable catalog definition to be retained when <code>name</code> is a user-facing
+alias such as <code>"daily_temperature"</code>.</p></dd>
 
 </dl></div>
     <div id="value">
