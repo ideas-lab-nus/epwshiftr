@@ -1800,6 +1800,9 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' @description
 #' `daily_temperature()` creates a future-EPW method from matching future and
 #' historical daily CMIP temperature data. It requires `frequency = "day"`.
+#' The configured workflow retains the registered
+#' `"epwshiftr_daily_power"` recipe identity and `"harmonized"` execution
+#' policy while preserving the public method name.
 #'
 #' Daily `tas` changes are estimated with a circular climatology on a common
 #' 365-day phase grid. When paired `tasmin` and `tasmax` are available for both
@@ -1825,7 +1828,9 @@ daily_temperature <- function(reference = NULL, window_days = 31L) {
     shift_morph_method(
         epw_morph_recipe(
             name = "daily_temperature",
-            options = list(window_days = window_days)
+            options = list(window_days = window_days),
+            policy = "harmonized",
+            spec = "epwshiftr_daily_power"
         ),
         reference = reference
     )
@@ -4793,6 +4798,9 @@ shift__plan_spec <- function(x) {
                 name = method@recipe$name,
                 backend = method@recipe$backend,
                 profile = method@recipe$profile,
+                recipe_spec = method@recipe$recipe_spec,
+                recipe_version = method@recipe$recipe_version,
+                policy = method@recipe$policy,
                 options = unclass(method@recipe$options),
                 methods = as.list(method@recipe$methods),
                 rules_identity = store__hash(morpher__json(method@recipe))
@@ -4881,6 +4889,9 @@ shift__recipe_ref <- function(recipe) {
         name = recipe$name,
         backend = recipe$backend,
         profile = recipe$profile,
+        recipe_spec = recipe$recipe_spec,
+        recipe_version = recipe$recipe_version,
+        policy = recipe$policy,
         options = unclass(recipe$options),
         methods = as.list(recipe$methods)
     )
@@ -4904,7 +4915,14 @@ shift__recipe_from_ref <- function(ref) {
         backend = backend,
         methods = methods,
         profile = profile,
-        options = shift_coalesce(ref$options, NULL)
+        options = shift_coalesce(ref$options, NULL),
+        policy = shift_coalesce(ref$policy, NULL),
+        version = if (is.null(ref$recipe_version)) {
+            NULL
+        } else {
+            as.integer(ref$recipe_version)
+        },
+        spec = shift_coalesce(ref$recipe_spec, NULL)
     )
 }
 
