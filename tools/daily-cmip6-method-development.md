@@ -557,20 +557,21 @@ external or black-box comparator. Do not invent missing behavior.
 
 ### 13.1 Establish the common method framework
 
-1. Add the recipe registry and inspectable recipe metadata. In development in
-   issue #144.
+1. Add the recipe registry and inspectable recipe metadata. Implemented in PR
+   #145.
 2. Define climate-signal, sequence, hourly, physical, and diagnostic contracts.
    Implemented in PR #143.
-3. Add explicit `paper_faithful` and `harmonized` execution policies. In
-   development in issue #144.
+3. Add explicit `paper_faithful` and `harmonized` execution policies.
+   Implemented in PR #145.
 4. Preserve the existing monthly and daily outputs unchanged while introducing
    these abstractions. Covered by the component, pipeline, and recipe-registry
    regression tests.
 
 ### 13.2 Implement the closest published comparisons
 
-1. Sobie-Curry daily factors and 21-day smoothing.
-2. Eames BTWS hourly projection and its documented mean-shift fallback.
+1. Sobie-Curry daily factors and 21-day smoothing. Implemented in PR #147,
+   with harmonized humidity closure added in PR #149.
+2. Eames BTWS hourly projection and its documented mean-shift fallback. Next.
 3. Ek daily change factors.
 4. Arima month-wise rank/QM change functions.
 
@@ -624,7 +625,8 @@ Update this table as work is merged.
 | Daily temperature future-EPW backend | Implemented in PR #141 |
 | Shared component and signal contracts | Implemented in PR #143 |
 | Recipe registry and execution policies | Implemented in PR #145 |
-| Sobie-Curry faithful recipe | Not started |
+| Sobie-Curry faithful recipe | Implemented in PR #147 |
+| Sobie-Curry harmonized humidity closure | Implemented in PR #149 |
 | Eames BTWS | Not started |
 | Ek daily factors | Not started |
 | Arima rank/QM | Not started |
@@ -641,9 +643,10 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-The next method is the paper-faithful Sobie-Curry daily recipe. It should reuse
-the existing calendar and climatology primitives rather than adding another
-daily-date implementation.
+The next method is the paper-faithful Eames BTWS hourly projection. It should
+reuse the existing calendar, daily-signal, inherited-sequence, and physical
+components so its hourly transformation can be compared directly with the
+current \(x^p\) projection.
 
 ## 15. Primary sources
 
