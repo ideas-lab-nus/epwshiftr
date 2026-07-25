@@ -4,7 +4,11 @@
 \alias{sobie_curry_daily}
 \title{Sobie-Curry daily morphing method}
 \usage{
-sobie_curry_daily(reference = NULL, window_days = 21L)
+sobie_curry_daily(
+  reference = NULL,
+  window_days = 21L,
+  policy = c("paper_faithful", "harmonized")
+)
 }
 \arguments{
 \item{reference}{A required \code{\link[=historical_reference]{historical_reference()}},
@@ -12,19 +16,27 @@ sobie_curry_daily(reference = NULL, window_days = 21L)
 
 \item{window_days}{Odd circular climatology-window width in days. The
 published setting is \code{21}.}
+
+\item{policy}{Physical execution policy: \code{"paper_faithful"} reproduces the
+published independent thermodynamic transformations; \code{"harmonized"} uses
+epwshiftr's specific-humidity closure.}
 }
 \value{
 A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_future_epw()}}.
 }
 \description{
-\code{sobie_curry_daily()} creates the paper-faithful daily method described by
-Sobie and Curry (2025). It requires matching historical and future daily
-\code{tas}, \code{tasmin}, \code{tasmax}, \code{huss}, and \code{ps} inputs.
+\code{sobie_curry_daily()} creates the daily method described by Sobie and Curry
+(2025). It requires matching historical and future daily \code{tas}, \code{tasmin},
+\code{tasmax}, \code{huss}, and \code{ps} inputs.
 
 The method estimates calendar-neutral change factors with the published
 21-day circular window, preserves the baseline CWEC/EPW sequence, and
-independently transforms dry-bulb temperature, dew point, relative humidity,
-and surface pressure. Other hourly EPW fields remain unchanged.
+transforms dry-bulb temperature and surface pressure. The default
+\code{"paper_faithful"} policy independently transforms dew point and relative
+humidity as published. The \code{"harmonized"} policy instead applies the
+smoothed daily specific-humidity change and derives a physically closed
+humidity state from projected temperature and pressure. Other hourly EPW
+fields remain unchanged.
 }
 \seealso{
 \code{\link[=daily_temperature]{daily_temperature()}}, \code{\link[=shift_cmip6]{shift_cmip6()}}, \code{\link[=shift_future_epw]{shift_future_epw()}}

@@ -379,13 +379,13 @@ shards <- query$list_shards()
 values <- query$list_values(c("activity_id", "experiment_id", "table_id"))
 
 utils::head(facets, 20)
-#>  [1] "Conventions"            "access"                 "activity"
-#>  [4] "activity_drs"           "activity_id"            "amodell"
-#>  [7] "branch_method"          "cera_acronym"           "cf_standard_name"
-#> [10] "cmor_table"             "contact"                "creation_date"
-#> [13] "data_node"              "data_specs_version"     "data_structure"
-#> [16] "data_type"              "dataset_category"       "dataset_status"
-#> [19] "dataset_version_number" "datetime_end"
+#>  [1] "Conventions"           "access"                "acrhive_id"
+#>  [4] "activity"              "activity_drs"          "activity_id"
+#>  [7] "amodell"               "area_label"            "branch_method"
+#> [10] "branch_time_in_parent" "branded_variable"      "cera_acronym"
+#> [13] "cf_standard_name"      "cmor_table"            "contact"
+#> [16] "creation_date"         "data_node"             "data_specs_version"
+#> [19] "data_structure"        "data_type"
 utils::head(fields, 20)
 #>  [1] "id"                         "version"
 #>  [3] "access"                     "activity_drs"
@@ -735,9 +735,9 @@ query_path <- file.path(workflow_root, "query.json")
 files_path <- file.path(workflow_root, "files-2060.json")
 
 query$save(query_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esgf-query-results/query.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esgf-query-results/query.json"
 files_2060$save(files_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-esgf-query-results/files-2060.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esgf-query-results/files-2060.json"
 
 query_copy <- esg_query()$load(query_path)
 files_copy <- esg_result("file")$load(files_path)
