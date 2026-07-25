@@ -90,6 +90,7 @@ Collate:
     'shift-stage.R'
     'shift-tui.R'
     'shift-ui.R'
+    'sobie-curry-backend.R'
     'standalone-cache.R'
     'weather-input.R'
     'weather-component.R'
