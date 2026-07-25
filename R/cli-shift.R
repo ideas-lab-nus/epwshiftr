@@ -682,7 +682,7 @@ cli_shift__recipe_options <- function(options, backend) {
         options$transition_hours <- transition_hours
     }
     if (backend %in% c(
-        "daily_temperature", "daily_btws", "sobie_curry_daily"
+        "daily_temperature", "daily_temperature_btws", "sobie_curry_daily"
     ) &&
         "window_days" %in% names(options)) {
         window_days <- suppressWarnings(as.integer(options$window_days[[1L]]))
@@ -698,7 +698,7 @@ cli_shift__recipe_options <- function(options, backend) {
         options$window_days <- window_days
     }
     if (backend %in% c(
-        "daily_temperature", "daily_btws", "sobie_curry_daily"
+        "daily_temperature", "daily_temperature_btws", "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {
         tolerance <- suppressWarnings(as.numeric(options$tolerance[[1L]]))

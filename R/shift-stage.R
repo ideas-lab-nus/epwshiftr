@@ -1800,9 +1800,8 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' @description
 #' `daily_temperature()` creates a future-EPW method from matching future and
 #' historical daily CMIP temperature data. It requires `frequency = "day"`.
-#' The configured workflow retains the registered
-#' `"epwshiftr_daily_power"` recipe identity and `"harmonized"` execution
-#' policy while preserving the public method name.
+#' The configured workflow retains the selected registered recipe identity and
+#' `"harmonized"` execution policy while preserving the public method name.
 #'
 #' Daily `tas` changes are estimated with a circular climatology on a common
 #' 365-day phase grid. When paired `tasmin` and `tasmax` are available for both
@@ -1810,6 +1809,13 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' mean, minimum, and maximum while retaining its hourly ordering. Otherwise,
 #' the daily mean change is applied additively and the baseline daily range is
 #' inherited.
+#'
+#' `reconstruction = "power"` uses epwshiftr's monotone power projection.
+#' `"btws"` instead selects the bounded temperature weighted stretch published
+#' by Eames et al. (2024). The latter remains a composite comparison: only its
+#' hourly reconstruction comes from Eames, while the daily CMIP6 signal,
+#' calendar mapping, humidity closure, and output policy remain epwshiftr
+#' components.
 #'
 #' EPW fields outside dry-bulb temperature and its coupled humidity state remain
 #' unchanged. After dry-bulb temperature is projected, baseline specific
@@ -1819,47 +1825,10 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' @param reference A required [historical_reference()],
 #'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
 #' @param window_days Odd circular climatology-window width in days.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @seealso [shift_cmip6()], [shift_future_epw()]
-#' @export
-daily_temperature <- function(reference = NULL, window_days = 31L) {
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "daily_temperature",
-            options = list(window_days = window_days),
-            policy = "harmonized",
-            spec = "epwshiftr_daily_power"
-        ),
-        reference = reference
-    )
-}
-
-#' Daily temperature projection with Eames BTWS
-#'
-#' @description
-#' `daily_btws()` combines epwshiftr's calendar-neutral daily CMIP6
-#' temperature targets with the bounded temperature weighted stretch published
-#' by Eames et al. (2024). It requires matching historical and future daily
-#' `tas`, `tasmin`, and `tasmax` inputs.
-#'
-#' For each baseline EPW day, the hourly stage normalizes the 24-hour dry-bulb
-#' profile, applies the published transfer function
-#' \eqn{g = x^m(1-x)^n}, and projects it onto the requested daily mean,
-#' minimum, and maximum. The default is \eqn{m=n=1}; when the result would
-#' leave the normalized interval, the implementation reduces the relevant
-#' exponent and retains the largest admissible value. Days without an
-#' admissible bounded result use an explicit additive mean-shift fallback.
-#'
-#' This is a composite comparison recipe, not a reproduction of the complete
-#' Eames monthly UKCP18 workflow. The daily climate signal, calendar mapping,
-#' humidity closure, and output stages are epwshiftr components; the hourly
-#' projection is the published BTWS component.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
-#' @param window_days Odd circular climatology-window width in days.
+#' @param reconstruction Hourly temperature reconstruction component:
+#'   `"power"` uses the default constrained power projection; `"btws"` uses
+#'   Eames bounded temperature weighted stretch and requires paired daily
+#'   `tasmin` and `tasmax`.
 #'
 #' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
 #'
@@ -1869,16 +1838,25 @@ daily_temperature <- function(reference = NULL, window_days = 31L) {
 #' performance evaluation.
 #' \doi{10.1177/01436244231218861}
 #'
-#' @seealso [daily_temperature()], [sobie_curry_daily()], [shift_cmip6()],
-#'   [shift_future_epw()]
+#' @seealso [shift_cmip6()], [shift_future_epw()]
 #' @export
-daily_btws <- function(reference = NULL, window_days = 31L) {
+daily_temperature <- function(
+    reference = NULL,
+    window_days = 31L,
+    reconstruction = c("power", "btws")
+) {
+    reconstruction <- match.arg(reconstruction)
+    spec <- switch(
+        reconstruction,
+        power = "epwshiftr_daily_power",
+        btws = "epwshiftr_daily_btws"
+    )
     shift_morph_method(
         epw_morph_recipe(
-            name = "daily_btws",
+            name = "daily_temperature",
             options = list(window_days = window_days),
             policy = "harmonized",
-            spec = "epwshiftr_daily_btws"
+            spec = spec
         ),
         reference = reference
     )

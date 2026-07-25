@@ -185,3 +185,57 @@ test_that("grouped Eames projection retains method diagnostics and row order", {
     expect_true(all(is.finite(projected$boundary_jump)))
     expect_true(all(is.finite(projected$boundary_jump_change)))
 })
+
+test_that("Eames monthly factors close the published temperature statistics", {
+    hours <- 1:24
+    days <- 1:28
+    template <- data.table::rbindlist(lapply(days, function(day) {
+        amplitude <- 4 + day / 28
+        offset <- 10 + day / 14
+        data.table::data.table(
+            target_day = day,
+            hour = hours,
+            value = offset +
+                amplitude * sin(2 * pi * (hours - 1) / 24)
+        )
+    }))
+    targets <- data.table::data.table(
+        target_day = days,
+        mean_delta = 2,
+        minimum_delta = 1,
+        maximum_delta = 3,
+        dtr_status = "adjusted"
+    )
+
+    # Eames applies one set of monthly change factors to every baseline day;
+    # monthly mean and average daily extrema must then realize those factors.
+    projected <- btws__project_temperature(template, targets)
+    baseline_daily <- template[, .(
+        average = mean(value),
+        minimum = min(value),
+        maximum = max(value)
+    ), by = "target_day"]
+    future_daily <- projected[, .(
+        average = mean(temperature_projected),
+        minimum = min(temperature_projected),
+        maximum = max(temperature_projected),
+        fallback = any(!is.na(btws_fallback_reason))
+    ), by = "target_day"]
+
+    expect_false(any(future_daily$fallback))
+    expect_equal(
+        mean(future_daily$average) - mean(baseline_daily$average),
+        2,
+        tolerance = 1e-8
+    )
+    expect_equal(
+        mean(future_daily$minimum) - mean(baseline_daily$minimum),
+        1,
+        tolerance = 1e-8
+    )
+    expect_equal(
+        mean(future_daily$maximum) - mean(baseline_daily$maximum),
+        3,
+        tolerance = 1e-8
+    )
+})

@@ -26,6 +26,32 @@ EPW_MORPH_DAILY_TEMPERATURE_RULES <- data.table::data.table(
     method_choices = list("constrained", "derived", "derived")
 )
 
+# The BTWS composition requires all three temperature statistics because the
+# Eames hourly reconstruction preserves separate mean, minimum, and maximum
+# targets rather than inheriting a missing daily range.
+EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS <- c(tdb = "eames_btws")
+
+# Describe the stricter climate-variable contract selected when the shared
+# daily temperature signal is paired with the Eames BTWS hourly component.
+EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES <- data.table::data.table(
+    step = c("tdb", "rh", "tdew"),
+    epw_field = c(
+        "dry_bulb_temperature",
+        "relative_humidity",
+        "dew_point_temperature"
+    ),
+    variable_id = c(
+        "tas,tasmin,tasmax",
+        NA_character_,
+        NA_character_
+    ),
+    optional_variable_id = NA_character_,
+    method = c("eames_btws", "derived", "derived"),
+    required = c(TRUE, FALSE, FALSE),
+    derived = c(FALSE, TRUE, TRUE),
+    method_choices = list("eames_btws", "derived", "derived")
+)
+
 # These defaults keep the numerical projection reproducible and reuse the
 # existing EPW header post-process after the hourly temperature year is built.
 EPW_MORPH_DAILY_TEMPERATURE_OPTIONS <- list(
@@ -799,16 +825,25 @@ daily__register_temperature_components <- function() {
     invisible(NULL)
 }
 
-# Return the stable seven-stage pipeline used by the built-in daily temperature
-# backend and serialized with each recipe.
-daily__temperature_pipeline <- function() {
+# Return a seven-stage daily temperature pipeline with an explicitly selected
+# hourly reconstruction component. The climate signal and all other stages stay
+# identical so comparisons isolate the hourly projection algorithm.
+daily__temperature_pipeline <- function(
+    reconstruction = c("power", "btws")
+) {
+    reconstruction <- match.arg(reconstruction)
     daily__register_temperature_components()
+    hourly <- "constrained_daily_temperature"
+    if (identical(reconstruction, "btws")) {
+        btws__register_hourly_component()
+        hourly <- "eames_btws_temperature"
+    }
     pipeline__spec(list(
         preprocess = "daily_temperature_inputs",
         calendar = "daily_temperature_calendar",
         signal = "daily_temperature_delta",
         sequence = "preserve_epw_sequence",
-        hourly = "constrained_daily_temperature",
+        hourly = hourly,
         physics = "specific_humidity_closure",
         output = "daily_temperature_epw_result"
     ))
