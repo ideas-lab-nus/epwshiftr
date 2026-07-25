@@ -395,7 +395,10 @@ epwshiftr_cli_config_method <- function(config) {
     name <- tolower(epwshiftr_cli_config_string(config$name))
     methods <- epwshiftr_cli_recipe_methods(config$methods)
     profile <- epwshiftr_cli_config_string(config$profile, default = NULL)
-    options <- cli_shift__belcher_options(epwshiftr_cli_config_named_list(config$options))
+    options <- cli_shift__recipe_options(
+        epwshiftr_cli_config_named_list(config$options),
+        name
+    )
     reference <- epwshiftr_cli_config_reference(config$reference)
     if (identical(name, "belcher")) {
         return(belcher(
@@ -639,26 +642,49 @@ epwshiftr_cli_recipe <- function(value = "belcher", methods = NULL,
         value,
         methods = methods,
         profile = profile,
-        options = cli_shift__belcher_options(options)
+        options = cli_shift__recipe_options(options, value)
     )
 }
 
 
-# Coerce only the typed Belcher values accepted by command-line key/value
-# inputs. Other option values remain character strings for central validation.
-cli_shift__belcher_options <- function(options) {
+# Coerce typed built-in recipe values accepted by command-line key/value inputs.
+# Other values remain character strings for central backend validation.
+cli_shift__recipe_options <- function(options, backend) {
     if (is.null(options) || !length(options)) {
         return(NULL)
     }
+    checkmate::assert_string(backend, min.chars = 1L)
+    backend <- tolower(backend)
     if (!is.list(options)) {
         options <- as.list(options)
     }
-    if ("transition_hours" %in% names(options)) {
+    if (backend %in% c("belcher", "belcher_absolute") &&
+        "transition_hours" %in% names(options)) {
         transition_hours <- suppressWarnings(as.integer(options$transition_hours[[1L]]))
         if (is.na(transition_hours)) {
             epwshiftr_cli_usage_abort("Belcher option transition_hours must be an integer between 0 and 336.")
         }
         options$transition_hours <- transition_hours
+    }
+    if (identical(backend, "daily_temperature") &&
+        "window_days" %in% names(options)) {
+        window_days <- suppressWarnings(as.integer(options$window_days[[1L]]))
+        if (is.na(window_days)) {
+            epwshiftr_cli_usage_abort(
+                "Daily temperature option window_days must be an odd integer."
+            )
+        }
+        options$window_days <- window_days
+    }
+    if (identical(backend, "daily_temperature") &&
+        "tolerance" %in% names(options)) {
+        tolerance <- suppressWarnings(as.numeric(options$tolerance[[1L]]))
+        if (is.na(tolerance) || !is.finite(tolerance) || tolerance < 0) {
+            epwshiftr_cli_usage_abort(
+                "Daily temperature option tolerance must be a non-negative number."
+            )
+        }
+        options$tolerance <- tolerance
     }
     options
 }
@@ -933,7 +959,7 @@ epwshiftr_cli_recipe_from_json <- function(json) {
         backend = backend,
         methods = methods,
         profile = profile,
-        options = cli_shift__belcher_options(parsed$options)
+        options = cli_shift__recipe_options(parsed$options, backend)
     )
 }
 
