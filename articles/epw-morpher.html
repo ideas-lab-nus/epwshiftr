@@ -264,6 +264,16 @@ physical and output policies</td>
 <td align="left">Calendar-neutral daily temperature signal and
 constrained power projection</td>
 </tr>
+<tr class="even">
+<td align="left"><code>sobie_curry_daily</code></td>
+<td align="left">
+<code>paper_faithful</code>,
+<code>harmonized</code>
+</td>
+<td align="left">Seven-stage pipeline</td>
+<td align="left">Published daily mean/DTR transformations with
+independent or shared humidity closure</td>
+</tr>
 </tbody>
 </table>
 <p>Create a configured recipe by its stable catalog name. The selected
@@ -277,14 +287,39 @@ persisted with the workflow:</p>
 <span><span class="va">daily_power</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"epwshiftr_daily_power"</span>,</span>
 <span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">sobie_curry</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"sobie_curry_daily"</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">sobie_curry_harmonized</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"sobie_curry_daily"</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Catalog input roles are validated before backend execution. The two
 monthly entries remain explicitly labelled backend adapters because
 their established runner has not yet been decomposed into executable
-components; the daily entry is checked against the registered
-seven-stage pipeline. Ad hoc recipes such as
+components; both daily entries are checked against their registered
+seven-stage pipelines. Ad hoc recipes such as
 <code>epw_morph_recipe("belcher")</code> remain supported and preserve
 their previous defaults.</p>
+<p>The Sobie-Curry recipe requires daily <code>tas</code>,
+<code>tasmin</code>, <code>tasmax</code>, <code>huss</code>, and surface
+pressure <code>ps</code> from matching historical and future model
+periods. It uses a circular 21-day window on the shared 365-day
+annual-phase grid, preserves the baseline CWEC/EPW sequence, and adjusts
+dry-bulb temperature and atmospheric pressure. Paper-faithful mode
+independently adjusts dew point and relative humidity. Harmonized mode
+applies the smoothed future-minus-historical daily <code>huss</code>
+change to baseline EPW specific humidity, clips the target only at zero
+or saturation, and derives relative humidity and dew point from
+projected temperature and pressure. Other EPW fields are unchanged. The
+paper-faithful dew-point standard-deviation factor is implemented as
+<code>sigma_future / sigma_historical - 1</code>: this preserves the
+paper’s stated past-future difference and makes zero climate change an
+identity transform. The printed ratio without <code>- 1</code>, when
+added to the original anomaly as shown in the paper, would double hourly
+anomalies under zero change.</p>
 <p>The profiles resolve to a complete, persisted option contract:</p>
 <table class="table">
 <colgroup>
@@ -605,9 +640,9 @@ and extraction obtain and persist the source data.
 compiles the component names stored in the selected recipe, and executes
 the scientific stages through the backend. <code><a href="../reference/shift_api.html">shift_epw()</a></code>
 remains the durable final file writer. The built-in
-<code><a href="../reference/daily_temperature.html">daily_temperature()</a></code> method uses all seven stages, including
-an explicit identity <code>sequence</code> component that preserves the
-baseline EPW day order.</p>
+<code><a href="../reference/daily_temperature.html">daily_temperature()</a></code> and <code><a href="../reference/sobie_curry_daily.html">sobie_curry_daily()</a></code>
+methods use all seven stages, including explicit <code>sequence</code>
+components that preserve the baseline EPW day order.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and

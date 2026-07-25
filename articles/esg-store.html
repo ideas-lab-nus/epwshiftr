@@ -174,9 +174,9 @@ reproducible.</p>
 <span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="va">store_path</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">path</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store"</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">manifest</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, all.files <span class="op">=</span> <span class="cn">TRUE</span>, no.. <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "dicts"               "downloads"           "extracts"</span></span>
 <span><span class="co">#&gt;  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"</span></span>
@@ -374,9 +374,9 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-07-21 16:53:12</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-07-21 16:53:12</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 1:          cmip6 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-07-25 17:08:31</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">queries</span><span class="op">(</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"label"</span>, <span class="st">"index_node"</span>, <span class="st">"tracked"</span>, <span class="st">"created_at"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
@@ -385,7 +385,7 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;                    label                index_node tracked          created_at</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;                    &lt;char&gt;  &lt;lgcl&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-21 16:53:12</span></span>
+<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-25 17:08:31</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query_tags</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
@@ -399,9 +399,9 @@ tagged, and used to build download plans.</p>
 <span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-07-21 16:53:12</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-07-21 16:53:12</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-07-21 16:53:12</span></span></code></pre></div>
+<span><span class="co">#&gt; 1:          cmip6 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-07-25 17:08:31</span></span></code></pre></div>
 <p>The query snapshot is written under <code>queries/</code>, while the
 query identity and tracking state are recorded in the manifest.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">

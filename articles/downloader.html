@@ -188,7 +188,7 @@ configuration.</p>
 <span></span>
 <span><span class="va">downloader</span></span>
 <span><span class="va">downloader</span><span class="op">$</span><span class="va">manifest</span></span>
-<span><span class="co">#&gt; [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//Rtmprmdi85/epwshiftr-downloader/general-downloads/manifest.duckdb"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmptvdKFu/epwshiftr-downloader/general-downloads/manifest.duckdb"</span></span></code></pre></div>
 <p>The manifest stores configuration, sessions, tasks, candidate URLs,
 transfer events, background jobs, daemon state, control messages, and
 data-node history.</p>
@@ -211,12 +211,12 @@ behavior consistent.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">single_path</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/file.info.html" class="external-link">file.info</a></span><span class="op">(</span><span class="va">single_path</span><span class="op">)</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"size"</span>, <span class="st">"mtime"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;                                                                                                                                                 size</span></span>
-<span><span class="co">#&gt; /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700</span></span>
+<span><span class="co">#&gt; /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700</span></span>
 <span><span class="co">#&gt;                                                                                                                                                               mtime</span></span>
-<span><span class="co">#&gt; /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-07-20 01:35:57</span></span>
+<span><span class="co">#&gt; /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-07-26 01:07:21</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/readLines.html" class="external-link">readLines</a></span><span class="op">(</span><span class="va">single_path</span>, n <span class="op">=</span> <span class="fl">6L</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "# GitHub Actions for the R language"</span></span>
 <span><span class="co">#&gt; [2] ""</span></span>
@@ -283,9 +283,9 @@ run.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">downloader</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span>plan <span class="op">=</span> <span class="va">small_plan</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   task_count needs_download required_bytes size_unknown_count dest_free_bytes</span></span>
-<span><span class="co">#&gt; 1          3              3              0                  3     83312115712</span></span>
+<span><span class="co">#&gt; 1          3              3              0                  3    158989791232</span></span>
 <span><span class="co">#&gt;   tmp_free_bytes min_free_space dest_disk_ok tmp_disk_ok disk_ok</span></span>
-<span><span class="co">#&gt; 1    83312115712              0         TRUE        TRUE      NA</span></span>
+<span><span class="co">#&gt; 1   158989791232              0         TRUE        TRUE      NA</span></span>
 <span><span class="co">#&gt;   disk_would_block disk_preflight</span></span>
 <span><span class="co">#&gt; 1            FALSE           TRUE</span></span></code></pre></div>
 <p>Enqueue writes a session, tasks, and candidates to the manifest. It
@@ -298,18 +298,18 @@ does not download until <code>run()</code> is called.</p>
 <span></span>
 <span><span class="va">downloader</span><span class="op">$</span><span class="fu">sessions</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                 session_id            label status          created_at</span></span>
-<span><span class="co">#&gt; 1 20260719-173557-796ad941 small-live-files queued 2026-07-19 17:35:57</span></span>
+<span><span class="co">#&gt; 1 20260725-170721-5995aac8 small-live-files queued 2026-07-25 17:07:21</span></span>
 <span><span class="co">#&gt;            updated_at completed_at</span></span>
-<span><span class="co">#&gt; 1 2026-07-19 17:35:57         &lt;NA&gt;</span></span>
+<span><span class="co">#&gt; 1 2026-07-25 17:07:21         &lt;NA&gt;</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">downloader</span><span class="op">$</span><span class="fu">tasks</span><span class="op">(</span>session_id <span class="op">=</span> <span class="va">session_id</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"task_id"</span>, <span class="st">"logical_file_id"</span>, <span class="st">"filename"</span>, <span class="st">"status"</span>,</span>
 <span>    <span class="st">"target_path"</span>, <span class="st">"size"</span></span>
 <span><span class="op">)</span>, n <span class="op">=</span> <span class="fl">6L</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                             task_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 6710dd46363de5c22ecb9c7a4389255395efa6c8f11094e8c43b7d285f99fd0b</span></span>
-<span><span class="co">#&gt; 2: c21c95aca76b7005ed4f9ee3f64d82924667c33a36f8654fafe9f97944913af0</span></span>
-<span><span class="co">#&gt; 3: ce65233d997f624ba7c2462dca0df681a3190a1753862bd883d4b71d946808ea</span></span>
+<span><span class="co">#&gt; 1: 573848d6d44f1905e0bdbaed8e6dba95f8c41539fbd711d7dc86cb4352b3901d</span></span>
+<span><span class="co">#&gt; 2: c211ccb07a78f18726627cd9fb378122b40c3f9156446b69ea77298df5976348</span></span>
+<span><span class="co">#&gt; 3: cf6e879188031e1f468e2f95bf066623234fcc65c38cddb1fb42f76d4239007e</span></span>
 <span><span class="co">#&gt;               logical_file_id                         filename status</span></span>
 <span><span class="co">#&gt;                        &lt;char&gt;                           &lt;char&gt; &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:              r-lib-setup-r               setup-r-action.yml queued</span></span>
@@ -317,9 +317,9 @@ does not download until <code>run()</code> is called.</p>
 <span><span class="co">#&gt; 3:      r-lib-check-r-package      check-r-package-action.yaml queued</span></span>
 <span><span class="co">#&gt;                                                                                                                                                target_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                     &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
-<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
-<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
+<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
+<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
+<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
 <span><span class="co">#&gt;     size</span></span>
 <span><span class="co">#&gt;    &lt;num&gt;</span></span>
 <span><span class="co">#&gt; 1:    NA</span></span>
@@ -349,9 +349,9 @@ does not download until <code>run()</code> is called.</p>
 <span><span class="co">#&gt; 3:       4031</span></span>
 <span><span class="co">#&gt;                                                                                                                                                target_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                     &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
-<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
-<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
+<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
+<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
+<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
 <span><span class="co">#&gt;                                                                           selected_url</span></span>
 <span><span class="co">#&gt;                                                                                 &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml</span></span>
@@ -367,9 +367,9 @@ was selected.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">downloader</span><span class="op">$</span><span class="fu">sessions</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                 session_id            label status          created_at</span></span>
-<span><span class="co">#&gt; 1 20260719-173557-796ad941 small-live-files   done 2026-07-19 17:35:57</span></span>
+<span><span class="co">#&gt; 1 20260725-170721-5995aac8 small-live-files   done 2026-07-25 17:07:21</span></span>
 <span><span class="co">#&gt;            updated_at        completed_at</span></span>
-<span><span class="co">#&gt; 1 2026-07-19 17:36:00 2026-07-19 17:36:00</span></span>
+<span><span class="co">#&gt; 1 2026-07-25 17:07:25 2026-07-25 17:07:25</span></span>
 <span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">downloader</span><span class="op">$</span><span class="fu">status</span><span class="op">(</span>session_id <span class="op">=</span> <span class="va">session_id</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"logical_file_id"</span>, <span class="st">"status"</span>, <span class="st">"bytes_done"</span>, <span class="st">"target_path"</span>,</span>
@@ -382,9 +382,9 @@ was selected.</p>
 <span><span class="co">#&gt; 3:      r-lib-check-r-package   done       4031</span></span>
 <span><span class="co">#&gt;                                                                                                                                                target_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                     &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
-<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
-<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
+<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
+<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
+<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
 <span><span class="co">#&gt;                                                                           selected_url</span></span>
 <span><span class="co">#&gt;                                                                                 &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml</span></span>
@@ -414,31 +414,31 @@ was selected.</p>
 <span><span class="co">#&gt; 1:                                                                                                                              Queued 3 download task(s).</span></span>
 <span><span class="co">#&gt; 2:                                                                                   https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml</span></span>
 <span><span class="co">#&gt; 3:                                                                     https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml</span></span>
-<span><span class="co">#&gt; 4:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
+<span><span class="co">#&gt; 4: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
 <span><span class="co">#&gt; 5:                                                                          https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml</span></span>
-<span><span class="co">#&gt; 6: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
+<span><span class="co">#&gt; 6:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
 <span><span class="co">#&gt; 7:                                                                                                                                                    done</span></span>
-<span><span class="co">#&gt; 8:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
+<span><span class="co">#&gt; 8:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
 <span><span class="co">#&gt;                                                             task_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:                                                             &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 2: 6710dd46363de5c22ecb9c7a4389255395efa6c8f11094e8c43b7d285f99fd0b</span></span>
-<span><span class="co">#&gt; 3: c21c95aca76b7005ed4f9ee3f64d82924667c33a36f8654fafe9f97944913af0</span></span>
-<span><span class="co">#&gt; 4: 6710dd46363de5c22ecb9c7a4389255395efa6c8f11094e8c43b7d285f99fd0b</span></span>
-<span><span class="co">#&gt; 5: ce65233d997f624ba7c2462dca0df681a3190a1753862bd883d4b71d946808ea</span></span>
-<span><span class="co">#&gt; 6: c21c95aca76b7005ed4f9ee3f64d82924667c33a36f8654fafe9f97944913af0</span></span>
+<span><span class="co">#&gt; 2: 573848d6d44f1905e0bdbaed8e6dba95f8c41539fbd711d7dc86cb4352b3901d</span></span>
+<span><span class="co">#&gt; 3: c211ccb07a78f18726627cd9fb378122b40c3f9156446b69ea77298df5976348</span></span>
+<span><span class="co">#&gt; 4: c211ccb07a78f18726627cd9fb378122b40c3f9156446b69ea77298df5976348</span></span>
+<span><span class="co">#&gt; 5: cf6e879188031e1f468e2f95bf066623234fcc65c38cddb1fb42f76d4239007e</span></span>
+<span><span class="co">#&gt; 6: 573848d6d44f1905e0bdbaed8e6dba95f8c41539fbd711d7dc86cb4352b3901d</span></span>
 <span><span class="co">#&gt; 7:                                                             &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 8: ce65233d997f624ba7c2462dca0df681a3190a1753862bd883d4b71d946808ea</span></span>
+<span><span class="co">#&gt; 8: cf6e879188031e1f468e2f95bf066623234fcc65c38cddb1fb42f76d4239007e</span></span>
 <span><span class="co">#&gt;             created_at</span></span>
 <span><span class="co">#&gt;                 &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: 2026-07-19 17:35:57</span></span>
-<span><span class="co">#&gt; 2: 2026-07-19 17:35:57</span></span>
-<span><span class="co">#&gt; 3: 2026-07-19 17:35:57</span></span>
-<span><span class="co">#&gt; 4: 2026-07-19 17:35:59</span></span>
-<span><span class="co">#&gt; 5: 2026-07-19 17:35:59</span></span>
-<span><span class="co">#&gt; 6: 2026-07-19 17:35:59</span></span>
-<span><span class="co">#&gt; 7: 2026-07-19 17:36:00</span></span>
-<span><span class="co">#&gt; 8: 2026-07-19 17:36:00</span></span>
+<span><span class="co">#&gt; 1: 2026-07-25 17:07:21</span></span>
+<span><span class="co">#&gt; 2: 2026-07-25 17:07:21</span></span>
+<span><span class="co">#&gt; 3: 2026-07-25 17:07:21</span></span>
+<span><span class="co">#&gt; 4: 2026-07-25 17:07:23</span></span>
+<span><span class="co">#&gt; 5: 2026-07-25 17:07:23</span></span>
+<span><span class="co">#&gt; 6: 2026-07-25 17:07:24</span></span>
+<span><span class="co">#&gt; 7: 2026-07-25 17:07:25</span></span>
+<span><span class="co">#&gt; 8: 2026-07-25 17:07:25</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">download_root</span>, <span class="st">"files"</span><span class="op">)</span>, recursive <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "batch/check-r-package-action.yaml"</span></span>
@@ -459,9 +459,9 @@ the recorded algorithm is used.</p>
 <span><span class="co">#&gt; 3:      r-lib-check-r-package   done        TRUE</span></span>
 <span><span class="co">#&gt;                                                                                                                                                target_path</span></span>
 <span><span class="co">#&gt;                                                                                                                                                     &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
-<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
-<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmprmdi85/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
+<span><span class="co">#&gt; 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml</span></span>
+<span><span class="co">#&gt; 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml</span></span>
+<span><span class="co">#&gt; 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml</span></span>
 <span></span>
 <span><span class="va">downloader</span><span class="op">$</span><span class="fu">cleanup_tmp</span><span class="op">(</span>all <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0</span></span></code></pre></div>
@@ -627,7 +627,7 @@ store catalog.</p>
 <span><span class="co">#&gt; 1:                           0                          0       24059358</span></span>
 <span><span class="co">#&gt;    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok</span></span>
 <span><span class="co">#&gt;                 &lt;int&gt;           &lt;num&gt;          &lt;num&gt;          &lt;num&gt;  &lt;lgcl&gt;</span></span>
-<span><span class="co">#&gt; 1:                  0     83311624192    83311624192              0    TRUE</span></span>
+<span><span class="co">#&gt; 1:                  0    159005073408   159005073408              0    TRUE</span></span>
 <span><span class="co">#&gt;    disk_would_block disk_preflight</span></span>
 <span><span class="co">#&gt;              &lt;lgcl&gt;         &lt;lgcl&gt;</span></span>
 <span><span class="co">#&gt; 1:            FALSE           TRUE</span></span>
