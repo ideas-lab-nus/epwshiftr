@@ -623,7 +623,7 @@ Update this table as work is merged.
 | Current \(x^p\) daily temperature projection | Implemented |
 | Daily temperature future-EPW backend | Implemented in PR #141 |
 | Shared component and signal contracts | Implemented in PR #143 |
-| Recipe registry and execution policies | In development in issue #144 |
+| Recipe registry and execution policies | Implemented in PR #145 |
 | Sobie-Curry faithful recipe | Not started |
 | Eames BTWS | Not started |
 | Ek daily factors | Not started |
@@ -641,9 +641,9 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-After issue #144 is implemented, the next method is the paper-faithful
-Sobie-Curry daily recipe. It should reuse the existing calendar and climatology
-primitives rather than adding another daily-date implementation.
+The next method is the paper-faithful Sobie-Curry daily recipe. It should reuse
+the existing calendar and climatology primitives rather than adding another
+daily-date implementation.
 
 ## 15. Primary sources
 
