@@ -1836,6 +1836,38 @@ daily_temperature <- function(reference = NULL, window_days = 31L) {
     )
 }
 
+#' Sobie-Curry daily morphing method
+#'
+#' @description
+#' `sobie_curry_daily()` creates the paper-faithful daily method described by
+#' Sobie and Curry (2025). It requires matching historical and future daily
+#' `tas`, `tasmin`, `tasmax`, `huss`, and `ps` inputs.
+#'
+#' The method estimates calendar-neutral change factors with the published
+#' 21-day circular window, preserves the baseline CWEC/EPW sequence, and
+#' independently transforms dry-bulb temperature, dew point, relative humidity,
+#' and surface pressure. Other hourly EPW fields remain unchanged.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
+#' @param window_days Odd circular climatology-window width in days. The
+#'   published setting is `21`.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @seealso [daily_temperature()], [shift_cmip6()], [shift_future_epw()]
+#' @export
+sobie_curry_daily <- function(reference = NULL, window_days = 21L) {
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "sobie_curry_daily",
+            options = list(window_days = window_days),
+            policy = "paper_faithful"
+        ),
+        reference = reference
+    )
+}
+
 #' @rdname shift_api
 #' @param model CMIP6 source/model IDs.
 #' @param scenarios CMIP6 future scenario experiment IDs.

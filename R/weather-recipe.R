@@ -30,7 +30,8 @@ WEATHER_RECIPE_STATUSES <- c(
 WEATHER_RECIPE_DEFAULTS <- c(
     "belcher_monthly",
     "epwshiftr_monthly",
-    "epwshiftr_daily_power"
+    "epwshiftr_daily_power",
+    "sobie_curry_daily"
 )
 
 # Recipe definitions contain only stable metadata. Executable functions remain
@@ -426,6 +427,7 @@ recipe__default_specs <- function() {
     faithful_inputs <- recipe__monthly_inputs(enhanced = FALSE)
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
+    sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -444,6 +446,26 @@ recipe__default_specs <- function() {
             representations = "series",
             frequencies = "day",
             variable_sets = "tas"
+        )
+    )
+    sobie_inputs <- list(
+        weather_template = component__input_requirement(
+            "weather_template",
+            representations = "epw",
+            frequencies = "hour",
+            calendars = "gregorian"
+        ),
+        model_historical = component__input_requirement(
+            "model_historical",
+            representations = "series",
+            frequencies = "day",
+            variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
+        ),
+        model_future = component__input_requirement(
+            "model_future",
+            representations = "series",
+            frequencies = "day",
+            variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
         )
     )
 
@@ -551,6 +573,47 @@ recipe__default_specs <- function() {
                 "physical_policies"
             ),
             status = "experimental"
+        ),
+        sobie_curry_daily = recipe__spec(
+            name = "sobie_curry_daily",
+            label = "Sobie-Curry daily morphing",
+            backend = "sobie_curry_daily",
+            implementation = "pipeline",
+            source = list(
+                type = "publication",
+                citation = paste(
+                    "Sobie and Curry (2025), Dataset of future-shifted",
+                    "weather files for Canada using climate projections",
+                    "from CMIP6"
+                ),
+                references = "https://doi.org/10.1016/j.dib.2025.111667",
+                equation_note = paste(
+                    "Dew-point alpha is implemented as sigma_future /",
+                    "sigma_historical - 1 so zero change is an identity,",
+                    "consistent with the paper's difference wording."
+                )
+            ),
+            required_inputs = sobie_inputs,
+            calendar_policy = "cf_annual_phase_365",
+            components = pipeline__records(sobie_pipeline),
+            policy_profiles = c(paper_faithful = "default"),
+            default_policy = "paper_faithful",
+            diagnostics = c(
+                "daily_mean_dtr_closure",
+                "dew_point_mean_closure",
+                "zero_denominator_fallback",
+                "independent_thermodynamic_state"
+            ),
+            provenance = c(
+                "source_method",
+                "backend_profile",
+                "input_periods",
+                "calendar_mapping",
+                "component_names",
+                "equation_interpretation",
+                "physical_policy"
+            ),
+            status = "comparison"
         )
     )
 }

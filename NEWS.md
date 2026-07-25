@@ -40,6 +40,17 @@
 
 ## New features
 
+* Added the registered `sobie_curry_daily()` paper-faithful comparison method.
+  Its seven-stage pipeline derives daily thermodynamic factors from matching
+  historical and future `tas`, `tasmin`, `tasmax`, `huss`, and `ps`, smooths
+  the factors with the published circular 21-day window, preserves the
+  baseline EPW sequence, and independently transforms dry-bulb temperature,
+  dew point, relative humidity, and pressure. Dew-point standard-deviation
+  change is interpreted as `sigma_future / sigma_historical - 1` so zero
+  climate change remains an identity; the interpretation, settings,
+  fallbacks, closure errors, and physical diagnostics are retained with the
+  result (#147).
+
 * Added a versioned registry of complete future-weather recipes. The catalog
   records each method's input roles, calendar policy, seven component stages,
   execution policy, output type, diagnostics, and provenance without
