@@ -320,32 +320,118 @@ daily__temperature_factor_rows <- function(targets, projected) {
     factors[]
 }
 
-# Assemble the complete hourly result and its persisted diagnostic columns from
-# one canonical future/reference context.
-daily__temperature_projection <- function(context) {
+# Normalize the three role-addressable sources before calendar mapping. This
+# stage is the only daily-temperature component that interprets raw source
+# representations and units.
+daily__temperature_preprocess_apply <- function(
+    inputs,
+    context,
+    options
+) {
     morpher__validate_context(context)
-    if (is.null(context$reference_climate)) {
+    options <- daily__temperature_backend_options(options)
+    future <- weather__get_input(inputs, "model_future")
+    historical <- weather__get_input(inputs, "model_historical")
+    template <- weather__get_input(inputs, "weather_template")
+    list(
+        baseline = daily__temperature_epw_template(template@source),
+        future = daily__temperature_backend_climate(
+            future@source,
+            "future climate"
+        ),
+        historical = daily__temperature_backend_climate(
+            historical@source,
+            "historical climate"
+        ),
+        options = options
+    )
+}
+
+# Map future and historical daily sources onto the common 365-day phase grid,
+# then build the aligned role payload consumed by the signal kernel.
+daily__temperature_calendar_apply <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    future <- daily__temperature_source(
+        data$future,
+        "future climate",
+        character()
+    )
+    historical <- daily__temperature_source(
+        data$historical,
+        "historical climate",
+        character()
+    )
+    future_climatology <- daily__temperature_climatology(
+        future,
+        character(),
+        data$options$window_days,
+        365L
+    )
+    historical_climatology <- daily__temperature_climatology(
+        historical,
+        character(),
+        data$options$window_days,
+        365L
+    )
+    list(signal__group(
+        inputs = list(
+            weather_template = data$baseline,
+            model_historical = historical_climatology,
+            model_future = future_climatology
+        ),
+        variables = "tas"
+    ))
+}
+
+# Calculate future-minus-historical daily mean and range changes from calendar-
+# aligned climatologies. Calendar interpretation is intentionally absent here.
+daily__temperature_signal_apply_group <- function(
+    inputs,
+    settings,
+    key
+) {
+    list(
+        baseline = inputs$weather_template,
+        targets = daily__temperature_target_changes(
+            inputs$model_future,
+            inputs$model_historical
+        )
+    )
+}
+
+# Preserve the baseline EPW day order explicitly. Future sequence-generation
+# methods can replace this component without changing the signal or hourly code.
+daily__temperature_sequence_generate <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    if (!S7::S7_inherits(data, SignalExecutionResult) ||
+        length(data@values) != 1L ||
+        is.null(data@values[[1L]])) {
         cli::cli_abort(
-            "Daily temperature projection requires explicit historical climate data."
+            "Daily temperature sequence input must contain one successful signal group."
         )
     }
-    options <- daily__temperature_backend_options(context$recipe$options)
-    future <- daily__temperature_backend_climate(
-        context$climate,
-        "future climate"
-    )
-    historical <- daily__temperature_backend_climate(
-        context$reference_climate,
-        "historical climate"
-    )
-    targets <- daily__temperature_targets(
-        future,
-        historical,
-        window_days = options$window_days,
-        target_year_days = 365L
-    )
+    data@values[[1L]]
+}
 
-    baseline <- daily__temperature_epw_template(context$epw)
+# Apply the constrained 24-hour projection to the preserved EPW sequence and
+# retain hourly and daily closure values for the later physics stage.
+daily__temperature_hourly_reconstruct <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    options <- daily__temperature_backend_options(options)
+    baseline <- data$baseline
+    targets <- data$targets
     projected <- daily__project_temperature(
         baseline$template,
         targets,
@@ -363,8 +449,7 @@ daily__temperature_projection <- function(context) {
     )
     factors <- daily__temperature_factor_rows(targets, projected)
 
-    # Join target deltas back to every hourly row before the generic result
-    # writer persists the Parquet artifact.
+    # Join target deltas back to every hourly row before physical closure.
     target_columns <- c(
         "target_day", "annual_phase", "mean_delta", "minimum_delta",
         "maximum_delta", "dtr_delta"
@@ -377,6 +462,26 @@ daily__temperature_projection <- function(context) {
         sort = FALSE
     )
     data.table::setorderv(hourly, ".daily_row")
+    list(
+        baseline = baseline,
+        targets = targets,
+        projected = projected,
+        factors = factors,
+        hourly = hourly
+    )
+}
+
+# Close relative humidity and dew point against the projected dry-bulb
+# temperature, retaining the existing EPW moisture state when it is feasible.
+daily__temperature_physics_apply <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    baseline <- data$baseline
+    hourly <- data$hourly
+    factors <- data$factors
     moisture <- daily__temperature_moisture(
         baseline$weather,
         hourly[["temperature_projected"]]
@@ -463,27 +568,185 @@ daily__temperature_projection <- function(context) {
     list(
         epw = baseline$epw,
         weather = weather,
-        projected = projected,
+        projected = data$projected,
         factors = factors,
         diagnostics = morpher__bind_diagnostics(diagnostics)
     )
 }
 
-# Execute the package-provided backend through the standard EpwMorphBackend
-# contract and retain both hourly and daily diagnostic tables.
-daily__temperature_run <- function(context, backend = NULL) {
-    result <- daily__temperature_projection(context)
+# Assemble the physics-closed hourly data into the existing backend result
+# contract. EpwMorpher remains responsible for Parquet and EPW file writes.
+daily__temperature_output_write <- function(
+    data,
+    inputs,
+    context,
+    options,
+    stages
+) {
     epw_morph_result(
         context,
-        epw = result$epw,
-        data = result$weather,
+        epw = data$epw,
+        data = data$weather,
         parts = list(
-            temperature = result$projected,
-            daily_targets = result$factors
+            temperature = data$projected,
+            daily_targets = data$factors
         ),
-        diagnostics = result$diagnostics,
-        factors = result$factors
+        diagnostics = data$diagnostics,
+        factors = data$factors
     )
+}
+
+# Build all seven executable component specifications for the daily temperature
+# method. Stable names are persisted separately from these process-local
+# functions.
+daily__temperature_component_specs <- function() {
+    template <- component__input_requirement(
+        "weather_template",
+        representations = "epw",
+        frequencies = "hour",
+        calendars = "gregorian"
+    )
+    historical <- component__input_requirement(
+        "model_historical",
+        representations = "series",
+        frequencies = "day",
+        variable_sets = "tas"
+    )
+    future <- component__input_requirement(
+        "model_future",
+        representations = "series",
+        frequencies = "day",
+        variable_sets = "tas"
+    )
+    complete_inputs <- list(
+        weather_template = template,
+        model_historical = historical,
+        model_future = future
+    )
+
+    list(
+        preprocess = component__spec(
+            name = "daily_temperature_inputs",
+            stage = "preprocess",
+            label = "Daily temperature input normalization",
+            required_inputs = complete_inputs,
+            input_kinds = "role_inputs",
+            output_kinds = "daily_temperature_preprocessed",
+            scopes = "multivariate",
+            operations = list(
+                apply = daily__temperature_preprocess_apply
+            )
+        ),
+        calendar = component__spec(
+            name = "daily_temperature_calendar",
+            stage = "calendar",
+            label = "Calendar-neutral daily temperature climatology",
+            required_inputs = complete_inputs,
+            input_kinds = "daily_temperature_preprocessed",
+            output_kinds = "calendar_indexed_temperature",
+            scopes = "multivariate",
+            operations = list(
+                apply = daily__temperature_calendar_apply
+            )
+        ),
+        signal = signal__component(
+            name = "daily_temperature_delta",
+            label = "Daily temperature delta change",
+            required_inputs = complete_inputs,
+            input_kinds = "calendar_indexed_temperature",
+            output_kinds = "daily_temperature_targets",
+            scopes = "multivariate",
+            profiles = list(signal__variable_profile(
+                "tas",
+                evidence = "published",
+                references = paste(
+                    "Belcher, Hacker, and Powell (2005),",
+                    "Constructing design weather data for future climates"
+                )
+            )),
+            apply_group = daily__temperature_signal_apply_group
+        ),
+        sequence = component__spec(
+            name = "preserve_epw_sequence",
+            stage = "sequence",
+            label = "Preserve baseline EPW day sequence",
+            required_inputs = list(weather_template = template),
+            input_kinds = "daily_temperature_targets",
+            output_kinds = "daily_temperature_sequence",
+            scopes = "multivariate",
+            operations = list(
+                generate = daily__temperature_sequence_generate
+            )
+        ),
+        hourly = component__spec(
+            name = "constrained_daily_temperature",
+            stage = "hourly",
+            label = "Constrained 24-hour temperature reconstruction",
+            required_inputs = list(weather_template = template),
+            input_kinds = "daily_temperature_sequence",
+            output_kinds = "hourly_temperature_projected",
+            scopes = "multivariate",
+            operations = list(
+                reconstruct = daily__temperature_hourly_reconstruct
+            )
+        ),
+        physics = component__spec(
+            name = "specific_humidity_closure",
+            stage = "physics",
+            label = "Specific-humidity temperature closure",
+            required_inputs = list(weather_template = template),
+            input_kinds = "hourly_temperature_projected",
+            output_kinds = "hourly_weather_closed",
+            scopes = "multivariate",
+            operations = list(
+                apply = daily__temperature_physics_apply
+            )
+        ),
+        output = component__spec(
+            name = "daily_temperature_epw_result",
+            stage = "output",
+            label = "Daily temperature EPW result",
+            required_inputs = list(weather_template = template),
+            input_kinds = "hourly_weather_closed",
+            output_kinds = "epw_morph_result",
+            scopes = "multivariate",
+            operations = list(
+                write = daily__temperature_output_write
+            )
+        )
+    )
+}
+
+# Register built-in daily temperature components once without replacing an
+# existing implementation under the same stable registry key.
+daily__register_temperature_components <- function() {
+    components <- daily__temperature_component_specs()
+    for (stage in names(components)) {
+        key <- component__registry_key(stage, components[[stage]]@name)
+        if (!exists(
+            key,
+            envir = WEATHER_COMPONENT_REGISTRY,
+            inherits = FALSE
+        )) {
+            component__register(components[[stage]])
+        }
+    }
+    invisible(NULL)
+}
+
+# Return the stable seven-stage pipeline used by the built-in daily temperature
+# backend and serialized with each recipe.
+daily__temperature_pipeline <- function() {
+    daily__register_temperature_components()
+    pipeline__spec(list(
+        preprocess = "daily_temperature_inputs",
+        calendar = "daily_temperature_calendar",
+        signal = "daily_temperature_delta",
+        sequence = "preserve_epw_sequence",
+        hourly = "constrained_daily_temperature",
+        physics = "specific_humidity_closure",
+        output = "daily_temperature_epw_result"
+    ))
 }
 
 # }}}

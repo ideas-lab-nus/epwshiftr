@@ -20,8 +20,6 @@ mandatory for this backend.}
 \item{\code{accepts_reference}}{Whether the backend can consume external
 reference climate data. A backend may accept a reference without
 requiring one.}
-
-\item{\code{required_frequency}}{Optional required CMIP frequency.}
 }
 \if{html}{\out{</div>}}
 }
@@ -32,6 +30,7 @@ requiring one.}
 \item \href{#method-EpwMorphBackend-methods}{\code{EpwMorphBackend$methods()}}
 \item \href{#method-EpwMorphBackend-method_choices}{\code{EpwMorphBackend$method_choices()}}
 \item \href{#method-EpwMorphBackend-rules}{\code{EpwMorphBackend$rules()}}
+\item \href{#method-EpwMorphBackend-component_pipeline}{\code{EpwMorphBackend$component_pipeline()}}
 \item \href{#method-EpwMorphBackend-required_variables}{\code{EpwMorphBackend$required_variables()}}
 \item \href{#method-EpwMorphBackend-validate_methods}{\code{EpwMorphBackend$validate_methods()}}
 \item \href{#method-EpwMorphBackend-rules_with_methods}{\code{EpwMorphBackend$rules_with_methods()}}
@@ -53,8 +52,8 @@ Create an EPW morphing backend.
   rules,
   requires_reference = FALSE,
   accepts_reference = requires_reference,
-  required_frequency = NULL,
-  runner
+  pipeline = NULL,
+  runner = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -79,10 +78,11 @@ mandatory. This can be \code{TRUE} only when \code{accepts_reference} is also
 be consumed. \code{TRUE} with \code{requires_reference = FALSE} defines an
 optional-reference backend such as Belcher.}
 
-\item{\code{required_frequency}}{Optional required CMIP frequency.}
+\item{\code{pipeline}}{Optional internal component pipeline specification.}
 
-\item{\code{runner}}{Function taking \verb{(context, backend)} and returning an
-\code{epw_morph_result}.}
+\item{\code{runner}}{Optional function taking \verb{(context, backend)} and
+returning an \code{epw_morph_result}. Exactly one of \code{pipeline} and
+\code{runner} must be supplied.}
 }
 \if{html}{\out{</div>}}
 }
@@ -114,6 +114,16 @@ Return allowed backend method values.
 Return backend rules.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorphBackend$rules()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EpwMorphBackend-component_pipeline"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorphBackend-component_pipeline}{}}}
+\subsection{Method \code{component_pipeline()}}{
+Return the optional component pipeline used by this backend.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{EpwMorphBackend$component_pipeline()}\if{html}{\out{</div>}}
 }
 
 }

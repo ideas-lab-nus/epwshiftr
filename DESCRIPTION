@@ -94,6 +94,7 @@ Collate:
     'weather-input.R'
     'weather-component.R'
     'weather-signal.R'
+    'weather-pipeline.R'
     'zzz.R'
 Config/testthat/edition: 3
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload
