@@ -118,6 +118,48 @@ enhanced_recipe <- epw_morph_recipe(
 legacy_recipe <- epw_morph_recipe("belcher", profile = "legacy")
 ```
 
+## Complete Recipe Catalog
+
+Backends describe executable statistical engines, while the complete recipe
+catalog describes named scientific methods assembled from those engines and
+the seven component stages. Inspecting the catalog does not run a method or
+serialize any function:
+
+```r
+epw_morph_recipes()
+epw_morph_recipe_spec("epwshiftr_daily_power")
+```
+
+The initial catalog distinguishes the following complete methods:
+
+| Recipe | Policy | Implementation | Purpose |
+|:-------|:-------|:---------------|:--------|
+| `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
+| `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
+| `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
+
+Create a configured recipe by its stable catalog name. The selected policy,
+catalog version, backend profile, and component names are persisted with the
+workflow:
+
+```r
+monthly_comparison <- epw_morph_recipe(
+    "belcher_monthly",
+    policy = "paper_faithful"
+)
+daily_power <- epw_morph_recipe(
+    "epwshiftr_daily_power",
+    policy = "harmonized"
+)
+```
+
+Catalog input roles are validated before backend execution. The two monthly
+entries remain explicitly labelled backend adapters because their established
+runner has not yet been decomposed into executable components; the daily entry
+is checked against the registered seven-stage pipeline. Ad hoc recipes such as
+`epw_morph_recipe("belcher")` remain supported and preserve their previous
+defaults.
+
 The profiles resolve to a complete, persisted option contract:
 
 | Option | Enhanced default | Legacy default | Meaning and allowed values |

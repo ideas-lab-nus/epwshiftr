@@ -211,6 +211,32 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
     ) %in% names(weather)))
 })
 
+test_that("registered daily recipe preserves the established backend output", {
+    ad_hoc_context <- daily_backend_test__context(include_extrema = TRUE)
+    registered_context <- ad_hoc_context
+    registered_context$recipe <- epw_morph_recipe(
+        name = "daily_temperature",
+        policy = "harmonized",
+        spec = "epwshiftr_daily_power"
+    )
+
+    ad_hoc <- morpher__run_context(ad_hoc_context)
+    registered <- morpher__run_context(registered_context)
+
+    expect_identical(
+        registered$recipe$recipe_spec,
+        "epwshiftr_daily_power"
+    )
+    expect_identical(registered$recipe$policy, "harmonized")
+    expect_equal(registered$data, ad_hoc$data, tolerance = 0)
+    expect_equal(registered$factors, ad_hoc$factors, tolerance = 0)
+    expect_equal(
+        registered$diagnostics,
+        ad_hoc$diagnostics,
+        tolerance = 0
+    )
+})
+
 test_that("daily temperature backend clips inherited moisture at saturation", {
     context <- daily_backend_test__context(
         include_extrema = FALSE,
@@ -296,8 +322,20 @@ test_that("daily temperature shift method validates frequency and reconstructs",
     expect_true(S7::S7_inherits(plan, ShiftPlan))
     expect_identical(plan@meta$method@recipe$backend, "daily_temperature")
     expect_identical(
+        plan@meta$method@recipe$recipe_spec,
+        "epwshiftr_daily_power"
+    )
+    expect_identical(
+        plan@meta$method@recipe$policy,
+        "harmonized"
+    )
+    expect_identical(
         rebuilt@meta$method@recipe$options$window_days,
         15L
+    )
+    expect_identical(
+        rebuilt@meta$method@recipe$recipe_spec,
+        plan@meta$method@recipe$recipe_spec
     )
     expect_identical(
         rebuilt@meta$method@recipe$components,
