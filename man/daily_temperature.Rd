@@ -4,13 +4,22 @@
 \alias{daily_temperature}
 \title{Daily temperature projection method}
 \usage{
-daily_temperature(reference = NULL, window_days = 31L)
+daily_temperature(
+  reference = NULL,
+  window_days = 31L,
+  reconstruction = c("power", "btws")
+)
 }
 \arguments{
 \item{reference}{A required \code{\link[=historical_reference]{historical_reference()}},
 \code{\link[=shift_reference_plan]{shift_reference_plan()}}, or extracted \code{ShiftClimate} stage.}
 
 \item{window_days}{Odd circular climatology-window width in days.}
+
+\item{reconstruction}{Hourly temperature reconstruction component:
+\code{"power"} uses the default constrained power projection; \code{"btws"} uses
+Eames bounded temperature weighted stretch and requires paired daily
+\code{tasmin} and \code{tasmax}.}
 }
 \value{
 A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_future_epw()}}.
@@ -18,9 +27,8 @@ A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_futu
 \description{
 \code{daily_temperature()} creates a future-EPW method from matching future and
 historical daily CMIP temperature data. It requires \code{frequency = "day"}.
-The configured workflow retains the registered
-\code{"epwshiftr_daily_power"} recipe identity and \code{"harmonized"} execution
-policy while preserving the public method name.
+The configured workflow retains the selected registered recipe identity and
+\code{"harmonized"} execution policy while preserving the public method name.
 
 Daily \code{tas} changes are estimated with a circular climatology on a common
 365-day phase grid. When paired \code{tasmin} and \code{tasmax} are available for both
@@ -29,10 +37,23 @@ mean, minimum, and maximum while retaining its hourly ordering. Otherwise,
 the daily mean change is applied additively and the baseline daily range is
 inherited.
 
+\code{reconstruction = "power"} uses epwshiftr's monotone power projection.
+\code{"btws"} instead selects the bounded temperature weighted stretch published
+by Eames et al. (2024). The latter remains a composite comparison: only its
+hourly reconstruction comes from Eames, while the daily CMIP6 signal,
+calendar mapping, humidity closure, and output policy remain epwshiftr
+components.
+
 EPW fields outside dry-bulb temperature and its coupled humidity state remain
 unchanged. After dry-bulb temperature is projected, baseline specific
 humidity is retained and relative humidity and dew point are recomputed;
 moisture is clipped only when necessary to avoid supersaturation.
+}
+\references{
+Eames, M. E., Ramallo-González, A. P., and Wood, M. J. (2024).
+A revised morphing algorithm for creating future weather for building
+performance evaluation.
+\doi{10.1177/01436244231218861}
 }
 \seealso{
 \code{\link[=shift_cmip6]{shift_cmip6()}}, \code{\link[=shift_future_epw]{shift_future_epw()}}

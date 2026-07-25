@@ -1,4 +1,4 @@
-# Build deterministic daily temperature rows for the complete BTWS backend.
+# Build deterministic daily temperature rows for the composite BTWS recipe.
 btws_test__climate <- function(
     years,
     period,
@@ -73,11 +73,11 @@ btws_test__context <- function(
     )
 }
 
-test_that("Eames BTWS backend and composite recipe expose strict contracts", {
-    expect_true("daily_btws" %in% epw_morph_backends())
+test_that("Eames BTWS component and composite recipe expose strict contracts", {
+    expect_true("daily_temperature_btws" %in% epw_morph_backends())
     expect_true("epwshiftr_daily_btws" %in% epw_morph_recipes()[["name"]])
 
-    backend <- epw_morph_backend("daily_btws")
+    backend <- epw_morph_backend("daily_temperature_btws")
     recipe <- epw_morph_recipe("epwshiftr_daily_btws")
     spec <- epw_morph_recipe_spec("epwshiftr_daily_btws")
 
@@ -90,7 +90,7 @@ test_that("Eames BTWS backend and composite recipe expose strict contracts", {
         epw_morph_variables(recipe),
         c("tas", "tasmin", "tasmax")
     )
-    expect_identical(recipe$backend, "daily_btws")
+    expect_identical(recipe$backend, "daily_temperature_btws")
     expect_identical(recipe$policy, "harmonized")
     expect_identical(recipe$recipe_spec, "epwshiftr_daily_btws")
     expect_identical(
@@ -100,14 +100,18 @@ test_that("Eames BTWS backend and composite recipe expose strict contracts", {
     expect_identical(spec@source$type, "combined_prior_methods")
     expect_match(spec@source$citation, "combined")
     expect_match(spec@source$equation_note, "bisection")
+    expect_match(spec@source$signal_note, "monthly UKCP18")
     expect_identical(
         morpher__recipe_required_frequency(recipe),
         "day"
     )
-    expect_error(daily_btws(), "requires an explicit reference")
+    expect_error(
+        daily_temperature(reconstruction = "btws"),
+        "requires an explicit reference"
+    )
 })
 
-test_that("Eames BTWS backend closes a complete future EPW year", {
+test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
     context <- btws_test__context()
     baseline <- context$epw$clone()
     suppressMessages(baseline$drop_unit())
@@ -158,10 +162,11 @@ test_that("Eames BTWS backend closes a complete future EPW year", {
         weather$dry_bulb_temperature))
 })
 
-test_that("daily_btws method validates and survives plan reconstruction", {
-    method <- daily_btws(
+test_that("daily temperature selects BTWS and survives plan reconstruction", {
+    method <- daily_temperature(
         historical_reference(years = 1995:2014),
-        window_days = 15L
+        window_days = 15L,
+        reconstruction = "btws"
     )
     climate <- shift_cmip6(
         "EC-Earth3",
@@ -180,7 +185,10 @@ test_that("daily_btws method validates and survives plan reconstruction", {
     )
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
-    expect_identical(plan@meta$method@recipe$backend, "daily_btws")
+    expect_identical(
+        plan@meta$method@recipe$backend,
+        "daily_temperature_btws"
+    )
     expect_identical(
         plan@meta$method@recipe$recipe_spec,
         "epwshiftr_daily_btws"
@@ -194,4 +202,31 @@ test_that("daily_btws method validates and survives plan reconstruction", {
         "eames_btws_temperature"
     )
     expect_silent(shift__validate_background_plan(plan))
+})
+
+test_that("daily temperature reconstruction selects one hourly component", {
+    reference <- historical_reference(years = 1995:2014)
+    power <- daily_temperature(reference, reconstruction = "power")
+    btws <- daily_temperature(reference, reconstruction = "btws")
+
+    expect_identical(
+        power@recipe$recipe_spec,
+        "epwshiftr_daily_power"
+    )
+    expect_identical(
+        power@recipe$components$hourly,
+        "constrained_daily_temperature"
+    )
+    expect_identical(
+        btws@recipe$recipe_spec,
+        "epwshiftr_daily_btws"
+    )
+    expect_identical(
+        btws@recipe$components$hourly,
+        "eames_btws_temperature"
+    )
+    expect_error(
+        daily_temperature(reference, reconstruction = "unknown"),
+        "should be one of"
+    )
 })

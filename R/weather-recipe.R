@@ -422,13 +422,13 @@ recipe__monthly_inputs <- function(enhanced = FALSE) {
     )
 }
 
-# Build the three complete methods already available in the package without
-# embedding backend runners or component functions in their definitions.
+# Build the complete built-in recipes without embedding backend runners or
+# component functions in their definitions.
 recipe__default_specs <- function() {
     faithful_inputs <- recipe__monthly_inputs(enhanced = FALSE)
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
-    btws_pipeline <- btws__pipeline()
+    btws_pipeline <- daily__temperature_pipeline("btws")
     sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
@@ -594,7 +594,7 @@ recipe__default_specs <- function() {
         epwshiftr_daily_btws = recipe__spec(
             name = "epwshiftr_daily_btws",
             label = "Daily CMIP6 signal with Eames BTWS projection",
-            backend = "daily_btws",
+            backend = "daily_temperature_btws",
             implementation = "pipeline",
             source = list(
                 type = "combined_prior_methods",
@@ -612,6 +612,11 @@ recipe__default_specs <- function() {
                     "Where the paper does not publish solver code, epwshiftr",
                     "uses deterministic bisection to retain the largest",
                     "admissible m or n in [0, 1]."
+                ),
+                signal_note = paste(
+                    "Eames et al. use monthly UKCP18 change factors, not daily",
+                    "CMIP6 series. This recipe supplies epwshiftr daily CMIP6",
+                    "targets to the published hourly reconstruction component."
                 )
             ),
             required_inputs = btws_inputs,

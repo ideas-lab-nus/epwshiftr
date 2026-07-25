@@ -500,14 +500,14 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline()
         ),
-        daily_btws = EpwMorphBackend$new(
-            name = "daily_btws",
+        daily_temperature_btws = EpwMorphBackend$new(
+            name = "daily_temperature_btws",
             label = "Daily temperature signal with Eames BTWS hourly projection",
-            methods = EPW_MORPH_DAILY_BTWS_METHODS,
+            methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
             method_choices = "eames_btws",
-            rules = EPW_MORPH_DAILY_BTWS_RULES,
+            rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
             requires_reference = TRUE,
-            pipeline = btws__pipeline()
+            pipeline = daily__temperature_pipeline("btws")
         ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
@@ -942,8 +942,10 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
     backend_spec <- epw_morph_backend(backend)
 
     is_belcher <- backend %in% c("belcher", "belcher_absolute")
-    is_daily_temperature <- identical(backend, "daily_temperature")
-    is_daily_btws <- identical(backend, "daily_btws")
+    is_daily_temperature <- backend %in% c(
+        "daily_temperature",
+        "daily_temperature_btws"
+    )
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     if (is_belcher) {
         if (is.null(profile)) {
@@ -959,7 +961,7 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
             methods <- base_methods
         }
         options <- morpher__belcher_resolve_options(profile, options)
-    } else if (is_daily_temperature || is_daily_btws) {
+    } else if (is_daily_temperature) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
                 "Daily temperature recipes only support {.val default} profile metadata."

@@ -181,6 +181,7 @@ API names.
 | `belcher_monthly` | Belcher et al. (2005) | Monthly shift, stretch, or combined change | Inherit baseline hourly sequence | Available through existing morphing profiles |
 | `epwshiftr_monthly` | Current enhanced epwshiftr | Enhanced monthly Belcher changes | Inherit baseline sequence; apply shared physical post-processing | Implemented |
 | `future_weather_generator` | Future Weather Generator | Enhanced monthly Belcher-family changes | Product-specific smoothing, ensemble and derived-field processing | Not implemented; external comparison or clean-room implementation only |
+| `eames_monthly` | Eames et al. (2024) | Monthly UKCP18 mean and average-daily-extrema change factors | Apply BTWS day by day to each hourly baseline month; use published transforms for other variables | Not implemented |
 | `ek_daily_factors` | Ek et al. (2018) | Daily climatological change factors | Inherit baseline hourly sequence | Not implemented as a faithful recipe |
 | `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Implemented in PR #147; harmonized closure in PR #149 |
 | `epwshiftr_daily_btws` | Composite comparison using Eames et al. (2024) | Existing epwshiftr daily CMIP6 mean/min/max targets | Published day-wise bounded temperature weighted stretch | Implemented; tracked in #150 |
@@ -572,8 +573,10 @@ external or black-box comparator. Do not invent missing behavior.
 2. Eames BTWS hourly projection and its documented mean-shift fallback.
    Implemented as the hourly component of the composite
    `epwshiftr_daily_btws` recipe; tracked in #150.
-3. Ek daily change factors.
-4. Arima month-wise rank/QM change functions.
+3. Eames monthly change-factor signal and complete paper-faithful recipe. This
+   remains separate from the daily CMIP6 composition.
+4. Ek daily change factors.
+5. Arima month-wise rank/QM change functions.
 
 These methods provide the most direct tests of the current daily signal and
 \(x^p\) projection.
@@ -627,7 +630,8 @@ Update this table as work is merged.
 | Recipe registry and execution policies | Implemented in PR #145 |
 | Sobie-Curry faithful recipe | Implemented in PR #147 |
 | Sobie-Curry harmonized humidity closure | Implemented in PR #149 |
-| Eames BTWS hourly component and composite recipe | Implemented; tracked in #150 |
+| Eames BTWS hourly component and daily CMIP6 composite recipe | Implemented in PR #151 |
+| Eames monthly paper-faithful recipe | Not started |
 | Ek daily factors | Not started |
 | Arima rank/QM | Not started |
 | Eight ibicus signal methods | Not started |

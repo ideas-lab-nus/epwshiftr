@@ -71,7 +71,7 @@ Collate:
     'dict-store.R'
     'dict.R'
     'downloader.R'
-    'eames-btws-backend.R'
+    'eames-btws-component.R'
     'eames-btws.R'
     'epw-file.R'
     'utils.R'

@@ -188,6 +188,23 @@ would leave `[0, 1]`, but does not publish solver code. epwshiftr uses
 deterministic bisection to retain the largest admissible exponent and records
 `S`, `m`, `n`, closure errors, and every mean-shift fallback reason.
 
+At the high-level workflow, select the same daily temperature method and change
+only its hourly reconstruction component:
+
+```r
+btws_method <- daily_temperature(
+    historical_reference(years = 1995:2014),
+    reconstruction = "btws"
+)
+```
+
+Eames et al. did not drive BTWS with daily CMIP6 series. Their paper applies
+monthly UKCP18 change factors for mean temperature and the monthly averages of
+daily minimum and maximum temperature to an hourly baseline month, with BTWS
+executed day by day. A paper-faithful monthly signal recipe is therefore a
+separate future implementation; `epwshiftr_daily_btws` is retained specifically
+to compare hourly reconstruction algorithms under the same daily CMIP6 signal.
+
 The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
 surface pressure `ps` from matching historical and future model periods. It
 uses a circular 21-day window on the shared 365-day annual-phase grid, preserves
@@ -373,8 +390,8 @@ replacing it. `shift_request()`, collection, download, and extraction obtain and
 persist the source data. `shift_morph()` builds the four role-addressable inputs,
 compiles the component names stored in the selected recipe, and executes the
 scientific stages through the backend. `shift_epw()` remains the durable final
-file writer. The built-in `daily_temperature()`, `daily_btws()`, and
-`sobie_curry_daily()` methods use all seven stages, including explicit
+file writer. The built-in `daily_temperature()` and `sobie_curry_daily()`
+methods use all seven stages, including explicit
 `sequence` components that preserve the baseline EPW day order.
 
 Bias-adjustment implementations belong to the `signal` stage. Their common
