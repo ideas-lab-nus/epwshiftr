@@ -39,7 +39,8 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
         c(
             "belcher_monthly",
             "epwshiftr_monthly",
-            "epwshiftr_daily_power"
+            "epwshiftr_daily_power",
+            "sobie_curry_daily"
         )
     )
     expect_true(all(lengths(recipes$components) == 7L))
