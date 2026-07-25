@@ -395,9 +395,16 @@ epwshiftr_cli_config_method <- function(config) {
     name <- tolower(epwshiftr_cli_config_string(config$name))
     methods <- epwshiftr_cli_recipe_methods(config$methods)
     profile <- epwshiftr_cli_config_string(config$profile, default = NULL)
+    policy <- epwshiftr_cli_config_string(config$policy, default = NULL)
+    registered <- name %in% epw_morph_recipes()[["name"]]
+    backend <- if (registered) {
+        epw_morph_recipe_spec(name)@backend
+    } else {
+        name
+    }
     options <- cli_shift__recipe_options(
         epwshiftr_cli_config_named_list(config$options),
-        name
+        backend
     )
     reference <- epwshiftr_cli_config_reference(config$reference)
     if (identical(name, "belcher")) {
@@ -411,10 +418,10 @@ epwshiftr_cli_config_method <- function(config) {
     shift_morph_method(
         epw_morph_recipe(
             name = name,
-            backend = name,
             methods = methods,
             profile = profile,
-            options = options
+            options = options,
+            policy = policy
         ),
         reference = reference
     )
@@ -632,17 +639,25 @@ epwshiftr_cli_download_args_from_config <- function(config) {
 
 
 epwshiftr_cli_recipe <- function(value = "belcher", methods = NULL,
-                                 profile = NULL, options = NULL) {
+                                 profile = NULL, options = NULL,
+                                 policy = NULL) {
     value <- tolower(epwshiftr_cli_config_string(value, default = "belcher"))
-    if (!value %in% epw_morph_backends()) {
+    registered <- value %in% epw_morph_recipes()[["name"]]
+    if (!registered && !value %in% epw_morph_backends()) {
         epwshiftr_cli_usage_abort(sprintf("Unknown morph recipe/backend: %s", value))
+    }
+    backend <- if (registered) {
+        epw_morph_recipe_spec(value)@backend
+    } else {
+        value
     }
     methods <- epwshiftr_cli_recipe_methods(methods)
     epw_morph_recipe(
         value,
         methods = methods,
         profile = profile,
-        options = cli_shift__recipe_options(options, value)
+        options = cli_shift__recipe_options(options, backend),
+        policy = policy
     )
 }
 
@@ -959,7 +974,22 @@ epwshiftr_cli_recipe_from_json <- function(json) {
         backend = backend,
         methods = methods,
         profile = profile,
-        options = cli_shift__recipe_options(parsed$options, backend)
+        options = cli_shift__recipe_options(parsed$options, backend),
+        policy = if (is.null(parsed$policy)) {
+            NULL
+        } else {
+            as.character(parsed$policy)
+        },
+        version = if (is.null(parsed$recipe_version)) {
+            NULL
+        } else {
+            as.integer(parsed$recipe_version)
+        },
+        spec = if (is.null(parsed$recipe_spec)) {
+            NULL
+        } else {
+            as.character(parsed$recipe_spec)
+        }
     )
 }
 

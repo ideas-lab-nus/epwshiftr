@@ -52,7 +52,7 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
         args,
         flags = c("--overwrite", "--no-resume", "--no-progress",
             "--reduced-motion", "--verbose", "--debug"),
-        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--profile", "--strict", "--by"),
+        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--profile", "--policy", "--strict", "--by"),
         multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option", "--method", "--option")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -81,7 +81,11 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
         epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"),
         methods = epwshiftr_cli_key_value_list(parsed$options[["--method"]], "--method"),
         profile = epwshiftr_cli_config_string(parsed$options[["--profile"]], default = NULL),
-        options = epwshiftr_cli_key_value_list(parsed$options[["--option"]], "--option")
+        options = epwshiftr_cli_key_value_list(parsed$options[["--option"]], "--option"),
+        policy = epwshiftr_cli_config_string(
+            parsed$options[["--policy"]],
+            default = NULL
+        )
     )
     by <- epwshiftr_cli_config_character(
         parsed$options[["--by"]],

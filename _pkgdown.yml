@@ -83,6 +83,8 @@ reference:
       - epw_morpher
       - epw_morph_periods
       - epw_morph_recipe
+      - epw_morph_recipes
+      - epw_morph_recipe_spec
       - belcher_options
       - epw_morph_variables
       - epw_morph_backends

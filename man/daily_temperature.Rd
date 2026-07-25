@@ -18,6 +18,9 @@ A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_futu
 \description{
 \code{daily_temperature()} creates a future-EPW method from matching future and
 historical daily CMIP temperature data. It requires \code{frequency = "day"}.
+The configured workflow retains the registered
+\code{"epwshiftr_daily_power"} recipe identity and \code{"harmonized"} execution
+policy while preserving the public method name.
 
 Daily \code{tas} changes are estimated with a circular climatology on a common
 365-day phase grid. When paired \code{tasmin} and \code{tasmax} are available for both
