@@ -1836,6 +1836,54 @@ daily_temperature <- function(reference = NULL, window_days = 31L) {
     )
 }
 
+#' Daily temperature projection with Eames BTWS
+#'
+#' @description
+#' `daily_btws()` combines epwshiftr's calendar-neutral daily CMIP6
+#' temperature targets with the bounded temperature weighted stretch published
+#' by Eames et al. (2024). It requires matching historical and future daily
+#' `tas`, `tasmin`, and `tasmax` inputs.
+#'
+#' For each baseline EPW day, the hourly stage normalizes the 24-hour dry-bulb
+#' profile, applies the published transfer function
+#' \eqn{g = x^m(1-x)^n}, and projects it onto the requested daily mean,
+#' minimum, and maximum. The default is \eqn{m=n=1}; when the result would
+#' leave the normalized interval, the implementation reduces the relevant
+#' exponent and retains the largest admissible value. Days without an
+#' admissible bounded result use an explicit additive mean-shift fallback.
+#'
+#' This is a composite comparison recipe, not a reproduction of the complete
+#' Eames monthly UKCP18 workflow. The daily climate signal, calendar mapping,
+#' humidity closure, and output stages are epwshiftr components; the hourly
+#' projection is the published BTWS component.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
+#' @param window_days Odd circular climatology-window width in days.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @references
+#' Eames, M. E., Ramallo-González, A. P., and Wood, M. J. (2024).
+#' A revised morphing algorithm for creating future weather for building
+#' performance evaluation.
+#' \doi{10.1177/01436244231218861}
+#'
+#' @seealso [daily_temperature()], [sobie_curry_daily()], [shift_cmip6()],
+#'   [shift_future_epw()]
+#' @export
+daily_btws <- function(reference = NULL, window_days = 31L) {
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "daily_btws",
+            options = list(window_days = window_days),
+            policy = "harmonized",
+            spec = "epwshiftr_daily_btws"
+        ),
+        reference = reference
+    )
+}
+
 #' Sobie-Curry daily morphing method
 #'
 #' @description
