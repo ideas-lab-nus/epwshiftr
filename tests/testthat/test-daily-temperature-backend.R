@@ -82,7 +82,16 @@ test_that("daily temperature backend is registered with a daily reference contra
     backend <- epw_morph_backend("daily_temperature")
     expect_true(backend$requires_reference)
     expect_true(backend$accepts_reference)
-    expect_identical(backend$required_frequency, "day")
+    expect_true(S7::S7_inherits(
+        backend$component_pipeline(),
+        WeatherPipelineSpec
+    ))
+    plan <- pipeline__compile(
+        backend$component_pipeline(),
+        daily_backend_test__context()$inputs
+    )
+    expect_true(S7::S7_inherits(plan, WeatherPipelinePlan))
+    expect_identical(names(plan@components), WEATHER_COMPONENT_STAGES)
     expect_identical(backend$required_variables(), "tas")
     expect_equal(
         epw_morph_variables(backend, include_optional = TRUE),
@@ -95,6 +104,14 @@ test_that("daily temperature backend is registered with a daily reference contra
     )
     expect_identical(recipe$options$window_days, 15L)
     expect_identical(recipe$methods, c(tdb = "constrained"))
+    expect_identical(
+        names(recipe$components),
+        WEATHER_COMPONENT_STAGES
+    )
+    expect_identical(
+        morpher__recipe_required_frequency(recipe),
+        "day"
+    )
     expect_error(
         epw_morph_recipe(
             "daily_temperature",
@@ -141,6 +158,11 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
     expect_s3_class(result, "epw_morph_result")
     expect_identical(nrow(weather), 8760L)
     expect_identical(nrow(result$factors), 365L)
+    expect_identical(
+        result$parts$component_pipeline$stage,
+        WEATHER_COMPONENT_STAGES
+    )
+    expect_true(all(result$parts$component_pipeline$status == "ok"))
     expect_true(all(result$factors$dtr_status == "adjusted"))
     expect_true(all(result$factors$projection_status == "projected"))
     expect_lt(max(abs(result$factors$mean_closure_error)), 1e-8)
@@ -245,7 +267,7 @@ test_that("daily temperature backend records missing-extrema fallback and freque
     )
     expect_error(
         morpher__run_context(monthly_context),
-        "must use CMIP frequency.*day"
+        "frequencies.*mon.*day"
     )
 })
 
@@ -276,6 +298,10 @@ test_that("daily temperature shift method validates frequency and reconstructs",
     expect_identical(
         rebuilt@meta$method@recipe$options$window_days,
         15L
+    )
+    expect_identical(
+        rebuilt@meta$method@recipe$components,
+        plan@meta$method@recipe$components
     )
     expect_silent(shift__validate_background_plan(plan))
     expect_error(

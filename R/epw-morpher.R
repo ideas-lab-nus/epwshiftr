@@ -315,8 +315,6 @@ EpwMorphBackend <- R6::R6Class(
         #'   reference climate data. A backend may accept a reference without
         #'   requiring one.
         accepts_reference = FALSE,
-        #' @field required_frequency Optional required CMIP frequency.
-        required_frequency = NULL,
 
         #' @description
         #' Create an EPW morphing backend.
@@ -332,22 +330,18 @@ EpwMorphBackend <- R6::R6Class(
         #' @param accepts_reference Whether external reference climate data can
         #'   be consumed. `TRUE` with `requires_reference = FALSE` defines an
         #'   optional-reference backend such as Belcher.
-        #' @param required_frequency Optional required CMIP frequency.
-        #' @param runner Function taking `(context, backend)` and returning an
-        #'        `epw_morph_result`.
+        #' @param pipeline Optional internal component pipeline specification.
+        #' @param runner Optional function taking `(context, backend)` and
+        #'        returning an `epw_morph_result`. Exactly one of `pipeline` and
+        #'        `runner` must be supplied.
         initialize = function(name, label = NULL, methods = NULL, method_choices = NULL, rules,
                               requires_reference = FALSE,
                               accepts_reference = requires_reference,
-                              required_frequency = NULL, runner) {
+                              pipeline = NULL, runner = NULL) {
             checkmate::assert_string(name, min.chars = 1L)
             checkmate::assert_string(label, null.ok = TRUE)
             checkmate::assert_flag(requires_reference)
             checkmate::assert_flag(accepts_reference)
-            checkmate::assert_string(
-                required_frequency,
-                min.chars = 1L,
-                null.ok = TRUE
-            )
             if (isTRUE(requires_reference) && !isTRUE(accepts_reference)) {
                 cli::cli_abort("A backend that requires reference climate must also accept it.")
             }
@@ -359,16 +353,22 @@ EpwMorphBackend <- R6::R6Class(
                 method_choices <- unique(unname(methods))
             }
             checkmate::assert_character(method_choices, any.missing = FALSE)
-            checkmate::assert_function(runner)
+            if (!is.null(pipeline) &&
+                !S7::S7_inherits(pipeline, WeatherPipelineSpec)) {
+                cli::cli_abort(
+                    "{.arg pipeline} must be a WeatherPipelineSpec object."
+                )
+            }
+            checkmate::assert_function(runner, null.ok = TRUE)
+            if (is.null(pipeline) == is.null(runner)) {
+                cli::cli_abort(
+                    "Supply exactly one backend {.arg pipeline} or {.arg runner}."
+                )
+            }
             self$name <- tolower(name)
             self$label <- if (is.null(label)) self$name else label
             self$requires_reference <- requires_reference
             self$accepts_reference <- accepts_reference
-            self$required_frequency <- if (is.null(required_frequency)) {
-                NULL
-            } else {
-                tolower(required_frequency)
-            }
             private$method_defaults <- methods
             private$allowed_methods <- method_choices
             private$rule_table <- morpher__normalize_backend_rules(
@@ -377,6 +377,7 @@ EpwMorphBackend <- R6::R6Class(
                 method_defaults = private$method_defaults,
                 method_choices = private$allowed_methods
             )
+            private$pipeline <- pipeline
             private$runner <- runner
         },
 
@@ -396,6 +397,12 @@ EpwMorphBackend <- R6::R6Class(
         #' Return backend rules.
         rules = function() {
             data.table::copy(private$rule_table)
+        },
+
+        #' @description
+        #' Return the optional component pipeline used by this backend.
+        component_pipeline = function() {
+            private$pipeline
         },
 
         #' @description
@@ -450,6 +457,9 @@ EpwMorphBackend <- R6::R6Class(
         #'
         #' @param context Canonical EPW morphing context.
         run = function(context) {
+            if (!is.null(private$pipeline)) {
+                return(pipeline__run(private$pipeline, context))
+            }
             private$runner(context, self)
         }
     ),
@@ -457,6 +467,7 @@ EpwMorphBackend <- R6::R6Class(
         method_defaults = NULL,
         allowed_methods = NULL,
         rule_table = NULL,
+        pipeline = NULL,
         runner = NULL
     )
 )
@@ -487,8 +498,7 @@ morpher__default_backend_specs <- function() {
             method_choices = "constrained",
             rules = EPW_MORPH_DAILY_TEMPERATURE_RULES,
             requires_reference = TRUE,
-            required_frequency = "day",
-            runner = daily__temperature_run
+            pipeline = daily__temperature_pipeline()
         )
     )
 }
@@ -876,6 +886,7 @@ epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
 
     methods <- morpher__recipe_methods(methods, backend_spec)
     rules <- backend_spec$rules_with_methods(methods)
+    pipeline <- backend_spec$component_pipeline()
     if (is_belcher && identical(options$snow_depth, "required")) {
         rules[step == "snow_depth", required := TRUE]
     }
@@ -887,7 +898,12 @@ epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
             profile = profile,
             options = options,
             methods = methods,
-            rules = rules
+            rules = rules,
+            components = if (is.null(pipeline)) {
+                NULL
+            } else {
+                pipeline__records(pipeline)
+            }
         ),
         class = "epw_morph_recipe"
     )
@@ -951,7 +967,8 @@ morpher__json <- function(x) {
             # identity. A named list deliberately serializes as an object so
             # queued and resumed jobs retain every method override.
             methods = as.list(x$methods),
-            rules = as.data.frame(rules)
+            rules = as.data.frame(rules),
+            components = x$components
         )
     }
     jsonlite::toJSON(x, auto_unbox = TRUE, null = "null")
@@ -987,13 +1004,23 @@ morpher__recipe_accepts_reference <- function(recipe) {
     epw_morph_backend(recipe$backend)$accepts_reference
 }
 
-# Return a backend's required CMIP frequency without exposing registry internals
-# to the staged workflow.
+# Return the component-declared CMIP frequency without duplicating that
+# constraint on the backend or staged workflow.
 morpher__recipe_required_frequency <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
-    epw_morph_backend(recipe$backend)$required_frequency
+    spec <- pipeline__from_records(recipe$components)
+    if (is.null(spec)) {
+        return(NULL)
+    }
+    choices <- pipeline__frequency_choices(spec)
+    if (length(choices) > 1L) {
+        cli::cli_abort(
+            "The current shift workflow requires one CMIP frequency; pipeline choices are {.val {choices}}."
+        )
+    }
+    choices
 }
 
 # Build a structural diagnostic when extracted or summarized climate data do not

@@ -149,22 +149,14 @@ daily__temperature_wide <- function(climatology, by, source) {
     out[]
 }
 
-# Build calendar-neutral daily temperature changes from matching future and
-# historical climatologies. Missing extrema retain the mean delta explicitly.
-daily__temperature_targets <- function(
-    future, historical, by = character(), window_days = 31L,
-    target_year_days = 365L
+# Calculate daily temperature deltas from future and historical climatologies
+# that have already been mapped onto the same calendar-neutral target grid.
+daily__temperature_target_changes <- function(
+    future_climatology,
+    historical_climatology,
+    by = character()
 ) {
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
-    future <- daily__temperature_source(future, "future", by)
-    historical <- daily__temperature_source(historical, "historical", by)
-
-    future_climatology <- daily__temperature_climatology(
-        future, by, window_days, target_year_days
-    )
-    historical_climatology <- daily__temperature_climatology(
-        historical, by, window_days, target_year_days
-    )
     future_wide <- daily__temperature_wide(
         future_climatology, by, "future"
     )
@@ -301,6 +293,29 @@ daily__temperature_targets <- function(
     data.table::setcolorder(targets, ordered)
     data.table::setorderv(targets, c(by, "target_day"))
     targets[]
+}
+
+# Build calendar-neutral daily temperature changes from matching future and
+# historical climatologies. Missing extrema retain the mean delta explicitly.
+daily__temperature_targets <- function(
+    future, historical, by = character(), window_days = 31L,
+    target_year_days = 365L
+) {
+    checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
+    future <- daily__temperature_source(future, "future", by)
+    historical <- daily__temperature_source(historical, "historical", by)
+
+    future_climatology <- daily__temperature_climatology(
+        future, by, window_days, target_year_days
+    )
+    historical_climatology <- daily__temperature_climatology(
+        historical, by, window_days, target_year_days
+    )
+    daily__temperature_target_changes(
+        future_climatology,
+        historical_climatology,
+        by
+    )
 }
 
 # Construct a monotone normalized shape with fixed zero/one endpoints and the
