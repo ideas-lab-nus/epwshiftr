@@ -1428,10 +1428,12 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
 }
 
 morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
-                              reference_climate = NULL, years = NULL, labels = NULL,
+                              reference_climate = NULL,
+                              years = NULL, labels = NULL,
                               reference_years = NULL, reference_labels = NULL,
                               by = character(),
-                              case = NULL, strict = TRUE, warning = FALSE) {
+                              case = NULL, strict = TRUE, warning = FALSE,
+                              observed_reference = NULL) {
     if (!inherits(epw, "EpwFile")) {
         cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
     }
@@ -1446,12 +1448,29 @@ morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
             labels = reference_labels
         )
     }
+    if (!is.null(observed_reference)) {
+        observed_reference <- morpher__normalize_context_climate(
+            observed_reference
+        )
+    }
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
+    epw <- epw$clone()
+    # The explicit input set is the authoritative semantic view for new
+    # components. Legacy fields remain available below so existing backends and
+    # external extensions continue to receive the context they already consume.
+    inputs <- weather__context_inputs(
+        epw = epw,
+        model_future = climate,
+        model_historical = reference_climate,
+        observed_reference = observed_reference
+    )
     structure(
         list(
-            epw = epw$clone(),
+            inputs = inputs,
+            epw = epw,
             climate = climate,
             reference_climate = reference_climate,
+            observed_reference = observed_reference,
             recipe = recipe,
             years = years,
             labels = labels,
