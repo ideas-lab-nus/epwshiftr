@@ -40,6 +40,17 @@
 
 ## New features
 
+* Added `daily_btws()` and the registered `epwshiftr_daily_btws` comparison
+  recipe. It combines the existing calendar-neutral daily CMIP6
+  mean/minimum/maximum signal with the hourly bounded temperature weighted
+  stretch from Eames et al. (2024), while reusing the baseline sequence,
+  specific-humidity closure, and EPW output components. The implementation
+  applies equations (7)--(16), records `S`, `m`, `n`, closure errors and
+  fallback reasons, and uses deterministic bisection to retain the largest
+  admissible exponent where the paper does not publish solver code. Its
+  provenance identifies the complete recipe as a combination rather than the
+  paper's monthly UKCP18 workflow (#150).
+
 * Added a `harmonized` policy to `sobie_curry_daily()`. It retains the
   Sobie-Curry calendar-neutral factors, circular 21-day smoothing, baseline
   sequence, and hourly temperature transformation while applying the smoothed

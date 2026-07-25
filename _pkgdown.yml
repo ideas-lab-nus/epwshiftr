@@ -98,6 +98,7 @@ reference:
       - shift_request
       - shift_cmip6_avail
       - daily_temperature
+      - daily_btws
       - sobie_curry_daily
       - shift_site
       - shift_collect
