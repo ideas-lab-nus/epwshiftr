@@ -530,6 +530,16 @@ file</td>
 </tr>
 </tbody>
 </table>
+<p>These components run inside the existing high-level workflow rather
+than replacing it. <code><a href="../reference/shift_api.html">shift_request()</a></code>, collection, download,
+and extraction obtain and persist the source data.
+<code><a href="../reference/shift_api.html">shift_morph()</a></code> builds the four role-addressable inputs,
+compiles the component names stored in the selected recipe, and executes
+the scientific stages through the backend. <code><a href="../reference/shift_api.html">shift_epw()</a></code>
+remains the durable final file writer. The built-in
+<code><a href="../reference/daily_temperature.html">daily_temperature()</a></code> method uses all seven stages, including
+an explicit identity <code>sequence</code> component that preserves the
+baseline EPW day order.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and

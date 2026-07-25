@@ -128,6 +128,7 @@ requiring one.</p></dd>
 <li><p><a href="#method-EpwMorphBackend-methods"><code>EpwMorphBackend$methods()</code></a></p></li>
 <li><p><a href="#method-EpwMorphBackend-method_choices"><code>EpwMorphBackend$method_choices()</code></a></p></li>
 <li><p><a href="#method-EpwMorphBackend-rules"><code>EpwMorphBackend$rules()</code></a></p></li>
+<li><p><a href="#method-EpwMorphBackend-component_pipeline"><code>EpwMorphBackend$component_pipeline()</code></a></p></li>
 <li><p><a href="#method-EpwMorphBackend-required_variables"><code>EpwMorphBackend$required_variables()</code></a></p></li>
 <li><p><a href="#method-EpwMorphBackend-validate_methods"><code>EpwMorphBackend$validate_methods()</code></a></p></li>
 <li><p><a href="#method-EpwMorphBackend-rules_with_methods"><code>EpwMorphBackend$rules_with_methods()</code></a></p></li>
@@ -145,7 +146,8 @@ requiring one.</p></dd>
 <span>  <span class="va">rules</span>,</span>
 <span>  requires_reference <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  accepts_reference <span class="op">=</span> <span class="va">requires_reference</span>,</span>
-<span>  <span class="va">runner</span></span>
+<span>  pipeline <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  runner <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -183,9 +185,14 @@ be consumed. <code>TRUE</code> with <code>requires_reference = FALSE</code> defi
 optional-reference backend such as Belcher.</p></dd>
 
 
+<dt><code>pipeline</code></dt>
+<dd><p>Optional internal component pipeline specification.</p></dd>
+
+
 <dt><code>runner</code></dt>
-<dd><p>Function taking <code>(context, backend)</code> and returning an
-<code>epw_morph_result</code>.</p></dd>
+<dd><p>Optional function taking <code>(context, backend)</code> and
+returning an <code>epw_morph_result</code>. Exactly one of <code>pipeline</code> and
+<code>runner</code> must be supplied.</p></dd>
 
 
 </dl><p></p></div>
@@ -215,10 +222,18 @@ optional-reference backend such as Belcher.</p></dd>
 </div>
 
 
+</div><p></p><hr><a id="method-EpwMorphBackend-component_pipeline"></a><div class="section">
+<h3 id="method-component-pipeline-">Method <code>component_pipeline()</code><a class="anchor" aria-label="anchor" href="#method-component-pipeline-"></a></h3>
+<p>Return the optional component pipeline used by this backend.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">component_pipeline</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+
 </div><p></p><hr><a id="method-EpwMorphBackend-required_variables"></a><div class="section">
 <h3 id="method-required-variables-">Method <code>required_variables()</code><a class="anchor" aria-label="anchor" href="#method-required-variables-"></a></h3>
 <p>Return required CMIP variable IDs.</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">required_variables</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -226,7 +241,7 @@ optional-reference backend such as Belcher.</p></dd>
 </div><p></p><hr><a id="method-EpwMorphBackend-validate_methods"></a><div class="section">
 <h3 id="method-validate-methods-">Method <code>validate_methods()</code><a class="anchor" aria-label="anchor" href="#method-validate-methods-"></a></h3>
 <p>Validate and complete method overrides.</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">validate_methods</span><span class="op">(</span>methods <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -242,7 +257,7 @@ optional-reference backend such as Belcher.</p></dd>
 </div><p></p><hr><a id="method-EpwMorphBackend-rules_with_methods"></a><div class="section">
 <h3 id="method-rules-with-methods-">Method <code>rules_with_methods()</code><a class="anchor" aria-label="anchor" href="#method-rules-with-methods-"></a></h3>
 <p>Return backend rules with methods applied.</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">rules_with_methods</span><span class="op">(</span>methods <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -258,7 +273,7 @@ optional-reference backend such as Belcher.</p></dd>
 </div><p></p><hr><a id="method-EpwMorphBackend-run"></a><div class="section">
 <h3 id="method-run-">Method <code>run()</code><a class="anchor" aria-label="anchor" href="#method-run-"></a></h3>
 <p>Run this backend on a canonical EPW morphing context.</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">run</span><span class="op">(</span><span class="va">context</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -274,7 +289,7 @@ optional-reference backend such as Belcher.</p></dd>
 </div><p></p><hr><a id="method-EpwMorphBackend-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorphBackend</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
