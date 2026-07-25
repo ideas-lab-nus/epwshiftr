@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmp09HZWu/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -264,9 +264,9 @@ store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-21 16:53:12
-#> 2: future-weather 2026-07-21 16:53:12
-#> 3:      singapore 2026-07-21 16:53:12
+#> 1:          cmip6 2026-07-25 17:08:31
+#> 2: future-weather 2026-07-25 17:08:31
+#> 3:      singapore 2026-07-25 17:08:31
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
@@ -275,7 +275,7 @@ select_cols(store$queries(), c(
 #> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-21 16:53:12
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-25 17:08:31
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
@@ -289,9 +289,9 @@ store$query_tags(query_id)
 #> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-21 16:53:12
-#> 2: future-weather 2026-07-21 16:53:12
-#> 3:      singapore 2026-07-21 16:53:12
+#> 1:          cmip6 2026-07-25 17:08:31
+#> 2: future-weather 2026-07-25 17:08:31
+#> 3:      singapore 2026-07-25 17:08:31
 ```
 
 The query snapshot is written under `queries/`, while the query identity and

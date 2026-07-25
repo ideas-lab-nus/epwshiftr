@@ -137,6 +137,7 @@ The initial catalog distinguishes the following complete methods:
 | `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
 | `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
+| `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
 catalog version, backend profile, and component names are persisted with the
@@ -151,14 +152,38 @@ daily_power <- epw_morph_recipe(
     "epwshiftr_daily_power",
     policy = "harmonized"
 )
+sobie_curry <- epw_morph_recipe(
+    "sobie_curry_daily",
+    policy = "paper_faithful"
+)
+sobie_curry_harmonized <- epw_morph_recipe(
+    "sobie_curry_daily",
+    policy = "harmonized"
+)
 ```
 
 Catalog input roles are validated before backend execution. The two monthly
 entries remain explicitly labelled backend adapters because their established
-runner has not yet been decomposed into executable components; the daily entry
-is checked against the registered seven-stage pipeline. Ad hoc recipes such as
+runner has not yet been decomposed into executable components; both daily
+entries are checked against their registered seven-stage pipelines. Ad hoc
+recipes such as
 `epw_morph_recipe("belcher")` remain supported and preserve their previous
 defaults.
+
+The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
+surface pressure `ps` from matching historical and future model periods. It
+uses a circular 21-day window on the shared 365-day annual-phase grid, preserves
+the baseline CWEC/EPW sequence, and adjusts dry-bulb temperature and
+atmospheric pressure. Paper-faithful mode independently adjusts dew point and
+relative humidity. Harmonized mode applies the smoothed future-minus-historical
+daily `huss` change to baseline EPW specific humidity, clips the target only at
+zero or saturation, and derives relative humidity and dew point from projected
+temperature and pressure. Other EPW fields are unchanged. The paper-faithful
+dew-point standard-deviation factor is implemented as
+`sigma_future / sigma_historical - 1`: this preserves the paper's stated
+past-future difference and makes zero climate change an identity transform.
+The printed ratio without `- 1`, when added to the original anomaly as shown
+in the paper, would double hourly anomalies under zero change.
 
 The profiles resolve to a complete, persisted option contract:
 
@@ -330,9 +355,9 @@ replacing it. `shift_request()`, collection, download, and extraction obtain and
 persist the source data. `shift_morph()` builds the four role-addressable inputs,
 compiles the component names stored in the selected recipe, and executes the
 scientific stages through the backend. `shift_epw()` remains the durable final
-file writer. The built-in `daily_temperature()` method uses all seven stages,
-including an explicit identity `sequence` component that preserves the
-baseline EPW day order.
+file writer. The built-in `daily_temperature()` and `sobie_curry_daily()`
+methods use all seven stages, including explicit `sequence` components that
+preserve the baseline EPW day order.
 
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves

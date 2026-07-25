@@ -30,6 +30,8 @@ jobs:
         with:
           use-public-rspm: true
 
+      - name: Check precompiled vignettes
+        run: Rscript tools/check-raw-vignettes.R
 
       - name: Cache R packages
         uses: actions/cache@v4

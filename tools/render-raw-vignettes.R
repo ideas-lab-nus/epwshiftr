@@ -19,14 +19,17 @@ pkgload::load_all(".", quiet = TRUE, export_all = FALSE)
 rawvignette::precompile_raw_vignettes()
 
 article_paths <- list.files("vignettes/articles", pattern = "[.]Rmd$", full.names = TRUE)
-trim_trailing_whitespace <- function(path) {
+
+# Normalize generated articles so their committed content is stable across
+# local rendering environments.
+vignette__trim_trailing_whitespace <- function(path) {
     lines <- readLines(path, warn = FALSE)
     trimmed <- sub("[ \t]+$", "", lines)
     if (!identical(lines, trimmed)) {
         writeLines(trimmed, path, useBytes = TRUE)
     }
 }
-invisible(lapply(article_paths, trim_trailing_whitespace))
+invisible(lapply(article_paths, vignette__trim_trailing_whitespace))
 
 freshness <- rawvignette::check_raw_vignettes()
 
@@ -67,3 +70,8 @@ if (!is.null(render_errors) && nrow(render_errors)) {
         call. = FALSE
     )
 }
+
+# Record source and output content only after the expensive local rendering
+# workflow has completed without stale files or embedded execution errors.
+source("tools/raw-vignette-freshness.R")
+vignette__write_checksum_manifest()
