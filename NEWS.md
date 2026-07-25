@@ -40,6 +40,13 @@
 
 ## New features
 
+* Added explicit future-weather input roles and reusable `preprocess`,
+  `calendar`, `signal`, `sequence`, `hourly`, `physics`, and `output`
+  component contracts. Registered components declare their input requirements,
+  intermediate data kinds, dimensional scope, stochastic behavior, settings,
+  provenance, and diagnostics while existing `EpwMorphBackend` runners remain
+  compatible (#143).
+
 * Added calendar-neutral daily temperature targets and constrained 24-hour
   temperature projection. Matching future and historical `tas`, `tasmin`, and
   `tasmax` climatologies provide daily mean, minimum, maximum, and DTR changes.
