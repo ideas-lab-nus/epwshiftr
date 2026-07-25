@@ -413,6 +413,11 @@ registration; it is not a special execution path.</p>
 <p>The runner receives one canonical context:</p>
 <ul>
 <li>
+<code>context$inputs</code>: role-addressable future-weather inputs.
+Its <code>weather_template</code>, <code>observed_reference</code>,
+<code>model_historical</code>, and <code>model_future</code> properties
+remain distinct even when one role is absent;</li>
+<li>
 <code>context$epw</code>: the package’s internal baseline EPW
 representation;</li>
 <li>
@@ -422,12 +427,122 @@ representation;</li>
 <code>dist</code>, <code>units</code>, <code>value</code>, and case
 metadata;</li>
 <li>
+<code>context$reference_climate</code>: optional matching historical
+model rows;</li>
+<li>
+<code>context$observed_reference</code>: optional observations or
+reanalysis rows;</li>
+<li>
 <code>context$recipe</code>: the selected recipe, including method
 overrides and rules;</li>
 <li>
 <code>context$by</code>, <code>context$case</code>,
 <code>context$strict</code>, and <code>context$warning</code>.</li>
 </ul>
+<p><code>context$epw</code>, <code>context$climate</code>, and
+<code>context$reference_climate</code> remain available for existing
+backends. New components should select inputs by their role through
+<code>context$inputs</code> instead of interpreting a generic
+reference.</p>
+<p>Future-weather methods can be assembled from seven ordered component
+stages. Each component declares its required and optional input roles,
+supported representations, frequencies, calendars, variable
+alternatives, input and output kinds, dimensional scope, and whether it
+is stochastic. Compatibility is checked from stage order and the
+intermediate kinds exchanged between components.</p>
+<table class="table">
+<colgroup>
+<col width="20%">
+<col width="18%">
+<col width="27%">
+<col width="34%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Component</th>
+<th align="left">Used for</th>
+<th align="left">Main function</th>
+<th align="left">Problem addressed</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left"><code>preprocess</code></td>
+<td align="left">Preparing every source before climate calculations</td>
+<td align="left">Normalize variables, units, missing values, spatial
+selections, and source metadata into method-ready inputs</td>
+<td align="left">Raw EPW, observations, reanalysis, and climate-model
+data otherwise have incompatible schemas and units</td>
+</tr>
+<tr class="even">
+<td align="left"><code>calendar</code></td>
+<td align="left">Placing sources on a shared annual and temporal
+coordinate</td>
+<td align="left">Preserve each source calendar, calculate annual phase,
+form circular windows, and align 360-, 365-, and 366-day inputs</td>
+<td align="left">Direct date matching either loses days or assigns
+different seasonal positions to nominally similar dates</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>signal</code></td>
+<td align="left">Estimating or transferring the future climate
+signal</td>
+<td align="left">Apply delta, scaling, quantile-based, weather-typing,
+or other statistical transformations to aligned groups</td>
+<td align="left">Different methods require different reference inputs
+and assumptions but need one validated, comparable execution
+contract</td>
+</tr>
+<tr class="even">
+<td align="left"><code>sequence</code></td>
+<td align="left">Constructing the order of future days or weather
+states</td>
+<td align="left">Preserve, resample, rearrange, or generate daily
+sequences, including stochastic and analogue methods</td>
+<td align="left">A climatology or corrected distribution does not define
+event order, persistence, spells, or compound extremes</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>hourly</code></td>
+<td align="left">Converting daily targets or selected days into hourly
+weather</td>
+<td align="left">Reconstruct 24-hour profiles from an EPW template, an
+hourly library, or a method-specific disaggregation model</td>
+<td align="left">Daily CMIP data cannot be written directly as an hourly
+EPW and naive interpolation damages diurnal shape and extrema</td>
+</tr>
+<tr class="even">
+<td align="left"><code>physics</code></td>
+<td align="left">Closing related weather variables after
+transformation</td>
+<td align="left">Enforce temperature statistics, humidity closure,
+radiation balance, bounds, and cross-variable consistency</td>
+<td align="left">Independently transformed variables can violate
+thermodynamic, radiative, or EPW constraints</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>output</code></td>
+<td align="left">Producing the final weather artifact and its
+record</td>
+<td align="left">Assemble fields and headers, write EPW or intermediate
+artifacts, and retain method settings, provenance, and diagnostics</td>
+<td align="left">Numerically valid series are not yet a
+standards-compliant, reproducible, and auditable future weather
+file</td>
+</tr>
+</tbody>
+</table>
+<p>Bias-adjustment implementations belong to the <code>signal</code>
+stage. Their common <code>apply</code> operation validates the
+role-addressable inputs, resolves variable-specific settings, and
+executes aligned groups. Each method supplies only an
+<code>apply_group</code> kernel receiving the group’s input payloads,
+resolved settings, and key. Published defaults retain their references,
+experimental defaults are labelled and warned about, and user overrides
+do not change that provenance. The execution result records the settings
+actually used after overrides. Calendar mapping and group alignment
+happen before the kernel, so a method cannot silently impose a
+Gregorian, no-leap, or fixed 366-day interpretation. Group failures
+either abort or return an explicit diagnostic with a <code>NULL</code>
+result; they are never silently converted to missing numeric values.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
