@@ -1,8 +1,8 @@
 # Sobie-Curry daily backend {{{
 
-# The paper-faithful backend adjusts only the four thermodynamic EPW fields
-# described by Sobie and Curry (2025). Each rule declares the daily CMIP
-# variables needed to calculate its published change factor.
+# The backend adjusts only the four thermodynamic EPW fields described by Sobie
+# and Curry (2025). Each rule declares the daily CMIP variables needed by both
+# the paper-faithful transformation and the harmonized humidity closure.
 EPW_MORPH_SOBIE_CURRY_METHODS <- c(
     tdb = "mean_dtr_anomaly",
     tdew = "mean_sd_anomaly",
@@ -193,6 +193,7 @@ sobie__climate <- function(data, name) {
         ) / 2 - 273.15,
         dry_minimum = wide[["tasmin"]] - 273.15,
         dry_maximum = wide[["tasmax"]] - 273.15,
+        specific_humidity = wide[["huss"]],
         dew_point = dew_point,
         relative_humidity = relative_humidity,
         pressure = wide[["ps"]]
@@ -257,7 +258,7 @@ sobie__daily_statistics <- function(
 sobie__daily_statistics_set <- function(data) {
     variables <- c(
         "dry_mean", "dry_minimum", "dry_maximum",
-        "dew_point", "relative_humidity", "pressure"
+        "specific_humidity", "dew_point", "relative_humidity", "pressure"
     )
     stats::setNames(
         lapply(variables, function(variable) {
@@ -397,6 +398,8 @@ sobie__signal_factors <- function(
     raw_temperature_dtr_delta <- future_dtr - historical_dtr
     raw_dew_point_mean_delta <- future$dew_point[["mean"]] -
         historical$dew_point[["mean"]]
+    raw_specific_humidity_delta <- future$specific_humidity[["mean"]] -
+        historical$specific_humidity[["mean"]]
     raw_pressure_delta <- future$pressure[["mean"]] -
         historical$pressure[["mean"]]
 
@@ -441,6 +444,13 @@ sobie__signal_factors <- function(
         relative_humidity_status = sobie__smooth_status(
             raw_humidity_ratio$status,
             windows
+        ),
+        # Harmonized comparisons use the same additive HUSS state-change
+        # convention as epwshiftr's shared humidity closure.
+        specific_humidity_delta = sobie__smooth_factor(
+            raw_specific_humidity_delta,
+            windows,
+            "specific_humidity_delta"
         ),
         pressure_delta = sobie__smooth_factor(
             raw_pressure_delta,
@@ -719,13 +729,86 @@ sobie__hourly_reconstruct <- function(data, inputs, context, options) {
     )
 }
 
-# Retain the paper's independent thermodynamic transformations and report any
-# resulting nonphysical state rather than silently replacing it with the
-# package's shared humidity closure.
+# Close a projected specific-humidity target against the transformed
+# temperature and pressure, retaining both unclipped and closed states for
+# diagnostics.
+sobie__harmonized_humidity <- function(hourly) {
+    temperature <- as.numeric(hourly[["temperature_projected"]])
+    pressure <- as.numeric(hourly[["pressure_projected"]])
+    baseline_temperature <- as.numeric(hourly[["dry_bulb_temperature"]])
+    baseline_humidity <- as.numeric(hourly[["relative_humidity"]])
+    baseline_pressure <- as.numeric(hourly[["atmospheric_pressure"]])
+    delta <- as.numeric(hourly[["specific_humidity_delta"]])
+    valid <- is.finite(temperature) &
+        is.finite(pressure) & pressure > 0 &
+        is.finite(baseline_temperature) &
+        is.finite(baseline_humidity) &
+        baseline_humidity >= 0 & baseline_humidity <= 100 &
+        is.finite(baseline_pressure) & baseline_pressure > 0 &
+        is.finite(delta)
+    if (!all(valid)) {
+        cli::cli_abort(
+            paste(
+                "Sobie-Curry harmonized humidity closure requires finite",
+                "temperature, pressure, humidity, and HUSS-delta values."
+            )
+        )
+    }
+
+    baseline_huss <- morpher__huss_from_rh_si(
+        baseline_temperature,
+        baseline_humidity,
+        baseline_pressure
+    )
+    target_huss <- baseline_huss + delta
+    saturation_huss <- morpher__saturation_huss_si(
+        temperature,
+        pressure
+    )
+    # Negative moisture is clipped before the saturation cap so the status can
+    # distinguish an invalid lower target from a supersaturated target.
+    future_huss <- pmin(
+        saturation_huss,
+        pmax(0, target_huss)
+    )
+    status <- rep.int("ok", length(future_huss))
+    status[target_huss < 0] <- "zero_clipped"
+    status[target_huss > saturation_huss] <- "saturation_clipped"
+    relative_humidity <- morpher__hurs_from_huss_si(
+        future_huss,
+        temperature + 273.15,
+        pressure
+    )
+    relative_humidity <- pmin(100, pmax(0, relative_humidity))
+    dew_point <- morpher__dew_point_from_rh(
+        temperature,
+        pmax(relative_humidity, .Machine$double.eps) / 100
+    )
+    dew_point <- pmin(dew_point, temperature)
+
+    list(
+        relative_humidity = relative_humidity,
+        dew_point_temperature = dew_point,
+        baseline_specific_humidity = baseline_huss,
+        target_specific_humidity = target_huss,
+        specific_humidity = future_huss,
+        saturation_specific_humidity = saturation_huss,
+        status = status
+    )
+}
+
+# Select the paper-faithful independent thermodynamic transforms or the
+# harmonized HUSS-state closure without changing the preceding Sobie-Curry
+# climate signal, sequence, or hourly temperature stages.
 sobie__physics_apply <- function(data, inputs, context, options) {
     baseline <- data$baseline
     hourly <- data$hourly
     factors <- data$factors
+    policy <- context$recipe$policy
+    checkmate::assert_choice(
+        policy,
+        c("paper_faithful", "harmonized")
+    )
     weather <- data.table::copy(baseline$weather)
     data.table::set(
         weather,
@@ -734,19 +817,34 @@ sobie__physics_apply <- function(data, inputs, context, options) {
     )
     data.table::set(
         weather,
-        j = "dew_point_temperature",
-        value = hourly[["dew_point_projected"]]
-    )
-    data.table::set(
-        weather,
-        j = "relative_humidity",
-        value = hourly[["relative_humidity_projected"]]
-    )
-    data.table::set(
-        weather,
         j = "atmospheric_pressure",
         value = hourly[["pressure_projected"]]
     )
+    humidity <- NULL
+    if (identical(policy, "paper_faithful")) {
+        data.table::set(
+            weather,
+            j = "dew_point_temperature",
+            value = hourly[["dew_point_projected"]]
+        )
+        data.table::set(
+            weather,
+            j = "relative_humidity",
+            value = hourly[["relative_humidity_projected"]]
+        )
+    } else {
+        humidity <- sobie__harmonized_humidity(hourly)
+        data.table::set(
+            weather,
+            j = "dew_point_temperature",
+            value = humidity$dew_point_temperature
+        )
+        data.table::set(
+            weather,
+            j = "relative_humidity",
+            value = humidity$relative_humidity
+        )
+    }
 
     diagnostic_values <- list(
         sobie_curry_target_day = hourly[["target_day"]],
@@ -771,6 +869,24 @@ sobie__physics_apply <- function(data, inputs, context, options) {
             hourly[["relative_humidity_status"]],
         sobie_curry_pressure_delta = hourly[["pressure_delta"]]
     )
+    if (identical(policy, "harmonized")) {
+        diagnostic_values <- c(
+            diagnostic_values,
+            list(
+                sobie_curry_specific_humidity_delta =
+                    hourly[["specific_humidity_delta"]],
+                sobie_curry_baseline_specific_humidity =
+                    humidity$baseline_specific_humidity,
+                sobie_curry_target_specific_humidity =
+                    humidity$target_specific_humidity,
+                sobie_curry_specific_humidity =
+                    humidity$specific_humidity,
+                sobie_curry_saturation_specific_humidity =
+                    humidity$saturation_specific_humidity,
+                sobie_curry_humidity_closure_status = humidity$status
+            )
+        )
+    }
     for (name in names(diagnostic_values)) {
         data.table::set(
             weather,
@@ -796,50 +912,82 @@ sobie__physics_apply <- function(data, inputs, context, options) {
             action = "Inspect sobie_curry_temperature_dtr_status."
         )
     }
-    dew_fallback <- factors[["dew_point_sd_status"]] ==
-        "inherited_zero_historical"
-    if (any(dew_fallback)) {
-        diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
-            stage = "runtime",
-            severity = "warning",
-            code = "sobie_curry_zero_historical_dew_sd",
-            message = sprintf(
-                "Dew-point anomaly change was inherited for %d target day(s) with zero historical variability.",
-                sum(dew_fallback)
-            ),
-            variable_id = "tas,huss,ps",
-            epw_field = "dew_point_temperature",
-            action = "Inspect sobie_curry_dew_point_sd_status."
+    if (identical(policy, "paper_faithful")) {
+        dew_fallback <- factors[["dew_point_sd_status"]] ==
+            "inherited_zero_historical"
+        if (any(dew_fallback)) {
+            diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                stage = "runtime",
+                severity = "warning",
+                code = "sobie_curry_zero_historical_dew_sd",
+                message = sprintf(
+                    "Dew-point anomaly change was inherited for %d target day(s) with zero historical variability.",
+                    sum(dew_fallback)
+                ),
+                variable_id = "tas,huss,ps",
+                epw_field = "dew_point_temperature",
+                action = "Inspect sobie_curry_dew_point_sd_status."
+            )
+        }
+
+        invalid <- (
+            weather[["relative_humidity"]] < 0 |
+                weather[["relative_humidity"]] > 100 |
+                weather[["atmospheric_pressure"]] <= 0 |
+                weather[["dew_point_temperature"]] >
+                    weather[["dry_bulb_temperature"]]
         )
+        invalid[is.na(invalid)] <- TRUE
+        if (any(invalid)) {
+            diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                stage = "runtime",
+                severity = "warning",
+                code = "sobie_curry_independent_state_not_closed",
+                message = sprintf(
+                    "Published independent transforms produced %d hourly row(s) outside shared thermodynamic closure.",
+                    sum(invalid)
+                ),
+                epw_field = paste(
+                    "dry_bulb_temperature,dew_point_temperature,",
+                    "relative_humidity,atmospheric_pressure",
+                    sep = ""
+                ),
+                action = paste(
+                    "Treat this result as paper-faithful comparison output;",
+                    "a harmonized closure policy is not applied."
+                )
+            )
+        }
+    } else {
+        clipped <- humidity$status != "ok"
+        if (any(clipped)) {
+            diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                stage = "runtime",
+                severity = "warning",
+                code = "sobie_curry_humidity_clipped",
+                message = sprintf(
+                    "Harmonized HUSS closure clipped %d hourly target(s) to a physical bound.",
+                    sum(clipped)
+                ),
+                variable_id = "huss",
+                epw_field = "dew_point_temperature,relative_humidity",
+                action = "Inspect sobie_curry_humidity_closure_status."
+            )
+        }
     }
 
-    invalid <- (
-        weather[["relative_humidity"]] < 0 |
-            weather[["relative_humidity"]] > 100 |
-            weather[["atmospheric_pressure"]] <= 0 |
-            weather[["dew_point_temperature"]] >
-                weather[["dry_bulb_temperature"]]
+    settings <- list(
+        window_days = data$options$window_days,
+        dew_point_sd_factor = "sigma_future / sigma_historical - 1",
+        physical_policy = if (identical(policy, "paper_faithful")) {
+            "independent_paper_transforms"
+        } else {
+            "specific_humidity_delta_closure"
+        }
     )
-    invalid[is.na(invalid)] <- TRUE
-    if (any(invalid)) {
-        diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
-            stage = "runtime",
-            severity = "warning",
-            code = "sobie_curry_independent_state_not_closed",
-            message = sprintf(
-                "Published independent transforms produced %d hourly row(s) outside shared thermodynamic closure.",
-                sum(invalid)
-            ),
-            epw_field = paste(
-                "dry_bulb_temperature,dew_point_temperature,",
-                "relative_humidity,atmospheric_pressure",
-                sep = ""
-            ),
-            action = paste(
-                "Treat this result as paper-faithful comparison output;",
-                "a harmonized closure policy is not applied."
-            )
-        )
+    if (identical(policy, "harmonized")) {
+        settings$humidity_signal <-
+            "smoothed future - historical daily specific humidity"
     }
 
     list(
@@ -847,11 +995,7 @@ sobie__physics_apply <- function(data, inputs, context, options) {
         weather = weather,
         factors = factors,
         diagnostics = morpher__bind_diagnostics(diagnostics),
-        settings = list(
-            window_days = data$options$window_days,
-            dew_point_sd_factor = "sigma_future / sigma_historical - 1",
-            physical_policy = "independent_paper_transforms"
-        )
+        settings = settings
     )
 }
 
@@ -877,8 +1021,8 @@ sobie__output_write <- function(
     )
 }
 
-# Build the seven executable component specifications for the paper-faithful
-# Sobie-Curry recipe.
+# Build the seven executable component specifications shared by both
+# Sobie-Curry physical policies.
 sobie__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -973,12 +1117,12 @@ sobie__component_specs <- function() {
             operations = list(reconstruct = sobie__hourly_reconstruct)
         ),
         physics = component__spec(
-            name = "sobie_curry_independent_thermodynamics",
+            name = "sobie_curry_thermodynamic_policy",
             stage = "physics",
-            label = "Sobie-Curry independent thermodynamic fields",
+            label = "Sobie-Curry selectable thermodynamic closure",
             required_inputs = list(weather_template = template),
             input_kinds = "sobie_curry_hourly_weather",
-            output_kinds = "sobie_curry_paper_weather",
+            output_kinds = "sobie_curry_weather",
             scopes = "multivariate",
             operations = list(apply = sobie__physics_apply)
         ),
@@ -987,7 +1131,7 @@ sobie__component_specs <- function() {
             stage = "output",
             label = "Sobie-Curry EPW result",
             required_inputs = list(weather_template = template),
-            input_kinds = "sobie_curry_paper_weather",
+            input_kinds = "sobie_curry_weather",
             output_kinds = "epw_morph_result",
             scopes = "multivariate",
             operations = list(write = sobie__output_write)
@@ -1022,7 +1166,7 @@ sobie__pipeline <- function() {
         signal = "sobie_curry_change_factors",
         sequence = "sobie_curry_preserve_sequence",
         hourly = "sobie_curry_hourly_transform",
-        physics = "sobie_curry_independent_thermodynamics",
+        physics = "sobie_curry_thermodynamic_policy",
         output = "sobie_curry_epw_result"
     ))
 }

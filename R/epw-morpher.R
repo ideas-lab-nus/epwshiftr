@@ -502,7 +502,7 @@ morpher__default_backend_specs <- function() {
         ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
-            label = "Paper-faithful Sobie-Curry daily morphing",
+            label = "Sobie-Curry daily morphing with selectable closure",
             methods = EPW_MORPH_SOBIE_CURRY_METHODS,
             method_choices = unname(EPW_MORPH_SOBIE_CURRY_METHODS),
             rules = EPW_MORPH_SOBIE_CURRY_RULES,

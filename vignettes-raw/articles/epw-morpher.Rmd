@@ -129,7 +129,7 @@ The initial catalog distinguishes the following complete methods:
 | `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
 | `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
-| `sobie_curry_daily` | `paper_faithful` | Seven-stage pipeline | Published daily mean/DTR and thermodynamic anomaly transformations |
+| `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
 catalog version, backend profile, and component names are persisted with the
@@ -148,6 +148,10 @@ sobie_curry <- epw_morph_recipe(
     "sobie_curry_daily",
     policy = "paper_faithful"
 )
+sobie_curry_harmonized <- epw_morph_recipe(
+    "sobie_curry_daily",
+    policy = "harmonized"
+)
 ```
 
 Catalog input roles are validated before backend execution. The two monthly
@@ -161,9 +165,13 @@ defaults.
 The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
 surface pressure `ps` from matching historical and future model periods. It
 uses a circular 21-day window on the shared 365-day annual-phase grid, preserves
-the baseline CWEC/EPW sequence, and independently adjusts dry-bulb temperature,
-dew point, relative humidity, and atmospheric pressure. Other EPW fields are
-unchanged. The dew-point standard-deviation factor is implemented as
+the baseline CWEC/EPW sequence, and adjusts dry-bulb temperature and
+atmospheric pressure. Paper-faithful mode independently adjusts dew point and
+relative humidity. Harmonized mode applies the smoothed future-minus-historical
+daily `huss` change to baseline EPW specific humidity, clips the target only at
+zero or saturation, and derives relative humidity and dew point from projected
+temperature and pressure. Other EPW fields are unchanged. The paper-faithful
+dew-point standard-deviation factor is implemented as
 `sigma_future / sigma_historical - 1`: this preserves the paper's stated
 past-future difference and makes zero climate change an identity transform.
 The printed ratio without `- 1`, when added to the original anomaly as shown
