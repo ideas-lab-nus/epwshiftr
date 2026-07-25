@@ -89,7 +89,8 @@ sobie_test__context <- function(
     pressure_shift = 0,
     historical_days = 365L,
     future_days = 365L,
-    omit_future = character()
+    omit_future = character(),
+    policy = "paper_faithful"
 ) {
     historical <- sobie_test__climate(
         2001:2003,
@@ -112,7 +113,10 @@ sobie_test__context <- function(
         epw = epw_file_read(get_cache_epw()),
         climate = future,
         reference_climate = historical,
-        recipe = epw_morph_recipe("sobie_curry_daily")
+        recipe = epw_morph_recipe(
+            "sobie_curry_daily",
+            policy = policy
+        )
     )
 }
 
@@ -125,6 +129,11 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
 
     expect_true(backend$requires_reference)
     expect_identical(recipe$policy, "paper_faithful")
+    expect_identical(
+        names(spec@policy_profiles),
+        c("paper_faithful", "harmonized")
+    )
+    expect_identical(spec@version, 2L)
     expect_identical(recipe$options$window_days, 21L)
     expect_identical(spec@calendar_policy, "cf_annual_phase_365")
     expect_identical(
@@ -134,6 +143,10 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
     expect_identical(
         names(recipe$components),
         WEATHER_COMPONENT_STAGES
+    )
+    expect_identical(
+        recipe$components$physics,
+        "sobie_curry_thermodynamic_policy"
     )
     expect_identical(
         morpher__recipe_required_frequency(recipe),
@@ -146,6 +159,20 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
             options = list(window_days = 20L)
         ),
         "must be odd"
+    )
+    expect_identical(
+        epw_morph_recipe(
+            "sobie_curry_daily",
+            policy = "harmonized"
+        )$policy,
+        "harmonized"
+    )
+    expect_error(
+        epw_morph_recipe(
+            "sobie_curry_daily",
+            version = 1L
+        ),
+        "requires definition version 2"
     )
 })
 
@@ -241,6 +268,98 @@ test_that("Sobie-Curry equations close daily means and temperature ranges", {
         tolerance = 1e-10
     )
     expect_identical(weather$wind_speed, baseline_weather$wind_speed)
+})
+
+test_that("Sobie-Curry harmonized policy retains temperature and closes HUSS", {
+    paper <- morpher__run_context(sobie_test__context(
+        temperature_shift = 2,
+        dtr_shift = 1.5,
+        relative_humidity_ratio = 0.9,
+        pressure_shift = 125
+    ))
+    harmonized <- morpher__run_context(sobie_test__context(
+        temperature_shift = 2,
+        dtr_shift = 1.5,
+        relative_humidity_ratio = 0.9,
+        pressure_shift = 125,
+        policy = "harmonized"
+    ))
+
+    expect_equal(
+        harmonized$factors,
+        paper$factors,
+        tolerance = 1e-12
+    )
+    expect_equal(
+        harmonized$data$dry_bulb_temperature,
+        paper$data$dry_bulb_temperature,
+        tolerance = 1e-12
+    )
+    expect_equal(
+        harmonized$data$atmospheric_pressure,
+        paper$data$atmospheric_pressure,
+        tolerance = 1e-12
+    )
+    expect_true(any(abs(
+        harmonized$data$relative_humidity -
+            paper$data$relative_humidity
+    ) > 1e-6))
+    expect_true(all(
+        harmonized$data$relative_humidity >= 0 &
+            harmonized$data$relative_humidity <= 100
+    ))
+    expect_true(all(
+        harmonized$data$dew_point_temperature <=
+            harmonized$data$dry_bulb_temperature
+    ))
+
+    closed_huss <- morpher__huss_from_rh_si(
+        harmonized$data$dry_bulb_temperature,
+        harmonized$data$relative_humidity,
+        harmonized$data$atmospheric_pressure
+    )
+    expect_equal(
+        closed_huss,
+        harmonized$data$sobie_curry_specific_humidity,
+        tolerance = 1e-10
+    )
+    expect_equal(
+        harmonized$data$sobie_curry_target_specific_humidity,
+        harmonized$data$sobie_curry_baseline_specific_humidity +
+            harmonized$data$sobie_curry_specific_humidity_delta,
+        tolerance = 1e-12
+    )
+    expect_identical(
+        harmonized$parts$settings$physical_policy,
+        "specific_humidity_delta_closure"
+    )
+    expect_identical(
+        paper$parts$settings$physical_policy,
+        "independent_paper_transforms"
+    )
+})
+
+test_that("Sobie-Curry harmonized closure reports both physical bounds", {
+    hourly <- data.table::data.table(
+        temperature_projected = c(0, 20),
+        pressure_projected = c(100000, 100000),
+        dry_bulb_temperature = c(20, 20),
+        relative_humidity = c(90, 10),
+        atmospheric_pressure = c(100000, 100000),
+        specific_humidity_delta = c(0.02, -0.02)
+    )
+    humidity <- sobie__harmonized_humidity(hourly)
+
+    expect_identical(
+        humidity$status,
+        c("saturation_clipped", "zero_clipped")
+    )
+    expect_equal(humidity$relative_humidity, c(100, 0), tolerance = 1e-8)
+    expect_equal(humidity$dew_point_temperature[[1L]], 0, tolerance = 1e-8)
+    expect_true(
+        humidity$dew_point_temperature[[2L]] <=
+            hourly$temperature_projected[[2L]]
+    )
 })
 
 test_that("Sobie-Curry circular windows smooth and bridge CF calendars", {
