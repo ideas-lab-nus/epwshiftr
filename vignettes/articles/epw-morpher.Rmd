@@ -283,6 +283,15 @@ components.
 | `physics` | Closing related weather variables after transformation | Enforce temperature statistics, humidity closure, radiation balance, bounds, and cross-variable consistency | Independently transformed variables can violate thermodynamic, radiative, or EPW constraints |
 | `output` | Producing the final weather artifact and its record | Assemble fields and headers, write EPW or intermediate artifacts, and retain method settings, provenance, and diagnostics | Numerically valid series are not yet a standards-compliant, reproducible, and auditable future weather file |
 
+These components run inside the existing high-level workflow rather than
+replacing it. `shift_request()`, collection, download, and extraction obtain and
+persist the source data. `shift_morph()` builds the four role-addressable inputs,
+compiles the component names stored in the selected recipe, and executes the
+scientific stages through the backend. `shift_epw()` remains the durable final
+file writer. The built-in `daily_temperature()` method uses all seven stages,
+including an explicit identity `sequence` component that preserves the
+baseline EPW day order.
+
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves
 variable-specific settings, and executes aligned groups. Each method supplies

@@ -59,6 +59,7 @@ Collate:
     'cli.R'
     'cmip6-availability.R'
     'daily-climatology.R'
+    'daily-temperature-backend.R'
     'daily-temperature.R'
     'data-node.R'
     'dataset.R'
@@ -93,6 +94,7 @@ Collate:
     'weather-input.R'
     'weather-component.R'
     'weather-signal.R'
+    'weather-pipeline.R'
     'zzz.R'
 Config/testthat/edition: 3
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload
