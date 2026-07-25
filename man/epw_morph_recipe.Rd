@@ -6,16 +6,20 @@
 \usage{
 epw_morph_recipe(
   name = "belcher",
-  backend = name,
+  backend = NULL,
   methods = NULL,
   profile = NULL,
-  options = NULL
+  options = NULL,
+  policy = NULL,
+  version = NULL,
+  spec = NULL
 )
 }
 \arguments{
 \item{name}{Recipe name. Defaults to \code{"belcher"}.}
 
-\item{backend}{Backend name. Defaults to \code{name}.}
+\item{backend}{Backend name. Ad hoc recipes default to \code{name}; registered
+recipes use the backend declared by their specification.}
 
 \item{methods}{Optional named character vector overriding morphing methods for
 backend steps.}
@@ -26,6 +30,18 @@ backend steps.}
 
 \item{options}{Optional named backend option list. Belcher options are
 usually created by \code{\link[=belcher_options]{belcher_options()}}.}
+
+\item{policy}{Optional registered complete-recipe execution policy,
+\code{"paper_faithful"} or \code{"harmonized"}. Registered recipes select their
+declared default when \code{NULL}; ad hoc backend recipes do not accept it.}
+
+\item{version}{Optional persisted registered-recipe definition version.
+Normally leave this \code{NULL}; resumed workflows use it to reject an
+incompatible catalog definition.}
+
+\item{spec}{Optional registered complete-recipe identifier. This allows a
+stable catalog definition to be retained when \code{name} is a user-facing
+alias such as \code{"daily_temperature"}.}
 }
 \value{
 A recipe list.

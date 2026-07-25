@@ -40,6 +40,14 @@
 
 ## New features
 
+* Added a versioned registry of complete future-weather recipes. The catalog
+  records each method's input roles, calendar policy, seven component stages,
+  execution policy, output type, diagnostics, and provenance without
+  serializing executable functions. `epw_morph_recipes()` and
+  `epw_morph_recipe_spec()` expose the metadata, registered methods validate
+  their inputs before execution, and CLI/workflow round trips retain the
+  selected definition and policy (#145).
+
 * Added explicit future-weather input roles and reusable `preprocess`,
   `calendar`, `signal`, `sequence`, `hourly`, `physics`, and `output`
   component contracts. Registered components declare their input requirements,

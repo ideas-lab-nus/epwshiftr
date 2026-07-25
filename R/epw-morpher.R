@@ -741,6 +741,12 @@ epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
         return(unique(c(required, optional)))
     }
     if (is.character(level) && length(level) == 1L && !level %in% names(EPW_MORPH_VARIABLE_LEVELS)) {
+        if (tolower(level) %in% epw_morph_recipes()[["name"]]) {
+            return(epw_morph_variables(
+                epw_morph_recipe(level),
+                include_optional = include_optional
+            ))
+        }
         return(epw_morph_variables(epw_morph_backend(level), include_optional = include_optional))
     }
     level <- match.arg(level)
@@ -829,7 +835,8 @@ morpher__requirement_match <- function(available, alternatives) {
 #' EPW morphing recipe
 #'
 #' @param name Recipe name. Defaults to `"belcher"`.
-#' @param backend Backend name. Defaults to `name`.
+#' @param backend Backend name. Ad hoc recipes default to `name`; registered
+#'   recipes use the backend declared by their specification.
 #' @param methods Optional named character vector overriding morphing methods for
 #'        backend steps.
 #' @param profile Built-in Belcher compatibility profile. `NULL` selects
@@ -837,14 +844,82 @@ morpher__requirement_match <- function(available, alternatives) {
 #'   `"legacy"`.
 #' @param options Optional named backend option list. Belcher options are
 #'   usually created by [belcher_options()].
+#' @param policy Optional registered complete-recipe execution policy,
+#'   `"paper_faithful"` or `"harmonized"`. Registered recipes select their
+#'   declared default when `NULL`; ad hoc backend recipes do not accept it.
+#' @param version Optional persisted registered-recipe definition version.
+#'   Normally leave this `NULL`; resumed workflows use it to reject an
+#'   incompatible catalog definition.
+#' @param spec Optional registered complete-recipe identifier. This allows a
+#'   stable catalog definition to be retained when `name` is a user-facing
+#'   alias such as `"daily_temperature"`.
 #'
 #' @return A recipe list.
 #' @export
-epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
-                             profile = NULL, options = NULL) {
+epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
+                             profile = NULL, options = NULL, policy = NULL,
+                             version = NULL, spec = NULL) {
     checkmate::assert_string(name, min.chars = 1L)
-    checkmate::assert_string(backend, min.chars = 1L)
+    checkmate::assert_string(backend, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(policy, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_count(version, positive = TRUE, null.ok = TRUE)
+    checkmate::assert_string(spec, min.chars = 1L, null.ok = TRUE)
     name <- tolower(name)
+    if (!is.null(policy)) {
+        policy <- tolower(policy)
+    }
+
+    # Registered complete recipes resolve stable backend/profile identifiers
+    # from the selected scientific policy. Ad hoc backend recipes retain the
+    # historical name-to-backend default.
+    spec_name <- if (is.null(spec)) name else tolower(spec)
+    resolved <- recipe__resolve(
+        spec_name,
+        policy = policy,
+        version = version
+    )
+    if (!is.null(spec) && is.null(resolved)) {
+        cli::cli_abort(
+            "Unknown registered future-weather recipe specification: {.val {spec_name}}."
+        )
+    }
+    recipe_spec <- NULL
+    recipe_version <- NULL
+    if (is.null(resolved)) {
+        if (is.null(backend)) {
+            backend <- name
+        }
+        if (!is.null(policy)) {
+            cli::cli_abort(
+                "Execution {.arg policy} is available only for a registered future-weather recipe."
+            )
+        }
+        if (!is.null(version)) {
+            cli::cli_abort(
+                "Recipe definition {.arg version} is available only for a registered future-weather recipe."
+            )
+        }
+        policy <- NULL
+    } else {
+        recipe_spec <- resolved$spec@name
+        recipe_version <- resolved$spec@version
+        policy <- resolved$policy
+        if (is.null(backend)) {
+            backend <- resolved$spec@backend
+        } else if (!identical(tolower(backend), resolved$spec@backend)) {
+            cli::cli_abort(
+                "Registered recipe {.val {name}} uses backend {.val {resolved$spec@backend}}, not {.val {tolower(backend)}}."
+            )
+        }
+        if (!is.null(profile) &&
+            !identical(tolower(profile), resolved$profile)) {
+            cli::cli_abort(
+                "Recipe policy {.val {policy}} requires backend profile {.val {resolved$profile}}."
+            )
+        }
+        profile <- resolved$profile
+    }
+
     backend <- tolower(backend)
     backend_spec <- epw_morph_backend(backend)
 
@@ -899,7 +974,12 @@ epw_morph_recipe <- function(name = "belcher", backend = name, methods = NULL,
             options = options,
             methods = methods,
             rules = rules,
-            components = if (is.null(pipeline)) {
+            recipe_spec = recipe_spec,
+            recipe_version = recipe_version,
+            policy = policy,
+            components = if (!is.null(resolved)) {
+                resolved$spec@components
+            } else if (is.null(pipeline)) {
                 NULL
             } else {
                 pipeline__records(pipeline)
@@ -968,6 +1048,9 @@ morpher__json <- function(x) {
             # queued and resumed jobs retain every method override.
             methods = as.list(x$methods),
             rules = as.data.frame(rules),
+            recipe_spec = x$recipe_spec,
+            recipe_version = x$recipe_version,
+            policy = x$policy,
             components = x$components
         )
     }
@@ -988,9 +1071,29 @@ morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend(
     backend$validate_methods(methods)
 }
 
+# Resolve the stable complete-recipe definition recorded with a configured
+# recipe. Ad hoc backend recipes deliberately return NULL.
+morpher__recipe_spec <- function(recipe) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    if (is.null(recipe$recipe_spec)) {
+        return(NULL)
+    }
+    recipe__get(
+        recipe$recipe_spec,
+        version = recipe$recipe_version
+    )
+}
+
 morpher__recipe_requires_reference <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    spec <- morpher__recipe_spec(recipe)
+    if (!is.null(spec)) {
+        reference_roles <- c("observed_reference", "model_historical")
+        return(any(reference_roles %in% names(spec@required_inputs)))
     }
     epw_morph_backend(recipe$backend)$requires_reference
 }
@@ -1001,6 +1104,14 @@ morpher__recipe_accepts_reference <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
+    spec <- morpher__recipe_spec(recipe)
+    if (!is.null(spec)) {
+        reference_roles <- c("observed_reference", "model_historical")
+        return(any(reference_roles %in% c(
+            names(spec@required_inputs),
+            names(spec@optional_inputs)
+        )))
+    }
     epw_morph_backend(recipe$backend)$accepts_reference
 }
 
@@ -1010,14 +1121,19 @@ morpher__recipe_required_frequency <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
-    spec <- pipeline__from_records(recipe$components)
-    if (is.null(spec)) {
-        return(NULL)
+    recipe_spec <- morpher__recipe_spec(recipe)
+    if (!is.null(recipe_spec)) {
+        choices <- recipe__frequency_choices(recipe_spec)
+    } else {
+        spec <- pipeline__from_records(recipe$components)
+        if (is.null(spec)) {
+            return(NULL)
+        }
+        choices <- pipeline__frequency_choices(spec)
     }
-    choices <- pipeline__frequency_choices(spec)
     if (length(choices) > 1L) {
         cli::cli_abort(
-            "The current shift workflow requires one CMIP frequency; pipeline choices are {.val {choices}}."
+            "The current shift workflow requires one CMIP frequency; recipe choices are {.val {choices}}."
         )
     }
     choices
@@ -1855,6 +1971,10 @@ morpher__result_as_morphed <- function(result) {
 
 morpher__run_context <- function(context) {
     checkmate::assert_class(context, "morpher__context")
+    recipe_spec <- morpher__recipe_spec(context$recipe)
+    if (!is.null(recipe_spec)) {
+        recipe__validate_inputs(recipe_spec, context$inputs)
+    }
     backend <- epw_morph_backend(context$recipe$backend)
     result <- backend$run(context)
     if (!inherits(result, "epw_morph_result")) {
