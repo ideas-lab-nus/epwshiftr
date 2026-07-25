@@ -499,6 +499,15 @@ morpher__default_backend_specs <- function() {
             rules = EPW_MORPH_DAILY_TEMPERATURE_RULES,
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline()
+        ),
+        sobie_curry_daily = EpwMorphBackend$new(
+            name = "sobie_curry_daily",
+            label = "Paper-faithful Sobie-Curry daily morphing",
+            methods = EPW_MORPH_SOBIE_CURRY_METHODS,
+            method_choices = unname(EPW_MORPH_SOBIE_CURRY_METHODS),
+            rules = EPW_MORPH_SOBIE_CURRY_RULES,
+            requires_reference = TRUE,
+            pipeline = sobie__pipeline()
         )
     )
 }
@@ -925,6 +934,7 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
 
     is_belcher <- backend %in% c("belcher", "belcher_absolute")
     is_daily_temperature <- identical(backend, "daily_temperature")
+    is_sobie_curry <- identical(backend, "sobie_curry_daily")
     if (is_belcher) {
         if (is.null(profile)) {
             profile <- "enhanced"
@@ -947,6 +957,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- daily__temperature_backend_options(options)
+    } else if (is_sobie_curry) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Sobie-Curry recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- sobie__backend_options(options)
     } else {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort("Custom EPW morphing backends only support {.val default} profile metadata.")
