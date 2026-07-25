@@ -41,6 +41,7 @@ invalidate a persistent store.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://ideas-lab-nus.github.io/epwshiftr/}
   \item \url{https://github.com/ideas-lab-nus/epwshiftr}
   \item Report bugs at \url{https://github.com/ideas-lab-nus/epwshiftr/issues}
 }

@@ -243,11 +243,50 @@ first registration; it is not a special execution path.
 
 The runner receives one canonical context:
 
+- `context$inputs`: role-addressable future-weather inputs. Its
+  `weather_template`, `observed_reference`, `model_historical`, and
+  `model_future` properties remain distinct even when one role is absent;
 - `context$epw`: the package's internal baseline EPW representation;
 - `context$climate`: store-native climate rows with `variable_id`, `time`,
   `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
+- `context$reference_climate`: optional matching historical model rows;
+- `context$observed_reference`: optional observations or reanalysis rows;
 - `context$recipe`: the selected recipe, including method overrides and rules;
 - `context$by`, `context$case`, `context$strict`, and `context$warning`.
+
+`context$epw`, `context$climate`, and `context$reference_climate` remain
+available for existing backends. New components should select inputs by their
+role through `context$inputs` instead of interpreting a generic reference.
+
+Future-weather methods can be assembled from seven ordered component stages.
+Each component declares its required and optional input roles, supported
+representations, frequencies, calendars, variable alternatives, input and
+output kinds, dimensional scope, and whether it is stochastic. Compatibility
+is checked from stage order and the intermediate kinds exchanged between
+components.
+
+| Component | Used for | Main function | Problem addressed |
+|:----------|:---------|:--------------|:------------------|
+| `preprocess` | Preparing every source before climate calculations | Normalize variables, units, missing values, spatial selections, and source metadata into method-ready inputs | Raw EPW, observations, reanalysis, and climate-model data otherwise have incompatible schemas and units |
+| `calendar` | Placing sources on a shared annual and temporal coordinate | Preserve each source calendar, calculate annual phase, form circular windows, and align 360-, 365-, and 366-day inputs | Direct date matching either loses days or assigns different seasonal positions to nominally similar dates |
+| `signal` | Estimating or transferring the future climate signal | Apply delta, scaling, quantile-based, weather-typing, or other statistical transformations to aligned groups | Different methods require different reference inputs and assumptions but need one validated, comparable execution contract |
+| `sequence` | Constructing the order of future days or weather states | Preserve, resample, rearrange, or generate daily sequences, including stochastic and analogue methods | A climatology or corrected distribution does not define event order, persistence, spells, or compound extremes |
+| `hourly` | Converting daily targets or selected days into hourly weather | Reconstruct 24-hour profiles from an EPW template, an hourly library, or a method-specific disaggregation model | Daily CMIP data cannot be written directly as an hourly EPW and naive interpolation damages diurnal shape and extrema |
+| `physics` | Closing related weather variables after transformation | Enforce temperature statistics, humidity closure, radiation balance, bounds, and cross-variable consistency | Independently transformed variables can violate thermodynamic, radiative, or EPW constraints |
+| `output` | Producing the final weather artifact and its record | Assemble fields and headers, write EPW or intermediate artifacts, and retain method settings, provenance, and diagnostics | Numerically valid series are not yet a standards-compliant, reproducible, and auditable future weather file |
+
+Bias-adjustment implementations belong to the `signal` stage. Their common
+`apply` operation validates the role-addressable inputs, resolves
+variable-specific settings, and executes aligned groups. Each method supplies
+only an `apply_group` kernel receiving the group's input payloads, resolved
+settings, and key. Published defaults retain their references, experimental
+defaults are labelled and warned about, and user overrides do not change that
+provenance. The execution result records the settings actually used after
+overrides. Calendar mapping and group alignment happen before the kernel, so a
+method cannot silently impose a Gregorian, no-leap, or fixed 366-day
+interpretation. Group failures either abort or return an explicit diagnostic
+with a `NULL` result; they are never silently converted to missing numeric
+values.
 
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
