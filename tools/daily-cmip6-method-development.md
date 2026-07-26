@@ -130,6 +130,7 @@ Status in this table refers to the repository state checked on 2026-07-26.
 | Eames monthly temperature signal and BTWS recipe | Merged | PR [#153](https://github.com/ideas-lab-nus/epwshiftr/pull/153) |
 | Ek daily temperature factors | Implemented | PR [#155](https://github.com/ideas-lab-nus/epwshiftr/pull/155) |
 | Arima month-wise temperature quantile mapping | Implemented | PR [#157](https://github.com/ideas-lab-nus/epwshiftr/pull/157) |
+| Package-native daily adjusted-series contract and Linear Scaling signal | Implemented | PR [#161](https://github.com/ideas-lab-nus/epwshiftr/pull/161) |
 
 The current daily temperature path:
 
@@ -236,6 +237,16 @@ Implementation policy:
    stochastic behavior directly in the package;
 5. enable a method in an EPW recipe only after its native implementation and
    diagnostics are complete.
+
+The first implementation uses a package-native `DailyAdjustedSeries` result
+rather than an external debiaser type. It retains the transformed
+`model_future` role, canonical calendar-native daily coordinates, variable
+metadata, resolved settings, correction provenance, and the standard signal
+diagnostics. Linear Scaling is the first producer of this contract: monthly
+temperature mean bias is applied additively and monthly precipitation mean
+bias multiplicatively. The signal component deliberately stops at the
+corrected daily sequence; it does not invent an EPW sequence or hourly
+reconstruction policy.
 
 ### 6.2 Other signal and preprocessing methods
 
@@ -642,7 +653,9 @@ Update this table as work is merged.
 | Eames non-temperature transformations | Not started |
 | Ek daily temperature factors | Implemented in PR #155 |
 | Arima rank/QM | Implemented in PR #157 |
-| Eight native ibicus-compatible signal methods | Not started |
+| Native daily adjusted-series signal contract | Implemented in PR #161 |
+| Linear Scaling signal | Implemented in PR #161 |
+| Remaining seven native ibicus-compatible signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
 | BCCAQv2 reference-data/tool adapter | Not started |
 | Daily BCSD reference-data/tool adapter | Not started |
@@ -696,6 +709,9 @@ comparison.
   <https://doi.org/10.1175/JCLI-D-14-00754.1>
 - Lange (2019), ISIMIP3BASD:
   <https://doi.org/10.5194/gmd-12-3055-2019>
+- Teutschbein and Seibert (2012), precipitation and temperature bias-correction
+  methods for hydrological climate-change simulation:
+  <https://doi.org/10.1016/j.jhydrol.2012.05.052>
 - Cannon (2018), MBCn:
   <https://doi.org/10.1007/s00382-017-3580-6>
 - Spuler et al. (2024), ibicus:
