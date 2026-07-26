@@ -130,7 +130,7 @@ Status in this table refers to the repository state checked on 2026-07-26.
 | Eames monthly temperature signal and BTWS recipe | Merged | PR [#153](https://github.com/ideas-lab-nus/epwshiftr/pull/153) |
 | Ek daily temperature factors | Implemented | PR [#155](https://github.com/ideas-lab-nus/epwshiftr/pull/155) |
 | Arima month-wise temperature quantile mapping | Implemented | PR [#157](https://github.com/ideas-lab-nus/epwshiftr/pull/157) |
-| Package-native daily adjusted-series contract and Linear Scaling signal | In development | Issue [#160](https://github.com/ideas-lab-nus/epwshiftr/issues/160) |
+| Package-native daily adjusted-series contract and Linear Scaling signal | Implemented | PR [#161](https://github.com/ideas-lab-nus/epwshiftr/pull/161) |
 
 The current daily temperature path:
 
@@ -653,8 +653,8 @@ Update this table as work is merged.
 | Eames non-temperature transformations | Not started |
 | Ek daily temperature factors | Implemented in PR #155 |
 | Arima rank/QM | Implemented in PR #157 |
-| Native daily adjusted-series signal contract | In development in #160 |
-| Linear Scaling signal | In development in #160 |
+| Native daily adjusted-series signal contract | Implemented in PR #161 |
+| Linear Scaling signal | Implemented in PR #161 |
 | Remaining seven native ibicus-compatible signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
 | BCCAQv2 reference-data/tool adapter | Not started |

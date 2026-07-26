@@ -40,6 +40,14 @@
 
 ## New features
 
+* Added the package-native `DailyAdjustedSeries` signal contract and registered
+  native R `linear_scaling_daily` component. The univariate component consumes
+  distinct observed-reference, historical-model, and future-model daily
+  series, applies monthly additive temperature or multiplicative precipitation
+  mean corrections, and returns the corrected future sequence with canonical
+  CF-calendar coordinates, resolved settings, correction provenance, bounds,
+  and explicit diagnostics (#161).
+
 * Added `arima_temperature()` and registered the temperature-focused
   `arima_rank_qm` recipe. The workflow carries baseline EPW, historical daily
   model `tas`, future daily model `tas`, and multi-year observed daily `tas` as
