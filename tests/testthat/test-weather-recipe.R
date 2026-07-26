@@ -40,6 +40,7 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
             "belcher_monthly",
             "epwshiftr_monthly",
             "epwshiftr_daily_power",
+            "epwshiftr_daily_btws",
             "sobie_curry_daily"
         )
     )
