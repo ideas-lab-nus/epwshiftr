@@ -128,6 +128,7 @@ serialize any function:
 ```r
 epw_morph_recipes()
 epw_morph_recipe_spec("epwshiftr_daily_power")
+epw_morph_recipe_spec("epwshiftr_daily_btws")
 ```
 
 The initial catalog distinguishes the following complete methods:
@@ -137,6 +138,7 @@ The initial catalog distinguishes the following complete methods:
 | `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
 | `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
+| `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the Eames BTWS hourly projection |
 | `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
@@ -152,6 +154,10 @@ daily_power <- epw_morph_recipe(
     "epwshiftr_daily_power",
     policy = "harmonized"
 )
+daily_btws_comparison <- epw_morph_recipe(
+    "epwshiftr_daily_btws",
+    policy = "harmonized"
+)
 sobie_curry <- epw_morph_recipe(
     "sobie_curry_daily",
     policy = "paper_faithful"
@@ -164,11 +170,40 @@ sobie_curry_harmonized <- epw_morph_recipe(
 
 Catalog input roles are validated before backend execution. The two monthly
 entries remain explicitly labelled backend adapters because their established
-runner has not yet been decomposed into executable components; both daily
+runner has not yet been decomposed into executable components; the daily
 entries are checked against their registered seven-stage pipelines. Ad hoc
 recipes such as
 `epw_morph_recipe("belcher")` remain supported and preserve their previous
 defaults.
+
+The BTWS comparison requires daily `tas`, `tasmin`, and `tasmax` from matching
+historical and future model periods. It reuses epwshiftr's calendar-neutral
+daily target signal, baseline EPW sequence, specific-humidity closure, and
+output stages, while replacing only the hourly stage with equations (7)--(16)
+from Eames et al. (2024). The complete recipe is therefore intentionally
+labelled as a combination rather than a reproduction of the paper's monthly
+UKCP18 workflow. The paper directs implementations to reduce `m` for a
+positive stretch or `n` for a negative stretch when the default `m = n = 1`
+would leave `[0, 1]`, but does not publish solver code. epwshiftr uses
+deterministic bisection to retain the largest admissible exponent and records
+`S`, `m`, `n`, closure errors, and every mean-shift fallback reason.
+
+At the high-level workflow, select the same daily temperature method and change
+only its hourly reconstruction component:
+
+```r
+btws_method <- daily_temperature(
+    historical_reference(years = 1995:2014),
+    reconstruction = "btws"
+)
+```
+
+Eames et al. did not drive BTWS with daily CMIP6 series. Their paper applies
+monthly UKCP18 change factors for mean temperature and the monthly averages of
+daily minimum and maximum temperature to an hourly baseline month, with BTWS
+executed day by day. A paper-faithful monthly signal recipe is therefore a
+separate future implementation; `epwshiftr_daily_btws` is retained specifically
+to compare hourly reconstruction algorithms under the same daily CMIP6 signal.
 
 The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
 surface pressure `ps` from matching historical and future model periods. It
@@ -356,8 +391,8 @@ persist the source data. `shift_morph()` builds the four role-addressable inputs
 compiles the component names stored in the selected recipe, and executes the
 scientific stages through the backend. `shift_epw()` remains the durable final
 file writer. The built-in `daily_temperature()` and `sobie_curry_daily()`
-methods use all seven stages, including explicit `sequence` components that
-preserve the baseline EPW day order.
+methods use all seven stages, including explicit
+`sequence` components that preserve the baseline EPW day order.
 
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves

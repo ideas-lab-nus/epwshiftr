@@ -30,11 +30,9 @@ The current daily temperature implementation has two distinct parts:
 1. Its climate signal is closest to Sobie and Curry (2025): historical and
    future daily climatologies are estimated on an annual cycle, smoothed, and
    used to alter a baseline hourly weather sequence.
-2. Its hourly temperature projection is closest to the bounded temperature
-   weighted stretch family described by Eames et al. (2024): the daily profile
-   is normalized, future minimum and maximum values are fixed, the interior
-   shape is altered to meet a future mean, and infeasible cases fall back to a
-   mean shift.
+2. Its hourly temperature projection solves the same mean/minimum/maximum
+   constraint problem as the bounded temperature weighted stretch described by
+   Eames et al. (2024), but it uses a different transfer family.
 
 epwshiftr uses a different transfer function from Eames et al. For normalized
 hourly temperature \(x_h\), it solves the exponent \(p\) in:
@@ -49,8 +47,8 @@ minimum, and maximum.
 
 The accurate description of the current method is therefore:
 
-> Sobie-Curry-style daily climatological signals combined with a
-> BTWS-class bounded hourly projection using an \(x^p\) transfer function.
+> Sobie-Curry-style daily climatological signals combined with an independent
+> bounded hourly projection using an \(x^p\) transfer function.
 
 This statement identifies the closest prior methods without claiming that the
 complete implementation is identical to either one.
@@ -183,9 +181,10 @@ API names.
 | `belcher_monthly` | Belcher et al. (2005) | Monthly shift, stretch, or combined change | Inherit baseline hourly sequence | Available through existing morphing profiles |
 | `epwshiftr_monthly` | Current enhanced epwshiftr | Enhanced monthly Belcher changes | Inherit baseline sequence; apply shared physical post-processing | Implemented |
 | `future_weather_generator` | Future Weather Generator | Enhanced monthly Belcher-family changes | Product-specific smoothing, ensemble and derived-field processing | Not implemented; external comparison or clean-room implementation only |
+| `eames_monthly` | Eames et al. (2024) | Monthly UKCP18 mean and average-daily-extrema change factors | Apply BTWS day by day to each hourly baseline month; use published transforms for other variables | Not implemented |
 | `ek_daily_factors` | Ek et al. (2018) | Daily climatological change factors | Inherit baseline hourly sequence | Not implemented as a faithful recipe |
-| `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Shared primitives exist; faithful recipe not implemented |
-| `eames_btws` | Eames et al. (2024) | Published climate change factors | Day-wise bounded temperature weighted stretch | Not implemented |
+| `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Implemented in PR #147; harmonized closure in PR #149 |
+| `epwshiftr_daily_btws` | Composite comparison using Eames et al. (2024) | Existing epwshiftr daily CMIP6 mean/min/max targets | Published day-wise bounded temperature weighted stretch | Implemented; tracked in #150 |
 | `epwshiftr_daily_power` | Current epwshiftr daily method | Circular daily mean/min/max climatologies | Day-wise \(x^p\) constrained projection | Implemented through PR #141 |
 | `arima_rank_qm` | Arima et al. (2024) | Month-wise daily CDF and percentile-dependent change function | Apply the selected daily factor to every hour of the TMY day | Not implemented |
 | `wang_subdaily_qdm` | Wang et al. (2023) | KDE-QDM with a three-month moving window | Preserve future decade; interpolate primarily three-hourly model data to hours | Not implemented |
@@ -571,9 +570,13 @@ external or black-box comparator. Do not invent missing behavior.
 
 1. Sobie-Curry daily factors and 21-day smoothing. Implemented in PR #147,
    with harmonized humidity closure added in PR #149.
-2. Eames BTWS hourly projection and its documented mean-shift fallback. Next.
-3. Ek daily change factors.
-4. Arima month-wise rank/QM change functions.
+2. Eames BTWS hourly projection and its documented mean-shift fallback.
+   Implemented as the hourly component of the composite
+   `epwshiftr_daily_btws` recipe; tracked in #150.
+3. Eames monthly change-factor signal and complete paper-faithful recipe. This
+   remains separate from the daily CMIP6 composition.
+4. Ek daily change factors.
+5. Arima month-wise rank/QM change functions.
 
 These methods provide the most direct tests of the current daily signal and
 \(x^p\) projection.
@@ -627,7 +630,8 @@ Update this table as work is merged.
 | Recipe registry and execution policies | Implemented in PR #145 |
 | Sobie-Curry faithful recipe | Implemented in PR #147 |
 | Sobie-Curry harmonized humidity closure | Implemented in PR #149 |
-| Eames BTWS | Not started |
+| Eames BTWS hourly component and daily CMIP6 composite recipe | Implemented in PR #151 |
+| Eames monthly paper-faithful recipe | Not started |
 | Ek daily factors | Not started |
 | Arima rank/QM | Not started |
 | Eight ibicus signal methods | Not started |
@@ -643,10 +647,10 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-The next method is the paper-faithful Eames BTWS hourly projection. It should
-reuse the existing calendar, daily-signal, inherited-sequence, and physical
-components so its hourly transformation can be compared directly with the
-current \(x^p\) projection.
+The next method is the paper-faithful Ek daily-factor signal. It should reuse
+the existing calendar, inherited-sequence, hourly, physical, and output
+components so its climate signal can be compared directly with the current
+daily target calculation.
 
 ## 15. Primary sources
 

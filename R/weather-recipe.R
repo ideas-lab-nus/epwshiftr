@@ -31,6 +31,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "belcher_monthly",
     "epwshiftr_monthly",
     "epwshiftr_daily_power",
+    "epwshiftr_daily_btws",
     "sobie_curry_daily"
 )
 
@@ -421,12 +422,13 @@ recipe__monthly_inputs <- function(enhanced = FALSE) {
     )
 }
 
-# Build the three complete methods already available in the package without
-# embedding backend runners or component functions in their definitions.
+# Build the complete built-in recipes without embedding backend runners or
+# component functions in their definitions.
 recipe__default_specs <- function() {
     faithful_inputs <- recipe__monthly_inputs(enhanced = FALSE)
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
+    btws_pipeline <- daily__temperature_pipeline("btws")
     sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
@@ -446,6 +448,21 @@ recipe__default_specs <- function() {
             representations = "series",
             frequencies = "day",
             variable_sets = "tas"
+        )
+    )
+    btws_inputs <- list(
+        weather_template = daily_inputs$weather_template,
+        model_historical = component__input_requirement(
+            "model_historical",
+            representations = "series",
+            frequencies = "day",
+            variable_sets = c("tas", "tasmin", "tasmax")
+        ),
+        model_future = component__input_requirement(
+            "model_future",
+            representations = "series",
+            frequencies = "day",
+            variable_sets = c("tas", "tasmin", "tasmax")
         )
     )
     sobie_inputs <- list(
@@ -545,11 +562,11 @@ recipe__default_specs <- function() {
                 type = "combined_prior_methods",
                 citation = paste(
                     "Sobie-Curry-style daily climatological signals with",
-                    "a BTWS-class bounded power transfer"
+                    "a monotone bounded power transfer"
                 ),
                 references = c(
                     "https://doi.org/10.1016/j.dib.2025.111667",
-                    "https://doi.org/10.1177/01436244231218861"
+                    "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
                 )
             ),
             required_inputs = daily_inputs,
@@ -573,6 +590,58 @@ recipe__default_specs <- function() {
                 "physical_policies"
             ),
             status = "experimental"
+        ),
+        epwshiftr_daily_btws = recipe__spec(
+            name = "epwshiftr_daily_btws",
+            label = "Daily CMIP6 signal with Eames BTWS projection",
+            backend = "daily_temperature_btws",
+            implementation = "pipeline",
+            source = list(
+                type = "combined_prior_methods",
+                citation = paste(
+                    "epwshiftr daily CMIP6 temperature targets combined with",
+                    "the hourly bounded temperature weighted stretch from",
+                    "Eames et al. (2024)"
+                ),
+                references = c(
+                    "https://github.com/ideas-lab-nus/epwshiftr/pull/141",
+                    "https://doi.org/10.1177/01436244231218861"
+                ),
+                equation_note = paste(
+                    "Equations (7)-(16) are used for the hourly projection.",
+                    "Where the paper does not publish solver code, epwshiftr",
+                    "uses deterministic bisection to retain the largest",
+                    "admissible m or n in [0, 1]."
+                ),
+                signal_note = paste(
+                    "Eames et al. use monthly UKCP18 change factors, not daily",
+                    "CMIP6 series. This recipe supplies epwshiftr daily CMIP6",
+                    "targets to the published hourly reconstruction component."
+                )
+            ),
+            required_inputs = btws_inputs,
+            calendar_policy = "cf_annual_phase_365",
+            components = pipeline__records(btws_pipeline),
+            policy_profiles = c(harmonized = "default"),
+            default_policy = "harmonized",
+            diagnostics = c(
+                "daily_target_closure",
+                "daily_extrema_closure",
+                "btws_scale_and_exponents",
+                "mean_shift_fallback",
+                "humidity_closure",
+                "day_boundary_jump"
+            ),
+            provenance = c(
+                "source_methods",
+                "backend_profile",
+                "input_periods",
+                "calendar_mapping",
+                "component_names",
+                "equation_interpretation",
+                "physical_policies"
+            ),
+            status = "comparison"
         ),
         sobie_curry_daily = recipe__spec(
             name = "sobie_curry_daily",
