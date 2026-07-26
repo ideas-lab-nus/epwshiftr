@@ -74,6 +74,7 @@ Collate:
     'eames-btws-component.R'
     'eames-btws.R'
     'eames-monthly-temperature.R'
+    'ek-daily-temperature.R'
     'epw-file.R'
     'utils.R'
     'store.R'

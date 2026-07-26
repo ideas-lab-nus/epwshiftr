@@ -518,6 +518,15 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = eames__monthly_temperature_pipeline()
         ),
+        ek_daily_temperature = EpwMorphBackend$new(
+            name = "ek_daily_temperature",
+            label = "Ek daily temperature change-factor workflow",
+            methods = EPW_MORPH_EK_DAILY_TEMPERATURE_METHODS,
+            method_choices = "ek_combined",
+            rules = EPW_MORPH_EK_DAILY_TEMPERATURE_RULES,
+            requires_reference = TRUE,
+            pipeline = ek__pipeline()
+        ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
             label = "Sobie-Curry daily morphing with selectable closure",
@@ -959,6 +968,7 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         backend,
         "eames_monthly_temperature"
     )
+    is_ek_temperature <- identical(backend, "ek_daily_temperature")
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     if (is_belcher) {
         if (is.null(profile)) {
@@ -990,6 +1000,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- eames__monthly_temperature_options(options)
+    } else if (is_ek_temperature) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Ek daily temperature recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- ek__daily_temperature_options(options)
     } else if (is_sobie_curry) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(

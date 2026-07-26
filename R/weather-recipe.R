@@ -33,6 +33,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_daily_power",
     "epwshiftr_daily_btws",
     "eames_monthly_temperature",
+    "ek_daily_factors",
     "sobie_curry_daily"
 )
 
@@ -431,6 +432,7 @@ recipe__default_specs <- function() {
     daily_pipeline <- daily__temperature_pipeline()
     btws_pipeline <- daily__temperature_pipeline("btws")
     eames_pipeline <- eames__monthly_temperature_pipeline()
+    ek_pipeline <- ek__pipeline()
     sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
@@ -468,6 +470,7 @@ recipe__default_specs <- function() {
         )
     )
     eames_inputs <- eames__monthly_temperature_inputs()
+    ek_inputs <- ek__daily_temperature_inputs()
     sobie_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -703,6 +706,67 @@ recipe__default_specs <- function() {
                 "equation_interpretation",
                 "adaptation_boundary",
                 "physical_policies"
+            ),
+            status = "comparison"
+        ),
+        ek_daily_factors = recipe__spec(
+            name = "ek_daily_factors",
+            label = "Ek daily temperature change factors",
+            backend = "ek_daily_temperature",
+            implementation = "pipeline",
+            source = list(
+                type = "reconstructed_publication",
+                citation = paste(
+                    "Ek et al. (2018), Future weather files to support",
+                    "climate resilient building design in Vancouver"
+                ),
+                references = paste0(
+                    "https://dspace.library.uvic.ca/items/",
+                    "5e8e6684-c704-4d2e-8480-2c81bdbafde9"
+                ),
+                equation_note = paste(
+                    "Temperature mean is reconstructed as",
+                    "(tasmin + tasmax) / 2. The anomaly multiplier is the",
+                    "relative DTR change so zero climate change is an",
+                    "identity and equation (5) closes on the stated daily",
+                    "mean and variance behavior."
+                ),
+                ambiguity_note = paste(
+                    "Equation (2), equation (5), and the accompanying",
+                    "variance text are not fully self-consistent, and the",
+                    "original Matlab implementation is unavailable.",
+                    "The selected interpretation follows the temperature",
+                    "inputs in Table 2 and the Belcher combined transform."
+                ),
+                implementation_note = paste(
+                    "This recipe implements dry-bulb temperature only.",
+                    "The publication's wind and cloud prose conflicts with",
+                    "Table 2, so unsupported variables are not invented."
+                )
+            ),
+            required_inputs = ek_inputs,
+            calendar_policy = "cf_yearly_linear_to_epw_365",
+            components = pipeline__records(ek_pipeline),
+            policy_profiles = c(
+                paper_faithful = "default",
+                harmonized = "default"
+            ),
+            default_policy = "paper_faithful",
+            diagnostics = c(
+                "daily_mean_closure",
+                "daily_dtr_closure",
+                "zero_historical_dtr_fallback",
+                "day_boundary_jump",
+                "temperature_humidity_consistency"
+            ),
+            provenance = c(
+                "source_method",
+                "input_periods",
+                "calendar_mapping",
+                "component_names",
+                "equation_interpretation",
+                "unsupported_variables",
+                "physical_policy"
             ),
             status = "comparison"
         ),

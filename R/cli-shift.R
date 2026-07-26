@@ -699,7 +699,8 @@ cli_shift__recipe_options <- function(options, backend) {
     }
     if (backend %in% c(
         "daily_temperature", "daily_temperature_btws",
-        "eames_monthly_temperature", "sobie_curry_daily"
+        "eames_monthly_temperature", "ek_daily_temperature",
+        "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {
         tolerance <- suppressWarnings(as.numeric(options$tolerance[[1L]]))
