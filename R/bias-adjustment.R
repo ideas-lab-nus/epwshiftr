@@ -23,6 +23,12 @@ BIAS_LINEAR_SCALING_REFERENCES <- c(
     "https://doi.org/10.1016/j.jhydrol.2012.05.052"
 )
 
+# Delta Change defaults follow the published monthly additive-temperature and
+# multiplicative-precipitation change-factor formulation.
+BIAS_DELTA_CHANGE_REFERENCES <- c(
+    "https://doi.org/10.5194/hess-16-4343-2012"
+)
+
 # Check the named-list fields carried by the signal result without constraining
 # the method-specific values stored inside them.
 bias__named_list_error <- function(value, name) {
@@ -294,9 +300,9 @@ bias__daily_adjusted_series <- function(
     )
 }
 
-# Return one explicit diagnostic string when a signal kernel fails to produce
-# the package-native adjusted-series contract.
-bias__validate_daily_adjusted_result <- function(value, inputs, key) {
+# Return one explicit diagnostic string when Linear Scaling fails to produce
+# its package-native future-model result.
+bias__validate_linear_scaling_result <- function(value, inputs, key) {
     if (!S7::S7_inherits(value, DailyAdjustedSeries)) {
         return(
             "Linear Scaling must return a DailyAdjustedSeries object."
@@ -305,6 +311,22 @@ bias__validate_daily_adjusted_result <- function(value, inputs, key) {
     if (!identical(value@output_role, "model_future")) {
         return(
             "Linear Scaling output must retain the `model_future` role."
+        )
+    }
+    TRUE
+}
+
+# Return one explicit diagnostic string when Delta Change fails to produce its
+# package-native observed-reference result.
+bias__validate_delta_change_result <- function(value, inputs, key) {
+    if (!S7::S7_inherits(value, DailyAdjustedSeries)) {
+        return(
+            "Delta Change must return a DailyAdjustedSeries object."
+        )
+    }
+    if (!identical(value@output_role, "observed_reference")) {
+        return(
+            "Delta Change output must retain the `observed_reference` role."
         )
     }
     TRUE
@@ -352,28 +374,28 @@ bias__linear_scaling_profiles <- function() {
     c(temperature, list(precipitation))
 }
 
-# Resolve and validate the one variable-specific settings record accepted by
-# the univariate Linear Scaling kernel.
-bias__linear_scaling_settings <- function(settings) {
+# Resolve the monthly mean-change settings shared by Linear Scaling and Delta
+# Change while keeping method names in user-facing diagnostics.
+bias__mean_change_settings <- function(settings, method) {
     if (length(settings) != 1L ||
         is.null(names(settings)) ||
         !nzchar(names(settings)[[1L]])) {
         cli::cli_abort(
-            "Linear Scaling requires settings for exactly one variable."
+            "{method} requires settings for exactly one variable."
         )
     }
     resolved <- settings[[1L]]
     if (!is.list(resolved)) {
-        cli::cli_abort("Linear Scaling settings must be a named list.")
+        cli::cli_abort("{method} settings must be a named list.")
     }
     if (!identical(resolved$grouping, "calendar_month")) {
         cli::cli_abort(
-            "Linear Scaling currently supports only `calendar_month` grouping."
+            "{method} currently supports only `calendar_month` grouping."
         )
     }
     if (!identical(resolved$statistic, "mean")) {
         cli::cli_abort(
-            "Linear Scaling currently supports only the monthly mean statistic."
+            "{method} currently supports only the monthly mean statistic."
         )
     }
     checkmate::assert_choice(
@@ -387,7 +409,7 @@ bias__linear_scaling_settings <- function(settings) {
     )
     if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
         cli::cli_abort(
-            "Linear Scaling bounds must be ordered from lower to upper."
+            "{method} bounds must be ordered from lower to upper."
         )
     }
     checkmate::assert_number(
@@ -400,7 +422,12 @@ bias__linear_scaling_settings <- function(settings) {
 
 # Validate role payloads as one calendar-native, univariate unit of work and
 # reject unit changes that would make monthly corrections ambiguous.
-bias__linear_scaling_inputs <- function(inputs, variable, transformation) {
+bias__mean_change_inputs <- function(
+    inputs,
+    variable,
+    transformation,
+    method
+) {
     roles <- c(
         "observed_reference",
         "model_historical",
@@ -408,7 +435,7 @@ bias__linear_scaling_inputs <- function(inputs, variable, transformation) {
     )
     if (!identical(sort(names(inputs)), sort(roles))) {
         cli::cli_abort(
-            "Linear Scaling requires observed, historical-model, and future-model role payloads."
+            "{method} requires observed, historical-model, and future-model role payloads."
         )
     }
     series <- lapply(roles, function(role) {
@@ -419,13 +446,13 @@ bias__linear_scaling_inputs <- function(inputs, variable, transformation) {
         role_variables <- unique(series[[role]][["variable_id"]])
         if (!identical(role_variables, variable)) {
             cli::cli_abort(
-                "Linear Scaling role {.val {role}} must contain only variable {.val {variable}}."
+                "{method} role {.val {role}} must contain only variable {.val {variable}}."
             )
         }
         calendars <- unique(series[[role]][["cf_calendar"]])
         if (length(calendars) != 1L) {
             cli::cli_abort(
-                "Linear Scaling role {.val {role}} must contain one native calendar per signal group."
+                "{method} role {.val {role}} must contain one native calendar per signal group."
             )
         }
     }
@@ -436,7 +463,7 @@ bias__linear_scaling_inputs <- function(inputs, variable, transformation) {
     )
     if (length(unique(units)) != 1L) {
         cli::cli_abort(
-            "Linear Scaling inputs for {.val {variable}} must use identical units."
+            "{method} inputs for {.val {variable}} must use identical units."
         )
     }
     if (identical(transformation, "multiplicative") &&
@@ -446,32 +473,36 @@ bias__linear_scaling_inputs <- function(inputs, variable, transformation) {
             logical(1L)
         ))) {
         cli::cli_abort(
-            "Multiplicative Linear Scaling requires non-negative input values."
+            "Multiplicative {method} requires non-negative input values."
         )
     }
     series
 }
 
-# Calculate one monthly mean per role and retain only months required by the
-# future trajectory, which remains the temporal backbone of the output.
-bias__linear_scaling_monthly_means <- function(series) {
-    future_months <- sort(unique(series$model_future[["cf_month"]]))
+# Calculate one native-calendar monthly mean per role for the months present
+# in the method's declared output backbone.
+bias__mean_change_monthly_means <- function(
+    series,
+    output_role,
+    method
+) {
+    output_months <- sort(unique(series[[output_role]][["cf_month"]]))
     monthly <- lapply(series, function(data) {
         means <- tapply(
             data[["value"]],
             data[["cf_month"]],
             mean
         )
-        values <- unname(means[as.character(future_months)])
+        values <- unname(means[as.character(output_months)])
         if (anyNA(values)) {
             cli::cli_abort(
-                "Linear Scaling inputs do not cover every future calendar month."
+                "{method} inputs do not cover every output calendar month."
             )
         }
         values
     })
     data.frame(
-        cf_month = future_months,
+        cf_month = output_months,
         observed_mean = monthly$observed_reference,
         historical_mean = monthly$model_historical,
         future_mean = monthly$model_future
@@ -481,14 +512,20 @@ bias__linear_scaling_monthly_means <- function(series) {
 # Apply the published monthly additive or multiplicative Linear Scaling
 # equation and return a typed daily model-future series.
 bias__linear_scaling_apply_group <- function(inputs, settings, key) {
-    resolved <- bias__linear_scaling_settings(settings)
+    method <- "Linear Scaling"
+    resolved <- bias__mean_change_settings(settings, method)
     variable <- names(settings)[[1L]]
-    series <- bias__linear_scaling_inputs(
+    series <- bias__mean_change_inputs(
         inputs,
         variable,
-        resolved$transformation
+        resolved$transformation,
+        method
     )
-    monthly <- bias__linear_scaling_monthly_means(series)
+    monthly <- bias__mean_change_monthly_means(
+        series,
+        "model_future",
+        method
+    )
 
     if (identical(resolved$transformation, "additive")) {
         # Temperature uses the monthly observed-minus-historical mean bias as
@@ -578,7 +615,7 @@ bias__linear_scaling_component <- function() {
         profiles = bias__linear_scaling_profiles(),
         apply_group = bias__linear_scaling_apply_group,
         operations = list(
-            validate_result = bias__validate_daily_adjusted_result
+            validate_result = bias__validate_linear_scaling_result
         ),
         metadata = list(
             method_family = "bias_adjustment",
@@ -592,6 +629,183 @@ bias__linear_scaling_component <- function() {
 # through the same process-local component registry as complete recipes.
 bias__register_linear_scaling_component <- function() {
     component <- bias__linear_scaling_component()
+    key <- component__registry_key(component@stage, component@name)
+    if (!exists(
+        key,
+        envir = WEATHER_COMPONENT_REGISTRY,
+        inherits = FALSE
+    )) {
+        component__register(component)
+    }
+    invisible(NULL)
+}
+
+# Define published Delta Change defaults for additive temperature changes and
+# multiplicative precipitation changes on the observed-reference backbone.
+bias__delta_change_profiles <- function() {
+    temperature_settings <- list(
+        grouping = "calendar_month",
+        statistic = "mean",
+        transformation = "additive",
+        bounds = c(-Inf, Inf),
+        zero_tolerance = 0
+    )
+    precipitation_settings <- list(
+        grouping = "calendar_month",
+        statistic = "mean",
+        transformation = "multiplicative",
+        bounds = c(0, Inf),
+        zero_tolerance = sqrt(.Machine$double.eps)
+    )
+    temperature <- lapply(c("tas", "tasmin", "tasmax"), function(variable) {
+        signal__variable_profile(
+            variable,
+            settings = temperature_settings,
+            evidence = "published",
+            references = BIAS_DELTA_CHANGE_REFERENCES,
+            metadata = list(
+                method = "delta_change",
+                output_role = "observed_reference"
+            )
+        )
+    })
+    precipitation <- signal__variable_profile(
+        "pr",
+        settings = precipitation_settings,
+        evidence = "published",
+        references = BIAS_DELTA_CHANGE_REFERENCES,
+        metadata = list(
+            method = "delta_change",
+            output_role = "observed_reference"
+        )
+    )
+    c(temperature, list(precipitation))
+}
+
+# Apply published monthly Delta Change equations to the observed daily series
+# and retain that series as the typed temporal backbone of the result.
+bias__delta_change_apply_group <- function(inputs, settings, key) {
+    method <- "Delta Change"
+    resolved <- bias__mean_change_settings(settings, method)
+    variable <- names(settings)[[1L]]
+    series <- bias__mean_change_inputs(
+        inputs,
+        variable,
+        resolved$transformation,
+        method
+    )
+    monthly <- bias__mean_change_monthly_means(
+        series,
+        "observed_reference",
+        method
+    )
+
+    if (identical(resolved$transformation, "additive")) {
+        # For temperature, Delta_m = mean(future_m) - mean(historical_m)
+        # transfers the modeled mean change without replacing observed
+        # day-to-day anomalies.
+        monthly$change <- (
+            monthly$future_mean - monthly$historical_mean
+        )
+    } else {
+        denominator_zero <- (
+            abs(monthly$historical_mean) <= resolved$zero_tolerance
+        )
+        if (any(denominator_zero)) {
+            cli::cli_abort(
+                "Multiplicative Delta Change is undefined because the historical monthly mean is zero for month(s) {.val {monthly$cf_month[denominator_zero]}}."
+            )
+        }
+        # For precipitation, R_m = mean(future_m) / mean(historical_m)
+        # scales observed wet-day magnitudes while preserving the observed
+        # zero/non-zero occurrence sequence.
+        monthly$change <- (
+            monthly$future_mean / monthly$historical_mean
+        )
+    }
+
+    observed <- series$observed_reference
+    change <- monthly$change[
+        match(observed[["cf_month"]], monthly$cf_month)
+    ]
+    if (identical(resolved$transformation, "additive")) {
+        # The additive output equation is x'_obs,d = x_obs,d + Delta_m(d).
+        adjusted <- observed[["value"]] + change
+    } else {
+        # The multiplicative output equation is x'_obs,d = x_obs,d * R_m(d).
+        adjusted <- observed[["value"]] * change
+    }
+    bounded <- pmin(
+        pmax(adjusted, resolved$bounds[[1L]]),
+        resolved$bounds[[2L]]
+    )
+    clipped <- sum(bounded != adjusted)
+    observed[["value"]] <- bounded
+
+    bias__daily_adjusted_series(
+        observed,
+        output_role = "observed_reference",
+        transformation = resolved$transformation,
+        settings = resolved,
+        provenance = list(
+            method = "delta_change",
+            references = BIAS_DELTA_CHANGE_REFERENCES,
+            group_key = key,
+            monthly_changes = monthly,
+            clipped_values = clipped
+        )
+    )
+}
+
+# Construct the package-native Delta Change signal with explicit three-role
+# inputs and an observed-reference daily output.
+bias__delta_change_component <- function() {
+    alternatives <- as.list(c("tas", "tasmin", "tasmax", "pr"))
+    requirements <- lapply(
+        c(
+            "observed_reference",
+            "model_historical",
+            "model_future"
+        ),
+        function(role) {
+            component__input_requirement(
+                role,
+                representations = "series",
+                frequencies = "day",
+                variable_sets = alternatives
+            )
+        }
+    )
+    names(requirements) <- c(
+        "observed_reference",
+        "model_historical",
+        "model_future"
+    )
+    signal__component(
+        name = "delta_change_daily",
+        label = "Daily Delta Change",
+        required_inputs = requirements,
+        input_kinds = "calendar_indexed_daily_series",
+        output_kinds = "daily_adjusted_series",
+        scopes = "univariate",
+        stochastic = FALSE,
+        profiles = bias__delta_change_profiles(),
+        apply_group = bias__delta_change_apply_group,
+        operations = list(
+            validate_result = bias__validate_delta_change_result
+        ),
+        metadata = list(
+            method_family = "bias_adjustment",
+            output_contract = "daily_adjusted_series",
+            references = BIAS_DELTA_CHANGE_REFERENCES
+        )
+    )
+}
+
+# Register Delta Change once so it is discoverable alongside Linear Scaling
+# through the process-local component registry.
+bias__register_delta_change_component <- function() {
+    component <- bias__delta_change_component()
     key <- component__registry_key(component@stage, component@name)
     if (!exists(
         key,

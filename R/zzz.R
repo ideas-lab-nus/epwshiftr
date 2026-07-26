@@ -14,6 +14,7 @@
     # Register standalone signal methods at load time so downstream component
     # pipelines can resolve them without constructing a complete EPW recipe.
     bias__register_linear_scaling_component()
+    bias__register_delta_change_component()
 
     # set package options
     .opts <- list(
