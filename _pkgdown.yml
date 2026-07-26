@@ -100,6 +100,7 @@ reference:
       - daily_temperature
       - eames_temperature
       - ek_daily_temperature
+      - arima_temperature
       - sobie_curry_daily
       - shift_site
       - shift_collect

@@ -129,6 +129,7 @@ Status in this table refers to the repository state checked on 2026-07-26.
 | Inspectable complete-recipe registry | Merged | PR [#145](https://github.com/ideas-lab-nus/epwshiftr/pull/145) |
 | Eames monthly temperature signal and BTWS recipe | Merged | PR [#153](https://github.com/ideas-lab-nus/epwshiftr/pull/153) |
 | Ek daily temperature factors | Implemented | PR [#155](https://github.com/ideas-lab-nus/epwshiftr/pull/155) |
+| Arima month-wise temperature quantile mapping | Implemented | PR [#157](https://github.com/ideas-lab-nus/epwshiftr/pull/157) |
 
 The current daily temperature path:
 
@@ -188,7 +189,7 @@ API names.
 | `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Implemented in PR #147; harmonized closure in PR #149 |
 | `epwshiftr_daily_btws` | Composite comparison using Eames et al. (2024) | Existing epwshiftr daily CMIP6 mean/min/max targets | Published day-wise bounded temperature weighted stretch | Implemented; tracked in #150 |
 | `epwshiftr_daily_power` | Current epwshiftr daily method | Circular daily mean/min/max climatologies | Day-wise \(x^p\) constrained projection | Implemented through PR #141 |
-| `arima_rank_qm` | Arima et al. (2024) | Month-wise daily CDF and percentile-dependent change function | Apply the selected daily factor to every hour of the TMY day | Not implemented |
+| `arima_rank_qm` | Arima et al. (2024) | Month-wise daily CDF and percentile-dependent change function | Apply the selected daily factor to every hour of the TMY day | Temperature-focused implementation in PR #157 |
 | `wang_subdaily_qdm` | Wang et al. (2023) | KDE-QDM with a three-month moving window | Preserve future decade; interpolate primarily three-hourly model data to hours | Not implemented |
 | `hosseini_knn_rf` | Hosseini et al. (2021) | QQ bias correction | KNN weather-type classification and random-forest hourly reconstruction | Not implemented |
 | `bass_ftmy` | Bass et al. (2022) | Downscaled daily future climate | MTCLIM hourly reconstruction followed by representative-month TMY selection | Not implemented |
@@ -582,7 +583,7 @@ external or black-box comparator. Do not invent missing behavior.
    `eames_monthly_temperature` recipe in PR #153; the paper's non-temperature
    transforms remain separate work.
 4. Ek daily change factors. Implemented in PR #155.
-5. Arima month-wise rank/QM change functions.
+5. Arima month-wise rank/QM change functions. Implemented in PR #157.
 
 These methods provide the most direct tests of the current daily signal and
 \(x^p\) projection.
@@ -591,8 +592,8 @@ These methods provide the most direct tests of the current daily signal and
 
 1. Specify published equations, defaults, bounds, and supported variables.
 2. Add native R implementations behind the common signal interface.
-3. Verify each implementation by variable, transformation type, seasonal
-   window, and future-period window.
+3. Add deterministic R fixtures and verify each implementation by variable,
+   transformation type, seasonal window, and future-period window.
 4. Combine each signal method with the same inherited-sequence and hourly
    projection configuration for a controlled comparison.
 
@@ -640,8 +641,8 @@ Update this table as work is merged.
 | Eames monthly temperature recipe | Implemented in PR #153 |
 | Eames non-temperature transformations | Not started |
 | Ek daily temperature factors | Implemented in PR #155 |
-| Arima rank/QM | Not started |
-| Eight ibicus signal methods | Not started |
+| Arima rank/QM | Implemented in PR #157 |
+| Eight native ibicus-compatible signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
 | BCCAQv2 reference-data/tool adapter | Not started |
 | Daily BCSD reference-data/tool adapter | Not started |
@@ -654,11 +655,11 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-After #155, the next method is the Arima month-wise rank/QM change function.
-It should reuse the common calendar, inherited-sequence, physical, and output
-components while keeping its percentile-dependent daily signal and hourly
-application distinct from Ek, Sobie-Curry, BTWS, and the existing
-epwshiftr daily target calculation.
+The next work is to add native R signal kernels one at a time behind the common
+signal interface. Each kernel should define and test its supported variables,
+defaults, transformations, and calendar behavior, then be combined with the
+same sequence, hourly, physics, and output components for controlled
+comparison.
 
 ## 15. Primary sources
 
