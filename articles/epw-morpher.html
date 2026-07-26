@@ -229,7 +229,8 @@ run a method or serialize any function:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_recipes.html">epw_morph_recipes</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_power"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_btws"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"eames_monthly_temperature"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"eames_monthly_temperature"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"ek_daily_factors"</span><span class="op">)</span></span></code></pre></div>
 <p>The initial catalog distinguishes the following complete methods:</p>
 <table class="table">
 <colgroup>
@@ -281,6 +282,16 @@ the Eames BTWS hourly projection</td>
 BTWS, with monthly statistics derived from daily CMIP6 inputs</td>
 </tr>
 <tr class="even">
+<td align="left"><code>ek_daily_factors</code></td>
+<td align="left">
+<code>paper_faithful</code>,
+<code>harmonized</code>
+</td>
+<td align="left">Seven-stage pipeline</td>
+<td align="left">Ek day-of-year mean/DTR factors and combined hourly
+temperature transform without an added smoothing window</td>
+</tr>
+<tr class="odd">
 <td align="left"><code>sobie_curry_daily</code></td>
 <td align="left">
 <code>paper_faithful</code>,
@@ -311,6 +322,10 @@ persisted with the workflow:</p>
 <span><span class="va">eames_monthly_temperature</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"eames_monthly_temperature"</span>,</span>
 <span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">ek_daily</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"ek_daily_factors"</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">sobie_curry</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"sobie_curry_daily"</span>,</span>
@@ -368,6 +383,34 @@ radiation, cloud, pressure, or other non-temperature transformations.
 The <code>epwshiftr_daily_btws</code> recipe remains available to
 compare hourly reconstruction algorithms under the same daily-varying
 CMIP6 signal.</p>
+<p>Ek et al. (2018) instead form a climate baseline for each day of the
+annual cycle and apply daily Belcher-style change factors to the
+inherited hourly weather sequence. The temperature recipe derives mean
+temperature and DTR from matching <code>tasmin</code> and
+<code>tasmax</code>, applies no additional smoothing window, and uses
+the combined shift-and-stretch equation:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>x</mi><mi>h</mi><mo>′</mo></msubsup><mo>=</mo><msub><mi>x</mi><mi>h</mi></msub><mo>+</mo><mi mathvariant="normal">Δ</mi><msub><mover><mi>x</mi><mo accent="true">‾</mo></mover><mi>d</mi></msub><mo>+</mo><msub><mi>α</mi><mrow><mrow><mi mathvariant="normal">D</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">R</mi></mrow><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mi>h</mi></msub><mo>−</mo><msub><mover><mi>x</mi><mo accent="true">‾</mo></mover><mrow><mn>0</mn><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">
+x_h' = x_h + \Delta\bar{x}_d +
+       \alpha_{\mathrm{DTR},d}(x_h - \bar{x}_{0,d})
+</annotation></semantics></math></p>
+<p>Here <code>alpha_DTR</code> is implemented as the relative modeled
+DTR change. This is the interpretation that makes zero climate change an
+identity and satisfies the paper’s stated daily mean and variance
+behavior; the original publication’s generic factor equations and
+variance wording are not fully self-consistent, so the interpretation is
+retained explicitly in recipe provenance.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ek_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ek_daily_temperature.html">ek_daily_temperature</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The initial recipe is temperature-only. Its
+<code>paper_faithful</code> policy preserves the baseline humidity
+fields so the Ek temperature transformation can be compared directly;
+<code>policy = "harmonized"</code> applies the shared specific-humidity
+closure. Wind, cloud, radiation, and other transformations are not
+included where the source publication is contradictory or
+underspecified.</p>
 <p>The Sobie-Curry recipe requires daily <code>tas</code>,
 <code>tasmin</code>, <code>tasmax</code>, <code>huss</code>, and surface
 pressure <code>ps</code> from matching historical and future model
@@ -526,7 +569,7 @@ header updates from the persisted hourly Parquet artifact: ground
 temperatures use Kusuda–Achenbach, typical/extreme periods use complete
 rolling seven-day windows and hemisphere-aware seasons, and design
 conditions follow the selected drop/preserve policy.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_backends.html">epw_morph_backends</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">belcher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
@@ -543,7 +586,7 @@ whether the step is derived from other backend outputs.
 separate hard-coded list of Belcher fields.</p>
 <p>Use method overrides when the algorithm is still Belcher but you want
 a different transformation for selected primary variables:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">belcher_shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
 <span>    <span class="st">"belcher"</span>,</span>
 <span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -707,7 +750,9 @@ the scientific stages through the backend. <code><a href="../reference/shift_api
 remains the durable final file writer. The built-in
 <code><a href="../reference/daily_temperature.html">daily_temperature()</a></code> and <code><a href="../reference/sobie_curry_daily.html">sobie_curry_daily()</a></code>
 methods use all seven stages, including explicit <code>sequence</code>
-components that preserve the baseline EPW day order.</p>
+components that preserve the baseline EPW day order. The
+<code><a href="../reference/ek_daily_temperature.html">ek_daily_temperature()</a></code> method uses the same seven-stage
+execution boundary.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and
@@ -736,7 +781,7 @@ narrower set of method values than the backend as a whole.</p>
 temperature. It is deliberately simple: a real backend would read
 <code>context$climate</code>, validate its required variables, and
 calculate weather fields from those rows.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">offset_rules</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
 <span>    step <span class="op">=</span> <span class="st">"dry"</span>,</span>
 <span>    epw_field <span class="op">=</span> <span class="st">"dry_bulb_temperature"</span>,</span>
@@ -782,7 +827,7 @@ calculate weather fields from those rows.</p>
 <span></span>
 <span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">offset_recipe</span><span class="op">)</span></span></code></pre></div>
 <p>Use the recipe exactly like the built-in one:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
 <span>    store <span class="op">=</span> <span class="va">store</span>,</span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
@@ -801,7 +846,7 @@ intentional.</p>
 </h2>
 <p>Preflight checks extraction coverage and baseline readiness without
 modifying store state.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">diagnostics</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -822,7 +867,7 @@ extracted climate data.</p>
 <p>Morphing uses monthly summary statistics. The climate summary comes
 from store extraction outputs; the baseline summary comes from the EPW
 file.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -852,7 +897,7 @@ later stages without re-extracting climate data.</p>
 <p><code>preview_plan()</code> calculates plan rows, factor rows, and
 diagnostics without writing them. <code>plan()</code> persists the
 selected plan and factor rows.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
 <span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
 <span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
@@ -881,7 +926,7 @@ summary and reflect the cases you intend to write.</p>
 <h2 id="diagnose-and-run">Diagnose and Run<a class="anchor" aria-label="anchor" href="#diagnose-and-run"></a>
 </h2>
 <p>Run diagnostics before executing strict plans.</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_id</span> <span class="op">&lt;-</span> <span class="va">plan</span><span class="op">$</span><span class="va">morph_id</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span></span>
 <span><span class="va">morpher</span><span class="op">$</span><span class="fu">diagnose</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
@@ -899,7 +944,7 @@ under the store. It does not write EPW text files yet.</p>
 <h2 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
 </h2>
 <p>Write EnergyPlus Weather files after morphing succeeds.</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">write_epw</span><span class="op">(</span></span>
 <span>    <span class="va">morph_id</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
@@ -927,7 +972,7 @@ the original headers must remain untouched.</p>
 <p>For most scripts, use the task-oriented API and supply matching
 historical CMIP6 data when they are available. epwshiftr resolves the
 store stages, EPW writing, and final export path:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
@@ -949,7 +994,7 @@ store stages, EPW writing, and final export path:</p>
 directly and does not infer a historical request.</p>
 <p>When you already have lower-level extraction plan IDs and need direct
 control of the morphing engine, use <code>workflow()</code>.</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
 <span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
@@ -964,7 +1009,7 @@ control of the morphing engine, use <code>workflow()</code>.</p>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></code></pre></div>
 <p>For most users, the equivalent high-level path is still clearer:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
