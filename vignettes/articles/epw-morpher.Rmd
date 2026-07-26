@@ -129,6 +129,7 @@ serialize any function:
 epw_morph_recipes()
 epw_morph_recipe_spec("epwshiftr_daily_power")
 epw_morph_recipe_spec("epwshiftr_daily_btws")
+epw_morph_recipe_spec("eames_monthly_temperature")
 ```
 
 The initial catalog distinguishes the following complete methods:
@@ -139,6 +140,7 @@ The initial catalog distinguishes the following complete methods:
 | `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
 | `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the Eames BTWS hourly projection |
+| `eames_monthly_temperature` | `harmonized` | Seven-stage pipeline | Eames monthly mean/average-daily-extrema changes and BTWS, with monthly statistics derived from daily CMIP6 inputs |
 | `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
@@ -156,6 +158,10 @@ daily_power <- epw_morph_recipe(
 )
 daily_btws_comparison <- epw_morph_recipe(
     "epwshiftr_daily_btws",
+    policy = "harmonized"
+)
+eames_monthly_temperature <- epw_morph_recipe(
+    "eames_monthly_temperature",
     policy = "harmonized"
 )
 sobie_curry <- epw_morph_recipe(
@@ -201,9 +207,23 @@ btws_method <- daily_temperature(
 Eames et al. did not drive BTWS with daily CMIP6 series. Their paper applies
 monthly UKCP18 change factors for mean temperature and the monthly averages of
 daily minimum and maximum temperature to an hourly baseline month, with BTWS
-executed day by day. A paper-faithful monthly signal recipe is therefore a
-separate future implementation; `epwshiftr_daily_btws` is retained specifically
-to compare hourly reconstruction algorithms under the same daily CMIP6 signal.
+executed day by day. `eames_monthly_temperature` implements that temporal
+structure for temperature: it aggregates matching daily CMIP6 `tas`, `tasmin`,
+and `tasmax` into the same three monthly statistics and maps one factor set to
+every EPW day in the corresponding month:
+
+```r
+eames_method <- eames_temperature(
+    historical_reference(years = 1995:2014)
+)
+```
+
+The CMIP6 aggregation is a source adaptation because the paper used UKCP18.
+The recipe is also explicitly temperature-only: it reuses epwshiftr's
+specific-humidity closure and does not implement the paper's radiation, cloud,
+pressure, or other non-temperature transformations. The
+`epwshiftr_daily_btws` recipe remains available to compare hourly
+reconstruction algorithms under the same daily-varying CMIP6 signal.
 
 The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
 surface pressure `ps` from matching historical and future model periods. It
