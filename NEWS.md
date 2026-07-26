@@ -40,6 +40,15 @@
 
 ## New features
 
+* Added the temperature-only `eames_temperature()` method and registered
+  `eames_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
+  `tasmax` are aggregated into the monthly mean, average daily minimum, and
+  average daily maximum changes used by Eames et al. (2024), then applied
+  month-by-month through the BTWS hourly reconstruction. Provenance records the
+  substitution of daily CMIP6-derived monthly statistics for the paper's
+  UKCP18 factors and states that non-temperature transformations are not
+  included (#152).
+
 * Added `reconstruction = "btws"` to `daily_temperature()` and registered the
   `epwshiftr_daily_btws` comparison recipe. It combines the existing
   calendar-neutral daily CMIP6
