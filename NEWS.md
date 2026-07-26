@@ -40,6 +40,17 @@
 
 ## New features
 
+* Added `arima_temperature()` and registered the temperature-focused
+  `arima_rank_qm` recipe. The workflow carries baseline EPW, historical daily
+  model `tas`, future daily model `tas`, and multi-year observed daily `tas` as
+  four distinct input roles. It builds month-wise historical/future inverse-CDF
+  change functions, applies the published endpoint-aware nine-point smoothing
+  three times, locates each baseline daily mean in the observed monthly CDF,
+  and adds the selected factor to all 24 hours. Empirical-CDF conventions and
+  endpoint clamping are recorded explicitly; `paper_faithful` preserves
+  baseline humidity fields, while `harmonized` applies specific-humidity
+  closure (#157).
+
 * Added `ek_daily_temperature()` and registered the temperature-focused
   `ek_daily_factors` recipe. Matching daily CMIP6 `tasmin` and `tasmax` years
   are mapped from their native calendars to the 365-day EPW phase grid before
