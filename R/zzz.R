@@ -11,6 +11,9 @@
     registerS3method("print", "epwshiftr_bytes",
         print.epwshiftr_bytes, envir = asNamespace("base"))
     cache__configure(pkgname)
+    # Register standalone signal methods at load time so downstream component
+    # pipelines can resolve them without constructing a complete EPW recipe.
+    bias__register_linear_scaling_component()
 
     # set package options
     .opts <- list(
