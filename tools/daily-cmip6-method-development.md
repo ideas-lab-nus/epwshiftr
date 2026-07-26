@@ -128,7 +128,7 @@ Status in this table refers to the repository state checked on 2026-07-26.
 | Seven-stage component contracts | Merged | PR [#143](https://github.com/ideas-lab-nus/epwshiftr/pull/143) |
 | Inspectable complete-recipe registry | Merged | PR [#145](https://github.com/ideas-lab-nus/epwshiftr/pull/145) |
 | Eames monthly temperature signal and BTWS recipe | Merged | PR [#153](https://github.com/ideas-lab-nus/epwshiftr/pull/153) |
-| Ek daily temperature factors | In development | Issue [#154](https://github.com/ideas-lab-nus/epwshiftr/issues/154) |
+| Ek daily temperature factors | Implemented | PR [#155](https://github.com/ideas-lab-nus/epwshiftr/pull/155) |
 
 The current daily temperature path:
 
@@ -184,7 +184,7 @@ API names.
 | `epwshiftr_monthly` | Current enhanced epwshiftr | Enhanced monthly Belcher changes | Inherit baseline sequence; apply shared physical post-processing | Implemented |
 | `future_weather_generator` | Future Weather Generator | Enhanced monthly Belcher-family changes | Product-specific smoothing, ensemble and derived-field processing | Not implemented; external comparison or clean-room implementation only |
 | `eames_monthly_temperature` | Eames et al. (2024) | Monthly mean and average-daily-extrema change factors | Apply BTWS day by day to each hourly baseline month | Temperature-only CMIP6 source adaptation implemented in PR #153; published non-temperature transforms remain unimplemented |
-| `ek_daily_factors` | Ek et al. (2018) | Daily climatological mean and DTR change factors | Inherit baseline hourly sequence and apply the combined daily shift-and-stretch transform | Temperature-focused implementation in progress in #154 |
+| `ek_daily_factors` | Ek et al. (2018) | Daily climatological mean and DTR change factors | Inherit baseline hourly sequence and apply the combined daily shift-and-stretch transform | Temperature-focused implementation in PR #155 |
 | `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Implemented in PR #147; harmonized closure in PR #149 |
 | `epwshiftr_daily_btws` | Composite comparison using Eames et al. (2024) | Existing epwshiftr daily CMIP6 mean/min/max targets | Published day-wise bounded temperature weighted stretch | Implemented; tracked in #150 |
 | `epwshiftr_daily_power` | Current epwshiftr daily method | Circular daily mean/min/max climatologies | Day-wise \(x^p\) constrained projection | Implemented through PR #141 |
@@ -578,7 +578,7 @@ external or black-box comparator. Do not invent missing behavior.
 3. Eames monthly temperature signal. Implemented as the temperature-only
    `eames_monthly_temperature` recipe in PR #153; the paper's non-temperature
    transforms remain separate work.
-4. Ek daily change factors. In development in #154.
+4. Ek daily change factors. Implemented in PR #155.
 5. Arima month-wise rank/QM change functions.
 
 These methods provide the most direct tests of the current daily signal and
@@ -636,7 +636,7 @@ Update this table as work is merged.
 | Eames BTWS hourly component and daily CMIP6 composite recipe | Implemented in PR #151 |
 | Eames monthly temperature recipe | Implemented in PR #153 |
 | Eames non-temperature transformations | Not started |
-| Ek daily temperature factors | In development in #154 |
+| Ek daily temperature factors | Implemented in PR #155 |
 | Arima rank/QM | Not started |
 | Eight ibicus signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
@@ -651,7 +651,7 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-After #154, the next method is the Arima month-wise rank/QM change function.
+After #155, the next method is the Arima month-wise rank/QM change function.
 It should reuse the common calendar, inherited-sequence, physical, and output
 components while keeping its percentile-dependent daily signal and hourly
 application distinct from Ek, Sobie-Curry, BTWS, and the existing
