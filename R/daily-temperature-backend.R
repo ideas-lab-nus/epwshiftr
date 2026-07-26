@@ -26,6 +26,32 @@ EPW_MORPH_DAILY_TEMPERATURE_RULES <- data.table::data.table(
     method_choices = list("constrained", "derived", "derived")
 )
 
+# The BTWS composition requires all three temperature statistics because the
+# Eames hourly reconstruction preserves separate mean, minimum, and maximum
+# targets rather than inheriting a missing daily range.
+EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS <- c(tdb = "eames_btws")
+
+# Describe the stricter climate-variable contract selected when the shared
+# daily temperature signal is paired with the Eames BTWS hourly component.
+EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES <- data.table::data.table(
+    step = c("tdb", "rh", "tdew"),
+    epw_field = c(
+        "dry_bulb_temperature",
+        "relative_humidity",
+        "dew_point_temperature"
+    ),
+    variable_id = c(
+        "tas,tasmin,tasmax",
+        NA_character_,
+        NA_character_
+    ),
+    optional_variable_id = NA_character_,
+    method = c("eames_btws", "derived", "derived"),
+    required = c(TRUE, FALSE, FALSE),
+    derived = c(FALSE, TRUE, TRUE),
+    method_choices = list("eames_btws", "derived", "derived")
+)
+
 # These defaults keep the numerical projection reproducible and reuse the
 # existing EPW header post-process after the hourly temperature year is built.
 EPW_MORPH_DAILY_TEMPERATURE_OPTIONS <- list(
@@ -268,16 +294,23 @@ daily__temperature_moisture <- function(weather, temperature) {
 # Reduce hourly projection output to one auditable row per target day, including
 # numerical closure and cyclic boundary changes.
 daily__temperature_factor_rows <- function(targets, projected) {
+    method_columns <- intersect(
+        c(
+            "shape_exponent", "btws_scale", "btws_m", "btws_n",
+            "btws_fallback_reason"
+        ),
+        names(projected)
+    )
     projection_columns <- c(
         "dry_bulb_temperature", "target_mean", "target_minimum",
         "target_maximum", "projected_mean", "projected_minimum",
         "projected_maximum", "dtr_status", "projection_status",
-        "shape_exponent", "boundary_jump", "boundary_jump_change"
+        method_columns, "boundary_jump", "boundary_jump_change"
     )
     # Explicit .SD access keeps package checks free from data.table NSE notes
     # while preserving one diagnostic value for every projected target day.
     daily_projection <- projected[, {
-        list(
+        row <- list(
             baseline_mean = mean(.SD[["dry_bulb_temperature"]]),
             baseline_minimum = min(.SD[["dry_bulb_temperature"]]),
             baseline_maximum = max(.SD[["dry_bulb_temperature"]]),
@@ -288,11 +321,15 @@ daily__temperature_factor_rows <- function(targets, projected) {
             projected_minimum = unique(.SD[["projected_minimum"]]),
             projected_maximum = unique(.SD[["projected_maximum"]]),
             dtr_status = unique(.SD[["dtr_status"]]),
-            projection_status = unique(.SD[["projection_status"]]),
-            shape_exponent = unique(.SD[["shape_exponent"]]),
-            boundary_jump = unique(.SD[["boundary_jump"]]),
-            boundary_jump_change = unique(.SD[["boundary_jump_change"]])
+            projection_status = unique(.SD[["projection_status"]])
         )
+        for (column in method_columns) {
+            row[[column]] <- unique(.SD[[column]])
+        }
+        row$boundary_jump <- unique(.SD[["boundary_jump"]])
+        row$boundary_jump_change <-
+            unique(.SD[["boundary_jump_change"]])
+        row
     }, by = "target_day", .SDcols = projection_columns]
     factors <- merge(
         data.table::copy(targets),
@@ -421,18 +458,14 @@ daily__temperature_sequence_generate <- function(
     data@values[[1L]]
 }
 
-# Apply the constrained 24-hour projection to the preserved EPW sequence and
-# retain hourly and daily closure values for the later physics stage.
-daily__temperature_hourly_reconstruct <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
+# Run one selected grouped hourly projector and assemble the common payload for
+# physical closure. The projector remains the only method-specific operation.
+daily__temperature_hourly_result <- function(data, options, projector) {
+    checkmate::assert_function(projector)
     options <- daily__temperature_backend_options(options)
     baseline <- data$baseline
     targets <- data$targets
-    projected <- daily__project_temperature(
+    projected <- projector(
         baseline$template,
         targets,
         value = "dry_bulb_temperature",
@@ -471,6 +504,21 @@ daily__temperature_hourly_reconstruct <- function(
     )
 }
 
+# Apply the constrained 24-hour projection to the preserved EPW sequence and
+# retain hourly and daily closure values for the later physics stage.
+daily__temperature_hourly_reconstruct <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    daily__temperature_hourly_result(
+        data,
+        options,
+        daily__project_temperature
+    )
+}
+
 # Close relative humidity and dew point against the projected dry-bulb
 # temperature, retaining the existing EPW moisture state when it is feasible.
 daily__temperature_physics_apply <- function(
@@ -504,7 +552,21 @@ daily__temperature_physics_apply <- function(
         value = moisture$dew_point_temperature
     )
 
-    diagnostic_values <- list(
+    method_diagnostic_values <- if ("shape_exponent" %in% names(hourly)) {
+        list(
+            daily_temperature_shape_exponent =
+                hourly[["shape_exponent"]]
+        )
+    } else {
+        list(
+            eames_btws_scale = hourly[["btws_scale"]],
+            eames_btws_m = hourly[["btws_m"]],
+            eames_btws_n = hourly[["btws_n"]],
+            eames_btws_fallback_reason =
+                hourly[["btws_fallback_reason"]]
+        )
+    }
+    diagnostic_values <- c(list(
         daily_target_day = hourly[["target_day"]],
         daily_annual_phase = hourly[["annual_phase"]],
         daily_temperature_mean_delta = hourly[["mean_delta"]],
@@ -512,8 +574,8 @@ daily__temperature_physics_apply <- function(
         daily_temperature_maximum_delta = hourly[["maximum_delta"]],
         daily_temperature_dtr_delta = hourly[["dtr_delta"]],
         daily_temperature_dtr_status = hourly[["dtr_status"]],
-        daily_temperature_projection_status = hourly[["projection_status"]],
-        daily_temperature_shape_exponent = hourly[["shape_exponent"]],
+        daily_temperature_projection_status = hourly[["projection_status"]]
+    ), method_diagnostic_values, list(
         daily_temperature_target_mean = hourly[["target_mean"]],
         daily_temperature_target_minimum = hourly[["target_minimum"]],
         daily_temperature_target_maximum = hourly[["target_maximum"]],
@@ -527,7 +589,7 @@ daily__temperature_physics_apply <- function(
             moisture$baseline_specific_humidity,
         daily_temperature_specific_humidity = moisture$specific_humidity,
         daily_temperature_moisture_status = moisture$status
-    )
+    ))
     for (name in names(diagnostic_values)) {
         data.table::set(weather, j = name, value = diagnostic_values[[name]])
     }
@@ -549,6 +611,35 @@ daily__temperature_physics_apply <- function(
                 "historical periods to adjust the daily temperature range."
             )
         )
+    }
+    if ("btws_fallback_reason" %in% names(factors)) {
+        fallback <- !is.na(factors[["btws_fallback_reason"]]) &
+            nzchar(factors[["btws_fallback_reason"]])
+        if (any(fallback)) {
+            reasons <- sort(unique(
+                factors[["btws_fallback_reason"]][fallback]
+            ))
+            diagnostics[[length(diagnostics) + 1L]] <-
+                morpher__diagnostic(
+                    stage = "runtime",
+                    severity = "warning",
+                    code = "eames_btws_mean_shift_fallback",
+                    message = sprintf(
+                        paste(
+                            "Eames BTWS used the additive mean-shift fallback",
+                            "for %d target day(s): %s."
+                        ),
+                        sum(fallback),
+                        paste(reasons, collapse = ", ")
+                    ),
+                    variable_id = "tas,tasmin,tasmax",
+                    epw_field = "dry_bulb_temperature",
+                    action = paste(
+                        "Inspect eames_btws_fallback_reason in the morphed",
+                        "data artifact."
+                    )
+                )
+        }
     }
     clipped <- sum(moisture$status == "saturation_clipped")
     if (clipped > 0L) {
@@ -734,16 +825,25 @@ daily__register_temperature_components <- function() {
     invisible(NULL)
 }
 
-# Return the stable seven-stage pipeline used by the built-in daily temperature
-# backend and serialized with each recipe.
-daily__temperature_pipeline <- function() {
+# Return a seven-stage daily temperature pipeline with an explicitly selected
+# hourly reconstruction component. The climate signal and all other stages stay
+# identical so comparisons isolate the hourly projection algorithm.
+daily__temperature_pipeline <- function(
+    reconstruction = c("power", "btws")
+) {
+    reconstruction <- match.arg(reconstruction)
     daily__register_temperature_components()
+    hourly <- "constrained_daily_temperature"
+    if (identical(reconstruction, "btws")) {
+        btws__register_hourly_component()
+        hourly <- "eames_btws_temperature"
+    }
     pipeline__spec(list(
         preprocess = "daily_temperature_inputs",
         calendar = "daily_temperature_calendar",
         signal = "daily_temperature_delta",
         sequence = "preserve_epw_sequence",
-        hourly = "constrained_daily_temperature",
+        hourly = hourly,
         physics = "specific_humidity_closure",
         output = "daily_temperature_epw_result"
     ))

@@ -471,7 +471,8 @@ daily__cyclic_previous <- function(value) {
 # cyclic boundary diagnostics without mutating the caller's source rows.
 daily__project_temperature <- function(
     template, targets, value = "value", day = "target_day", hour = "hour",
-    by = character(), tolerance = 1e-8
+    by = character(), tolerance = 1e-8,
+    method = c("power", "eames_btws")
 ) {
     checkmate::assert_data_frame(template)
     checkmate::assert_data_frame(targets)
@@ -480,6 +481,7 @@ daily__project_temperature <- function(
     checkmate::assert_string(hour, min.chars = 1L)
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
     checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
+    method <- match.arg(method)
     value_column <- value
     day_column <- day
     hour_column <- hour
@@ -524,11 +526,19 @@ daily__project_temperature <- function(
         )
     }
 
+    method_output_columns <- if (identical(method, "power")) {
+        "shape_exponent"
+    } else {
+        c(
+            "btws_scale", "btws_m", "btws_n",
+            "btws_fallback_reason"
+        )
+    }
     output_columns <- c(
         "temperature_projected", "target_mean", "target_minimum",
         "target_maximum", "projected_mean", "projected_minimum",
-        "projected_maximum", "dtr_status", "projection_status", "shape_exponent",
-        "boundary_jump", "boundary_jump_change"
+        "projected_maximum", "dtr_status", "projection_status",
+        method_output_columns, "boundary_jump", "boundary_jump_change"
     )
     working_columns <- c(
         "mean_delta", "minimum_delta", "maximum_delta", "dtr_status",
@@ -655,15 +665,23 @@ daily__project_temperature <- function(
         "maximum_delta", "dtr_status"
     )
     projected <- working[, {
-        result <- daily__project_temperature_day(
-            as.numeric(.SD[[value_column]]),
-            unique(.SD[["mean_delta"]]),
-            unique(.SD[["minimum_delta"]]),
-            unique(.SD[["maximum_delta"]]),
-            unique(.SD[["dtr_status"]]),
-            tolerance
+        # Both projectors exchange the same core daily statistics. Method-
+        # specific numerical parameters are appended without changing the
+        # established power-projection output schema.
+        projector <- if (identical(method, "power")) {
+            daily__project_temperature_day
+        } else {
+            btws__project_temperature_day
+        }
+        result <- projector(
+            value = as.numeric(.SD[[value_column]]),
+            mean_delta = unique(.SD[["mean_delta"]]),
+            minimum_delta = unique(.SD[["minimum_delta"]]),
+            maximum_delta = unique(.SD[["maximum_delta"]]),
+            dtr_status = unique(.SD[["dtr_status"]]),
+            tolerance = tolerance
         )
-        list(
+        row <- list(
             .daily_row = .SD[[".daily_row"]],
             temperature_projected = result$value,
             target_mean = result$target_mean,
@@ -673,9 +691,17 @@ daily__project_temperature <- function(
             projected_minimum = min(result$value),
             projected_maximum = max(result$value),
             dtr_status = unique(.SD[["dtr_status"]]),
-            projection_status = result$status,
-            shape_exponent = result$exponent
+            projection_status = result$status
         )
+        if (identical(method, "power")) {
+            row$shape_exponent <- result$exponent
+        } else {
+            row$btws_scale <- result$scale
+            row$btws_m <- result$m
+            row$btws_n <- result$n
+            row$btws_fallback_reason <- result$fallback_reason
+        }
+        row
     }, by = group_columns, .SDcols = projection_input_columns]
 
     original_columns <- names(template)
@@ -685,7 +711,7 @@ daily__project_temperature <- function(
         ".daily_row", "temperature_projected", "target_mean",
         "target_minimum", "target_maximum", "projected_mean",
         "projected_minimum", "projected_maximum", "dtr_status",
-        "projection_status", "shape_exponent"
+        "projection_status", method_output_columns
     )
     out <- merge(
         out,
