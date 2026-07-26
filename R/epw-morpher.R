@@ -527,6 +527,15 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = ek__pipeline()
         ),
+        arima_temperature = EpwMorphBackend$new(
+            name = "arima_temperature",
+            label = "Arima month-wise quantile-mapping temperature workflow",
+            methods = EPW_MORPH_ARIMA_TEMPERATURE_METHODS,
+            method_choices = "arima_additive",
+            rules = EPW_MORPH_ARIMA_TEMPERATURE_RULES,
+            requires_reference = TRUE,
+            pipeline = arima__pipeline()
+        ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
             label = "Sobie-Curry daily morphing with selectable closure",
@@ -969,6 +978,7 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         "eames_monthly_temperature"
     )
     is_ek_temperature <- identical(backend, "ek_daily_temperature")
+    is_arima_temperature <- identical(backend, "arima_temperature")
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     if (is_belcher) {
         if (is.null(profile)) {
@@ -1008,6 +1018,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- ek__daily_temperature_options(options)
+    } else if (is_arima_temperature) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Arima temperature recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- arima__temperature_options(options)
     } else if (is_sobie_curry) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
@@ -1155,33 +1173,60 @@ morpher__recipe_spec <- function(recipe) {
     )
 }
 
-morpher__recipe_requires_reference <- function(recipe) {
+# Report whether one semantic input role is required by a registered recipe.
+# Ad hoc backends predate role-addressable contracts and can require only the
+# historical model reference represented by their backend flag.
+morpher__recipe_requires_role <- function(recipe, role) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
+    checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     spec <- morpher__recipe_spec(recipe)
     if (!is.null(spec)) {
-        reference_roles <- c("observed_reference", "model_historical")
-        return(any(reference_roles %in% names(spec@required_inputs)))
+        return(role %in% names(spec@required_inputs))
     }
-    epw_morph_backend(recipe$backend)$requires_reference
+    identical(role, "model_historical") &&
+        isTRUE(epw_morph_backend(recipe$backend)$requires_reference)
+}
+
+# Report whether one semantic input role is accepted by a registered recipe.
+# Required roles are necessarily accepted; optional roles remain explicit.
+morpher__recipe_accepts_role <- function(recipe, role) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
+    spec <- morpher__recipe_spec(recipe)
+    if (!is.null(spec)) {
+        return(role %in% c(
+            names(spec@required_inputs),
+            names(spec@optional_inputs)
+        ))
+    }
+    identical(role, "model_historical") &&
+        isTRUE(epw_morph_backend(recipe$backend)$accepts_reference)
+}
+
+morpher__recipe_requires_reference <- function(recipe) {
+    morpher__recipe_requires_role(recipe, "model_historical")
 }
 
 # Report whether a recipe can consume external climate reference data while
 # still distinguishing optional-reference backends from required ones.
 morpher__recipe_accepts_reference <- function(recipe) {
-    if (!inherits(recipe, "epw_morph_recipe")) {
-        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
-    }
-    spec <- morpher__recipe_spec(recipe)
-    if (!is.null(spec)) {
-        reference_roles <- c("observed_reference", "model_historical")
-        return(any(reference_roles %in% c(
-            names(spec@required_inputs),
-            names(spec@optional_inputs)
-        )))
-    }
-    epw_morph_backend(recipe$backend)$accepts_reference
+    morpher__recipe_accepts_role(recipe, "model_historical")
+}
+
+# Keep observations separate from historical model output throughout workflow
+# validation so methods needing all four input roles cannot accept one in place
+# of the other.
+morpher__recipe_requires_observed_reference <- function(recipe) {
+    morpher__recipe_requires_role(recipe, "observed_reference")
+}
+
+# Report whether a recipe can consume a multi-year observed daily reference.
+morpher__recipe_accepts_observed_reference <- function(recipe) {
+    morpher__recipe_accepts_role(recipe, "observed_reference")
 }
 
 # Return the component-declared CMIP frequency without duplicating that
@@ -1624,6 +1669,13 @@ morpher__engine_by_columns <- function(by) {
 
 morpher__reference_case_by <- function(by) {
     setdiff(by, c("experiment_id", "period"))
+}
+
+# Observations are site records rather than members of a future-model case.
+# Match a site identifier when one is part of the case key and otherwise make
+# the same observed reference available to every model/scenario case.
+morpher__observed_case_by <- function(by) {
+    intersect(by, "site_id")
 }
 
 # Resolve calendar columns with row-level compatibility for old extraction
@@ -4758,15 +4810,24 @@ EpwMorpher <- R6::R6Class(
         #' @param summary_id Optional climate summary ID.
         #' @param reference_summary_id Optional reference climate summary ID for
         #'   change-factor backends.
+        #' @param observed_plan_id Optional observed-weather extraction plan
+        #'   IDs.
+        #' @param observed_periods Optional observed-weather period table.
+        #' @param observed_summary_id Optional observed-weather summary ID.
         #' @param baseline_id Optional baseline summary ID.
         #' @param by Climate grouping columns.
         #' @param strict Whether required-data issues are errors.
         preflight = function(plan_id = NULL, periods = NULL, reference_plan_id = NULL,
                              reference_periods = NULL, summary_id = NULL,
-                             reference_summary_id = NULL, baseline_id = NULL,
+                             reference_summary_id = NULL,
+                             observed_plan_id = NULL,
+                             observed_periods = NULL,
+                             observed_summary_id = NULL,
+                             baseline_id = NULL,
                              by = c("source_id", "experiment_id", "variant_label", "period"), strict = TRUE) {
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             checkmate::assert_character(reference_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_character(observed_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
             if (!is.null(periods)) {
                 checkmate::assert_data_frame(periods)
                 checkmate::assert_names(names(periods), must.include = c("period", "year"))
@@ -4775,8 +4836,16 @@ EpwMorpher <- R6::R6Class(
                 checkmate::assert_data_frame(reference_periods)
                 checkmate::assert_names(names(reference_periods), must.include = c("period", "year"))
             }
+            if (!is.null(observed_periods)) {
+                checkmate::assert_data_frame(observed_periods)
+                checkmate::assert_names(
+                    names(observed_periods),
+                    must.include = c("period", "year")
+                )
+            }
             checkmate::assert_string(summary_id, null.ok = TRUE)
             checkmate::assert_string(reference_summary_id, null.ok = TRUE)
+            checkmate::assert_string(observed_summary_id, null.ok = TRUE)
             checkmate::assert_string(baseline_id, null.ok = TRUE)
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
@@ -4790,17 +4859,32 @@ EpwMorpher <- R6::R6Class(
             if (!is.null(reference_plan_id) && is.null(reference_periods)) {
                 cli::cli_abort("`reference_periods` must be supplied when `reference_plan_id` is supplied.")
             }
+            if (!is.null(observed_plan_id) && is.null(observed_periods)) {
+                cli::cli_abort(
+                    "`observed_periods` must be supplied when `observed_plan_id` is supplied."
+                )
+            }
             reference_required <- morpher__recipe_requires_reference(private$recipe)
             reference_accepted <- morpher__recipe_accepts_reference(private$recipe)
             reference_supplied <- !is.null(reference_plan_id) || !is.null(reference_summary_id)
             reference_missing <- isTRUE(reference_required) &&
                 is.null(reference_plan_id) && is.null(reference_summary_id)
+            observed_required <-
+                morpher__recipe_requires_observed_reference(private$recipe)
+            observed_accepted <-
+                morpher__recipe_accepts_observed_reference(private$recipe)
+            observed_supplied <- !is.null(observed_plan_id) ||
+                !is.null(observed_summary_id)
+            observed_missing <- isTRUE(observed_required) &&
+                !isTRUE(observed_supplied)
 
             morpher__bind_diagnostics(
                 if (!is.null(plan_id)) private$preflight_extraction(plan_id, periods, strict = strict) else morpher__empty_diagnostics(),
                 if (!is.null(reference_plan_id)) private$preflight_extraction(reference_plan_id, reference_periods, strict = strict) else morpher__empty_diagnostics(),
+                if (!is.null(observed_plan_id)) private$preflight_extraction(observed_plan_id, observed_periods, strict = strict) else morpher__empty_diagnostics(),
                 if (!is.null(summary_id)) private$preflight_summary(summary_id, by, strict = strict) else morpher__empty_diagnostics(),
                 if (!is.null(reference_summary_id)) private$preflight_summary(reference_summary_id, morpher__reference_case_by(by), strict = strict) else morpher__empty_diagnostics(),
+                if (!is.null(observed_summary_id)) private$preflight_summary(observed_summary_id, morpher__observed_case_by(by), strict = strict) else morpher__empty_diagnostics(),
                 if (reference_missing) {
                     morpher__diagnostic(
                         stage = "reference",
@@ -4821,6 +4905,29 @@ EpwMorpher <- R6::R6Class(
                         code = "unexpected_reference_climate",
                         message = "The selected morphing backend does not accept reference climate data.",
                         action = "Remove the reference input or select a backend that accepts it."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
+                if (observed_missing) {
+                    morpher__diagnostic(
+                        stage = "observed_reference",
+                        severity = "error",
+                        code = "missing_observed_reference",
+                        message = "The selected morphing backend requires observed daily weather.",
+                        action = "Supply `observed_plan_id` and `observed_periods`."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
+                if (isTRUE(observed_supplied) &&
+                    !isTRUE(observed_accepted)) {
+                    morpher__diagnostic(
+                        stage = "observed_reference",
+                        severity = "error",
+                        code = "unexpected_observed_reference",
+                        message = "The selected morphing backend does not accept observed daily weather.",
+                        action = "Remove the observed reference or select a backend that accepts it."
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -4954,15 +5061,18 @@ EpwMorpher <- R6::R6Class(
         #' @param summary_id Climate summary ID.
         #' @param reference_summary_id Optional reference climate summary ID for
         #'   change-factor backends.
+        #' @param observed_summary_id Optional observed-weather summary ID.
         #' @param baseline_id Baseline summary ID. If `NULL`, baseline summary is created.
         #' @param by Climate grouping columns.
         #' @param strict Whether missing required variables are blocking errors.
         #' @param overwrite Whether to replace an existing plan.
-        plan = function(summary_id, reference_summary_id = NULL, baseline_id = NULL,
+        plan = function(summary_id, reference_summary_id = NULL,
+                        observed_summary_id = NULL, baseline_id = NULL,
                         by = c("source_id", "experiment_id", "variant_label", "period"),
                         strict = TRUE, overwrite = FALSE) {
             checkmate::assert_string(summary_id, min.chars = 1L)
             checkmate::assert_string(reference_summary_id, null.ok = TRUE)
+            checkmate::assert_string(observed_summary_id, null.ok = TRUE)
             checkmate::assert_string(baseline_id, null.ok = TRUE)
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
@@ -4972,6 +5082,7 @@ EpwMorpher <- R6::R6Class(
             preview <- self$preview_plan(
                 summary_id = summary_id,
                 reference_summary_id = reference_summary_id,
+                observed_summary_id = observed_summary_id,
                 baseline_id = baseline_id,
                 by = by,
                 strict = strict
@@ -4985,8 +5096,27 @@ EpwMorpher <- R6::R6Class(
             }
 
             morpher__delete_by_key(private$store, "epw_morph_factor", "morph_id", morph_id)
+            morpher__delete_by_key(
+                private$store,
+                "epw_morph_observed_reference",
+                "morph_id",
+                morph_id
+            )
             morpher__replace_rows(private$store, "epw_morph_plan", preview$plan, "morph_id")
             morpher__replace_rows(private$store, "epw_morph_factor", preview$factors, "factor_id")
+            if (!is.null(observed_summary_id)) {
+                observed_row <- data.table::data.table(
+                    morph_id = morph_id,
+                    observed_summary_id = observed_summary_id,
+                    created_at = morpher__now()
+                )
+                morpher__replace_rows(
+                    private$store,
+                    "epw_morph_observed_reference",
+                    observed_row,
+                    "morph_id"
+                )
+            }
             data.table::as.data.table(preview$plan)
         },
 
@@ -4996,14 +5126,18 @@ EpwMorpher <- R6::R6Class(
         #' @param summary_id Climate summary ID.
         #' @param reference_summary_id Optional reference climate summary ID for
         #'   change-factor backends.
+        #' @param observed_summary_id Optional observed-weather summary ID.
         #' @param baseline_id Baseline summary ID. If `NULL`, baseline summary is created.
         #' @param by Climate grouping columns.
         #' @param strict Whether missing required variables are blocking errors.
-        preview_plan = function(summary_id, reference_summary_id = NULL, baseline_id = NULL,
+        preview_plan = function(summary_id, reference_summary_id = NULL,
+                                observed_summary_id = NULL,
+                                baseline_id = NULL,
                                 by = c("source_id", "experiment_id", "variant_label", "period"),
                                 strict = TRUE) {
             checkmate::assert_string(summary_id, min.chars = 1L)
             checkmate::assert_string(reference_summary_id, null.ok = TRUE)
+            checkmate::assert_string(observed_summary_id, null.ok = TRUE)
             checkmate::assert_string(baseline_id, null.ok = TRUE)
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
@@ -5027,6 +5161,23 @@ EpwMorpher <- R6::R6Class(
                     cli::cli_abort("No reference climate summary rows were found for summary ID {.val {reference_summary_id}}.")
                 }
             }
+            if (!is.null(observed_summary_id)) {
+                observed <- morpher__read_table(
+                    private$store,
+                    "epw_climate_summary"
+                )
+                target_observed_summary_id <- observed_summary_id
+                observed <- observed[
+                    observed[["summary_id"]] ==
+                        target_observed_summary_id &
+                        observed[["stat"]] == "mean"
+                ]
+                if (!nrow(observed)) {
+                    cli::cli_abort(
+                        "No observed climate summary rows were found for summary ID {.val {observed_summary_id}}."
+                    )
+                }
+            }
             baseline <- morpher__read_table(private$store, "epw_baseline_summary")
             target_baseline_id <- baseline_id
             baseline <- baseline[baseline[["baseline_id"]] == target_baseline_id & baseline[["stat"]] == "mean"]
@@ -5034,16 +5185,42 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("No baseline summary rows were found for baseline ID {.val {baseline_id}}.")
             }
 
-            morph_id <- private$morph_id(summary_id, reference_summary_id, baseline_id, by, strict)
+            morph_id <- private$morph_id(
+                summary_id,
+                reference_summary_id,
+                observed_summary_id,
+                baseline_id,
+                by,
+                strict
+            )
             factors <- private$factor_rows(morph_id, climate, baseline, by, strict = strict, reference = reference)
             reference_required <- morpher__recipe_requires_reference(private$recipe)
             reference_missing <- isTRUE(reference_required) && is.null(reference_summary_id)
             reference_rejected <- !is.null(reference_summary_id) &&
                 !isTRUE(morpher__recipe_accepts_reference(private$recipe))
+            observed_required <-
+                morpher__recipe_requires_observed_reference(private$recipe)
+            observed_missing <- isTRUE(observed_required) &&
+                is.null(observed_summary_id)
+            observed_rejected <- !is.null(observed_summary_id) &&
+                !isTRUE(
+                    morpher__recipe_accepts_observed_reference(
+                        private$recipe
+                    )
+                )
             diagnostics <- morpher__bind_diagnostics(
                 private$preflight_summary(summary_id, by, strict = strict),
                 if (!is.null(reference_summary_id)) {
                     private$preflight_summary(reference_summary_id, morpher__reference_case_by(by), strict = strict)
+                } else {
+                    morpher__empty_diagnostics()
+                },
+                if (!is.null(observed_summary_id)) {
+                    private$preflight_summary(
+                        observed_summary_id,
+                        morpher__observed_case_by(by),
+                        strict = strict
+                    )
                 } else {
                     morpher__empty_diagnostics()
                 },
@@ -5073,10 +5250,37 @@ EpwMorpher <- R6::R6Class(
                 } else {
                     morpher__empty_diagnostics()
                 },
+                if (observed_missing) {
+                    morpher__diagnostic(
+                        stage = "observed_reference",
+                        severity = "error",
+                        code = "missing_observed_reference",
+                        message = "The selected morphing backend requires observed daily weather.",
+                        morph_id = morph_id,
+                        action = "Supply `observed_summary_id`."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
+                if (observed_rejected) {
+                    morpher__diagnostic(
+                        stage = "observed_reference",
+                        severity = "error",
+                        code = "unexpected_observed_reference",
+                        message = "The selected morphing backend does not accept observed daily weather.",
+                        morph_id = morph_id,
+                        action = "Remove `observed_summary_id` or select a backend that accepts it."
+                    )
+                } else {
+                    morpher__empty_diagnostics()
+                },
                 private$preflight_baseline(baseline_id, strict = strict),
                 private$factor_diagnostics(factors, strict = strict, morph_id = morph_id)
             )
-            structural_reference_error <- isTRUE(reference_missing) || isTRUE(reference_rejected)
+            structural_reference_error <- isTRUE(reference_missing) ||
+                isTRUE(reference_rejected) ||
+                isTRUE(observed_missing) ||
+                isTRUE(observed_rejected)
             status <- if (structural_reference_error ||
                 (any(diagnostics$severity == "error") && isTRUE(strict))) "blocked" else "planned"
             now <- morpher__now()
@@ -5207,8 +5411,40 @@ EpwMorpher <- R6::R6Class(
                     } else {
                         private$engine_climate_data(reference_summary_id)
                     }
+                    observed_rows <- morpher__read_table(
+                        private$store,
+                        "epw_morph_observed_reference"
+                    )
+                    observed_rows <- observed_rows[
+                        observed_rows[["morph_id"]] == morph_id
+                    ]
+                    observed_summary_id <- if (nrow(observed_rows)) {
+                        store__chr1(observed_rows$observed_summary_id)
+                    } else {
+                        NULL
+                    }
+                    if (!is.null(observed_summary_id) &&
+                        (is.na(observed_summary_id) ||
+                            !nzchar(observed_summary_id))) {
+                        observed_summary_id <- NULL
+                    }
+                    if (isTRUE(
+                        morpher__recipe_requires_observed_reference(
+                            private$recipe
+                        )
+                    ) && is.null(observed_summary_id)) {
+                        cli::cli_abort(
+                            "Backend {.val {private$recipe$backend}} requires observed daily weather."
+                        )
+                    }
+                    observed_climate <- if (is.null(observed_summary_id)) {
+                        NULL
+                    } else {
+                        private$engine_climate_data(observed_summary_id)
+                    }
                     by <- private$plan_by(plan)
                     reference_by <- morpher__reference_case_by(by)
+                    observed_by <- morpher__observed_case_by(by)
                     result_rows <- list()
                     for (case_index in seq_along(cases)) {
                         if (!is.null(reporter)) {
@@ -5249,10 +5485,26 @@ EpwMorpher <- R6::R6Class(
                                 cli::cli_abort("No reference climate rows matched morphing case {.val {target_case_id}}.")
                             }
                         }
+                        observed_case_climate <- NULL
+                        if (!is.null(observed_climate)) {
+                            observed_case_climate <- private$filter_case_climate(
+                                observed_climate,
+                                case,
+                                observed_by
+                            )
+                            # Observations are shared across future-model cases,
+                            # but an explicit site key must still match.
+                            if (!nrow(observed_case_climate)) {
+                                cli::cli_abort(
+                                    "No observed climate rows matched morphing case {.val {target_case_id}}."
+                                )
+                            }
+                        }
                         context <- morpher__context(
                             epw = private$epw,
                             climate = case_climate,
                             reference_climate = reference_case_climate,
+                            observed_reference = observed_case_climate,
                             recipe = private$recipe,
                             by = by,
                             case = case,
@@ -5445,6 +5697,9 @@ EpwMorpher <- R6::R6Class(
         #'   change-factor backends.
         #' @param reference_periods Optional reference period table from
         #'   [epw_morph_periods()].
+        #' @param observed_plan_id Optional observed-weather extraction plan
+        #'   IDs.
+        #' @param observed_periods Optional observed-weather period table.
         #' @param by Climate grouping columns.
         #' @param strict Whether blocking diagnostics should abort the workflow.
         #' @param dir Output directory. Relative paths are resolved under the store root.
@@ -5452,17 +5707,34 @@ EpwMorpher <- R6::R6Class(
         #' @param overwrite Whether to overwrite existing plan, result, and EPW outputs.
         #' @param resume Whether to reuse complete existing result and EPW outputs.
         #' @param reporter Optional workflow reporter used by task-level runs.
-        workflow = function(plan_id, periods, reference_plan_id = NULL, reference_periods = NULL,
+        workflow = function(plan_id, periods, reference_plan_id = NULL,
+                            reference_periods = NULL,
+                            observed_plan_id = NULL,
+                            observed_periods = NULL,
                             by = c("source_id", "experiment_id", "variant_label", "period"),
                             strict = TRUE, dir = "outputs/future-epw", separate = TRUE,
                             overwrite = FALSE, resume = TRUE, reporter = NULL) {
             checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_character(reference_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+            checkmate::assert_character(
+                observed_plan_id,
+                any.missing = FALSE,
+                min.len = 1L,
+                unique = TRUE,
+                null.ok = TRUE
+            )
             checkmate::assert_data_frame(periods)
             checkmate::assert_names(names(periods), must.include = c("period", "year"))
             if (!is.null(reference_periods)) {
                 checkmate::assert_data_frame(reference_periods)
                 checkmate::assert_names(names(reference_periods), must.include = c("period", "year"))
+            }
+            if (!is.null(observed_periods)) {
+                checkmate::assert_data_frame(observed_periods)
+                checkmate::assert_names(
+                    names(observed_periods),
+                    must.include = c("period", "year")
+                )
             }
             checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
             checkmate::assert_subset(by, c("site_id", "source_id", "experiment_id", "variant_label", "frequency", "table_id", "period"))
@@ -5483,12 +5755,32 @@ EpwMorpher <- R6::R6Class(
             if (!is.null(reference_plan_id) && !isTRUE(morpher__recipe_accepts_reference(private$recipe))) {
                 cli::cli_abort("The selected morphing backend does not accept reference climate data.")
             }
+            if (isTRUE(
+                morpher__recipe_requires_observed_reference(private$recipe)
+            ) && is.null(observed_plan_id)) {
+                cli::cli_abort(c(
+                    "The selected morphing backend requires explicit observed daily weather.",
+                    "i" = "Supply `observed_plan_id` and `observed_periods`."
+                ))
+            }
+            if (!is.null(observed_plan_id) &&
+                !isTRUE(
+                    morpher__recipe_accepts_observed_reference(
+                        private$recipe
+                    )
+                )) {
+                cli::cli_abort(
+                    "The selected morphing backend does not accept observed daily weather."
+                )
+            }
 
             preflight <- self$preflight(
                 plan_id = plan_id,
                 periods = periods,
                 reference_plan_id = reference_plan_id,
                 reference_periods = reference_periods,
+                observed_plan_id = observed_plan_id,
+                observed_periods = observed_periods,
                 by = by,
                 strict = strict
             )
@@ -5511,10 +5803,26 @@ EpwMorpher <- R6::R6Class(
             } else {
                 unique(reference_climate$summary_id)[[1L]]
             }
+            observed_climate <- if (is.null(observed_plan_id)) {
+                NULL
+            } else {
+                self$summarise_climate(
+                    plan_id = observed_plan_id,
+                    periods = observed_periods,
+                    strict = strict,
+                    overwrite = overwrite
+                )
+            }
+            observed_summary_id <- if (is.null(observed_climate)) {
+                NULL
+            } else {
+                unique(observed_climate$summary_id)[[1L]]
+            }
             baseline <- self$summarise_baseline(overwrite = overwrite)
             preview <- self$preview_plan(
                 summary_id = unique(climate$summary_id)[[1L]],
                 reference_summary_id = reference_summary_id,
+                observed_summary_id = observed_summary_id,
                 baseline_id = unique(baseline$baseline_id)[[1L]],
                 by = by,
                 strict = strict
@@ -5522,6 +5830,7 @@ EpwMorpher <- R6::R6Class(
             plan <- self$plan(
                 summary_id = unique(climate$summary_id)[[1L]],
                 reference_summary_id = reference_summary_id,
+                observed_summary_id = observed_summary_id,
                 baseline_id = unique(baseline$baseline_id)[[1L]],
                 by = by,
                 strict = strict,
@@ -5666,13 +5975,27 @@ EpwMorpher <- R6::R6Class(
             morpher__hash("summary", private$epw_id, paste(sort(plan_id), collapse = "\r"), morpher__json(periods))
         },
 
-        morph_id = function(summary_id, reference_summary_id, baseline_id, by, strict) {
+        morph_id = function(summary_id, reference_summary_id,
+                            observed_summary_id, baseline_id, by, strict) {
             strict_token <- if (isTRUE(strict)) "strict=true" else "strict=false"
-            morpher__hash(
+            pieces <- list(
                 "morph", private$epw_id, summary_id, store__chr1(reference_summary_id),
-                baseline_id, paste(by, collapse = "\r"), morpher__json(private$recipe),
+                baseline_id, paste(by, collapse = "\r"),
+                morpher__json(private$recipe),
                 strict_token
             )
+            # Preserve existing morph IDs for every recipe without observations;
+            # append a tagged role only when the new fourth input is present.
+            if (!is.null(observed_summary_id)) {
+                pieces <- c(
+                    pieces,
+                    list(paste0(
+                        "observed_reference=",
+                        observed_summary_id
+                    ))
+                )
+            }
+            do.call(morpher__hash, pieces)
         },
 
         plan_by = function(plan) {

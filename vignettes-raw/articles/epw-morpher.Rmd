@@ -123,6 +123,7 @@ epw_morph_recipe_spec("epwshiftr_daily_power")
 epw_morph_recipe_spec("epwshiftr_daily_btws")
 epw_morph_recipe_spec("eames_monthly_temperature")
 epw_morph_recipe_spec("ek_daily_factors")
+epw_morph_recipe_spec("arima_rank_qm")
 ```
 
 The initial catalog distinguishes the following complete methods:
@@ -135,6 +136,7 @@ The initial catalog distinguishes the following complete methods:
 | `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the Eames BTWS hourly projection |
 | `eames_monthly_temperature` | `harmonized` | Seven-stage pipeline | Eames monthly mean/average-daily-extrema changes and BTWS, with monthly statistics derived from daily CMIP6 inputs |
 | `ek_daily_factors` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Ek day-of-year mean/DTR factors and combined hourly temperature transform without an added smoothing window |
+| `arima_rank_qm` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Arima month-wise model CDF change functions selected by each TMY day's percentile in a multi-year observed CDF |
 | `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
@@ -160,6 +162,10 @@ eames_monthly_temperature <- epw_morph_recipe(
 )
 ek_daily <- epw_morph_recipe(
     "ek_daily_factors",
+    policy = "paper_faithful"
+)
+arima_rank_qm <- epw_morph_recipe(
+    "arima_rank_qm",
     policy = "paper_faithful"
 )
 sobie_curry <- epw_morph_recipe(
@@ -253,6 +259,40 @@ compared directly; `policy = "harmonized"` applies the shared
 specific-humidity closure. Wind, cloud, radiation, and other transformations
 are not included where the source publication is contradictory or
 underspecified.
+
+Arima et al. (2024) use four distinct inputs: the baseline TMY, historical and
+future daily model values, and multi-year observed daily weather for the target
+location. For temperature, historical and future inverse CDFs are constructed
+within each month and subtracted at common percentiles:
+
+\[
+\Delta T_m(p) = F^{-1}_{f,m}(p) - F^{-1}_{c,m}(p)
+\]
+
+The change function is smoothed with an endpoint-aware nine-point moving mean
+repeated three times. The baseline TMY daily mean is then located in the
+observed monthly empirical CDF, and the selected additive change is applied to
+all 24 hours of that day. Model calendars therefore contribute samples to
+monthly distributions; this method does not map model dates directly onto the
+365 EPW days.
+
+```r
+arima_method <- arima_temperature(
+    reference = historical_reference(years = 1995:2014),
+    observed_reference = shift_reference_plan(
+        plan_id = observed_plan_ids,
+        periods = epw_morph_periods(observed = 1995:2014)
+    ),
+    policy = "paper_faithful"
+)
+```
+
+The publications do not specify empirical plotting positions, quantile
+interpolation, or endpoint evaluation. The implementation therefore records
+its midpoint probability grid, type-7 quantiles, linear factor interpolation,
+and endpoint clamping in every result. The initial recipe covers additive
+dry-bulb temperature for one model case; multi-model averaging and the
+published non-temperature transformations remain separate extensions.
 
 The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
 surface pressure `ps` from matching historical and future model periods. It
@@ -443,6 +483,9 @@ file writer. The built-in `daily_temperature()` and `sobie_curry_daily()`
 methods use all seven stages, including explicit
 `sequence` components that preserve the baseline EPW day order. The
 `ek_daily_temperature()` method uses the same seven-stage execution boundary.
+`arima_temperature()` also uses all seven stages, but its `calendar` component
+forms native-calendar monthly distributions and its `signal` component
+requires both historical model output and a separate observed reference.
 
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves

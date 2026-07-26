@@ -43,6 +43,7 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
             "epwshiftr_daily_btws",
             "eames_monthly_temperature",
             "ek_daily_factors",
+            "arima_rank_qm",
             "sobie_curry_daily"
         )
     )

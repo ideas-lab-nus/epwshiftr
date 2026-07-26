@@ -34,6 +34,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_daily_btws",
     "eames_monthly_temperature",
     "ek_daily_factors",
+    "arima_rank_qm",
     "sobie_curry_daily"
 )
 
@@ -433,6 +434,7 @@ recipe__default_specs <- function() {
     btws_pipeline <- daily__temperature_pipeline("btws")
     eames_pipeline <- eames__monthly_temperature_pipeline()
     ek_pipeline <- ek__pipeline()
+    arima_pipeline <- arima__pipeline()
     sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
@@ -471,6 +473,7 @@ recipe__default_specs <- function() {
     )
     eames_inputs <- eames__monthly_temperature_inputs()
     ek_inputs <- ek__daily_temperature_inputs()
+    arima_inputs <- arima__temperature_inputs()
     sobie_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -766,6 +769,63 @@ recipe__default_specs <- function() {
                 "component_names",
                 "equation_interpretation",
                 "unsupported_variables",
+                "physical_policy"
+            ),
+            status = "comparison"
+        ),
+        arima_rank_qm = recipe__spec(
+            name = "arima_rank_qm",
+            label = "Arima month-wise temperature quantile mapping",
+            backend = "arima_temperature",
+            implementation = "pipeline",
+            source = list(
+                type = "publication",
+                citation = paste(
+                    "Arima et al. (2024), Development of Future Weather",
+                    "Data Using the Quantile Mapping Technique and its",
+                    "Application in Japan"
+                ),
+                references = c(
+                    "https://doi.org/10.69357/asim2024.1178",
+                    paste0(
+                        "https://doi.org/10.18948/",
+                        "shasetaikai.2024.5.0_85"
+                    )
+                ),
+                implementation_note = paste(
+                    "This recipe implements additive dry-bulb temperature",
+                    "for one model-specific case. Multi-model percentile",
+                    "averaging and non-temperature variables are separate",
+                    "method extensions."
+                ),
+                empirical_cdf_note = paste(
+                    "The publications do not identify plotting positions,",
+                    "quantile interpolation, or endpoint evaluation.",
+                    "epwshiftr uses midpoint ranks, R quantile type 7,",
+                    "linear factor interpolation, and endpoint clamping."
+                )
+            ),
+            required_inputs = arima_inputs,
+            calendar_policy = "native_calendar_month_distributions",
+            components = pipeline__records(arima_pipeline),
+            policy_profiles = c(
+                paper_faithful = "default",
+                harmonized = "default"
+            ),
+            default_policy = "paper_faithful",
+            diagnostics = c(
+                "monthly_change_function",
+                "observed_percentile",
+                "percentile_endpoint_clamping",
+                "temperature_humidity_consistency"
+            ),
+            provenance = c(
+                "source_method",
+                "input_periods",
+                "monthly_calendar_grouping",
+                "component_names",
+                "empirical_cdf_conventions",
+                "smoothing",
                 "physical_policy"
             ),
             status = "comparison"
