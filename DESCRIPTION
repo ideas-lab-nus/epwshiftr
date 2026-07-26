@@ -44,6 +44,10 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Collate:
     'arima-temperature.R'
+    'weather-input.R'
+    'weather-component.R'
+    'weather-signal.R'
+    'bias-adjustment.R'
     'cli-doctor.R'
     'cli-download.R'
     'cli-extract.R'
@@ -97,9 +101,6 @@ Collate:
     'shift-ui.R'
     'sobie-curry-backend.R'
     'standalone-cache.R'
-    'weather-input.R'
-    'weather-component.R'
-    'weather-signal.R'
     'weather-pipeline.R'
     'weather-recipe.R'
     'zzz.R'
