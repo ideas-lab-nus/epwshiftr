@@ -85,6 +85,9 @@ Preflight EPW morphing inputs without writing store state.
   reference_periods = NULL,
   summary_id = NULL,
   reference_summary_id = NULL,
+  observed_plan_id = NULL,
+  observed_periods = NULL,
+  observed_summary_id = NULL,
   baseline_id = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE
@@ -108,6 +111,13 @@ change-factor backends.}
 
 \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
+
+\item{\code{observed_plan_id}}{Optional observed-weather extraction plan
+IDs.}
+
+\item{\code{observed_periods}}{Optional observed-weather period table.}
+
+\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
 
 \item{\code{baseline_id}}{Optional baseline summary ID.}
 
@@ -172,6 +182,7 @@ Create a morphing plan and monthly factors.
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$plan(
   summary_id,
   reference_summary_id = NULL,
+  observed_summary_id = NULL,
   baseline_id = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE,
@@ -186,6 +197,8 @@ Create a morphing plan and monthly factors.
 
 \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
+
+\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
 
 \item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
 
@@ -207,6 +220,7 @@ Preview a morphing plan and monthly factors without writing store state.
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$preview_plan(
   summary_id,
   reference_summary_id = NULL,
+  observed_summary_id = NULL,
   baseline_id = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE
@@ -220,6 +234,8 @@ Preview a morphing plan and monthly factors without writing store state.
 
 \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
+
+\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
 
 \item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
 
@@ -335,6 +351,8 @@ Run the store-native EPW morphing workflow.
   periods,
   reference_plan_id = NULL,
   reference_periods = NULL,
+  observed_plan_id = NULL,
+  observed_periods = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE,
   dir = "outputs/future-epw",
@@ -357,6 +375,11 @@ change-factor backends.}
 
 \item{\code{reference_periods}}{Optional reference period table from
 \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+
+\item{\code{observed_plan_id}}{Optional observed-weather extraction plan
+IDs.}
+
+\item{\code{observed_periods}}{Optional observed-weather period table.}
 
 \item{\code{by}}{Climate grouping columns.}
 

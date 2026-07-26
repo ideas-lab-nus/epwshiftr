@@ -73,7 +73,7 @@ shift_site(
   metadata = list()
 )
 
-shift_morph_method(recipe, reference = NULL)
+shift_morph_method(recipe, reference = NULL, observed_reference = NULL)
 
 belcher(reference = NULL, methods = NULL, profile = "enhanced", options = NULL)
 
@@ -202,6 +202,9 @@ shift_morph(
   reference = NULL,
   reference_plan_id = NULL,
   reference_periods = NULL,
+  observed_reference = NULL,
+  observed_plan_id = NULL,
+  observed_periods = NULL,
   strict = TRUE,
   complete_only = TRUE,
   by = c("source_id", "experiment_id", "variant_label", "period"),
@@ -349,6 +352,9 @@ EPW export option list.}
 \item{reference}{Optional \code{ShiftReferenceSpec} or \code{ShiftClimate} stage for
 change-factor morphing.}
 
+\item{observed_reference}{Optional plan-backed \code{ShiftReferenceSpec} or
+\code{ShiftClimate} stage containing multi-year observed daily weather.}
+
 \item{methods}{Optional named Belcher step method overrides.}
 
 \item{profile}{Belcher compatibility profile, \code{"enhanced"} by default.}
@@ -476,6 +482,9 @@ can use OPeNDAP first and only download as a fallback when requested.}
 
 \item{reference_plan_id, reference_periods}{Optional store plan IDs and period
 table for reference climate data.}
+
+\item{observed_plan_id, observed_periods}{Optional store plan IDs and period
+table for observed daily weather.}
 
 \item{complete_only}{Whether \code{\link[=shift_morph]{shift_morph()}} should morph only complete
 extraction plans when a climate stage also contains failed or incomplete

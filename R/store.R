@@ -3793,6 +3793,15 @@ EsgStore <- R6::R6Class(
                     updated_at TIMESTAMP,
                     last_error VARCHAR
                 )
+                "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_observed_reference (
+                    morph_id VARCHAR PRIMARY KEY,
+                    observed_summary_id VARCHAR,
+                    created_at TIMESTAMP
+                )
             "
             )
             private$exec(
