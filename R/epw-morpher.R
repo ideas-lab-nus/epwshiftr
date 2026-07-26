@@ -509,6 +509,15 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline("btws")
         ),
+        eames_monthly_temperature = EpwMorphBackend$new(
+            name = "eames_monthly_temperature",
+            label = "Eames monthly temperature signal with BTWS projection",
+            methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
+            method_choices = "eames_btws",
+            rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
+            requires_reference = TRUE,
+            pipeline = eames__monthly_temperature_pipeline()
+        ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
             label = "Sobie-Curry daily morphing with selectable closure",
@@ -946,6 +955,10 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         "daily_temperature",
         "daily_temperature_btws"
     )
+    is_eames_temperature <- identical(
+        backend,
+        "eames_monthly_temperature"
+    )
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     if (is_belcher) {
         if (is.null(profile)) {
@@ -969,6 +982,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- daily__temperature_backend_options(options)
+    } else if (is_eames_temperature) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Eames monthly temperature recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- eames__monthly_temperature_options(options)
     } else if (is_sobie_curry) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
