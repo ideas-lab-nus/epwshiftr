@@ -226,13 +226,16 @@ series.
 
 Implementation policy:
 
-1. use an optional ibicus bridge as the executable reference;
-2. create fixed cross-language fixtures for every method and supported
-   variable;
-3. implement native R versions behind the same signal contract;
-4. compare the R results against ibicus before enabling each native method in
-   an EPW recipe;
-5. keep Python optional and do not make it a base-package dependency.
+1. implement every method as a native R kernel behind the common signal
+   contract;
+2. translate published equations, defaults, bounds, and variable restrictions
+   into explicit method specifications;
+3. create deterministic R fixtures for every supported method-variable
+   combination;
+4. test calendar handling, seasonal and future-period windows, bounds, and
+   stochastic behavior directly in the package;
+5. enable a method in an EPW recipe only after its native implementation and
+   diagnostics are complete.
 
 ### 6.2 Other signal and preprocessing methods
 
@@ -587,10 +590,10 @@ These methods provide the most direct tests of the current daily signal and
 
 ### 13.3 Add all eight ibicus signal methods
 
-1. Build an optional bridge and fixed reference fixtures.
+1. Specify published equations, defaults, bounds, and supported variables.
 2. Add native R implementations behind the common signal interface.
-3. Verify each implementation by variable, transformation type, seasonal
-   window, and future-period window.
+3. Add deterministic R fixtures and verify each implementation by variable,
+   transformation type, seasonal window, and future-period window.
 4. Combine each signal method with the same inherited-sequence and hourly
    projection configuration for a controlled comparison.
 
@@ -639,7 +642,7 @@ Update this table as work is merged.
 | Eames non-temperature transformations | Not started |
 | Ek daily temperature factors | Implemented in PR #155 |
 | Arima rank/QM | Implemented in PR #157 |
-| Eight ibicus signal methods | Not started |
+| Eight native ibicus-compatible signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
 | BCCAQv2 reference-data/tool adapter | Not started |
 | Daily BCSD reference-data/tool adapter | Not started |
@@ -652,10 +655,11 @@ Update this table as work is merged.
 | Block, analogue, regime, and stochastic sequence methods | Not started |
 | Complete cross-method weather and building comparison | Not started |
 
-After #157, the next work is the optional ibicus bridge and fixed reference
-fixtures in section 13.3. The bridge should establish reproducible
-cross-implementation outputs before native R signal kernels are added one at a
-time behind the common signal interface.
+The next work is to add native R signal kernels one at a time behind the common
+signal interface. Each kernel should define and test its supported variables,
+defaults, transformations, and calendar behavior, then be combined with the
+same sequence, hourly, physics, and output components for controlled
+comparison.
 
 ## 15. Primary sources
 
