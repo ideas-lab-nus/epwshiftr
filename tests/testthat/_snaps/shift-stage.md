@@ -41,6 +41,9 @@
       * Reference: baseline EPW
       * Requires reference: FALSE
       * Accepts reference: TRUE
+      * Observed reference: none
+      * Requires observed reference: FALSE
+      * Accepts observed reference: FALSE
       * Variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
       == EPW Site ============================================================
       * ID: SIN
@@ -101,6 +104,9 @@
       * Reference: baseline EPW
       * Requires reference: FALSE
       * Accepts reference: TRUE
+      * Observed reference: none
+      * Requires observed reference: FALSE
+      * Accepts observed reference: FALSE
       * Variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
       -- Options -----------------------------------------------------------------------------------------
       +-------------------------+-------------+
@@ -152,6 +158,7 @@
       * Periods: 2060s 2055–2065
       * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
+      * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
       * Output directory: <tempdir>/shift-print-output
@@ -244,6 +251,7 @@
       * Periods: 2060s 2055–2065
       * Method: belcher [enhanced]
       * Reference: historical · reference 1995–2014
+      * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
       * Output directory: <tempdir>/shift-print-output
