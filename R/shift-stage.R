@@ -1904,6 +1904,62 @@ eames_temperature <- function(reference = NULL) {
     )
 }
 
+#' Ek daily temperature method
+#'
+#' @description
+#' `ek_daily_temperature()` creates the temperature-focused daily change-factor
+#' workflow described by Ek et al. (2018). Matching historical and future daily
+#' `tasmin` and `tasmax` inputs are required.
+#'
+#' The method constructs one climate baseline for each day of the annual cycle,
+#' derives daily mean temperature and DTR from the paired extrema, and applies
+#' the Ek combined shift-and-stretch equation to every baseline EPW hour. It
+#' does not apply an undocumented smoothing window and it preserves the
+#' baseline day order and within-day timing.
+#'
+#' The paper does not fully reconcile its generic stretch-factor equation,
+#' combined temperature equation, and variance description. This implementation
+#' uses relative DTR change as the anomaly multiplier because that interpretation
+#' gives zero-change identity and the stated daily mean and variance behavior.
+#' The selected equation and calendar adaptation are retained in result
+#' provenance.
+#'
+#' The `"paper_faithful"` policy changes dry-bulb temperature while preserving
+#' the baseline humidity fields. The `"harmonized"` policy instead preserves
+#' feasible baseline specific humidity and recomputes relative humidity and dew
+#' point against the projected temperature.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
+#' @param policy Physical execution policy: `"paper_faithful"` preserves the
+#'   baseline humidity fields; `"harmonized"` applies shared specific-humidity
+#'   closure.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @references
+#' Ek, M., Murdock, T. Q., Sobie, S. R., Cavka, B., Coughlin, B., and
+#' Wells, R. (2018). Future weather files to support climate resilient
+#' building design in Vancouver.
+#' \url{https://hdl.handle.net/1828/21874}
+#'
+#' @seealso [daily_temperature()], [sobie_curry_daily()], [shift_cmip6()],
+#'   [shift_future_epw()]
+#' @export
+ek_daily_temperature <- function(
+    reference = NULL,
+    policy = c("paper_faithful", "harmonized")
+) {
+    policy <- match.arg(policy)
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "ek_daily_factors",
+            policy = policy
+        ),
+        reference = reference
+    )
+}
+
 #' Sobie-Curry daily morphing method
 #'
 #' @description

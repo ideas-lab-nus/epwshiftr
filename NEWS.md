@@ -40,6 +40,16 @@
 
 ## New features
 
+* Added `ek_daily_temperature()` and registered the temperature-focused
+  `ek_daily_factors` recipe. Matching daily CMIP6 `tasmin` and `tasmax` years
+  are mapped from their native calendars to the 365-day EPW phase grid before
+  daily mean and DTR change factors are calculated and applied through the Ek
+  combined shift-and-stretch equation. The result records the selected
+  relative-DTR interpretation, zero-historical-DTR fallback, calendar mapping,
+  and source ambiguities. The `paper_faithful` policy preserves baseline
+  humidity fields, while `harmonized` applies specific-humidity closure
+  (#155).
+
 * Added the temperature-only `eames_temperature()` method and registered
   `eames_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
   `tasmax` are aggregated into the monthly mean, average daily minimum, and
