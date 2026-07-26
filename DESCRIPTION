@@ -73,6 +73,7 @@ Collate:
     'downloader.R'
     'eames-btws-component.R'
     'eames-btws.R'
+    'eames-monthly-temperature.R'
     'epw-file.R'
     'utils.R'
     'store.R'

@@ -32,6 +32,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_monthly",
     "epwshiftr_daily_power",
     "epwshiftr_daily_btws",
+    "eames_monthly_temperature",
     "sobie_curry_daily"
 )
 
@@ -429,6 +430,7 @@ recipe__default_specs <- function() {
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
     btws_pipeline <- daily__temperature_pipeline("btws")
+    eames_pipeline <- eames__monthly_temperature_pipeline()
     sobie_pipeline <- sobie__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
@@ -465,6 +467,7 @@ recipe__default_specs <- function() {
             variable_sets = c("tas", "tasmin", "tasmax")
         )
     )
+    eames_inputs <- eames__monthly_temperature_inputs()
     sobie_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -639,6 +642,66 @@ recipe__default_specs <- function() {
                 "calendar_mapping",
                 "component_names",
                 "equation_interpretation",
+                "physical_policies"
+            ),
+            status = "comparison"
+        ),
+        eames_monthly_temperature = recipe__spec(
+            name = "eames_monthly_temperature",
+            label = "Eames monthly temperature with BTWS projection",
+            backend = "eames_monthly_temperature",
+            implementation = "pipeline",
+            source = list(
+                type = "adapted_publication",
+                citation = paste(
+                    "Eames et al. (2024) monthly temperature changes and",
+                    "bounded temperature weighted stretch, with the monthly",
+                    "statistics derived from daily CMIP6 inputs"
+                ),
+                references = c(
+                    "https://doi.org/10.1177/01436244231218861",
+                    "https://github.com/ideas-lab-nus/epwshiftr/issues/152"
+                ),
+                equation_note = paste(
+                    "The published monthly mean, average daily minimum, and",
+                    "average daily maximum changes feed equations (7)-(16).",
+                    "Where the paper does not publish solver code, epwshiftr",
+                    "uses deterministic bisection to retain the largest",
+                    "admissible m or n in [0, 1]."
+                ),
+                signal_note = paste(
+                    "The paper obtains monthly factors from UKCP18.",
+                    "epwshiftr instead aggregates matching daily CMIP6 tas,",
+                    "tasmin, and tasmax to the same three monthly statistics;",
+                    "it does not apply daily-varying change factors."
+                ),
+                implementation_note = paste(
+                    "This temperature-only comparison reuses epwshiftr's",
+                    "specific-humidity closure and EPW output policy.",
+                    "The paper's non-temperature transformations are not",
+                    "implemented by this recipe."
+                )
+            ),
+            required_inputs = eames_inputs,
+            calendar_policy = "cf_calendar_month_to_epw_365",
+            components = pipeline__records(eames_pipeline),
+            policy_profiles = c(harmonized = "default"),
+            default_policy = "harmonized",
+            diagnostics = c(
+                "monthly_temperature_changes",
+                "daily_extrema_closure",
+                "btws_scale_and_exponents",
+                "mean_shift_fallback",
+                "humidity_closure",
+                "day_boundary_jump"
+            ),
+            provenance = c(
+                "source_method",
+                "input_periods",
+                "calendar_mapping",
+                "component_names",
+                "equation_interpretation",
+                "adaptation_boundary",
                 "physical_policies"
             ),
             status = "comparison"
