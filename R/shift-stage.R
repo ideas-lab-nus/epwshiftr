@@ -1862,6 +1862,48 @@ daily_temperature <- function(
     )
 }
 
+#' Eames monthly temperature method
+#'
+#' @description
+#' `eames_temperature()` creates a temperature-only future-EPW method using the
+#' monthly temperature signal and bounded temperature weighted stretch (BTWS)
+#' described by Eames et al. (2024). Matching historical and future daily
+#' `tas`, `tasmin`, and `tasmax` inputs are required.
+#'
+#' The daily CMIP6 inputs are aggregated into 12 calendar-month values for mean
+#' temperature, average daily minimum temperature, and average daily maximum
+#' temperature. One future-minus-historical set is applied to every baseline
+#' day in that EPW month before BTWS reconstructs the hourly profile. The method
+#' therefore does not use daily-varying change factors.
+#'
+#' The published method used monthly UKCP18 factors. This implementation adapts
+#' its temperature calculation to monthly statistics derived from daily CMIP6
+#' data. It retains epwshiftr's specific-humidity closure and EPW output policy,
+#' and does not implement the paper's non-temperature transformations.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @references
+#' Eames, M. E., Ramallo-González, A. P., and Wood, M. J. (2024).
+#' A revised morphing algorithm for creating future weather for building
+#' performance evaluation.
+#' \doi{10.1177/01436244231218861}
+#'
+#' @seealso [daily_temperature()], [shift_cmip6()], [shift_future_epw()]
+#' @export
+eames_temperature <- function(reference = NULL) {
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "eames_monthly_temperature",
+            policy = "harmonized"
+        ),
+        reference = reference
+    )
+}
+
 #' Sobie-Curry daily morphing method
 #'
 #' @description
