@@ -231,7 +231,7 @@ run a method or serialize any function:</p>
 <span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_btws"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"eames_monthly_temperature"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"ek_daily_factors"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"arima_rank_qm"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"monthly_percentile_temperature"</span><span class="op">)</span></span></code></pre></div>
 <p>The initial catalog distinguishes the following complete methods:</p>
 <table class="table">
 <colgroup>
@@ -273,7 +273,7 @@ constrained power projection</td>
 <td align="left"><code>harmonized</code></td>
 <td align="left">Seven-stage pipeline</td>
 <td align="left">Existing daily CMIP6 temperature signal combined with
-the Eames BTWS hourly projection</td>
+the BTWS hourly projection</td>
 </tr>
 <tr class="odd">
 <td align="left"><code>eames_monthly_temperature</code></td>
@@ -293,7 +293,7 @@ BTWS, with monthly statistics derived from daily CMIP6 inputs</td>
 temperature transform without an added smoothing window</td>
 </tr>
 <tr class="odd">
-<td align="left"><code>arima_rank_qm</code></td>
+<td align="left"><code>monthly_percentile_temperature</code></td>
 <td align="left">
 <code>paper_faithful</code>,
 <code>harmonized</code>
@@ -338,8 +338,8 @@ persisted with the workflow:</p>
 <span>    <span class="st">"ek_daily_factors"</span>,</span>
 <span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
 <span><span class="op">)</span></span>
-<span><span class="va">arima_rank_qm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"arima_rank_qm"</span>,</span>
+<span><span class="va">monthly_percentile_temperature</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
+<span>    <span class="st">"monthly_percentile_temperature"</span>,</span>
 <span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">sobie_curry</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
