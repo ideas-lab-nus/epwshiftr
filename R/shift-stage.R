@@ -1875,7 +1875,7 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #' @param window_days Odd circular climatology-window width in days.
 #' @param reconstruction Hourly temperature reconstruction component:
 #'   `"power"` uses the default constrained power projection; `"btws"` uses
-#'   Eames bounded temperature weighted stretch and requires paired daily
+#'   bounded temperature weighted stretch and requires paired daily
 #'   `tasmin` and `tasmax`.
 #'
 #' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
@@ -2059,7 +2059,7 @@ arima_temperature <- function(
     policy <- match.arg(policy)
     shift_morph_method(
         epw_morph_recipe(
-            name = "arima_rank_qm",
+            name = "monthly_percentile_temperature",
             policy = policy
         ),
         reference = reference,

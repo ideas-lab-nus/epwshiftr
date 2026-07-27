@@ -18,7 +18,7 @@ daily_temperature(
 
 \item{reconstruction}{Hourly temperature reconstruction component:
 \code{"power"} uses the default constrained power projection; \code{"btws"} uses
-Eames bounded temperature weighted stretch and requires paired daily
+bounded temperature weighted stretch and requires paired daily
 \code{tasmin} and \code{tasmax}.}
 }
 \value{

@@ -2,6 +2,12 @@
 
 ## Breaking changes
 
+* Renamed reusable future-weather registry keys, intermediate kinds, BTWS
+  diagnostics, and method choices by the algorithms they implement rather than
+  by a reference paper or software package. The Arima et al. complete workflow
+  remains available through `arima_temperature()`, while its recipe key is now
+  `monthly_percentile_temperature` (#165).
+
 * Standalone `shift_*()` stages now carry their persisted `run_id` and
   `step_id` into the next stage automatically. The public API does not expose a
   workflow session/current-session object. Intermediate runs are `waiting`,
@@ -49,15 +55,15 @@
   and explicit diagnostics (#161).
 
 * Added `arima_temperature()` and registered the temperature-focused
-  `arima_rank_qm` recipe. The workflow carries baseline EPW, historical daily
-  model `tas`, future daily model `tas`, and multi-year observed daily `tas` as
-  four distinct input roles. It builds month-wise historical/future inverse-CDF
-  change functions, applies the published endpoint-aware nine-point smoothing
-  three times, locates each baseline daily mean in the observed monthly CDF,
-  and adds the selected factor to all 24 hours. Empirical-CDF conventions and
-  endpoint clamping are recorded explicitly; `paper_faithful` preserves
-  baseline humidity fields, while `harmonized` applies specific-humidity
-  closure (#157).
+  `monthly_percentile_temperature` recipe. The workflow carries baseline EPW,
+  historical daily model `tas`, future daily model `tas`, and multi-year
+  observed daily `tas` as four distinct input roles. It builds month-wise
+  historical/future inverse-CDF change functions, applies the published
+  endpoint-aware nine-point smoothing three times, locates each baseline daily
+  mean in the observed monthly CDF, and adds the selected factor to all 24
+  hours. Empirical-CDF conventions and endpoint clamping are recorded
+  explicitly; `paper_faithful` preserves baseline humidity fields, while
+  `harmonized` applies specific-humidity closure (#157).
 
 * Added `ek_daily_temperature()` and registered the temperature-focused
   `ek_daily_factors` recipe. Matching daily CMIP6 `tasmin` and `tasmax` years
@@ -76,7 +82,7 @@
   month-by-month through the BTWS hourly reconstruction. Provenance records the
   substitution of daily CMIP6-derived monthly statistics for the paper's
   UKCP18 factors and states that non-temperature transformations are not
-  included (#152).
+  included (#153).
 
 * Added `reconstruction = "btws"` to `daily_temperature()` and registered the
   `epwshiftr_daily_btws` comparison recipe. It combines the existing
@@ -97,7 +103,7 @@
   bounded at zero and saturation before relative humidity and dew point are
   derived from projected temperature and pressure; closure states and clipped
   targets are retained as diagnostics. The existing `paper_faithful` output
-  remains the default (#148).
+  remains the default (#149).
 
 * Added the registered `sobie_curry_daily()` paper-faithful comparison method.
   Its seven-stage pipeline derives daily thermodynamic factors from matching

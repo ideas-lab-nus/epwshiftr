@@ -1,4 +1,4 @@
-test_that("Eames transfer weights implement the published equation", {
+test_that("BTWS transfer weights implement the published equation", {
     normalized <- c(0, 0.25, 0.5, 0.75, 1)
 
     expect_equal(

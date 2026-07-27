@@ -146,7 +146,7 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
     )
     expect_identical(
         recipe$components$physics,
-        "sobie_curry_thermodynamic_policy"
+        "daily_thermodynamic_closure"
     )
     expect_identical(
         morpher__recipe_required_frequency(recipe),

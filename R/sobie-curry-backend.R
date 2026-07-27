@@ -1021,8 +1021,8 @@ sobie__output_write <- function(
     )
 }
 
-# Build the seven executable component specifications shared by both
-# Sobie-Curry physical policies.
+# Build seven method-neutral component specifications while retaining the
+# Sobie-Curry publication identity in profiles and the complete recipe.
 sobie__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -1067,71 +1067,71 @@ sobie__component_specs <- function() {
 
     list(
         preprocess = component__spec(
-            name = "sobie_curry_inputs",
+            name = "daily_thermodynamic_inputs",
             stage = "preprocess",
-            label = "Sobie-Curry daily thermodynamic input normalization",
+            label = "Daily thermodynamic input normalization",
             required_inputs = complete_inputs,
             input_kinds = "role_inputs",
-            output_kinds = "sobie_curry_preprocessed",
+            output_kinds = "daily_thermodynamic_preprocessed",
             scopes = "multivariate",
             operations = list(apply = sobie__preprocess_apply)
         ),
         calendar = component__spec(
-            name = "sobie_curry_daily_climatology",
+            name = "circular_thermodynamic_climatology",
             stage = "calendar",
-            label = "Sobie-Curry circular 21-day climatology",
+            label = "Circular thermodynamic climatology",
             required_inputs = complete_inputs,
-            input_kinds = "sobie_curry_preprocessed",
-            output_kinds = "sobie_curry_calendar_statistics",
+            input_kinds = "daily_thermodynamic_preprocessed",
+            output_kinds = "daily_thermodynamic_calendar_statistics",
             scopes = "multivariate",
             operations = list(apply = sobie__calendar_apply)
         ),
         signal = signal__component(
-            name = "sobie_curry_change_factors",
-            label = "Sobie-Curry daily thermodynamic change factors",
+            name = "daily_thermodynamic_change_factors",
+            label = "Daily thermodynamic change factors",
             required_inputs = complete_inputs,
-            input_kinds = "sobie_curry_calendar_statistics",
-            output_kinds = "sobie_curry_factors",
+            input_kinds = "daily_thermodynamic_calendar_statistics",
+            output_kinds = "daily_thermodynamic_factors",
             scopes = "multivariate",
             profiles = profiles,
             apply_group = sobie__signal_apply_group
         ),
         sequence = component__spec(
-            name = "sobie_curry_preserve_sequence",
+            name = "preserve_thermodynamic_epw_sequence",
             stage = "sequence",
-            label = "Preserve baseline CWEC/EPW sequence",
+            label = "Preserve baseline thermodynamic EPW sequence",
             required_inputs = list(weather_template = template),
-            input_kinds = "sobie_curry_factors",
-            output_kinds = "sobie_curry_sequence",
+            input_kinds = "daily_thermodynamic_factors",
+            output_kinds = "daily_thermodynamic_sequence",
             scopes = "multivariate",
             operations = list(generate = sobie__sequence_generate)
         ),
         hourly = component__spec(
-            name = "sobie_curry_hourly_transform",
+            name = "daily_thermodynamic_transform",
             stage = "hourly",
-            label = "Sobie-Curry mean and anomaly transformation",
+            label = "Daily thermodynamic mean/anomaly transformation",
             required_inputs = list(weather_template = template),
-            input_kinds = "sobie_curry_sequence",
-            output_kinds = "sobie_curry_hourly_weather",
+            input_kinds = "daily_thermodynamic_sequence",
+            output_kinds = "daily_thermodynamic_hourly_weather",
             scopes = "multivariate",
             operations = list(reconstruct = sobie__hourly_reconstruct)
         ),
         physics = component__spec(
-            name = "sobie_curry_thermodynamic_policy",
+            name = "daily_thermodynamic_closure",
             stage = "physics",
-            label = "Sobie-Curry selectable thermodynamic closure",
+            label = "Selectable daily thermodynamic closure",
             required_inputs = list(weather_template = template),
-            input_kinds = "sobie_curry_hourly_weather",
-            output_kinds = "sobie_curry_weather",
+            input_kinds = "daily_thermodynamic_hourly_weather",
+            output_kinds = "daily_thermodynamic_weather",
             scopes = "multivariate",
             operations = list(apply = sobie__physics_apply)
         ),
         output = component__spec(
-            name = "sobie_curry_epw_result",
+            name = "daily_thermodynamic_epw_result",
             stage = "output",
-            label = "Sobie-Curry EPW result",
+            label = "Daily thermodynamic EPW result",
             required_inputs = list(weather_template = template),
-            input_kinds = "sobie_curry_weather",
+            input_kinds = "daily_thermodynamic_weather",
             output_kinds = "epw_morph_result",
             scopes = "multivariate",
             operations = list(write = sobie__output_write)
@@ -1161,13 +1161,13 @@ sobie__register_components <- function() {
 sobie__pipeline <- function() {
     sobie__register_components()
     pipeline__spec(list(
-        preprocess = "sobie_curry_inputs",
-        calendar = "sobie_curry_daily_climatology",
-        signal = "sobie_curry_change_factors",
-        sequence = "sobie_curry_preserve_sequence",
-        hourly = "sobie_curry_hourly_transform",
-        physics = "sobie_curry_thermodynamic_policy",
-        output = "sobie_curry_epw_result"
+        preprocess = "daily_thermodynamic_inputs",
+        calendar = "circular_thermodynamic_climatology",
+        signal = "daily_thermodynamic_change_factors",
+        sequence = "preserve_thermodynamic_epw_sequence",
+        hourly = "daily_thermodynamic_transform",
+        physics = "daily_thermodynamic_closure",
+        output = "daily_thermodynamic_epw_result"
     ))
 }
 

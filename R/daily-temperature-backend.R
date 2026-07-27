@@ -27,12 +27,12 @@ EPW_MORPH_DAILY_TEMPERATURE_RULES <- data.table::data.table(
 )
 
 # The BTWS composition requires all three temperature statistics because the
-# Eames hourly reconstruction preserves separate mean, minimum, and maximum
-# targets rather than inheriting a missing daily range.
-EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS <- c(tdb = "eames_btws")
+# hourly projection preserves separate mean, minimum, and maximum targets
+# rather than inheriting a missing daily range.
+EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS <- c(tdb = "btws")
 
 # Describe the stricter climate-variable contract selected when the shared
-# daily temperature signal is paired with the Eames BTWS hourly component.
+# daily temperature signal is paired with the BTWS hourly component.
 EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES <- data.table::data.table(
     step = c("tdb", "rh", "tdew"),
     epw_field = c(
@@ -46,10 +46,10 @@ EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES <- data.table::data.table(
         NA_character_
     ),
     optional_variable_id = NA_character_,
-    method = c("eames_btws", "derived", "derived"),
+    method = c("btws", "derived", "derived"),
     required = c(TRUE, FALSE, FALSE),
     derived = c(FALSE, TRUE, TRUE),
-    method_choices = list("eames_btws", "derived", "derived")
+    method_choices = list("btws", "derived", "derived")
 )
 
 # These defaults keep the numerical projection reproducible and reuse the
@@ -559,10 +559,10 @@ daily__temperature_physics_apply <- function(
         )
     } else {
         list(
-            eames_btws_scale = hourly[["btws_scale"]],
-            eames_btws_m = hourly[["btws_m"]],
-            eames_btws_n = hourly[["btws_n"]],
-            eames_btws_fallback_reason =
+            btws_scale = hourly[["btws_scale"]],
+            btws_m = hourly[["btws_m"]],
+            btws_n = hourly[["btws_n"]],
+            btws_fallback_reason =
                 hourly[["btws_fallback_reason"]]
         )
     }
@@ -623,10 +623,10 @@ daily__temperature_physics_apply <- function(
                 morpher__diagnostic(
                     stage = "runtime",
                     severity = "warning",
-                    code = "eames_btws_mean_shift_fallback",
+                    code = "btws_mean_shift_fallback",
                     message = sprintf(
                         paste(
-                            "Eames BTWS used the additive mean-shift fallback",
+                            "BTWS used the additive mean-shift fallback",
                             "for %d target day(s): %s."
                         ),
                         sum(fallback),
@@ -635,7 +635,7 @@ daily__temperature_physics_apply <- function(
                     variable_id = "tas,tasmin,tasmax",
                     epw_field = "dry_bulb_temperature",
                     action = paste(
-                        "Inspect eames_btws_fallback_reason in the morphed",
+                        "Inspect btws_fallback_reason in the morphed",
                         "data artifact."
                     )
                 )
@@ -836,7 +836,7 @@ daily__temperature_pipeline <- function(
     hourly <- "constrained_daily_temperature"
     if (identical(reconstruction, "btws")) {
         btws__register_hourly_component()
-        hourly <- "eames_btws_temperature"
+        hourly <- "btws_temperature_projection"
     }
     pipeline__spec(list(
         preprocess = "daily_temperature_inputs",

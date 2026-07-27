@@ -125,11 +125,11 @@ test_that("Ek recipe registers its temperature-focused daily contract", {
     )
     expect_identical(
         recipe$components$signal,
-        "ek_daily_temperature_factors"
+        "daily_mean_dtr_change_factors"
     )
     expect_identical(
         recipe$components$hourly,
-        "ek_daily_combined_temperature"
+        "daily_mean_dtr_shift_stretch"
     )
     expect_match(spec@source$ambiguity_note, "not fully self-consistent")
     expect_match(spec@source$implementation_note, "temperature")
@@ -257,7 +257,7 @@ test_that("Ek combined equation closes daily mean and DTR changes", {
         rep(1.25, 365L),
         tolerance = 1e-10
     )
-    expect_true(all(factors$projection_status == "ek_combined"))
+    expect_true(all(factors$projection_status == "daily_mean_dtr"))
 })
 
 test_that("Ek harmonized policy closes humidity against temperature", {
@@ -435,7 +435,7 @@ test_that("Ek public method survives dry-run plan reconstruction", {
     )
     expect_identical(
         rebuilt@meta$method@recipe$components$signal,
-        "ek_daily_temperature_factors"
+        "daily_mean_dtr_change_factors"
     )
     expect_identical(
         rebuilt@meta$method@recipe$policy,

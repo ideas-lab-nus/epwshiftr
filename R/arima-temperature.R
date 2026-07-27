@@ -3,7 +3,7 @@
 # The first Arima implementation isolates the published additive temperature
 # path. Other variables use different additive or multiplicative equations and
 # require their own units, zero handling, and hourly aggregation contracts.
-EPW_MORPH_ARIMA_TEMPERATURE_METHODS <- c(tdb = "arima_additive")
+EPW_MORPH_ARIMA_TEMPERATURE_METHODS <- c(tdb = "percentile_additive")
 
 # Dry-bulb temperature consumes daily mean tas. Humidity fields are preserved
 # or physically closed after the same daily factor reaches every hourly row.
@@ -16,10 +16,10 @@ EPW_MORPH_ARIMA_TEMPERATURE_RULES <- data.table::data.table(
     ),
     variable_id = c("tas", NA_character_, NA_character_),
     optional_variable_id = NA_character_,
-    method = c("arima_additive", "policy", "policy"),
+    method = c("percentile_additive", "policy", "policy"),
     required = c(TRUE, FALSE, FALSE),
     derived = c(FALSE, TRUE, TRUE),
-    method_choices = list("arima_additive", "policy", "policy")
+    method_choices = list("percentile_additive", "policy", "policy")
 )
 
 # Arima fixes the change-function smoother at a nine-point moving mean repeated
@@ -635,8 +635,8 @@ arima__output_write <- function(data, inputs, context, options, stages) {
     )
 }
 
-# Define seven Arima stages so its monthly CDF signal and inherited hourly
-# sequence can be replaced independently in later controlled comparisons.
+# Define seven method-neutral stages so the monthly percentile-change signal
+# and inherited hourly sequence can be replaced independently in comparisons.
 arima__component_specs <- function() {
     complete_inputs <- arima__temperature_inputs()
     template <- complete_inputs$weather_template
@@ -652,71 +652,71 @@ arima__component_specs <- function() {
     )
     list(
         preprocess = component__spec(
-            name = "arima_temperature_inputs",
+            name = "monthly_percentile_temperature_inputs",
             stage = "preprocess",
-            label = "Arima temperature input normalization",
+            label = "Monthly percentile-temperature input normalization",
             required_inputs = complete_inputs,
             input_kinds = "role_inputs",
-            output_kinds = "arima_temperature_preprocessed",
+            output_kinds = "monthly_percentile_temperature_preprocessed",
             scopes = "multivariate",
             operations = list(apply = arima__preprocess_apply)
         ),
         calendar = component__spec(
-            name = "arima_monthly_distributions",
+            name = "monthly_temperature_distributions",
             stage = "calendar",
-            label = "Arima native-calendar monthly distributions",
+            label = "Native-calendar monthly temperature distributions",
             required_inputs = complete_inputs,
-            input_kinds = "arima_temperature_preprocessed",
-            output_kinds = "arima_monthly_temperature_samples",
+            input_kinds = "monthly_percentile_temperature_preprocessed",
+            output_kinds = "monthly_temperature_samples",
             scopes = "multivariate",
             operations = list(apply = arima__calendar_apply)
         ),
         signal = signal__component(
-            name = "arima_temperature_change_function",
-            label = "Arima percentile-dependent temperature change",
+            name = "percentile_temperature_change_function",
+            label = "Percentile-dependent temperature change",
             required_inputs = complete_inputs,
-            input_kinds = "arima_monthly_temperature_samples",
-            output_kinds = "arima_daily_temperature_factors",
+            input_kinds = "monthly_temperature_samples",
+            output_kinds = "daily_percentile_temperature_factors",
             scopes = "multivariate",
             profiles = list(profile),
             apply_group = arima__signal_apply_group
         ),
         sequence = component__spec(
-            name = "arima_preserve_tmy_sequence",
+            name = "preserve_percentile_tmy_sequence",
             stage = "sequence",
-            label = "Preserve baseline TMY sequence for Arima",
+            label = "Preserve baseline TMY percentile sequence",
             required_inputs = list(weather_template = template),
-            input_kinds = "arima_daily_temperature_factors",
-            output_kinds = "arima_temperature_sequence",
+            input_kinds = "daily_percentile_temperature_factors",
+            output_kinds = "percentile_temperature_sequence",
             scopes = "multivariate",
             operations = list(generate = arima__sequence_generate)
         ),
         hourly = component__spec(
-            name = "arima_daily_additive_temperature",
+            name = "daily_percentile_temperature_shift",
             stage = "hourly",
-            label = "Arima daily additive hourly temperature",
+            label = "Daily percentile-dependent temperature shift",
             required_inputs = list(weather_template = template),
-            input_kinds = "arima_temperature_sequence",
-            output_kinds = "arima_temperature_hourly",
+            input_kinds = "percentile_temperature_sequence",
+            output_kinds = "percentile_temperature_hourly",
             scopes = "multivariate",
             operations = list(reconstruct = arima__hourly_reconstruct)
         ),
         physics = component__spec(
-            name = "arima_temperature_physical_policy",
+            name = "percentile_temperature_physical_policy",
             stage = "physics",
-            label = "Arima temperature physical policy",
+            label = "Percentile-temperature physical policy",
             required_inputs = list(weather_template = template),
-            input_kinds = "arima_temperature_hourly",
-            output_kinds = "arima_temperature_weather",
+            input_kinds = "percentile_temperature_hourly",
+            output_kinds = "percentile_temperature_weather",
             scopes = "multivariate",
             operations = list(apply = arima__physics_apply)
         ),
         output = component__spec(
-            name = "arima_temperature_epw_result",
+            name = "percentile_temperature_epw_result",
             stage = "output",
-            label = "Arima temperature EPW result",
+            label = "Percentile-temperature EPW result",
             required_inputs = list(weather_template = template),
-            input_kinds = "arima_temperature_weather",
+            input_kinds = "percentile_temperature_weather",
             output_kinds = "epw_morph_result",
             scopes = "multivariate",
             operations = list(write = arima__output_write)
@@ -724,8 +724,8 @@ arima__component_specs <- function() {
     )
 }
 
-# Register Arima components once without replacing process-local component
-# implementations already stored under the same stable keys.
+# Register the monthly percentile-temperature components once without replacing
+# process-local implementations already stored under the same stable keys.
 arima__register_components <- function() {
     components <- arima__component_specs()
     for (stage in names(components)) {
@@ -741,17 +741,18 @@ arima__register_components <- function() {
     invisible(NULL)
 }
 
-# Compose the temperature-focused Arima recipe from its seven declared stages.
+# Compose the temperature-focused Arima recipe from method-neutral stages while
+# retaining its publication identity at the complete-recipe boundary.
 arima__pipeline <- function() {
     arima__register_components()
     pipeline__spec(list(
-        preprocess = "arima_temperature_inputs",
-        calendar = "arima_monthly_distributions",
-        signal = "arima_temperature_change_function",
-        sequence = "arima_preserve_tmy_sequence",
-        hourly = "arima_daily_additive_temperature",
-        physics = "arima_temperature_physical_policy",
-        output = "arima_temperature_epw_result"
+        preprocess = "monthly_percentile_temperature_inputs",
+        calendar = "monthly_temperature_distributions",
+        signal = "percentile_temperature_change_function",
+        sequence = "preserve_percentile_tmy_sequence",
+        hourly = "daily_percentile_temperature_shift",
+        physics = "percentile_temperature_physical_policy",
+        output = "percentile_temperature_epw_result"
     ))
 }
 

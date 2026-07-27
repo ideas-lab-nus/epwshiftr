@@ -34,7 +34,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_daily_btws",
     "eames_monthly_temperature",
     "ek_daily_factors",
-    "arima_rank_qm",
+    "monthly_percentile_temperature",
     "sobie_curry_daily"
 )
 
@@ -602,7 +602,7 @@ recipe__default_specs <- function() {
         ),
         epwshiftr_daily_btws = recipe__spec(
             name = "epwshiftr_daily_btws",
-            label = "Daily CMIP6 signal with Eames BTWS projection",
+            label = "Daily CMIP6 signal with BTWS projection",
             backend = "daily_temperature_btws",
             implementation = "pipeline",
             source = list(
@@ -773,9 +773,9 @@ recipe__default_specs <- function() {
             ),
             status = "comparison"
         ),
-        arima_rank_qm = recipe__spec(
-            name = "arima_rank_qm",
-            label = "Arima month-wise temperature quantile mapping",
+        monthly_percentile_temperature = recipe__spec(
+            name = "monthly_percentile_temperature",
+            label = "Monthly percentile-dependent temperature change",
             backend = "arima_temperature",
             implementation = "pipeline",
             source = list(

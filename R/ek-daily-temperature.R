@@ -3,7 +3,7 @@
 # The first Ek implementation is deliberately temperature-only. The paper's
 # prose and Table 2 disagree for wind and cloud, so those variables remain
 # unsupported until their transformations can be reproduced without invention.
-EPW_MORPH_EK_DAILY_TEMPERATURE_METHODS <- c(tdb = "ek_combined")
+EPW_MORPH_EK_DAILY_TEMPERATURE_METHODS <- c(tdb = "daily_mean_dtr")
 
 # Dry-bulb temperature uses paired daily extrema. Humidity fields are either
 # preserved as in the temperature-only comparison or closed by policy later.
@@ -16,10 +16,10 @@ EPW_MORPH_EK_DAILY_TEMPERATURE_RULES <- data.table::data.table(
     ),
     variable_id = c("tasmin,tasmax", NA_character_, NA_character_),
     optional_variable_id = NA_character_,
-    method = c("ek_combined", "policy", "policy"),
+    method = c("daily_mean_dtr", "policy", "policy"),
     required = c(TRUE, FALSE, FALSE),
     derived = c(FALSE, TRUE, TRUE),
-    method_choices = list("ek_combined", "policy", "policy")
+    method_choices = list("daily_mean_dtr", "policy", "policy")
 )
 
 # Ek does not publish a smoothing window. These options therefore contain only
@@ -372,12 +372,12 @@ ek__calendar_apply <- function(data, inputs, context, options) {
     )
     data.table::set(
         future,
-        j = "ek_tolerance",
+        j = "daily_mean_dtr_tolerance",
         value = rep.int(data$options$tolerance, nrow(future))
     )
     data.table::set(
         historical,
-        j = "ek_tolerance",
+        j = "daily_mean_dtr_tolerance",
         value = rep.int(data$options$tolerance, nrow(historical))
     )
     list(signal__group(
@@ -393,7 +393,9 @@ ek__calendar_apply <- function(data, inputs, context, options) {
 # Calculate the Ek mean shift and DTR-relative-change signal after all calendar
 # interpretation has been completed by the preceding component.
 ek__signal_apply_group <- function(inputs, settings, key) {
-    tolerance <- unique(inputs$model_future[["ek_tolerance"]])
+    tolerance <- unique(
+        inputs$model_future[["daily_mean_dtr_tolerance"]]
+    )
     if (length(tolerance) != 1L || !is.finite(tolerance)) {
         cli::cli_abort(
             "Ek calendar output must retain one finite numerical tolerance."
@@ -478,7 +480,7 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
                 factor[["dtr_status"]],
                 "adjusted"
             )) {
-                "ek_combined"
+                "daily_mean_dtr"
             } else {
                 "mean_shift_zero_historical_dtr"
             }
@@ -789,71 +791,71 @@ ek__component_specs <- function() {
 
     list(
         preprocess = component__spec(
-            name = "ek_daily_temperature_inputs",
+            name = "daily_extrema_change_inputs",
             stage = "preprocess",
-            label = "Ek daily temperature input normalization",
+            label = "Daily extrema-change input normalization",
             required_inputs = complete_inputs,
             input_kinds = "role_inputs",
-            output_kinds = "ek_daily_temperature_preprocessed",
+            output_kinds = "daily_extrema_change_preprocessed",
             scopes = "multivariate",
             operations = list(apply = ek__preprocess_apply)
         ),
         calendar = component__spec(
-            name = "ek_daily_calendar_baselines",
+            name = "daily_extrema_climatology",
             stage = "calendar",
-            label = "Ek day-of-year climate baselines",
+            label = "Daily extrema climatology",
             required_inputs = complete_inputs,
-            input_kinds = "ek_daily_temperature_preprocessed",
-            output_kinds = "ek_daily_temperature_climatologies",
+            input_kinds = "daily_extrema_change_preprocessed",
+            output_kinds = "daily_extrema_climatologies",
             scopes = "multivariate",
             operations = list(apply = ek__calendar_apply)
         ),
         signal = signal__component(
-            name = "ek_daily_temperature_factors",
-            label = "Ek daily temperature change factors",
+            name = "daily_mean_dtr_change_factors",
+            label = "Daily mean/DTR change factors",
             required_inputs = complete_inputs,
-            input_kinds = "ek_daily_temperature_climatologies",
-            output_kinds = "ek_daily_temperature_targets",
+            input_kinds = "daily_extrema_climatologies",
+            output_kinds = "daily_mean_dtr_targets",
             scopes = "multivariate",
             profiles = profiles,
             apply_group = ek__signal_apply_group
         ),
         sequence = component__spec(
-            name = "ek_preserve_epw_sequence",
+            name = "preserve_daily_mean_dtr_sequence",
             stage = "sequence",
-            label = "Preserve baseline EPW sequence for Ek",
+            label = "Preserve baseline EPW sequence for daily mean/DTR factors",
             required_inputs = list(weather_template = template),
-            input_kinds = "ek_daily_temperature_targets",
-            output_kinds = "ek_daily_temperature_sequence",
+            input_kinds = "daily_mean_dtr_targets",
+            output_kinds = "daily_mean_dtr_sequence",
             scopes = "multivariate",
             operations = list(generate = ek__sequence_generate)
         ),
         hourly = component__spec(
-            name = "ek_daily_combined_temperature",
+            name = "daily_mean_dtr_shift_stretch",
             stage = "hourly",
-            label = "Ek daily shift-and-stretch temperature",
+            label = "Daily mean/DTR shift-and-stretch temperature",
             required_inputs = list(weather_template = template),
-            input_kinds = "ek_daily_temperature_sequence",
-            output_kinds = "ek_daily_temperature_hourly",
+            input_kinds = "daily_mean_dtr_sequence",
+            output_kinds = "daily_mean_dtr_hourly",
             scopes = "multivariate",
             operations = list(reconstruct = ek__hourly_reconstruct)
         ),
         physics = component__spec(
-            name = "ek_temperature_physical_policy",
+            name = "daily_mean_dtr_physical_policy",
             stage = "physics",
-            label = "Ek temperature physical policy",
+            label = "Daily mean/DTR temperature physical policy",
             required_inputs = list(weather_template = template),
-            input_kinds = "ek_daily_temperature_hourly",
-            output_kinds = "ek_daily_temperature_weather",
+            input_kinds = "daily_mean_dtr_hourly",
+            output_kinds = "daily_mean_dtr_weather",
             scopes = "multivariate",
             operations = list(apply = ek__physics_apply)
         ),
         output = component__spec(
-            name = "ek_daily_temperature_epw_result",
+            name = "daily_mean_dtr_epw_result",
             stage = "output",
-            label = "Ek daily temperature EPW result",
+            label = "Daily mean/DTR EPW result",
             required_inputs = list(weather_template = template),
-            input_kinds = "ek_daily_temperature_weather",
+            input_kinds = "daily_mean_dtr_weather",
             output_kinds = "epw_morph_result",
             scopes = "multivariate",
             operations = list(write = ek__output_write)
@@ -861,8 +863,8 @@ ek__component_specs <- function() {
     )
 }
 
-# Register Ek components once without replacing process-local implementations
-# already stored under the same stable component keys.
+# Register the daily mean/DTR components once without replacing process-local
+# implementations already stored under the same stable component keys.
 ek__register_components <- function() {
     components <- ek__component_specs()
     for (stage in names(components)) {
@@ -878,17 +880,18 @@ ek__register_components <- function() {
     invisible(NULL)
 }
 
-# Compose the temperature-focused Ek recipe from its seven declared stages.
+# Compose the temperature-focused Ek recipe from method-neutral stages while
+# retaining the publication identity at the complete-recipe boundary.
 ek__pipeline <- function() {
     ek__register_components()
     pipeline__spec(list(
-        preprocess = "ek_daily_temperature_inputs",
-        calendar = "ek_daily_calendar_baselines",
-        signal = "ek_daily_temperature_factors",
-        sequence = "ek_preserve_epw_sequence",
-        hourly = "ek_daily_combined_temperature",
-        physics = "ek_temperature_physical_policy",
-        output = "ek_daily_temperature_epw_result"
+        preprocess = "daily_extrema_change_inputs",
+        calendar = "daily_extrema_climatology",
+        signal = "daily_mean_dtr_change_factors",
+        sequence = "preserve_daily_mean_dtr_sequence",
+        hourly = "daily_mean_dtr_shift_stretch",
+        physics = "daily_mean_dtr_physical_policy",
+        output = "daily_mean_dtr_epw_result"
     ))
 }
 
