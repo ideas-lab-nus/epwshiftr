@@ -105,7 +105,7 @@ algorithms and must not be implemented as duplicated end-to-end pipelines.
 As of 2026-07-25, the identified inventory contains:
 
 - 12 complete future-weather recipes;
-- the eight univariate methods implemented by ibicus;
+- eight univariate bias-adjustment methods catalogued by ibicus;
 - six additional signal, preprocessing, or multivariable method families;
 - eight sequence methods;
 - ten daily-to-hourly or sub-daily-to-hourly methods.
@@ -163,7 +163,7 @@ pairing climate-model dates with TMY or EPW dates.
 | Wang (2023) | Retain future model decades, interpolate to hourly data, and bias-adjust the resulting sequence | Does not pair future dates to a TMY; a general conversion from every CF calendar to EnergyPlus dates is not documented |
 | Hosseini (2021) | Treat each future climate-model year as a realization and reconstruct its hours | Does not pair model days with a baseline TMY day; calendar harmonization is not described in the accessible method |
 | Bass fTMY (2022) | Use an already-downscaled daily dataset, reconstruct hours, and select representative months | Calendar handling is absorbed by upstream preprocessing and TMY construction |
-| ibicus seasonal windows | Extract day of year from standard or `cftime` objects and use circular running windows | Current source uses a 366-day circular boundary and is not equivalent to normalizing arbitrary year lengths to one annual phase |
+| Circular day-of-year windows | The ibicus implementation extracts day of year from standard or `cftime` objects and uses circular running windows | Its current source uses a 366-day circular boundary and is not equivalent to normalizing arbitrary year lengths to one annual phase |
 | epwshiftr | Preserve the source CF calendar, map each sample to annual phase, then estimate a common 365-day climatology | Explicitly supports comparison across different source-calendar lengths |
 
 The absence of calendar details in a publication is not evidence that its
@@ -190,7 +190,7 @@ API names.
 | `sobie_curry_daily` | Sobie and Curry (2025) | Daily mean/DTR and thermodynamic factors with 21-day smoothing | Inherit CWEC/EPW hourly sequence | Implemented in PR #147; harmonized closure in PR #149 |
 | `epwshiftr_daily_btws` | Composite comparison using Eames et al. (2024) | Existing epwshiftr daily CMIP6 mean/min/max targets | Published day-wise bounded temperature weighted stretch | Implemented; tracked in #150 |
 | `epwshiftr_daily_power` | Current epwshiftr daily method | Circular daily mean/min/max climatologies | Day-wise \(x^p\) constrained projection | Implemented through PR #141 |
-| `arima_rank_qm` | Arima et al. (2024) | Month-wise daily CDF and percentile-dependent change function | Apply the selected daily factor to every hour of the TMY day | Temperature-focused implementation in PR #157 |
+| `monthly_percentile_temperature` | Arima et al. (2024) | Month-wise daily CDF and percentile-dependent change function | Apply the selected daily factor to every hour of the TMY day | Temperature-focused implementation in PR #157 |
 | `wang_subdaily_qdm` | Wang et al. (2023) | KDE-QDM with a three-month moving window | Preserve future decade; interpolate primarily three-hourly model data to hours | Not implemented |
 | `hosseini_knn_rf` | Hosseini et al. (2021) | QQ bias correction | KNN weather-type classification and random-forest hourly reconstruction | Not implemented |
 | `bass_ftmy` | Bass et al. (2022) | Downscaled daily future climate | MTCLIM hourly reconstruction followed by representative-month TMY selection | Not implemented |
@@ -204,16 +204,17 @@ or undocumented behavior must not be reconstructed by copying.
 
 ## 6. Univariate climate-signal methods
 
-### 6.1 The eight ibicus methods
+### 6.1 Selected univariate bias-adjustment methods
 
-ibicus currently implements eight peer-reviewed univariate methods. All eight
-must be available to the comparison workflow through a common epwshiftr signal
-interface.
+The first comparison set contains eight peer-reviewed univariate methods that
+are also implemented by ibicus. The method names refer to the published
+algorithms, not to ibicus. All eight must be available through a common
+epwshiftr signal interface.
 
 | Method | Core behavior | Important comparison note |
 |---|---|---|
 | `LinearScaling` | Correct the model mean additively or multiplicatively using the reference-period bias | Transforms future model output; not the same output semantics as delta change |
-| `DeltaChange` | Transfer the modeled historical-to-future change onto observations | Produces modified observations and is the ibicus method closest to morphing |
+| `DeltaChange` | Transfer the modeled historical-to-future change onto observations | Produces modified observations and is the selected method closest to morphing |
 | `QuantileMapping` | Map modeled reference quantiles to observed reference quantiles | May alter the modeled future trend |
 | `QuantileDeltaMapping` | Correct quantiles while transferring modeled quantile changes | Additive form suits temperature; multiplicative form suits positive quantities |
 | `ScaledDistributionMapping` | Parametric distribution mapping with magnitude and event-likelihood changes | Designed to preserve raw modeled changes in distribution |
@@ -221,7 +222,7 @@ interface.
 | `ECDFM` | Apply equidistant quantile corrections to future values | Trend-preserving quantile-mapping family |
 | `ISIMIP` | Generate pseudo-future observations and map future model values onto them | Implements the ISIMIP3BASD family with variable-specific bounds and trend rules |
 
-`DeltaChange` is included by ibicus for comparison even though its output is a
+`DeltaChange` remains in the comparison set even though its output is a
 modified observational climatology rather than a bias-adjusted future model
 series.
 
@@ -255,7 +256,7 @@ reconstruction policy.
 | QQ bias correction | Quantile-to-quantile reference correction | Treat as a configured QM variant when reproducing Hosseini |
 | BCCAQv2 | Bias correction and constructed analogues with QDM reordering | Upstream method used to create the CanDCS-U6 temperature input used by Sobie-Curry |
 | Daily BCSD | Daily bias correction and spatial disaggregation | Upstream method used by NEX-GDDP-CMIP6 |
-| MBCn | N-dimensional multivariate bias correction | Separate multivariable backend; not one of the eight ibicus methods |
+| MBCn | N-dimensional multivariate bias correction | Separate multivariable backend outside the initial univariate comparison set |
 | Copula correction | Correct or model inter-variable dependence | Candidate multivariable backend |
 | SBCK | Collection of multivariate and spatial bias-correction methods | External reference suite, not one individual method |
 
@@ -299,7 +300,7 @@ selected source days, blocks, regimes, or model dates in provenance.
 |---|---|---|
 | Belcher shift/stretch/combined | Monthly change factors and baseline hours | Baseline order and transformed monthly properties |
 | Sobie mean/DTR anomaly transform | Daily mean and DTR changes | Daily mean and DTR; baseline hourly timing |
-| Eames BTWS | Mean/min/max changes and baseline day | Bounded daily profile and requested mean/min/max when feasible |
+| BTWS | Mean/min/max changes and baseline day | Bounded daily profile and requested mean/min/max when feasible |
 | epwshiftr \(x^p\) projection | Daily mean/min/max changes and baseline day | Exact daily mean/min/max and baseline rank/timing |
 | Linear temporal interpolation | Sub-daily climate-model values | Model sequence and interpolated hourly values |
 | MTCLIM | Daily meteorological inputs and site information | Model-based diurnal meteorology |
@@ -587,7 +588,7 @@ external or black-box comparator. Do not invent missing behavior.
 
 1. Sobie-Curry daily factors and 21-day smoothing. Implemented in PR #147,
    with harmonized humidity closure added in PR #149.
-2. Eames BTWS hourly projection and its documented mean-shift fallback.
+2. BTWS hourly projection and its documented mean-shift fallback.
    Implemented as the hourly component of the composite
    `epwshiftr_daily_btws` recipe; tracked in #150.
 3. Eames monthly temperature signal. Implemented as the temperature-only
@@ -599,7 +600,7 @@ external or black-box comparator. Do not invent missing behavior.
 These methods provide the most direct tests of the current daily signal and
 \(x^p\) projection.
 
-### 13.3 Add all eight ibicus signal methods
+### 13.3 Add all selected univariate signal methods
 
 1. Specify published equations, defaults, bounds, and supported variables.
 2. Add native R implementations behind the common signal interface.
@@ -648,14 +649,14 @@ Update this table as work is merged.
 | Recipe registry and execution policies | Implemented in PR #145 |
 | Sobie-Curry faithful recipe | Implemented in PR #147 |
 | Sobie-Curry harmonized humidity closure | Implemented in PR #149 |
-| Eames BTWS hourly component and daily CMIP6 composite recipe | Implemented in PR #151 |
+| BTWS hourly component and daily CMIP6 composite recipe | Implemented in PR #151 |
 | Eames monthly temperature recipe | Implemented in PR #153 |
 | Eames non-temperature transformations | Not started |
 | Ek daily temperature factors | Implemented in PR #155 |
-| Arima rank/QM | Implemented in PR #157 |
+| Monthly percentile-temperature change (Arima et al.) | Implemented in PR #157 |
 | Native daily adjusted-series signal contract | Implemented in PR #161 |
 | Linear Scaling signal | Implemented in PR #161 |
-| Remaining seven native ibicus-compatible signal methods | Not started |
+| Remaining seven native univariate signal methods | Not started |
 | QQ/QM reproduction configuration | Not started |
 | BCCAQv2 reference-data/tool adapter | Not started |
 | Daily BCSD reference-data/tool adapter | Not started |

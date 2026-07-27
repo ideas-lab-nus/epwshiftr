@@ -472,7 +472,7 @@ daily__cyclic_previous <- function(value) {
 daily__project_temperature <- function(
     template, targets, value = "value", day = "target_day", hour = "hour",
     by = character(), tolerance = 1e-8,
-    method = c("power", "eames_btws")
+    method = c("power", "btws")
 ) {
     checkmate::assert_data_frame(template)
     checkmate::assert_data_frame(targets)

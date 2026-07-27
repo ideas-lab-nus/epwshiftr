@@ -73,7 +73,7 @@ btws_test__context <- function(
     )
 }
 
-test_that("Eames BTWS component and composite recipe expose strict contracts", {
+test_that("BTWS component and composite recipe expose strict contracts", {
     expect_true("daily_temperature_btws" %in% epw_morph_backends())
     expect_true("epwshiftr_daily_btws" %in% epw_morph_recipes()[["name"]])
 
@@ -95,7 +95,7 @@ test_that("Eames BTWS component and composite recipe expose strict contracts", {
     expect_identical(recipe$recipe_spec, "epwshiftr_daily_btws")
     expect_identical(
         recipe$components$hourly,
-        "eames_btws_temperature"
+        "btws_temperature_projection"
     )
     expect_identical(spec@source$type, "combined_prior_methods")
     expect_match(spec@source$citation, "combined")
@@ -128,7 +128,7 @@ test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
         result$parts$component_pipeline$component[
             result$parts$component_pipeline$stage == "hourly"
         ],
-        "eames_btws_temperature"
+        "btws_temperature_projection"
     )
     expect_lt(max(abs(result$factors$mean_closure_error)), 1e-8)
     expect_lt(max(abs(result$factors$minimum_closure_error)), 1e-8)
@@ -138,10 +138,10 @@ test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
     expect_true(all(is.finite(result$factors$btws_m)))
     expect_true(all(is.finite(result$factors$btws_n)))
     expect_true(all(c(
-        "eames_btws_scale",
-        "eames_btws_m",
-        "eames_btws_n",
-        "eames_btws_fallback_reason"
+        "btws_scale",
+        "btws_m",
+        "btws_n",
+        "btws_fallback_reason"
     ) %in% names(weather)))
     expect_false(
         "daily_temperature_shape_exponent" %in% names(weather)
@@ -199,7 +199,7 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
     )
     expect_identical(
         rebuilt@meta$method@recipe$components$hourly,
-        "eames_btws_temperature"
+        "btws_temperature_projection"
     )
     expect_silent(shift__validate_background_plan(plan))
 })
@@ -223,7 +223,7 @@ test_that("daily temperature reconstruction selects one hourly component", {
     )
     expect_identical(
         btws@recipe$components$hourly,
-        "eames_btws_temperature"
+        "btws_temperature_projection"
     )
     expect_error(
         daily_temperature(reference, reconstruction = "unknown"),

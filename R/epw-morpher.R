@@ -502,9 +502,9 @@ morpher__default_backend_specs <- function() {
         ),
         daily_temperature_btws = EpwMorphBackend$new(
             name = "daily_temperature_btws",
-            label = "Daily temperature signal with Eames BTWS hourly projection",
+            label = "Daily temperature signal with BTWS hourly projection",
             methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
-            method_choices = "eames_btws",
+            method_choices = "btws",
             rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline("btws")
@@ -513,7 +513,7 @@ morpher__default_backend_specs <- function() {
             name = "eames_monthly_temperature",
             label = "Eames monthly temperature signal with BTWS projection",
             methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
-            method_choices = "eames_btws",
+            method_choices = "btws",
             rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
             requires_reference = TRUE,
             pipeline = eames__monthly_temperature_pipeline()
@@ -522,7 +522,7 @@ morpher__default_backend_specs <- function() {
             name = "ek_daily_temperature",
             label = "Ek daily temperature change-factor workflow",
             methods = EPW_MORPH_EK_DAILY_TEMPERATURE_METHODS,
-            method_choices = "ek_combined",
+            method_choices = "daily_mean_dtr",
             rules = EPW_MORPH_EK_DAILY_TEMPERATURE_RULES,
             requires_reference = TRUE,
             pipeline = ek__pipeline()
@@ -531,7 +531,7 @@ morpher__default_backend_specs <- function() {
             name = "arima_temperature",
             label = "Arima month-wise quantile-mapping temperature workflow",
             methods = EPW_MORPH_ARIMA_TEMPERATURE_METHODS,
-            method_choices = "arima_additive",
+            method_choices = "percentile_additive",
             rules = EPW_MORPH_ARIMA_TEMPERATURE_RULES,
             requires_reference = TRUE,
             pipeline = arima__pipeline()

@@ -1,4 +1,4 @@
-# Eames BTWS hourly component {{{
+# BTWS hourly temperature component {{{
 
 # Reconstruct every EPW day with the BTWS projector while retaining the shared
 # target, boundary, and physical-closure payload used by daily temperature.
@@ -15,8 +15,8 @@ btws__hourly_reconstruct <- function(
     )
 }
 
-# Define the one stage that differs from the existing daily-power pipeline.
-# Its kind contract deliberately matches the shared physics component.
+# Define the reusable BTWS projection stage independently of the paper or
+# complete recipe that supplies its daily temperature targets.
 btws__hourly_component <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -25,9 +25,9 @@ btws__hourly_component <- function() {
         calendars = "gregorian"
     )
     component__spec(
-        name = "eames_btws_temperature",
+        name = "btws_temperature_projection",
         stage = "hourly",
-        label = "Eames bounded temperature weighted stretch",
+        label = "Bounded temperature weighted stretch",
         required_inputs = list(weather_template = template),
         input_kinds = "daily_temperature_sequence",
         output_kinds = "hourly_temperature_projected",
@@ -38,8 +38,8 @@ btws__hourly_component <- function() {
     )
 }
 
-# Register the BTWS hourly component once without replacing another process-
-# local implementation under the same stable registry key.
+# Register the method-neutral BTWS component once without replacing another
+# process-local implementation under the same stable registry key.
 btws__register_hourly_component <- function() {
     component <- btws__hourly_component()
     key <- component__registry_key(component@stage, component@name)

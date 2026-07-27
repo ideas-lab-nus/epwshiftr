@@ -131,7 +131,7 @@ epw_morph_recipe_spec("epwshiftr_daily_power")
 epw_morph_recipe_spec("epwshiftr_daily_btws")
 epw_morph_recipe_spec("eames_monthly_temperature")
 epw_morph_recipe_spec("ek_daily_factors")
-epw_morph_recipe_spec("arima_rank_qm")
+epw_morph_recipe_spec("monthly_percentile_temperature")
 ```
 
 The initial catalog distinguishes the following complete methods:
@@ -141,10 +141,10 @@ The initial catalog distinguishes the following complete methods:
 | `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
 | `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
-| `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the Eames BTWS hourly projection |
+| `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the BTWS hourly projection |
 | `eames_monthly_temperature` | `harmonized` | Seven-stage pipeline | Eames monthly mean/average-daily-extrema changes and BTWS, with monthly statistics derived from daily CMIP6 inputs |
 | `ek_daily_factors` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Ek day-of-year mean/DTR factors and combined hourly temperature transform without an added smoothing window |
-| `arima_rank_qm` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Arima month-wise model CDF change functions selected by each TMY day's percentile in a multi-year observed CDF |
+| `monthly_percentile_temperature` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Arima month-wise model CDF change functions selected by each TMY day's percentile in a multi-year observed CDF |
 | `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
 
 Create a configured recipe by its stable catalog name. The selected policy,
@@ -172,8 +172,8 @@ ek_daily <- epw_morph_recipe(
     "ek_daily_factors",
     policy = "paper_faithful"
 )
-arima_rank_qm <- epw_morph_recipe(
-    "arima_rank_qm",
+monthly_percentile_temperature <- epw_morph_recipe(
+    "monthly_percentile_temperature",
     policy = "paper_faithful"
 )
 sobie_curry <- epw_morph_recipe(

@@ -187,11 +187,11 @@ test_that("Eames recipe exposes the adapted monthly temperature boundary", {
     expect_identical(recipe$policy, "harmonized")
     expect_identical(
         recipe$components$signal,
-        "eames_monthly_temperature_delta"
+        "monthly_mean_extrema_changes"
     )
     expect_identical(
         recipe$components$hourly,
-        "eames_btws_temperature"
+        "btws_temperature_projection"
     )
     expect_identical(spec@source$type, "adapted_publication")
     expect_match(spec@source$signal_note, "daily CMIP6")
@@ -235,7 +235,7 @@ test_that("Eames monthly temperature closes a complete future EPW year", {
         result$parts$component_pipeline$component[
             result$parts$component_pipeline$stage == "signal"
         ],
-        "eames_monthly_temperature_delta"
+        "monthly_mean_extrema_changes"
     )
     expect_lt(max(abs(result$factors$mean_closure_error)), 1e-8)
     expect_lt(max(abs(result$factors$minimum_closure_error)), 1e-8)
@@ -281,7 +281,7 @@ test_that("Eames monthly temperature records infeasible-day fallback", {
         !is.na(result$factors$btws_fallback_reason)
     ))
     expect_true(
-        "eames_btws_mean_shift_fallback" %in% result$diagnostics$code
+        "btws_mean_shift_fallback" %in% result$diagnostics$code
     )
 })
 
@@ -353,7 +353,7 @@ test_that("Eames public method survives dry-run plan reconstruction", {
     )
     expect_identical(
         rebuilt@meta$method@recipe$components$signal,
-        "eames_monthly_temperature_delta"
+        "monthly_mean_extrema_changes"
     )
     expect_silent(shift__validate_background_plan(plan))
 })

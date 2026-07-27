@@ -78,7 +78,7 @@ arima_test__context <- function(
         reference_climate = historical,
         observed_reference = observed,
         recipe = epw_morph_recipe(
-            "arima_rank_qm",
+            "monthly_percentile_temperature",
             policy = policy
         )
     )
@@ -86,9 +86,11 @@ arima_test__context <- function(
 
 test_that("Arima recipe registers all four required input roles", {
     expect_true("arima_temperature" %in% epw_morph_backends())
-    expect_true("arima_rank_qm" %in% epw_morph_recipes()[["name"]])
-    recipe <- epw_morph_recipe("arima_rank_qm")
-    spec <- epw_morph_recipe_spec("arima_rank_qm")
+    expect_true(
+        "monthly_percentile_temperature" %in% epw_morph_recipes()[["name"]]
+    )
+    recipe <- epw_morph_recipe("monthly_percentile_temperature")
+    spec <- epw_morph_recipe_spec("monthly_percentile_temperature")
 
     expect_identical(recipe$policy, "paper_faithful")
     expect_identical(
@@ -105,7 +107,7 @@ test_that("Arima recipe registers all four required input roles", {
     expect_identical(epw_morph_variables(recipe), "tas")
     expect_identical(
         recipe$components$signal,
-        "arima_temperature_change_function"
+        "percentile_temperature_change_function"
     )
     expect_identical(
         morpher__recipe_required_frequency(recipe),
@@ -286,7 +288,7 @@ test_that("Arima public method persists both reference roles", {
 
     expect_identical(
         rebuilt@meta$method@recipe$recipe_spec,
-        "arima_rank_qm"
+        "monthly_percentile_temperature"
     )
     expect_identical(
         rebuilt@meta$method@observed_reference@plan_id,
@@ -370,7 +372,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe("arima_rank_qm")
+        recipe = epw_morph_recipe("monthly_percentile_temperature")
     )
     workflow <- morpher$workflow(
         plan_id = plans$future,

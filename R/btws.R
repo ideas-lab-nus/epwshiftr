@@ -1,7 +1,7 @@
-# Eames bounded temperature weighted stretch {{{
+# Bounded temperature weighted stretch {{{
 
-# Evaluate the Eames transfer function g = x^m (1 - x)^n while keeping the
-# normalized daily minimum and maximum fixed at zero and one.
+# Evaluate the published BTWS transfer function g = x^m (1 - x)^n while
+# keeping the normalized daily minimum and maximum fixed at zero and one.
 btws__transfer_weight <- function(normalized, m, n) {
     weight <- numeric(length(normalized))
     interior <- normalized > 0 & normalized < 1
@@ -306,7 +306,7 @@ btws__project_temperature <- function(
         hour = hour,
         by = by,
         tolerance = tolerance,
-        method = "eames_btws"
+        method = "btws"
     )
 }
 

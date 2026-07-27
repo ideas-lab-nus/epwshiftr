@@ -385,8 +385,8 @@ eames__monthly_temperature_signal_apply_group <- function(
     )
 }
 
-# Define the three Eames-specific stages. Sequence, hourly reconstruction,
-# physical closure, and output remain shared stable components.
+# Define the three monthly mean/extrema stages. Sequence, hourly
+# reconstruction, physical closure, and output remain shared components.
 eames__monthly_temperature_component_specs <- function() {
     complete_inputs <- eames__monthly_temperature_inputs()
     reference <- "https://doi.org/10.1177/01436244231218861"
@@ -411,23 +411,23 @@ eames__monthly_temperature_component_specs <- function() {
 
     list(
         preprocess = component__spec(
-            name = "eames_monthly_temperature_inputs",
+            name = "monthly_mean_extrema_inputs",
             stage = "preprocess",
-            label = "Eames monthly temperature input normalization",
+            label = "Monthly mean/extrema input normalization",
             required_inputs = complete_inputs,
             input_kinds = "role_inputs",
-            output_kinds = "eames_monthly_temperature_preprocessed",
+            output_kinds = "monthly_mean_extrema_preprocessed",
             scopes = "multivariate",
             operations = list(
                 apply = eames__monthly_temperature_preprocess_apply
             )
         ),
         calendar = component__spec(
-            name = "eames_monthly_temperature_calendar",
+            name = "monthly_mean_extrema_climatology",
             stage = "calendar",
-            label = "Native-calendar monthly temperature climatology",
+            label = "Native-calendar monthly mean/extrema climatology",
             required_inputs = complete_inputs,
-            input_kinds = "eames_monthly_temperature_preprocessed",
+            input_kinds = "monthly_mean_extrema_preprocessed",
             output_kinds = "calendar_indexed_monthly_temperature",
             scopes = "multivariate",
             operations = list(
@@ -435,8 +435,8 @@ eames__monthly_temperature_component_specs <- function() {
             )
         ),
         signal = signal__component(
-            name = "eames_monthly_temperature_delta",
-            label = "Eames monthly temperature changes",
+            name = "monthly_mean_extrema_changes",
+            label = "Monthly mean/extrema temperature changes",
             required_inputs = complete_inputs,
             input_kinds = "calendar_indexed_monthly_temperature",
             output_kinds = "daily_temperature_targets",
@@ -447,7 +447,7 @@ eames__monthly_temperature_component_specs <- function() {
     )
 }
 
-# Register the Eames-specific stages once while preserving any explicit
+# Register the monthly mean/extrema stages once while preserving any explicit
 # process-local implementation already stored under their stable keys.
 eames__register_monthly_temperature_components <- function() {
     components <- eames__monthly_temperature_component_specs()
@@ -471,11 +471,11 @@ eames__monthly_temperature_pipeline <- function() {
     btws__register_hourly_component()
     eames__register_monthly_temperature_components()
     pipeline__spec(list(
-        preprocess = "eames_monthly_temperature_inputs",
-        calendar = "eames_monthly_temperature_calendar",
-        signal = "eames_monthly_temperature_delta",
+        preprocess = "monthly_mean_extrema_inputs",
+        calendar = "monthly_mean_extrema_climatology",
+        signal = "monthly_mean_extrema_changes",
         sequence = "preserve_epw_sequence",
-        hourly = "eames_btws_temperature",
+        hourly = "btws_temperature_projection",
         physics = "specific_humidity_closure",
         output = "daily_temperature_epw_result"
     ))
