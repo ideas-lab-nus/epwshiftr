@@ -2,6 +2,12 @@
 
 ## Breaking changes
 
+* Renamed reusable future-weather registry keys, intermediate kinds, BTWS
+  diagnostics, and method choices by the algorithms they implement rather than
+  by a reference paper or software package. The Arima et al. complete workflow
+  remains available through `arima_temperature()`, while its recipe key is now
+  `monthly_percentile_temperature` (#165).
+
 * Standalone `shift_*()` stages now carry their persisted `run_id` and
   `step_id` into the next stage automatically. The public API does not expose a
   workflow session/current-session object. Intermediate runs are `waiting`,
