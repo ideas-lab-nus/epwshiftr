@@ -46,6 +46,13 @@
 
 ## New features
 
+* Added the native R `delta_change_daily` signal component. It transfers
+  historical-to-future monthly mean changes onto the observed-reference daily
+  sequence: additively for `tas`, `tasmin`, and `tasmax`, and multiplicatively
+  for `pr`. The typed result preserves observed calendar coordinates and
+  variability while recording resolved settings, modeled monthly changes,
+  bounds, clipping, provenance, and explicit diagnostics (#163).
+
 * Added the package-native `DailyAdjustedSeries` signal contract and registered
   native R `linear_scaling_daily` component. The univariate component consumes
   distinct observed-reference, historical-model, and future-model daily
