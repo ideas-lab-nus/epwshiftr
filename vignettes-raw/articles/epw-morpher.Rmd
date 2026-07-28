@@ -500,6 +500,24 @@ interpretation. Group failures either abort or return an explicit diagnostic
 with a `NULL` result; they are never silently converted to missing numeric
 values.
 
+Three package-native standalone signals currently use this contract:
+
+| Registry name | Correction | Output backbone | Variable-profile evidence |
+|:--------------|:-----------|:----------------|:--------------------------|
+| `linear_scaling_daily` | Monthly observed-minus-model mean bias, additive for temperature and multiplicative for precipitation | `model_future` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
+| `delta_change_daily` | Monthly historical-to-future mean change, additive for temperature and multiplicative for precipitation | `observed_reference` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
+| `quantile_mapping_daily` | \(F^{-1}_{obs}(F_{hist}(x_{future}))\) in calendar-neutral circular daily windows | `model_future` | Published method-variable profiles for `tas` and `pr`; implementation-selected defaults for `hurs`, `psl`, `rlds`, `sfcWind`, `tasmin`, and `tasmax` remain experimental |
+
+`quantile_mapping_daily` uses linear empirical-CDF interpolation with
+average-rank ties, type-7 inverse quantiles, and endpoint clamping. Its default
+31-day window is selected by canonical annual phase, so 360-, 365-, and
+366-day source calendars are not paired by nominal date. Precipitation uses a
+mixed dry-day/positive-amount hurdle distribution rather than the continuous
+mapping unchanged. Dry-day randomization is controlled by a recorded seed and
+a fixed method-local generator, leaving R's global random-number state
+untouched. Bounds, sample coverage, tail use, clipping, dry-day frequencies,
+and the resolved stochastic settings are retained in result provenance.
+
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
 columns needed by `write_epw()`.

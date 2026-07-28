@@ -46,6 +46,18 @@
 
 ## New features
 
+* Added the native R `quantile_mapping_daily` signal component. It maps
+  future-model daily values through historical-model and observed-reference
+  empirical distributions in calendar-neutral circular windows, using
+  explicit tie, interpolation, tail, bound, and minimum-sample conventions.
+  Precipitation uses a mixed dry-day/positive-amount hurdle distribution with
+  deterministic group-specific randomization that leaves R's global RNG state
+  untouched. Results preserve the future-model CF-calendar sequence and record
+  resolved settings, sample coverage, tails, clipping, dry-day changes, and
+  provenance. Published method-variable profiles are limited to `tas` and
+  `pr`; implementation-selected defaults for other supported variables remain
+  experimental (#167).
+
 * Added the native R `delta_change_daily` signal component. It transfers
   historical-to-future monthly mean changes onto the observed-reference daily
   sequence: additively for `tas`, `tasmin`, and `tasmax`, and multiplicatively
