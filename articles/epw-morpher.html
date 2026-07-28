@@ -814,6 +814,65 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
+<p>Three package-native standalone signals currently use this
+contract:</p>
+<table class="table">
+<colgroup>
+<col width="21%">
+<col width="16%">
+<col width="23%">
+<col width="38%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Correction</th>
+<th align="left">Output backbone</th>
+<th align="left">Variable-profile evidence</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left"><code>linear_scaling_daily</code></td>
+<td align="left">Monthly observed-minus-model mean bias, additive for
+temperature and multiplicative for precipitation</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published defaults for <code>tas</code>,
+<code>tasmin</code>, <code>tasmax</code>, and <code>pr</code>
+</td>
+</tr>
+<tr class="even">
+<td align="left"><code>delta_change_daily</code></td>
+<td align="left">Monthly historical-to-future mean change, additive for
+temperature and multiplicative for precipitation</td>
+<td align="left"><code>observed_reference</code></td>
+<td align="left">Published defaults for <code>tas</code>,
+<code>tasmin</code>, <code>tasmax</code>, and <code>pr</code>
+</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>quantile_mapping_daily</code></td>
+<td align="left">
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><msub><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F^{-1}_{obs}(F_{hist}(x_{future}))</annotation></semantics></math>
+in calendar-neutral circular daily windows</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published method-variable profiles for <code>tas</code>
+and <code>pr</code>; implementation-selected defaults for
+<code>hurs</code>, <code>psl</code>, <code>rlds</code>,
+<code>sfcWind</code>, <code>tasmin</code>, and <code>tasmax</code>
+remain experimental</td>
+</tr>
+</tbody>
+</table>
+<p><code>quantile_mapping_daily</code> uses linear empirical-CDF
+interpolation with average-rank ties, type-7 inverse quantiles, and
+endpoint clamping. Its default 31-day window is selected by canonical
+annual phase, so 360-, 365-, and 366-day source calendars are not paired
+by nominal date. Precipitation uses a mixed dry-day/positive-amount
+hurdle distribution rather than the continuous mapping unchanged.
+Dry-day randomization is controlled by a recorded seed and a fixed
+method-local generator, leaving R’s global random-number state
+untouched. Bounds, sample coverage, tail use, clipping, dry-day
+frequencies, and the resolved stochastic settings are retained in result
+provenance.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
