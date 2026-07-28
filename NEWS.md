@@ -46,6 +46,17 @@
 
 ## New features
 
+* Added the native R `quantile_delta_mapping_daily` signal component. It uses
+  each projected value's time-dependent future-model quantile to transfer the
+  corresponding historical-to-future model change onto the observed-reference
+  quantile: absolutely for interval variables and relatively for precipitation.
+  Calendar-neutral 91-day seasonal windows and centered 31-year future windows
+  make both sources of variation explicit. Published precipitation censoring
+  uses deterministic role-specific randomization below 0.05 mm/day without
+  changing R's global RNG state. The future-model sequence, resolved settings,
+  window coverage, quantile changes, bounds, censoring, and provenance are
+  retained in the `DailyAdjustedSeries` result (#169).
+
 * Added the native R `quantile_mapping_daily` signal component. It maps
   future-model daily values through historical-model and observed-reference
   empirical distributions in calendar-neutral circular windows, using
