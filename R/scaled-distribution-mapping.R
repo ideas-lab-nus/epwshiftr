@@ -493,6 +493,15 @@ sdm__expected_wet_days <- function(
             "Scaled Distribution Mapping wet-day adjustment requires positive totals and at least one historical-model wet day."
         )
     }
+    # Reject impossible role counts before applying the published frequency
+    # ratio so malformed diagnostics cannot become a plausible integer result.
+    wet <- counts[c(1L, 3L, 5L)]
+    total <- counts[c(2L, 4L, 6L)]
+    if (any(wet > total)) {
+        cli::cli_abort(
+            "Scaled Distribution Mapping wet-day counts cannot exceed their corresponding total-day counts."
+        )
+    }
     requested <- as.integer(round(
         future_wet *
             (observed_wet / observed_total) /
@@ -777,7 +786,10 @@ sdm__relative_window <- function(
         diagnostics = list(
             wet_counts = wet_counts,
             expected_wet_days = expected,
-            adjusted_wet_days = sum(adjusted >= threshold),
+            adjusted_wet_days = sum(adjusted > 0),
+            adjusted_positive_below_threshold_days = sum(
+                adjusted > 0 & adjusted < threshold
+            ),
             scaled_probability_range = range(scaled$probability),
             scaled_recurrence_interval_range = range(
                 scaled$recurrence_interval
@@ -968,7 +980,11 @@ sdm__adjust_values <- function(series, resolved) {
                 )
             ),
             output_dry_values = sum(
-                bounded < resolved$dry_threshold
+                bounded == 0
+            ),
+            output_positive_below_threshold_values = sum(
+                bounded > 0 &
+                    bounded < resolved$dry_threshold
             ),
             wet_day_increase_not_supported_windows = sum(vapply(
                 records,

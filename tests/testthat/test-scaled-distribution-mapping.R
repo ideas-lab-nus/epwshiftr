@@ -130,6 +130,17 @@ test_that("parametric distribution helpers fit and invert supported families", {
     expect_gt(gamma$parameters$shape, 0)
     expect_gt(gamma$parameters$scale, 0)
     expect_equal(
+        gamma$parameters$shape * gamma$parameters$scale,
+        mean(c(0.5, 1, 2, 3, 5, 8))
+    )
+    expect_equal(
+        log(gamma$parameters$shape) -
+            digamma(gamma$parameters$shape),
+        log(mean(c(0.5, 1, 2, 3, 5, 8))) -
+            mean(log(c(0.5, 1, 2, 3, 5, 8))),
+        tolerance = 1e-8
+    )
+    expect_equal(
         distribution__cdf(
             normal,
             distribution__quantile(normal, probabilities)
@@ -177,6 +188,17 @@ test_that("SDM reproduces the published wet-day and recurrence equations", {
         scaled$probability,
         1 - 1 / (1667 * 385 / 2000)
     )
+    expect_error(
+        sdm__expected_wet_days(
+            future_wet = 2L,
+            future_total = 1L,
+            observed_wet = 1L,
+            observed_total = 1L,
+            historical_wet = 1L,
+            historical_total = 1L
+        ),
+        "cannot exceed"
+    )
 })
 
 test_that("SDM uses published future windows and retained blocks", {
@@ -204,8 +226,8 @@ test_that("temperature SDM returns a typed future-backbone daily series", {
         2, -1, 3, -2, 4, 0, -3, 5, 1, -4
     )
     observed <- sdm_test__series("tas", 2001L, 280 + pattern)
-    historical <- sdm_test__series("tas", 1991L, 284 + pattern)
-    future <- sdm_test__series("tas", 2061L, 290 + pattern)
+    historical <- sdm_test__series("tas", 1991L, 284 + 2 * pattern)
+    future <- sdm_test__series("tas", 2061L, 290 + 4 * pattern)
 
     execution <- sdm_test__execute(
         "tas",
@@ -215,10 +237,40 @@ test_that("temperature SDM returns a typed future-backbone daily series", {
         overrides = list(min_samples = 10L)
     )
     adjusted <- execution@values[[1L]]
+    adjusted_detrended <- sdm__detrend(
+        adjusted@data$value,
+        sdm__time_coordinate(adjusted@data)
+    )
+    observed_detrended <- sdm__detrend(
+        observed$value,
+        sdm__time_coordinate(observed)
+    )
+    future_detrended <- sdm__detrend(
+        future$value,
+        sdm__time_coordinate(future)
+    )
 
     expect_true(S7::S7_inherits(execution, SignalExecutionResult))
     expect_true(S7::S7_inherits(adjusted, DailyAdjustedSeries))
-    expect_equal(adjusted@data$value, observed$value + 6)
+    expect_equal(
+        mean(adjusted@data$value),
+        mean(observed$value) +
+            mean(future$value) -
+            mean(historical$value)
+    )
+    expect_equal(
+        distribution__fit_normal(
+            adjusted_detrended$residual
+        )$parameters$scale /
+            distribution__fit_normal(
+                observed_detrended$residual
+            )$parameters$scale,
+        2
+    )
+    expect_equal(
+        adjusted_detrended$coefficients[["slope"]],
+        future_detrended$coefficients[["slope"]]
+    )
     expect_identical(
         adjusted@data[BIAS_DAILY_SERIES_COLUMNS[-2L]],
         future[BIAS_DAILY_SERIES_COLUMNS[-2L]]
@@ -323,6 +375,11 @@ test_that("precipitation SDM adjusts wet frequency on future ranks", {
     expect_identical(window$expected_wet_days$requested, 8L)
     expect_identical(window$expected_wet_days$retained, 8L)
     expect_false(window$expected_wet_days$increase_not_supported)
+    expect_identical(window$adjusted_wet_days, 8L)
+    expect_identical(
+        window$adjusted_positive_below_threshold_days,
+        0L
+    )
     expect_identical(
         adjusted@provenance$diagnostics$
             precipitation$wet_day_increase_not_supported_windows,
