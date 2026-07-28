@@ -814,7 +814,7 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
-<p>Three package-native standalone signals currently use this
+<p>Four package-native standalone signals currently use this
 contract:</p>
 <table class="table">
 <colgroup>
@@ -860,6 +860,22 @@ and <code>pr</code>; implementation-selected defaults for
 <code>sfcWind</code>, <code>tasmin</code>, and <code>tasmax</code>
 remain experimental</td>
 </tr>
+<tr class="even">
+<td align="left"><code>quantile_delta_mapping_daily</code></td>
+<td align="left">Transfer
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} - F^{-1}_{hist}(p)</annotation></semantics></math>
+or
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mi>/</mi><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} / F^{-1}_{hist}(p)</annotation></semantics></math>
+onto
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F^{-1}_{obs}(p)</annotation></semantics></math>,
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi><mo>,</mo><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future,t}(x_{future})</annotation></semantics></math>
+</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published absolute-change temperature and
+relative-change precipitation profiles; implementation-selected defaults
+for other supported variables remain experimental</td>
+</tr>
 </tbody>
 </table>
 <p><code>quantile_mapping_daily</code> uses linear empirical-CDF
@@ -873,6 +889,18 @@ method-local generator, leaving R’s global random-number state
 untouched. Bounds, sample coverage, tail use, clipping, dry-day
 frequencies, and the resolved stochastic settings are retained in result
 provenance.</p>
+<p><code>quantile_delta_mapping_daily</code> differs from ordinary
+Quantile Mapping by estimating each projected value’s probability from a
+time-dependent future distribution. Its default calendar-neutral 91-day
+seasonal window represents the published three-month pool, while a
+symmetric 31-year future window makes the publication’s 30-year
+moving-period calculation executable on whole model years. Temperature
+transfers absolute changes in quantiles and precipitation transfers
+relative changes. Precipitation values at or below the published 0.05
+mm/day trace threshold are replaced by deterministic positive uniforms
+before adjustment and censored back to zero afterward. Window sample
+counts, transferred changes, clipping, censoring, and effective seeds
+are retained in provenance.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
