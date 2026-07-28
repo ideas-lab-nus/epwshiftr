@@ -16,6 +16,7 @@
     bias__register_linear_scaling_component()
     bias__register_delta_change_component()
     qm__register_component()
+    qdm__register_component()
 
     # set package options
     .opts <- list(

@@ -1,4 +1,4 @@
-#' @include bias-adjustment.R daily-climatology.R
+#' @include bias-adjustment.R daily-climatology.R quantile-distribution.R
 NULL
 
 # Quantile Mapping references identify the published transfer equation and
@@ -255,93 +255,12 @@ qm__inputs <- function(inputs, variable, distribution_model) {
     series
 }
 
-# Define the interpolated empirical CDF with average-rank tie anchors. For a
-# sample x(1)...x(n), each distinct value receives
-# p = (average_rank - 1) / (n - 1), with a constant sample placed at p = 0.5.
-qm__cdf_anchors <- function(sample) {
-    checkmate::assert_numeric(
-        sample,
-        min.len = 1L,
-        finite = TRUE,
-        any.missing = FALSE
-    )
-    ordered <- sort(as.numeric(sample))
-    runs <- rle(ordered)
-    end_rank <- cumsum(runs$lengths)
-    start_rank <- end_rank - runs$lengths + 1L
-    average_rank <- (start_rank + end_rank) / 2
-    probability <- if (length(ordered) == 1L) {
-        0.5
-    } else {
-        (average_rank - 1) / (length(ordered) - 1)
-    }
-    data.frame(
-        value = runs$values,
-        probability = probability
-    )
-}
-
-# Evaluate the explicit empirical CDF and clamp values outside the historical
-# sample to its endpoint probabilities rather than extrapolating a new tail.
-qm__empirical_cdf <- function(sample, values) {
-    checkmate::assert_numeric(
-        values,
-        finite = TRUE,
-        any.missing = FALSE
-    )
-    anchors <- qm__cdf_anchors(sample)
-    probability <- if (nrow(anchors) == 1L) {
-        rep.int(anchors$probability, length(values))
-    } else {
-        stats::approx(
-            x = anchors$value,
-            y = anchors$probability,
-            xout = values,
-            method = "linear",
-            rule = 2,
-            ties = "ordered"
-        )$y
-    }
-    lower_tail <- values < min(anchors$value)
-    upper_tail <- values > max(anchors$value)
-    # Tail clamping means values strictly beyond the calibration range map to
-    # the observed minimum or maximum even when a tied historical endpoint
-    # has an interior average-rank probability.
-    probability[lower_tail] <- 0
-    probability[upper_tail] <- 1
-    list(
-        probability = probability,
-        lower_tail = lower_tail,
-        upper_tail = upper_tail,
-        tied_sample_values = length(sample) - nrow(anchors)
-    )
-}
-
-# Evaluate the inverse empirical CDF with R's type-7 linear quantile rule. This
-# is paired with qm__cdf_anchors() so identical observed and historical samples
-# map their calibration values back to themselves, including tied values.
-qm__inverse_cdf <- function(sample, probability) {
-    checkmate::assert_numeric(
-        probability,
-        lower = 0,
-        upper = 1,
-        finite = TRUE,
-        any.missing = FALSE
-    )
-    as.numeric(stats::quantile(
-        sample,
-        probs = probability,
-        names = FALSE,
-        type = 7
-    ))
-}
-
 # Apply x* = F_obs^{-1}(F_hist(x_future)) with the declared interpolation,
 # tie, and tail conventions to one or more future values.
 qm__map_continuous <- function(historical, observed, future) {
-    cdf <- qm__empirical_cdf(historical, future)
+    cdf <- quantile__empirical_cdf(historical, future)
     list(
-        value = qm__inverse_cdf(observed, cdf$probability),
+        value = quantile__inverse_cdf(observed, cdf$probability),
         probability = cdf$probability,
         lower_tail = cdf$lower_tail,
         upper_tail = cdf$upper_tail,
@@ -349,51 +268,6 @@ qm__map_continuous <- function(historical, observed, future) {
         tied_observed_values = length(observed) -
             length(unique(observed))
     )
-}
-
-# Derive a stable group-specific seed so multiple locations do not receive the
-# same randomized precipitation occurrence sequence under one user seed.
-qm__group_seed <- function(seed, key, variable) {
-    text <- paste(
-        c(
-            variable,
-            unlist(Map(
-                function(name, value) {
-                    paste0(name, "=", as.character(value))
-                },
-                names(key),
-                key
-            ), use.names = FALSE)
-        ),
-        collapse = "\u001f"
-    )
-    modulus <- .Machine$integer.max - 1
-    hash <- (as.double(seed) %% modulus) + 1
-    for (code in utf8ToInt(enc2utf8(text))) {
-        hash <- (hash * 131 + code) %% modulus
-    }
-    as.integer(hash + 1)
-}
-
-# Generate reproducible uniform variates with the Park-Miller minimal-standard
-# recurrence state[i] = 16807 * state[i-1] mod 2147483647. Keeping this small
-# generator method-local makes precipitation results independent of R's global
-# RNG kind and leaves the caller's RNG state untouched.
-qm__uniform <- function(n, seed) {
-    checkmate::assert_count(n)
-    checkmate::assert_int(
-        seed,
-        lower = 1L,
-        upper = .Machine$integer.max - 1L
-    )
-    modulus <- as.double(.Machine$integer.max)
-    state <- as.double(seed)
-    out <- numeric(n)
-    for (index in seq_len(n)) {
-        state <- (16807 * state) %% modulus
-        out[[index]] <- state / modulus
-    }
-    out
 }
 
 # Map a mixed precipitation distribution: values at or below the trace
@@ -427,7 +301,7 @@ qm__map_precipitation <- function(
                 "A precipitation window has positive future values but no positive historical-model calibration values."
             )
         }
-        positive_cdf <- qm__empirical_cdf(
+        positive_cdf <- quantile__empirical_cdf(
             historical_positive,
             future[positive]
         )
@@ -450,7 +324,7 @@ qm__map_precipitation <- function(
         conditional_probability <- (
             probability[output_positive] - observed_dry_probability
         ) / (1 - observed_dry_probability)
-        mapped[output_positive] <- qm__inverse_cdf(
+        mapped[output_positive] <- quantile__inverse_cdf(
             observed_positive,
             conditional_probability
         )
@@ -517,12 +391,12 @@ qm__adjust_values <- function(series, resolved, key, variable) {
     probability <- adjusted <- numeric(n_future)
     lower_tail <- upper_tail <- logical(n_future)
     tied_historical <- tied_observed <- integer(n_future)
-    effective_seed <- qm__group_seed(
+    effective_seed <- quantile__group_seed(
         resolved$random_seed,
         key,
         variable
     )
-    uniform <- qm__uniform(n_future, effective_seed)
+    uniform <- quantile__uniform(n_future, effective_seed)
     precipitation_diagnostics <- if (identical(
         resolved$distribution_model,
         "precipitation_hurdle"
