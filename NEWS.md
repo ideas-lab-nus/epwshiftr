@@ -46,6 +46,18 @@
 
 ## New features
 
+* Added the native R `scaled_distribution_mapping_daily` signal component. It
+  implements the published absolute temperature branch with linear detrending,
+  Normal fits, and two-tailed recurrence intervals, plus the relative
+  precipitation branch with a 0.1 mm/day dry threshold, zero-location Gamma
+  fits, expected wet-day adjustment, and one-tailed recurrence intervals.
+  Calendar-month groups use the published 30-year future fitting window with
+  disjoint 10-year retained blocks and explicit edge truncation. The result
+  preserves the future-model CF-calendar sequence and records resolved
+  settings, distribution fits, window coverage, clipping, and the method's
+  explicit limitation that additional future wet days are not invented
+  (#171).
+
 * Added the native R `quantile_delta_mapping_daily` signal component. It uses
   each projected value's time-dependent future-model quantile to transfer the
   corresponding historical-to-future model change onto the observed-reference
