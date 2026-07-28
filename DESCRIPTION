@@ -90,6 +90,8 @@ Collate:
     'gh.R'
     'import-standalone-schema.R'
     'netcdf.R'
+    'quantile-distribution.R'
+    'quantile-delta-mapping.R'
     'quantile-mapping.R'
     'solr-date.R'
     'query-param.R'
