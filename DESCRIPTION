@@ -92,6 +92,7 @@ Collate:
     'netcdf.R'
     'parametric-distribution.R'
     'quantile-distribution.R'
+    'cdf-transform.R'
     'quantile-delta-mapping.R'
     'quantile-mapping.R'
     'solr-date.R'
