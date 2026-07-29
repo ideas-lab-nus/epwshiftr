@@ -139,7 +139,7 @@ test_that("CDF-t constructs the future target CDF from the published chain", {
     )
 })
 
-test_that("CDF-t uses published future windows and retained blocks", {
+test_that("CDF-t reproduces the Famien 17/9 schedule and package edges", {
     blocks <- cdft__future_blocks(
         2001:2035,
         future_window_years = 17L,
@@ -194,8 +194,15 @@ test_that("CDF-t transfers a location bias onto the future-model backbone", {
         "model_future"
     )
     expect_identical(
-        adjusted@provenance$temporal_policy$source,
+        adjusted@provenance$temporal_policy$window_source,
         "user_override"
+    )
+    expect_true(is.na(
+        adjusted@provenance$temporal_policy$window_reference
+    ))
+    expect_identical(
+        adjusted@provenance$temporal_policy$edge_policy_source,
+        "epwshiftr_implementation"
     )
     expect_equal(window$range_alignment_shift, -5)
     expect_identical(execution@diagnostics$status, "ok")
@@ -405,7 +412,7 @@ test_that("CDF-t rejects incompatible settings and invalid inputs", {
     )
 })
 
-test_that("CDF-t profiles retain published evidence and registration", {
+test_that("CDF-t profiles separate published and package provenance", {
     cdft__register_component()
     component <- component__get("signal", "cdf_transform_daily")
     profiles <- component@metadata$signal_profiles
@@ -421,7 +428,7 @@ test_that("CDF-t profiles retain published evidence and registration", {
     expect_true(component@stochastic)
     expect_identical(
         sort(names(profiles)),
-        sort(CDFT_PUBLISHED_VARIABLES)
+        sort(CDFT_FAMIEN_VARIABLES)
     )
     expect_true(all(vapply(
         profiles,
@@ -435,6 +442,30 @@ test_that("CDF-t profiles retain published evidence and registration", {
     expect_identical(
         profiles$tas$settings$distribution_model,
         "continuous"
+    )
+    expect_identical(
+        profiles$tas$metadata$temporal_window_source,
+        "famien_2018_application"
+    )
+    expect_identical(
+        profiles$tas$metadata$temporal_window_reference,
+        CDFT_FAMIEN_REFERENCE
+    )
+    expect_identical(
+        profiles$tas$metadata$edge_policy_source,
+        "epwshiftr_implementation"
+    )
+    expect_identical(
+        component@metadata$temporal_policy$window_source,
+        "famien_2018_application"
+    )
+    expect_identical(
+        component@metadata$temporal_policy$window_reference,
+        CDFT_FAMIEN_REFERENCE
+    )
+    expect_identical(
+        component@metadata$temporal_policy$edge_policy_source,
+        "epwshiftr_implementation"
     )
 
     calendar <- component__spec(

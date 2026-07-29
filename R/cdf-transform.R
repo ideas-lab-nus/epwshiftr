@@ -1,18 +1,22 @@
 #' @include bias-adjustment.R quantile-distribution.R
 NULL
 
+# Identify the daily Africa application separately because it supplies the
+# temporal-window defaults, not the underlying CDF-t transformation.
+CDFT_FAMIEN_REFERENCE <- "https://doi.org/10.5194/esd-9-313-2018"
+
 # CDF-t references separate the original transformation, its empirical daily
 # application, precipitation SSR, and the method authors' maintained R code.
 CDFT_REFERENCES <- c(
     "https://doi.org/10.1029/2009GL038401",
     "https://doi.org/10.5194/nhess-12-2769-2012",
     "https://doi.org/10.1002/2015JD024511",
-    "https://doi.org/10.5194/esd-9-313-2018",
+    CDFT_FAMIEN_REFERENCE,
     "https://CRAN.R-project.org/package=CDFt"
 )
 
 # Famien et al. apply CDF-t directly to these six daily climate variables.
-CDFT_PUBLISHED_VARIABLES <- c(
+CDFT_FAMIEN_VARIABLES <- c(
     "pr",
     "tas",
     "tasmin",
@@ -25,10 +29,10 @@ CDFT_PUBLISHED_VARIABLES <- c(
 # precipitation flux has the numerically equivalent kg m-2 s-1 unit.
 CDFT_PR_SSR_THRESHOLD <- 1e-8
 
-# Construct the complete settings record shared by the published daily
-# profiles. The 17-year fitting window and central 9-year output block follow
-# the daily Africa application, while the empirical-grid choices follow the
-# method authors' R implementation.
+# Construct the complete settings record shared by the Famien et al. daily
+# profiles. Their Africa application supplies the 17-year fitting window and
+# central 9-year output block; edge truncation is an epwshiftr policy because
+# that application does not specify how to handle missing boundary flanks.
 cdft__default_settings <- function(
   bounds,
   distribution_model = c("continuous", "precipitation_ssr"),
@@ -70,7 +74,7 @@ cdft__profiles <- function() {
         rsds = cdft__default_settings(c(0, Inf)),
         sfcWind = cdft__default_settings(c(0, Inf))
     )
-    lapply(CDFT_PUBLISHED_VARIABLES, function(variable) {
+    lapply(CDFT_FAMIEN_VARIABLES, function(variable) {
         signal__variable_profile(
             variable,
             settings = settings[[variable]],
@@ -79,8 +83,11 @@ cdft__profiles <- function() {
             metadata = list(
                 method = "cdf_transform",
                 output_role = "model_future",
-                default_source = "method_literature_and_author_implementation",
-                temporal_policy_source = "method_literature"
+                method_settings_source =
+                    "method_literature_and_author_implementation",
+                temporal_window_source = "famien_2018_application",
+                temporal_window_reference = CDFT_FAMIEN_REFERENCE,
+                edge_policy_source = "epwshiftr_implementation"
             )
         )
     })
@@ -281,8 +288,9 @@ cdft__inputs <- function(inputs, variable, distribution_model) {
     series
 }
 
-# Partition future years into the published disjoint output blocks and their
-# symmetric fitting windows, truncating only where the requested data end.
+# Partition future years into disjoint output blocks and symmetric fitting
+# windows. The Famien et al. defaults use 17/9 years; epwshiftr truncates a
+# missing four-year flank when the requested series starts or ends too soon.
 cdft__future_blocks <- function(
   year,
   future_window_years,
@@ -617,9 +625,9 @@ cdft__window_record <- function(
     )
 }
 
-# Apply native-calendar monthly CDF-t fits on the published 17/9 year policy.
-# Each future row is written by exactly one output block even though fitting
-# windows overlap.
+# Apply native-calendar monthly CDF-t fits on the configured temporal policy.
+# The defaults reproduce the Famien et al. 17/9-year application schedule, and
+# each row is written once even though adjacent fitting windows overlap.
 cdft__adjust_values <- function(series, resolved, key, variable) {
     observed <- series$observed_reference
     historical <- series$model_historical
@@ -798,14 +806,24 @@ cdft__apply_group <- function(inputs, settings, key) {
                 future_window_years = resolved$future_window_years,
                 output_block_years = resolved$output_block_years,
                 edge_policy = resolved$edge_policy,
-                source = if (
+                seasonal_grouping_source = "famien_2018_application",
+                window_source = if (
                     resolved$future_window_years == 17L &&
                         resolved$output_block_years == 9L
                 ) {
-                    "method_literature"
+                    "famien_2018_application"
                 } else {
                     "user_override"
-                }
+                },
+                window_reference = if (
+                    resolved$future_window_years == 17L &&
+                        resolved$output_block_years == 9L
+                ) {
+                    CDFT_FAMIEN_REFERENCE
+                } else {
+                    NA_character_
+                },
+                edge_policy_source = "epwshiftr_implementation"
             ),
             diagnostics = mapped$diagnostics
         )
@@ -824,10 +842,10 @@ cdft__validate_result <- function(value, inputs, key) {
     TRUE
 }
 
-# Construct the reusable daily CDF-t signal with the six published variable
-# alternatives and the package-native three-role contract.
+# Construct the reusable daily CDF-t signal with the six variables used by
+# Famien et al. and the package-native three-role contract.
 cdft__component <- function() {
-    alternatives <- as.list(CDFT_PUBLISHED_VARIABLES)
+    alternatives <- as.list(CDFT_FAMIEN_VARIABLES)
     roles <- c(
         "observed_reference",
         "model_historical",
@@ -865,7 +883,16 @@ cdft__component <- function() {
                 ties = "left_endpoint",
                 tails = "constant_correction"
             ),
-            temporal_policy = "calendar_month_17_year_window_9_year_block"
+            temporal_policy = list(
+                seasonal_grouping = "calendar_month",
+                seasonal_grouping_source = "famien_2018_application",
+                future_window_years = 17L,
+                output_block_years = 9L,
+                window_source = "famien_2018_application",
+                window_reference = CDFT_FAMIEN_REFERENCE,
+                edge_policy = "truncate",
+                edge_policy_source = "epwshiftr_implementation"
+            )
         )
     )
 }

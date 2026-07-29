@@ -51,13 +51,15 @@
   \(F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile
   matches the future-model sequence onto that target. The method uses the
   authors' additive-mean range alignment, explicit empirical-grid and
-  constant-correction tail conventions, and the published native
-  calendar-month 17-year fitting windows with disjoint central 9-year output
-  blocks. Precipitation uses deterministic Singularity Stochastic Removal
-  below \(10^{-8}\) kg m-2 s-1 without changing R's global RNG state. Results
-  retain future-model CF-calendar coordinates and record window coverage,
-  target-CDF ranges, tail extensions, clipping, SSR seeds, and resolved
-  settings for the six variables in the published daily application (#173).
+  constant-correction tail conventions. Following the Famien et al. (2018)
+  daily Africa application, native calendar months use 17-year fitting
+  windows with disjoint central 9-year output blocks. The package-selected
+  boundary policy truncates unavailable four-year flanks and records that
+  provenance explicitly. Precipitation uses deterministic Singularity
+  Stochastic Removal below \(10^{-8}\) kg m-2 s-1 without changing R's global
+  RNG state. Results retain future-model CF-calendar coordinates and record
+  window coverage, target-CDF ranges, tail extensions, clipping, SSR seeds,
+  and resolved settings for the six variables in that application (#173).
 
 * Added the native R `scaled_distribution_mapping_daily` signal component. It
   implements the published absolute temperature branch with linear detrending,

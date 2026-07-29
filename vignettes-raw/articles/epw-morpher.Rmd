@@ -555,14 +555,18 @@ the historical and future model samples by the same
 observed-minus-historical-model mean shift used in the method authors' R
 package. It then evaluates the chained empirical CDF on an explicit grid,
 extends unsupported tails through the published constant-correction rule, and
-uses the left endpoint of CDF plateaus as the generalized inverse. Each native
-calendar month is fitted in a 17-year future window and writes only its central
-9-year block, with truncated edge windows recorded explicitly. For
-precipitation, Singularity Stochastic Removal replaces sub-threshold values
-with deterministic uniforms below \(10^{-8}\) kg m-2 s-1 before CDF-t and
-returns adjusted sub-threshold values to zero afterward. The generator and
-effective role-specific seeds are recorded without changing R's global random
-state.
+uses the left endpoint of CDF plateaus as the generalized inverse. Following
+the Famien et al. (2018) daily Africa application, each native calendar month
+is fitted in a 17-year future window and writes only its central 9-year block.
+Those numbers are application defaults rather than requirements of the
+original CDF-t transformation. Famien et al. do not specify how to supply the
+four-year flanks at the start and end of a requested series, so epwshiftr
+truncates unavailable flanks and records this package-selected edge policy
+explicitly. For precipitation, Singularity Stochastic Removal replaces
+sub-threshold values with deterministic uniforms below \(10^{-8}\) kg m-2 s-1
+before CDF-t and returns adjusted sub-threshold values to zero afterward. The
+generator and effective role-specific seeds are recorded without changing R's
+global random state.
 
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
