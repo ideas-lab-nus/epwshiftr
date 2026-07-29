@@ -93,6 +93,7 @@ Collate:
     'parametric-distribution.R'
     'quantile-distribution.R'
     'cdf-transform.R'
+    'equidistant-cdf-matching.R'
     'quantile-delta-mapping.R'
     'quantile-mapping.R'
     'solr-date.R'
