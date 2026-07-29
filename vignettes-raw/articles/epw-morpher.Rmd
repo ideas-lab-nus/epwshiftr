@@ -500,7 +500,7 @@ interpretation. Group failures either abort or return an explicit diagnostic
 with a `NULL` result; they are never silently converted to missing numeric
 values.
 
-Five package-native standalone signals currently use this contract:
+Six package-native standalone signals currently use this contract:
 
 | Registry name | Correction | Output backbone | Variable-profile evidence |
 |:--------------|:-----------|:----------------|:--------------------------|
@@ -509,6 +509,7 @@ Five package-native standalone signals currently use this contract:
 | `quantile_mapping_daily` | \(F^{-1}_{obs}(F_{hist}(x_{future}))\) in calendar-neutral circular daily windows | `model_future` | Published method-variable profiles for `tas` and `pr`; implementation-selected defaults for `hurs`, `psl`, `rlds`, `sfcWind`, `tasmin`, and `tasmax` remain experimental |
 | `quantile_delta_mapping_daily` | Transfer \(x_{future} - F^{-1}_{hist}(p)\) or \(x_{future} / F^{-1}_{hist}(p)\) onto \(F^{-1}_{obs}(p)\), where \(p = F_{future,t}(x_{future})\) | `model_future` | Published absolute-change temperature and relative-change precipitation profiles; implementation-selected defaults for other supported variables remain experimental |
 | `scaled_distribution_mapping_daily` | Parametric distribution and recurrence-interval scaling, absolute for temperature and relative for precipitation | `model_future` | Published profiles for `tas` and `pr`; applying the Normal branch to `tasmin` and `tasmax` remains experimental |
+| `cdf_transform_daily` | Construct \(F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile match the future-model sequence to that target CDF | `model_future` | Published daily profiles for `pr`, `tas`, `tasmin`, `tasmax`, `rsds`, and `sfcWind` |
 
 `quantile_mapping_daily` uses linear empirical-CDF interpolation with
 average-rank ties, type-7 inverse quantiles, and endpoint clamping. Its default
@@ -546,6 +547,26 @@ parameters, sample coverage, corrected wet counts, and the method's inability
 to turn additional dry projected days into wet days are explicit in result
 provenance. Native 360-, 365-, and 366-day calendars contribute samples to
 their own calendar months without Gregorian date coercion.
+
+`cdf_transform_daily` differs from both ordinary Quantile Mapping and QDM by
+first estimating a complete future observed-reference CDF from the historical
+observed/model relation and the future-model CDF. The implementation aligns
+the historical and future model samples by the same
+observed-minus-historical-model mean shift used in the method authors' R
+package. It then evaluates the chained empirical CDF on an explicit grid,
+extends unsupported tails through the published constant-correction rule, and
+uses the left endpoint of CDF plateaus as the generalized inverse. Following
+the Famien et al. (2018) daily Africa application, each native calendar month
+is fitted in a 17-year future window and writes only its central 9-year block.
+Those numbers are application defaults rather than requirements of the
+original CDF-t transformation. Famien et al. do not specify how to supply the
+four-year flanks at the start and end of a requested series, so epwshiftr
+truncates unavailable flanks and records this package-selected edge policy
+explicitly. For precipitation, Singularity Stochastic Removal replaces
+sub-threshold values with deterministic uniforms below \(10^{-8}\) kg m-2 s-1
+before CDF-t and returns adjusted sub-threshold values to zero afterward. The
+generator and effective role-specific seeds are recorded without changing R's
+global random state.
 
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
