@@ -814,7 +814,7 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
-<p>Seven package-native standalone signals currently use this
+<p>Eight package-native standalone signals currently use this
 contract:</p>
 <table class="table">
 <colgroup>
@@ -908,6 +908,16 @@ then quantile match the future-model sequence to that target CDF</td>
 <code>rsds</code>, and <code>sfcWind</code>
 </td>
 </tr>
+<tr class="even">
+<td align="left"><code>isimip3basd_daily</code></td>
+<td align="left">Generate pseudo-future observations by transferring
+modeled quantile changes, then map the future-model distribution onto
+the pseudo-future target</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published ISIMIP3BASD 3.0.x profiles for eight direct
+variables and the three <code>prsnratio</code>, <code>tasrange</code>,
+and <code>tasskew</code> reconstruction components</td>
+</tr>
 </tbody>
 </table>
 <p><code>quantile_mapping_daily</code> uses linear empirical-CDF
@@ -988,6 +998,36 @@ replaces sub-threshold values with deterministic uniforms below
 kg m-2 s-1 before CDF-t and returns adjusted sub-threshold values to
 zero afterward. The generator and effective role-specific seeds are
 recorded without changing R’s global random state.</p>
+<p><code>isimip3basd_daily</code> implements the daily marginal
+bias-adjustment stage from Lange (2019) with the official ISIMIP3BASD
+3.0.x variable configuration. It first transfers the modeled
+historical-to-future change at common quantiles onto historical
+observations to form a pseudo-future target, then maps the future-model
+sequence to that target. Variable profiles select additive,
+multiplicative/mixed, or bounded change transfer; Normal, Gamma,
+Weibull, or empirical distribution mapping; physical threshold
+frequencies; optional annual-mean detrending; snow-ratio missing-value
+imputation; and the short-wave upper-bound climatology. Short-wave
+<code>rsds</code> bounds apply to its dimensionless upper-bound
+fraction; the final result is rescaled to the future physical radiation
+magnitude. The registered direct variables are <code>hurs</code>,
+<code>pr</code>, <code>ps</code>, <code>psl</code>, <code>rlds</code>,
+<code>rsds</code>, <code>sfcWind</code>, and <code>tas</code>.
+<code>prsnratio</code>, <code>tasrange</code>, and <code>tasskew</code>
+are adjusted as published intermediate components; reconstructing
+<code>prsn</code>, <code>tasmin</code>, and <code>tasmax</code> from
+them remains a separate physics-stage operation rather than three
+independent marginal adjustments.</p>
+<p>The original software requires a proleptic Gregorian time coordinate.
+epwshiftr instead assigns each native 360-, 365-, or 366-day observation
+to a calendar-neutral annual phase and applies the published 31-day
+circular window on a common 365-day target grid. This calendar
+adaptation, every effective seed, parameter fit or empirical fallback,
+transferred bound frequency, detrending decision, short-wave upper-bound
+cycle, and clipping count are retained in result provenance. The
+component implements marginal bias adjustment only; the ISIMIP MBCnSD
+spatial downscaling workflow is a separate stage and is not implied by
+selecting this signal.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
