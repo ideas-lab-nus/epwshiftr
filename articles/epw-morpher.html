@@ -814,7 +814,7 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
-<p>Six package-native standalone signals currently use this
+<p>Seven package-native standalone signals currently use this
 contract:</p>
 <table class="table">
 <colgroup>
@@ -877,6 +877,18 @@ relative-change precipitation profiles; implementation-selected defaults
 for other supported variables remain experimental</td>
 </tr>
 <tr class="odd">
+<td align="left"><code>equidistant_cdf_matching_daily</code></td>
+<td align="left">Apply
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)</annotation></semantics></math>,
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future}(x_{future})</annotation></semantics></math>,
+using the Li et al. parametric distributions</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Li et al. published monthly profiles for
+<code>tas</code> and <code>pr</code>; native calendar-month daily
+pooling is an experimental epwshiftr adaptation</td>
+</tr>
+<tr class="even">
 <td align="left"><code>scaled_distribution_mapping_daily</code></td>
 <td align="left">Parametric distribution and recurrence-interval
 scaling, absolute for temperature and relative for precipitation</td>
@@ -885,7 +897,7 @@ scaling, absolute for temperature and relative for precipitation</td>
 <code>pr</code>; applying the Normal branch to <code>tasmin</code> and
 <code>tasmax</code> remains experimental</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td align="left"><code>cdf_transform_daily</code></td>
 <td align="left">Construct
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msubsup><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><msub><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))</annotation></semantics></math>,
@@ -921,6 +933,24 @@ mm/day trace threshold are replaced by deterministic positive uniforms
 before adjustment and censored back to zero afterward. Window sample
 counts, transferred changes, clipping, censoring, and effective seeds
 are retained in provenance.</p>
+<p><code>equidistant_cdf_matching_daily</code> implements the additive
+equation published by Li et al. (2010):
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow><mo>′</mo></msubsup><mo>=</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x'_{future} = x_{future} + F^{-1}_{obs}(p) -
+F^{-1}_{hist}(p)</annotation></semantics></math>, where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future}(x_{future})</annotation></semantics></math>.
+Cannon et al. (2015) showed that this equation is mathematically
+equivalent to the absolute form of Quantile Delta Mapping. The component
+remains separate because it preserves the Li distribution model:
+temperature uses four-parameter Beta distributions whose observed range
+is extended by half a sample standard deviation, while precipitation
+uses a point mass at zero plus a zero-location Gamma distribution for
+wet values. The original method was applied to monthly fields, not daily
+series. epwshiftr therefore marks its native CF-calendar month pooling
+of daily values as an experimental frequency adaptation rather than a
+published daily default. Negative adjusted precipitation values are
+clipped to zero. Fitted parameters, monthly sample coverage, probability
+clamping, dry counts, clipping, and this frequency provenance remain
+inspectable in the result.</p>
 <p><code>scaled_distribution_mapping_daily</code> instead fits the
 parametric distributions and recurrence-interval changes from Switanek
 et al. (2017) within each calendar month. Temperature is linearly
