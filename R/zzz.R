@@ -19,6 +19,7 @@
     qdm__register_component()
     sdm__register_component()
     cdft__register_component()
+    edcdf__register_component()
 
     # set package options
     .opts <- list(

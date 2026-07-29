@@ -500,7 +500,7 @@ interpretation. Group failures either abort or return an explicit diagnostic
 with a `NULL` result; they are never silently converted to missing numeric
 values.
 
-Six package-native standalone signals currently use this contract:
+Seven package-native standalone signals currently use this contract:
 
 | Registry name | Correction | Output backbone | Variable-profile evidence |
 |:--------------|:-----------|:----------------|:--------------------------|
@@ -508,6 +508,7 @@ Six package-native standalone signals currently use this contract:
 | `delta_change_daily` | Monthly historical-to-future mean change, additive for temperature and multiplicative for precipitation | `observed_reference` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
 | `quantile_mapping_daily` | \(F^{-1}_{obs}(F_{hist}(x_{future}))\) in calendar-neutral circular daily windows | `model_future` | Published method-variable profiles for `tas` and `pr`; implementation-selected defaults for `hurs`, `psl`, `rlds`, `sfcWind`, `tasmin`, and `tasmax` remain experimental |
 | `quantile_delta_mapping_daily` | Transfer \(x_{future} - F^{-1}_{hist}(p)\) or \(x_{future} / F^{-1}_{hist}(p)\) onto \(F^{-1}_{obs}(p)\), where \(p = F_{future,t}(x_{future})\) | `model_future` | Published absolute-change temperature and relative-change precipitation profiles; implementation-selected defaults for other supported variables remain experimental |
+| `equidistant_cdf_matching_daily` | Apply \(x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\), using the Li et al. parametric distributions | `model_future` | Li et al. published monthly profiles for `tas` and `pr`; native calendar-month daily pooling is an experimental epwshiftr adaptation |
 | `scaled_distribution_mapping_daily` | Parametric distribution and recurrence-interval scaling, absolute for temperature and relative for precipitation | `model_future` | Published profiles for `tas` and `pr`; applying the Normal branch to `tasmin` and `tasmax` remains experimental |
 | `cdf_transform_daily` | Construct \(F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile match the future-model sequence to that target CDF | `model_future` | Published daily profiles for `pr`, `tas`, `tasmin`, `tasmax`, `rsds`, and `sfcWind` |
 
@@ -532,6 +533,23 @@ transfers relative changes. Precipitation values at or below the published
 before adjustment and censored back to zero afterward. Window sample counts,
 transferred changes, clipping, censoring, and effective seeds are retained in
 provenance.
+
+`equidistant_cdf_matching_daily` implements the additive equation published by
+Li et al. (2010):
+\(x'_{future} = x_{future} + F^{-1}_{obs}(p) -
+F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\). Cannon et al.
+(2015) showed that this equation is mathematically equivalent to the absolute
+form of Quantile Delta Mapping. The component remains separate because it
+preserves the Li distribution model: temperature uses four-parameter Beta
+distributions whose observed range is extended by half a sample standard
+deviation, while precipitation uses a point mass at zero plus a zero-location
+Gamma distribution for wet values. The original method was applied to monthly
+fields, not daily series. epwshiftr therefore marks its native CF-calendar
+month pooling of daily values as an experimental frequency adaptation rather
+than a published daily default. Negative adjusted precipitation values are
+clipped to zero. Fitted parameters, monthly sample coverage, probability
+clamping, dry counts, clipping, and this frequency provenance remain
+inspectable in the result.
 
 `scaled_distribution_mapping_daily` instead fits the parametric distributions
 and recurrence-interval changes from Switanek et al. (2017) within each

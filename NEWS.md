@@ -46,6 +46,19 @@
 
 ## New features
 
+* Added the native R `equidistant_cdf_matching_daily` signal component for
+  `tas` and `pr`. It applies the Li et al. additive equidistant equation using
+  four-parameter Beta temperature distributions and mixed dry-mass/Gamma
+  precipitation distributions. Although the transfer equation is
+  mathematically equivalent to absolute Quantile Delta Mapping, this
+  implementation retains the distributions and range convention of the
+  original method. Because Li et al. applied it to monthly fields, fitting
+  separate distributions from daily values in each native CF-calendar month
+  is recorded and warned about as an experimental epwshiftr adaptation.
+  Results preserve the future-model sequence and record fitted parameters,
+  sample coverage, probability clamping, precipitation dry counts and
+  non-negative clipping, resolved settings, and frequency provenance (#175).
+
 * Added the native R `cdf_transform_daily` signal component. It estimates the
   future target CDF through the CDF-t chain
   \(F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile
