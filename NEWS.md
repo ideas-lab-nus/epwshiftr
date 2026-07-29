@@ -46,6 +46,19 @@
 
 ## New features
 
+* Added the native R `cdf_transform_daily` signal component. It estimates the
+  future target CDF through the CDF-t chain
+  \(F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile
+  matches the future-model sequence onto that target. The method uses the
+  authors' additive-mean range alignment, explicit empirical-grid and
+  constant-correction tail conventions, and the published native
+  calendar-month 17-year fitting windows with disjoint central 9-year output
+  blocks. Precipitation uses deterministic Singularity Stochastic Removal
+  below \(10^{-8}\) kg m-2 s-1 without changing R's global RNG state. Results
+  retain future-model CF-calendar coordinates and record window coverage,
+  target-CDF ranges, tail extensions, clipping, SSR seeds, and resolved
+  settings for the six variables in the published daily application (#173).
+
 * Added the native R `scaled_distribution_mapping_daily` signal component. It
   implements the published absolute temperature branch with linear detrending,
   Normal fits, and two-tailed recurrence intervals, plus the relative
