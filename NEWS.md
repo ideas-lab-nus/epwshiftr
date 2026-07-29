@@ -46,6 +46,19 @@
 
 ## New features
 
+* Added the native R `isimip3basd_daily` signal component for the complete
+  ISIMIP3BASD 3.0.x marginal bias-adjustment configuration. It transfers
+  modeled quantile changes onto historical observations, then maps the
+  future-model sequence through Normal, Gamma, Weibull, or empirical
+  distributions with variable-specific additive, mixed, or bounded trend
+  preservation. Published profiles cover eight direct variables plus
+  `prsnratio`, `tasrange`, and `tasskew`; reconstructing `prsn`, `tasmin`, and
+  `tasmax`, and applying MBCnSD spatial downscaling, remain explicit later
+  stages. Native CF calendars use the package annual-phase adapter, while
+  threshold randomization, missing-ratio imputation, detrending, short-wave
+  upper-bound scaling, fitting fallbacks, bound frequencies, seeds, and
+  clipping remain inspectable in result provenance (#177).
+
 * Added the native R `equidistant_cdf_matching_daily` signal component for
   `tas` and `pr`. It applies the Li et al. additive equidistant equation using
   four-parameter Beta temperature distributions and mixed dry-mass/Gamma

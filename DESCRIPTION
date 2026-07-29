@@ -92,6 +92,7 @@ Collate:
     'netcdf.R'
     'parametric-distribution.R'
     'quantile-distribution.R'
+    'isimip3basd.R'
     'cdf-transform.R'
     'equidistant-cdf-matching.R'
     'quantile-delta-mapping.R'
