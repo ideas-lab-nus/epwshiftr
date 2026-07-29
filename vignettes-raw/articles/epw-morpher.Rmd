@@ -500,7 +500,7 @@ interpretation. Group failures either abort or return an explicit diagnostic
 with a `NULL` result; they are never silently converted to missing numeric
 values.
 
-Seven package-native standalone signals currently use this contract:
+Eight package-native standalone signals currently use this contract:
 
 | Registry name | Correction | Output backbone | Variable-profile evidence |
 |:--------------|:-----------|:----------------|:--------------------------|
@@ -511,6 +511,7 @@ Seven package-native standalone signals currently use this contract:
 | `equidistant_cdf_matching_daily` | Apply \(x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\), using the Li et al. parametric distributions | `model_future` | Li et al. published monthly profiles for `tas` and `pr`; native calendar-month daily pooling is an experimental epwshiftr adaptation |
 | `scaled_distribution_mapping_daily` | Parametric distribution and recurrence-interval scaling, absolute for temperature and relative for precipitation | `model_future` | Published profiles for `tas` and `pr`; applying the Normal branch to `tasmin` and `tasmax` remains experimental |
 | `cdf_transform_daily` | Construct \(F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile match the future-model sequence to that target CDF | `model_future` | Published daily profiles for `pr`, `tas`, `tasmin`, `tasmax`, `rsds`, and `sfcWind` |
+| `isimip3basd_daily` | Generate pseudo-future observations by transferring modeled quantile changes, then map the future-model distribution onto the pseudo-future target | `model_future` | Published ISIMIP3BASD 3.0.x profiles for eight direct variables and the three `prsnratio`, `tasrange`, and `tasskew` reconstruction components |
 
 `quantile_mapping_daily` uses linear empirical-CDF interpolation with
 average-rank ties, type-7 inverse quantiles, and endpoint clamping. Its default
@@ -585,6 +586,33 @@ sub-threshold values with deterministic uniforms below \(10^{-8}\) kg m-2 s-1
 before CDF-t and returns adjusted sub-threshold values to zero afterward. The
 generator and effective role-specific seeds are recorded without changing R's
 global random state.
+
+`isimip3basd_daily` implements the daily marginal bias-adjustment stage from
+Lange (2019) with the official ISIMIP3BASD 3.0.x variable configuration. It
+first transfers the modeled historical-to-future change at common quantiles
+onto historical observations to form a pseudo-future target, then maps the
+future-model sequence to that target. Variable profiles select additive,
+multiplicative/mixed, or bounded change transfer; Normal, Gamma, Weibull, or
+empirical distribution mapping; physical threshold frequencies; optional
+annual-mean detrending; snow-ratio missing-value imputation; and the
+short-wave upper-bound climatology. Short-wave `rsds` bounds apply to its
+dimensionless upper-bound fraction; the final result is rescaled to the
+future physical radiation magnitude. The registered direct variables are
+`hurs`, `pr`, `ps`, `psl`, `rlds`, `rsds`, `sfcWind`, and `tas`.
+`prsnratio`, `tasrange`, and `tasskew` are adjusted as published intermediate
+components; reconstructing `prsn`, `tasmin`, and `tasmax` from them remains a
+separate physics-stage operation rather than three independent marginal
+adjustments.
+
+The original software requires a proleptic Gregorian time coordinate.
+epwshiftr instead assigns each native 360-, 365-, or 366-day observation to a
+calendar-neutral annual phase and applies the published 31-day circular
+window on a common 365-day target grid. This calendar adaptation, every
+effective seed, parameter fit or empirical fallback, transferred bound
+frequency, detrending decision, short-wave upper-bound cycle, and clipping
+count are retained in result provenance. The component implements marginal
+bias adjustment only; the ISIMIP MBCnSD spatial downscaling workflow is a
+separate stage and is not implied by selecting this signal.
 
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
