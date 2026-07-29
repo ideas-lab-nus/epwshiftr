@@ -458,11 +458,21 @@ daily__temperature_sequence_generate <- function(
     data@values[[1L]]
 }
 
+# Select only projection-owned options before the reusable hourly component
+# validates them, leaving signal-specific settings to their own stage.
+daily__temperature_projection_options <- function(options) {
+    names <- intersect(
+        names(options),
+        names(EPW_MORPH_DAILY_TEMPERATURE_OPTIONS)
+    )
+    daily__temperature_backend_options(options[names])
+}
+
 # Run one selected grouped hourly projector and assemble the common payload for
 # physical closure. The projector remains the only method-specific operation.
 daily__temperature_hourly_result <- function(data, options, projector) {
     checkmate::assert_function(projector)
-    options <- daily__temperature_backend_options(options)
+    options <- daily__temperature_projection_options(options)
     baseline <- data$baseline
     targets <- data$targets
     projected <- projector(

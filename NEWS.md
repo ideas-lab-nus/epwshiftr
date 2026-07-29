@@ -46,6 +46,11 @@
 
 ## New features
 
+* Weather component pipelines now pass optional variable-specific
+  `signal_overrides` to the selected signal component. Reusable downstream
+  temperature reconstruction components ignore signal-owned settings while
+  continuing to validate their own projection options (#179).
+
 * Added the native R `isimip3basd_daily` signal component for the complete
   ISIMIP3BASD 3.0.x marginal bias-adjustment configuration. It transfers
   modeled quantile changes onto historical observations, then maps the

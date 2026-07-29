@@ -273,6 +273,17 @@ pipeline__stage_result <- function(component, value) {
     )
 }
 
+# Extract optional signal-setting overrides from backend options while keeping
+# pipelines without configurable signal profiles on the empty-list default.
+pipeline__signal_overrides <- function(options) {
+    overrides <- options$signal_overrides
+    if (is.null(overrides)) {
+        return(list())
+    }
+    checkmate::assert_list(overrides, names = "unique")
+    overrides
+}
+
 # Build the stage-specific operation arguments while retaining one generic
 # executor. Signal components receive their shared group lifecycle contract;
 # every other stage receives the previous typed value.
@@ -296,7 +307,7 @@ pipeline__operation_args <- function(
         signal = list(
             inputs = plan@inputs,
             groups = previous@value,
-            overrides = list(),
+            overrides = pipeline__signal_overrides(options),
             error_policy = "abort",
             warn_experimental = TRUE
         ),
