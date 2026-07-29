@@ -814,7 +814,7 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
-<p>Four package-native standalone signals currently use this
+<p>Five package-native standalone signals currently use this
 contract:</p>
 <table class="table">
 <colgroup>
@@ -876,6 +876,15 @@ where
 relative-change precipitation profiles; implementation-selected defaults
 for other supported variables remain experimental</td>
 </tr>
+<tr class="odd">
+<td align="left"><code>scaled_distribution_mapping_daily</code></td>
+<td align="left">Parametric distribution and recurrence-interval
+scaling, absolute for temperature and relative for precipitation</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published profiles for <code>tas</code> and
+<code>pr</code>; applying the Normal branch to <code>tasmin</code> and
+<code>tasmax</code> remains experimental</td>
+</tr>
 </tbody>
 </table>
 <p><code>quantile_mapping_daily</code> uses linear empirical-CDF
@@ -901,6 +910,22 @@ mm/day trace threshold are replaced by deterministic positive uniforms
 before adjustment and censored back to zero afterward. Window sample
 counts, transferred changes, clipping, censoring, and effective seeds
 are retained in provenance.</p>
+<p><code>scaled_distribution_mapping_daily</code> instead fits the
+parametric distributions and recurrence-interval changes from Switanek
+et al. (2017) within each calendar month. Temperature is linearly
+detrended, fitted with Normal distributions, adjusted through two-tailed
+recurrence intervals, and restored with the projected trend and
+observed-minus-historical model mean bias. Precipitation values below
+0.1 mm/day are dry; positive amounts use zero-location Gamma
+maximum-likelihood fits, multiplicative quantile scaling, one-tailed
+recurrence intervals, and the published expected wet-day equation. The
+projected period is divided into disjoint 10-year output blocks fitted
+on surrounding 30-year windows where data exist. Edge truncation,
+distribution parameters, sample coverage, corrected wet counts, and the
+method’s inability to turn additional dry projected days into wet days
+are explicit in result provenance. Native 360-, 365-, and 366-day
+calendars contribute samples to their own calendar months without
+Gregorian date coercion.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
