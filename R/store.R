@@ -3837,9 +3837,39 @@ EsgStore <- R6::R6Class(
                     artifact_id VARCHAR,
                     output_path VARCHAR,
                     row_count INTEGER,
+                    output_type VARCHAR,
+                    sequence_id VARCHAR,
+                    weather_year INTEGER,
+                    calendar VARCHAR,
+                    stochastic_seed INTEGER,
+                    member_count INTEGER,
+                    provenance_json VARCHAR,
                     created_at TIMESTAMP
                 )
             "
+            )
+            # Existing stores predate year-addressable result rows, so add each
+            # nullable identity column without rewriting their artifacts.
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS output_type VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS weather_year INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS calendar VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS member_count INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
             )
             private$exec(
                 "
@@ -3847,15 +3877,49 @@ EsgStore <- R6::R6Class(
                     output_id VARCHAR PRIMARY KEY,
                     morph_id VARCHAR,
                     case_id VARCHAR,
+                    result_id VARCHAR,
                     artifact_id VARCHAR,
                     path VARCHAR,
                     source_id VARCHAR,
                     experiment_id VARCHAR,
                     variant_label VARCHAR,
                     period VARCHAR,
+                    output_type VARCHAR,
+                    sequence_id VARCHAR,
+                    weather_year INTEGER,
+                    calendar VARCHAR,
+                    stochastic_seed INTEGER,
+                    member_count INTEGER,
+                    provenance_json VARCHAR,
                     created_at TIMESTAMP
                 )
             "
+            )
+            # Output rows mirror result identity so resume and export can map
+            # every generated year without relying on case-level uniqueness.
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS result_id VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS output_type VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS weather_year INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS calendar VARCHAR"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS member_count INTEGER"
+            )
+            private$exec(
+                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
             )
             invisible(NULL)
         },

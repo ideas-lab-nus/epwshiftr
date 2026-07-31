@@ -46,6 +46,11 @@
 
 ## New features
 
+* Future-weather recipes with `future_year` or `multi_year` output types now
+  persist a year-addressable sequence manifest and write one independently
+  resumable Parquet and EPW member per weather year. Existing
+  `representative_year` outputs and identifiers remain unchanged (#181).
+
 * Weather component pipelines now pass optional variable-specific
   `signal_overrides` to the selected signal component. Reusable downstream
   temperature reconstruction components ignore signal-owned settings while

@@ -1,79 +1,3 @@
-epw_morpher_test_response <- function(docs) {
-    list(
-        responseHeader = list(
-            status = 0L,
-            QTime = 0L,
-            params = stats::setNames(list(), character())
-        ),
-        response = list(
-            numFound = nrow(docs),
-            start = 0L,
-            docs = docs,
-            maxScore = 1
-        ),
-        facet_counts = list(
-            facet_queries = stats::setNames(list(), character()),
-            facet_fields = stats::setNames(list(), character()),
-            facet_ranges = stats::setNames(list(), character()),
-            facet_intervals = stats::setNames(list(), character()),
-            facet_heatmaps = stats::setNames(list(), character())
-        ),
-        timestamp = as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
-    )
-}
-
-epw_morpher_test_params <- function() {
-    query_param__as_store(list(
-        project = "CMIP6",
-        latest = TRUE,
-        distrib = TRUE,
-        limit = 10L,
-        type = "File",
-        format = QUERY_PARAM__FORMAT_JSON
-    ))
-}
-
-epw_morpher_test_result <- function(docs) {
-    query_result__new(
-        EsgResultFile,
-        index_node = "https://example.org",
-        params = epw_morpher_test_params(),
-        result = epw_morpher_test_response(docs)
-    )
-}
-
-epw_morpher_test_file_docs <- function(path, opendap_url, download_url, variable_id = "tas") {
-    docs <- data.frame(
-        id = sprintf("%s|dataset-1", path),
-        dataset_id = "dataset-1",
-        size = 123,
-        checksum = "abc",
-        checksum_type = "SHA256",
-        instance_id = sprintf("%s.instance", path),
-        master_id = sprintf("%s.master", path),
-        replica = FALSE,
-        tracking_id = "hdl:21.14100/local-test-2060",
-        title = path,
-        version = 20260101L,
-        data_node = "example.org",
-        activity_id = "ScenarioMIP",
-        institution_id = "EC-Earth-Consortium",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        variant_label = "r1i1p1f1",
-        frequency = "day",
-        table_id = "day",
-        variable_id = variable_id,
-        grid_label = "gr",
-        check.names = FALSE
-    )
-    docs$url <- I(list(c(
-        sprintf("%s|application/netcdf|OPENDAP", opendap_url),
-        sprintf("%s|application/netcdf|HTTPServer", download_url)
-    )))
-    docs
-}
-
 test_that("get_cache_epw() prepares a stable local EPW fixture", {
     dir <- withr::local_tempdir()
     withr::local_envvar(EPWSHIFTR_CHECK_CACHE = dir)
@@ -614,6 +538,10 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     expect_equal(results$row_count, 8760L)
     result_path <- store_abs_path(results$output_path, root = store$path)
     expect_true(file.exists(result_path))
+    expect_identical(
+        results$result_id,
+        morpher__hash(relaxed$morph_id, results$case_id, result_path)
+    )
 
     result_data <- read_test_parquet(result_path)
     expect_true(all(c("source_id", "experiment_id", "variant_label", "period") %in% names(result_data)))
@@ -637,6 +565,10 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     expect_equal(nrow(outputs), 1L)
     output_path <- store_abs_path(outputs$path, root = store$path)
     expect_true(file.exists(output_path))
+    expect_identical(
+        outputs$output_id,
+        morpher__hash(relaxed$morph_id, outputs$case_id, output_path)
+    )
     expect_gt(file.size(output_path), 0)
     expect_true(inherits(epw_file_read(output_path), "EpwFile"))
 

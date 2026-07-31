@@ -284,7 +284,8 @@ Abort if a morphing plan has blocking diagnostics.
 \if{html}{\out{<a id="method-EpwMorpher-run"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-run}{}}}
 \subsection{Method \code{run()}}{
-Execute a morphing plan and write hourly result Parquet files.
+Execute a morphing plan and write one hourly Parquet file per result
+member and weather year.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE, reporter = NULL)}\if{html}{\out{</div>}}
 }
@@ -307,7 +308,7 @@ Execute a morphing plan and write hourly result Parquet files.
 \if{html}{\out{<a id="method-EpwMorpher-write_epw"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-write_epw}{}}}
 \subsection{Method \code{write_epw()}}{
-Write future EPW files from morphing results.
+Write one future EPW file for every persisted result member.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$write_epw(
   morph_id,

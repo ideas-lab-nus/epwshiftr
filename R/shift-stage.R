@@ -469,7 +469,12 @@ shift_read_morph_data <- function(store, results, n, columns) {
             result_id = results$result_id[[i]],
             morph_id = results$morph_id[[i]],
             case_id = results$case_id[[i]],
-            output_path = results$output_path[[i]]
+            output_path = results$output_path[[i]],
+            output_type = results$output_type[[i]],
+            sequence_id = results$sequence_id[[i]],
+            weather_year = results$weather_year[[i]],
+            calendar = results$calendar[[i]],
+            stochastic_seed = results$stochastic_seed[[i]]
         ))
         pieces[[i]] <- shift_select_data_columns(dt, columns, "morphed")
         if (!is.infinite(remaining)) {
@@ -510,6 +515,11 @@ shift_read_epw_output_data <- function(store, outputs, n, columns) {
             experiment_id = outputs$experiment_id[[i]],
             variant_label = outputs$variant_label[[i]],
             period = outputs$period[[i]],
+            output_type = outputs$output_type[[i]],
+            sequence_id = outputs$sequence_id[[i]],
+            weather_year = outputs$weather_year[[i]],
+            calendar = outputs$calendar[[i]],
+            stochastic_seed = outputs$stochastic_seed[[i]],
             path = outputs$path[[i]]
         ))
         pieces[[i]] <- shift_select_data_columns(dt, columns, "EPW output")
@@ -8604,7 +8614,7 @@ shift__climate_for_cases <- function(climate, cases, reference = FALSE) {
 }
 
 # Attach output IDs and exported paths to the expected case matrix using the
-# public CMIP identity rather than the internal morph case hash.
+# public CMIP identity while allowing one case to own a complete year sequence.
 shift__complete_output_cases <- function(cases, outputs) {
     cases <- data.table::as.data.table(data.table::copy(cases))
     outputs <- data.table::as.data.table(outputs)
@@ -8618,15 +8628,39 @@ shift__complete_output_cases <- function(cases, outputs) {
                 variant_label == cases$variant_label[[i]] &
                 period == cases$period[[i]]
         ]
-        if (nrow(hit) == 1L) {
+        expected <- if (!nrow(hit) || !"member_count" %in% names(hit)) {
+            1L
+        } else {
+            count <- unique(as.integer(hit$member_count))
+            count <- count[!is.na(count)]
+            if (length(count) == 1L) count else NA_integer_
+        }
+        member_keys <- if (nrow(hit)) {
+            paste(
+                hit$output_type,
+                hit$sequence_id,
+                hit$weather_year,
+                sep = "\r"
+            )
+        } else {
+            character()
+        }
+        if (nrow(hit) && !is.na(expected) && nrow(hit) == expected &&
+            !anyDuplicated(member_keys)) {
             cases$status[[i]] <- "completed"
+            # The case table retains its original scalar compatibility field;
+            # all member IDs remain authoritative in the output manifest.
             cases$output_id[[i]] <- hit$output_id[[1L]]
             if ("export_path" %in% names(hit)) {
                 cases$export_path[[i]] <- hit$export_path[[1L]]
             }
         } else {
             cases$status[[i]] <- "missing"
-            cases$missing_reason[[i]] <- if (!nrow(hit)) "final EPW was not produced" else "multiple final EPWs matched one expected case"
+            cases$missing_reason[[i]] <- if (!nrow(hit)) {
+                "final EPW was not produced"
+            } else {
+                "the expected future-weather sequence is incomplete"
+            }
         }
     }
     cases[]
@@ -9082,7 +9116,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         shift__run_cases_write(store, run_id, cases)
         reporter$cases_updated(cases,
             show = shift__ui_at_least(reporter$ui(), "detail"))
-        output_count <- nrow(cases[status == "completed"])
+        output_count <- nrow(shift_outputs(outputs_stage))
         if (!output_count) {
             cli::cli_abort("The workflow produced zero final EPW files.")
         }
@@ -9240,7 +9274,14 @@ shift__export_target_path <- function(row, dir, separate = TRUE) {
     path <- row$path[[1L]]
     filename <- basename(path)
     if (isTRUE(separate)) {
-        parts <- unlist(row[, intersect(c("source_id", "experiment_id", "variant_label", "period"), names(row)), with = FALSE], use.names = FALSE)
+        parts <- unlist(row[, intersect(c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "period",
+            "sequence_id",
+            "weather_year"
+        ), names(row)), with = FALSE], use.names = FALSE)
         parts <- morpher__safe_path(parts[!is.na(parts) & nzchar(parts)])
         return(do.call(file.path, as.list(c(dir, parts, filename))))
     }
