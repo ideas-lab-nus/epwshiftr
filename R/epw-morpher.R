@@ -2098,10 +2098,107 @@ morpher__run_context <- function(context) {
     }
     backend <- epw_morph_backend(context$recipe$backend)
     result <- backend$run(context)
-    if (!inherits(result, "epw_morph_result")) {
-        cli::cli_abort("EPW morphing backend {.val {backend$name}} did not return an {.cls epw_morph_result}.")
+    if (!inherits(result, "epw_morph_result") &&
+        !S7::S7_inherits(result, WeatherSequenceResult)) {
+        cli::cli_abort(
+            "EPW morphing backend {.val {backend$name}} did not return an {.cls epw_morph_result} or {.cls WeatherSequenceResult}."
+        )
+    }
+    if (!is.null(recipe_spec)) {
+        actual_output_type <- if (S7::S7_inherits(
+            result,
+            WeatherSequenceResult
+        )) {
+            result@output_type
+        } else {
+            "representative_year"
+        }
+        if (!identical(recipe_spec@output_type, actual_output_type)) {
+            cli::cli_abort(c(
+                "Future-weather backend output does not match its registered recipe contract.",
+                "x" = "Recipe {.val {recipe_spec@name}} declares {.val {recipe_spec@output_type}} but returned {.val {actual_output_type}}."
+            ))
+        }
     }
     result
+}
+
+# Fill nullable sequence columns when reading manifests created before the
+# year-addressable result schema so existing stores keep one-member semantics.
+morpher__normalize_result_manifest <- function(rows) {
+    rows <- data.table::as.data.table(data.table::copy(rows))
+    defaults <- list(
+        output_type = "representative_year",
+        sequence_id = NA_character_,
+        weather_year = NA_integer_,
+        calendar = NA_character_,
+        stochastic_seed = NA_integer_,
+        member_count = 1L,
+        provenance_json = "[]"
+    )
+    for (name in names(defaults)) {
+        if (!name %in% names(rows)) {
+            rows[, (name) := defaults[[name]]]
+            next
+        }
+        missing <- is.na(rows[[name]])
+        if (is.character(rows[[name]])) {
+            missing <- missing | !nzchar(rows[[name]])
+        }
+        if (name %in% c(
+            "sequence_id",
+            "weather_year",
+            "calendar",
+            "stochastic_seed"
+        )) {
+            next
+        }
+        data.table::set(
+            rows,
+            i = which(missing),
+            j = name,
+            value = defaults[[name]]
+        )
+    }
+    rows[]
+}
+
+# A resumed case is complete only when every member promised by its manifest
+# still exists; one surviving year must not hide a missing sibling year.
+morpher__result_case_complete <- function(rows) {
+    if (!nrow(rows)) {
+        return(FALSE)
+    }
+    expected <- unique(as.integer(rows$member_count))
+    member_keys <- paste(
+        rows$output_type,
+        rows$sequence_id,
+        rows$weather_year,
+        sep = "\r"
+    )
+    length(expected) == 1L &&
+        !is.na(expected) &&
+        expected > 0L &&
+        nrow(rows) == expected &&
+        !anyDuplicated(member_keys) &&
+        !anyDuplicated(rows$output_path)
+}
+
+# Restore deterministic case and member order after reading rows from DuckDB,
+# whose physical row order is not a persistence contract.
+morpher__order_result_rows <- function(rows, cases) {
+    rows <- data.table::as.data.table(data.table::copy(rows))
+    if (!nrow(rows)) {
+        return(rows[])
+    }
+    rows[, (".case_order") := match(rows[["case_id"]], cases)]
+    data.table::setorderv(
+        rows,
+        c(".case_order", "sequence_id", "weather_year", "output_path"),
+        na.last = TRUE
+    )
+    rows[, (".case_order") := NULL]
+    rows[]
 }
 
 morpher__belcher_monthly_variable <- function(context, variable_id) {
@@ -5342,7 +5439,8 @@ EpwMorpher <- R6::R6Class(
         },
 
         #' @description
-        #' Execute a morphing plan and write hourly result Parquet files.
+        #' Execute a morphing plan and write one hourly Parquet file per result
+        #' member and weather year.
         #'
         #' @param morph_id Morphing plan ID.
         #' @param overwrite Whether to overwrite existing result files.
@@ -5364,7 +5462,9 @@ EpwMorpher <- R6::R6Class(
                 cli::cli_abort("No morphing cases were found for morph ID {.val {morph_id}}.")
             }
 
-            existing <- morpher__read_table(private$store, "epw_morph_result")
+            existing <- morpher__normalize_result_manifest(
+                morpher__read_table(private$store, "epw_morph_result")
+            )
             target_morph_id <- morph_id
             existing <- existing[existing[["morph_id"]] == target_morph_id]
             existing_paths <- if (nrow(existing)) {
@@ -5376,7 +5476,14 @@ EpwMorpher <- R6::R6Class(
                 existing[["case_id"]] %in% cases &
                     vapply(existing_paths, file.exists, logical(1L))
             ]
-            if (!isTRUE(overwrite) && isTRUE(resume) && length(unique(complete_existing$case_id)) == length(cases)) {
+            complete_cases <- cases[vapply(cases, function(case_id) {
+                rows <- complete_existing[
+                    complete_existing[["case_id"]] == case_id
+                ]
+                morpher__result_case_complete(rows)
+            }, logical(1L))]
+            if (!isTRUE(overwrite) && isTRUE(resume) &&
+                length(complete_cases) == length(cases)) {
                 private$set_plan_status(morph_id, "result_done")
                 if (!is.null(reporter)) {
                     for (case_index in seq_along(cases)) {
@@ -5388,7 +5495,7 @@ EpwMorpher <- R6::R6Class(
                             current = case_index, total = length(cases))
                     }
                 }
-                return(complete_existing[match(cases, complete_existing$case_id)])
+                return(morpher__order_result_rows(complete_existing, cases))
             }
 
             private$set_plan_status(morph_id, "running")
@@ -5457,19 +5564,16 @@ EpwMorpher <- R6::R6Class(
                             reporter$unit_started(label, current = case_index, total = length(cases),
                                 details = private$report_case_details(case, "morph_case"))
                         }
-                        path <- private$morph_result_path(morph_id, case_id)
                         target_case_id <- case_id
                         existing_case <- complete_existing[complete_existing[["case_id"]] == target_case_id]
-                        if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_case)) {
-                            result_rows[[length(result_rows) + 1L]] <- existing_case[1L]
+                        if (!isTRUE(overwrite) && isTRUE(resume) &&
+                            morpher__result_case_complete(existing_case)) {
+                            result_rows[[length(result_rows) + 1L]] <- existing_case
                             if (!is.null(reporter)) {
                                 reporter$unit_skipped(sprintf("Reused %s", label),
                                     current = case_index, total = length(cases))
                             }
                             next
-                        }
-                        if (file.exists(path) && !isTRUE(overwrite)) {
-                            cli::cli_abort("Morph result already exists without a complete manifest row: {.path {path}}.")
                         }
                         case_climate <- private$filter_case_climate(climate, case, by)
                         if (!nrow(case_climate)) {
@@ -5512,32 +5616,110 @@ EpwMorpher <- R6::R6Class(
                             warning = FALSE
                         )
                         case_result <- morpher__run_context(context)
-                        case_data <- case_result$data
-                        if (!nrow(case_data)) {
-                            cli::cli_abort("No morphed data were produced for morphing case {.val {target_case_id}}.")
+                        member_records <- sequence__records(case_result)
+                        member_count <- length(member_records)
+                        for (member in member_records) {
+                            case_data <- member$data
+                            if (!nrow(case_data)) {
+                                cli::cli_abort(
+                                    "No morphed data were produced for morphing case {.val {target_case_id}}."
+                                )
+                            }
+                            path <- private$morph_result_path(
+                                morph_id,
+                                case_id,
+                                output_type = member$output_type,
+                                sequence_id = member$sequence_id,
+                                weather_year = member$weather_year
+                            )
+                            path_rel <- store_rel_path(
+                                path,
+                                root = private$store$path
+                            )
+                            existing_member <- existing[
+                                existing[["case_id"]] == case_id &
+                                    existing[["output_path"]] == path_rel
+                            ]
+                            if (!isTRUE(overwrite) && isTRUE(resume) &&
+                                nrow(existing_member) == 1L &&
+                                file.exists(path)) {
+                                # Partial sequence recovery reuses intact
+                                # siblings and regenerates only missing years.
+                                result_rows[[length(result_rows) + 1L]] <-
+                                    existing_member
+                                next
+                            }
+                            if (file.exists(path) && !isTRUE(overwrite)) {
+                                cli::cli_abort(
+                                    "Morph result already exists without a complete manifest row: {.path {path}}."
+                                )
+                            }
+                            case_meta <- private$case_metadata_from_case(
+                                case,
+                                case_data
+                            )
+                            for (name in names(case_meta)) {
+                                case_data[, (name) := case_meta[[name]]]
+                            }
+                            write_parquet_file(case_data, path)
+                            provenance_json <- as.character(morpher__json(
+                                member$provenance
+                            ))
+                            identity <- list(
+                                output_type = member$output_type,
+                                sequence_id = member$sequence_id,
+                                weather_year = member$weather_year,
+                                calendar = member$calendar,
+                                stochastic_seed = member$stochastic_seed,
+                                member_count = member_count,
+                                provenance_json = provenance_json
+                            )
+                            artifact_id <- private$store$register_artifact(
+                                kind = "output",
+                                path = path,
+                                role = "derived",
+                                project = "CMIP6",
+                                metadata = c(
+                                    list(
+                                        morph_id = morph_id,
+                                        case_id = case_id
+                                    ),
+                                    identity
+                                )
+                            )
+                            result_id <- if (identical(
+                                member$output_type,
+                                "representative_year"
+                            )) {
+                                morpher__hash(morph_id, case_id, path)
+                            } else {
+                                morpher__hash(
+                                    morph_id,
+                                    case_id,
+                                    member$output_type,
+                                    member$sequence_id,
+                                    member$weather_year,
+                                    path
+                                )
+                            }
+                            result_rows[[length(result_rows) + 1L]] <- data.frame(
+                                result_id = result_id,
+                                morph_id = morph_id,
+                                case_id = case_id,
+                                artifact_id = artifact_id,
+                                output_path = path_rel,
+                                row_count = nrow(case_data),
+                                output_type = member$output_type,
+                                sequence_id = member$sequence_id,
+                                weather_year = member$weather_year,
+                                calendar = member$calendar,
+                                stochastic_seed = member$stochastic_seed,
+                                member_count = member_count,
+                                provenance_json = provenance_json,
+                                created_at = morpher__now(),
+                                stringsAsFactors = FALSE
+                            )
                         }
-                        case_meta <- private$case_metadata_from_case(case, case_data)
-                        for (name in names(case_meta)) {
-                            case_data[, (name) := case_meta[[name]]]
-                        }
-                        write_parquet_file(case_data, path)
-                        artifact_id <- private$store$register_artifact(
-                            kind = "output",
-                            path = path,
-                            role = "derived",
-                            project = "CMIP6",
-                            metadata = list(morph_id = morph_id, case_id = case_id)
-                        )
-                        result_rows[[length(result_rows) + 1L]] <- data.frame(
-                            result_id = morpher__hash(morph_id, case_id, path),
-                            morph_id = morph_id,
-                            case_id = case_id,
-                            artifact_id = artifact_id,
-                            output_path = store_rel_path(path, root = private$store$path),
-                            row_count = nrow(case_data),
-                            created_at = morpher__now(),
-                            stringsAsFactors = FALSE
-                        )
                         if (!is.null(reporter)) {
                             reporter$unit_completed(sprintf("Morphed %s", label),
                                 current = case_index, total = length(cases), outcome = "completed")
@@ -5547,7 +5729,7 @@ EpwMorpher <- R6::R6Class(
                     morpher__delete_by_key(private$store, "epw_morph_result", "morph_id", morph_id)
                     morpher__replace_rows(private$store, "epw_morph_result", results, "result_id")
                     private$set_plan_status(morph_id, "result_done")
-                    results[]
+                    morpher__order_result_rows(results, cases)
                 },
                 error = function(e) {
                     private$set_plan_status(morph_id, "failed", conditionMessage(e))
@@ -5557,7 +5739,7 @@ EpwMorpher <- R6::R6Class(
         },
 
         #' @description
-        #' Write future EPW files from morphing results.
+        #' Write one future EPW file for every persisted result member.
         #'
         #' @param morph_id Morphing plan ID.
         #' @param dir Output directory inside the store root. Relative paths are
@@ -5575,13 +5757,19 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_flag(separate)
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
-            private$get_plan(morph_id)
-            results <- morpher__read_table(private$store, "epw_morph_result")
+            plan <- private$get_plan(morph_id)
+            results <- morpher__normalize_result_manifest(
+                morpher__read_table(private$store, "epw_morph_result")
+            )
             target_morph_id <- morph_id
             results <- results[results[["morph_id"]] == target_morph_id]
             if (!nrow(results)) {
                 cli::cli_abort("No morphing results were found. Run {.code EpwMorpher$run()} first.")
             }
+            results <- morpher__order_result_rows(
+                results,
+                private$case_rows(plan)$case_id
+            )
 
             tryCatch(
                 {
@@ -5590,7 +5778,9 @@ EpwMorpher <- R6::R6Class(
                     base_epw <- private$epw$clone()
                     suppressMessages(base_epw$drop_unit())
                     base_cols <- names(base_epw$data())
-                    current_outputs <- morpher__read_table(private$store, "epw_output")
+                    current_outputs <- morpher__normalize_result_manifest(
+                        morpher__read_table(private$store, "epw_output")
+                    )
                     target_morph_id <- morph_id
                     current_outputs <- current_outputs[current_outputs[["morph_id"]] == target_morph_id]
                     output_rows <- vector("list", nrow(results))
@@ -5602,7 +5792,29 @@ EpwMorpher <- R6::R6Class(
                         result_path <- store_abs_path(result$output_path[[1L]], root = private$store$path)
                         dt <- morpher__parquet_read(private$store, result_path)
                         meta <- private$case_metadata_from_result(dt)
-                        label <- paste(unlist(meta[c("experiment_id", "variant_label", "period")], use.names = FALSE), collapse = " | ")
+                        sequence_meta <- if (identical(
+                            result$output_type[[1L]],
+                            "representative_year"
+                        )) {
+                            list()
+                        } else {
+                            list(
+                                sequence_id = result$sequence_id[[1L]],
+                                weather_year = result$weather_year[[1L]]
+                            )
+                        }
+                        display_meta <- c(
+                            meta[c(
+                                "experiment_id",
+                                "variant_label",
+                                "period"
+                            )],
+                            sequence_meta
+                        )
+                        label <- paste(
+                            unlist(display_meta, use.names = FALSE),
+                            collapse = " | "
+                        )
                         if (!is.null(reporter)) {
                             reporter$unit_started(label, current = i, total = nrow(results),
                                 details = list(
@@ -5611,16 +5823,40 @@ EpwMorpher <- R6::R6Class(
                                     period = meta$period
                                 ))
                         }
-                        label <- paste(morpher__safe_path(unlist(meta, use.names = FALSE)), collapse = ".")
-                        filename <- paste(tools::file_path_sans_ext(basename(morpher__get_epw_path(private$epw))), label, "epw", sep = ".")
+                        path_meta <- c(meta, sequence_meta)
+                        path_values <- unlist(path_meta, use.names = FALSE)
+                        label <- paste(
+                            morpher__safe_path(path_values),
+                            collapse = "."
+                        )
+                        filename <- paste(
+                            tools::file_path_sans_ext(basename(
+                                morpher__get_epw_path(private$epw)
+                            )),
+                            label,
+                            "epw",
+                            sep = "."
+                        )
                         output_path <- if (isTRUE(separate)) {
-                            file.path(root, do.call(file.path, as.list(morpher__safe_path(unlist(meta, use.names = FALSE)))), filename)
+                            file.path(
+                                root,
+                                do.call(
+                                    file.path,
+                                    as.list(morpher__safe_path(path_values))
+                                ),
+                                filename
+                            )
                         } else {
                             file.path(root, filename)
                         }
                         output_rel <- store_rel_path(output_path, root = private$store$path)
+                        same_result <- current_outputs[["result_id"]] ==
+                            result$result_id[[1L]]
+                        same_result[is.na(same_result)] <-
+                            current_outputs[["case_id"]][is.na(same_result)] ==
+                                result$case_id[[1L]]
                         existing_output <- current_outputs[
-                            current_outputs[["case_id"]] == result$case_id[[1L]] &
+                            same_result &
                                 current_outputs[["path"]] == output_rel
                         ]
                         if (!isTRUE(overwrite) && isTRUE(resume) && nrow(existing_output) && file.exists(output_path)) {
@@ -5636,6 +5872,13 @@ EpwMorpher <- R6::R6Class(
                         }
                         new_epw <- private$epw$clone()
                         set_data <- data.table::copy(dt[, intersect(base_cols, names(dt)), with = FALSE])
+                        if (nrow(set_data) != nrow(base_epw$data())) {
+                            cli::cli_abort(c(
+                                "Future-weather member cannot be written with the selected EPW template.",
+                                "x" = "Member {.val {result$sequence_id[[1L]]}} year {.val {result$weather_year[[1L]]}} has {nrow(set_data)} rows; the template has {nrow(base_epw$data())}.",
+                                "i" = "Map the member to the template calendar before the output stage."
+                            ))
+                        }
                         data.table::setcolorder(set_data, base_cols)
                         suppressMessages(new_epw$drop_unit())
                         suppressMessages(new_epw$set(set_data))
@@ -5645,7 +5888,10 @@ EpwMorpher <- R6::R6Class(
                         epw_file__apply_morph_headers(
                             new_epw, set_data, private$recipe$options
                         )
-                        case_label <- paste(unlist(meta, use.names = FALSE), collapse = "-")
+                        case_label <- paste(
+                            unlist(path_meta, use.names = FALSE),
+                            collapse = "-"
+                        )
                         new_epw$comment1(disclaimer_comment(case_label))
                         new_epw$fill_abnormal(missing = TRUE, out_of_range = TRUE, special = TRUE)
                         dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
@@ -5655,18 +5901,56 @@ EpwMorpher <- R6::R6Class(
                             path = output_path,
                             role = "output",
                             project = "CMIP6",
-                            metadata = c(list(morph_id = morph_id, case_id = result$case_id[[1L]]), meta)
+                            metadata = c(
+                                list(
+                                    morph_id = morph_id,
+                                    case_id = result$case_id[[1L]],
+                                    result_id = result$result_id[[1L]],
+                                    output_type = result$output_type[[1L]],
+                                    sequence_id = result$sequence_id[[1L]],
+                                    weather_year = result$weather_year[[1L]],
+                                    calendar = result$calendar[[1L]],
+                                    stochastic_seed = result$stochastic_seed[[1L]],
+                                    member_count = result$member_count[[1L]],
+                                    provenance_json = result$provenance_json[[1L]]
+                                ),
+                                meta
+                            )
                         )
+                        output_id <- if (identical(
+                            result$output_type[[1L]],
+                            "representative_year"
+                        )) {
+                            morpher__hash(
+                                morph_id,
+                                result$case_id[[1L]],
+                                output_path
+                            )
+                        } else {
+                            morpher__hash(
+                                morph_id,
+                                result$result_id[[1L]],
+                                output_path
+                            )
+                        }
                         output_rows[[i]] <- data.frame(
-                            output_id = morpher__hash(morph_id, result$case_id[[1L]], output_path),
+                            output_id = output_id,
                             morph_id = morph_id,
                             case_id = result$case_id[[1L]],
+                            result_id = result$result_id[[1L]],
                             artifact_id = artifact_id,
                             path = output_rel,
                             source_id = store__chr1(meta$source_id),
                             experiment_id = store__chr1(meta$experiment_id),
                             variant_label = store__chr1(meta$variant_label),
                             period = store__chr1(meta$period),
+                            output_type = result$output_type[[1L]],
+                            sequence_id = result$sequence_id[[1L]],
+                            weather_year = result$weather_year[[1L]],
+                            calendar = result$calendar[[1L]],
+                            stochastic_seed = result$stochastic_seed[[1L]],
+                            member_count = result$member_count[[1L]],
+                            provenance_json = result$provenance_json[[1L]],
                             created_at = morpher__now(),
                             stringsAsFactors = FALSE
                         )
@@ -6688,8 +6972,36 @@ EpwMorpher <- R6::R6Class(
             )
         },
 
-        morph_result_path = function(morph_id, case_id) {
-            file.path(private$store$path, "outputs", "epw-morph", morph_id, sprintf("case=%s.parquet", morpher__safe_path(case_id)))
+        # Keep legacy representative-year paths stable while sequence results
+        # receive collision-free member and year partitions.
+        morph_result_path = function(
+            morph_id,
+            case_id,
+            output_type = "representative_year",
+            sequence_id = NA_character_,
+            weather_year = NA_integer_
+        ) {
+            root <- file.path(
+                private$store$path,
+                "outputs",
+                "epw-morph",
+                morph_id
+            )
+            if (identical(output_type, "representative_year")) {
+                return(file.path(
+                    root,
+                    sprintf(
+                        "case=%s.parquet",
+                        morpher__safe_path(case_id)
+                    )
+                ))
+            }
+            file.path(
+                root,
+                sprintf("case=%s", morpher__safe_path(case_id)),
+                sprintf("sequence=%s", morpher__safe_path(sequence_id)),
+                sprintf("year=%d.parquet", as.integer(weather_year))
+            )
         }
     )
 )

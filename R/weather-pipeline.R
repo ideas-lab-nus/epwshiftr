@@ -375,6 +375,10 @@ pipeline__execute <- function(plan, context, options = list()) {
     final <- previous@value
     if (inherits(final, "epw_morph_result")) {
         final$parts$component_pipeline <- pipeline__stage_table(stages)
+    } else if (S7::S7_inherits(final, WeatherSequenceResult)) {
+        # Sequence outputs retain the same inspectable component provenance as
+        # representative-year results without flattening their member data.
+        final@parts$component_pipeline <- pipeline__stage_table(stages)
     }
     WeatherPipelineExecution(
         plan = plan,

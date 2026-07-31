@@ -616,7 +616,11 @@ separate stage and is not implied by selecting this signal.
 
 The runner returns `epw_morph_result()` with complete hourly EPW weather data.
 `EpwMorpher$run()` writes that data as Parquet and adds the case metadata
-columns needed by `write_epw()`.
+columns needed by `write_epw()`. Built-in sequence-generating recipes use an
+internal year-addressable result instead. Each member records its output type,
+sequence identifier, weather year, calendar, optional stochastic seed, and
+source provenance; public custom backends that return one
+`epw_morph_result()` retain their existing representative-year behavior.
 
 Rule tables must include `step`, `epw_field`, `method`, and `required`. They can
 use either the compact scalar columns `variable_id` and `optional_variable_id`
@@ -791,8 +795,12 @@ results <- morpher$run(
 )
 ```
 
-`run()` writes hourly morphed weather as Parquet artifacts under the store. It
-does not write EPW text files yet.
+`run()` writes hourly morphed weather as Parquet artifacts under the store. A
+representative-year result produces one artifact per climate case. A future
+sequence produces one independently resumable artifact per sequence member and
+weather year; `output_type`, `sequence_id`, `weather_year`, `calendar`, and
+`stochastic_seed` identify those rows in the result manifest. It does not write
+EPW text files yet.
 
 # Write EPW Files
 
@@ -813,7 +821,9 @@ morpher$outputs(morph_id)
 
 The high-level `shift_epw()` function wraps this step and returns a
 `ShiftOutputs` stage. Use `shift_outputs()` and `shift_data()` when you do not
-need lower-level manifest IDs.
+need lower-level manifest IDs. Sequence results are written as one EPW per
+weather year, with the sequence identifier and year included in the path and
+filename; multiple years are never flattened into a single EPW text file.
 
 For the enhanced profile, final EPW writing uses the persisted hourly Parquet
 artifact to recalculate ground temperatures and six hemisphere-aware
