@@ -818,19 +818,28 @@ complete recipe. The current standalone sequence contract is:</p>
 </tr></thead>
 <tbody><tr class="odd">
 <td align="left"><code>direct_model_realization</code></td>
-<td align="left">Complete daily <code>DailyAdjustedSeries</code> groups
-retaining the <code>model_future</code> backbone</td>
+<td align="left">Complete <code>DailyAdjustedSeries</code> or
+<code>SubdailyAdjustedSeries</code> groups satisfying the common
+<code>AdjustedWeatherSeries</code> contract and retaining the
+<code>model_future</code> backbone</td>
 <td align="left">Preserve native CF chronology, partition complete
-source years, and perform no day selection or resampling</td>
+source years, and perform no timestep selection or resampling</td>
 <td align="left">One <code>DirectModelSequence</code> containing
-deterministic year members, group keys, corrected values, signal
-provenance, source years, and calendars</td>
+deterministic year members, group keys, corrected values, frequency,
+timestep, signal provenance, source years, and calendars</td>
 </tr></tbody>
 </table>
-<p><code>direct_model_realization</code> currently accepts daily values.
-Sub-daily signal types and their hourly interpolation remain separate
-later components; the sequence stage does not silently interpolate or
-construct EPW fields.</p>
+<p><code>AdjustedWeatherSeries</code> is the frequency-aware
+signal-result boundary. <code>DailyAdjustedSeries</code> remains its
+strict daily specialization, while <code>SubdailyAdjustedSeries</code>
+requires an explicit regular timestep and exact
+<code>cf_second_of_day</code> values in addition to the calendar-native
+date and annual phase. <code>direct_model_realization</code> requires
+every group to use the same frequency and timestep and to cover each
+source year completely. It does not interpolate, resample, or construct
+EPW fields. Workflows that interpolate climate-model inputs before bias
+adjustment must perform that transformation in an earlier component and
+retain its provenance.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and
