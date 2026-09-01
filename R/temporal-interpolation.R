@@ -1,6 +1,6 @@
-# Regular source frequencies supported by the initial temporal interpolation
-# component. The named seconds keep validation independent of string parsing.
-TEMPORAL_LINEAR_SOURCE_STEPS <- c(
+# Regular source frequencies shared by the first point-state and interval-mean
+# temporal components. The named seconds keep validation independent of parsing.
+TEMPORAL_SOURCE_STEPS <- c(
     `3hr` = 10800,
     `6hr` = 21600
 )
@@ -19,7 +19,7 @@ TEMPORAL_LINEAR_VARIABLES <- c(
 
 # Known identity fields prevent unrelated sites, models, members, periods, or
 # extracted grid points from sharing an interpolation interval.
-TEMPORAL_LINEAR_ID_COLUMNS <- c(
+TEMPORAL_ID_COLUMNS <- c(
     "site_id",
     "activity_drs",
     "activity_id",
@@ -40,9 +40,11 @@ TEMPORAL_LINEAR_ID_COLUMNS <- c(
 
 # Fields that change along a time series cannot be declared as group identity
 # columns by an input adapter or morphing context.
-TEMPORAL_LINEAR_TIME_COLUMNS <- c(
+TEMPORAL_TIME_COLUMNS <- c(
     "value",
     "time",
+    "time_bound_start",
+    "time_bound_end",
     "datetime",
     "year",
     "month",
@@ -142,7 +144,7 @@ temporal__group_columns <- function(data, input, context, role) {
         unique = TRUE
     )
     requested <- unique(c(
-        intersect(TEMPORAL_LINEAR_ID_COLUMNS, names(data)),
+        intersect(TEMPORAL_ID_COLUMNS, names(data)),
         declared,
         context_by,
         "variable_id",
@@ -156,7 +158,7 @@ temporal__group_columns <- function(data, input, context, role) {
             "Role {.val {role}} declares missing interpolation group column(s): {.val {missing}}."
         )
     }
-    forbidden <- intersect(requested, TEMPORAL_LINEAR_TIME_COLUMNS)
+    forbidden <- intersect(requested, TEMPORAL_TIME_COLUMNS)
     if (length(forbidden)) {
         cli::cli_abort(
             "Role {.val {role}} cannot group temporal interpolation by time-varying column(s): {.val {forbidden}}."
@@ -212,11 +214,11 @@ temporal__linear_source <- function(input, role) {
     frequencies <- unique(as.character(data[["frequency"]]))
     unsupported_frequencies <- setdiff(
         frequencies,
-        names(TEMPORAL_LINEAR_SOURCE_STEPS)
+        names(TEMPORAL_SOURCE_STEPS)
     )
     if (length(unsupported_frequencies)) {
         cli::cli_abort(
-            "Role {.val {role}} contains unsupported source frequency value(s): {.val {unsupported_frequencies}}. Supported values are {.val {names(TEMPORAL_LINEAR_SOURCE_STEPS)}}."
+            "Role {.val {role}} contains unsupported source frequency value(s): {.val {unsupported_frequencies}}. Supported values are {.val {names(TEMPORAL_SOURCE_STEPS)}}."
         )
     }
     variables <- unique(as.character(data[["variable_id"]]))
@@ -480,7 +482,7 @@ temporal__linear_role <- function(input, role, context) {
             group_columns = group_columns,
             frequency = frequency,
             time_step_seconds = unname(
-                TEMPORAL_LINEAR_SOURCE_STEPS[[frequency]]
+                TEMPORAL_SOURCE_STEPS[[frequency]]
             )
         )
     })
@@ -505,7 +507,7 @@ temporal__linear_role <- function(input, role, context) {
         method = "linear_temporal_interpolation",
         source_frequencies = sort(source$frequencies),
         source_step_seconds = unname(
-            TEMPORAL_LINEAR_SOURCE_STEPS[sort(source$frequencies)]
+            TEMPORAL_SOURCE_STEPS[sort(source$frequencies)]
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
@@ -628,7 +630,7 @@ temporal__linear_component <- function() {
         component__input_requirement(
             role,
             representations = "series",
-            frequencies = names(TEMPORAL_LINEAR_SOURCE_STEPS),
+            frequencies = names(TEMPORAL_SOURCE_STEPS),
             calendars = CF_TIME_CALENDARS,
             variable_sets = variables
         )
@@ -648,7 +650,7 @@ temporal__linear_component <- function() {
         operations = list(apply = temporal__linear_apply),
         metadata = list(
             algorithm = "piecewise_linear_interpolation",
-            source_frequencies = names(TEMPORAL_LINEAR_SOURCE_STEPS),
+            source_frequencies = names(TEMPORAL_SOURCE_STEPS),
             target_frequency = "hour",
             target_step_seconds = 3600,
             supported_variables = TEMPORAL_LINEAR_VARIABLES,

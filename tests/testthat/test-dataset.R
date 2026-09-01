@@ -408,8 +408,16 @@ test_that("EsgDataset$get_time_axis()", {
     expect_true("units" %in% names(time_info))
     expect_true("calendar" %in% names(time_info))
     expect_true("coordinates" %in% names(time_info))
+    expect_true("bounds" %in% names(time_info))
     expect_s3_class(time_info$values, "POSIXct")
     expect_named(time_info$coordinates, CF_TIME_COORDINATE_COLUMNS)
+    expect_identical(time_info$bounds$name, "time_bnds")
+    expect_s3_class(time_info$bounds$start, "POSIXct")
+    expect_s3_class(time_info$bounds$end, "POSIXct")
+    expect_identical(
+        as.numeric(time_info$bounds$end - time_info$bounds$start),
+        rep.int(1, time_info$length)
+    )
 })
 # }}}
 # EsgDataset$get_spatial_grid() {{{
@@ -621,6 +629,8 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
             "file_index",
             "variable",
             "time",
+            "time_bound_start",
+            "time_bound_end",
             CF_TIME_COORDINATE_COLUMNS,
             "lon",
             "lat",
@@ -637,6 +647,17 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
         expect_identical(dt$cf_day_of_year, 2:3)
         expect_identical(dt$cf_year_days, rep.int(366L, 2L))
         expect_equal(dt$annual_phase, c(1.5, 2.5) / 366)
+        expect_equal(
+            as.numeric(dt$time_bound_end - dt$time_bound_start),
+            rep.int(1, 2L)
+        )
+        expect_equal(
+            as.numeric(
+                dt$time - dt$time_bound_start,
+                units = "days"
+            ),
+            rep.int(0.5, 2L)
+        )
         expect_equal(unique(dt$lon), 103.98)
         expect_equal(unique(dt$lat), 1.37)
         expect_equal(nrow(dt), 2L)
@@ -710,6 +731,10 @@ test_that("EsgDataset$read_region() selects and exposes 360-day CF boundaries", 
     expect_identical(dt$cf_day_of_year, c(360L, 1L))
     expect_identical(dt$cf_year_days, rep.int(360L, 2L))
     expect_equal(dt$annual_phase, c(359.5 / 360, 0.5 / 360))
+    expect_equal(
+        as.numeric(dt$time_bound_end - dt$time_bound_start),
+        rep.int(1, 2L)
+    )
     # Both surrogate timestamps remain in Gregorian 2060; the CF columns are
     # therefore the authoritative year/month identity.
     expect_identical(

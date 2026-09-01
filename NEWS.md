@@ -46,6 +46,14 @@
 
 ## New features
 
+* Added the registered `solar_radiation_interpolation` preprocessing component
+  for interval-mean three-hourly `rsds` and `rsdsdiff`. It preserves explicit
+  CF time bounds through regional extraction, allocates each source interval
+  to hourly means using positive solar projection, conserves the source mean,
+  and records weights and diagnostics on every supported native CF calendar.
+  Regular six-hourly input is supported as an explicit extension of the
+  published three-hourly method (#189).
+
 * Added the registered `linear_temporal_interpolation` preprocessing component
   for regular three- and six-hourly `tas`, `huss`, `hurs`, `ps`, `psl`, `uas`,
   and `vas` inputs. It produces an exact hourly native CF-calendar lattice,
