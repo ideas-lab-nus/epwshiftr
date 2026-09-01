@@ -21,6 +21,7 @@
     cdft__register_component()
     edcdf__register_component()
     isimip__register_component()
+    temporal__register_linear_component()
     sequence__register_direct_model_component()
 
     # set package options

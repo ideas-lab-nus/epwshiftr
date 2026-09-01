@@ -110,6 +110,7 @@ Collate:
     'sobie-curry-backend.R'
     'standalone-cache.R'
     'weather-pipeline.R'
+    'temporal-interpolation.R'
     'weather-recipe.R'
     'weather-sequence.R'
     'zzz.R'
