@@ -310,7 +310,8 @@ temporal__linear_group <- function(
     data,
     group_columns,
     frequency,
-    time_step_seconds
+    time_step_seconds,
+    anchors = NULL
 ) {
     data <- data.table::as.data.table(data.table::copy(data))
     data.table::set(
@@ -334,6 +335,82 @@ temporal__linear_group <- function(
         label
     )
 
+    # Optional hourly anchors extend the interpolation support without
+    # weakening validation of the original regular sub-daily source series.
+    support_seconds <- native_seconds
+    support_value <- as.numeric(data[["value"]])
+    support_label <- temporal__cf_time_label(data)
+    support_row <- data[[".temporal_source_row"]]
+    support_kind <- rep.int("model_subdaily", nrow(data))
+    if (!is.null(anchors)) {
+        checkmate::assert_data_frame(
+            anchors,
+            min.rows = 1L,
+            col.names = "unique"
+        )
+        required_anchor_columns <- c(
+            "native_second",
+            "value",
+            "source_time",
+            "source_row",
+            "source_kind"
+        )
+        missing <- setdiff(required_anchor_columns, names(anchors))
+        if (length(missing)) {
+            cli::cli_abort(
+                "Interpolation anchors for group {.val {label}} are missing column(s): {.val {missing}}."
+            )
+        }
+        anchor_seconds <- as.numeric(anchors[["native_second"]])
+        if (any(!is.finite(anchor_seconds)) ||
+            any(abs(anchor_seconds / 3600 - round(anchor_seconds / 3600)) >
+                1e-6)) {
+            cli::cli_abort(
+                "Interpolation anchors for group {.val {label}} must use whole-hour native CF times."
+            )
+        }
+        if (any(anchor_seconds <= native_seconds[[1L]] |
+            anchor_seconds >= native_seconds[[length(native_seconds)]])) {
+            cli::cli_abort(
+                "Interpolation anchors for group {.val {label}} must lie strictly inside source support."
+            )
+        }
+        if (anyDuplicated(anchor_seconds) ||
+            any(anchor_seconds %in% native_seconds)) {
+            cli::cli_abort(
+                "Interpolation anchors for group {.val {label}} must use unique times between original source samples."
+            )
+        }
+        if (any(!is.finite(as.numeric(anchors[["value"]])))) {
+            cli::cli_abort(
+                "Interpolation anchors for group {.val {label}} must contain finite values."
+            )
+        }
+        support_seconds <- c(support_seconds, anchor_seconds)
+        support_value <- c(
+            support_value,
+            as.numeric(anchors[["value"]])
+        )
+        support_label <- c(
+            support_label,
+            as.character(anchors[["source_time"]])
+        )
+        support_row <- c(
+            support_row,
+            as.integer(anchors[["source_row"]])
+        )
+        support_kind <- c(
+            support_kind,
+            as.character(anchors[["source_kind"]])
+        )
+        support_order <- order(support_seconds)
+        support_seconds <- support_seconds[support_order]
+        support_value <- support_value[support_order]
+        support_label <- support_label[support_order]
+        support_row <- support_row[support_order]
+        support_kind <- support_kind[support_order]
+    }
+
     # Hourly targets are anchored to native midnight and remain within the
     # observed support interval, so this component never extrapolates.
     target_step <- 3600
@@ -346,13 +423,13 @@ temporal__linear_group <- function(
         to = target_end,
         by = target_step
     )
-    exact <- match(target_seconds, native_seconds)
-    left <- findInterval(target_seconds, native_seconds)
+    exact <- match(target_seconds, support_seconds)
+    left <- findInterval(target_seconds, support_seconds)
     right <- left + 1L
     matched <- !is.na(exact)
     left[matched] <- exact[matched]
     right[matched] <- exact[matched]
-    if (any(left < 1L | right > length(native_seconds))) {
+    if (any(left < 1L | right > length(support_seconds))) {
         cli::cli_abort(
             "Interpolation group {.val {label}} produced a target outside source support."
         )
@@ -360,15 +437,15 @@ temporal__linear_group <- function(
 
     # The right-hand weight defines the linear equation while exact source
     # instants retain their original value without floating-point averaging.
-    denominator <- native_seconds[right] - native_seconds[left]
+    denominator <- support_seconds[right] - support_seconds[left]
     weight_right <- numeric(length(target_seconds))
     interior <- left != right
     weight_right[interior] <- (
-        target_seconds[interior] - native_seconds[left[interior]]
+        target_seconds[interior] - support_seconds[left[interior]]
     ) / denominator[interior]
-    value <- as.numeric(data[["value"]][left]) * (1 - weight_right) +
-        as.numeric(data[["value"]][right]) * weight_right
-    value[matched] <- as.numeric(data[["value"]][exact[matched]])
+    value <- support_value[left] * (1 - weight_right) +
+        support_value[right] * weight_right
+    value[matched] <- support_value[exact[matched]]
 
     calendar <- data[["cf_calendar"]][[1L]]
     target <- temporal__target_coordinates(target_seconds, calendar)
@@ -405,10 +482,12 @@ temporal__linear_group <- function(
                 frequency,
                 length(target_seconds)
             ),
-            source_time_left = source_labels[left],
-            source_time_right = source_labels[right],
-            source_row_left = data[[".temporal_source_row"]][left],
-            source_row_right = data[[".temporal_source_row"]][right],
+            source_time_left = support_label[left],
+            source_time_right = support_label[right],
+            source_row_left = support_row[left],
+            source_row_right = support_row[right],
+            source_kind_left = support_kind[left],
+            source_kind_right = support_kind[right],
             interpolation_weight_right = weight_right,
             temporal_interpolation = rep.int(
                 "linear",
@@ -441,6 +520,19 @@ temporal__linear_group <- function(
         target_frequency = "hour",
         target_step_seconds = as.numeric(target_step),
         source_samples = nrow(data),
+        anchor_samples = length(support_seconds) - nrow(data),
+        anchor_hour_policies = if (is.null(anchors) ||
+            !"hour_policy" %in% names(anchors)) {
+            NA_character_
+        } else {
+            paste(sort(unique(anchors[["hour_policy"]])), collapse = ",")
+        },
+        anchor_pair_policies = if (is.null(anchors) ||
+            !"pair_policy" %in% names(anchors)) {
+            NA_character_
+        } else {
+            paste(sort(unique(anchors[["pair_policy"]])), collapse = ",")
+        },
         target_samples = nrow(out),
         interpolated_samples = sum(interior),
         source_start = source_labels[[1L]],
@@ -454,7 +546,12 @@ temporal__linear_group <- function(
 
 # Interpolate every independent group in one semantic role and rebuild its
 # WeatherInput descriptor with hourly frequency and retained source provenance.
-temporal__linear_role <- function(input, role, context) {
+temporal__linear_role <- function(
+    input,
+    role,
+    context,
+    anchor_factory = NULL
+) {
     source <- temporal__linear_source(input, role)
     group_columns <- temporal__group_columns(
         source$data,
@@ -477,13 +574,19 @@ temporal__linear_role <- function(input, role, context) {
                 "Each temporal interpolation group must contain one source frequency."
             )
         }
+        anchors <- if (is.null(anchor_factory)) {
+            NULL
+        } else {
+            anchor_factory(group, group_columns)
+        }
         temporal__linear_group(
             group,
             group_columns = group_columns,
             frequency = frequency,
             time_step_seconds = unname(
                 TEMPORAL_SOURCE_STEPS[[frequency]]
-            )
+            ),
+            anchors = anchors
         )
     })
     data <- data.table::rbindlist(
@@ -511,6 +614,11 @@ temporal__linear_role <- function(input, role, context) {
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
+        daily_extrema_anchors = sum(vapply(
+            results,
+            function(result) result$diagnostic$anchor_samples[[1L]],
+            integer(1L)
+        )),
         boundary_policy = "bounded_by_source",
         source_group_columns = group_columns,
         output_group_columns = output_group_columns

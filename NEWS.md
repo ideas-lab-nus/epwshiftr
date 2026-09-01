@@ -46,6 +46,16 @@
 
 ## New features
 
+* Added the registered `hourly_weather_interpolation` preprocessing component
+  for model inputs that combine point-state variables with interval-mean
+  shortwave radiation. It dispatches each variable family to its existing
+  linear or solar-projection algorithm, optionally inserts matching daily
+  `tasmin` and `tasmax` as source-labelled hourly `tas` anchors using observed
+  site/month extreme-hour modes, and records deterministic hour and adjacent-
+  pair fallbacks. The merged historical and future roles retain variable-level
+  diagnostics, sampling phases, source provenance, and validated regular native-
+  calendar hourly coordinates (#195).
+
 * Added the registered `hourly_calendar_grouping` calendar component. It turns
   hourly observed, historical-model, and future-model role inputs into
   univariate signal groups while preserving each role's native CF chronology,
