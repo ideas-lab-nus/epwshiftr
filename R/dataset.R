@@ -208,6 +208,102 @@ DatasetAsyncTask <- R6::R6Class(
 )
 # }}}
 
+# Read and normalize the optional CF bounds attached to the time coordinate.
+# Bounds remain paired with their native-calendar POSIX surrogate so interval
+# semantics survive spatial extraction without assigning Gregorian dates to
+# non-Gregorian calendars.
+dataset__time_bounds <- function(
+    dataset,
+    index,
+    units,
+    calendar,
+    time_length
+) {
+    bounds_name <- tryCatch(
+        dataset$att_get("time", "bounds", index),
+        error = function(error) NULL
+    )
+    if (is.null(bounds_name)) {
+        return(NULL)
+    }
+    bounds_name <- as.character(bounds_name[[1L]])
+    if (!nzchar(bounds_name)) {
+        stop("The CF `time:bounds` attribute cannot be empty.", call. = FALSE)
+    }
+
+    info <- tryCatch(
+        dataset$var_inq(bounds_name, index),
+        error = function(error) {
+            stop(sprintf(
+                "The CF time bounds variable '%s' cannot be read: %s",
+                bounds_name,
+                conditionMessage(error)
+            ), call. = FALSE)
+        }
+    )
+    dimension_info <- lapply(info$dimids, function(id) {
+        dataset$dim_inq(id, index)
+    })
+    dimension_names <- vapply(
+        dimension_info,
+        function(dimension) dimension$name,
+        character(1L)
+    )
+    dimension_lengths <- vapply(
+        dimension_info,
+        function(dimension) as.integer(dimension$length),
+        integer(1L)
+    )
+    time_dimension <- match("time", dimension_names)
+    bound_dimension <- setdiff(seq_along(dimension_names), time_dimension)
+    if (length(dimension_names) != 2L ||
+        is.na(time_dimension) ||
+        length(bound_dimension) != 1L ||
+        dimension_lengths[[time_dimension]] != time_length ||
+        dimension_lengths[[bound_dimension]] != 2L) {
+        stop(sprintf(
+            "The CF time bounds variable '%s' must have one time dimension of length %d and one bounds dimension of length 2.",
+            bounds_name,
+            time_length
+        ), call. = FALSE)
+    }
+
+    raw <- dataset$var_get(
+        bounds_name,
+        index = index,
+        collapse = FALSE
+    )
+    raw_dimensions <- dim(raw)
+    if (is.null(raw_dimensions) ||
+        !identical(as.integer(raw_dimensions), dimension_lengths)) {
+        stop(sprintf(
+            "The CF time bounds variable '%s' has dimensions inconsistent with its metadata.",
+            bounds_name
+        ), call. = FALSE)
+    }
+
+    # Reorder the raw array to time-by-bound form before parsing each endpoint
+    # with the same units and calendar as the parent coordinate.
+    ordered <- aperm(raw, c(time_dimension, bound_dimension))
+    dim(ordered) <- c(time_length, 2L)
+    start <- parse_cf_time(ordered[, 1L], units, calendar)
+    end <- parse_cf_time(ordered[, 2L], units, calendar)
+    if (any(as.numeric(end) <= as.numeric(start))) {
+        stop(sprintf(
+            "The CF time bounds variable '%s' must contain increasing intervals.",
+            bounds_name
+        ), call. = FALSE)
+    }
+
+    list(
+        name = bounds_name,
+        start = start,
+        end = end,
+        start_coordinates = attr(start, "cf_coordinates", exact = TRUE),
+        end_coordinates = attr(end, "cf_coordinates", exact = TRUE)
+    )
+}
+
 #' Remote NetCDF Dataset Access via OPeNDAP
 #'
 #' @description
@@ -626,7 +722,7 @@ EsgDataset <- R6::R6Class(
         #' @param index File index for multi-file datasets. Default: `1L`.
         #'
         #' @return A list containing time values, units, calendar, canonical CF
-        #' coordinates, and axis length.
+        #' coordinates, optional CF interval bounds, and axis length.
         #'
         #' @examples
         #' \dontrun{
@@ -660,12 +756,20 @@ EsgDataset <- R6::R6Class(
                 time_calendar
             )
             time_coordinates <- attr(time_vals, "cf_coordinates", exact = TRUE)
+            time_bounds <- dataset__time_bounds(
+                self,
+                index = index,
+                units = time_units,
+                calendar = time_calendar,
+                time_length = time_dim$length
+            )
 
             result <- list(
                 values = time_vals,
                 units = time_units,
                 calendar = normalize_cf_calendar(time_calendar),
                 coordinates = time_coordinates,
+                bounds = time_bounds,
                 length = time_dim$length
             )
 
@@ -852,8 +956,9 @@ EsgDataset <- R6::R6Class(
         #'        read. Only supported when `async = TRUE`.
         #'
         #' @return A data.table or list of data.tables with columns including
-        #' `file_index`, `variable`, `time`, canonical `cf_*` calendar
-        #' coordinates, `annual_phase`, `lon`, `lat`, `method`, and `value`.
+        #' `file_index`, `variable`, `time`, optional `time_bound_start` and
+        #' `time_bound_end`, canonical `cf_*` calendar coordinates,
+        #' `annual_phase`, `lon`, `lat`, `method`, and `value`.
         #' The `"grid_sources"` attribute records contributing grid coordinates
         #' and weights.
         #'
@@ -1469,6 +1574,8 @@ EsgDataset <- R6::R6Class(
                 file_index = integer(),
                 variable = character(),
                 time = as.POSIXct(character(), tz = "UTC"),
+                time_bound_start = as.POSIXct(character(), tz = "UTC"),
+                time_bound_end = as.POSIXct(character(), tz = "UTC"),
                 cf_calendar = character(),
                 cf_year = integer(),
                 cf_month = integer(),
@@ -1848,6 +1955,18 @@ EsgDataset <- R6::R6Class(
                 CF_TIME_COORDINATE_COLUMNS,
                 drop = FALSE
             ]
+            if (!is.null(time_info$bounds)) {
+                data.table::set(
+                    out,
+                    j = "time_bound_start",
+                    value = time_info$bounds$start[coordinate_idx]
+                )
+                data.table::set(
+                    out,
+                    j = "time_bound_end",
+                    value = time_info$bounds$end[coordinate_idx]
+                )
+            }
             for (name in CF_TIME_COORDINATE_COLUMNS) {
                 data.table::set(out, j = name, value = coordinate_rows[[name]])
             }
@@ -1855,6 +1974,10 @@ EsgDataset <- R6::R6Class(
                 "file_index",
                 "variable",
                 "time",
+                intersect(
+                    c("time_bound_start", "time_bound_end"),
+                    names(out)
+                ),
                 CF_TIME_COORDINATE_COLUMNS,
                 "lon",
                 "lat",

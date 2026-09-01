@@ -493,6 +493,7 @@ complete recipe. The current standalone preprocessing contract is:
 | Registry name | Accepted source inputs | Behavior | Output contract |
 |:--------------|:-----------------------|:---------|:----------------|
 | `linear_temporal_interpolation` | Materialized `model_historical` and `model_future` series at a regular three- or six-hour timestep, using any supported CF calendar and containing `tas`, `huss`, `hurs`, `ps`, `psl`, `uas`, or `vas` | Interpolate each independent variable/model/member/grid/site group onto an exact midnight-anchored hourly native-calendar lattice, retain original source values at matching hours, and never extrapolate beyond source support | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt hourly `WeatherInputs`, left/right source timestamps and rows, interpolation weights, group diagnostics, and source provenance |
+| `solar_radiation_interpolation` | Materialized `model_historical` and `model_future` series containing interval-mean `rsds` or `rsdsdiff` at a regular three- or six-hour timestep, with explicit CF time bounds, UTC coordinates, site longitude and latitude, and any supported CF calendar | Partition each source interval into one-hour intervals and scale its mean flux by each target interval's positive solar projection relative to the source-interval mean projection | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt non-negative hourly `WeatherInputs`, target interval bounds, source rows and bounds, solar projections and weights, conservation diagnostics, and source provenance |
 
 The component accepts only variables with explicit continuous point-state
 semantics. Radiation, fluxes, accumulations, and derived variables are
@@ -502,6 +503,21 @@ requires a separate preprocessing implementation. A complete workflow must
 also provide sufficient source samples around the requested output boundaries,
 because `linear_temporal_interpolation` deliberately performs no
 extrapolation.
+
+`solar_radiation_interpolation` follows the interval allocation described by
+[Vuichard and Papale (2015)](https://doi.org/10.5194/essd-7-157-2015) and later
+used for CMIP6 weather generation by
+[Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5). The source
+value must represent the mean flux over its declared CF time bounds. Positive
+cosine of solar zenith is integrated at one-minute midpoints for the source and
+hourly target intervals; target values are normalized so their interval mean
+equals the source value. The cited implementations use three-hourly inputs;
+support for regular six-hourly intervals applies the same allocation equation
+as an explicit package extension. Native CF annual phase maps 360-day, no-leap,
+all-leap, and Gregorian calendars onto the common astronomical cycle without
+assigning them surrogate Gregorian dates. Positive radiation in an interval
+with zero solar projection is reported as an error because the published ratio
+is then undefined.
 
 Sequence implementations can also be registered independently of a complete
 recipe. The current standalone sequence contract is:
