@@ -487,6 +487,22 @@ methods use all seven stages, including explicit
 forms native-calendar monthly distributions and its `signal` component
 requires both historical model output and a separate observed reference.
 
+Preprocessing implementations can also be registered independently of a
+complete recipe. The current standalone preprocessing contract is:
+
+| Registry name | Accepted source inputs | Behavior | Output contract |
+|:--------------|:-----------------------|:---------|:----------------|
+| `linear_temporal_interpolation` | Materialized `model_historical` and `model_future` series at a regular three- or six-hour timestep, using any supported CF calendar and containing `tas`, `huss`, `hurs`, `ps`, `psl`, `uas`, or `vas` | Interpolate each independent variable/model/member/grid/site group onto an exact midnight-anchored hourly native-calendar lattice, retain original source values at matching hours, and never extrapolate beyond source support | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt hourly `WeatherInputs`, left/right source timestamps and rows, interpolation weights, group diagnostics, and source provenance |
+
+The component accepts only variables with explicit continuous point-state
+semantics. Radiation, fluxes, accumulations, and derived variables are
+rejected instead of being assigned the same interpolation equation. Radiation
+downscaling that accounts for the hourly solar-elevation cycle therefore
+requires a separate preprocessing implementation. A complete workflow must
+also provide sufficient source samples around the requested output boundaries,
+because `linear_temporal_interpolation` deliberately performs no
+extrapolation.
+
 Sequence implementations can also be registered independently of a complete
 recipe. The current standalone sequence contract is:
 
