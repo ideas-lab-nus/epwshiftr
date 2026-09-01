@@ -994,6 +994,50 @@ source year completely. It does not interpolate, resample, or construct
 EPW fields. Workflows that interpolate climate-model inputs before bias
 adjustment must perform that transformation in an earlier component and
 retain its provenance.</p>
+<p>Hourly implementations can also be registered independently of a
+complete recipe. The current direct-model calendar bridge is:</p>
+<table class="table">
+<colgroup>
+<col width="22%">
+<col width="37%">
+<col width="14%">
+<col width="25%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Accepted sequence input</th>
+<th align="left">Behavior</th>
+<th align="left">Output contract</th>
+</tr></thead>
+<tbody><tr class="odd">
+<td align="left"><code>direct_model_epw_calendar_mapping</code></td>
+<td align="left">One hourly <code>DirectModelSequence</code> with a
+3600-second timestep plus a 365-day <code>weather_template</code>
+</td>
+<td align="left">Preserve the 24 source time-of-day positions; retain
+exact values for aligned 365-day years; map point variables across
+seasonal day position with circular interpolation; conservatively remap
+interval-mean radiation across seasonal day position</td>
+<td align="left">One <code>MappedHourlyClimateSequence</code> of kind
+<code>epw_hourly_climate_sequence</code>, containing 8760-row variable
+groups for each source-model year plus source calendar, group identity,
+mapping diagnostics, and signal provenance</td>
+</tr></tbody>
+</table>
+<p>The mapping is performed independently at each of the 24 source daily
+positions. A 360- or 366-day year therefore changes seasonal day
+placement without allowing midnight, noon, or another source sampling
+position to drift across the day. Continuous point variables use their
+native annual phase at a fixed time of day. <code>rsds</code>,
+<code>rsdsdiff</code>, and <code>rlds</code> are treated as interval
+means; their piecewise-constant values are integrated over normalized
+source and target day intervals so the annual mean at every daily
+position is conserved. The component records the source second of day
+and the actual mapping selected for every output row. It deliberately
+leaves climate-unit conversion, thermodynamic and radiative closure,
+unchanged EPW field policy, and final <code>WeatherSequenceResult</code>
+construction to the following <code>physics</code> and
+<code>output</code> stages.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and
