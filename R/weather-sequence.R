@@ -25,8 +25,9 @@ sequence__direct_group_id <- function(group) {
 }
 
 # Check whether one adjusted variable group contains exactly one complete,
-# ordered native-calendar year before it enters an hourly reconstructor.
-sequence__direct_year_error <- function(data, weather_year, calendar) {
+# ordered native-calendar year at its declared regular frequency.
+sequence__direct_year_error <- function(adjusted, weather_year, calendar) {
+    data <- adjusted@data
     if (!identical(unique(as.integer(data[["cf_year"]])), weather_year)) {
         return("Every direct-model row must match `weather_year`.")
     }
@@ -45,16 +46,67 @@ sequence__direct_year_error <- function(data, weather_year, calendar) {
     for (variable in unique(data[["variable_id"]])) {
         rows <- data[data[["variable_id"]] == variable, , drop = FALSE]
         year_days <- unique(as.integer(rows[["cf_year_days"]]))
-        if (length(year_days) != 1L ||
-            nrow(rows) != year_days ||
-            !identical(
-                as.integer(rows[["cf_day_of_year"]]),
-                seq_len(year_days)
-            )) {
+        if (length(year_days) != 1L) {
+            return(sprintf(
+                "Variable `%s` must use one native-calendar year length.",
+                variable
+            ))
+        }
+        if (identical(adjusted@frequency, "day")) {
+            if (nrow(rows) == year_days &&
+                identical(
+                    as.integer(rows[["cf_day_of_year"]]),
+                    seq_len(year_days)
+                )) {
+                next
+            }
             return(sprintf(
                 "Variable `%s` must cover every native-calendar day in weather year %d.",
                 variable,
                 weather_year
+            ))
+        }
+
+        # A complete sub-daily year repeats the same regular time-of-day
+        # lattice on every native-calendar day, including non-Gregorian years.
+        samples_per_day <- as.integer(round(
+            86400 / adjusted@time_step_seconds
+        ))
+        expected_days <- rep(seq_len(year_days), each = samples_per_day)
+        if (nrow(rows) != length(expected_days) ||
+            !identical(
+                as.integer(rows[["cf_day_of_year"]]),
+                expected_days
+            )) {
+            return(sprintf(
+                "Variable `%s` must cover every declared sub-daily timestep in weather year %d.",
+                variable,
+                weather_year
+            ))
+        }
+        offsets <- rows[["cf_second_of_day"]][seq_len(samples_per_day)]
+        wrapped_steps <- diff(c(offsets, offsets[[1L]] + 86400))
+        tolerance <- sqrt(.Machine$double.eps)
+        if (any(abs(wrapped_steps - adjusted@time_step_seconds) > tolerance)) {
+            return(sprintf(
+                "Variable `%s` has an irregular within-day timestep lattice.",
+                variable
+            ))
+        }
+        observed_offsets <- matrix(
+            rows[["cf_second_of_day"]],
+            ncol = samples_per_day,
+            byrow = TRUE
+        )
+        expected_offsets <- matrix(
+            rep.int(offsets, year_days),
+            ncol = samples_per_day,
+            byrow = TRUE
+        )
+        if (any(abs(observed_offsets - expected_offsets) > tolerance)) {
+            return(sprintf(
+                "Variable `%s` must use the same sub-daily offsets on every day.",
+                variable
             ))
         }
     }
@@ -62,7 +114,7 @@ sequence__direct_year_error <- function(data, weather_year, calendar) {
 }
 
 # DirectModelSeries retains one signal group's key, variables, correction
-# metadata, and calendar-native daily values after partitioning by source year.
+# metadata, and calendar-native values after partitioning by source year.
 DirectModelSeries <- S7::new_class(
     "DirectModelSeries",
     properties = list(
@@ -91,8 +143,8 @@ DirectModelSeries <- S7::new_class(
             anyDuplicated(self@variables)) {
             return("`variables` must contain unique CMIP-style identifiers.")
         }
-        if (!S7::S7_inherits(self@adjusted, DailyAdjustedSeries)) {
-            return("`adjusted` must be a DailyAdjustedSeries object.")
+        if (!S7::S7_inherits(self@adjusted, AdjustedWeatherSeries)) {
+            return("`adjusted` must be an AdjustedWeatherSeries object.")
         }
         if (!identical(self@adjusted@output_role, "model_future")) {
             return("Direct model realization requires a `model_future` signal output.")
@@ -108,7 +160,7 @@ DirectModelSeries <- S7::new_class(
 )
 
 # DirectModelSequenceMember groups all corrected signal series belonging to
-# one complete source-model year without selecting, resampling, or reordering days.
+# one complete source-model year without selecting, resampling, or reordering values.
 DirectModelSequenceMember <- S7::new_class(
     "DirectModelSequenceMember",
     properties = list(
@@ -153,7 +205,7 @@ DirectModelSequenceMember <- S7::new_class(
         }
         for (item in self@series) {
             error <- sequence__direct_year_error(
-                item@adjusted@data,
+                item@adjusted,
                 self@weather_year,
                 self@calendar
             )
@@ -171,13 +223,14 @@ DirectModelSequenceMember <- S7::new_class(
     }
 )
 
-# DirectModelSequence is the typed intermediate exchanged between a future-
-# backbone signal and a later daily-to-hourly reconstruction component.
+# DirectModelSequence is the frequency-aware intermediate exchanged between a
+# future-backbone signal and later reconstruction and physical components.
 DirectModelSequence <- S7::new_class(
     "DirectModelSequence",
     properties = list(
         members = S7::new_property(S7::class_list),
         frequency = S7::new_property(S7::class_character),
+        time_step_seconds = S7::new_property(S7::class_numeric),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
     validator = function(self) {
@@ -190,8 +243,16 @@ DirectModelSequence <- S7::new_class(
             ))) {
             return("`members` must contain DirectModelSequenceMember objects.")
         }
-        if (!identical(self@frequency, "day")) {
-            return("DirectModelSequence currently requires daily values.")
+        if (length(self@frequency) != 1L ||
+            is.na(self@frequency) ||
+            !nzchar(self@frequency)) {
+            return("`frequency` must identify one adjusted-series frequency.")
+        }
+        if (length(self@time_step_seconds) != 1L ||
+            is.na(self@time_step_seconds) ||
+            !is.finite(self@time_step_seconds) ||
+            self@time_step_seconds <= 0) {
+            return("`time_step_seconds` must be one positive finite number.")
         }
         years <- vapply(
             self@members,
@@ -232,6 +293,19 @@ DirectModelSequence <- S7::new_class(
         ))) {
             return("Every direct-model year must contain the same signal groups.")
         }
+        for (member in self@members) {
+            for (item in member@series) {
+                if (!identical(item@adjusted@frequency, self@frequency) ||
+                    !isTRUE(all.equal(
+                        item@adjusted@time_step_seconds,
+                        self@time_step_seconds
+                    ))) {
+                    return(
+                        "Every direct-model series must share the sequence frequency and timestep."
+                    )
+                }
+            }
+        }
         if (length(self@provenance) &&
             (is.null(names(self@provenance)) ||
                 any(!nzchar(names(self@provenance))) ||
@@ -254,8 +328,10 @@ sequence__slice_adjusted <- function(adjusted, year) {
         c("cf_day_of_year", "annual_phase", "variable_id")
     )
     variables <- unique(data[["variable_id"]])
-    bias__daily_adjusted_series(
-        data,
+    bias__adjusted_series(
+        data = data,
+        frequency = adjusted@frequency,
+        time_step_seconds = adjusted@time_step_seconds,
         output_role = adjusted@output_role,
         transformation = adjusted@transformation,
         variable_metadata = adjusted@variable_metadata[variables],
@@ -290,7 +366,7 @@ sequence__direct_member <- function(series, weather_year, calendar) {
 }
 
 # Preserve the corrected future-model chronology, partition it by complete CF
-# year, and retain group-level signal metadata for later hourly reconstruction.
+# year, and retain group-level signal metadata for later reconstruction.
 sequence__direct_model_generate <- function(
     data,
     inputs,
@@ -314,10 +390,10 @@ sequence__direct_model_generate <- function(
         data@values,
         S7::S7_inherits,
         logical(1L),
-        class = DailyAdjustedSeries
+        class = AdjustedWeatherSeries
     ))) {
         cli::cli_abort(
-            "Direct model realization currently requires DailyAdjustedSeries values."
+            "Direct model realization requires AdjustedWeatherSeries values."
         )
     }
 
@@ -365,6 +441,22 @@ sequence__direct_model_generate <- function(
             "Every direct-model signal group must use the same CF calendar."
         )
     }
+    frequencies <- vapply(
+        data@values,
+        function(adjusted) adjusted@frequency,
+        character(1L)
+    )
+    time_steps <- vapply(
+        data@values,
+        function(adjusted) adjusted@time_step_seconds,
+        numeric(1L)
+    )
+    if (length(unique(frequencies)) != 1L ||
+        length(unique(time_steps)) != 1L) {
+        cli::cli_abort(
+            "Every direct-model signal group must use the same frequency and timestep."
+        )
+    }
 
     years <- year_sets[[1L]]
     members <- lapply(years, function(year) {
@@ -383,7 +475,8 @@ sequence__direct_model_generate <- function(
     })
     DirectModelSequence(
         members = members,
-        frequency = "day",
+        frequency = frequencies[[1L]],
+        time_step_seconds = time_steps[[1L]],
         provenance = list(
             method = "direct_model_realization",
             source_role = "model_future",
@@ -392,6 +485,8 @@ sequence__direct_model_generate <- function(
             resampling = "none",
             years = years,
             calendar = calendars[[1L]],
+            frequency = frequencies[[1L]],
+            time_step_seconds = time_steps[[1L]],
             group_ids = group_ids
         )
     )
@@ -408,11 +503,13 @@ sequence__direct_model_component <- function() {
             model_future = component__input_requirement(
                 "model_future",
                 representations = "series",
-                frequencies = "day",
                 calendars = CF_TIME_CALENDARS
             )
         ),
-        input_kinds = "daily_adjusted_series",
+        input_kinds = c(
+            "daily_adjusted_series",
+            "adjusted_weather_series"
+        ),
         output_kinds = "direct_model_sequence",
         scopes = "multivariate",
         stochastic = FALSE,
@@ -423,7 +520,7 @@ sequence__direct_model_component <- function() {
             ordering = "native_cf_chronology",
             selection = "none",
             resampling = "none",
-            supported_frequencies = "day",
+            frequency_policy = "single_regular_frequency",
             output_contract = "direct_model_sequence"
         )
     )
