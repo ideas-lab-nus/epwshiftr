@@ -46,6 +46,13 @@
 
 ## New features
 
+* Added the frequency-aware `AdjustedWeatherSeries` signal-result contract.
+  Existing daily methods retain their strict `DailyAdjustedSeries` output,
+  while regular sub-daily outputs carry explicit frequency, timestep, and
+  calendar-native time-of-day metadata. `direct_model_realization` now
+  preserves complete daily or sub-daily source-model years without resampling
+  (#185).
+
 * Added the deterministic `direct_model_realization` sequence component. It
   preserves corrected daily `model_future` chronology, partitions complete
   native CF-calendar years without selecting or resampling days, and retains
