@@ -927,7 +927,7 @@ happen before the kernel, so a method cannot silently impose a
 Gregorian, no-leap, or fixed 366-day interpretation. Group failures
 either abort or return an explicit diagnostic with a <code>NULL</code>
 result; they are never silently converted to missing numeric values.</p>
-<p>Eight package-native standalone signals currently use this
+<p>Nine package-native standalone signals currently use this
 contract:</p>
 <table class="table">
 <colgroup>
@@ -990,6 +990,15 @@ relative-change precipitation profiles; implementation-selected defaults
 for other supported variables remain experimental</td>
 </tr>
 <tr class="odd">
+<td align="left"><code>kernel_quantile_delta_mapping_hourly</code></td>
+<td align="left">Fit KDE CDFs in centered three-month calendar windows,
+then transfer additive or multiplicative modeled quantile changes</td>
+<td align="left"><code>model_future</code></td>
+<td align="left">Published hourly KDE-QDM window and transformation
+families; unreported kernel, bandwidth, grid, tail, and zero-denominator
+defaults remain experimental and explicit</td>
+</tr>
+<tr class="even">
 <td align="left"><code>equidistant_cdf_matching_daily</code></td>
 <td align="left">Apply
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)</annotation></semantics></math>,
@@ -1001,7 +1010,7 @@ using the Li et al. parametric distributions</td>
 <code>tas</code> and <code>pr</code>; native calendar-month daily
 pooling is an experimental epwshiftr adaptation</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td align="left"><code>scaled_distribution_mapping_daily</code></td>
 <td align="left">Parametric distribution and recurrence-interval
 scaling, absolute for temperature and relative for precipitation</td>
@@ -1010,7 +1019,7 @@ scaling, absolute for temperature and relative for precipitation</td>
 <code>pr</code>; applying the Normal branch to <code>tasmin</code> and
 <code>tasmax</code> remains experimental</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td align="left"><code>cdf_transform_daily</code></td>
 <td align="left">Construct
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msubsup><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><msub><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))</annotation></semantics></math>,
@@ -1021,7 +1030,7 @@ then quantile match the future-model sequence to that target CDF</td>
 <code>rsds</code>, and <code>sfcWind</code>
 </td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td align="left"><code>isimip3basd_daily</code></td>
 <td align="left">Generate pseudo-future observations by transferring
 modeled quantile changes, then map the future-model distribution onto
@@ -1056,6 +1065,34 @@ mm/day trace threshold are replaced by deterministic positive uniforms
 before adjustment and censored back to zero afterward. Window sample
 counts, transferred changes, clipping, censoring, and effective seeds
 are retained in provenance.</p>
+<p><code>kernel_quantile_delta_mapping_hourly</code> implements the
+hourly variant described by <a href="https://doi.org/10.1038/s41467-023-41458-5" class="external-link">Wang et al. (2023)</a>
+after temporal downscaling. For every future calendar month, the
+preceding, current, and following months are pooled independently from
+<code>observed_reference</code>, <code>model_historical</code>, and
+<code>model_future</code>; December and January wrap without coercing
+360-, 365-, or 366-day inputs to Gregorian dates. The future KDE gives
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>,
+and observed and historical KDE quantiles at
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>
+receive the additive or multiplicative QDM equation. The future rows,
+exact time-of-day positions, and native CF chronology remain the output
+backbone.</p>
+<p>The publication specifies KDE CDFs, a three-month moving window,
+additive temperature and pressure changes, and multiplicative wind,
+humidity, and radiation changes. It and its supplementary information do
+not specify the KDE kernel, bandwidth, numerical CDF grid, finite-grid
+tail behavior, minimum sample count, bounds, or treatment of a zero
+multiplicative denominator. The component therefore labels every current
+profile experimental. Its default Gaussian kernel, <code>nrd0</code>
+bandwidth, grid, endpoint clamp, bounds, and zero handling are ordinary
+package settings rather than claims about the authors’ unpublished code.
+Supported <code><a href="https://rdrr.io/r/stats/density.html" class="external-link">stats::density()</a></code> kernels and bandwidth selectors,
+an erroring tail policy, and strict zero-denominator handling can be
+selected through the same validated overrides. The resolved values,
+per-month sample counts and bandwidths, mapped probability and change
+ranges, tail use, zero handling, and clipping remain in result
+provenance.</p>
 <p><code>equidistant_cdf_matching_daily</code> implements the additive
 equation published by Li et al. (2010):
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow><mo>′</mo></msubsup><mo>=</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x'_{future} = x_{future} + F^{-1}_{obs}(p) -
