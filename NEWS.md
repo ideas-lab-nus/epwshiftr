@@ -46,6 +46,15 @@
 
 ## New features
 
+* Added the registered `hourly_calendar_grouping` calendar component. It turns
+  hourly observed, historical-model, and future-model role inputs into
+  univariate signal groups while preserving each role's native CF chronology,
+  requiring complete hourly calendar years, and rejecting incompatible units,
+  variables, sites, or model identities before statistical adjustment. The
+  hourly kernel-density QDM and direct-model sequence contracts now also
+  accept the actual preprocessed source and sub-daily intermediate kinds
+  needed by this component chain (#193).
+
 * Added the registered `kernel_quantile_delta_mapping_hourly` signal component
   for pre-aligned hourly observations, historical model output, and future
   model output. It defaults to Gaussian kernel-density CDFs in centered

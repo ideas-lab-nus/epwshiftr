@@ -508,6 +508,7 @@ sequence__direct_model_component <- function() {
         ),
         input_kinds = c(
             "daily_adjusted_series",
+            "subdaily_adjusted_series",
             "adjusted_weather_series"
         ),
         output_kinds = "direct_model_sequence",

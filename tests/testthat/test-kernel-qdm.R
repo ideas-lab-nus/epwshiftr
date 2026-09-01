@@ -348,6 +348,11 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
         component@input_kinds,
         "calendar_indexed_hourly_series"
     )
+    expect_true(all(vapply(
+        component@required_inputs,
+        function(requirement) !length(requirement@frequencies),
+        logical(1L)
+    )))
     expect_identical(component@output_kinds, "subdaily_adjusted_series")
     expect_identical(component@scopes, "univariate")
     expect_false(component@stochastic)
