@@ -519,6 +519,24 @@ assigning them surrogate Gregorian dates. Positive radiation in an interval
 with zero solar projection is reported as an error because the published ratio
 is then undefined.
 
+Calendar implementations can also be registered independently of a complete
+recipe. The current standalone hourly calendar contract is:
+
+| Registry name | Accepted stage input | Behavior | Output contract |
+|:--------------|:---------------------|:---------|:----------------|
+| `hourly_calendar_grouping` | One `WeatherInputs` stage value of kind `hourly_role_inputs`, containing hourly `observed_reference`, `model_historical`, and `model_future` series | Validate identical variable sets and units, matching historical/future model identities, complete native-calendar years, unique hourly coordinates, and one 24-position lattice; then form one univariate group per variable, future-model case, and site while preserving each role's CF calendar | One `WeatherStageResult` of kind `calendar_indexed_hourly_series`, containing `SignalGroup` objects plus role-level coverage diagnostics and calendar/grouping provenance |
+
+`hourly_calendar_grouping` performs no row-wise date matching. An observed
+Gregorian year, a historical 360-day model year, and a future no-leap model
+year therefore remain separate distributions inside the same signal group.
+Every role must nevertheless cover each included native-calendar year fully.
+Missing hours, incomplete days or years, duplicate calendar coordinates,
+different role variable sets or units, and mismatched historical/future model
+identities stop before a statistical signal kernel executes. This boundary
+allows `kernel_quantile_delta_mapping_hourly` and other distribution-based
+hourly signals to consume validated groups without interpreting calendars
+inside their numerical kernels.
+
 Sequence implementations can also be registered independently of a complete
 recipe. The current standalone sequence contract is:
 

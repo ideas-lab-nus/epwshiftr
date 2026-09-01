@@ -658,10 +658,12 @@ kqdm__component <- function() {
         "model_future"
     )
     requirements <- lapply(roles, function(role) {
+        # Source roles may begin at three- or six-hour resolution because a
+        # preprocessing stage produces the hourly intermediate consumed here.
+        # The input kind and group kernel enforce the actual hourly boundary.
         component__input_requirement(
             role,
             representations = "series",
-            frequencies = "hour",
             variable_sets = alternatives
         )
     })

@@ -336,7 +336,11 @@ test_that("direct model component is registered and contract-compatible", {
     expect_identical(component@stage, "sequence")
     expect_identical(
         component@input_kinds,
-        c("daily_adjusted_series", "adjusted_weather_series")
+        c(
+            "daily_adjusted_series",
+            "subdaily_adjusted_series",
+            "adjusted_weather_series"
+        )
     )
     expect_identical(component@output_kinds, "direct_model_sequence")
     expect_false(component@stochastic)
