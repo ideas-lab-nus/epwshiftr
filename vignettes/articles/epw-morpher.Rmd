@@ -500,11 +500,17 @@ recipe. The current standalone sequence contract is:
 
 | Registry name | Accepted signal result | Behavior | Output contract |
 |:--------------|:-----------------------|:---------|:----------------|
-| `direct_model_realization` | Complete daily `DailyAdjustedSeries` groups retaining the `model_future` backbone | Preserve native CF chronology, partition complete source years, and perform no day selection or resampling | One `DirectModelSequence` containing deterministic year members, group keys, corrected values, signal provenance, source years, and calendars |
+| `direct_model_realization` | Complete `DailyAdjustedSeries` or `SubdailyAdjustedSeries` groups satisfying the common `AdjustedWeatherSeries` contract and retaining the `model_future` backbone | Preserve native CF chronology, partition complete source years, and perform no timestep selection or resampling | One `DirectModelSequence` containing deterministic year members, group keys, corrected values, frequency, timestep, signal provenance, source years, and calendars |
 
-`direct_model_realization` currently accepts daily values. Sub-daily signal
-types and their hourly interpolation remain separate later components; the
-sequence stage does not silently interpolate or construct EPW fields.
+`AdjustedWeatherSeries` is the frequency-aware signal-result boundary.
+`DailyAdjustedSeries` remains its strict daily specialization, while
+`SubdailyAdjustedSeries` requires an explicit regular timestep and exact
+`cf_second_of_day` values in addition to the calendar-native date and annual
+phase. `direct_model_realization` requires every group to use the same
+frequency and timestep and to cover each source year completely. It does not
+interpolate, resample, or construct EPW fields. Workflows that interpolate
+climate-model inputs before bias adjustment must perform that transformation
+in an earlier component and retain its provenance.
 
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves

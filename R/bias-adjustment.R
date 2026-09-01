@@ -1,9 +1,9 @@
 #' @include weather-signal.R
 NULL
 
-# A daily adjusted series is the package-native signal output shared by bias
-# adjustment methods, independently of any external method class hierarchy.
-BIAS_DAILY_SERIES_COLUMNS <- c(
+# Adjusted weather series share calendar-native coordinates independently of
+# the signal method and retain their native temporal frequency explicitly.
+BIAS_ADJUSTED_SERIES_COLUMNS <- c(
     "variable_id",
     "value",
     "units",
@@ -15,6 +15,17 @@ BIAS_DAILY_SERIES_COLUMNS <- c(
     "cf_day_of_year",
     "cf_year_days",
     "annual_phase"
+)
+
+# Daily methods retain their original canonical table without inventing a
+# time-of-day coordinate that is irrelevant to daily statistics.
+BIAS_DAILY_SERIES_COLUMNS <- BIAS_ADJUSTED_SERIES_COLUMNS
+
+# Sub-daily values add their exact position within the native-calendar day so
+# multiple samples never collapse onto the same date key.
+BIAS_SUBDAILY_SERIES_COLUMNS <- c(
+    BIAS_ADJUSTED_SERIES_COLUMNS,
+    "cf_second_of_day"
 )
 
 # Linear Scaling defaults cite the review in which the monthly additive
@@ -45,21 +56,28 @@ bias__named_list_error <- function(value, name) {
     NULL
 }
 
-# Validate the calendar-native daily table at the boundary shared by all
-# methods producing a DailyAdjustedSeries.
-bias__daily_data_error <- function(data) {
+# Validate the calendar-native fields shared by daily and sub-daily signal
+# results before applying frequency-specific sampling rules.
+bias__calendar_data_error <- function(
+    data,
+    required_columns,
+    label,
+    key_columns,
+    key_message
+) {
     if (!is.data.frame(data)) {
         return("`data` must be a data frame.")
     }
-    missing <- setdiff(BIAS_DAILY_SERIES_COLUMNS, names(data))
+    missing <- setdiff(required_columns, names(data))
     if (length(missing)) {
         return(sprintf(
-            "`data` is missing canonical daily column(s): %s.",
+            "`data` is missing canonical %s column(s): %s.",
+            label,
             paste(sprintf("`%s`", missing), collapse = ", ")
         ))
     }
     if (!nrow(data)) {
-        return("`data` must contain at least one daily value.")
+        return(sprintf("`data` must contain at least one %s value.", label))
     }
     if (!is.character(data[["variable_id"]]) ||
         anyNA(data[["variable_id"]]) ||
@@ -80,8 +98,8 @@ bias__daily_data_error <- function(data) {
     }
     if (!is.character(data[["frequency"]]) ||
         anyNA(data[["frequency"]]) ||
-        any(data[["frequency"]] != "day")) {
-        return("`frequency` must be `day` for every row.")
+        any(!nzchar(data[["frequency"]]))) {
+        return("`frequency` must contain non-missing, non-empty strings.")
     }
     if (!is.character(data[["cf_calendar"]]) ||
         anyNA(data[["cf_calendar"]]) ||
@@ -162,77 +180,220 @@ bias__daily_data_error <- function(data) {
         index <- data[["variable_id"]] == variable
         if (length(unique(data[["units"]][index])) != 1L) {
             return(sprintf(
-                "Variable `%s` must use one unit within a daily series.",
+                "Variable `%s` must use one unit within an adjusted series.",
                 variable
             ))
         }
     }
-    key <- data[
+    key <- data[key_columns]
+    if (anyDuplicated(key)) {
+        return(key_message)
+    }
+    NULL
+}
+
+# Validate the calendar-native daily table at the boundary shared by all
+# existing daily bias-adjustment methods.
+bias__daily_data_error <- function(data) {
+    error <- bias__calendar_data_error(
+        data,
+        BIAS_DAILY_SERIES_COLUMNS,
+        "daily",
         c(
             "variable_id",
             "cf_calendar",
             "cf_year",
             "cf_month",
             "cf_day"
-        )
-    ]
-    if (anyDuplicated(key)) {
-        return(
-            "`data` must have unique variable-calendar-year-month-day keys."
-        )
+        ),
+        "`data` must have unique variable-calendar-year-month-day keys."
+    )
+    if (!is.null(error)) {
+        return(error)
+    }
+    if (any(data[["frequency"]] != "day")) {
+        return("`frequency` must be `day` for every row.")
     }
     NULL
 }
 
-# DailyAdjustedSeries carries a canonical daily table and the semantic metadata
-# required by later sequence, hourly, physics, and output components.
-DailyAdjustedSeries <- S7::new_class(
-    "DailyAdjustedSeries",
+# Validate exact sub-day positions and their regular timestep without reducing
+# native CF dates to Gregorian timestamps.
+bias__subdaily_data_error <- function(data, frequency, time_step_seconds) {
+    error <- bias__calendar_data_error(
+        data,
+        BIAS_SUBDAILY_SERIES_COLUMNS,
+        "sub-daily",
+        c(
+            "variable_id",
+            "cf_calendar",
+            "cf_year",
+            "cf_month",
+            "cf_day",
+            "cf_second_of_day"
+        ),
+        paste(
+            "`data` must have unique",
+            "variable-calendar-year-month-day-second keys."
+        )
+    )
+    if (!is.null(error)) {
+        return(error)
+    }
+    if (any(data[["frequency"]] != frequency)) {
+        return("`data` frequency must match the declared `frequency`.")
+    }
+    seconds <- data[["cf_second_of_day"]]
+    if (!is.numeric(seconds) ||
+        any(!is.finite(seconds)) ||
+        any(seconds < 0 | seconds >= 86400)) {
+        return("`cf_second_of_day` must contain finite values in [0, 86400).")
+    }
+
+    # The annual phase and explicit time-of-day must describe the same native
+    # CF instant; this prevents ambiguous ordering around day boundaries.
+    expected_phase <- (
+        data[["cf_day_of_year"]] - 1 + seconds / 86400
+    ) / data[["cf_year_days"]]
+    tolerance <- sqrt(.Machine$double.eps)
+    if (any(abs(data[["annual_phase"]] - expected_phase) > tolerance)) {
+        return(
+            "`annual_phase` is inconsistent with `cf_second_of_day`."
+        )
+    }
+
+    # All samples must lie on one regular lattice even when incomplete periods
+    # are retained for a later completeness diagnostic.
+    remainders <- seconds %% time_step_seconds
+    distance <- abs(remainders - remainders[[1L]])
+    circular_distance <- pmin(
+        distance,
+        time_step_seconds - distance
+    )
+    if (any(circular_distance > 1e-6)) {
+        return("Sub-daily samples must share one regular timestep lattice.")
+    }
+    NULL
+}
+
+# Validate semantic metadata once for every adjusted-series specialization.
+bias__adjusted_series_error <- function(self) {
+    if (length(self@frequency) != 1L ||
+        is.na(self@frequency) ||
+        !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@frequency)) {
+        return("`frequency` must be one non-empty frequency identifier.")
+    }
+    if (length(self@time_step_seconds) != 1L ||
+        is.na(self@time_step_seconds) ||
+        !is.finite(self@time_step_seconds) ||
+        self@time_step_seconds <= 0) {
+        return("`time_step_seconds` must be one positive finite number.")
+    }
+    if (!is.data.frame(self@data) ||
+        !"frequency" %in% names(self@data) ||
+        !identical(unique(self@data[["frequency"]]), self@frequency)) {
+        return("`data` must contain exactly the declared `frequency`.")
+    }
+    if (length(self@output_role) != 1L ||
+        is.na(self@output_role) ||
+        !self@output_role %in% WEATHER_INPUT_ROLES) {
+        return("`output_role` must identify one future-weather input role.")
+    }
+    if (length(self@transformation) != 1L ||
+        is.na(self@transformation) ||
+        !grepl("^[a-z][a-z0-9_]*$", self@transformation)) {
+        return("`transformation` must use lower snake_case.")
+    }
+    variables <- unique(self@data[["variable_id"]])
+    metadata_error <- bias__named_list_error(
+        self@variable_metadata,
+        "variable_metadata"
+    )
+    if (!is.null(metadata_error) ||
+        !setequal(names(self@variable_metadata), variables) ||
+        length(self@variable_metadata) != length(variables) ||
+        !all(vapply(
+            self@variable_metadata,
+            is.list,
+            logical(1L)
+        ))) {
+        return(
+            "`variable_metadata` must contain one named list per variable."
+        )
+    }
+    for (name in c("settings", "provenance")) {
+        error <- bias__named_list_error(S7::prop(self, name), name)
+        if (!is.null(error)) {
+            return(error)
+        }
+    }
+    NULL
+}
+
+# AdjustedWeatherSeries is the package-native, frequency-aware signal result
+# shared by daily and sub-daily methods.
+AdjustedWeatherSeries <- S7::new_class(
+    "AdjustedWeatherSeries",
+    abstract = TRUE,
     properties = list(
         data = S7::new_property(S7::class_any),
+        frequency = S7::new_property(S7::class_character),
+        time_step_seconds = S7::new_property(S7::class_numeric),
         output_role = S7::new_property(S7::class_character),
         transformation = S7::new_property(S7::class_character),
         variable_metadata = S7::new_property(S7::class_list),
         settings = S7::new_property(S7::class_list, default = list()),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
+    validator = bias__adjusted_series_error
+)
+
+# DailyAdjustedSeries preserves the original strict daily contract while also
+# satisfying the common frequency-aware adjusted-series boundary.
+DailyAdjustedSeries <- S7::new_class(
+    "DailyAdjustedSeries",
+    parent = AdjustedWeatherSeries,
     validator = function(self) {
+        if (!identical(self@frequency, "day") ||
+            !identical(as.numeric(self@time_step_seconds), 86400)) {
+            return(
+                "DailyAdjustedSeries requires `day` frequency and an 86400-second timestep."
+            )
+        }
         error <- bias__daily_data_error(self@data)
         if (!is.null(error)) {
             return(error)
         }
-        if (length(self@output_role) != 1L ||
-            is.na(self@output_role) ||
-            !self@output_role %in% WEATHER_INPUT_ROLES) {
-            return("`output_role` must identify one future-weather input role.")
-        }
-        if (length(self@transformation) != 1L ||
-            is.na(self@transformation) ||
-            !grepl("^[a-z][a-z0-9_]*$", self@transformation)) {
-            return("`transformation` must use lower snake_case.")
-        }
-        variables <- unique(self@data[["variable_id"]])
-        metadata_error <- bias__named_list_error(
-            self@variable_metadata,
-            "variable_metadata"
-        )
-        if (!is.null(metadata_error) ||
-            !setequal(names(self@variable_metadata), variables) ||
-            length(self@variable_metadata) != length(variables) ||
-            !all(vapply(
-                self@variable_metadata,
-                is.list,
-                logical(1L)
-            ))) {
+        NULL
+    }
+)
+
+# SubdailyAdjustedSeries retains a regular native-calendar time lattice for
+# hourly and multi-hourly signal outputs.
+SubdailyAdjustedSeries <- S7::new_class(
+    "SubdailyAdjustedSeries",
+    parent = AdjustedWeatherSeries,
+    validator = function(self) {
+        if (identical(self@frequency, "day") ||
+            self@time_step_seconds >= 86400) {
             return(
-                "`variable_metadata` must contain one named list per variable."
+                "SubdailyAdjustedSeries requires a sub-daily frequency and timestep."
             )
         }
-        for (name in c("settings", "provenance")) {
-            error <- bias__named_list_error(S7::prop(self, name), name)
-            if (!is.null(error)) {
-                return(error)
-            }
+        samples_per_day <- 86400 / self@time_step_seconds
+        if (abs(samples_per_day - round(samples_per_day)) >
+            sqrt(.Machine$double.eps)) {
+            return(
+                "`time_step_seconds` must divide one 86400-second day exactly."
+            )
+        }
+        error <- bias__subdaily_data_error(
+            self@data,
+            self@frequency,
+            self@time_step_seconds
+        )
+        if (!is.null(error)) {
+            return(error)
         }
         NULL
     }
@@ -254,21 +415,114 @@ bias__daily_table <- function(data, name = "data") {
 
 # Derive stable per-variable descriptors directly from the validated output
 # table unless a method supplies richer metadata explicitly.
-bias__variable_metadata <- function(data) {
+bias__variable_metadata <- function(data, frequency) {
     variables <- unique(data[["variable_id"]])
     metadata <- lapply(variables, function(variable) {
         index <- data[["variable_id"]] == variable
         list(
             units = unique(data[["units"]][index]),
-            frequency = "day",
+            frequency = frequency,
             calendars = sort(unique(data[["cf_calendar"]][index]))
         )
     })
     stats::setNames(metadata, variables)
 }
 
-# Construct the common result type so method kernels cannot omit its semantic
-# role, settings, or provenance.
+# Construct the frequency-aware result type so signal kernels cannot omit its
+# temporal semantics, role, settings, or provenance.
+bias__adjusted_series <- function(
+    data,
+    frequency,
+    time_step_seconds,
+    output_role,
+    transformation,
+    variable_metadata = NULL,
+    settings = list(),
+    provenance = list()
+) {
+    checkmate::assert_string(
+        frequency,
+        pattern = "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    )
+    checkmate::assert_number(time_step_seconds, lower = 0, finite = TRUE)
+    if (time_step_seconds <= 0) {
+        cli::cli_abort(
+            "{.arg time_step_seconds} must be one positive number."
+        )
+    }
+    if (identical(frequency, "day")) {
+        data <- bias__daily_table(data)
+    } else {
+        samples_per_day <- 86400 / time_step_seconds
+        if (time_step_seconds >= 86400 ||
+            abs(samples_per_day - round(samples_per_day)) >
+                sqrt(.Machine$double.eps)) {
+            cli::cli_abort(
+                "{.arg time_step_seconds} must divide one 86400-second day exactly."
+            )
+        }
+        data <- bias__subdaily_table(
+            data,
+            frequency,
+            time_step_seconds
+        )
+    }
+    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
+    checkmate::assert_string(
+        transformation,
+        pattern = "^[a-z][a-z0-9_]*$"
+    )
+    if (is.null(variable_metadata)) {
+        variable_metadata <- bias__variable_metadata(data, frequency)
+    }
+    checkmate::assert_list(variable_metadata, names = "unique")
+    checkmate::assert_list(settings, names = "unique")
+    checkmate::assert_list(provenance, names = "unique")
+
+    constructor <- if (identical(frequency, "day")) {
+        DailyAdjustedSeries
+    } else {
+        SubdailyAdjustedSeries
+    }
+    constructor(
+        data = data,
+        frequency = frequency,
+        time_step_seconds = time_step_seconds,
+        output_role = output_role,
+        transformation = transformation,
+        variable_metadata = variable_metadata,
+        settings = settings,
+        provenance = provenance
+    )
+}
+
+# Copy and validate a canonical sub-daily table without inferring its timestep
+# from incomplete or gapped observations.
+bias__subdaily_table <- function(
+    data,
+    frequency,
+    time_step_seconds,
+    name = "data"
+) {
+    if (!is.data.frame(data)) {
+        cli::cli_abort(
+            "{.arg {name}} must be a canonical sub-daily data frame."
+        )
+    }
+    out <- as.data.frame(data, stringsAsFactors = FALSE)
+    error <- bias__subdaily_data_error(
+        out,
+        frequency,
+        time_step_seconds
+    )
+    if (!is.null(error)) {
+        cli::cli_abort("{.arg {name}} is invalid: {error}")
+    }
+    out
+}
+
+# Preserve the daily constructor used by all existing signal kernels while
+# routing its metadata through the common adjusted-series class hierarchy.
 bias__daily_adjusted_series <- function(
     data,
     output_role,
@@ -277,21 +531,34 @@ bias__daily_adjusted_series <- function(
     settings = list(),
     provenance = list()
 ) {
-    data <- bias__daily_table(data)
-    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
-    checkmate::assert_string(
-        transformation,
-        pattern = "^[a-z][a-z0-9_]*$"
-    )
-    if (is.null(variable_metadata)) {
-        variable_metadata <- bias__variable_metadata(data)
-    }
-    checkmate::assert_list(variable_metadata, names = "unique")
-    checkmate::assert_list(settings, names = "unique")
-    checkmate::assert_list(provenance, names = "unique")
-
-    DailyAdjustedSeries(
+    bias__adjusted_series(
         data = data,
+        frequency = "day",
+        time_step_seconds = 86400,
+        output_role = output_role,
+        transformation = transformation,
+        variable_metadata = variable_metadata,
+        settings = settings,
+        provenance = provenance
+    )
+}
+
+# Construct a sub-daily adjusted series only when the caller declares its
+# exact frequency and regular timestep explicitly.
+bias__subdaily_adjusted_series <- function(
+    data,
+    frequency,
+    time_step_seconds,
+    output_role,
+    transformation,
+    variable_metadata = NULL,
+    settings = list(),
+    provenance = list()
+) {
+    bias__adjusted_series(
+        data = data,
+        frequency = frequency,
+        time_step_seconds = time_step_seconds,
         output_role = output_role,
         transformation = transformation,
         variable_metadata = variable_metadata,
