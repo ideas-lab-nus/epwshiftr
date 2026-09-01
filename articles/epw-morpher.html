@@ -801,6 +801,36 @@ execution boundary. <code><a href="../reference/arima_temperature.html">arima_te
 stages, but its <code>calendar</code> component forms native-calendar
 monthly distributions and its <code>signal</code> component requires
 both historical model output and a separate observed reference.</p>
+<p>Sequence implementations can also be registered independently of a
+complete recipe. The current standalone sequence contract is:</p>
+<table class="table">
+<colgroup>
+<col width="22%">
+<col width="36%">
+<col width="15%">
+<col width="25%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Accepted signal result</th>
+<th align="left">Behavior</th>
+<th align="left">Output contract</th>
+</tr></thead>
+<tbody><tr class="odd">
+<td align="left"><code>direct_model_realization</code></td>
+<td align="left">Complete daily <code>DailyAdjustedSeries</code> groups
+retaining the <code>model_future</code> backbone</td>
+<td align="left">Preserve native CF chronology, partition complete
+source years, and perform no day selection or resampling</td>
+<td align="left">One <code>DirectModelSequence</code> containing
+deterministic year members, group keys, corrected values, signal
+provenance, source years, and calendars</td>
+</tr></tbody>
+</table>
+<p><code>direct_model_realization</code> currently accepts daily values.
+Sub-daily signal types and their hourly interpolation remain separate
+later components; the sequence stage does not silently interpolate or
+construct EPW fields.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and
