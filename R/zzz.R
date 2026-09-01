@@ -17,6 +17,7 @@
     bias__register_delta_change_component()
     qm__register_component()
     qdm__register_component()
+    kqdm__register_component()
     sdm__register_component()
     cdft__register_component()
     edcdf__register_component()

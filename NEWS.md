@@ -46,6 +46,18 @@
 
 ## New features
 
+* Added the registered `kernel_quantile_delta_mapping_hourly` signal component
+  for pre-aligned hourly observations, historical model output, and future
+  model output. It defaults to Gaussian kernel-density CDFs in centered
+  three-month native-calendar windows, transfers additive quantile changes for
+  temperature and pressure or multiplicative changes for wind, humidity, and
+  radiation, and retains future-model chronology in a
+  `SubdailyAdjustedSeries`. Because the source publication does not report its
+  KDE kernel, bandwidth, numerical grid, tails, or zero-denominator behavior,
+  the corresponding package defaults and supported alternatives are explicitly
+  validated, user-overridable, warned about, and recorded separately from the
+  published method settings (#191).
+
 * Added the registered `solar_radiation_interpolation` preprocessing component
   for interval-mean three-hourly `rsds` and `rsdsdiff`. It preserves explicit
   CF time bounds through regional extraction, allocates each source interval
