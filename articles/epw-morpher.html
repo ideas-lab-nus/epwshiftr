@@ -1031,7 +1031,12 @@ selecting this signal.</p>
 <p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
 hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
 as Parquet and adds the case metadata columns needed by
-<code>write_epw()</code>.</p>
+<code>write_epw()</code>. Built-in sequence-generating recipes use an
+internal year-addressable result instead. Each member records its output
+type, sequence identifier, weather year, calendar, optional stochastic
+seed, and source provenance; public custom backends that return one
+<code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> retain their existing
+representative-year behavior.</p>
 <p>Rule tables must include <code>step</code>, <code>epw_field</code>,
 <code>method</code>, and <code>required</code>. They can use either the
 compact scalar columns <code>variable_id</code> and
@@ -1200,7 +1205,12 @@ summary and reflect the cases you intend to write.</p>
 <span>    resume <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p><code>run()</code> writes hourly morphed weather as Parquet artifacts
-under the store. It does not write EPW text files yet.</p>
+under the store. A representative-year result produces one artifact per
+climate case. A future sequence produces one independently resumable
+artifact per sequence member and weather year; <code>output_type</code>,
+<code>sequence_id</code>, <code>weather_year</code>,
+<code>calendar</code>, and <code>stochastic_seed</code> identify those
+rows in the result manifest. It does not write EPW text files yet.</p>
 </div>
 <div class="section level2">
 <h2 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
@@ -1220,7 +1230,10 @@ under the store. It does not write EPW text files yet.</p>
 <p>The high-level <code><a href="../reference/shift_api.html">shift_epw()</a></code> function wraps this step and
 returns a <code>ShiftOutputs</code> stage. Use
 <code><a href="../reference/shift_api.html">shift_outputs()</a></code> and <code><a href="../reference/shift_api.html">shift_data()</a></code> when you do
-not need lower-level manifest IDs.</p>
+not need lower-level manifest IDs. Sequence results are written as one
+EPW per weather year, with the sequence identifier and year included in
+the path and filename; multiple years are never flattened into a single
+EPW text file.</p>
 <p>For the enhanced profile, final EPW writing uses the persisted hourly
 Parquet artifact to recalculate ground temperatures and six
 hemisphere-aware typical/extreme periods. Stale design conditions are
