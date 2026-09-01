@@ -1,3 +1,449 @@
+# Direct model realizations use one stable identifier because ensemble-member
+# identity already belongs to the surrounding morphing case.
+DIRECT_MODEL_SEQUENCE_ID <- "direct-model"
+
+# Return a deterministic identity for one aligned signal group without
+# serializing its input payloads into the downstream sequence.
+sequence__direct_group_id <- function(group) {
+    if (!S7::S7_inherits(group, SignalGroup)) {
+        cli::cli_abort("{.arg group} must be a SignalGroup object.")
+    }
+    key <- group@key[sort(names(group@key))]
+    paste0(
+        "group-",
+        substr(
+            store__hash(
+                list(
+                    key = key,
+                    variables = sort(group@variables)
+                )
+            ),
+            1L,
+            16L
+        )
+    )
+}
+
+# Check whether one adjusted variable group contains exactly one complete,
+# ordered native-calendar year before it enters an hourly reconstructor.
+sequence__direct_year_error <- function(data, weather_year, calendar) {
+    if (!identical(unique(as.integer(data[["cf_year"]])), weather_year)) {
+        return("Every direct-model row must match `weather_year`.")
+    }
+    if (!identical(unique(data[["cf_calendar"]]), calendar)) {
+        return("Every direct-model row must match the member calendar.")
+    }
+    expected_order <- order(
+        data[["cf_day_of_year"]],
+        data[["annual_phase"]],
+        data[["variable_id"]],
+        method = "radix"
+    )
+    if (!identical(expected_order, seq_len(nrow(data)))) {
+        return("Direct-model rows must use native chronological order.")
+    }
+    for (variable in unique(data[["variable_id"]])) {
+        rows <- data[data[["variable_id"]] == variable, , drop = FALSE]
+        year_days <- unique(as.integer(rows[["cf_year_days"]]))
+        if (length(year_days) != 1L ||
+            nrow(rows) != year_days ||
+            !identical(
+                as.integer(rows[["cf_day_of_year"]]),
+                seq_len(year_days)
+            )) {
+            return(sprintf(
+                "Variable `%s` must cover every native-calendar day in weather year %d.",
+                variable,
+                weather_year
+            ))
+        }
+    }
+    NULL
+}
+
+# DirectModelSeries retains one signal group's key, variables, correction
+# metadata, and calendar-native daily values after partitioning by source year.
+DirectModelSeries <- S7::new_class(
+    "DirectModelSeries",
+    properties = list(
+        group_id = S7::new_property(S7::class_character),
+        key = S7::new_property(S7::class_list, default = list()),
+        variables = S7::new_property(S7::class_character),
+        adjusted = S7::new_property(S7::class_any)
+    ),
+    validator = function(self) {
+        if (length(self@group_id) != 1L ||
+            is.na(self@group_id) ||
+            !grepl("^[a-z][a-z0-9-]*$", self@group_id)) {
+            return("`group_id` must use lower-case letters, numbers, and hyphens.")
+        }
+        if (length(self@key) &&
+            (is.null(names(self@key)) ||
+                any(!nzchar(names(self@key))) ||
+                anyDuplicated(names(self@key)) ||
+                any(vapply(self@key, length, integer(1L)) != 1L) ||
+                any(!vapply(self@key, is.atomic, logical(1L))))) {
+            return("`key` must be a uniquely named list of atomic scalar values.")
+        }
+        if (!length(self@variables) ||
+            anyNA(self@variables) ||
+            any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables)) ||
+            anyDuplicated(self@variables)) {
+            return("`variables` must contain unique CMIP-style identifiers.")
+        }
+        if (!S7::S7_inherits(self@adjusted, DailyAdjustedSeries)) {
+            return("`adjusted` must be a DailyAdjustedSeries object.")
+        }
+        if (!identical(self@adjusted@output_role, "model_future")) {
+            return("Direct model realization requires a `model_future` signal output.")
+        }
+        if (!setequal(
+            self@variables,
+            unique(self@adjusted@data[["variable_id"]])
+        )) {
+            return("`variables` must match the adjusted series variables.")
+        }
+        NULL
+    }
+)
+
+# DirectModelSequenceMember groups all corrected signal series belonging to
+# one complete source-model year without selecting, resampling, or reordering days.
+DirectModelSequenceMember <- S7::new_class(
+    "DirectModelSequenceMember",
+    properties = list(
+        sequence_id = S7::new_property(S7::class_character),
+        weather_year = S7::new_property(S7::class_integer),
+        calendar = S7::new_property(S7::class_character),
+        series = S7::new_property(S7::class_list),
+        provenance = S7::new_property(S7::class_list, default = list())
+    ),
+    validator = function(self) {
+        if (length(self@sequence_id) != 1L ||
+            is.na(self@sequence_id) ||
+            !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@sequence_id)) {
+            return("`sequence_id` contains unsupported characters.")
+        }
+        if (length(self@weather_year) != 1L ||
+            is.na(self@weather_year) ||
+            self@weather_year < 1L) {
+            return("`weather_year` must be one positive integer.")
+        }
+        if (length(self@calendar) != 1L ||
+            is.na(self@calendar) ||
+            !self@calendar %in% CF_TIME_CALENDARS) {
+            return("`calendar` must identify one supported CF calendar.")
+        }
+        if (!length(self@series) ||
+            !all(vapply(
+                self@series,
+                S7::S7_inherits,
+                logical(1L),
+                class = DirectModelSeries
+            ))) {
+            return("`series` must contain DirectModelSeries objects.")
+        }
+        group_ids <- vapply(
+            self@series,
+            function(item) item@group_id,
+            character(1L)
+        )
+        if (anyDuplicated(group_ids)) {
+            return("Direct-model group identities must be unique within a year.")
+        }
+        for (item in self@series) {
+            error <- sequence__direct_year_error(
+                item@adjusted@data,
+                self@weather_year,
+                self@calendar
+            )
+            if (!is.null(error)) {
+                return(error)
+            }
+        }
+        if (length(self@provenance) &&
+            (is.null(names(self@provenance)) ||
+                any(!nzchar(names(self@provenance))) ||
+                anyDuplicated(names(self@provenance)))) {
+            return("`provenance` must be a uniquely named list.")
+        }
+        NULL
+    }
+)
+
+# DirectModelSequence is the typed intermediate exchanged between a future-
+# backbone signal and a later daily-to-hourly reconstruction component.
+DirectModelSequence <- S7::new_class(
+    "DirectModelSequence",
+    properties = list(
+        members = S7::new_property(S7::class_list),
+        frequency = S7::new_property(S7::class_character),
+        provenance = S7::new_property(S7::class_list, default = list())
+    ),
+    validator = function(self) {
+        if (!length(self@members) ||
+            !all(vapply(
+                self@members,
+                S7::S7_inherits,
+                logical(1L),
+                class = DirectModelSequenceMember
+            ))) {
+            return("`members` must contain DirectModelSequenceMember objects.")
+        }
+        if (!identical(self@frequency, "day")) {
+            return("DirectModelSequence currently requires daily values.")
+        }
+        years <- vapply(
+            self@members,
+            function(member) member@weather_year,
+            integer(1L)
+        )
+        if (anyDuplicated(years) || !identical(years, sort(years))) {
+            return("Direct-model members must use unique ascending weather years.")
+        }
+        sequence_ids <- vapply(
+            self@members,
+            function(member) member@sequence_id,
+            character(1L)
+        )
+        calendars <- vapply(
+            self@members,
+            function(member) member@calendar,
+            character(1L)
+        )
+        if (length(unique(sequence_ids)) != 1L) {
+            return("Direct-model members must share one `sequence_id`.")
+        }
+        if (length(unique(calendars)) != 1L) {
+            return("Direct-model members must share one CF calendar.")
+        }
+        group_ids <- lapply(self@members, function(member) {
+            sort(vapply(
+                member@series,
+                function(item) item@group_id,
+                character(1L)
+            ))
+        })
+        if (!all(vapply(
+            group_ids[-1L],
+            identical,
+            logical(1L),
+            group_ids[[1L]]
+        ))) {
+            return("Every direct-model year must contain the same signal groups.")
+        }
+        if (length(self@provenance) &&
+            (is.null(names(self@provenance)) ||
+                any(!nzchar(names(self@provenance))) ||
+                anyDuplicated(names(self@provenance)))) {
+            return("`provenance` must be a uniquely named list.")
+        }
+        NULL
+    }
+)
+
+# Rebuild one year slice with the original signal transformation, settings,
+# and provenance while retaining only variables present in that source year.
+sequence__slice_adjusted <- function(adjusted, year) {
+    data <- data.table::as.data.table(
+        data.table::copy(adjusted@data)
+    )
+    data <- data[data[["cf_year"]] == year]
+    data.table::setorderv(
+        data,
+        c("cf_day_of_year", "annual_phase", "variable_id")
+    )
+    variables <- unique(data[["variable_id"]])
+    bias__daily_adjusted_series(
+        data,
+        output_role = adjusted@output_role,
+        transformation = adjusted@transformation,
+        variable_metadata = adjusted@variable_metadata[variables],
+        settings = adjusted@settings,
+        provenance = adjusted@provenance
+    )
+}
+
+# Construct one typed year member from all aligned signal groups after the
+# generator has established common year and calendar coverage.
+sequence__direct_member <- function(series, weather_year, calendar) {
+    group_ids <- vapply(
+        series,
+        function(item) item@group_id,
+        character(1L)
+    )
+    DirectModelSequenceMember(
+        sequence_id = DIRECT_MODEL_SEQUENCE_ID,
+        weather_year = as.integer(weather_year),
+        calendar = calendar,
+        series = series,
+        provenance = list(
+            source_role = "model_future",
+            source_year = as.integer(weather_year),
+            calendar = calendar,
+            ordering = "native_cf_chronology",
+            selection = "none",
+            resampling = "none",
+            group_ids = group_ids
+        )
+    )
+}
+
+# Preserve the corrected future-model chronology, partition it by complete CF
+# year, and retain group-level signal metadata for later hourly reconstruction.
+sequence__direct_model_generate <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    if (!S7::S7_inherits(data, SignalExecutionResult) ||
+        !length(data@groups) ||
+        length(data@groups) != length(data@values)) {
+        cli::cli_abort(
+            "Direct model realization requires an aligned SignalExecutionResult."
+        )
+    }
+    if (any(data@diagnostics[["status"]] != "ok") ||
+        any(vapply(data@values, is.null, logical(1L)))) {
+        cli::cli_abort(
+            "Direct model realization cannot preserve failed signal groups."
+        )
+    }
+    if (!all(vapply(
+        data@values,
+        S7::S7_inherits,
+        logical(1L),
+        class = DailyAdjustedSeries
+    ))) {
+        cli::cli_abort(
+            "Direct model realization currently requires DailyAdjustedSeries values."
+        )
+    }
+
+    group_ids <- vapply(
+        data@groups,
+        sequence__direct_group_id,
+        character(1L)
+    )
+    if (anyDuplicated(group_ids)) {
+        cli::cli_abort(
+            "Direct model realization received duplicate signal-group identities."
+        )
+    }
+    year_sets <- lapply(data@values, function(adjusted) {
+        if (!identical(adjusted@output_role, "model_future")) {
+            cli::cli_abort(
+                "Direct model realization requires every signal output to retain `model_future`."
+            )
+        }
+        calendars <- unique(adjusted@data[["cf_calendar"]])
+        if (length(calendars) != 1L) {
+            cli::cli_abort(
+                "Each direct-model signal group must use one native CF calendar."
+            )
+        }
+        sort(unique(as.integer(adjusted@data[["cf_year"]])))
+    })
+    if (!all(vapply(
+        year_sets[-1L],
+        identical,
+        logical(1L),
+        year_sets[[1L]]
+    ))) {
+        cli::cli_abort(
+            "Every direct-model signal group must cover the same weather years."
+        )
+    }
+    calendars <- vapply(
+        data@values,
+        function(adjusted) unique(adjusted@data[["cf_calendar"]]),
+        character(1L)
+    )
+    if (length(unique(calendars)) != 1L) {
+        cli::cli_abort(
+            "Every direct-model signal group must use the same CF calendar."
+        )
+    }
+
+    years <- year_sets[[1L]]
+    members <- lapply(years, function(year) {
+        series <- lapply(seq_along(data@values), function(index) {
+            DirectModelSeries(
+                group_id = group_ids[[index]],
+                key = data@groups[[index]]@key,
+                variables = data@groups[[index]]@variables,
+                adjusted = sequence__slice_adjusted(
+                    data@values[[index]],
+                    year
+                )
+            )
+        })
+        sequence__direct_member(series, year, calendars[[1L]])
+    })
+    DirectModelSequence(
+        members = members,
+        frequency = "day",
+        provenance = list(
+            method = "direct_model_realization",
+            source_role = "model_future",
+            ordering = "native_cf_chronology",
+            selection = "none",
+            resampling = "none",
+            years = years,
+            calendar = calendars[[1L]],
+            group_ids = group_ids
+        )
+    )
+}
+
+# Describe the deterministic sequence component independently of any one
+# complete weather recipe or bias-adjustment implementation.
+sequence__direct_model_component <- function() {
+    component__spec(
+        name = "direct_model_realization",
+        stage = "sequence",
+        label = "Direct model realization",
+        required_inputs = list(
+            model_future = component__input_requirement(
+                "model_future",
+                representations = "series",
+                frequencies = "day",
+                calendars = CF_TIME_CALENDARS
+            )
+        ),
+        input_kinds = "daily_adjusted_series",
+        output_kinds = "direct_model_sequence",
+        scopes = "multivariate",
+        stochastic = FALSE,
+        operations = list(generate = sequence__direct_model_generate),
+        metadata = list(
+            sequence_method = "direct_model_realization",
+            source_role = "model_future",
+            ordering = "native_cf_chronology",
+            selection = "none",
+            resampling = "none",
+            supported_frequencies = "day",
+            output_contract = "direct_model_sequence"
+        )
+    )
+}
+
+# Register the reusable sequence implementation once so recipes can refer to
+# its stable algorithmic name without embedding executable functions.
+sequence__register_direct_model_component <- function() {
+    component <- sequence__direct_model_component()
+    key <- component__registry_key(component@stage, component@name)
+    if (!exists(
+        key,
+        envir = WEATHER_COMPONENT_REGISTRY,
+        inherits = FALSE
+    )) {
+        component__register(component)
+    }
+    invisible(NULL)
+}
+
 # Future-weather sequence results keep year identity outside the hourly table
 # so each member can be persisted, resumed, and written as an independent EPW.
 WeatherSequenceMember <- S7::new_class(

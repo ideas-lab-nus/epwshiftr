@@ -495,6 +495,17 @@ methods use all seven stages, including explicit
 forms native-calendar monthly distributions and its `signal` component
 requires both historical model output and a separate observed reference.
 
+Sequence implementations can also be registered independently of a complete
+recipe. The current standalone sequence contract is:
+
+| Registry name | Accepted signal result | Behavior | Output contract |
+|:--------------|:-----------------------|:---------|:----------------|
+| `direct_model_realization` | Complete daily `DailyAdjustedSeries` groups retaining the `model_future` backbone | Preserve native CF chronology, partition complete source years, and perform no day selection or resampling | One `DirectModelSequence` containing deterministic year members, group keys, corrected values, signal provenance, source years, and calendars |
+
+`direct_model_realization` currently accepts daily values. Sub-daily signal
+types and their hourly interpolation remain separate later components; the
+sequence stage does not silently interpolate or construct EPW fields.
+
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves
 variable-specific settings, and executes aligned groups. Each method supplies
