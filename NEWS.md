@@ -46,6 +46,12 @@
 
 ## New features
 
+* Added the deterministic `direct_model_realization` sequence component. It
+  preserves corrected daily `model_future` chronology, partitions complete
+  native CF-calendar years without selecting or resampling days, and retains
+  group identities and signal provenance for later hourly reconstruction
+  (#183).
+
 * Future-weather recipes with `future_year` or `multi_year` output types now
   persist a year-addressable sequence manifest and write one independently
   resumable Parquet and EPW member per weather year. Existing
