@@ -549,7 +549,7 @@ interpretation. Group failures either abort or return an explicit diagnostic
 with a `NULL` result; they are never silently converted to missing numeric
 values.
 
-Eight package-native standalone signals currently use this contract:
+Nine package-native standalone signals currently use this contract:
 
 | Registry name | Correction | Output backbone | Variable-profile evidence |
 |:--------------|:-----------|:----------------|:--------------------------|
@@ -557,6 +557,7 @@ Eight package-native standalone signals currently use this contract:
 | `delta_change_daily` | Monthly historical-to-future mean change, additive for temperature and multiplicative for precipitation | `observed_reference` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
 | `quantile_mapping_daily` | \(F^{-1}_{obs}(F_{hist}(x_{future}))\) in calendar-neutral circular daily windows | `model_future` | Published method-variable profiles for `tas` and `pr`; implementation-selected defaults for `hurs`, `psl`, `rlds`, `sfcWind`, `tasmin`, and `tasmax` remain experimental |
 | `quantile_delta_mapping_daily` | Transfer \(x_{future} - F^{-1}_{hist}(p)\) or \(x_{future} / F^{-1}_{hist}(p)\) onto \(F^{-1}_{obs}(p)\), where \(p = F_{future,t}(x_{future})\) | `model_future` | Published absolute-change temperature and relative-change precipitation profiles; implementation-selected defaults for other supported variables remain experimental |
+| `kernel_quantile_delta_mapping_hourly` | Fit KDE CDFs in centered three-month calendar windows, then transfer additive or multiplicative modeled quantile changes | `model_future` | Published hourly KDE-QDM window and transformation families; unreported kernel, bandwidth, grid, tail, and zero-denominator defaults remain experimental and explicit |
 | `equidistant_cdf_matching_daily` | Apply \(x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\), using the Li et al. parametric distributions | `model_future` | Li et al. published monthly profiles for `tas` and `pr`; native calendar-month daily pooling is an experimental epwshiftr adaptation |
 | `scaled_distribution_mapping_daily` | Parametric distribution and recurrence-interval scaling, absolute for temperature and relative for precipitation | `model_future` | Published profiles for `tas` and `pr`; applying the Normal branch to `tasmin` and `tasmax` remains experimental |
 | `cdf_transform_daily` | Construct \(F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile match the future-model sequence to that target CDF | `model_future` | Published daily profiles for `pr`, `tas`, `tasmin`, `tasmax`, `rsds`, and `sfcWind` |
@@ -583,6 +584,30 @@ transfers relative changes. Precipitation values at or below the published
 before adjustment and censored back to zero afterward. Window sample counts,
 transferred changes, clipping, censoring, and effective seeds are retained in
 provenance.
+
+`kernel_quantile_delta_mapping_hourly` implements the hourly variant described
+by [Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5) after
+temporal downscaling. For every future calendar month, the preceding, current,
+and following months are pooled independently from `observed_reference`,
+`model_historical`, and `model_future`; December and January wrap without
+coercing 360-, 365-, or 366-day inputs to Gregorian dates. The future KDE gives
+\(p\), and observed and historical KDE quantiles at \(p\) receive the additive
+or multiplicative QDM equation. The future rows, exact time-of-day positions,
+and native CF chronology remain the output backbone.
+
+The publication specifies KDE CDFs, a three-month moving window, additive
+temperature and pressure changes, and multiplicative wind, humidity, and
+radiation changes. It and its supplementary information do not specify the KDE
+kernel, bandwidth, numerical CDF grid, finite-grid tail behavior, minimum sample
+count, bounds, or treatment of a zero multiplicative denominator. The component
+therefore labels every current profile experimental. Its default Gaussian
+kernel, `nrd0` bandwidth, grid, endpoint clamp, bounds, and zero handling are
+ordinary package settings rather than claims about the authors' unpublished
+code. Supported `stats::density()` kernels and bandwidth selectors, an erroring
+tail policy, and strict zero-denominator handling can be selected through the
+same validated overrides. The resolved values, per-month sample counts and
+bandwidths, mapped probability and change ranges, tail use, zero handling, and
+clipping remain in result provenance.
 
 `equidistant_cdf_matching_daily` implements the additive equation published by
 Li et al. (2010):

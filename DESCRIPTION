@@ -96,6 +96,7 @@ Collate:
     'cdf-transform.R'
     'equidistant-cdf-matching.R'
     'quantile-delta-mapping.R'
+    'kernel-qdm.R'
     'quantile-mapping.R'
     'solr-date.R'
     'query-param.R'
