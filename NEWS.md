@@ -46,6 +46,13 @@
 
 ## New features
 
+* Added the registered `linear_temporal_interpolation` preprocessing component
+  for regular three- and six-hourly `tas`, `huss`, `hurs`, `ps`, `psl`, `uas`,
+  and `vas` inputs. It produces an exact hourly native CF-calendar lattice,
+  retains source rows, timestamps, weights, grouping, diagnostics, and
+  provenance, and rejects extrapolation and variables requiring dedicated
+  temporal methods (#187).
+
 * Added the frequency-aware `AdjustedWeatherSeries` signal-result contract.
   Existing daily methods retain their strict `DailyAdjustedSeries` output,
   while regular sub-daily outputs carry explicit frequency, timestep, and
