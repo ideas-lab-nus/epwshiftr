@@ -46,6 +46,17 @@
 
 ## New features
 
+* Added the registered `direct_model_epw_calendar_mapping` hourly component.
+  It maps complete hourly direct-model years from every supported native CF
+  calendar onto the baseline EPW's fixed 365-day, 8760-row lattice while
+  preserving each variable's time-of-day position. Already aligned 365-day
+  years remain exact; 360- and 366-day point variables use circular seasonal
+  interpolation separately at each daily hour, while interval-mean radiation
+  uses normalized conservative remapping separately at each daily hour. Typed
+  sequence members retain group identity, source calendars, mapping methods,
+  annual-mean error diagnostics, and upstream signal provenance for later
+  physical closure and output (#197).
+
 * Added the registered `hourly_weather_interpolation` preprocessing component
   for model inputs that combine point-state variables with interval-mean
   shortwave radiation. It dispatches each variable family to its existing

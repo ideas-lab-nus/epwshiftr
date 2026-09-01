@@ -27,6 +27,7 @@
     weather_interp__register_component()
     hourly_calendar__register_component()
     sequence__register_direct_model_component()
+    hourmap__register_component()
 
     # set package options
     .opts <- list(
