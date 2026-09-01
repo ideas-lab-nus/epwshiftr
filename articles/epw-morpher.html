@@ -801,6 +801,48 @@ execution boundary. <code><a href="../reference/arima_temperature.html">arima_te
 stages, but its <code>calendar</code> component forms native-calendar
 monthly distributions and its <code>signal</code> component requires
 both historical model output and a separate observed reference.</p>
+<p>Preprocessing implementations can also be registered independently of
+a complete recipe. The current standalone preprocessing contract is:</p>
+<table class="table">
+<colgroup>
+<col width="22%">
+<col width="36%">
+<col width="15%">
+<col width="25%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Accepted source inputs</th>
+<th align="left">Behavior</th>
+<th align="left">Output contract</th>
+</tr></thead>
+<tbody><tr class="odd">
+<td align="left"><code>linear_temporal_interpolation</code></td>
+<td align="left">Materialized <code>model_historical</code> and
+<code>model_future</code> series at a regular three- or six-hour
+timestep, using any supported CF calendar and containing
+<code>tas</code>, <code>huss</code>, <code>hurs</code>, <code>ps</code>,
+<code>psl</code>, <code>uas</code>, or <code>vas</code>
+</td>
+<td align="left">Interpolate each independent
+variable/model/member/grid/site group onto an exact midnight-anchored
+hourly native-calendar lattice, retain original source values at
+matching hours, and never extrapolate beyond source support</td>
+<td align="left">One <code>WeatherStageResult</code> of kind
+<code>hourly_role_inputs</code>, containing rebuilt hourly
+<code>WeatherInputs</code>, left/right source timestamps and rows,
+interpolation weights, group diagnostics, and source provenance</td>
+</tr></tbody>
+</table>
+<p>The component accepts only variables with explicit continuous
+point-state semantics. Radiation, fluxes, accumulations, and derived
+variables are rejected instead of being assigned the same interpolation
+equation. Radiation downscaling that accounts for the hourly
+solar-elevation cycle therefore requires a separate preprocessing
+implementation. A complete workflow must also provide sufficient source
+samples around the requested output boundaries, because
+<code>linear_temporal_interpolation</code> deliberately performs no
+extrapolation.</p>
 <p>Sequence implementations can also be registered independently of a
 complete recipe. The current standalone sequence contract is:</p>
 <table class="table">
