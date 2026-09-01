@@ -502,6 +502,7 @@ complete recipe. The current standalone preprocessing contract is:
 |:--------------|:-----------------------|:---------|:----------------|
 | `linear_temporal_interpolation` | Materialized `model_historical` and `model_future` series at a regular three- or six-hour timestep, using any supported CF calendar and containing `tas`, `huss`, `hurs`, `ps`, `psl`, `uas`, or `vas` | Interpolate each independent variable/model/member/grid/site group onto an exact midnight-anchored hourly native-calendar lattice, retain original source values at matching hours, and never extrapolate beyond source support | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt hourly `WeatherInputs`, left/right source timestamps and rows, interpolation weights, group diagnostics, and source provenance |
 | `solar_radiation_interpolation` | Materialized `model_historical` and `model_future` series containing interval-mean `rsds` or `rsdsdiff` at a regular three- or six-hour timestep, with explicit CF time bounds, UTC coordinates, site longitude and latitude, and any supported CF calendar | Partition each source interval into one-hour intervals and scale its mean flux by each target interval's positive solar projection relative to the source-interval mean projection | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt non-negative hourly `WeatherInputs`, target interval bounds, source rows and bounds, solar projections and weights, conservation diagnostics, and source provenance |
+| `hourly_weather_interpolation` | Hourly `observed_reference` series plus materialized historical and future model series containing any supported point-state and shortwave variables; paired daily `tasmin` and `tasmax` may accompany three-hourly `tas` | Dispatch point-state variables to bounded linear interpolation and interval-mean shortwave variables to solar-projection allocation, optionally insert daily temperature extrema at hours informed by observed site/month extrema, and merge the variable families without changing their time-coordinate semantics | One multivariate `WeatherStageResult` of kind `hourly_role_inputs`; daily extrema are auxiliary anchors rather than output variables, and all source rows, fallbacks, diagnostics, and family-specific provenance are retained |
 
 The component accepts only variables with explicit continuous point-state
 semantics. Radiation, fluxes, accumulations, and derived variables are
@@ -526,6 +527,24 @@ all-leap, and Gregorian calendars onto the common astronomical cycle without
 assigning them surrogate Gregorian dates. Positive radiation in an interval
 with zero solar projection is reported as an error because the published ratio
 is then undefined.
+
+`hourly_weather_interpolation` provides the single preprocessing stage needed
+when a method uses point-state and interval-mean radiation variables together.
+It composes the two algorithms above instead of applying one interpolation
+equation to every variable. Following the supplementary method of
+[Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5), paired daily
+`tasmin` and `tasmax` values can be inserted between three-hourly temperature
+samples so daily extremes missing from the coarser series remain represented.
+The paper states that the insertion hour can shift by one hour using knowledge
+from historical observations, but does not specify the selection algorithm.
+This implementation therefore chooses between the two interior hourly
+positions using the observed site-and-month modal extreme hour. If the two
+unconstrained highest or lowest samples are not adjacent, it uses the adjacent
+pair with the most extreme mean; if an observed mode is unavailable, it uses
+the earliest interior hour. These implementation choices and every inserted
+anchor are recorded in diagnostics. Without paired extrema, `tas` retains the
+ordinary bounded linear result. `tasmin` and `tasmax` are consumed as auxiliary
+inputs and are not passed to the hourly signal stage as independent variables.
 
 Calendar implementations can also be registered independently of a complete
 recipe. The current standalone hourly calendar contract is:

@@ -24,6 +24,7 @@
     isimip__register_component()
     temporal__register_linear_component()
     solar__register_component()
+    weather_interp__register_component()
     hourly_calendar__register_component()
     sequence__register_direct_model_component()
 
