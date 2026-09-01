@@ -11,7 +11,7 @@
     registerS3method("print", "epwshiftr_bytes",
         print.epwshiftr_bytes, envir = asNamespace("base"))
     cache__configure(pkgname)
-    # Register standalone signal methods at load time so downstream component
+    # Register standalone scientific components at load time so downstream
     # pipelines can resolve them without constructing a complete EPW recipe.
     bias__register_linear_scaling_component()
     bias__register_delta_change_component()
@@ -21,6 +21,7 @@
     cdft__register_component()
     edcdf__register_component()
     isimip__register_component()
+    sequence__register_direct_model_component()
 
     # set package options
     .opts <- list(
