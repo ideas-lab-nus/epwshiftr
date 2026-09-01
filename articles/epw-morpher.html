@@ -875,6 +875,49 @@ no-leap, all-leap, and Gregorian calendars onto the common astronomical
 cycle without assigning them surrogate Gregorian dates. Positive
 radiation in an interval with zero solar projection is reported as an
 error because the published ratio is then undefined.</p>
+<p>Calendar implementations can also be registered independently of a
+complete recipe. The current standalone hourly calendar contract is:</p>
+<table class="table">
+<colgroup>
+<col width="23%">
+<col width="34%">
+<col width="15%">
+<col width="26%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Accepted stage input</th>
+<th align="left">Behavior</th>
+<th align="left">Output contract</th>
+</tr></thead>
+<tbody><tr class="odd">
+<td align="left"><code>hourly_calendar_grouping</code></td>
+<td align="left">One <code>WeatherInputs</code> stage value of kind
+<code>hourly_role_inputs</code>, containing hourly
+<code>observed_reference</code>, <code>model_historical</code>, and
+<code>model_future</code> series</td>
+<td align="left">Validate identical variable sets and units, matching
+historical/future model identities, complete native-calendar years,
+unique hourly coordinates, and one 24-position lattice; then form one
+univariate group per variable, future-model case, and site while
+preserving each role’s CF calendar</td>
+<td align="left">One <code>WeatherStageResult</code> of kind
+<code>calendar_indexed_hourly_series</code>, containing
+<code>SignalGroup</code> objects plus role-level coverage diagnostics
+and calendar/grouping provenance</td>
+</tr></tbody>
+</table>
+<p><code>hourly_calendar_grouping</code> performs no row-wise date
+matching. An observed Gregorian year, a historical 360-day model year,
+and a future no-leap model year therefore remain separate distributions
+inside the same signal group. Every role must nevertheless cover each
+included native-calendar year fully. Missing hours, incomplete days or
+years, duplicate calendar coordinates, different role variable sets or
+units, and mismatched historical/future model identities stop before a
+statistical signal kernel executes. This boundary allows
+<code>kernel_quantile_delta_mapping_hourly</code> and other
+distribution-based hourly signals to consume validated groups without
+interpreting calendars inside their numerical kernels.</p>
 <p>Sequence implementations can also be registered independently of a
 complete recipe. The current standalone sequence contract is:</p>
 <table class="table">
