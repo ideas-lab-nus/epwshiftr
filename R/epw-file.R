@@ -42,6 +42,30 @@ EPW_FILE_UNITS <- c(
     liquid_precip_rate = "h"
 )
 
+# Principal EPW limits and missing sentinels are defined once so validation,
+# physical closure, and file serialization cannot silently diverge.
+EPW_FILE_FIELD_SPECS <- list(
+    dry_bulb_temperature = c(-70, 70, 99.9),
+    dew_point_temperature = c(-70, 70, 99.9),
+    relative_humidity = c(0, 110, 999),
+    atmospheric_pressure = c(31000, 120000, 999999),
+    horizontal_infrared_radiation_intensity_from_sky = c(0, Inf, 9999),
+    global_horizontal_radiation = c(0, Inf, 9999),
+    direct_normal_radiation = c(0, Inf, 9999),
+    diffuse_horizontal_radiation = c(0, Inf, 9999),
+    global_horizontal_illuminance = c(0, Inf, 999999),
+    direct_normal_illuminance = c(0, Inf, 999999),
+    diffuse_horizontal_illuminance = c(0, Inf, 999999),
+    zenith_luminance = c(0, Inf, 9999),
+    wind_direction = c(0, 360, 999),
+    wind_speed = c(0, 40, 999),
+    total_sky_cover = c(0, 10, 99),
+    opaque_sky_cover = c(0, 10, 99),
+    liquid_precip_depth = c(0, Inf, 999),
+    liquid_precip_rate = c(0, Inf, 99),
+    snow_depth = c(0, Inf, 999)
+)
+
 EPW_FILE_HEADER_NAMES <- c(
     "LOCATION",
     "DESIGN CONDITIONS",
@@ -668,29 +692,8 @@ epw_file_unit <- function(field) {
 # that morphing can change.
 epw_file_fill_abnormal <- function(weather, missing = TRUE, out_of_range = TRUE, special = TRUE) {
     weather <- data.table::as.data.table(data.table::copy(weather))
-    specs <- list(
-        dry_bulb_temperature = c(-70, 70, 99.9),
-        dew_point_temperature = c(-70, 70, 99.9),
-        relative_humidity = c(0, 110, 999),
-        atmospheric_pressure = c(31000, 120000, 999999),
-        horizontal_infrared_radiation_intensity_from_sky = c(0, Inf, 9999),
-        global_horizontal_radiation = c(0, Inf, 9999),
-        direct_normal_radiation = c(0, Inf, 9999),
-        diffuse_horizontal_radiation = c(0, Inf, 9999),
-        global_horizontal_illuminance = c(0, Inf, 999999),
-        direct_normal_illuminance = c(0, Inf, 999999),
-        diffuse_horizontal_illuminance = c(0, Inf, 999999),
-        zenith_luminance = c(0, Inf, 9999),
-        wind_direction = c(0, 360, 999),
-        wind_speed = c(0, 40, 999),
-        total_sky_cover = c(0, 10, 99),
-        opaque_sky_cover = c(0, 10, 99),
-        liquid_precip_depth = c(0, Inf, 999),
-        liquid_precip_rate = c(0, Inf, 99),
-        snow_depth = c(0, Inf, 999)
-    )
-    for (field in intersect(names(specs), names(weather))) {
-        spec <- specs[[field]]
+    for (field in intersect(names(EPW_FILE_FIELD_SPECS), names(weather))) {
+        spec <- EPW_FILE_FIELD_SPECS[[field]]
         value <- suppressWarnings(as.numeric(weather[[field]]))
         invalid <- if (isTRUE(missing) || isTRUE(special)) !is.finite(value) else rep(FALSE, length(value))
         if (isTRUE(out_of_range)) {

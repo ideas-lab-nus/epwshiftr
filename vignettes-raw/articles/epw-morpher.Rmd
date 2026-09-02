@@ -593,6 +593,54 @@ thermodynamic and radiative closure, unchanged EPW field policy, and final
 `WeatherSequenceResult` construction to the following `physics` and `output`
 stages.
 
+Every built-in complete weather method enters the same internal EPW physical
+boundary. An `EpwPhysicalRequest` carries the EPW template and only the target
+fields produced by the method. An `EpwPhysicalPolicy` declares which fields are
+retained, independently transformed, derived, bounded, or jointly closed. The
+common executor returns an `EpwPhysicalResult` containing the complete weather
+table, derived states, correction counts, and the policy actually applied.
+These are internal types; `EpwFile` remains the package's only EPW parser and
+writer.
+
+Method-specific physics components are thin adapters around that executor.
+The policy preserves the scientific definition selected by the recipe:
+
+| Weather method | Physical policy | Physical interpretation |
+|:---------------|:----------------|:------------------------|
+| Belcher monthly | `legacy_independent_fields` | Retain the original independent humidity, radiation, wind, and EPW field treatment |
+| Enhanced monthly epwshiftr | `monthly_harmonized` | Use the selected HURS/HUSS path and the enhanced radiation closure |
+| Daily power, daily BTWS, and Eames/BTWS | `preserve_specific_humidity` | Preserve baseline specific humidity after reconstructing temperature, with saturation closure |
+| Ek and Arima paper-faithful | `preserve_humidity_fields` | Preserve baseline RH and dew point and report any inconsistency without correcting it |
+| Ek and Arima harmonized | `preserve_specific_humidity` | Close baseline specific humidity against projected temperature |
+| Sobie-Curry paper-faithful | `independent_thermodynamic_fields` | Retain the independently transformed temperature, pressure, RH, and dew point |
+| Sobie-Curry harmonized | `specific_humidity_delta` | Close the method-defined baseline-HUSS-plus-delta target |
+| Direct-model hourly sequence | `absolute_model_fields` | Interpret corrected absolute temperature, pressure, humidity, wind, and radiation fields |
+
+Daily marginal signal methods such as Delta Change, QM, QDM, SDM, CDF-t,
+EDCDFm, ISIMIP3BASD, and KDE-QDM enter `absolute_model_fields` after their
+adjusted sequences have been reconstructed and mapped to EPW hours. Their
+statistical kernels do not duplicate physical closure.
+
+Physics implementations can also be registered independently of a complete
+recipe. The direct-model hourly adapter is:
+
+| Registry name | Accepted hourly input | Behavior | Output contract |
+|:--------------|:----------------------|:---------|:----------------|
+| `epw_hourly_physical_closure` | One `MappedHourlyClimateSequence` plus a 365-day `weather_template`; every future year must contain `tas`, `ps`, `rsds`, and `rsdsdiff`, exactly one of `hurs` or `huss`, exactly one of `sfcWind` or paired `uas` and `vas`, and may contain `rlds` | Convert climate variables into one `EpwPhysicalRequest` and apply `absolute_model_fields`; derive vector wind speed and direction or retain template direction for scalar wind speed, while preserving unrelated template fields | One typed `EpwHourlyWeatherSequence` of kind `epw_hourly_weather_sequence`, containing one 8760-row EPW-shaped member per future year, constructed/inherited field provenance, input-path choices, bound counts, radiation corrections, and closure errors |
+
+`epw_hourly_physical_closure` operates after climate calendar mapping, so its
+rows already have an unambiguous position on the fixed EPW lattice. A leap
+future year retains its source-year label while solar geometry is evaluated on
+a non-leap surrogate year; March through December therefore cannot shift by
+one day. The component uses the package-wide unit aliases and conversions;
+hourly `W/m^2` interval means are numerically equal to the one-hour `Wh/m^2`
+EPW values. At night GHI, DHI, and DNI are zero. During daylight the shared
+radiation kernel bounds DHI by GHI, limits DNI to extraterrestrial direct
+normal energy, and reallocates excess beam energy to DHI so closure remains
+exact. If `rlds` is absent, the template's horizontal infrared field is
+retained. The component stops on ambiguous humidity or wind paths, unsupported
+variables, or undeclared units instead of silently choosing an interpretation.
+
 Bias-adjustment implementations belong to the `signal` stage. Their common
 `apply` operation validates the role-addressable inputs, resolves
 variable-specific settings, and executes aligned groups. Each method supplies
