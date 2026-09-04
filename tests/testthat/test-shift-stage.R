@@ -1165,6 +1165,94 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_equal(shift_status(shift_complete(epws)), "completed")
 })
 
+test_that("dynamic stack scopes restore nested and failing values", {
+    stack <- new.env(parent = emptyenv())
+    stack$values <- integer()
+
+    expect_identical(shift__stack_current(stack, empty = 7L), 7L)
+    observed <- shift__with_stack(stack, 1L, {
+        c(
+            shift__stack_current(stack),
+            shift__with_stack(stack, 2L, shift__stack_current(stack)),
+            shift__stack_current(stack)
+        )
+    })
+
+    expect_identical(observed, c(1L, 2L, 1L))
+    expect_identical(stack$values, integer())
+    expect_error(
+        shift__with_stack(stack, 3L, stop("scoped failure")),
+        "scoped failure"
+    )
+    expect_identical(stack$values, integer())
+})
+
+test_that("artifact row reader preserves order, metadata, and global limits", {
+    root <- tempfile("shift-artifact-reader-")
+    dir.create(root)
+    paths <- file.path(root, paste0("part-", 1:3, ".data"))
+    expect_true(all(file.create(paths)))
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+    records <- data.frame(
+        relative_path = basename(paths),
+        artifact_label = c("first", "second", "third"),
+        check.names = FALSE
+    )
+    calls <- new.env(parent = emptyenv())
+    calls$paths <- character()
+    calls$limits <- numeric()
+    reader <- function(path, limit, columns) {
+        calls$paths <- c(calls$paths, basename(path))
+        calls$limits <- c(calls$limits, limit)
+        rows <- data.table::data.table(value = c(1L, 2L))
+        if (!is.infinite(limit)) {
+            rows <- utils::head(rows, limit)
+        }
+        rows
+    }
+
+    out <- shift__read_artifact_rows(
+        store = list(path = root),
+        records = records,
+        n = 3L,
+        columns = c("artifact_label", "value"),
+        path_column = "relative_path",
+        reader = reader,
+        metadata = function(records, i) {
+            list(artifact_label = records$artifact_label[[i]])
+        },
+        missing = c(
+            "Fixture artifact is missing.",
+            "x" = "{.path {path}}"
+        ),
+        stage = "fixture"
+    )
+
+    expect_named(out, c("artifact_label", "value"))
+    expect_identical(out$artifact_label, c("first", "first", "second"))
+    expect_identical(out$value, c(1L, 2L, 1L))
+    expect_identical(calls$paths, basename(paths[1:2]))
+    expect_identical(calls$limits, c(3, 1))
+
+    unlink(paths[[1L]])
+    expect_error(
+        shift__read_artifact_rows(
+            store = list(path = root),
+            records = records[1L, , drop = FALSE],
+            n = Inf,
+            path_column = "relative_path",
+            reader = reader,
+            missing = c(
+                "Fixture artifact is missing.",
+                "x" = "{.path {path}}"
+            ),
+            stage = "fixture"
+        ),
+        "Fixture artifact is missing"
+    )
+})
+
 test_that("standalone shift APIs carry run context without session arguments", {
     apis <- list(shift_datasets, shift_collect, shift_download, shift_extract,
         shift_morph, shift_epw, shift_export_epw)

@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated Shift dynamic-scope nesting and artifact-row iteration while
+  preserving per-stage readers, metadata, column selection, diagnostics,
+  ordering, and global row limits (#216).
+
 * Consolidated fixed-length ESGF time-field normalization and metadata-first
   DRS range filling while retaining query warnings, label selection, output
   formatting, and workflow catalog behavior (#214).

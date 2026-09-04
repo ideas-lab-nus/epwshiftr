@@ -448,39 +448,40 @@ shift_add_constant_columns <- function(dt, values) {
     dt
 }
 
-shift_read_morph_data <- function(store, results, n, columns) {
-    pieces <- vector("list", nrow(results))
+# Read ordered artifact records under one global row allowance.
+shift__read_artifact_rows <- function(store, records, n, columns = NULL,
+                                      path_column, reader, metadata = NULL,
+                                      missing, stage) {
+    checkmate::assert_choice(path_column, names(records))
+    checkmate::assert_function(reader)
+    checkmate::assert_function(metadata, null.ok = TRUE)
+    checkmate::assert_character(missing, any.missing = FALSE, min.len = 1L)
+    checkmate::assert_string(stage, min.chars = 1L)
+
+    pieces <- vector("list", nrow(records))
     remaining <- n
-    for (i in seq_len(nrow(results))) {
+    for (i in seq_len(nrow(records))) {
         if (!is.infinite(remaining) && remaining <= 0L) {
             break
         }
-        path <- store_abs_path(results$output_path[[i]], root = store$path)
+        path <- store_abs_path(records[[path_column]][[i]], root = store$path)
         if (!file.exists(path)) {
-            cli::cli_abort(c(
-                "Morphed Parquet data file is missing.",
-                "x" = "{.path {path}}",
-                "i" = "Run {.fn shift_morph} again or inspect {.fn shift_artifacts}."
-            ))
+            cli::cli_abort(missing)
         }
+
         limit <- if (is.infinite(remaining)) Inf else remaining
-        dt <- shift_read_parquet(store, path, n = limit)
-        dt <- shift_add_constant_columns(dt, list(
-            result_id = results$result_id[[i]],
-            morph_id = results$morph_id[[i]],
-            case_id = results$case_id[[i]],
-            output_path = results$output_path[[i]],
-            output_type = results$output_type[[i]],
-            sequence_id = results$sequence_id[[i]],
-            weather_year = results$weather_year[[i]],
-            calendar = results$calendar[[i]],
-            stochastic_seed = results$stochastic_seed[[i]]
-        ))
-        pieces[[i]] <- shift_select_data_columns(dt, columns, "morphed")
+        dt <- data.table::as.data.table(reader(path, limit, columns))
+        if (!is.null(metadata)) {
+            # Add record-level identity before selecting requested columns so
+            # callers may request both stored and manifest-backed fields.
+            dt <- shift_add_constant_columns(dt, metadata(records, i))
+        }
+        pieces[[i]] <- shift_select_data_columns(dt, columns, stage)
         if (!is.infinite(remaining)) {
             remaining <- remaining - nrow(dt)
         }
     }
+
     pieces <- Filter(Negate(is.null), pieces)
     if (!length(pieces)) {
         return(data.table::data.table())
@@ -488,50 +489,74 @@ shift_read_morph_data <- function(store, results, n, columns) {
     data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
 }
 
-shift_read_epw_output_data <- function(store, outputs, n, columns) {
-    pieces <- vector("list", nrow(outputs))
-    remaining <- n
-    for (i in seq_len(nrow(outputs))) {
-        if (!is.infinite(remaining) && remaining <= 0L) {
-            break
-        }
-        path <- store_abs_path(outputs$path[[i]], root = store$path)
-        if (!file.exists(path)) {
-            cli::cli_abort(c(
-                "EPW output file is missing.",
-                "x" = "{.path {path}}",
-                "i" = "Run {.fn shift_epw} again or inspect {.fn shift_outputs}."
-            ))
-        }
-        dt <- epw_file_read(path)$data()
-        if (!is.infinite(remaining)) {
-            dt <- utils::head(dt, remaining)
-        }
-        dt <- shift_add_constant_columns(dt, list(
-            output_id = outputs$output_id[[i]],
-            morph_id = outputs$morph_id[[i]],
-            case_id = outputs$case_id[[i]],
-            source_id = outputs$source_id[[i]],
-            experiment_id = outputs$experiment_id[[i]],
-            variant_label = outputs$variant_label[[i]],
-            period = outputs$period[[i]],
-            output_type = outputs$output_type[[i]],
-            sequence_id = outputs$sequence_id[[i]],
-            weather_year = outputs$weather_year[[i]],
-            calendar = outputs$calendar[[i]],
-            stochastic_seed = outputs$stochastic_seed[[i]],
-            path = outputs$path[[i]]
-        ))
-        pieces[[i]] <- shift_select_data_columns(dt, columns, "EPW output")
-        if (!is.infinite(remaining)) {
-            remaining <- remaining - nrow(dt)
-        }
-    }
-    pieces <- Filter(Negate(is.null), pieces)
-    if (!length(pieces)) {
-        return(data.table::data.table())
-    }
-    data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+# Read morphed Parquet artifacts with their persisted result identity columns.
+shift__read_morph_data <- function(store, results, n, columns) {
+    shift__read_artifact_rows(
+        store,
+        results,
+        n = n,
+        columns = columns,
+        path_column = "output_path",
+        reader = function(path, limit, columns) {
+            shift_read_parquet(store, path, n = limit)
+        },
+        metadata = function(records, i) list(
+            result_id = records$result_id[[i]],
+            morph_id = records$morph_id[[i]],
+            case_id = records$case_id[[i]],
+            output_path = records$output_path[[i]],
+            output_type = records$output_type[[i]],
+            sequence_id = records$sequence_id[[i]],
+            weather_year = records$weather_year[[i]],
+            calendar = records$calendar[[i]],
+            stochastic_seed = records$stochastic_seed[[i]]
+        ),
+        missing = c(
+            "Morphed Parquet data file is missing.",
+            "x" = "{.path {path}}",
+            "i" = "Run {.fn shift_morph} again or inspect {.fn shift_artifacts}."
+        ),
+        stage = "morphed"
+    )
+}
+
+# Read EPW artifacts with output-manifest identity and bounded weather rows.
+shift__read_epw_output_data <- function(store, outputs, n, columns) {
+    shift__read_artifact_rows(
+        store,
+        outputs,
+        n = n,
+        columns = columns,
+        path_column = "path",
+        reader = function(path, limit, columns) {
+            dt <- epw_file_read(path)$data()
+            if (!is.infinite(limit)) {
+                dt <- utils::head(dt, limit)
+            }
+            dt
+        },
+        metadata = function(records, i) list(
+            output_id = records$output_id[[i]],
+            morph_id = records$morph_id[[i]],
+            case_id = records$case_id[[i]],
+            source_id = records$source_id[[i]],
+            experiment_id = records$experiment_id[[i]],
+            variant_label = records$variant_label[[i]],
+            period = records$period[[i]],
+            output_type = records$output_type[[i]],
+            sequence_id = records$sequence_id[[i]],
+            weather_year = records$weather_year[[i]],
+            calendar = records$calendar[[i]],
+            stochastic_seed = records$stochastic_seed[[i]],
+            path = records$path[[i]]
+        ),
+        missing = c(
+            "EPW output file is missing.",
+            "x" = "{.path {path}}",
+            "i" = "Run {.fn shift_epw} again or inspect {.fn shift_outputs}."
+        ),
+        stage = "EPW output"
+    )
 }
 
 # Compact paths below the session temp directory before they reach cli's fact
@@ -654,48 +679,48 @@ SHIFT_REPORTER_STACK$values <- list()
 SHIFT_CATALOG_UNIT_TOTAL_STACK <- new.env(parent = emptyenv())
 SHIFT_CATALOG_UNIT_TOTAL_STACK$values <- integer()
 
+# Return the most recently scoped value without assigning a global default.
+shift__stack_current <- function(stack, empty = NULL) {
+    values <- stack$values
+    if (!length(values)) {
+        return(empty)
+    }
+    values[[length(values)]]
+}
+
+# Evaluate one expression with a temporary value appended to a dynamic stack.
+shift__with_stack <- function(stack, value, code) {
+    previous <- stack$values
+    stack$values <- c(previous, list(value))
+    # Restore the exact preceding container, including its atomic or list type,
+    # after normal returns, errors, and nested non-local exits.
+    on.exit(stack$values <- previous, add = TRUE)
+    force(code)
+}
+
 # Return the reporter owned by the current operation, if one exists.
 shift__current_reporter <- function() {
-    values <- SHIFT_REPORTER_STACK$values
-    if (!length(values)) NULL else values[[length(values)]]
+    shift__stack_current(SHIFT_REPORTER_STACK)
 }
 
 # Evaluate one expression with a reporter installed for internal stage methods.
 # Nested calls restore the preceding reporter deterministically on every exit.
 shift__with_reporter <- function(reporter, code) {
-    SHIFT_REPORTER_STACK$values <- c(SHIFT_REPORTER_STACK$values,
-        list(reporter))
-    on.exit({
-        values <- SHIFT_REPORTER_STACK$values
-        SHIFT_REPORTER_STACK$values <- if (length(values) > 1L) {
-            values[-length(values)]
-        } else {
-            list()
-        }
-    }, add = TRUE)
-    force(code)
+    shift__with_stack(SHIFT_REPORTER_STACK, reporter, code)
 }
 
 # Return the catalog-unit scale selected by the nearest composite operation.
 shift__catalog_unit_total <- function(default = 1L) {
-    values <- SHIFT_CATALOG_UNIT_TOTAL_STACK$values
-    if (!length(values)) as.integer(default) else values[[length(values)]]
+    as.integer(shift__stack_current(
+        SHIFT_CATALOG_UNIT_TOTAL_STACK,
+        empty = default
+    ))
 }
 
 # Evaluate one nested Dataset query on its parent's catalog-unit scale.
 shift__with_catalog_unit_total <- function(total, code) {
     checkmate::assert_int(total, lower = 1L)
-    SHIFT_CATALOG_UNIT_TOTAL_STACK$values <- c(
-        SHIFT_CATALOG_UNIT_TOTAL_STACK$values, total)
-    on.exit({
-        values <- SHIFT_CATALOG_UNIT_TOTAL_STACK$values
-        SHIFT_CATALOG_UNIT_TOTAL_STACK$values <- if (length(values) > 1L) {
-            values[-length(values)]
-        } else {
-            integer()
-        }
-    }, add = TRUE)
-    force(code)
+    shift__with_stack(SHIFT_CATALOG_UNIT_TOTAL_STACK, total, code)
 }
 
 # Apply an internal stage call under the reporter scope without adding a public
@@ -712,24 +737,13 @@ SHIFT_RUN_OVERRIDE_STACK$values <- list()
 
 # Return the run selected by the active resume operation, if any.
 shift__current_run_override <- function() {
-    values <- SHIFT_RUN_OVERRIDE_STACK$values
-    if (!length(values)) NULL else values[[length(values)]]
+    shift__stack_current(SHIFT_RUN_OVERRIDE_STACK)
 }
 
 # Evaluate one reconstructed stage call under a durable run identity.
 shift__with_run_override <- function(run_id, code) {
     checkmate::assert_string(run_id, min.chars = 1L)
-    SHIFT_RUN_OVERRIDE_STACK$values <- c(SHIFT_RUN_OVERRIDE_STACK$values,
-        list(run_id))
-    on.exit({
-        values <- SHIFT_RUN_OVERRIDE_STACK$values
-        SHIFT_RUN_OVERRIDE_STACK$values <- if (length(values) > 1L) {
-            values[-length(values)]
-        } else {
-            list()
-        }
-    }, add = TRUE)
-    force(code)
+    shift__with_stack(SHIFT_RUN_OVERRIDE_STACK, run_id, code)
 }
 
 # Resolve presentation once per operation. UI state is deliberately not
@@ -3839,34 +3853,29 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
             return(data.table::data.table())
         }
 
-        pieces <- vector("list", nrow(results))
-        remaining <- n
-        for (i in seq_len(nrow(results))) {
-            if (!is.infinite(remaining) && remaining <= 0L) {
-                break
-            }
-            path <- store_abs_path(results$output_path[[i]], root = store$path)
-            if (!file.exists(path)) {
-                cli::cli_abort(c(
-                    "Extracted Parquet data file is missing.",
-                    "x" = "{.path {path}}",
-                    "i" = "Run {.fn shift_extract} again or inspect {.fn shift_coverage}."
-                ))
-            }
-
-            limit <- if (is.infinite(remaining)) Inf else remaining
-            dt <- shift_read_parquet(store, path, n = limit, columns = columns)
-            pieces[[i]] <- dt
-            if (!is.infinite(remaining)) {
-                remaining <- remaining - nrow(dt)
-            }
-        }
-
-        pieces <- Filter(Negate(is.null), pieces)
-        if (!length(pieces)) {
-            return(data.table::data.table())
-        }
-        return(data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE))
+        # Keep Parquet projection in DuckDB for extracted climate while the
+        # shared artifact loop owns ordering and the cross-file row allowance.
+        return(shift__read_artifact_rows(
+            store,
+            results,
+            n = n,
+            columns = columns,
+            path_column = "output_path",
+            reader = function(path, limit, columns) {
+                shift_read_parquet(
+                    store,
+                    path,
+                    n = limit,
+                    columns = columns
+                )
+            },
+            missing = c(
+                "Extracted Parquet data file is missing.",
+                "x" = "{.path {path}}",
+                "i" = "Run {.fn shift_extract} again or inspect {.fn shift_coverage}."
+            ),
+            stage = "extracted"
+        ))
     }
 
     if (!is.null(variables)) {
@@ -3881,7 +3890,12 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
         if (!nrow(results)) {
             return(data.table::data.table())
         }
-        return(shift_read_morph_data(store, results, n = n, columns = columns))
+        return(shift__read_morph_data(
+            store,
+            results,
+            n = n,
+            columns = columns
+        ))
     }
 
     if (S7::S7_inherits(x, ShiftOutputs)) {
@@ -3892,7 +3906,12 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
         if (!nrow(outputs)) {
             return(data.table::data.table())
         }
-        return(shift_read_epw_output_data(store, outputs, n = n, columns = columns))
+        return(shift__read_epw_output_data(
+            store,
+            outputs,
+            n = n,
+            columns = columns
+        ))
     }
 
     data.table::data.table()
