@@ -155,6 +155,70 @@ test_that("365-day direct-model hours map exactly onto EPW rows", {
     )
 })
 
+test_that("daily slot traversal shares identity and mapped placement", {
+    identity_data <- hourmap_test__adjusted(
+        "tas",
+        2061L,
+        value = function(phase) seq_along(phase)
+    )@data
+    identity <- hourmap__map_daily_slots(
+        identity_data,
+        HOURMAP_TARGET_DAYS,
+        mapper = function(source_rows, target_phase) {
+            stop("identity mapping should bypass the numerical kernel")
+        }
+    )
+
+    expect_identical(identity$value, as.numeric(identity_data[["value"]]))
+    expect_identical(
+        identity$target_phase,
+        as.numeric(identity_data[["annual_phase"]])
+    )
+    expect_identical(
+        identity$source_second_of_day,
+        as.numeric(identity_data[["cf_second_of_day"]])
+    )
+    expect_identical(identity$hour_phase_seconds, 0)
+
+    data <- hourmap_test__adjusted(
+        "tas",
+        2061L,
+        "360_day",
+        value = function(phase, second_of_day) second_of_day / 3600
+    )@data
+    source_lengths <- integer()
+    target_lengths <- integer()
+    mapped <- hourmap__map_daily_slots(
+        data,
+        HOURMAP_TARGET_DAYS,
+        mapper = function(source_rows, target_phase) {
+            source_lengths <<- c(source_lengths, length(source_rows))
+            target_lengths <<- c(target_lengths, length(target_phase))
+            rep.int(
+                data[["cf_second_of_day"]][source_rows[[1L]]] / 3600,
+                length(target_phase)
+            )
+        }
+    )
+
+    expect_identical(source_lengths, rep.int(360L, 24L))
+    expect_identical(target_lengths, rep.int(HOURMAP_TARGET_DAYS, 24L))
+    expect_identical(
+        mapped$value,
+        rep(as.numeric(0:23), HOURMAP_TARGET_DAYS)
+    )
+    expect_equal(
+        mapped$target_phase,
+        seq.int(0L, HOURMAP_TARGET_HOURS - 1L) / HOURMAP_TARGET_HOURS,
+        tolerance = 1e-12
+    )
+    expect_identical(
+        mapped$source_second_of_day,
+        rep(as.numeric(0:23) * 3600, HOURMAP_TARGET_DAYS)
+    )
+    expect_identical(mapped$hour_phase_seconds, 0)
+})
+
 test_that("point variables use circular annual-phase interpolation", {
     calendars <- CF_TIME_CALENDARS
     years <- ifelse(

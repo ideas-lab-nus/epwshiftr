@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated direct-model hourly calendar traversal while retaining separate
+  circular point interpolation and conservative interval-mean kernels,
+  identity behavior, row order, time-of-day provenance, and diagnostics (#218).
+
 * Consolidated Shift dynamic-scope nesting and artifact-row iteration while
   preserving per-stage readers, metadata, column selection, diagnostics,
   ordering, and global row limits (#216).
