@@ -595,6 +595,10 @@ test_that("resolver coverage defensively repairs cached catalogs without times",
     catalog$frequency <- "mon"
     catalog$table_id <- "Amon"
     catalog$grid_label <- "gn"
+    catalog$filename <- catalog$title
+    catalog$title <- NA_character_
+    catalog$datetime_start <- NULL
+    catalog$datetime_end <- NULL
     candidates <- shift__cmip6_candidates(
         catalog,
         models = "BCC-CSM2-MR",
@@ -607,6 +611,45 @@ test_that("resolver coverage defensively repairs cached catalogs without times",
 
     expect_true(candidates$complete[[1L]])
     expect_true(is.na(candidates$missing[[1L]]))
+})
+
+test_that("catalog time enrichment keeps its label fallback order", {
+    catalog <- data.table::rbindlist(list(
+        shift_test_file_docs(
+            "tas_day_Model_ssp245_r1i1p1f1_gn_20410101-20411231.nc"
+        ),
+        shift_test_file_docs(
+            "tas_day_Model_ssp245_r1i1p1f1_gn_20420101-20421231.nc"
+        ),
+        shift_test_file_docs(
+            "tas_day_Model_ssp245_r1i1p1f1_gn_20430101-20431231.nc"
+        )
+    ), fill = TRUE)
+    catalog$filename <- c(
+        "tas_day_Model_ssp245_r1i1p1f1_gn_20910101-20911231.nc",
+        "tas_day_Model_ssp245_r1i1p1f1_gn_20420101-20421231.nc",
+        NA_character_
+    )
+    catalog$esgf_id <- c(
+        "tas_day_Model_ssp245_r1i1p1f1_gn_20920101-20921231.nc",
+        "tas_day_Model_ssp245_r1i1p1f1_gn_20930101-20931231.nc",
+        "tas_day_Model_ssp245_r1i1p1f1_gn_20430101-20431231.nc"
+    )
+    catalog$title[[2L]] <- NA_character_
+    catalog$title[[3L]] <- ""
+    catalog$datetime_start <- NULL
+    catalog$datetime_end <- NULL
+
+    repaired <- shift__catalog_fill_time_ranges(catalog)
+
+    expect_identical(
+        substr(repaired$datetime_start, 1L, 4L),
+        c("2041", "2042", "2043")
+    )
+    expect_identical(
+        substr(repaired$datetime_end, 1L, 4L),
+        c("2041", "2042", "2043")
+    )
 })
 
 test_that("resolver inputs are not masked by provider convenience columns", {

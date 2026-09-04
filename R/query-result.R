@@ -699,30 +699,11 @@ EsgResult <- R6::R6Class(
         # CMIP/DRS filenames. ESGF nodes commonly omit the requested datetime
         # fields, while local fixtures and some providers already supply them.
         filter_time_ranges_auto = function(docs, result_label = "file") {
-            n <- nrow(docs)
-            # Normalize a potentially absent provider field to one value per
-            # result row before parsing it as a UTC timestamp.
-            field <- function(name) {
-                value <- docs[[name]]
-                if (is.null(value)) {
-                    return(rep(NA_character_, n))
-                }
-                value <- as.character(value)
-                if (length(value) < n) {
-                    value <- c(value, rep(NA_character_, n - length(value)))
-                }
-                value[seq_len(n)]
-            }
-            start <- solrdate__parse(field("datetime_start"), tz = "UTC")
-            end <- solrdate__parse(field("datetime_end"), tz = "UTC")
-            missing <- is.na(start) | is.na(end)
-            if (any(missing)) {
-                labels <- query_result__drs_labels(docs)
-                drs <- query_result__drs_ranges(labels$value)
-                start[missing] <- drs$datetime_start[missing]
-                end[missing] <- drs$datetime_end[missing]
-            }
-            unknown <- is.na(start) | is.na(end)
+            ranges <- query_result__fill_time_ranges(docs, function() {
+                query_result__drs_labels(docs)$value
+            })
+            unknown <- is.na(ranges$datetime_start) |
+                is.na(ranges$datetime_end)
             if (any(unknown)) {
                 warning(
                     sprintf(
@@ -735,11 +716,7 @@ EsgResult <- R6::R6Class(
                     call. = FALSE
                 )
             }
-            data.frame(
-                datetime_start = start,
-                datetime_end = end,
-                check.names = FALSE
-            )
+            ranges
         },
         # }}}
 
@@ -1255,6 +1232,20 @@ query_result__query_urls <- function(urls, named = TRUE) {
     }
 }
 
+# Normalize a result column to the fixed character length required by callers.
+query_result__character_column <- function(data, name, size = nrow(data)) {
+    value <- data[[name]]
+    if (is.null(value)) {
+        return(rep(NA_character_, size))
+    }
+
+    value <- as.character(value)
+    if (length(value) < size) {
+        value <- c(value, rep(NA_character_, size - length(value)))
+    }
+    value[seq_len(size)]
+}
+
 query_result__time_iso <- function(x) {
     if (is.null(x)) {
         return(character())
@@ -1265,6 +1256,38 @@ query_result__time_iso <- function(x) {
     ok <- !is.na(x)
     out[ok] <- format.POSIXct(x[ok], tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ")
     out
+}
+
+# Fill incomplete metadata time ranges from caller-selected CMIP/DRS labels.
+query_result__fill_time_ranges <- function(data, labels) {
+    size <- nrow(data)
+    start <- solrdate__parse(
+        query_result__character_column(data, "datetime_start", size),
+        tz = "UTC"
+    )
+    end <- solrdate__parse(
+        query_result__character_column(data, "datetime_end", size),
+        tz = "UTC"
+    )
+    incomplete <- is.na(start) | is.na(end)
+    if (any(incomplete)) {
+        # Resolve labels lazily so complete provider metadata never touches a
+        # caller's URL or identity fallback fields.
+        if (is.function(labels)) {
+            labels <- labels()
+        }
+        drs <- query_result__drs_ranges(labels)
+        # One absent boundary invalidates the metadata pair; replace both
+        # boundaries to retain the existing whole-range fallback semantics.
+        start[incomplete] <- drs$datetime_start[incomplete]
+        end[incomplete] <- drs$datetime_end[incomplete]
+    }
+
+    data.frame(
+        datetime_start = start,
+        datetime_end = end,
+        check.names = FALSE
+    )
 }
 
 query_result__time_window <- function(start, stop) {

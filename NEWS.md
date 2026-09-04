@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated fixed-length ESGF time-field normalization and metadata-first
+  DRS range filling while retaining query warnings, label selection, output
+  formatting, and workflow catalog behavior (#214).
+
 * Consolidated typed weather-sequence identifier, year, member-class,
   provenance, uniqueness, ordering, and shared-identity validation while
   preserving each sequence type's calendar, variable, row, and physical rules
