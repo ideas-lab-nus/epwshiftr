@@ -545,6 +545,11 @@
 
 ## Internal changes
 
+* Consolidated concurrent data-node reachability, service URL reachability,
+  and latency check scheduling into one callback-driven executor while
+  preserving each check's HTTP-status, Range fallback, timing, and result
+  semantics (#210).
+
 * Consolidated ordinary and segmented downloader worker dependencies into one
   explicitly serialized helper bundle while preserving their separate stream,
   resume, piece-scheduling, and multi-source algorithms (#207).
