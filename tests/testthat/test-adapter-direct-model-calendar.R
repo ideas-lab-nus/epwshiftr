@@ -143,6 +143,16 @@ test_that("365-day direct-model hours map exactly onto EPW rows", {
         "identity_365_day"
     )
     expect_identical(result@provenance$physical_conversion, "deferred")
+    expect_error(
+        MappedHourlyClimateSequence(
+            members = list(member, member),
+            frequency = result@frequency,
+            time_step_seconds = result@time_step_seconds,
+            target_calendar = result@target_calendar,
+            provenance = result@provenance
+        ),
+        "unique ascending weather years"
+    )
 })
 
 test_that("point variables use circular annual-phase interpolation", {

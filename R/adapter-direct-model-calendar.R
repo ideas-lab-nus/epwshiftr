@@ -106,11 +106,9 @@ hourmap__series_error <- function(self) {
         nrow(self@diagnostics) != length(self@variables)) {
         return("`diagnostics` must contain one row per mapped variable.")
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
-        return("`provenance` must be a uniquely named list.")
+    error <- sequence__provenance_error(self@provenance)
+    if (!is.null(error)) {
+        return(error)
     }
     NULL
 }
@@ -133,44 +131,52 @@ MappedHourlyClimateSeries <- S7::new_class(
 # Validate one future-model year after all variable groups share the same EPW
 # target grid while retaining their independent source metadata.
 hourmap__member_error <- function(self) {
-    if (length(self@sequence_id) != 1L ||
-        is.na(self@sequence_id) ||
-        !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@sequence_id)) {
-        return("`sequence_id` contains unsupported characters.")
+    error <- sequence__identifier_error(
+        self@sequence_id,
+        "`sequence_id` contains unsupported characters."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
-    if (length(self@weather_year) != 1L ||
-        is.na(self@weather_year) ||
-        self@weather_year < 1L) {
-        return("`weather_year` must be one positive integer.")
+    error <- sequence__positive_year_error(self@weather_year)
+    if (!is.null(error)) {
+        return(error)
     }
     if (length(self@source_calendar) != 1L ||
         is.na(self@source_calendar) ||
         !self@source_calendar %in% CF_TIME_CALENDARS) {
         return("`source_calendar` must identify one supported CF calendar.")
     }
-    if (!length(self@series) ||
-        !all(vapply(
-            self@series,
-            S7::S7_inherits,
-            logical(1L),
-            class = MappedHourlyClimateSeries
-        ))) {
-        return("`series` must contain MappedHourlyClimateSeries objects.")
+    error <- sequence__member_class_error(
+        self@series,
+        MappedHourlyClimateSeries,
+        "`series` must contain MappedHourlyClimateSeries objects."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     group_ids <- vapply(
         self@series,
         function(series) series@group_id,
         character(1L)
     )
-    if (anyDuplicated(group_ids)) {
-        return("Mapped hourly group identities must be unique within a year.")
+    error <- sequence__unique_values_error(
+        group_ids,
+        "Mapped hourly group identities must be unique within a year."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     variables <- unlist(lapply(
         self@series,
         function(series) series@variables
     ), use.names = FALSE)
-    if (anyDuplicated(variables)) {
-        return("Each mapped hourly variable must occur in exactly one group.")
+    error <- sequence__unique_values_error(
+        variables,
+        "Each mapped hourly variable must occur in exactly one group."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     years <- unique(unlist(lapply(self@series, function(series) {
         as.integer(series@data[["year"]])
@@ -178,11 +184,9 @@ hourmap__member_error <- function(self) {
     if (!identical(years, self@weather_year)) {
         return("Every mapped hourly row must match `weather_year`.")
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
-        return("`provenance` must be a uniquely named list.")
+    error <- sequence__provenance_error(self@provenance)
+    if (!is.null(error)) {
+        return(error)
     }
     NULL
 }
@@ -204,14 +208,13 @@ MappedHourlyClimateMember <- S7::new_class(
 # Validate the complete mapped sequence independently of the number of source
 # years retained by the selected future-model period.
 hourmap__sequence_error <- function(self) {
-    if (!length(self@members) ||
-        !all(vapply(
-            self@members,
-            S7::S7_inherits,
-            logical(1L),
-            class = MappedHourlyClimateMember
-        ))) {
-        return("`members` must contain MappedHourlyClimateMember objects.")
+    error <- sequence__member_class_error(
+        self@members,
+        MappedHourlyClimateMember,
+        "`members` must contain MappedHourlyClimateMember objects."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     if (!identical(self@frequency, "hour") ||
         !identical(as.numeric(self@time_step_seconds), 3600)) {
@@ -225,16 +228,24 @@ hourmap__sequence_error <- function(self) {
         function(member) member@weather_year,
         integer(1L)
     )
-    if (anyDuplicated(years) || !identical(years, sort(years))) {
-        return("Mapped hourly members must use unique ascending weather years.")
+    error <- sequence__ordered_years_error(
+        years,
+        "Mapped hourly members must use unique ascending weather years."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     sequence_ids <- vapply(
         self@members,
         function(member) member@sequence_id,
         character(1L)
     )
-    if (length(unique(sequence_ids)) != 1L) {
-        return("Mapped hourly members must share one `sequence_id`.")
+    error <- sequence__shared_values_error(
+        sequence_ids,
+        "Mapped hourly members must share one `sequence_id`."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     variable_sets <- lapply(self@members, function(member) {
         sort(unlist(lapply(
@@ -242,20 +253,16 @@ hourmap__sequence_error <- function(self) {
             function(series) series@variables
         ), use.names = FALSE))
     })
-    if (length(variable_sets) > 1L &&
-        !all(vapply(
-            variable_sets[-1L],
-            identical,
-            logical(1L),
-            variable_sets[[1L]]
-        ))) {
-        return("Every mapped hourly member must contain the same variables.")
+    error <- sequence__shared_sets_error(
+        variable_sets,
+        "Every mapped hourly member must contain the same variables."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
-        return("`provenance` must be a uniquely named list.")
+    error <- sequence__provenance_error(self@provenance)
+    if (!is.null(error)) {
+        return(error)
     }
     NULL
 }

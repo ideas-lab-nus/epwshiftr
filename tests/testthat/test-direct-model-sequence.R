@@ -182,6 +182,71 @@ direct_sequence_test__execution <- function(
     )
 }
 
+test_that("typed sequence validators share structural invariants", {
+    error <- "sequence invariant failed"
+
+    expect_null(sequence__identifier_error("member-1", error))
+    expect_identical(sequence__identifier_error("bad member", error), error)
+    expect_null(sequence__positive_year_error(2061L))
+    expect_identical(
+        sequence__positive_year_error(0L),
+        "`weather_year` must be one positive integer."
+    )
+    expect_null(sequence__provenance_error(list(source = "synthetic")))
+    expect_identical(
+        sequence__provenance_error(list("synthetic")),
+        "`provenance` must be a uniquely named list."
+    )
+
+    sequence <- sequence__direct_model_generate(
+        direct_sequence_test__execution(list(
+            direct_sequence_test__adjusted("tas", 2061L)
+        )),
+        NULL,
+        NULL,
+        list()
+    )
+    expect_null(sequence__member_class_error(
+        sequence@members,
+        DirectModelSequenceMember,
+        error
+    ))
+    expect_identical(
+        sequence__member_class_error(
+            list("not-a-member"),
+            DirectModelSequenceMember,
+            error
+        ),
+        error
+    )
+    expect_null(sequence__unique_values_error(c("a", "b"), error))
+    expect_identical(
+        sequence__unique_values_error(c("a", "a"), error),
+        error
+    )
+    expect_null(sequence__ordered_years_error(2061:2062, error))
+    expect_identical(
+        sequence__ordered_years_error(2062:2061, error),
+        error
+    )
+    expect_null(sequence__shared_values_error(c("same", "same"), error))
+    expect_identical(
+        sequence__shared_values_error(c("first", "second"), error),
+        error
+    )
+    expect_null(sequence__shared_sets_error(
+        list(c("hurs", "tas"), c("hurs", "tas")),
+        error
+    ))
+    expect_identical(
+        sequence__shared_sets_error(
+            list(c("hurs", "tas"), c("huss", "tas")),
+            error
+        ),
+        error
+    )
+})
+
 test_that("direct model sequence preserves and partitions future chronology", {
     execution <- direct_sequence_test__execution(list(
         direct_sequence_test__adjusted(
@@ -244,6 +309,15 @@ test_that("direct model sequence preserves and partitions future chronology", {
             )
         }
     }
+    expect_error(
+        DirectModelSequence(
+            members = list(first@members[[1L]], first@members[[1L]]),
+            frequency = first@frequency,
+            time_step_seconds = first@time_step_seconds,
+            provenance = first@provenance
+        ),
+        "unique ascending weather years"
+    )
 })
 
 test_that("direct model sequence accepts every supported native CF calendar", {
