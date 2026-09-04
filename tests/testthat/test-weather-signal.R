@@ -25,6 +25,111 @@ test_that("signal profiles keep published and experimental defaults distinct", {
     expect_identical(experimental@evidence, "experimental")
 })
 
+test_that("signal settings helpers preserve complete method schemas", {
+    settings <- list(tas = list(alpha = 1, iterations = 3))
+
+    expect_identical(
+        signal__resolve_settings(
+            settings,
+            c("alpha", "iterations"),
+            "Example Method"
+        ),
+        settings$tas
+    )
+    expect_error(
+        signal__resolve_settings(
+            list(),
+            c("alpha", "iterations"),
+            "Example Method"
+        ),
+        "requires settings for exactly one variable"
+    )
+    expect_error(
+        signal__resolve_settings(
+            list(tas = list(alpha = 1, extra = 2)),
+            c("alpha", "iterations"),
+            "Example Method"
+        ),
+        "complete supported schema"
+    )
+    expect_identical(
+        signal__integer_setting(3, "iterations", lower = 1L),
+        3L
+    )
+    expect_identical(signal__random_seed(17), 17L)
+    expect_error(
+        signal__integer_setting(0, "iterations", lower = 1L),
+        "resolved\\$iterations"
+    )
+    expect_no_error(
+        signal__ordered_bounds(c(1, 1), "Bounds must be ordered.")
+    )
+    expect_error(
+        signal__ordered_bounds(
+            c(1, 1),
+            "Bounds must be strictly ordered.",
+            strict = TRUE
+        ),
+        "strictly ordered"
+    )
+})
+
+test_that("threshold randomization keeps method boundary semantics", {
+    series <- list(
+        observed_reference = data.frame(value = c(0, 0.5, 1)),
+        model_historical = data.frame(value = c(0.25, 0.5, 2))
+    )
+    key <- list(site = "A")
+    set.seed(2718)
+    rng_state <- .Random.seed
+
+    inclusive <- signal__randomize_threshold_values(
+        series,
+        random_seed = 19L,
+        key = key,
+        variable = "pr",
+        threshold = 0.5,
+        inclusive = TRUE
+    )
+    strict <- signal__randomize_threshold_values(
+        series,
+        random_seed = 19L,
+        key = key,
+        variable = "pr",
+        threshold = 0.5,
+        inclusive = FALSE
+    )
+
+    expect_identical(.Random.seed, rng_state)
+    expect_identical(
+        inclusive$counts,
+        c(observed_reference = 2L, model_historical = 2L)
+    )
+    expect_identical(
+        strict$counts,
+        c(observed_reference = 1L, model_historical = 1L)
+    )
+    expect_identical(strict$values$observed_reference[[2L]], 0.5)
+    expect_identical(strict$values$model_historical[[2L]], 0.5)
+    expect_false(
+        identical(
+            inclusive$seeds[["observed_reference"]],
+            inclusive$seeds[["model_historical"]]
+        )
+    )
+    expect_identical(
+        inclusive,
+        signal__randomize_threshold_values(
+            series,
+            random_seed = 19L,
+            key = key,
+            variable = "pr",
+            threshold = 0.5,
+            inclusive = TRUE
+        )
+    )
+})
+
 test_that("different signal kernels share one execution lifecycle", {
     requirement <- component__input_requirement(
         "model_future",

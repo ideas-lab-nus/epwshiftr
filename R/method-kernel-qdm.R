@@ -102,15 +102,6 @@ kqdm__profiles <- function() {
 # Validate every executable convention at the signal boundary so user
 # overrides cannot silently introduce an unsupported numerical method.
 kqdm__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "transformation",
         "window_months",
@@ -126,27 +117,22 @@ kqdm__settings <- function(settings) {
         "zero_tolerance",
         "zero_denominator_policy"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "Kernel-density Quantile Delta Mapping settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "Kernel-density Quantile Delta Mapping"
+    )
     checkmate::assert_choice(
         resolved$transformation,
         c("additive", "multiplicative")
     )
-    checkmate::assert_integerish(
+    resolved$window_months <- signal__integer_setting(
         resolved$window_months,
+        "window_months",
         lower = 1L,
-        upper = 12L,
-        len = 1L,
-        any.missing = FALSE
+        upper = 12L
     )
-    if (!identical(as.integer(resolved$window_months), 3L) ||
+    if (!identical(resolved$window_months, 3L) ||
         !identical(resolved$window_alignment, "centered")) {
         cli::cli_abort(
             "Kernel-density Quantile Delta Mapping currently requires the published centered three-month window."
@@ -181,13 +167,12 @@ kqdm__settings <- function(settings) {
     if (resolved$bandwidth_adjust <= 0) {
         cli::cli_abort("`bandwidth_adjust` must be positive.")
     }
-    checkmate::assert_integerish(
+    resolved$grid_points <- signal__integer_setting(
         resolved$grid_points,
-        lower = 128L,
-        len = 1L,
-        any.missing = FALSE
+        "grid_points",
+        lower = 128L
     )
-    grid_points <- as.integer(resolved$grid_points)
+    grid_points <- resolved$grid_points
     if (abs(log2(grid_points) - round(log2(grid_points))) >
         sqrt(.Machine$double.eps)) {
         cli::cli_abort("`grid_points` must be a power of two.")
@@ -196,22 +181,15 @@ kqdm__settings <- function(settings) {
         resolved$tail_policy,
         c("density_grid_clamp", "error")
     )
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 3L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 3L
     )
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "Kernel-density Quantile Delta Mapping bounds must be ordered from lower to upper."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping bounds must be ordered from lower to upper."
-        )
-    }
     checkmate::assert_number(
         resolved$zero_tolerance,
         lower = 0,
@@ -222,9 +200,7 @@ kqdm__settings <- function(settings) {
         c("zero_future_else_error", "error")
     )
 
-    resolved$window_months <- as.integer(resolved$window_months)
     resolved$grid_points <- grid_points
-    resolved$min_samples <- as.integer(resolved$min_samples)
     resolved
 }
 

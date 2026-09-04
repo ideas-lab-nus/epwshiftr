@@ -112,15 +112,6 @@ sdm__profiles <- function() {
 # Validate all published and numerical SDM choices at the signal-kernel
 # boundary so no incompatible distribution branch can be selected silently.
 sdm__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "mapping_type",
         "distribution",
@@ -139,15 +130,11 @@ sdm__settings <- function(settings) {
         "gamma_fit_max_iterations",
         "rank_interpolation"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "Scaled Distribution Mapping settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "Scaled Distribution Mapping"
+    )
     checkmate::assert_choice(resolved$mapping_type, c("absolute", "relative"))
     checkmate::assert_choice(resolved$distribution, c("normal", "gamma"))
     checkmate::assert_choice(resolved$detrending, c("linear", "none"))
@@ -183,17 +170,15 @@ sdm__settings <- function(settings) {
             "Relative Scaled Distribution Mapping requires a Gamma distribution without detrending."
         )
     }
-    checkmate::assert_integerish(
+    resolved$future_window_years <- signal__integer_setting(
         resolved$future_window_years,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "future_window_years",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$output_block_years <- signal__integer_setting(
         resolved$output_block_years,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "output_block_years",
+        lower = 1L
     )
     if (resolved$output_block_years > resolved$future_window_years ||
         (resolved$future_window_years -
@@ -202,11 +187,10 @@ sdm__settings <- function(settings) {
             "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
         )
     }
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
     checkmate::assert_number(
         resolved$cdf_epsilon,
@@ -217,16 +201,10 @@ sdm__settings <- function(settings) {
     if (resolved$cdf_epsilon <= 0 || resolved$cdf_epsilon >= 0.5) {
         cli::cli_abort("`cdf_epsilon` must lie strictly between zero and 0.5.")
     }
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "Scaled Distribution Mapping bounds must be ordered from lower to upper."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping bounds must be ordered from lower to upper."
-        )
-    }
     checkmate::assert_number(
         resolved$dry_threshold,
         lower = 0,
@@ -246,22 +224,10 @@ sdm__settings <- function(settings) {
     if (resolved$gamma_fit_tolerance <= 0) {
         cli::cli_abort("`gamma_fit_tolerance` must be positive.")
     }
-    checkmate::assert_integerish(
+    resolved$gamma_fit_max_iterations <- signal__integer_setting(
         resolved$gamma_fit_max_iterations,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
-    )
-
-    resolved$future_window_years <- as.integer(
-        resolved$future_window_years
-    )
-    resolved$output_block_years <- as.integer(
-        resolved$output_block_years
-    )
-    resolved$min_samples <- as.integer(resolved$min_samples)
-    resolved$gamma_fit_max_iterations <- as.integer(
-        resolved$gamma_fit_max_iterations
+        "gamma_fit_max_iterations",
+        lower = 1L
     )
     resolved
 }

@@ -71,15 +71,6 @@ edcdf__profiles <- function() {
 # override cannot silently select a distribution or temporal variant that the
 # native kernel does not implement.
 edcdf__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "Equidistant CDF Matching requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "mapping",
         "seasonal_grouping",
@@ -97,15 +88,11 @@ edcdf__settings <- function(settings) {
         "fit_tolerance",
         "fit_max_iterations"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "Equidistant CDF Matching settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "Equidistant CDF Matching"
+    )
     if (!identical(resolved$mapping, "additive_equidistant") ||
         !identical(resolved$seasonal_grouping, "calendar_month") ||
         !identical(
@@ -152,33 +139,25 @@ edcdf__settings <- function(settings) {
             "`cdf_epsilon` must lie strictly between zero and 0.5."
         )
     }
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
-    checkmate::assert_integerish(
+    resolved$min_positive_samples <- signal__integer_setting(
         resolved$min_positive_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_positive_samples",
+        lower = 2L
     )
     checkmate::assert_number(
         resolved$dry_threshold,
         lower = 0,
         finite = TRUE
     )
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "Equidistant CDF Matching bounds must be ordered."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "Equidistant CDF Matching bounds must be ordered."
-        )
-    }
     checkmate::assert_number(
         resolved$fit_tolerance,
         lower = 0,
@@ -187,11 +166,10 @@ edcdf__settings <- function(settings) {
     if (resolved$fit_tolerance <= 0) {
         cli::cli_abort("`fit_tolerance` must be positive.")
     }
-    checkmate::assert_integerish(
+    resolved$fit_max_iterations <- signal__integer_setting(
         resolved$fit_max_iterations,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "fit_max_iterations",
+        lower = 1L
     )
     if (identical(
         resolved$distribution_model,
@@ -202,13 +180,6 @@ edcdf__settings <- function(settings) {
         )
     }
 
-    resolved$min_samples <- as.integer(resolved$min_samples)
-    resolved$min_positive_samples <- as.integer(
-        resolved$min_positive_samples
-    )
-    resolved$fit_max_iterations <- as.integer(
-        resolved$fit_max_iterations
-    )
     resolved
 }
 

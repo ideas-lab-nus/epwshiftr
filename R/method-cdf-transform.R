@@ -96,15 +96,6 @@ cdft__profiles <- function() {
 # Validate every CDF-t numerical convention at the signal-kernel boundary so
 # user overrides cannot silently select an unimplemented empirical variant.
 cdft__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "CDF-t requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "range_alignment",
         "seasonal_grouping",
@@ -123,15 +114,7 @@ cdft__settings <- function(settings) {
         "ssr_threshold",
         "random_seed"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "CDF-t settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(settings, expected, "CDF-t")
     if (!identical(resolved$range_alignment, "additive_mean") ||
         !identical(resolved$seasonal_grouping, "calendar_month") ||
         !identical(resolved$edge_policy, "truncate") ||
@@ -143,17 +126,15 @@ cdft__settings <- function(settings) {
             "CDF-t currently requires additive-mean range alignment, native calendar-month grouping, truncated edge windows, empirical step CDFs, type-7 inverse quantiles, left-endpoint target inversion, and constant-correction tails."
         )
     }
-    checkmate::assert_integerish(
+    resolved$future_window_years <- signal__integer_setting(
         resolved$future_window_years,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "future_window_years",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$output_block_years <- signal__integer_setting(
         resolved$output_block_years,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "output_block_years",
+        lower = 1L
     )
     if (resolved$output_block_years > resolved$future_window_years ||
         (resolved$future_window_years -
@@ -162,17 +143,15 @@ cdft__settings <- function(settings) {
             "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
         )
     }
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
-    checkmate::assert_integerish(
+    resolved$target_grid_points <- signal__integer_setting(
         resolved$target_grid_points,
-        lower = 100L,
-        len = 1L,
-        any.missing = FALSE
+        "target_grid_points",
+        lower = 100L
     )
     checkmate::assert_number(
         resolved$tail_development_factor,
@@ -182,16 +161,10 @@ cdft__settings <- function(settings) {
     if (resolved$tail_development_factor <= 0) {
         cli::cli_abort("`tail_development_factor` must be positive.")
     }
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "CDF-t bounds must be ordered from lower to upper."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "CDF-t bounds must be ordered from lower to upper."
-        )
-    }
     checkmate::assert_choice(
         resolved$distribution_model,
         c("continuous", "precipitation_ssr")
@@ -213,25 +186,7 @@ cdft__settings <- function(settings) {
             "Continuous CDF-t requires `ssr_threshold = 0`."
         )
     }
-    checkmate::assert_integerish(
-        resolved$random_seed,
-        lower = 0,
-        upper = .Machine$integer.max - 1L,
-        len = 1L,
-        any.missing = FALSE
-    )
-
-    resolved$future_window_years <- as.integer(
-        resolved$future_window_years
-    )
-    resolved$output_block_years <- as.integer(
-        resolved$output_block_years
-    )
-    resolved$min_samples <- as.integer(resolved$min_samples)
-    resolved$target_grid_points <- as.integer(
-        resolved$target_grid_points
-    )
-    resolved$random_seed <- as.integer(resolved$random_seed)
+    resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
 
@@ -537,34 +492,21 @@ cdft__prepared_values <- function(series, resolved, key, variable) {
         ))
     }
 
-    values <- vector("list", length(series))
-    names(values) <- names(series)
-    randomized <- integer(length(series))
-    names(randomized) <- names(series)
-    seeds <- integer(length(series))
-    names(seeds) <- names(series)
-    for (role in names(series)) {
-        role_key <- c(key, list(input_role = role))
-        seeds[[role]] <- quantile__group_seed(
-            resolved$random_seed,
-            role_key,
-            variable
-        )
-        uniform <- quantile__uniform(nrow(series[[role]]), seeds[[role]])
-        source <- series[[role]][["value"]]
-        singular <- source < resolved$ssr_threshold
-        source[singular] <- uniform[singular] *
-            resolved$ssr_threshold
-        values[[role]] <- source
-        randomized[[role]] <- sum(singular)
-    }
+    randomized <- signal__randomize_threshold_values(
+        series,
+        resolved$random_seed,
+        key,
+        variable,
+        resolved$ssr_threshold,
+        inclusive = FALSE
+    )
     list(
-        values = values,
+        values = randomized$values,
         precipitation = list(
             ssr_threshold = resolved$ssr_threshold,
-            input_randomized_values = randomized,
+            input_randomized_values = randomized$counts,
             random_seed = resolved$random_seed,
-            effective_seeds = seeds,
+            effective_seeds = randomized$seeds,
             random_generator = "park_miller_16807"
         )
     )

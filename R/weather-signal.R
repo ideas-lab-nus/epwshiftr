@@ -23,6 +23,150 @@ signal__single_value <- function(data, label) {
     data@values[[1L]]
 }
 
+# Resolve the one-variable settings envelope used by signal kernels and require
+# the complete method schema before method-specific validation begins.
+signal__resolve_settings <- function(settings, expected, label) {
+    checkmate::assert_character(
+        expected,
+        min.len = 1L,
+        any.missing = FALSE,
+        unique = TRUE
+    )
+    checkmate::assert_string(label, min.chars = 1L)
+    if (length(settings) != 1L ||
+        is.null(names(settings)) ||
+        !nzchar(names(settings)[[1L]]) ||
+        !is.list(settings[[1L]])) {
+        cli::cli_abort(
+            "{label} requires settings for exactly one variable."
+        )
+    }
+
+    resolved <- settings[[1L]]
+    missing <- setdiff(expected, names(resolved))
+    unexpected <- setdiff(names(resolved), expected)
+    if (length(missing) || length(unexpected)) {
+        cli::cli_abort(c(
+            "{label} settings must use the complete supported schema.",
+            "x" = "Missing setting(s): {.val {missing}}.",
+            "x" = "Unexpected setting(s): {.val {unexpected}}."
+        ))
+    }
+    resolved
+}
+
+# Validate a two-value signal bound while allowing each method to retain its
+# published rule for equal endpoints and its existing user-facing message.
+signal__ordered_bounds <- function(bounds, message, strict = FALSE) {
+    checkmate::assert_string(message, min.chars = 1L)
+    checkmate::assert_flag(strict)
+    checkmate::assert_numeric(
+        bounds,
+        len = 2L,
+        any.missing = FALSE,
+        .var.name = "resolved$bounds"
+    )
+    unordered <- if (strict) {
+        bounds[[1L]] >= bounds[[2L]]
+    } else {
+        bounds[[1L]] > bounds[[2L]]
+    }
+    if (unordered) {
+        cli::cli_abort(message)
+    }
+    invisible(bounds)
+}
+
+# Validate and normalize an integer-valued signal setting with a stable
+# diagnostic name even though validation is delegated to this shared helper.
+signal__integer_setting <- function(value, name, lower, upper = Inf) {
+    checkmate::assert_string(name, pattern = "^[A-Za-z][A-Za-z0-9_]*$")
+    checkmate::assert_number(lower)
+    checkmate::assert_number(upper)
+    checkmate::assert_integerish(
+        value,
+        lower = lower,
+        upper = upper,
+        len = 1L,
+        any.missing = FALSE,
+        .var.name = paste0("resolved$", name)
+    )
+    as.integer(value)
+}
+
+# Validate the common deterministic-seed range used by stochastic signal
+# preprocessors and return the normalized integer seed.
+signal__random_seed <- function(value) {
+    signal__integer_setting(
+        value,
+        "random_seed",
+        lower = 0,
+        upper = .Machine$integer.max - 1L
+    )
+}
+
+# Randomize threshold-selected values independently by input role with the
+# package's deterministic generator, without touching R's global RNG state.
+signal__randomize_threshold_values <- function(
+    series,
+    random_seed,
+    key,
+    variable,
+    threshold,
+    inclusive
+) {
+    checkmate::assert_list(series, min.len = 1L, names = "unique")
+    if (is.null(names(series)) || any(!nzchar(names(series)))) {
+        cli::cli_abort(
+            "Threshold randomization requires named input-role series."
+        )
+    }
+    checkmate::assert_int(
+        random_seed,
+        lower = 0L,
+        upper = .Machine$integer.max - 1L
+    )
+    checkmate::assert_list(key, names = "unique")
+    checkmate::assert_string(variable, min.chars = 1L)
+    checkmate::assert_number(threshold, lower = 0, finite = TRUE)
+    checkmate::assert_flag(inclusive)
+
+    values <- vector("list", length(series))
+    names(values) <- names(series)
+    randomized <- integer(length(series))
+    names(randomized) <- names(series)
+    seeds <- integer(length(series))
+    names(seeds) <- names(series)
+
+    # Include the role in the derived seed so aligned inputs never reuse an
+    # identical pseudo-random sequence accidentally.
+    for (role in names(series)) {
+        source <- series[[role]][["value"]]
+        checkmate::assert_numeric(
+            source,
+            finite = TRUE,
+            any.missing = FALSE
+        )
+        role_key <- c(key, list(input_role = role))
+        seeds[[role]] <- quantile__group_seed(
+            random_seed,
+            role_key,
+            variable
+        )
+        uniform <- quantile__uniform(length(source), seeds[[role]])
+        selected <- if (inclusive) {
+            source <= threshold
+        } else {
+            source < threshold
+        }
+        source[selected] <- uniform[selected] * threshold
+        values[[role]] <- source
+        randomized[[role]] <- sum(selected)
+    }
+
+    list(values = values, counts = randomized, seeds = seeds)
+}
+
 # SignalVariableProfile records variable-specific defaults without embedding
 # them in an algorithm function or losing their evidence status.
 SignalVariableProfile <- S7::new_class(
