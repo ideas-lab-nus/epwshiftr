@@ -530,15 +530,7 @@ sequence__direct_model_component <- function() {
 # Register the reusable sequence implementation once so recipes can refer to
 # its stable algorithmic name without embedding executable functions.
 sequence__register_direct_model_component <- function() {
-    component <- sequence__direct_model_component()
-    key <- component__registry_key(component@stage, component@name)
-    if (!exists(
-        key,
-        envir = WEATHER_COMPONENT_REGISTRY,
-        inherits = FALSE
-    )) {
-        component__register(component)
-    }
+    component__register_builtin(sequence__direct_model_component())
     invisible(NULL)
 }
 

@@ -62,6 +62,68 @@ test_that("component registries retain metadata but not serialized operations", 
     )
 })
 
+test_that("built-in registration preserves process-local component extensions", {
+    registry <- new.env(parent = emptyenv())
+    extension <- component__spec(
+        name = "daily_delta",
+        stage = "signal",
+        label = "Extension implementation",
+        input_kinds = "calendar_indexed",
+        output_kinds = "seasonal_change",
+        operations = list(apply = function(value) value)
+    )
+    builtin <- component__spec(
+        name = "daily_delta",
+        stage = "signal",
+        label = "Package implementation",
+        input_kinds = "calendar_indexed",
+        output_kinds = "seasonal_change",
+        operations = list(apply = function(value) value)
+    )
+
+    component__register(extension, registry = registry)
+    expect_identical(
+        component__register_builtin(builtin, registry = registry),
+        extension
+    )
+    expect_identical(
+        component__get("signal", "daily_delta", registry),
+        extension
+    )
+})
+
+test_that("built-in registration applies one policy to component collections", {
+    registry <- new.env(parent = emptyenv())
+    components <- list(
+        component__spec(
+            name = "annual_phase",
+            stage = "calendar",
+            input_kinds = "prepared_inputs",
+            output_kinds = "calendar_indexed",
+            operations = list(apply = function(value) value)
+        ),
+        component__spec(
+            name = "daily_delta",
+            stage = "signal",
+            input_kinds = "calendar_indexed",
+            output_kinds = "seasonal_change",
+            operations = list(apply = function(value) value)
+        )
+    )
+
+    expect_invisible(
+        component__register_builtins(components, registry = registry)
+    )
+    expect_identical(
+        component__get("calendar", "annual_phase", registry),
+        components[[1L]]
+    )
+    expect_identical(
+        component__get("signal", "daily_delta", registry),
+        components[[2L]]
+    )
+})
+
 test_that("component compatibility uses stage order and intermediate kinds", {
     calendar <- component__spec(
         name = "annual_phase",

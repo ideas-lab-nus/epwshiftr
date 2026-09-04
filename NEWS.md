@@ -46,6 +46,20 @@
 
 ## New features
 
+* Added a shared EPW physical policy layer used by all built-in complete weather
+  methods. Method adapters submit `EpwPhysicalRequest` objects and retain their
+  paper-faithful or harmonized definitions through explicit
+  `EpwPhysicalPolicy` values. The registered `epw_hourly_physical_closure`
+  component uses the `absolute_model_fields` policy for mapped direct-model
+  years, including humidity and wind alternatives, unit conversion, field
+  bounds, shortwave closure, inherited template fields, and typed diagnostics
+  (#199). Method-neutral helpers also centralize three-role signal contracts,
+  adjusted-result validation, future-year fitting blocks, numeric bounds,
+  calendar-neutral circular interpolation and target-day mapping, regular
+  hourly lattices, temperature conversion, parametric CDF/quantile dispatch,
+  and the shared Spencer solar geometry kernels while retaining each published
+  method's equations, temporal conventions, diagnostics, and provenance.
+
 * Added the registered `direct_model_epw_calendar_mapping` hourly component.
   It maps complete hourly direct-model years from every supported native CF
   calendar onto the baseline EPW's fixed 365-day, 8760-row lattice while

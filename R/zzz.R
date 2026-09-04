@@ -28,6 +28,7 @@
     hourly_calendar__register_component()
     sequence__register_direct_model_component()
     hourmap__register_component()
+    direct_epw__register_component()
 
     # set package options
     .opts <- list(

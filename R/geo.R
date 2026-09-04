@@ -1,18 +1,17 @@
-# Geographic helpers ----------------------------------------------------------
+#' @include weather-solar.R
+NULL
 
-to_radian <- function(degree) {
-    degree * pi / 180.0
-}
+# Geographic helpers ----------------------------------------------------------
 
 # Ref: https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance
 tunnel_dist <- function(lat1, lon1, lat2, lon2) {
     earth_radius <- 6371.009
 
-    lat1 <- to_radian(lat1)
-    lon1 <- to_radian(lon1)
+    lat1 <- solar__radians(lat1)
+    lon1 <- solar__radians(lon1)
 
-    lat2 <- to_radian(lat2)
-    lon2 <- to_radian(lon2)
+    lat2 <- solar__radians(lat2)
+    lon2 <- solar__radians(lon2)
 
     delta_x <- cos(lat2) * cos(lon2) - cos(lat1) * cos(lon1)
     delta_y <- cos(lat2) * sin(lon2) - cos(lat1) * sin(lon1)

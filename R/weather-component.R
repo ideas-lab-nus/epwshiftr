@@ -378,6 +378,47 @@ component__register <- function(
     invisible(component)
 }
 
+# Register one package-provided component without replacing a process-local
+# extension that already owns the same stable registry key.
+component__register_builtin <- function(
+    component,
+    registry = WEATHER_COMPONENT_REGISTRY
+) {
+    if (!S7::S7_inherits(component, WeatherComponentSpec)) {
+        cli::cli_abort(
+            "{.arg component} must be a WeatherComponentSpec object."
+        )
+    }
+    checkmate::assert_environment(registry)
+    key <- component__registry_key(component@stage, component@name)
+
+    # Package-load registration is idempotent and must preserve an extension
+    # installed earlier in the current R process.
+    if (exists(key, envir = registry, inherits = FALSE)) {
+        return(invisible(get(key, envir = registry, inherits = FALSE)))
+    }
+    component__register(component, registry = registry)
+}
+
+# Apply the package-provided registration policy consistently to a collection
+# of component specifications owned by one backend or shared adapter.
+component__register_builtins <- function(
+    components,
+    registry = WEATHER_COMPONENT_REGISTRY
+) {
+    checkmate::assert_list(components)
+    checkmate::assert_environment(registry)
+    for (component in components) {
+        if (!S7::S7_inherits(component, WeatherComponentSpec)) {
+            cli::cli_abort(
+                "Every {.arg components} entry must be a WeatherComponentSpec object."
+            )
+        }
+        component__register_builtin(component, registry = registry)
+    }
+    invisible(NULL)
+}
+
 # Retrieve one registered component by its stage and stable name.
 component__get <- function(
     stage, name,

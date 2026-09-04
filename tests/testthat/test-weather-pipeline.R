@@ -105,11 +105,11 @@ test_that("daily hourly projection ignores signal-owned options", {
         list(signal_overrides = list(tas = list(offset = 5)))
     )
 
-    projection <- daily__temperature_projection_options(options)
+    projection <- temperature__projection_options(options)
 
     expect_named(
         projection,
-        names(EPW_MORPH_DAILY_TEMPERATURE_OPTIONS)
+        names(EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS)
     )
     expect_false("signal_overrides" %in% names(projection))
 })
