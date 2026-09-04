@@ -513,6 +513,46 @@ test_that("EsgResult$slice() / EsgResult$selection() context persists through sa
     expect_identical(loaded_empty$selection(), empty$selection())
 })
 # }}}
+# query_result__run_url_checks() {{{
+test_that("concurrent URL check wrappers preserve their HTTP semantics", {
+    skip_if_not_installed("webfakes")
+
+    ok_server <- local_downloader_http_server()
+    missing_server <- local_downloader_http_server()
+    ok_url <- ok_server$url("/files/ok.bin")
+    missing_url <- missing_server$url("/files/missing.bin")
+    urls <- c(ok_url, missing_url, ok_url)
+
+    node <- query_result__reach_node_urls(
+        urls,
+        timeout = 5,
+        probe_concurrency = 2L
+    )
+    expect_named(node, c(ok_url, missing_url))
+    expect_true(all(vapply(node, function(x) isTRUE(x$reachable), logical(1L))))
+    expect_identical(node[[ok_url]]$probe_url, ok_url)
+    expect_identical(node[[missing_url]]$probe_url, missing_url)
+
+    reachable <- query_result__reach_http_urls(
+        urls,
+        timeout = 5,
+        probe_concurrency = 2L
+    )
+    expect_named(reachable, c(ok_url, missing_url))
+    expect_true(reachable[[ok_url]]$reachable)
+    expect_false(reachable[[missing_url]]$reachable)
+    expect_match(reachable[[missing_url]]$error, "404")
+
+    latency <- query_result__latency_urls(
+        urls,
+        timeout = 5,
+        probe_concurrency = 2L
+    )
+    expect_named(latency, c(ok_url, missing_url))
+    expect_true(all(vapply(latency, function(x) is.finite(x$latency), logical(1L))))
+    expect_true(all(vapply(latency, function(x) is.na(x$throughput), logical(1L))))
+})
+# }}}
 # EsgResult$reachable() {{{
 test_that("EsgResult$reachable() returns per-record service probe diagnostics", {
     docs <- data.frame(

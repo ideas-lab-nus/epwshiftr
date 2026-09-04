@@ -1592,17 +1592,26 @@ query_result__reach_node_url <- function(url, timeout = 5, network_policy = NULL
     query_result__node_try(url, timeout = timeout, network_policy = network_policy)
 }
 
-query_result__reach_node_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
-    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
-    urls <- urls[query_result__url_http(urls)]
+# Execute a normalized batch of URL checks through one shared curl pool.
+query_result__run_url_checks <- function(
+    urls,
+    timeout,
+    network_policy,
+    concurrency,
+    serial_check,
+    done_result,
+    clock = function() proc.time()[["elapsed"]],
+    failonerror = NULL
+) {
+    # Keep serial execution authoritative for one target and as the fallback path.
+    serial <- function(targets) {
+        stats::setNames(lapply(targets, serial_check), targets)
+    }
     if (!length(urls)) {
         return(stats::setNames(list(), character()))
     }
-    if (probe_concurrency <= 1L || length(urls) <= 1L) {
-        return(stats::setNames(
-            lapply(urls, query_result__reach_node_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
+    if (concurrency <= 1L || length(urls) <= 1L) {
+        return(serial(urls))
     }
 
     out <- vector("list", length(urls))
@@ -1621,11 +1630,13 @@ query_result__reach_node_urls <- function(urls, timeout = 5, network_policy = NU
             if (is.null(ssl_verifypeer)) {
                 ssl_verifypeer <- TRUE
             }
-            pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
+
+            # Capture each index and start value before registering its callbacks.
+            pool <- curl::new_pool(total_con = concurrency, host_con = concurrency)
             for (i in seq_along(urls)) {
                 local({
                     j <- i
-                    start <- proc.time()[["elapsed"]]
+                    started_at <- clock()
                     handle <- downloader__curl_handle(
                         timeout = timeout,
                         connect_timeout = connect_timeout,
@@ -1634,16 +1645,17 @@ query_result__reach_node_urls <- function(urls, timeout = 5, network_policy = NU
                         useragent = network_policy$useragent,
                         nobody = TRUE
                     )
-                    curl::handle_setopt(handle, failonerror = FALSE)
+                    if (!is.null(failonerror)) {
+                        curl::handle_setopt(handle, failonerror = isTRUE(failonerror))
+                    }
                     curl::handle_setopt(handle, url = urls[[j]])
                     curl::multi_add(
                         handle,
                         done = function(response) {
-                            out[[j]] <<- list(
-                                reachable = TRUE,
-                                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
-                                error = NA_character_,
-                                probe_url = urls[[j]]
+                            out[[j]] <<- done_result(
+                                response = response,
+                                url = urls[[j]],
+                                started_at = started_at
                             )
                         },
                         fail = function(error) {
@@ -1653,30 +1665,56 @@ query_result__reach_node_urls <- function(urls, timeout = 5, network_policy = NU
                     )
                 })
             }
-            curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
+            curl::multi_run(
+                timeout = max(timeout * length(urls), 1),
+                poll = TRUE,
+                pool = pool
+            )
             TRUE
         },
         error = function(e) FALSE
     )
 
     if (!isTRUE(ok)) {
-        return(stats::setNames(
-            lapply(urls, query_result__reach_node_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
+        return(serial(urls))
     }
 
+    # Retry individual failed or unreported requests through method-specific logic.
     missing <- vapply(out, is.null, logical(1L)) | failed
     if (any(missing)) {
-        out[missing] <- lapply(
-            urls[missing],
-            query_result__reach_node_url,
-            timeout = timeout,
-            network_policy = network_policy
-        )
+        out[missing] <- lapply(urls[missing], serial_check)
     }
 
     out
+}
+
+query_result__reach_node_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result__url_http(urls)]
+    query_result__run_url_checks(
+        urls = urls,
+        timeout = timeout,
+        network_policy = network_policy,
+        concurrency = probe_concurrency,
+        # Keep data-node response handling independent of HTTP status.
+        serial_check = function(url) {
+            query_result__reach_node_url(
+                url,
+                timeout = timeout,
+                network_policy = network_policy
+            )
+        },
+        # Retain millisecond timing and the actual node URL in successful checks.
+        done_result = function(response, url, started_at) {
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - started_at) * 1000,
+                error = NA_character_,
+                probe_url = url
+            )
+        },
+        failonerror = FALSE
+    )
 }
 
 query_result__net_key <- function(network_policy = NULL) {
@@ -1855,87 +1893,29 @@ query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
 query_result__reach_http_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
     urls <- unique(urls[!is.na(urls) & nzchar(urls)])
     urls <- urls[query_result__url_http(urls)]
-    if (!length(urls)) {
-        return(stats::setNames(list(), character()))
-    }
-    if (probe_concurrency <= 1L || length(urls) <= 1L) {
-        return(stats::setNames(
-            lapply(urls, query_result__reach_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
-    }
-
-    out <- vector("list", length(urls))
-    names(out) <- urls
-    failed <- rep(FALSE, length(urls))
-    ok <- tryCatch(
-        {
-            if (is.null(network_policy)) {
-                network_policy <- list()
-            }
-            connect_timeout <- network_policy$connect_timeout
-            if (is.null(connect_timeout)) {
-                connect_timeout <- min(timeout, 3)
-            }
-            ssl_verifypeer <- network_policy$ssl_verifypeer
-            if (is.null(ssl_verifypeer)) {
-                ssl_verifypeer <- TRUE
-            }
-            pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
-            for (i in seq_along(urls)) {
-                local({
-                    j <- i
-                    start <- proc.time()[["elapsed"]]
-                    handle <- downloader__curl_handle(
-                        timeout = timeout,
-                        connect_timeout = connect_timeout,
-                        ssl_verifypeer = ssl_verifypeer,
-                        proxy = network_policy$proxy,
-                        useragent = network_policy$useragent,
-                        nobody = TRUE
-                    )
-                    curl::handle_setopt(handle, failonerror = TRUE)
-                    curl::handle_setopt(handle, url = urls[[j]])
-                    curl::multi_add(
-                        handle,
-                        done = function(response) {
-                            out[[j]] <<- list(
-                                reachable = TRUE,
-                                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
-                                error = NA_character_
-                            )
-                        },
-                        fail = function(error) {
-                            failed[[j]] <<- TRUE
-                        },
-                        pool = pool
-                    )
-                })
-            }
-            curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
-            TRUE
+    query_result__run_url_checks(
+        urls = urls,
+        timeout = timeout,
+        network_policy = network_policy,
+        concurrency = probe_concurrency,
+        # Retain the HEAD-then-Range behavior for failed service URL checks.
+        serial_check = function(url) {
+            query_result__reach_url(
+                url,
+                timeout = timeout,
+                network_policy = network_policy
+            )
         },
-        error = function(e) FALSE
+        # Successful HTTP service checks retain the reachability result schema.
+        done_result = function(response, url, started_at) {
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - started_at) * 1000,
+                error = NA_character_
+            )
+        },
+        failonerror = TRUE
     )
-
-    if (!isTRUE(ok)) {
-        return(stats::setNames(
-            lapply(urls, query_result__reach_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
-    }
-
-    missing <- vapply(out, is.null, logical(1L)) | failed
-    if (any(missing)) {
-        out[missing] <- lapply(
-            urls[missing],
-            query_result__reach_url,
-            timeout = timeout,
-            network_policy = network_policy
-        )
-    }
-
-    out
 }
 
 query_result__reach_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
@@ -2361,79 +2341,28 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
 query_result__latency_urls <- function(urls, timeout = 5, network_policy = NULL, probe_concurrency = 1L) {
     urls <- unique(urls[!is.na(urls) & nzchar(urls)])
     urls <- urls[!startsWith(urls, "file://")]
-    if (!length(urls)) {
-        return(stats::setNames(list(), character()))
-    }
-    if (probe_concurrency <= 1L || length(urls) <= 1L) {
-        return(stats::setNames(
-            lapply(urls, query_result__latency_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
-    }
-
-    out <- vector("list", length(urls))
-    names(out) <- urls
-    failed <- rep(FALSE, length(urls))
-    ok <- tryCatch(
-        {
-            if (is.null(network_policy)) {
-                network_policy <- list()
-            }
-            connect_timeout <- network_policy$connect_timeout
-            if (is.null(connect_timeout)) {
-                connect_timeout <- min(timeout, 3)
-            }
-            ssl_verifypeer <- network_policy$ssl_verifypeer
-            if (is.null(ssl_verifypeer)) {
-                ssl_verifypeer <- TRUE
-            }
-            pool <- curl::new_pool(total_con = probe_concurrency, host_con = probe_concurrency)
-            for (i in seq_along(urls)) {
-                local({
-                    j <- i
-                    start <- Sys.time()
-                    handle <- downloader__curl_handle(
-                        timeout = timeout,
-                        connect_timeout = connect_timeout,
-                        ssl_verifypeer = ssl_verifypeer,
-                        proxy = network_policy$proxy,
-                        useragent = network_policy$useragent,
-                        nobody = TRUE
-                    )
-                    curl::handle_setopt(handle, url = urls[[j]])
-                    curl::multi_add(
-                        handle,
-                        done = function(response) {
-                            out[[j]] <<- list(
-                                latency = as.numeric(difftime(Sys.time(), start, units = "secs")),
-                                throughput = NA_real_
-                            )
-                        },
-                        fail = function(error) {
-                            failed[[j]] <<- TRUE
-                        },
-                        pool = pool
-                    )
-                })
-            }
-            curl::multi_run(timeout = max(timeout * length(urls), 1), poll = TRUE, pool = pool)
-            TRUE
+    query_result__run_url_checks(
+        urls = urls,
+        timeout = timeout,
+        network_policy = network_policy,
+        concurrency = probe_concurrency,
+        # Retain the existing latency check and its Range fallback.
+        serial_check = function(url) {
+            query_result__latency_url(
+                url,
+                timeout = timeout,
+                network_policy = network_policy
+            )
         },
-        error = function(e) FALSE
+        # Latency remains measured in seconds with an unavailable throughput.
+        done_result = function(response, url, started_at) {
+            list(
+                latency = as.numeric(difftime(Sys.time(), started_at, units = "secs")),
+                throughput = NA_real_
+            )
+        },
+        clock = Sys.time
     )
-
-    if (!isTRUE(ok)) {
-        return(stats::setNames(
-            lapply(urls, query_result__latency_url, timeout = timeout, network_policy = network_policy),
-            urls
-        ))
-    }
-    missing <- vapply(out, is.null, logical(1L)) | failed
-    if (any(missing)) {
-        fallback <- lapply(urls[missing], query_result__latency_url, timeout = timeout, network_policy = network_policy)
-        out[missing] <- fallback
-    }
-    out
 }
 
 query_result__latency_table <- function(
