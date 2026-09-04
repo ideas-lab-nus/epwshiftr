@@ -30,15 +30,16 @@ DIRECT_EPW_CONSTRUCTED_FIELDS <- c(
 # Validate one physically closed future year without depending on a complete
 # recipe or the final WeatherSequenceResult output wrapper.
 direct_epw__member_error <- function(self) {
-    if (length(self@sequence_id) != 1L ||
-        is.na(self@sequence_id) ||
-        !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@sequence_id)) {
-        return("`sequence_id` contains unsupported characters.")
+    error <- sequence__identifier_error(
+        self@sequence_id,
+        "`sequence_id` contains unsupported characters."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
-    if (length(self@weather_year) != 1L ||
-        is.na(self@weather_year) ||
-        self@weather_year < 1L) {
-        return("`weather_year` must be one positive integer.")
+    error <- sequence__positive_year_error(self@weather_year)
+    if (!is.null(error)) {
+        return(error)
     }
     if (length(self@source_calendar) != 1L ||
         is.na(self@source_calendar) ||
@@ -63,11 +64,9 @@ direct_epw__member_error <- function(self) {
     if (!is.data.frame(self@diagnostics) || nrow(self@diagnostics) != 1L) {
         return("`diagnostics` must contain one row for the closed weather year.")
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
-        return("`provenance` must be a uniquely named list.")
+    error <- sequence__provenance_error(self@provenance)
+    if (!is.null(error)) {
+        return(error)
     }
     NULL
 }
@@ -90,14 +89,13 @@ EpwHourlyWeatherMember <- S7::new_class(
 # Validate the ordered collection of closed years before an output component
 # converts it into the package's public multi-year result contract.
 direct_epw__sequence_error <- function(self) {
-    if (!length(self@members) ||
-        !all(vapply(
-            self@members,
-            S7::S7_inherits,
-            logical(1L),
-            class = EpwHourlyWeatherMember
-        ))) {
-        return("`members` must contain EpwHourlyWeatherMember objects.")
+    error <- sequence__member_class_error(
+        self@members,
+        EpwHourlyWeatherMember,
+        "`members` must contain EpwHourlyWeatherMember objects."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     if (!identical(self@target_calendar, "epw_365_day")) {
         return("`target_calendar` must be `epw_365_day`.")
@@ -115,22 +113,28 @@ direct_epw__sequence_error <- function(self) {
         function(member) member@weather_year,
         integer(1L)
     )
-    if (anyDuplicated(years) || !identical(years, sort(years))) {
-        return("Closed EPW weather members must use unique ascending years.")
+    error <- sequence__ordered_years_error(
+        years,
+        "Closed EPW weather members must use unique ascending years."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
     sequence_ids <- vapply(
         self@members,
         function(member) member@sequence_id,
         character(1L)
     )
-    if (length(unique(sequence_ids)) != 1L) {
-        return("Closed EPW weather members must share one `sequence_id`.")
+    error <- sequence__shared_values_error(
+        sequence_ids,
+        "Closed EPW weather members must share one `sequence_id`."
+    )
+    if (!is.null(error)) {
+        return(error)
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
-        return("`provenance` must be a uniquely named list.")
+    error <- sequence__provenance_error(self@provenance)
+    if (!is.null(error)) {
+        return(error)
     }
     NULL
 }

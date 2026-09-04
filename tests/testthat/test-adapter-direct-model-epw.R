@@ -189,6 +189,15 @@ test_that("relative humidity and scalar wind close an EPW weather year", {
     )
     expect_gt(member@diagnostics$radiation_excess_beam_reallocated, 0L)
     expect_lt(member@diagnostics$radiation_maximum_closure_error, 1e-8)
+    expect_error(
+        EpwHourlyWeatherSequence(
+            members = list(member, member),
+            target_calendar = result@target_calendar,
+            constructed_fields = result@constructed_fields,
+            provenance = result@provenance
+        ),
+        "unique ascending years"
+    )
 })
 
 test_that("specific humidity and vector wind derive dependent EPW fields", {

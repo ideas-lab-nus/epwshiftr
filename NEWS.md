@@ -545,6 +545,11 @@
 
 ## Internal changes
 
+* Consolidated typed weather-sequence identifier, year, member-class,
+  provenance, uniqueness, ordering, and shared-identity validation while
+  preserving each sequence type's calendar, variable, row, and physical rules
+  (#212).
+
 * Consolidated concurrent data-node reachability, service URL reachability,
   and latency check scheduling into one callback-driven executor while
   preserving each check's HTTP-status, Range fallback, timing, and result
