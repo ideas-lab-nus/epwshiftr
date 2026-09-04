@@ -1038,6 +1038,136 @@ leaves climate-unit conversion, thermodynamic and radiative closure,
 unchanged EPW field policy, and final <code>WeatherSequenceResult</code>
 construction to the following <code>physics</code> and
 <code>output</code> stages.</p>
+<p>Every built-in complete weather method enters the same internal EPW
+physical boundary. An <code>EpwPhysicalRequest</code> carries the EPW
+template and only the target fields produced by the method. An
+<code>EpwPhysicalPolicy</code> declares which fields are retained,
+independently transformed, derived, bounded, or jointly closed. The
+common executor returns an <code>EpwPhysicalResult</code> containing the
+complete weather table, derived states, correction counts, and the
+policy actually applied. These are internal types; <code>EpwFile</code>
+remains the package’s only EPW parser and writer.</p>
+<p>Method-specific physics components are thin adapters around that
+executor. The policy preserves the scientific definition selected by the
+recipe:</p>
+<table style="width:100%;" class="table">
+<colgroup>
+<col width="27%">
+<col width="29%">
+<col width="43%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Weather method</th>
+<th align="left">Physical policy</th>
+<th align="left">Physical interpretation</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left">Belcher monthly</td>
+<td align="left"><code>legacy_independent_fields</code></td>
+<td align="left">Retain the original independent humidity, radiation,
+wind, and EPW field treatment</td>
+</tr>
+<tr class="even">
+<td align="left">Enhanced monthly epwshiftr</td>
+<td align="left"><code>monthly_harmonized</code></td>
+<td align="left">Use the selected HURS/HUSS path and the enhanced
+radiation closure</td>
+</tr>
+<tr class="odd">
+<td align="left">Daily power, daily BTWS, and Eames/BTWS</td>
+<td align="left"><code>preserve_specific_humidity</code></td>
+<td align="left">Preserve baseline specific humidity after
+reconstructing temperature, with saturation closure</td>
+</tr>
+<tr class="even">
+<td align="left">Ek and Arima paper-faithful</td>
+<td align="left"><code>preserve_humidity_fields</code></td>
+<td align="left">Preserve baseline RH and dew point and report any
+inconsistency without correcting it</td>
+</tr>
+<tr class="odd">
+<td align="left">Ek and Arima harmonized</td>
+<td align="left"><code>preserve_specific_humidity</code></td>
+<td align="left">Close baseline specific humidity against projected
+temperature</td>
+</tr>
+<tr class="even">
+<td align="left">Sobie-Curry paper-faithful</td>
+<td align="left"><code>independent_thermodynamic_fields</code></td>
+<td align="left">Retain the independently transformed temperature,
+pressure, RH, and dew point</td>
+</tr>
+<tr class="odd">
+<td align="left">Sobie-Curry harmonized</td>
+<td align="left"><code>specific_humidity_delta</code></td>
+<td align="left">Close the method-defined baseline-HUSS-plus-delta
+target</td>
+</tr>
+<tr class="even">
+<td align="left">Direct-model hourly sequence</td>
+<td align="left"><code>absolute_model_fields</code></td>
+<td align="left">Interpret corrected absolute temperature, pressure,
+humidity, wind, and radiation fields</td>
+</tr>
+</tbody>
+</table>
+<p>Daily marginal signal methods such as Delta Change, QM, QDM, SDM,
+CDF-t, EDCDFm, ISIMIP3BASD, and KDE-QDM enter
+<code>absolute_model_fields</code> after their adjusted sequences have
+been reconstructed and mapped to EPW hours. Their statistical kernels do
+not duplicate physical closure.</p>
+<p>Physics implementations can also be registered independently of a
+complete recipe. The direct-model hourly adapter is:</p>
+<table class="table">
+<colgroup>
+<col width="23%">
+<col width="35%">
+<col width="15%">
+<col width="26%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Registry name</th>
+<th align="left">Accepted hourly input</th>
+<th align="left">Behavior</th>
+<th align="left">Output contract</th>
+</tr></thead>
+<tbody><tr class="odd">
+<td align="left"><code>epw_hourly_physical_closure</code></td>
+<td align="left">One <code>MappedHourlyClimateSequence</code> plus a
+365-day <code>weather_template</code>; every future year must contain
+<code>tas</code>, <code>ps</code>, <code>rsds</code>, and
+<code>rsdsdiff</code>, exactly one of <code>hurs</code> or
+<code>huss</code>, exactly one of <code>sfcWind</code> or paired
+<code>uas</code> and <code>vas</code>, and may contain
+<code>rlds</code>
+</td>
+<td align="left">Convert climate variables into one
+<code>EpwPhysicalRequest</code> and apply
+<code>absolute_model_fields</code>; derive vector wind speed and
+direction or retain template direction for scalar wind speed, while
+preserving unrelated template fields</td>
+<td align="left">One typed <code>EpwHourlyWeatherSequence</code> of kind
+<code>epw_hourly_weather_sequence</code>, containing one 8760-row
+EPW-shaped member per future year, constructed/inherited field
+provenance, input-path choices, bound counts, radiation corrections, and
+closure errors</td>
+</tr></tbody>
+</table>
+<p><code>epw_hourly_physical_closure</code> operates after climate
+calendar mapping, so its rows already have an unambiguous position on
+the fixed EPW lattice. A leap future year retains its source-year label
+while solar geometry is evaluated on a non-leap surrogate year; March
+through December therefore cannot shift by one day. The component uses
+the package-wide unit aliases and conversions; hourly <code>W/m^2</code>
+interval means are numerically equal to the one-hour <code>Wh/m^2</code>
+EPW values. At night GHI, DHI, and DNI are zero. During daylight the
+shared radiation kernel bounds DHI by GHI, limits DNI to
+extraterrestrial direct normal energy, and reallocates excess beam
+energy to DHI so closure remains exact. If <code>rlds</code> is absent,
+the template’s horizontal infrared field is retained. The component
+stops on ambiguous humidity or wind paths, unsupported variables, or
+undeclared units instead of silently choosing an interpretation.</p>
 <p>Bias-adjustment implementations belong to the <code>signal</code>
 stage. Their common <code>apply</code> operation validates the
 role-addressable inputs, resolves variable-specific settings, and
