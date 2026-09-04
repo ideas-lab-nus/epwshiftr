@@ -81,6 +81,177 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
 }
 
 
+# Encode a result column deterministically before hashing complete runner
+# tables. Classes and factor levels are recorded separately by the snapshot.
+belcher_test__canonical_column <- function(value, significant_digits = 7L) {
+    if (is.list(value) && !is.data.frame(value)) {
+        return(vapply(value, function(item) {
+            jsonlite::toJSON(
+                item,
+                auto_unbox = TRUE,
+                null = "null",
+                na = "string"
+            )
+        }, character(1L)))
+    }
+
+    if (inherits(value, "POSIXt")) {
+        output <- format(
+            value,
+            format = "%Y-%m-%dT%H:%M:%OS6Z",
+            tz = "UTC",
+            usetz = FALSE
+        )
+    } else if (inherits(value, "Date")) {
+        output <- format(value, "%Y-%m-%d")
+    } else if (is.factor(value)) {
+        output <- as.character(value)
+    } else if (is.integer(value)) {
+        output <- as.character(value)
+    } else if (is.numeric(value)) {
+        output <- rep.int(NA_character_, length(value))
+        finite <- is.finite(value)
+        # Use magnitude-neutral precision so large illuminance values and small
+        # humidity ratios receive the same cross-platform relative tolerance.
+        output[finite] <- formatC(
+            value[finite],
+            format = "e",
+            digits = significant_digits - 1L,
+            decimal.mark = "."
+        )
+        output[is.infinite(value) & value > 0] <- "<Inf>"
+        output[is.infinite(value) & value < 0] <- "<-Inf>"
+        output[is.nan(value)] <- "<NaN>"
+    } else if (is.logical(value)) {
+        output <- ifelse(value, "TRUE", "FALSE")
+    } else {
+        output <- as.character(value)
+    }
+
+    # Preserve missing values as data rather than allowing a platform-specific
+    # character representation to enter the digest.
+    output[is.na(value) & !is.nan(value)] <- "<NA>"
+    output
+}
+
+
+# Capture the complete schema, row order, and values of one runner table in a
+# compact, reviewable form suitable for cross-platform test snapshots.
+belcher_test__table_behavior <- function(data, significant_digits = 7L) {
+    data <- data.table::as.data.table(data)
+    schema <- vapply(seq_along(data), function(index) {
+        value <- data[[index]]
+        details <- character()
+        if (is.factor(value)) {
+            details <- c(details, sprintf(
+                "levels=%s",
+                paste(levels(value), collapse = "/")
+            ))
+        }
+        if (inherits(value, "POSIXt")) {
+            details <- c(details, sprintf(
+                "tz=%s",
+                attr(value, "tzone", exact = TRUE) %||% ""
+            ))
+        }
+        suffix <- if (length(details)) {
+            sprintf("[%s]", paste(details, collapse = ";"))
+        } else {
+            ""
+        }
+        sprintf(
+            "%s:%s%s",
+            names(data)[[index]],
+            paste(class(value), collapse = "/"),
+            suffix
+        )
+    }, character(1L))
+    encoded <- lapply(
+        data,
+        belcher_test__canonical_column,
+        significant_digits = significant_digits
+    )
+    rows <- if (nrow(data) && ncol(data)) {
+        do.call(paste, c(encoded, sep = "\u001f"))
+    } else {
+        character()
+    }
+    payload <- c(
+        sprintf("rows=%d", nrow(data)),
+        sprintf("columns=%d", ncol(data)),
+        names(data),
+        vapply(data, function(value) {
+            paste(class(value), collapse = "/")
+        }, character(1L)),
+        rows
+    )
+
+    list(
+        dimensions = sprintf("%dx%d", nrow(data), ncol(data)),
+        schema = paste(schema, collapse = ","),
+        digest = checksum_bytes(
+            charToRaw(paste(payload, collapse = "\n")),
+            "sha256"
+        )
+    )
+}
+
+
+# Render compact behavior records as stable text rather than serializing R's
+# nested object metadata into the checked-in snapshot.
+belcher_test__snapshot_json <- function(value) {
+    jsonlite::toJSON(
+        value,
+        auto_unbox = TRUE,
+        null = "null",
+        na = "string",
+        pretty = TRUE
+    )
+}
+
+
+# Snapshot every persisted and intermediate surface returned by a Belcher
+# runner while retaining the method identity and selected physical policy.
+belcher_test__result_behavior <- function(result) {
+    policy <- epwphys__recipe_policy(result$recipe)
+    list(
+        backend = result$backend,
+        profile = result$recipe$profile,
+        policy = policy@name,
+        data = belcher_test__table_behavior(result$data),
+        parts = lapply(result$parts, belcher_test__table_behavior),
+        factors = belcher_test__table_behavior(result$factors),
+        diagnostics = belcher_test__table_behavior(result$diagnostics)
+    )
+}
+
+
+# Build the same single-case context boundary used by EpwMorpher after it has
+# separated model, scenario, member, and period cases.
+belcher_test__context <- function(epw, climate, backend, profile,
+                                  reference_climate = NULL) {
+    morpher__context(
+        epw,
+        climate,
+        recipe = suppressWarnings(epw_morph_recipe(
+            backend,
+            profile = profile
+        )),
+        reference_climate = reference_climate,
+        years = 2060L,
+        labels = "future",
+        reference_years = if (is.null(reference_climate)) NULL else 1995L,
+        reference_labels = if (is.null(reference_climate)) {
+            NULL
+        } else {
+            "reference"
+        },
+        by = c("source_id", "experiment_id", "variant_label", "period"),
+        strict = TRUE
+    )
+}
+
+
 # Build matching future/reference cases that exercise every enhanced runner
 # branch, including optional extrema, HUSS state humidity, and LImon snow.
 enhanced_test__change_climate <- function(reference = FALSE) {
@@ -119,6 +290,84 @@ enhanced_test__change_climate <- function(reference = FALSE) {
         )
     }))
 }
+
+
+test_that("Belcher runner behavior is fixed across modes and profiles", {
+    epw <- epw_file_read(get_cache_epw())
+    future <- enhanced_test__change_climate()
+    reference <- enhanced_test__change_climate(reference = TRUE)
+    contexts <- list(
+        absolute_legacy = belcher_test__context(
+            epw, future, "belcher_absolute", "legacy"
+        ),
+        absolute_enhanced = belcher_test__context(
+            epw, future, "belcher_absolute", "enhanced"
+        ),
+        change_legacy = belcher_test__context(
+            epw, future, "belcher", "legacy", reference
+        ),
+        change_enhanced = belcher_test__context(
+            epw, future, "belcher", "enhanced", reference
+        ),
+        baseline_fallback = belcher_test__context(
+            epw, future, "belcher", "enhanced"
+        )
+    )
+    results <- lapply(contexts, morpher__run_context)
+
+    # The no-reference Belcher path must remain the absolute-target runner for
+    # its own recipe rather than silently switching method identity.
+    direct_fallback <- morpher__belcher_absolute_run(
+        contexts$baseline_fallback,
+        epw_morph_backend("belcher")
+    )
+    expect_identical(
+        belcher_test__result_behavior(results$baseline_fallback),
+        belcher_test__result_behavior(direct_fallback)
+    )
+    expect_identical(results$baseline_fallback$backend, "belcher")
+
+    expect_snapshot(cat(belcher_test__snapshot_json(
+        lapply(results, belcher_test__result_behavior)
+    )), cran = TRUE)
+})
+
+
+test_that("Belcher production case contexts preserve identity and isolation", {
+    epw <- epw_file_read(get_cache_epw())
+    future_a <- enhanced_test__change_climate()
+    reference_a <- enhanced_test__change_climate(reference = TRUE)
+    future_b <- data.table::copy(future_a)
+    reference_b <- data.table::copy(reference_a)
+    future_b[, source_id := "Model-B"]
+    reference_b[, source_id := "Model-B"]
+    # Give the second model a distinct temperature change so accidental case
+    # reuse is observable in the final full-year weather digest.
+    future_b[variable_id == "tas", value := value + 1]
+
+    results <- list(
+        model_a = morpher__run_context(belcher_test__context(
+            epw, future_a, "belcher", "enhanced", reference_a
+        )),
+        model_b = morpher__run_context(belcher_test__context(
+            epw, future_b, "belcher", "enhanced", reference_b
+        ))
+    )
+
+    expect_identical(unique(results$model_a$data$source_id), "Model-A")
+    expect_identical(unique(results$model_b$data$source_id), "Model-B")
+    expect_identical(
+        results$model_a$data$datetime,
+        results$model_b$data$datetime
+    )
+    expect_true(any(abs(
+        results$model_a$data$dry_bulb_temperature -
+            results$model_b$data$dry_bulb_temperature
+    ) > 1e-6))
+    expect_snapshot(cat(belcher_test__snapshot_json(
+        lapply(results, belcher_test__result_behavior)
+    )), cran = TRUE)
+})
 
 
 test_that("enhanced profiles and persisted legacy recipes have explicit semantics", {

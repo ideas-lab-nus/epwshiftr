@@ -545,6 +545,11 @@
 
 ## Internal changes
 
+* Added complete Belcher runner behavior snapshots covering absolute-target
+  and change-factor execution, legacy and enhanced profiles, baseline-EPW
+  fallback, production case isolation, every intermediate part, factors, and
+  diagnostics (#220).
+
 * Consolidated direct-model hourly calendar traversal while retaining separate
   circular point interpolation and conservative interval-mean kernels,
   identity behavior, row order, time-of-day provenance, and diagnostics (#218).
