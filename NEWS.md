@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated ordinary and segmented downloader worker dependencies into one
+  explicitly serialized helper bundle while preserving their separate stream,
+  resume, piece-scheduling, and multi-source algorithms (#207).
+
 * Consolidated Store catalog download-plan identity and base-row construction,
   and replaced duplicate plan decorators with one file-row implementation while
   preserving candidate selection and layout behavior (#205).
