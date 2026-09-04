@@ -368,9 +368,9 @@ hourmap__daily_offsets <- function(data) {
     lattice$offsets
 }
 
-# Map point samples separately at each source time of day by circular annual
-# phase, preventing 360/366-day conversion from drifting the diurnal cycle.
-hourmap__circular_point_values <- function(data, target_days) {
+# Traverse each time-of-day series on the shared native-year-to-EPW lattice.
+hourmap__map_daily_slots <- function(data, target_days, mapper) {
+    checkmate::assert_function(mapper)
     source_count <- nrow(data)
     target_count <- target_days * 24L
     offsets <- hourmap__daily_offsets(data)
@@ -388,23 +388,16 @@ hourmap__circular_point_values <- function(data, target_days) {
     mapped <- numeric(target_count)
     target_phase <- numeric(target_count)
     source_second_of_day <- numeric(target_count)
+    target_day <- seq.int(0L, target_days - 1L)
     for (offset_index in seq_along(offsets)) {
         offset <- offsets[[offset_index]]
         source_rows <- which(data[["cf_second_of_day"]] == offset)
         target_rows <- seq.int(offset_index, target_count, by = 24L)
-        source_phase <- as.numeric(data[["annual_phase"]][source_rows])
-        source_value <- as.numeric(data[["value"]][source_rows])
-        phase <- (
-            seq.int(0L, target_days - 1L) + offset / 86400
-        ) / target_days
+        phase <- (target_day + offset / 86400) / target_days
 
-        # Repeat one source year on each side so January and December use the
-        # same circular chronology as all interior target days.
-        mapped[target_rows] <- daily__circular_interpolate(
-            source_phase,
-            source_value,
-            phase
-        )
+        # The callback owns only the numerical mapping kernel. This shell owns
+        # target placement and time-of-day provenance for every variable type.
+        mapped[target_rows] <- mapper(source_rows, phase)
         target_phase[target_rows] <- phase
         source_second_of_day[target_rows] <- offset
     }
@@ -416,44 +409,39 @@ hourmap__circular_point_values <- function(data, target_days) {
     )
 }
 
+# Map point samples separately at each source time of day by circular annual
+# phase, preventing 360/366-day conversion from drifting the diurnal cycle.
+hourmap__circular_point_values <- function(data, target_days) {
+    hourmap__map_daily_slots(
+        data,
+        target_days,
+        mapper = function(source_rows, target_phase) {
+            source_phase <- as.numeric(data[["annual_phase"]][source_rows])
+            source_value <- as.numeric(data[["value"]][source_rows])
+
+            # Repeat one source year on each side so January and December use
+            # the same circular chronology as all interior target days.
+            daily__circular_interpolate(
+                source_phase,
+                source_value,
+                target_phase
+            )
+        }
+    )
+}
+
 # Conservatively remap each time-of-day series across calendar days so
 # interval means retain both their diurnal slot and normalized annual mean.
 hourmap__conservative_interval_values <- function(data, target_days) {
-    source_count <- nrow(data)
-    target_count <- target_days * 24L
-    offsets <- hourmap__daily_offsets(data)
-    if (source_count == target_count) {
-        return(list(
-            value = as.numeric(data[["value"]]),
-            target_phase = as.numeric(data[["annual_phase"]]),
-            source_second_of_day = as.numeric(
-                data[["cf_second_of_day"]]
-            ),
-            hour_phase_seconds = offsets[[1L]] %% 3600
-        ))
-    }
-
-    mapped <- numeric(target_count)
-    target_phase <- numeric(target_count)
-    source_second_of_day <- numeric(target_count)
-    for (offset_index in seq_along(offsets)) {
-        offset <- offsets[[offset_index]]
-        source_rows <- which(data[["cf_second_of_day"]] == offset)
-        target_rows <- seq.int(offset_index, target_count, by = 24L)
-        mapped[target_rows] <- hourmap__conservative_interval_mean(
-            data[["value"]][source_rows],
-            target_days
-        )
-        target_phase[target_rows] <- (
-            seq.int(0L, target_days - 1L) + offset / 86400
-        ) / target_days
-        source_second_of_day[target_rows] <- offset
-    }
-    list(
-        value = mapped,
-        target_phase = target_phase,
-        source_second_of_day = source_second_of_day,
-        hour_phase_seconds = offsets[[1L]] %% 3600
+    hourmap__map_daily_slots(
+        data,
+        target_days,
+        mapper = function(source_rows, target_phase) {
+            hourmap__conservative_interval_mean(
+                data[["value"]][source_rows],
+                length(target_phase)
+            )
+        }
     )
 }
 
