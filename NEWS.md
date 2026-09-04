@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated Store catalog download-plan identity and base-row construction,
+  and replaced duplicate plan decorators with one file-row implementation while
+  preserving candidate selection and layout behavior (#205).
+
 * Consolidated the shared settings envelope, schema validation, integer and
   bound checks, deterministic seed normalization, and role-wise precipitation
   threshold randomization used by statistical signal methods while preserving

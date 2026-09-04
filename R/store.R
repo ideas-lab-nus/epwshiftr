@@ -1205,7 +1205,7 @@ EsgStore <- R6::R6Class(
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds
             )
-            candidates <- private$decorate_download_plan_with_files(candidates, preview$file_rows)
+            candidates <- private$decorate_download_plan(candidates, preview$file_rows)
             summary <- private$download_preflight_summary(row, preview$file_rows, candidates, downloader = downloader)
             list(
                 summary = summary[],
@@ -2035,7 +2035,7 @@ EsgStore <- R6::R6Class(
                     ...
                 )
                 plan <- do.call(files$download_plan, plan_args)
-                plan <- private$decorate_download_plan_with_files(plan, current)
+                plan <- private$decorate_download_plan(plan, current)
                 plan <- plan[plan[["file_key"]] %in% current$file_key]
                 plan
             } else {
@@ -2989,35 +2989,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(catalog)) {
                 return(data.table::data.table())
             }
-            plan <- data.table::data.table(
-                logical_file_id = vapply(
-                    seq_len(nrow(catalog)),
-                    function(i) {
-                        pieces <- c(
-                            store__chr1(catalog$tracking_id[[i]]),
-                            store__chr1(catalog$checksum[[i]]),
-                            store__chr1(catalog$filename[[i]]),
-                            store__chr1(catalog$esgf_id[[i]])
-                        )
-                        paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
-                    },
-                    character(1L)
-                ),
-                file_key = catalog$file_key,
-                esgf_id = catalog$esgf_id,
-                dataset_id = catalog$dataset_id,
-                filename = catalog$filename,
-                subdir = NA_character_,
-                checksum = catalog$checksum,
-                checksum_type = catalog$checksum_type,
-                size = suppressWarnings(as.numeric(catalog$size)),
-                url = catalog$url_download,
-                service = "HTTPServer",
-                data_node = catalog$data_node,
-                priority = seq_len(nrow(catalog)),
-                probe_latency = NA_real_,
-                probe_throughput = NA_real_
-            )
+            plan <- store__download_plan_rows(catalog)
             plan <- plan[!is.na(url) & nzchar(url)]
             if (!nrow(plan)) {
                 return(plan)
@@ -3130,40 +3102,7 @@ EsgStore <- R6::R6Class(
             groups[n > 1L & checksum_count > 1L & top_signature_count == 1L]
         },
 
-        decorate_download_plan = function(plan, query_id) {
-            plan <- data.table::copy(data.table::as.data.table(plan))
-            plan <- data.table::setalloccol(plan)
-            if (!nrow(plan)) {
-                return(plan)
-            }
-            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
-            wanted_query_id <- query_id
-            catalog <- catalog[catalog[["query_id"]] == wanted_query_id]
-            if (!nrow(catalog)) {
-                return(plan)
-            }
-            if (!"file_key" %in% names(plan)) {
-                plan$file_key <- NA_character_
-            }
-            for (i in seq_len(nrow(plan))) {
-                if (!is.na(plan$file_key[[i]]) && nzchar(plan$file_key[[i]])) {
-                    next
-                }
-                hit <- catalog[catalog[["esgf_id"]] == plan$esgf_id[[i]]]
-                if (!nrow(hit) && "checksum" %in% names(plan)) {
-                    hit <- catalog[
-                        catalog[["filename"]] == plan$filename[[i]] &
-                            catalog[["checksum"]] == plan$checksum[[i]]
-                    ]
-                }
-                if (nrow(hit)) {
-                    plan$file_key[[i]] <- hit$file_key[[1L]]
-                }
-            }
-            private$apply_download_layout(plan, catalog)
-        },
-
-        decorate_download_plan_with_files = function(plan, file_rows) {
+        decorate_download_plan = function(plan, file_rows) {
             plan <- data.table::copy(data.table::as.data.table(plan))
             file_rows <- data.table::copy(data.table::as.data.table(file_rows))
             plan <- data.table::setalloccol(plan)
@@ -4610,7 +4549,7 @@ EsgStore <- R6::R6Class(
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds
             )
-            plan <- private$decorate_download_plan_with_files(plan, current)
+            plan <- private$decorate_download_plan(plan, current)
             plan <- plan[plan[["file_key"]] %in% current$file_key]
             if (!nrow(plan)) {
                 if (isTRUE(error_if_empty)) {
@@ -5173,35 +5112,7 @@ EsgStore <- R6::R6Class(
             if (!nrow(catalog)) {
                 return(data.table::data.table())
             }
-            plan <- data.table::data.table(
-                logical_file_id = vapply(
-                    seq_len(nrow(catalog)),
-                    function(i) {
-                        pieces <- c(
-                            store__chr1(catalog$tracking_id[[i]]),
-                            store__chr1(catalog$checksum[[i]]),
-                            store__chr1(catalog$filename[[i]]),
-                            store__chr1(catalog$esgf_id[[i]])
-                        )
-                        paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
-                    },
-                    character(1L)
-                ),
-                file_key = catalog$file_key,
-                esgf_id = catalog$esgf_id,
-                dataset_id = catalog$dataset_id,
-                filename = catalog$filename,
-                subdir = NA_character_,
-                checksum = catalog$checksum,
-                checksum_type = catalog$checksum_type,
-                size = suppressWarnings(as.numeric(catalog$size)),
-                url = catalog$url_download,
-                service = "HTTPServer",
-                data_node = catalog$data_node,
-                priority = seq_len(nrow(catalog)),
-                probe_latency = NA_real_,
-                probe_throughput = NA_real_
-            )
+            plan <- store__download_plan_rows(catalog)
             private$apply_download_layout(plan, catalog)
         },
 
@@ -6811,6 +6722,51 @@ store__file_keys <- function(dt) {
             paste0("fallback:", store__hash(pieces))
         },
         character(1L)
+    )
+}
+
+# Build the composite logical identity used to keep catalog download tasks distinct.
+store__logical_file_id <- function(catalog) {
+    catalog <- data.table::as.data.table(catalog)
+    if (!nrow(catalog)) {
+        return(character())
+    }
+
+    vapply(
+        seq_len(nrow(catalog)),
+        function(i) {
+            # Preserve the existing identity order while omitting unavailable metadata.
+            pieces <- c(
+                store__chr1(catalog$tracking_id[[i]]),
+                store__chr1(catalog$checksum[[i]]),
+                store__chr1(catalog$filename[[i]]),
+                store__chr1(catalog$esgf_id[[i]])
+            )
+            paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
+        },
+        character(1L)
+    )
+}
+
+# Construct the shared base schema for operational and validation download plans.
+store__download_plan_rows <- function(catalog) {
+    catalog <- data.table::as.data.table(catalog)
+    data.table::data.table(
+        logical_file_id = store__logical_file_id(catalog),
+        file_key = catalog$file_key,
+        esgf_id = catalog$esgf_id,
+        dataset_id = catalog$dataset_id,
+        filename = catalog$filename,
+        subdir = NA_character_,
+        checksum = catalog$checksum,
+        checksum_type = catalog$checksum_type,
+        size = suppressWarnings(as.numeric(catalog$size)),
+        url = catalog$url_download,
+        service = "HTTPServer",
+        data_node = catalog$data_node,
+        priority = seq_len(nrow(catalog)),
+        probe_latency = NA_real_,
+        probe_throughput = NA_real_
     )
 }
 

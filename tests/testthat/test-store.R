@@ -1933,6 +1933,80 @@ test_that("EsgStore$download_files() selects catalog candidates before enqueuein
     expect_equal(tasks$file_key, plan$file_key)
 })
 
+test_that("store download plan helpers preserve catalog identity and schema", {
+    catalog <- data.table::data.table(
+        tracking_id = c("tracking-a", NA_character_, NA_character_),
+        checksum = c("checksum-a", "checksum-b", NA_character_),
+        filename = c("a.nc", "b.nc", NA_character_),
+        esgf_id = c("esgf-a", "esgf-b", NA_character_),
+        file_key = c("file-a", "file-b", "file-c"),
+        dataset_id = c("dataset-a", "dataset-b", "dataset-c"),
+        checksum_type = c("SHA256", "MD5", NA_character_),
+        size = c("123", "invalid", NA_character_),
+        url_download = c("https://example.org/a.nc", "https://example.org/b.nc", NA_character_),
+        data_node = c("a.example.org", "b.example.org", NA_character_)
+    )
+
+    expect_identical(
+        store__logical_file_id(catalog),
+        c(
+            "tracking-a:checksum-a:a.nc:esgf-a",
+            "checksum-b:b.nc:esgf-b",
+            ""
+        )
+    )
+
+    plan <- store__download_plan_rows(catalog)
+    expect_identical(
+        names(plan),
+        c(
+            "logical_file_id", "file_key", "esgf_id", "dataset_id", "filename",
+            "subdir", "checksum", "checksum_type", "size", "url", "service",
+            "data_node", "priority", "probe_latency", "probe_throughput"
+        )
+    )
+    expect_identical(plan$logical_file_id, store__logical_file_id(catalog))
+    expect_identical(plan$size, c(123, NA_real_, NA_real_))
+    expect_identical(plan$priority, 1:3)
+    expect_identical(plan$service, rep("HTTPServer", 3L))
+    expect_true(all(is.na(plan$subdir)))
+    expect_true(all(is.na(plan$probe_latency)))
+    expect_true(all(is.na(plan$probe_throughput)))
+})
+
+test_that("EsgStore download plan decoration recovers file keys from supplied rows", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    plan <- data.table::data.table(
+        logical_file_id = c("logical-a", "logical-b", "logical-c"),
+        file_key = c("keep-this-key", NA_character_, NA_character_),
+        esgf_id = c("esgf-a", "esgf-b", "esgf-unmatched"),
+        filename = c("a.nc", "b.nc", "fallback.nc"),
+        checksum = c("checksum-a", "checksum-b", "checksum-c"),
+        subdir = NA_character_
+    )
+    file_rows <- data.table::data.table(
+        file_key = c("replacement-key", "esgf-key", "checksum-key"),
+        esgf_id = c("esgf-a", "esgf-b", "different-esgf-id"),
+        filename = c("a.nc", "b.nc", "fallback.nc"),
+        checksum = c("checksum-a", "checksum-b", "checksum-c")
+    )
+
+    decorated <- priv(store)$decorate_download_plan(plan, file_rows)
+
+    expect_identical(
+        decorated$file_key,
+        c("keep-this-key", "esgf-key", "checksum-key")
+    )
+    expect_identical(decorated$target_rel_path, plan$filename)
+    expected_root <- normalizePath(dir, winslash = "/", mustWork = TRUE)
+    expect_identical(decorated$target_path, file.path(expected_root, "downloads", plan$filename))
+})
+
 test_that("EsgStore$download_files() aborts ambiguous catalog target collisions", {
     skip_if_not_installed("duckdb")
 
