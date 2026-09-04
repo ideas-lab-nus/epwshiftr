@@ -1136,41 +1136,11 @@ recipe__input_errors <- function(spec, inputs) {
             "{.arg spec} must be a WeatherRecipeSpec object."
         )
     }
-    if (!S7::S7_inherits(inputs, WeatherInputs)) {
-        cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
-    }
-    errors <- character()
-    for (role in names(spec@required_inputs)) {
-        input <- weather__get_input(inputs, role)
-        if (is.null(input)) {
-            errors <- c(
-                errors,
-                sprintf("required role `%s` is missing", role)
-            )
-            next
-        }
-        errors <- c(
-            errors,
-            component__requirement_errors(
-                spec@required_inputs[[role]],
-                input
-            )
-        )
-    }
-    for (role in names(spec@optional_inputs)) {
-        input <- weather__get_input(inputs, role)
-        if (is.null(input)) {
-            next
-        }
-        errors <- c(
-            errors,
-            component__requirement_errors(
-                spec@optional_inputs[[role]],
-                input
-            )
-        )
-    }
-    unique(errors)
+    weather__input_requirement_errors(
+        spec@required_inputs,
+        spec@optional_inputs,
+        inputs
+    )
 }
 
 # Abort with the complete role diagnostics so queued and foreground execution

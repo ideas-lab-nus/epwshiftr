@@ -1,75 +1,7 @@
-# Build one calendar-native daily series from consecutive CF-calendar days so
-# Quantile Mapping tests never rely on Gregorian Date coercion.
-qm_test__series <- function(
-    variable_id,
-    year,
-    values,
-    calendar = "noleap",
-    units = if (identical(variable_id, "pr")) {
-        "kg m-2 s-1"
-    } else if (identical(variable_id, "hurs")) {
-        "%"
-    } else {
-        "K"
-    }
-) {
-    origin <- data.frame(
-        year = as.integer(year),
-        month = 1L,
-        day = 1L
-    )
-    fields <- cf_time_offset2date(
-        seq.int(0L, length(values) - 1L),
-        origin,
-        calendar
-    )
-    fields$hour <- 12L
-    fields$minute <- 0L
-    fields$second <- 0
-    data.frame(
-        variable_id = rep.int(variable_id, length(values)),
-        value = as.numeric(values),
-        units = rep.int(units, length(values)),
-        frequency = rep.int("day", length(values)),
-        cf_time__coordinates(fields, calendar),
-        stringsAsFactors = FALSE
-    )
-}
-
-# Construct role metadata and the aligned group from the same three canonical
-# tables, matching the package's standalone signal execution boundary.
-qm_test__execution_inputs <- function(
-    observed,
-    historical,
-    future,
-    key = list(site = "A")
-) {
-    list(
-        inputs = weather__new_inputs(
-            observed_reference = weather__new_input(
-                "observed_reference",
-                observed
-            ),
-            model_historical = weather__new_input(
-                "model_historical",
-                historical
-            ),
-            model_future = weather__new_input(
-                "model_future",
-                future
-            )
-        ),
-        group = signal__group(
-            key = key,
-            inputs = list(
-                observed_reference = observed,
-                model_historical = historical,
-                model_future = future
-            ),
-            variables = unique(future$variable_id)
-        )
-    )
-}
+# Use the shared native-calendar series and signal-boundary fixtures while
+# retaining the Quantile Mapping names used throughout this test module.
+qm_test__series <- signal_test__series
+qm_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute one variable through the common signal lifecycle while replacing the
 # default seasonal window with a full-cycle window for compact test fixtures.

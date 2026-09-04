@@ -83,21 +83,7 @@ daily__temperature_preprocess_apply <- function(
 ) {
     morpher__validate_context(context)
     options <- daily__temperature_backend_options(options)
-    future <- weather__get_input(inputs, "model_future")
-    historical <- weather__get_input(inputs, "model_historical")
-    template <- weather__get_input(inputs, "weather_template")
-    list(
-        baseline = temperature__epw_template(template@source),
-        future = temperature__daily_climate(
-            future@source,
-            "future climate"
-        ),
-        historical = temperature__daily_climate(
-            historical@source,
-            "historical climate"
-        ),
-        options = options
-    )
+    temperature__preprocess_inputs(inputs, options)
 }
 
 # Map future and historical daily sources onto the common 365-day phase grid,

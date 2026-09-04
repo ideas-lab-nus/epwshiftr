@@ -1,25 +1,5 @@
 cli_test_response <- function(docs) {
-    list(
-        responseHeader = list(
-            status = 0L,
-            QTime = 0L,
-            params = stats::setNames(list(), character())
-        ),
-        response = list(
-            numFound = nrow(docs),
-            start = 0L,
-            docs = docs,
-            maxScore = 1
-        ),
-        facet_counts = list(
-            facet_queries = stats::setNames(list(), character()),
-            facet_fields = stats::setNames(list(), character()),
-            facet_ranges = stats::setNames(list(), character()),
-            facet_intervals = stats::setNames(list(), character()),
-            facet_heatmaps = stats::setNames(list(), character())
-        ),
-        timestamp = as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
-    )
+    esgf_test__response(docs)
 }
 
 cli_test_file_docs <- function(path = "cli-file.nc", download_url = NULL) {

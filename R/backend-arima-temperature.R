@@ -383,14 +383,7 @@ arima__signal_apply_group <- function(inputs, settings, key) {
 # Preserve the original TMY day sequence instead of sampling or reordering
 # events after the percentile-dependent climate signal has been estimated.
 arima__sequence_generate <- function(data, inputs, context, options) {
-    if (!S7::S7_inherits(data, SignalExecutionResult) ||
-        length(data@values) != 1L ||
-        is.null(data@values[[1L]])) {
-        cli::cli_abort(
-            "Arima sequence input must contain one successful signal group."
-        )
-    }
-    data@values[[1L]]
+    signal__single_value(data, "Arima")
 }
 
 # Apply each daily additive factor to all 24 TMY hours as specified by Arima

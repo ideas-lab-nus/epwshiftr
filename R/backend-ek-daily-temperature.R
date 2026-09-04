@@ -310,21 +310,7 @@ ek__daily_temperature_targets <- function(
 ek__preprocess_apply <- function(inputs, context, options) {
     morpher__validate_context(context)
     options <- ek__daily_temperature_options(options)
-    future <- weather__get_input(inputs, "model_future")
-    historical <- weather__get_input(inputs, "model_historical")
-    template <- weather__get_input(inputs, "weather_template")
-    list(
-        baseline = temperature__epw_template(template@source),
-        future = temperature__daily_climate(
-            future@source,
-            "future climate"
-        ),
-        historical = temperature__daily_climate(
-            historical@source,
-            "historical climate"
-        ),
-        options = options
-    )
+    temperature__preprocess_inputs(inputs, options)
 }
 
 # Map each native CF year to the shared annual coordinate before averaging the
@@ -382,14 +368,7 @@ ek__signal_apply_group <- function(inputs, settings, key) {
 # Retain the baseline EPW day order so the Ek comparison changes only the
 # climate signal and published within-day transformation.
 ek__sequence_generate <- function(data, inputs, context, options) {
-    if (!S7::S7_inherits(data, SignalExecutionResult) ||
-        length(data@values) != 1L ||
-        is.null(data@values[[1L]])) {
-        cli::cli_abort(
-            "Ek sequence input must contain one successful signal group."
-        )
-    }
-    data@values[[1L]]
+    signal__single_value(data, "Ek")
 }
 
 # Apply Ek equation (5) day by day using relative DTR change as the anomaly

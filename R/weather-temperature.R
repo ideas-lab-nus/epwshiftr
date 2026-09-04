@@ -74,6 +74,32 @@ temperature__backend_options <- function(
     options
 }
 
+# Normalize the three role-addressable inputs shared by daily-source
+# temperature backends after each method has resolved its own option contract.
+temperature__preprocess_inputs <- function(inputs, options) {
+    if (!S7::S7_inherits(inputs, WeatherInputs)) {
+        cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
+    }
+    future <- weather__get_input(inputs, "model_future")
+    historical <- weather__get_input(inputs, "model_historical")
+    template <- weather__get_input(inputs, "weather_template")
+
+    # Component and recipe contracts guarantee the roles exist; keeping all
+    # normalization here gives every backend the same table and unit boundary.
+    list(
+        baseline = temperature__epw_template(template@source),
+        future = temperature__daily_climate(
+            future@source,
+            "future climate"
+        ),
+        historical = temperature__daily_climate(
+            historical@source,
+            "historical climate"
+        ),
+        options = options
+    )
+}
+
 # Convert mixed supported temperature units to degrees Celsius through the
 # package-wide checked unit converter after a caller validates source metadata.
 temperature__to_celsius <- function(value, units) {

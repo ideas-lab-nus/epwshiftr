@@ -538,20 +538,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             project = "CMIP6", distrib = TRUE, limit = 10L,
             type = "File", format = QUERY_PARAM__FORMAT_JSON
         ))
-        response <- list(
-            responseHeader = list(status = 0L, QTime = 0L,
-                params = stats::setNames(list(), character())),
-            response = list(numFound = nrow(docs), start = 0L,
-                docs = docs, maxScore = 1),
-            facet_counts = list(
-                facet_queries = stats::setNames(list(), character()),
-                facet_fields = stats::setNames(list(), character()),
-                facet_ranges = stats::setNames(list(), character()),
-                facet_intervals = stats::setNames(list(), character()),
-                facet_heatmaps = stats::setNames(list(), character())
-            ),
-            timestamp = as.POSIXct("2026-01-01", tz = "UTC")
-        )
+        response <- esgf_test__response(docs)
         query_result__new(
             EsgResultFile, index_node = "https://example.org",
             params = params, result = response

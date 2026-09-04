@@ -545,6 +545,11 @@
 
 ## Internal changes
 
+* Consolidated repeated weather input validation, daily temperature
+  preprocessing, successful signal-value extraction, native-calendar method
+  fixtures, and Solr response fixtures into method-neutral helpers while
+  preserving method equations and observable workflow behavior (#201).
+
 * Added regression tests for batched Dataset child collection, including
   global `limit` handling and progress labels (#119).
 * Updated GitHub Actions workflow dependencies for current Actions behavior
