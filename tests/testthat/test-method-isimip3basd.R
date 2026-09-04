@@ -1,69 +1,15 @@
-# Build native-calendar daily fixtures without routing 360-, 365-, or 366-day
-# coordinates through a Gregorian Date conversion.
+# ISIMIP fixtures retain their dimensionless default while sharing all native
+# calendar construction and role-boundary mechanics with other signal methods.
 isimip_test__series <- function(
-  variable_id,
-  year,
-  values,
-  calendar = "noleap",
-  units = "1"
+    variable_id,
+    year,
+    values,
+    calendar = "noleap",
+    units = "1"
 ) {
-    origin <- data.frame(
-        year = as.integer(year),
-        month = 1L,
-        day = 1L
-    )
-    fields <- cf_time_offset2date(
-        seq.int(0L, length(values) - 1L),
-        origin,
-        calendar
-    )
-    fields$hour <- 12L
-    fields$minute <- 0L
-    fields$second <- 0
-    data.frame(
-        variable_id = rep.int(variable_id, length(values)),
-        value = as.numeric(values),
-        units = rep.int(units, length(values)),
-        frequency = rep.int("day", length(values)),
-        cf_time__coordinates(fields, calendar),
-        stringsAsFactors = FALSE
-    )
+    signal_test__series(variable_id, year, values, calendar, units)
 }
-
-# Construct the common input metadata and one aligned signal group for
-# end-to-end component tests.
-isimip_test__execution_inputs <- function(
-  observed,
-  historical,
-  future,
-  key = list(site = "A")
-) {
-    list(
-        inputs = weather__new_inputs(
-            observed_reference = weather__new_input(
-                "observed_reference",
-                observed
-            ),
-            model_historical = weather__new_input(
-                "model_historical",
-                historical
-            ),
-            model_future = weather__new_input(
-                "model_future",
-                future
-            )
-        ),
-        group = signal__group(
-            key = key,
-            inputs = list(
-                observed_reference = observed,
-                model_historical = historical,
-                model_future = future
-            ),
-            variables = unique(future$variable_id)
-        )
-    )
-}
+isimip_test__execution_inputs <- signal_test__execution_inputs
 
 # Retrieve one complete publication-backed variable profile.
 isimip_test__settings <- function(variable) {

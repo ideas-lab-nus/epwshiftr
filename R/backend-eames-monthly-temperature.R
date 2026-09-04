@@ -302,21 +302,7 @@ eames__monthly_temperature_preprocess_apply <- function(
 ) {
     morpher__validate_context(context)
     options <- eames__monthly_temperature_options(options)
-    future <- weather__get_input(inputs, "model_future")
-    historical <- weather__get_input(inputs, "model_historical")
-    template <- weather__get_input(inputs, "weather_template")
-    list(
-        baseline = temperature__epw_template(template@source),
-        future = temperature__daily_climate(
-            future@source,
-            "future climate"
-        ),
-        historical = temperature__daily_climate(
-            historical@source,
-            "historical climate"
-        ),
-        options = options
-    )
+    temperature__preprocess_inputs(inputs, options)
 }
 
 # Interpret each model's native calendar before the signal kernel so the kernel

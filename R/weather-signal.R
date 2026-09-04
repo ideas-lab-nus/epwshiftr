@@ -9,6 +9,20 @@ SIGNAL_PROFILE_EVIDENCE <- c("published", "experimental")
 # failure explicitly alongside successful group results.
 SIGNAL_ERROR_POLICIES <- c("abort", "collect")
 
+# Return the only successful signal-group payload shared by sequence-preserving
+# methods, while allowing each method to retain its own diagnostic identity.
+signal__single_value <- function(data, label) {
+    checkmate::assert_string(label, min.chars = 1L)
+    if (!S7::S7_inherits(data, SignalExecutionResult) ||
+        length(data@values) != 1L ||
+        is.null(data@values[[1L]])) {
+        cli::cli_abort(
+            "{label} sequence input must contain one successful signal group."
+        )
+    }
+    data@values[[1L]]
+}
+
 # SignalVariableProfile records variable-specific defaults without embedding
 # them in an algorithm function or losing their evidence status.
 SignalVariableProfile <- S7::new_class(

@@ -21,18 +21,7 @@ local_query_test_response <- function(docs = NULL) {
         docs$access <- I(list("HTTPServer"))
     }
 
-    list(
-        responseHeader = list(status = 0L, QTime = 0L, params = stats::setNames(list(), character())),
-        response = list(numFound = nrow(docs), start = 0L, docs = docs, maxScore = 1),
-        facet_counts = list(
-            facet_queries = stats::setNames(list(), character()),
-            facet_fields = stats::setNames(list(), character()),
-            facet_ranges = stats::setNames(list(), character()),
-            facet_intervals = stats::setNames(list(), character()),
-            facet_heatmaps = stats::setNames(list(), character())
-        ),
-        timestamp = Sys.time()
-    )
+    esgf_test__response(docs, timestamp = Sys.time())
 }
 
 local_query_listing_response <- function(
@@ -45,17 +34,12 @@ local_query_listing_response <- function(
         num_found <- if (is.data.frame(docs)) nrow(docs) else length(docs)
     }
 
-    list(
-        responseHeader = list(status = 0L, QTime = 0L, params = params),
-        response = list(numFound = as.integer(num_found), start = 0L, docs = docs, maxScore = 1),
-        facet_counts = list(
-            facet_queries = stats::setNames(list(), character()),
-            facet_fields = facet_fields,
-            facet_ranges = stats::setNames(list(), character()),
-            facet_intervals = stats::setNames(list(), character()),
-            facet_heatmaps = stats::setNames(list(), character())
-        ),
-        timestamp = Sys.time()
+    esgf_test__response(
+        docs,
+        timestamp = Sys.time(),
+        params = params,
+        facet_fields = facet_fields,
+        num_found = num_found
     )
 }
 
@@ -932,18 +916,7 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
 
     calls <- list()
     local_response <- function(docs) {
-        list(
-            responseHeader = list(status = 0L, QTime = 0L, params = stats::setNames(list(), character())),
-            response = list(numFound = nrow(docs), start = 0L, docs = docs, maxScore = 1),
-            facet_counts = list(
-                facet_queries = stats::setNames(list(), character()),
-                facet_fields = stats::setNames(list(), character()),
-                facet_ranges = stats::setNames(list(), character()),
-                facet_intervals = stats::setNames(list(), character()),
-                facet_heatmaps = stats::setNames(list(), character())
-            ),
-            timestamp = Sys.time()
-        )
+        esgf_test__response(docs, timestamp = Sys.time())
     }
     local_dataset_docs <- data.frame(
         id = c("dataset-1", "dataset-2"),

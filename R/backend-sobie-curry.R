@@ -516,14 +516,7 @@ sobie__signal_apply_group <- function(inputs, settings, key) {
 # Preserve the baseline CWEC/EPW sequence exactly, as the published method
 # changes hourly values but does not synthesize a new event sequence.
 sobie__sequence_generate <- function(data, inputs, context, options) {
-    if (!S7::S7_inherits(data, SignalExecutionResult) ||
-        length(data@values) != 1L ||
-        is.null(data@values[[1L]])) {
-        cli::cli_abort(
-            "Sobie-Curry sequence input must contain one successful signal group."
-        )
-    }
-    value <- data@values[[1L]]
+    value <- signal__single_value(data, "Sobie-Curry")
     value$options <- sobie__backend_options(options)
     value
 }

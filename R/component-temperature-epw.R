@@ -103,14 +103,7 @@ temperature__sequence_generate <- function(
     context,
     options
 ) {
-    if (!S7::S7_inherits(data, SignalExecutionResult) ||
-        length(data@values) != 1L ||
-        is.null(data@values[[1L]])) {
-        cli::cli_abort(
-            "Daily temperature sequence input must contain one successful signal group."
-        )
-    }
-    data@values[[1L]]
+    signal__single_value(data, "Daily temperature")
 }
 
 # Select and validate only options owned by the shared hourly temperature

@@ -587,19 +587,18 @@ component__requirement_errors <- function(requirement, input) {
     errors
 }
 
-# Validate all required inputs and every supplied optional input before a
-# component starts fitting or transforming data.
-component__input_errors <- function(component, inputs) {
-    if (!S7::S7_inherits(component, WeatherComponentSpec)) {
-        cli::cli_abort(
-            "{.arg component} must be a WeatherComponentSpec object."
-        )
-    }
+# Traverse one pair of required and optional role contracts so component and
+# recipe validation cannot drift in how they interpret the same WeatherInput.
+weather__input_requirement_errors <- function(
+    required_inputs,
+    optional_inputs,
+    inputs
+) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
     }
     errors <- character()
-    for (role in names(component@required_inputs)) {
+    for (role in names(required_inputs)) {
         input <- weather__get_input(inputs, role)
         if (is.null(input)) {
             errors <- c(errors, sprintf("required role `%s` is missing", role))
@@ -608,12 +607,12 @@ component__input_errors <- function(component, inputs) {
         errors <- c(
             errors,
             component__requirement_errors(
-                component@required_inputs[[role]],
+                required_inputs[[role]],
                 input
             )
         )
     }
-    for (role in names(component@optional_inputs)) {
+    for (role in names(optional_inputs)) {
         input <- weather__get_input(inputs, role)
         if (is.null(input)) {
             next
@@ -621,12 +620,27 @@ component__input_errors <- function(component, inputs) {
         errors <- c(
             errors,
             component__requirement_errors(
-                component@optional_inputs[[role]],
+                optional_inputs[[role]],
                 input
             )
         )
     }
     unique(errors)
+}
+
+# Validate all required inputs and every supplied optional input before a
+# component starts fitting or transforming data.
+component__input_errors <- function(component, inputs) {
+    if (!S7::S7_inherits(component, WeatherComponentSpec)) {
+        cli::cli_abort(
+            "{.arg component} must be a WeatherComponentSpec object."
+        )
+    }
+    weather__input_requirement_errors(
+        component@required_inputs,
+        component@optional_inputs,
+        inputs
+    )
 }
 
 # Abort with all input-contract failures together so discovery and workflow
