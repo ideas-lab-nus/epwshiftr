@@ -91,15 +91,6 @@ qm__profiles <- function() {
 # Validate all method conventions at the kernel boundary so unsupported
 # empirical-CDF variants cannot be selected silently through an override.
 qm__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "Quantile Mapping requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "mapping_type",
         "detrending",
@@ -115,15 +106,11 @@ qm__settings <- function(settings) {
         "dry_threshold",
         "random_seed"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "Quantile Mapping settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "Quantile Mapping"
+    )
     if (!identical(resolved$mapping_type, "nonparametric")) {
         cli::cli_abort(
             "Quantile Mapping currently supports only nonparametric mapping."
@@ -142,40 +129,31 @@ qm__settings <- function(settings) {
             "Quantile Mapping currently requires linear empirical CDF interpolation, type-7 inverse quantiles, average-rank ties, and clamped tails."
         )
     }
-    checkmate::assert_integerish(
+    resolved$seasonal_window_days <- signal__integer_setting(
         resolved$seasonal_window_days,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "seasonal_window_days",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$target_year_days <- signal__integer_setting(
         resolved$target_year_days,
-        lower = 3L,
-        len = 1L,
-        any.missing = FALSE
+        "target_year_days",
+        lower = 3L
     )
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
     # Reuse the calendar-neutral window validator to enforce odd widths and
     # prevent a wider-than-year seasonal window.
     daily__window_spec(
-        as.integer(resolved$seasonal_window_days),
-        as.integer(resolved$target_year_days)
+        resolved$seasonal_window_days,
+        resolved$target_year_days
     )
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "Quantile Mapping bounds must be ordered from lower to upper."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "Quantile Mapping bounds must be ordered from lower to upper."
-        )
-    }
     checkmate::assert_choice(
         resolved$distribution_model,
         c("continuous", "precipitation_hurdle")
@@ -185,20 +163,7 @@ qm__settings <- function(settings) {
         lower = 0,
         finite = TRUE
     )
-    checkmate::assert_integerish(
-        resolved$random_seed,
-        lower = 0,
-        upper = .Machine$integer.max - 1L,
-        len = 1L,
-        any.missing = FALSE
-    )
-
-    resolved$seasonal_window_days <- as.integer(
-        resolved$seasonal_window_days
-    )
-    resolved$target_year_days <- as.integer(resolved$target_year_days)
-    resolved$min_samples <- as.integer(resolved$min_samples)
-    resolved$random_seed <- as.integer(resolved$random_seed)
+    resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
 

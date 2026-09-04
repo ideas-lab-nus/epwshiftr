@@ -545,6 +545,11 @@
 
 ## Internal changes
 
+* Consolidated the shared settings envelope, schema validation, integer and
+  bound checks, deterministic seed normalization, and role-wise precipitation
+  threshold randomization used by statistical signal methods while preserving
+  each method's equations and threshold semantics (#203).
+
 * Consolidated repeated weather input validation, daily temperature
   preprocessing, successful signal-value extraction, native-calendar method
   fixtures, and Solr response fixtures into method-neutral helpers while

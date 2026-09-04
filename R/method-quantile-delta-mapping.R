@@ -96,15 +96,6 @@ qdm__profiles <- function() {
 # Validate every QDM convention at the signal-kernel boundary so overrides
 # cannot silently change the published transfer semantics.
 qdm__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "Quantile Delta Mapping requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "mapping_type",
         "trend_preservation",
@@ -122,15 +113,11 @@ qdm__settings <- function(settings) {
         "zero_denominator_policy",
         "random_seed"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "Quantile Delta Mapping settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "Quantile Delta Mapping"
+    )
     if (!identical(resolved$mapping_type, "nonparametric")) {
         cli::cli_abort(
             "Quantile Delta Mapping currently supports only nonparametric mapping."
@@ -148,49 +135,39 @@ qdm__settings <- function(settings) {
             "Quantile Delta Mapping currently requires linear empirical CDF interpolation, type-7 inverse quantiles, average-rank ties, and future-window endpoint support."
         )
     }
-    checkmate::assert_integerish(
+    resolved$seasonal_window_days <- signal__integer_setting(
         resolved$seasonal_window_days,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "seasonal_window_days",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$future_window_years <- signal__integer_setting(
         resolved$future_window_years,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "future_window_years",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$target_year_days <- signal__integer_setting(
         resolved$target_year_days,
-        lower = 3L,
-        len = 1L,
-        any.missing = FALSE
+        "target_year_days",
+        lower = 3L
     )
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
     daily__window_spec(
-        as.integer(resolved$seasonal_window_days),
-        as.integer(resolved$target_year_days)
+        resolved$seasonal_window_days,
+        resolved$target_year_days
     )
     if (resolved$future_window_years %% 2L != 1L) {
         cli::cli_abort(
             "Quantile Delta Mapping requires an odd `future_window_years` for a symmetric centered window."
         )
     }
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "Quantile Delta Mapping bounds must be ordered from lower to upper."
     )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "Quantile Delta Mapping bounds must be ordered from lower to upper."
-        )
-    }
     checkmate::assert_choice(
         resolved$distribution_model,
         c("continuous", "precipitation_censored")
@@ -221,23 +198,7 @@ qdm__settings <- function(settings) {
             "Quantile Delta Mapping currently requires `zero_denominator_policy = \"error\"`."
         )
     }
-    checkmate::assert_integerish(
-        resolved$random_seed,
-        lower = 0,
-        upper = .Machine$integer.max - 1L,
-        len = 1L,
-        any.missing = FALSE
-    )
-
-    resolved$seasonal_window_days <- as.integer(
-        resolved$seasonal_window_days
-    )
-    resolved$future_window_years <- as.integer(
-        resolved$future_window_years
-    )
-    resolved$target_year_days <- as.integer(resolved$target_year_days)
-    resolved$min_samples <- as.integer(resolved$min_samples)
-    resolved$random_seed <- as.integer(resolved$random_seed)
+    resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
 
@@ -301,19 +262,6 @@ qdm__future_year_window <- function(year, center, width) {
     year >= center - half_width & year <= center + half_width
 }
 
-# Replace censored precipitation values with deterministic positive uniforms
-# below the trace threshold, following the published dry-day treatment.
-qdm__randomize_censored <- function(values, threshold, uniform) {
-    censored <- values <= threshold
-    randomized <- as.numeric(values)
-    randomized[censored] <- uniform[censored] * threshold
-    list(
-        value = randomized,
-        censored = censored,
-        randomized_values = sum(censored)
-    )
-}
-
 # Preprocess each role once so a source row receives one reproducible censored
 # value even when it contributes to several overlapping QDM windows.
 qdm__prepared_values <- function(series, resolved, key, variable) {
@@ -327,34 +275,20 @@ qdm__prepared_values <- function(series, resolved, key, variable) {
         ))
     }
 
-    values <- vector("list", length(series))
-    names(values) <- names(series)
-    randomized <- integer(length(series))
-    names(randomized) <- names(series)
-    seeds <- integer(length(series))
-    names(seeds) <- names(series)
-    for (role in names(series)) {
-        role_key <- c(key, list(input_role = role))
-        seeds[[role]] <- quantile__group_seed(
-            resolved$random_seed,
-            role_key,
-            variable
-        )
-        uniform <- quantile__uniform(nrow(series[[role]]), seeds[[role]])
-        prepared <- qdm__randomize_censored(
-            series[[role]][["value"]],
-            resolved$dry_threshold,
-            uniform
-        )
-        values[[role]] <- prepared$value
-        randomized[[role]] <- prepared$randomized_values
-    }
+    randomized <- signal__randomize_threshold_values(
+        series,
+        resolved$random_seed,
+        key,
+        variable,
+        resolved$dry_threshold,
+        inclusive = TRUE
+    )
     list(
-        values = values,
+        values = randomized$values,
         precipitation = list(
-            input_censored_values = randomized,
+            input_censored_values = randomized$counts,
             random_seed = resolved$random_seed,
-            effective_seeds = seeds,
+            effective_seeds = randomized$seeds,
             random_generator = "park_miller_16807",
             dry_threshold = resolved$dry_threshold
         )

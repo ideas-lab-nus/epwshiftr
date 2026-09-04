@@ -195,15 +195,6 @@ isimip__profiles <- function() {
 # Validate the complete method schema so partial overrides cannot silently
 # change the official application semantics or create invalid threshold pairs.
 isimip__settings <- function(settings) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
-        cli::cli_abort(
-            "ISIMIP3BASD requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
     expected <- c(
         "method_version",
         "seasonal_grouping",
@@ -234,15 +225,11 @@ isimip__settings <- function(settings) {
         "fit_tolerance",
         "fit_max_iterations"
     )
-    missing <- setdiff(expected, names(resolved))
-    unexpected <- setdiff(names(resolved), expected)
-    if (length(missing) || length(unexpected)) {
-        cli::cli_abort(c(
-            "ISIMIP3BASD settings must use the complete supported schema.",
-            "x" = "Missing setting(s): {.val {missing}}.",
-            "x" = "Unexpected setting(s): {.val {unexpected}}."
-        ))
-    }
+    resolved <- signal__resolve_settings(
+        settings,
+        expected,
+        "ISIMIP3BASD"
+    )
     if (!identical(resolved$method_version, "3.0.x") ||
         !identical(
             resolved$seasonal_grouping,
@@ -254,43 +241,38 @@ isimip__settings <- function(settings) {
             "ISIMIP3BASD currently implements the 3.0.x one-day circular-window application without event-likelihood adjustment."
         )
     }
-    checkmate::assert_integerish(
+    resolved$running_window_days <- signal__integer_setting(
         resolved$running_window_days,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "running_window_days",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$target_year_days <- signal__integer_setting(
         resolved$target_year_days,
-        lower = 3L,
-        len = 1L,
-        any.missing = FALSE
+        "target_year_days",
+        lower = 3L
     )
-    checkmate::assert_integerish(
+    resolved$upper_bound_window_days <- signal__integer_setting(
         resolved$upper_bound_window_days,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "upper_bound_window_days",
+        lower = 1L
     )
     daily__window_spec(
-        as.integer(resolved$running_window_days),
-        as.integer(resolved$target_year_days)
+        resolved$running_window_days,
+        resolved$target_year_days
     )
     daily__window_spec(
-        as.integer(resolved$upper_bound_window_days),
-        as.integer(resolved$target_year_days)
+        resolved$upper_bound_window_days,
+        resolved$target_year_days
     )
-    checkmate::assert_integerish(
+    resolved$n_quantiles <- signal__integer_setting(
         resolved$n_quantiles,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "n_quantiles",
+        lower = 1L
     )
-    checkmate::assert_integerish(
+    resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
-        lower = 2L,
-        len = 1L,
-        any.missing = FALSE
+        "min_samples",
+        lower = 2L
     )
     checkmate::assert_choice(
         resolved$mapping_model,
@@ -300,14 +282,11 @@ isimip__settings <- function(settings) {
         resolved$trend_preservation,
         c("additive", "multiplicative", "mixed", "bounded")
     )
-    checkmate::assert_numeric(
+    signal__ordered_bounds(
         resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
+        "ISIMIP3BASD bounds must be strictly ordered.",
+        strict = TRUE
     )
-    if (resolved$bounds[[1L]] >= resolved$bounds[[2L]]) {
-        cli::cli_abort("ISIMIP3BASD bounds must be strictly ordered.")
-    }
 
     lower <- resolved$lower_threshold
     upper <- resolved$upper_threshold
@@ -424,33 +403,12 @@ isimip__settings <- function(settings) {
         upper = 1,
         finite = TRUE
     )
-    checkmate::assert_integerish(
-        resolved$random_seed,
-        lower = 0,
-        upper = .Machine$integer.max - 1L,
-        len = 1L,
-        any.missing = FALSE
-    )
-    checkmate::assert_integerish(
+    resolved$random_seed <- signal__random_seed(resolved$random_seed)
+    resolved$fit_max_iterations <- signal__integer_setting(
         resolved$fit_max_iterations,
-        lower = 1L,
-        len = 1L,
-        any.missing = FALSE
+        "fit_max_iterations",
+        lower = 1L
     )
-
-    integer_names <- c(
-        "running_window_days",
-        "running_window_step_days",
-        "target_year_days",
-        "n_quantiles",
-        "upper_bound_window_days",
-        "min_samples",
-        "random_seed",
-        "fit_max_iterations"
-    )
-    for (name in integer_names) {
-        resolved[[name]] <- as.integer(resolved[[name]])
-    }
     resolved
 }
 
