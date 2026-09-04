@@ -1082,6 +1082,69 @@ test_that("EsgResult$repair_urls() keeps original records when repair is impossi
 })
 # }}}
 # EsgResult$filter_time() {{{
+test_that("time-range helpers normalize columns and preserve paired fallback", {
+    short <- list(datetime_start = "2050-01-01T00:00:00Z")
+    expect_identical(
+        query_result__character_column(short, "datetime_start", 3L),
+        c("2050-01-01T00:00:00Z", NA_character_, NA_character_)
+    )
+    expect_identical(
+        query_result__character_column(short, "datetime_end", 3L),
+        rep(NA_character_, 3L)
+    )
+
+    docs <- data.frame(
+        datetime_start = c(
+            "2040-01-01T00:00:00Z",
+            "2059-06-01T00:00:00Z",
+            NA_character_
+        ),
+        datetime_end = c(
+            "2040-12-31T23:59:59Z",
+            NA_character_,
+            NA_character_
+        ),
+        check.names = FALSE
+    )
+    calls <- new.env(parent = emptyenv())
+    calls$count <- 0L
+    ranges <- query_result__fill_time_ranges(docs, function() {
+        calls$count <- calls$count + 1L
+        c(
+            "tas_day_Model_x_20400101-20401231.nc",
+            "tas_day_Model_x_20500101-20501231.nc",
+            "tas_day_Model_x_unknown.nc"
+        )
+    })
+
+    expect_identical(calls$count, 1L)
+    expect_s3_class(ranges$datetime_start, "POSIXct")
+    expect_identical(
+        format(ranges$datetime_start[[1L]], "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        "2040-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(ranges$datetime_start[[2L]], "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        "2050-01-01T00:00:00Z"
+    )
+    expect_identical(
+        format(ranges$datetime_end[[2L]], "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        "2050-12-31T23:59:59Z"
+    )
+    expect_true(is.na(ranges$datetime_start[[3L]]))
+    expect_true(is.na(ranges$datetime_end[[3L]]))
+
+    complete <- docs[1L, , drop = FALSE]
+    untouched <- expect_silent(query_result__fill_time_ranges(
+        complete,
+        function() stop("complete metadata must not resolve labels")
+    ))
+    expect_identical(
+        format(untouched$datetime_start, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        "2040-01-01T00:00:00Z"
+    )
+})
+
 test_that("EsgResult$filter_time() filters File and Aggregation results using DRS filename ranges", {
     for (type in c("File", "Aggregation")) {
         result <- query_result_test_object(type, query_result_test_file_time_docs(type), query_result_test_params(type))

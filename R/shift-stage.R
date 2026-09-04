@@ -6571,35 +6571,19 @@ shift__catalog_fill_time_ranges <- function(catalog) {
         return(catalog)
     }
     n <- nrow(catalog)
-    # Normalize a potentially absent catalog column to one scalar per record.
-    column <- function(name) {
-        value <- catalog[[name]]
-        if (is.null(value)) {
-            return(rep(NA_character_, n))
-        }
-        value <- as.character(value)
-        if (length(value) < n) {
-            value <- c(value, rep(NA_character_, n - length(value)))
-        }
-        value[seq_len(n)]
-    }
-    start <- solrdate__parse(column("datetime_start"), tz = "UTC")
-    end <- solrdate__parse(column("datetime_end"), tz = "UTC")
-    missing <- is.na(start) | is.na(end)
-    if (any(missing)) {
-        labels <- column("title")
-        fallback <- column("filename")
+    ranges <- query_result__fill_time_ranges(catalog, function() {
+        labels <- query_result__character_column(catalog, "title", n)
+        fallback <- query_result__character_column(catalog, "filename", n)
         labels[is.na(labels) | !nzchar(labels)] <-
             fallback[is.na(labels) | !nzchar(labels)]
-        fallback <- column("esgf_id")
+        fallback <- query_result__character_column(catalog, "esgf_id", n)
         labels[is.na(labels) | !nzchar(labels)] <-
             fallback[is.na(labels) | !nzchar(labels)]
-        ranges <- query_result__drs_ranges(labels)
-        start[missing] <- ranges$datetime_start[missing]
-        end[missing] <- ranges$datetime_end[missing]
-    }
-    catalog[["datetime_start"]] <- query_result__time_iso(start)
-    catalog[["datetime_end"]] <- query_result__time_iso(end)
+        labels
+    })
+    catalog[["datetime_start"]] <-
+        query_result__time_iso(ranges$datetime_start)
+    catalog[["datetime_end"]] <- query_result__time_iso(ranges$datetime_end)
     catalog[]
 }
 
