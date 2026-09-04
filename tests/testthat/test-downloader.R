@@ -602,6 +602,88 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
 })
 # }}}
+# downloader__worker_dependencies() {{{
+test_that("serialized downloader worker dependencies support both worker algorithms", {
+    root <- tempfile("downloader-worker-dependencies-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "tmp")
+    src <- file.path(root, "source.bin")
+    bytes <- as.raw(seq_len(64L) - 1L)
+    writeBin(bytes, src)
+    checksum <- as.character(tools::md5sum(src))
+    file_url <- paste0("file://", normalizePath(src, winslash = "/"))
+
+    dependencies <- unserialize(serialize(downloader__worker_dependencies(), NULL))
+    expect_named(
+        dependencies,
+        c(
+            "as_df", "one_chr", "normalize_count", "normalize_transfer_policy",
+            "checksum_file", "verify_checksum", "null_if_empty", "curl_handle",
+            "format_byte", "headers_text", "resume_supported", "copy_file_range",
+            "merge_piece_files", "target_path", "finalize"
+        )
+    )
+    expect_true(dependencies$verify_checksum(src, checksum, "md5"))
+
+    ordinary <- downloader__worker_download(
+        url = file_url,
+        filename = "ordinary.bin",
+        subdir = NULL,
+        dest = dest,
+        temp = temp,
+        retries = 1L,
+        timeout = 30L,
+        overwrite = FALSE,
+        checksum = checksum,
+        checksum_type = "md5",
+        resume = TRUE,
+        tmp_id = "ordinary",
+        transfer_policy = list(chunk_size = 16L),
+        worker_dependencies = dependencies
+    )
+    expect_true(ordinary$ok)
+    expect_identical(readBin(ordinary$path, "raw", n = 64L), bytes)
+
+    pieces <- data.frame(
+        piece_index = 1L,
+        start_byte = 0,
+        end_byte = 63,
+        byte_count = 64,
+        path = file.path(temp, "segmented.pieces", "piece-1.part"),
+        status = "pending",
+        attempts = 0L,
+        bytes_done = 0,
+        last_error = NA_character_,
+        candidate_id = "candidate-1",
+        stringsAsFactors = FALSE
+    )
+    segmented <- downloader__worker_segmented_download(
+        candidates = data.frame(
+            candidate_id = "candidate-1",
+            url = file_url,
+            stringsAsFactors = FALSE
+        ),
+        pieces = pieces,
+        filename = "segmented.bin",
+        subdir = NULL,
+        dest = dest,
+        temp = temp,
+        retries = 1L,
+        timeout = 30L,
+        overwrite = FALSE,
+        checksum = checksum,
+        checksum_type = "md5",
+        tmp_id = "segmented",
+        transfer_policy = list(chunk_size = 16L, piece_concurrency = 1L),
+        mode_used = "single",
+        worker_dependencies = dependencies
+    )
+    expect_true(segmented$ok)
+    expect_identical(readBin(segmented$path, "raw", n = 64L), bytes)
+})
+# }}}
 # downloader__range_probe_url() {{{
 test_that("downloader__range_probe_url() probes local files", {
     root <- tempfile("downloader-range-")

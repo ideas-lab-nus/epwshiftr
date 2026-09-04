@@ -752,112 +752,52 @@ downloader__range_probe_url <- function(url, timeout = 30L, connect_timeout = NU
     )
 }
 
-downloader__copy_file_range <- function(url, start_byte, byte_count, path, chunk_size = 1024L^2L) {
-    src <- sub("^file://", "", url, ignore.case = TRUE)
-    src <- utils::URLdecode(src)
-    if (!file.exists(src)) {
-        stop(sprintf("Local source file does not exist: %s", src), call. = FALSE)
-    }
-    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    tmp <- paste0(path, ".part")
-    in_con <- file(src, "rb")
-    on.exit(close(in_con), add = TRUE)
-    out_con <- file(tmp, "wb")
-    on.exit(close(out_con), add = TRUE)
-    seek(in_con, where = start_byte, origin = "start")
-    remaining <- as.numeric(byte_count)
-    while (remaining > 0) {
-        n <- min(chunk_size, remaining)
-        chunk <- readBin(in_con, "raw", n = as.integer(n))
-        if (!length(chunk)) {
-            break
-        }
-        writeBin(chunk, out_con)
-        remaining <- remaining - length(chunk)
-    }
-    close(out_con)
-    on.exit(NULL, add = FALSE)
-    close(in_con)
-    size <- if (file.exists(tmp)) as.numeric(file.info(tmp, extra_cols = FALSE)$size) else NA_real_
-    if (!identical(size, as.numeric(byte_count))) {
-        unlink(tmp)
-        stop("Local range read produced an unexpected byte count.", call. = FALSE)
-    }
-    if (file.exists(path)) {
-        unlink(path)
-    }
-    if (!file.rename(tmp, path)) {
-        file.copy(tmp, path, overwrite = TRUE)
-        unlink(tmp)
-    }
-    invisible(path)
-}
-
-downloader__merge_piece_files <- function(pieces, tmp_done, chunk_size = 1024L^2L) {
-    pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
-    dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
-    tmp_merge <- paste0(tmp_done, ".merge")
-    out_con <- file(tmp_merge, "wb")
-    on.exit(close(out_con), add = TRUE)
-    for (i in seq_len(nrow(pieces))) {
-        path <- pieces$path[[i]]
-        in_con <- file(path, "rb")
-        on.exit(close(in_con), add = TRUE)
-        repeat {
-            chunk <- readBin(in_con, "raw", n = as.integer(chunk_size))
-            if (!length(chunk)) {
-                break
-            }
-            writeBin(chunk, out_con)
-        }
-        close(in_con)
-    }
-    close(out_con)
-    on.exit(NULL)
-    if (file.exists(tmp_done)) {
-        unlink(tmp_done)
-    }
-    if (!file.rename(tmp_merge, tmp_done)) {
-        file.copy(tmp_merge, tmp_done, overwrite = TRUE)
-        unlink(tmp_merge)
-    }
-    invisible(tmp_done)
-}
-
-downloader__worker_segmented_download <- function(candidates, pieces, filename, subdir,
-                                                  dest, temp, retries, timeout,
-                                                  overwrite, checksum, checksum_type,
-                                                  tmp_id, ssl_verifypeer = TRUE,
-                                                  proxy = NULL, connect_timeout = NULL,
-                                                  useragent = NULL,
-                                                  transfer_policy = NULL,
-                                                  mode_used = "single") {
+# Build the self-contained helper bundle serialized with downloader worker tasks.
+downloader__worker_dependencies <- function() {
+    # Normalize tabular worker inputs without requiring package helpers.
     as_df <- function(x) {
         as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
     }
+
+    # Read one usable scalar string from worker input or return a missing value.
     one_chr <- function(x) {
-        if (is.null(x) || !length(x)) return(NA_character_)
+        if (is.null(x) || !length(x)) {
+            return(NA_character_)
+        }
         value <- as.character(x[[1L]])
         if (is.na(value) || !nzchar(value)) NA_character_ else value
     }
+
+    # Normalize optional numeric transfer settings inside an isolated process.
     normalize_count <- function(x) {
-        if (is.null(x) || length(x) == 0L || is.na(x)) return(NULL)
+        if (is.null(x) || length(x) == 0L || is.na(x)) {
+            return(NULL)
+        }
         as.numeric(x)
     }
-    normalize_transfer_policy <- function(policy) {
-        if (is.null(policy)) policy <- list()
-        piece_concurrency <- normalize_count(policy$piece_concurrency)
-        if (is.null(piece_concurrency)) {
-            piece_concurrency <- 1L
+
+    # Resolve the common worker transfer settings and optional piece concurrency.
+    normalize_transfer_policy <- function(policy, include_piece_concurrency = FALSE) {
+        if (is.null(policy)) {
+            policy <- list()
         }
-        list(
+        out <- list(
             chunk_size = normalize_count(policy$chunk_size),
             bandwidth_limit = normalize_count(policy$bandwidth_limit),
             low_speed_limit = normalize_count(policy$low_speed_limit),
-            low_speed_time = normalize_count(policy$low_speed_time),
-            piece_concurrency = max(1L, as.integer(piece_concurrency))
+            low_speed_time = normalize_count(policy$low_speed_time)
         )
+        if (isTRUE(include_piece_concurrency)) {
+            piece_concurrency <- normalize_count(policy$piece_concurrency)
+            if (is.null(piece_concurrency)) {
+                piece_concurrency <- 1L
+            }
+            out$piece_concurrency <- max(1L, as.integer(piece_concurrency))
+        }
+        out
     }
+
+    # Calculate the checksum algorithms accepted by downloader workers.
     checksum_file <- function(path, algo = "sha256") {
         out <- if (identical(algo, "sha256")) {
             tools::sha256sum(path)
@@ -866,6 +806,8 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
         }
         unname(as.character(out))
     }
+
+    # Treat an absent checksum as valid and otherwise verify the completed file.
     verify_checksum <- function(path, expected, algo = "sha256") {
         if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
             return(TRUE)
@@ -875,34 +817,95 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
         }
         identical(tolower(checksum_file(path, algo)), tolower(expected))
     }
+
+    # Convert empty optional worker settings to NULL before curl configuration.
     null_if_empty <- function(x) {
-        if (is.null(x)) return(NULL)
-        if (length(x) == 0L || is.na(x) || !nzchar(x)) return(NULL)
+        if (is.null(x)) {
+            return(NULL)
+        }
+        if (length(x) == 0L || is.na(x) || !nzchar(x)) {
+            return(NULL)
+        }
         x
     }
+
+    # Create a curl handle from the normalized transfer policy used by either worker.
     curl_handle <- function(timeout, connect_timeout, ssl_verifypeer, proxy, useragent,
-                            transfer_policy) {
+                            transfer_policy, nobody = FALSE) {
         handle <- curl::new_handle()
         opts <- list(
             timeout = timeout,
             followlocation = TRUE,
             ssl_verifypeer = isTRUE(ssl_verifypeer)
         )
-        if (!is.null(connect_timeout)) opts$connecttimeout <- connect_timeout
+        if (!is.null(connect_timeout)) {
+            opts$connecttimeout <- connect_timeout
+        }
         proxy <- null_if_empty(proxy)
-        if (!is.null(proxy)) opts$proxy <- proxy
+        if (!is.null(proxy)) {
+            opts$proxy <- proxy
+        }
         useragent <- null_if_empty(useragent)
-        if (!is.null(useragent)) opts$useragent <- useragent
-        if (!is.null(transfer_policy$chunk_size)) opts$buffersize <- as.integer(transfer_policy$chunk_size)
-        if (!is.null(transfer_policy$bandwidth_limit)) opts$max_recv_speed_large <- as.numeric(transfer_policy$bandwidth_limit)
-        if (!is.null(transfer_policy$low_speed_limit)) opts$low_speed_limit <- as.integer(transfer_policy$low_speed_limit)
-        if (!is.null(transfer_policy$low_speed_time)) opts$low_speed_time <- as.integer(transfer_policy$low_speed_time)
+        if (!is.null(useragent)) {
+            opts$useragent <- useragent
+        }
+        if (!is.null(transfer_policy$chunk_size)) {
+            opts$buffersize <- as.integer(transfer_policy$chunk_size)
+        }
+        if (!is.null(transfer_policy$bandwidth_limit)) {
+            opts$max_recv_speed_large <- as.numeric(transfer_policy$bandwidth_limit)
+        }
+        if (!is.null(transfer_policy$low_speed_limit)) {
+            opts$low_speed_limit <- as.integer(transfer_policy$low_speed_limit)
+        }
+        if (!is.null(transfer_policy$low_speed_time)) {
+            opts$low_speed_time <- as.integer(transfer_policy$low_speed_time)
+        }
+        if (isTRUE(nobody)) {
+            opts$nobody <- TRUE
+        }
         do.call(curl::handle_setopt, c(list(handle = handle), opts))
         handle
     }
+
+    # Format byte offsets without scientific notation for HTTP Range headers.
     format_byte <- function(x) {
         format(as.numeric(x), scientific = FALSE, trim = TRUE)
     }
+
+    # Convert raw or character response headers to searchable text.
+    headers_text <- function(headers) {
+        if (is.raw(headers)) {
+            return(rawToChar(headers))
+        }
+        paste(headers, collapse = "\n")
+    }
+
+    # Confirm that an interrupted HTTP transfer can resume at the requested byte.
+    resume_supported <- function(url, start_byte, timeout, connect_timeout,
+                                 ssl_verifypeer, proxy, useragent, transfer_policy) {
+        if (start_byte <= 0 || !grepl("^https?://", url)) {
+            return(TRUE)
+        }
+        handle <- curl_handle(
+            timeout = min(timeout, 30L),
+            connect_timeout = connect_timeout,
+            ssl_verifypeer = ssl_verifypeer,
+            proxy = proxy,
+            useragent = useragent,
+            transfer_policy = transfer_policy,
+            nobody = TRUE
+        )
+        curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
+        response <- tryCatch(curl::curl_fetch_memory(url, handle = handle), error = function(e) NULL)
+        if (is.null(response) || !identical(as.integer(response$status_code), 206L)) {
+            return(FALSE)
+        }
+        pattern <- sprintf("content-range:[[:space:]]*bytes[[:space:]]+%d-", as.integer(start_byte))
+        grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
+    }
+
+    # Copy one byte range from a local file URL into an atomic piece file.
     copy_file_range <- function(url, start_byte, byte_count, path, chunk_size = 1024L^2L) {
         src <- sub("^file://", "", url, ignore.case = TRUE)
         src <- utils::URLdecode(src)
@@ -943,6 +946,8 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
         }
         invisible(path)
     }
+
+    # Merge completed piece files in byte-range order into one atomic result.
     merge_piece_files <- function(pieces, tmp_done, chunk_size = 1024L^2L) {
         pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
         dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
@@ -973,21 +978,17 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
         invisible(tmp_done)
     }
 
-    candidates <- as_df(candidates)
-    pieces <- as_df(pieces)
-    if (!nrow(candidates) || !nrow(pieces)) {
-        return(list(ok = FALSE, error = "No range candidates or pieces are available."))
+    # Resolve the final download target from its optional relative subdirectory.
+    target_path <- function(dest, subdir, filename) {
+        if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
+            file.path(dest, filename)
+        } else {
+            file.path(dest, subdir, filename)
+        }
     }
-    transfer_policy <- normalize_transfer_policy(transfer_policy)
-    checksum <- if (is.null(checksum) || is.na(checksum) || !nzchar(checksum)) NULL else checksum
-    target_path <- if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
-        file.path(dest, filename)
-    } else {
-        file.path(dest, subdir, filename)
-    }
-    tmp_done <- file.path(temp, paste0(tmp_id, ".done"))
 
-    finalize <- function() {
+    # Move a verified temporary file into place with a copy fallback across filesystems.
+    finalize <- function(tmp_done, target_path) {
         dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
         renamed <- tryCatch(file.rename(tmp_done, target_path), error = function(e) FALSE)
         if (!isTRUE(renamed)) {
@@ -996,11 +997,65 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
         }
         normalizePath(target_path, mustWork = TRUE, winslash = "/")
     }
+
+    list(
+        as_df = as_df,
+        one_chr = one_chr,
+        normalize_count = normalize_count,
+        normalize_transfer_policy = normalize_transfer_policy,
+        checksum_file = checksum_file,
+        verify_checksum = verify_checksum,
+        null_if_empty = null_if_empty,
+        curl_handle = curl_handle,
+        format_byte = format_byte,
+        headers_text = headers_text,
+        resume_supported = resume_supported,
+        copy_file_range = copy_file_range,
+        merge_piece_files = merge_piece_files,
+        target_path = target_path,
+        finalize = finalize
+    )
+}
+
+downloader__worker_segmented_download <- function(candidates, pieces, filename, subdir,
+                                                  dest, temp, retries, timeout,
+                                                  overwrite, checksum, checksum_type,
+                                                  tmp_id, ssl_verifypeer = TRUE,
+                                                  proxy = NULL, connect_timeout = NULL,
+                                                  useragent = NULL,
+                                                  transfer_policy = NULL,
+                                                  mode_used = "single",
+                                                  worker_dependencies = NULL) {
+    if (is.null(worker_dependencies)) {
+        worker_dependencies <- downloader__worker_dependencies()
+    }
+    # Bind serialized helpers locally so the worker algorithm stays readable.
+    as_df <- worker_dependencies$as_df
+    one_chr <- worker_dependencies$one_chr
+    normalize_transfer_policy <- worker_dependencies$normalize_transfer_policy
+    checksum_file <- worker_dependencies$checksum_file
+    verify_checksum <- worker_dependencies$verify_checksum
+    curl_handle <- worker_dependencies$curl_handle
+    format_byte <- worker_dependencies$format_byte
+    copy_file_range <- worker_dependencies$copy_file_range
+    merge_piece_files <- worker_dependencies$merge_piece_files
+
+    candidates <- as_df(candidates)
+    pieces <- as_df(pieces)
+    if (!nrow(candidates) || !nrow(pieces)) {
+        return(list(ok = FALSE, error = "No range candidates or pieces are available."))
+    }
+    transfer_policy <- normalize_transfer_policy(transfer_policy, include_piece_concurrency = TRUE)
+    checksum <- worker_dependencies$null_if_empty(checksum)
+    target_path <- worker_dependencies$target_path(dest, subdir, filename)
+    tmp_done <- file.path(temp, paste0(tmp_id, ".done"))
+
     if (file.exists(target_path) && !isTRUE(overwrite) && verify_checksum(target_path, checksum, checksum_type)) {
         return(list(ok = TRUE, path = normalizePath(target_path, mustWork = TRUE, winslash = "/"), pieces = pieces, mode_used = mode_used))
     }
     if (file.exists(tmp_done) && verify_checksum(tmp_done, checksum, checksum_type)) {
-        return(list(ok = TRUE, path = finalize(), pieces = pieces, mode_used = mode_used))
+        path <- worker_dependencies$finalize(tmp_done, target_path)
+        return(list(ok = TRUE, path = path, pieces = pieces, mode_used = mode_used))
     }
 
     valid_piece <- function(row) {
@@ -1220,7 +1275,7 @@ downloader__worker_segmented_download <- function(candidates, pieces, filename, 
             mode_used = mode_used
         ))
     }
-    path <- finalize()
+    path <- worker_dependencies$finalize(tmp_done, target_path)
     list(
         ok = TRUE,
         path = path,
@@ -1235,95 +1290,17 @@ downloader__worker_download <- function(url, filename, subdir, dest, temp, retri
                                      overwrite, checksum, checksum_type, resume, tmp_id,
                                      ssl_verifypeer = TRUE, proxy = NULL,
                                      connect_timeout = NULL, useragent = NULL,
-                                     transfer_policy = NULL) {
-    checksum_file <- function(path, algo = "sha256") {
-        out <- if (identical(algo, "sha256")) {
-            tools::sha256sum(path)
-        } else {
-            tools::md5sum(path)
-        }
-        unname(as.character(out))
+                                     transfer_policy = NULL,
+                                     worker_dependencies = NULL) {
+    if (is.null(worker_dependencies)) {
+        worker_dependencies <- downloader__worker_dependencies()
     }
-    downloader__worker_verify_checksum <- function(path, expected, algo = "sha256") {
-        if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
-            return(TRUE)
-        }
-        if (!file.exists(path)) {
-            return(FALSE)
-        }
-        identical(tolower(checksum_file(path, algo)), tolower(expected))
-    }
-    finalize <- function(tmp_done, dest) {
-        dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
-        renamed <- tryCatch(file.rename(tmp_done, dest), error = function(e) FALSE)
-        if (!isTRUE(renamed)) {
-            file.copy(tmp_done, dest, overwrite = TRUE)
-            unlink(tmp_done)
-        }
-        normalizePath(dest, mustWork = TRUE, winslash = "/")
-    }
-    null_if_empty <- function(x) {
-        if (is.null(x)) return(NULL)
-        if (length(x) == 0L || is.na(x) || !nzchar(x)) return(NULL)
-        x
-    }
-    normalize_count <- function(x) {
-        if (is.null(x) || length(x) == 0L || is.na(x)) return(NULL)
-        as.numeric(x)
-    }
-    normalize_transfer_policy <- function(policy) {
-        if (is.null(policy)) policy <- list()
-        list(
-            chunk_size = normalize_count(policy$chunk_size),
-            bandwidth_limit = normalize_count(policy$bandwidth_limit),
-            low_speed_limit = normalize_count(policy$low_speed_limit),
-            low_speed_time = normalize_count(policy$low_speed_time)
-        )
-    }
-    curl_handle <- function(timeout, connect_timeout, ssl_verifypeer, proxy, useragent,
-                            transfer_policy, nobody = FALSE) {
-        handle <- curl::new_handle()
-        opts <- list(
-            timeout = timeout,
-            followlocation = TRUE,
-            ssl_verifypeer = isTRUE(ssl_verifypeer)
-        )
-        if (!is.null(connect_timeout)) opts$connecttimeout <- connect_timeout
-        proxy <- null_if_empty(proxy)
-        if (!is.null(proxy)) opts$proxy <- proxy
-        useragent <- null_if_empty(useragent)
-        if (!is.null(useragent)) opts$useragent <- useragent
-        if (!is.null(transfer_policy$chunk_size)) opts$buffersize <- as.integer(transfer_policy$chunk_size)
-        if (!is.null(transfer_policy$bandwidth_limit)) opts$max_recv_speed_large <- as.numeric(transfer_policy$bandwidth_limit)
-        if (!is.null(transfer_policy$low_speed_limit)) opts$low_speed_limit <- as.integer(transfer_policy$low_speed_limit)
-        if (!is.null(transfer_policy$low_speed_time)) opts$low_speed_time <- as.integer(transfer_policy$low_speed_time)
-        if (isTRUE(nobody)) opts$nobody <- TRUE
-        do.call(curl::handle_setopt, c(list(handle = handle), opts))
-        handle
-    }
-    resume_supported <- function(url, start_byte, timeout, connect_timeout, ssl_verifypeer,
-                                 proxy, useragent, transfer_policy) {
-        if (start_byte <= 0 || !grepl("^https?://", url)) {
-            return(TRUE)
-        }
-        handle <- curl_handle(
-            timeout = min(timeout, 30L),
-            connect_timeout = connect_timeout,
-            ssl_verifypeer = ssl_verifypeer,
-            proxy = proxy,
-            useragent = useragent,
-            transfer_policy = transfer_policy,
-            nobody = TRUE
-        )
-        curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
-        response <- tryCatch(curl::curl_fetch_memory(url, handle = handle), error = function(e) NULL)
-        if (is.null(response) || !identical(as.integer(response$status_code), 206L)) {
-            return(FALSE)
-        }
-        headers <- if (is.raw(response$headers)) rawToChar(response$headers) else paste(response$headers, collapse = "\n")
-        pattern <- sprintf("content-range:[[:space:]]*bytes[[:space:]]+%d-", as.integer(start_byte))
-        grepl(pattern, tolower(headers), perl = TRUE)
-    }
+    # Bind serialized helpers locally while retaining the ordinary stream algorithm.
+    checksum_file <- worker_dependencies$checksum_file
+    verify_checksum <- worker_dependencies$verify_checksum
+    normalize_transfer_policy <- worker_dependencies$normalize_transfer_policy
+    curl_handle <- worker_dependencies$curl_handle
+    resume_supported <- worker_dependencies$resume_supported
     stream <- function(url, tmp_part, tmp_done, timeout, start_byte,
                        connect_timeout, ssl_verifypeer, proxy, useragent,
                        transfer_policy) {
@@ -1366,21 +1343,17 @@ downloader__worker_download <- function(url, filename, subdir, dest, temp, retri
         invisible(tmp_done)
     }
 
-    if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
-        target_path <- file.path(dest, filename)
-    } else {
-        target_path <- file.path(dest, subdir, filename)
-    }
+    target_path <- worker_dependencies$target_path(dest, subdir, filename)
     tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
     tmp_done <- file.path(temp, paste0(tmp_id, ".done"))
-    checksum <- if (is.null(checksum) || is.na(checksum) || !nzchar(checksum)) NULL else checksum
+    checksum <- worker_dependencies$null_if_empty(checksum)
 
     if (file.exists(target_path) && !isTRUE(overwrite) &&
-        downloader__worker_verify_checksum(target_path, checksum, checksum_type)) {
+        verify_checksum(target_path, checksum, checksum_type)) {
         return(list(ok = TRUE, path = normalizePath(target_path, mustWork = TRUE, winslash = "/")))
     }
-    if (file.exists(tmp_done) && downloader__worker_verify_checksum(tmp_done, checksum, checksum_type)) {
-        path <- finalize(tmp_done, target_path)
+    if (file.exists(tmp_done) && verify_checksum(tmp_done, checksum, checksum_type)) {
+        path <- worker_dependencies$finalize(tmp_done, target_path)
         return(list(ok = TRUE, path = path))
     }
 
@@ -1420,8 +1393,8 @@ downloader__worker_download <- function(url, filename, subdir, dest, temp, retri
             }
         )
         if (ok) {
-            if (downloader__worker_verify_checksum(tmp_done, checksum, checksum_type)) {
-                path <- finalize(tmp_done, target_path)
+            if (verify_checksum(tmp_done, checksum, checksum_type)) {
+                path <- worker_dependencies$finalize(tmp_done, target_path)
                 return(list(ok = TRUE, path = path))
             }
 
@@ -5207,7 +5180,8 @@ Downloader <- R6::R6Class("Downloader",
                 connect_timeout = private$connect_timeout,
                 useragent = private$useragent,
                 transfer_policy = private$transfer_policy_config,
-                mode_used = attempt$mode_used
+                mode_used = attempt$mode_used,
+                worker_dependencies = downloader__worker_dependencies()
             )
             if (!is.null(result$pieces)) {
                 private$update_piece_results(result$pieces)
@@ -5502,7 +5476,8 @@ Downloader <- R6::R6Class("Downloader",
                                 connect_timeout = connect_timeout,
                                 useragent = useragent,
                                 transfer_policy = transfer_policy,
-                                mode_used = segmented_mode
+                                mode_used = segmented_mode,
+                                worker_dependencies = worker_dependencies
                             )
                         } else {
                             worker_fun(
@@ -5522,7 +5497,8 @@ Downloader <- R6::R6Class("Downloader",
                                 proxy = proxy,
                                 connect_timeout = connect_timeout,
                                 useragent = useragent,
-                                transfer_policy = transfer_policy
+                                transfer_policy = transfer_policy,
+                                worker_dependencies = worker_dependencies
                             )
                         },
                         error = function(e) list(ok = FALSE, error = conditionMessage(e))
@@ -5530,6 +5506,7 @@ Downloader <- R6::R6Class("Downloader",
                 },
                 worker_fun = downloader__worker_download,
                 segmented_worker_fun = downloader__worker_segmented_download,
+                worker_dependencies = downloader__worker_dependencies(),
                 url = candidate$url[[1L]],
                 filename = task$filename[[1L]],
                 subdir = task_subdir,
