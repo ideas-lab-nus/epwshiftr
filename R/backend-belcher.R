@@ -1167,23 +1167,39 @@ morpher__monthly_target_vector <- function(data, column) {
 # Identify only stable scientific case columns. Variable-specific table IDs and
 # floating-point site coordinates are metadata: including either would split a
 # single model/member/period into false monthly cases after spatial averaging.
+BELCHER_PROJECTED_EXTREME_IDENTITY_COLUMNS <- c(
+    "activity_drs", "institution_id", "source_id", "experiment_id",
+    "member_id", "interval", "month"
+)
 
-# Attach monthly extrema using model/member/period identity rather than table
-# identity. This supports tas in Amon and tasmax/tasmin in a different CMIP table.
-morpher__attach_extreme_value <- function(target, extreme, value_name) {
+BELCHER_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
+    "activity_drs", "institution_id", "source_id", "member_id", "month"
+)
+
+# Aggregate and attach one monthly-extreme field using an explicitly supplied
+# scientific identity. Callers retain ownership of the projected-versus-
+# historical identity and its user-facing alignment diagnostic.
+morpher__attach_monthly_extreme <- function(target, extreme, value_name,
+                                             identity_columns,
+                                             missing_month_message) {
     target <- data.table::copy(target)
     if (is.null(extreme) || !nrow(extreme)) {
         target[, (value_name) := NA_real_]
         return(target)
     }
+
+    # Restrict the join to identity columns represented by both inputs. Month
+    # remains mandatory because the values are monthly extrema.
     join_cols <- intersect(
-        c("activity_drs", "institution_id", "source_id", "experiment_id",
-          "member_id", "interval", "month"),
+        identity_columns,
         intersect(names(target), names(extreme))
     )
     if (!"month" %in% join_cols) {
-        cli::cli_abort("Cannot align monthly extrema without a month column.")
+        cli::cli_abort(missing_month_message)
     }
+
+    # Multiple table or spatial rows for one scientific case represent one
+    # monthly value and retain the established all-missing behavior.
     extreme <- data.table::copy(extreme)
     extreme[, .extreme_value := as.numeric(value)]
     extreme <- extreme[, .(
@@ -1191,6 +1207,18 @@ morpher__attach_extreme_value <- function(target, extreme, value_name) {
     ), by = join_cols]
     target[extreme, on = join_cols, (value_name) := i..extreme_value]
     target[]
+}
+
+# Attach monthly extrema using model/member/period identity rather than table
+# identity. This supports tas in Amon and tasmax/tasmin in a different CMIP table.
+morpher__attach_extreme_value <- function(target, extreme, value_name) {
+    morpher__attach_monthly_extreme(
+        target,
+        extreme,
+        value_name,
+        identity_columns = BELCHER_PROJECTED_EXTREME_IDENTITY_COLUMNS,
+        missing_month_message = "Cannot align monthly extrema without a month column."
+    )
 }
 
 # Smooth delta and alpha independently, then compensate the combined method for
@@ -1531,25 +1559,13 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
 # Attach historical extrema across experiments and variable-specific tables,
 # retaining model/member/month as the scientific case identity.
 morpher__attach_reference_extreme <- function(target, reference, value_name) {
-    target <- data.table::copy(target)
-    if (is.null(reference) || !nrow(reference)) {
-        target[, (value_name) := NA_real_]
-        return(target)
-    }
-    join_cols <- intersect(
-        c("activity_drs", "institution_id", "source_id", "member_id", "month"),
-        intersect(names(target), names(reference))
+    morpher__attach_monthly_extreme(
+        target,
+        reference,
+        value_name,
+        identity_columns = BELCHER_REFERENCE_EXTREME_IDENTITY_COLUMNS,
+        missing_month_message = "Cannot align historical monthly extrema without a month column."
     )
-    if (!"month" %in% join_cols) {
-        cli::cli_abort("Cannot align historical monthly extrema without a month column.")
-    }
-    reference <- data.table::copy(reference)
-    reference[, .reference_extreme := as.numeric(value)]
-    reference <- reference[, .(
-        .reference_extreme = if (all(is.na(.reference_extreme))) NA_real_ else mean(.reference_extreme, na.rm = TRUE)
-    ), by = join_cols]
-    target[reference, on = join_cols, (value_name) := i..reference_extreme]
-    target[]
 }
 
 # Enhanced change-factor morphing applies
