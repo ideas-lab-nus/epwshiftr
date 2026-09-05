@@ -866,6 +866,14 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
         source_indices = c(5L, 2L)
     ))
 
+    chained <- sliced$slice(2L)
+    expect_identical(chained$url, paths[[1L]])
+    expect_identical(chained$selection(), list(
+        source_count = 5L,
+        source_num_found = 10L,
+        source_indices = 2L
+    ))
+
     logical_slice <- ds$slice(c(TRUE, FALSE, TRUE))
     expect_identical(logical_slice$url, paths[c(1L, 3L)])
     expect_identical(logical_slice$selection()$source_indices, c(2L, 5L))

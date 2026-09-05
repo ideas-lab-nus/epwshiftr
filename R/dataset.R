@@ -1153,14 +1153,11 @@ EsgDataset <- R6::R6Class(
 
         # update_selection_context {{{
         update_selection_context = function(index, context = private$context) {
-            selection <- private$get_selection_context()
-            context$selection <- list(
-                source_count = selection$source_count,
-                source_num_found = selection$source_num_found,
-                source_indices = selection$source_indices[index]
+            selection__update_context(
+                context,
+                private$get_selection_context(),
+                index
             )
-
-            context
         },
         # }}}
 
