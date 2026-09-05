@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated absolute-target and change-factor Belcher runner assembly while
+  retaining their separate field builders, no-reference fallback, equations,
+  policies, diagnostics, factor metadata, part order, and result values (#222).
+
 * Added complete Belcher runner behavior snapshots covering absolute-target
   and change-factor execution, legacy and enhanced profiles, baseline-EPW
   fallback, production case isolation, every intermediate part, factors, and

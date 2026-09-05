@@ -2356,29 +2356,83 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
     )
 }
 
-morpher__belcher_absolute_run <- function(context, backend = NULL) {
+# Select the five builders that differ between absolute-target and
+# change-factor Belcher execution while leaving their equations independent.
+morpher__belcher_execution_steps <- function(change_factor = FALSE) {
+    if (isTRUE(change_factor)) {
+        return(list(
+            tdb = morpher__belcher_change_tdb,
+            monthly_field = morpher__belcher_change_monthly_field,
+            rh = morpher__belcher_change_rh,
+            total_cover = morpher__belcher_change_total_sky_cover,
+            precip = morpher__belcher_change_precip
+        ))
+    }
+
+    list(
+        tdb = morpher__belcher_tdb,
+        monthly_field = morpher__belcher_monthly_field,
+        rh = morpher__belcher_rh,
+        total_cover = morpher__belcher_total_sky_cover,
+        precip = morpher__belcher_precip
+    )
+}
+
+# Execute the common Belcher EPW assembly after the runner wrapper has chosen
+# whether fields come from absolute targets or future-minus-reference changes.
+morpher__belcher_execute <- function(context, change_factor = FALSE) {
+    steps <- morpher__belcher_execution_steps(change_factor)
     methods <- context$recipe$methods
     epw <- context$epw$clone()
     data_epw <- suppressMessages(epw$add_unit()$data())
 
-    tdb <- morpher__belcher_tdb(data_epw, context, methods[["tdb"]])
-    p <- morpher__belcher_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
+    tdb <- steps$tdb(data_epw, context, methods[["tdb"]])
+    p <- steps$monthly_field(
+        data_epw,
+        context,
+        "psl",
+        "atmospheric_pressure",
+        methods[["p"]]
+    )
+
+    # Keep the profile-specific humidity source decision in the shared flow so
+    # both execution modes apply identical thermodynamic closure behavior.
     humidity_source <- morpher__belcher_humidity_source(context)
     if (identical(humidity_source, "huss")) {
         humidity <- morpher__belcher_huss_state(data_epw, context, tdb, p)
         rh <- humidity$rh
         tdew <- humidity$tdew
     } else {
-        rh <- morpher__belcher_rh(data_epw, context, methods[["rh"]])
-        tdew <- if (!nrow(tdb) || !nrow(rh)) data.table::data.table() else morpher__belcher_tdew(tdb, rh)
+        rh <- steps$rh(data_epw, context, methods[["rh"]])
+        tdew <- if (!nrow(tdb) || !nrow(rh)) {
+            data.table::data.table()
+        } else {
+            morpher__belcher_tdew(tdb, rh)
+        }
     }
 
     data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
         as.numeric(horizontal_infrared_radiation_intensity_from_sky)]
-    hor_ir <- morpher__belcher_monthly_field(data_epw, context, "rlds", "horizontal_infrared_radiation_intensity_from_sky", methods[["hor_ir"]])
+    hor_ir <- steps$monthly_field(
+        data_epw,
+        context,
+        "rlds",
+        "horizontal_infrared_radiation_intensity_from_sky",
+        methods[["hor_ir"]]
+    )
 
-    data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
-    glob_rad <- morpher__belcher_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
+    data_epw[, global_horizontal_radiation :=
+        as.numeric(global_horizontal_radiation)]
+    glob_rad <- steps$monthly_field(
+        data_epw,
+        context,
+        "rsds",
+        "global_horizontal_radiation",
+        methods[["glob_rad"]]
+    )
+
+    # Preserve the enhanced closure and published legacy radiation paths as
+    # separate definitions after their shared monthly field has been built.
     if (identical(context$recipe$profile, "enhanced")) {
         radiation <- radiation__enhanced_chain(
             data_epw, glob_rad, epw, tdew,
@@ -2393,10 +2447,24 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     } else {
         solar <- data.table::data.table()
         illuminance <- data.table::data.table()
-        diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
-        epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
-        epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
-        epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
+        diff_rad <- if (!nrow(glob_rad)) {
+            data.table::data.table()
+        } else {
+            morpher__belcher_diffuse_radiation(data_epw, glob_rad)
+        }
+        epw_lat <- morpher__epw_location_numeric(
+            epw,
+            c("latitude", "lat", "N2_latitude")
+        )
+        epw_lon <- morpher__epw_location_numeric(
+            epw,
+            c("longitude", "lon", "N3_longitude")
+        )
+        epw_tz <- morpher__epw_location_numeric(
+            epw,
+            c("time_zone", "timezone", "N4_time_zone"),
+            default = 0
+        )
         norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
             data.table::data.table()
         } else {
@@ -2410,13 +2478,24 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
         }
     }
 
-    wind <- morpher__belcher_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
-
-    total_cover <- morpher__belcher_total_sky_cover(data_epw, context)
-    opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
-    precip <- morpher__belcher_precip(data_epw, context)
+    wind <- steps$monthly_field(
+        data_epw,
+        context,
+        "sfcWind",
+        "wind_speed",
+        methods[["wind"]]
+    )
+    total_cover <- steps$total_cover(data_epw, context)
+    opaque_cover <- if (!nrow(total_cover)) {
+        data.table::data.table()
+    } else {
+        morpher__belcher_opaque_sky_cover(data_epw, total_cover)
+    }
+    precip <- steps$precip(data_epw, context)
     snow <- morpher__belcher_snow_depth(data_epw, context)
 
+    # Keep the established part order because it controls both field overlay
+    # precedence and the persisted result contract fixed by the snapshots.
     parts <- list(
         tdb = tdb,
         tdew = tdew,
@@ -2436,7 +2515,10 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     )
     suppressMessages(epw$drop_unit())
     for (name in names(parts)) {
-        parts[[name]] <- morpher__belcher_drop_units(parts[[name]], intersect(names(parts[[name]]), names(data_epw)))
+        parts[[name]] <- morpher__belcher_drop_units(
+            parts[[name]],
+            intersect(names(parts[[name]]), names(data_epw))
+        )
     }
     metadata <- morpher__enhanced_factor_metadata(context, parts)
     morpher__engine_output(
@@ -2449,6 +2531,14 @@ morpher__belcher_absolute_run <- function(context, backend = NULL) {
     )
 }
 
+# Retain the registered absolute-target runner while delegating its common EPW
+# assembly to the shared Belcher executor.
+morpher__belcher_absolute_run <- function(context, backend = NULL) {
+    morpher__belcher_execute(context, change_factor = FALSE)
+}
+
+# Retain the registered change-factor runner and its no-reference fallback while
+# delegating identified change cases to the shared Belcher executor.
 morpher__belcher_run <- function(context, backend = NULL) {
     if (is.null(context$reference_climate)) {
         # Without external historical climate, the EPW monthly climatology is
@@ -2457,95 +2547,6 @@ morpher__belcher_run <- function(context, backend = NULL) {
         return(morpher__belcher_absolute_run(context, backend))
     }
 
-    methods <- context$recipe$methods
-    epw <- context$epw$clone()
-    data_epw <- suppressMessages(epw$add_unit()$data())
-
-    tdb <- morpher__belcher_change_tdb(data_epw, context, methods[["tdb"]])
-    p <- morpher__belcher_change_monthly_field(data_epw, context, "psl", "atmospheric_pressure", methods[["p"]])
-    humidity_source <- morpher__belcher_humidity_source(context)
-    if (identical(humidity_source, "huss")) {
-        humidity <- morpher__belcher_huss_state(data_epw, context, tdb, p)
-        rh <- humidity$rh
-        tdew <- humidity$tdew
-    } else {
-        rh <- morpher__belcher_change_rh(data_epw, context, methods[["rh"]])
-        tdew <- if (!nrow(tdb) || !nrow(rh)) data.table::data.table() else morpher__belcher_tdew(tdb, rh)
-    }
-
-    data_epw[, horizontal_infrared_radiation_intensity_from_sky :=
-        as.numeric(horizontal_infrared_radiation_intensity_from_sky)]
-    hor_ir <- morpher__belcher_change_monthly_field(data_epw, context, "rlds", "horizontal_infrared_radiation_intensity_from_sky", methods[["hor_ir"]])
-
-    data_epw[, global_horizontal_radiation := as.numeric(global_horizontal_radiation)]
-    glob_rad <- morpher__belcher_change_monthly_field(data_epw, context, "rsds", "global_horizontal_radiation", methods[["glob_rad"]])
-    if (identical(context$recipe$profile, "enhanced")) {
-        radiation <- radiation__enhanced_chain(
-            data_epw, glob_rad, epw, tdew,
-            diffuse_model = context$recipe$options$diffuse_model,
-            illuminance_model = context$recipe$options$illuminance_model
-        )
-        solar <- radiation$solar
-        glob_rad <- radiation$glob_rad
-        diff_rad <- radiation$diff_rad
-        norm_rad <- radiation$norm_rad
-        illuminance <- radiation$illuminance
-    } else {
-        solar <- data.table::data.table()
-        illuminance <- data.table::data.table()
-        diff_rad <- if (!nrow(glob_rad)) data.table::data.table() else morpher__belcher_diffuse_radiation(data_epw, glob_rad)
-        epw_lat <- morpher__epw_location_numeric(epw, c("latitude", "lat", "N2_latitude"))
-        epw_lon <- morpher__epw_location_numeric(epw, c("longitude", "lon", "N3_longitude"))
-        epw_tz <- morpher__epw_location_numeric(epw, c("time_zone", "timezone", "N4_time_zone"), default = 0)
-        norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
-            data.table::data.table()
-        } else {
-            morpher__belcher_direct_normal_radiation(
-                glob_rad,
-                diff_rad,
-                latitude = epw_lat,
-                longitude = epw_lon,
-                timezone = epw_tz
-            )
-        }
-    }
-
-    wind <- morpher__belcher_change_monthly_field(data_epw, context, "sfcWind", "wind_speed", methods[["wind"]])
-
-    total_cover <- morpher__belcher_change_total_sky_cover(data_epw, context)
-    opaque_cover <- if (!nrow(total_cover)) data.table::data.table() else morpher__belcher_opaque_sky_cover(data_epw, total_cover)
-    precip <- morpher__belcher_change_precip(data_epw, context)
-    snow <- morpher__belcher_snow_depth(data_epw, context)
-
-    parts <- list(
-        tdb = tdb,
-        tdew = tdew,
-        rh = rh,
-        p = p,
-        hor_ir = hor_ir,
-        solar = solar,
-        glob_rad = glob_rad,
-        norm_rad = norm_rad,
-        diff_rad = diff_rad,
-        illuminance = illuminance,
-        wind = wind,
-        total_cover = total_cover,
-        opaque_cover = opaque_cover,
-        snow_depth = snow$data,
-        precip = precip
-    )
-    suppressMessages(epw$drop_unit())
-    for (name in names(parts)) {
-        parts[[name]] <- morpher__belcher_drop_units(parts[[name]], intersect(names(parts[[name]]), names(data_epw)))
-    }
-    metadata <- morpher__enhanced_factor_metadata(context, parts)
-    morpher__engine_output(
-        context, epw, parts,
-        diagnostics = morpher__bind_diagnostics(
-            metadata$diagnostics,
-            snow$diagnostics
-        ),
-        factors = metadata$factors
-    )
+    morpher__belcher_execute(context, change_factor = TRUE)
 }
 # }}}
