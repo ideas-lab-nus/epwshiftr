@@ -489,6 +489,73 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
 })
 
 
+test_that("monthly extrema share aggregation with explicit scientific identities", {
+    target <- data.table::data.table(
+        activity_drs = "ScenarioMIP",
+        institution_id = "Institute",
+        source_id = "Model-A",
+        experiment_id = c("ssp245", "ssp585"),
+        member_id = "r1i1p1f1",
+        interval = c("near", "far"),
+        month = 1L
+    )
+    projected <- data.table::data.table(
+        activity_drs = "ScenarioMIP",
+        institution_id = "Institute",
+        source_id = "Model-A",
+        experiment_id = rep(c("ssp245", "ssp585"), each = 2L),
+        member_id = "r1i1p1f1",
+        interval = rep(c("near", "far"), each = 2L),
+        month = 1L,
+        table_id = rep(c("day", "Amon"), 2L),
+        value = c(10, 14, 20, 22)
+    )
+    attached <- morpher__attach_extreme_value(
+        target, projected, "projected_max"
+    )
+    expect_equal(attached$projected_max, c(12, 21))
+
+    # Historical extrema intentionally aggregate across experiment and interval
+    # while retaining the model, member, and month identity.
+    reference <- data.table::data.table(
+        activity_drs = "ScenarioMIP",
+        institution_id = "Institute",
+        source_id = "Model-A",
+        experiment_id = c("historical", "hist-nat"),
+        member_id = "r1i1p1f1",
+        interval = c("baseline-a", "baseline-b"),
+        month = 1L,
+        value = c(4, 8)
+    )
+    attached <- morpher__attach_reference_extreme(
+        target, reference, "reference_max"
+    )
+    expect_equal(attached$reference_max, c(6, 6))
+
+    missing <- morpher__attach_extreme_value(
+        target, NULL, "projected_max"
+    )
+    expect_true(all(is.na(missing$projected_max)))
+
+    without_month <- data.table::copy(target)
+    without_month[, month := NULL]
+    expect_error(
+        morpher__attach_extreme_value(
+            without_month, projected, "projected_max"
+        ),
+        "Cannot align monthly extrema without a month column.",
+        fixed = TRUE
+    )
+    expect_error(
+        morpher__attach_reference_extreme(
+            without_month, reference, "reference_max"
+        ),
+        "Cannot align historical monthly extrema without a month column.",
+        fixed = TRUE
+    )
+})
+
+
 test_that("cyclic smoothing is continuous and conserves every monthly target", {
     epw <- enhanced_test__hourly_year()
     target <- seq(-3, 8, length.out = 12L)

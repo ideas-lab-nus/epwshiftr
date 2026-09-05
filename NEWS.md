@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated projected and historical Belcher monthly-extrema aggregation
+  and attachment while preserving their distinct scientific case identities,
+  missing-input behavior, and alignment diagnostics (#224).
+
 * Consolidated absolute-target and change-factor Belcher runner assembly while
   retaining their separate field builders, no-reference fallback, equations,
   policies, diagnostics, factor metadata, part order, and result values (#222).
