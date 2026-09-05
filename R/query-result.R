@@ -517,14 +517,11 @@ EsgResult <- R6::R6Class(
 
         # update_selection_context {{{
         update_selection_context = function(index, context = private$context) {
-            selection <- private$get_selection_context()
-            context$selection <- list(
-                source_count = selection$source_count,
-                source_num_found = selection$source_num_found,
-                source_indices = selection$source_indices[index]
+            selection__update_context(
+                context,
+                private$get_selection_context(),
+                index
             )
-
-            context
         },
         # }}}
 
@@ -1216,6 +1213,19 @@ query_result__selection <- function(selection) {
         source_num_found = source_num_found,
         source_indices = source_indices
     )
+}
+
+# Apply selected positions to normalized source-selection provenance.
+selection__update_context <- function(context, selection, index) {
+    # Source totals describe the original result; only its retained positions
+    # change when a dataset or query result is sliced again.
+    context$selection <- list(
+        source_count = selection$source_count,
+        source_num_found = selection$source_num_found,
+        source_indices = selection$source_indices[index]
+    )
+
+    context
 }
 
 query_result__query_urls <- function(urls, named = TRUE) {
