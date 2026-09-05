@@ -395,6 +395,40 @@ test_that("EsgDataset$get_dimensions()", {
     expect_true("lon" %in% dims)
 })
 # }}}
+
+# EsgDataset metadata-name enumeration {{{
+test_that("EsgDataset metadata names preserve direct inquiry order by file", {
+    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    ds <- EsgDataset$new(paths)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    for (index in seq_along(paths)) {
+        info <- ds$file_inq(index)
+        expected_variables <- vapply(
+            seq_len(info$nvars) - 1L,
+            function(id) ds$var_inq(id, index)$name,
+            character(1L)
+        )
+        expected_dimensions <- vapply(
+            seq_len(info$ndims) - 1L,
+            function(id) ds$dim_inq(id, index)$name,
+            character(1L)
+        )
+
+        expect_identical(ds$get_variables(index), expected_variables)
+        expect_identical(ds$get_dimensions(index), expected_dimensions)
+    }
+})
+
+test_that("EsgDataset metadata-name methods reject closed datasets", {
+    ds <- EsgDataset$new("https://example.org/data.nc")
+
+    expect_error(ds$get_variables(), "not open")
+    expect_error(ds$get_dimensions(), "not open")
+})
+# }}}
+
 # EsgDataset$get_time_axis() {{{
 test_that("EsgDataset$get_time_axis()", {
     paths <- local_dataset_cmip6_files(c(2060L, 2061L))

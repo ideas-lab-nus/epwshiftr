@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated ordered NetCDF variable and dimension name enumeration inside
+  `EsgDataset` while preserving its public methods, file-index behavior,
+  metadata order, return types, and closed-dataset errors (#226).
+
 * Consolidated projected and historical Belcher monthly-extrema aggregation
   and attachment while preserving their distinct scientific case identities,
   missing-input behavior, and alignment diagnostics (#224).
