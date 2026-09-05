@@ -680,12 +680,11 @@ EsgDataset <- R6::R6Class(
             private$check_index(index)
 
             info <- self$file_inq(index)
-            vars <- character(info$nvars)
-            for (i in seq_len(info$nvars)) {
-                var_info <- RNetCDF::var.inq.nc(private$nc_handles[[index]], i - 1L)
-                vars[i] <- var_info$name
-            }
-            vars
+            private$inquiry_names(
+                private$nc_handles[[index]],
+                info$nvars,
+                RNetCDF::var.inq.nc
+            )
         },
         # }}}
 
@@ -706,12 +705,11 @@ EsgDataset <- R6::R6Class(
             private$check_index(index)
 
             info <- self$file_inq(index)
-            dims <- character(info$ndims)
-            for (i in seq_len(info$ndims)) {
-                dim_info <- RNetCDF::dim.inq.nc(private$nc_handles[[index]], i - 1L)
-                dims[i] <- dim_info$name
-            }
-            dims
+            private$inquiry_names(
+                private$nc_handles[[index]],
+                info$ndims,
+                RNetCDF::dim.inq.nc
+            )
         },
         # }}}
 
@@ -1549,6 +1547,22 @@ EsgDataset <- R6::R6Class(
             )
 
             private$collect_async_task(task)
+        },
+        # }}}
+
+        # inquiry_names {{{
+        # Collect ordered NetCDF names for a validated handle. Public variable
+        # and dimension methods retain ownership of state and index checks and
+        # select the corresponding metadata count and inquiry function.
+        inquiry_names = function(handle, count, inquiry) {
+            names <- character(count)
+            for (i in seq_len(count)) {
+                # RNetCDF metadata identifiers are zero-based even though the
+                # returned R character vector uses ordinary one-based indices.
+                item_info <- inquiry(handle, i - 1L)
+                names[i] <- item_info$name
+            }
+            names
         },
         # }}}
 
