@@ -446,15 +446,11 @@ arima__physics_apply <- function(data, inputs, context, options) {
     # Both published and harmonized variants pass through the shared physical
     # executor; the selected policy decides whether humidity is retained or
     # closed after the percentile-dependent temperature change.
-    physical <- epwphys__apply(
-        EpwPhysicalRequest(
-            template = baseline$weather,
-            fields = list(
-                dry_bulb_temperature = hourly[["temperature_projected"]]
-            ),
-            provenance = list(adapter = "arima_temperature")
-        ),
-        epwphys__recipe_policy(context$recipe)
+    physical <- epwphys__apply_temperature(
+        template = baseline$weather,
+        temperature = hourly[["temperature_projected"]],
+        policy = epwphys__recipe_policy(context$recipe),
+        adapter = "arima_temperature"
     )
     weather <- data.table::copy(physical@weather)
     moisture <- physical@state$humidity
@@ -476,13 +472,11 @@ arima__physics_apply <- function(data, inputs, context, options) {
             )
         )
     }
-    for (name in names(diagnostic_values)) {
-        data.table::set(
-            weather,
-            j = name,
-            value = diagnostic_values[[name]]
-        )
-    }
+    data.table::set(
+        weather,
+        j = names(diagnostic_values),
+        value = diagnostic_values
+    )
 
     diagnostics <- list()
     clamped <- data$factors[["percentile_clamped"]]

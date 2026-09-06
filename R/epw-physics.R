@@ -762,6 +762,25 @@ epwphys__humidity_inconsistent <- function(weather) {
     as.integer(sum(state$humidity))
 }
 
+# Apply one temperature-only candidate through the shared physical boundary.
+# Method adapters retain policy selection and all method-specific diagnostics.
+epwphys__apply_temperature <- function(
+    template,
+    temperature,
+    policy,
+    adapter
+) {
+    checkmate::assert_string(adapter, min.chars = 1L)
+    epwphys__apply(
+        EpwPhysicalRequest(
+            template = template,
+            fields = list(dry_bulb_temperature = temperature),
+            provenance = list(adapter = adapter)
+        ),
+        policy
+    )
+}
+
 # Apply one validated policy to a method-neutral request. Method adapters own
 # statistical transforms; this executor owns only EPW physical interpretation.
 epwphys__apply <- function(request, policy) {

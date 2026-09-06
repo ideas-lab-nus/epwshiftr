@@ -550,6 +550,10 @@
 
 ## Internal changes
 
+* Consolidated temperature-only physical-policy execution across the shared
+  Daily/BTWS/Eames component and the Arima and Ek adapters, while preserving
+  each method's diagnostics, result schema, and selected policy (#236).
+
 * Consolidated dictionary and ESGF query-result truncation footer rendering
   while preserving their public print output, spacing, pluralization, and
   ordering (#234).
