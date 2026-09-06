@@ -46,6 +46,14 @@
 
 ## New features
 
+* Added the experimental `hourly_kernel_qdm()` complete workflow for matching
+  hourly observations and three-hourly historical/future `tas`, `ps`, `hurs`,
+  `sfcWind`, `rsds`, and `rsdsdiff`. The seven-stage recipe reconstructs hourly
+  model inputs with boundary support, applies variable-specific kernel QDM,
+  maps each complete future year to the EPW calendar, executes the shared
+  `absolute_model_fields` physical policy, and returns one persistent EPW
+  member per source-model year (#238).
+
 * Added a shared EPW physical policy layer used by all built-in complete weather
   methods. Method adapters submit `EpwPhysicalRequest` objects and retain their
   paper-faithful or harmonized definitions through explicit

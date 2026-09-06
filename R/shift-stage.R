@@ -630,6 +630,19 @@ shift_periods_time <- function(periods) {
     )
 }
 
+# Expand a requested period by the method's declared temporal support while
+# preserving the original years as the case and coverage contract.
+shift__method_time_window <- function(periods, recipe) {
+    window <- as.POSIXct(
+        shift_periods_time(periods),
+        format = "%Y-%m-%dT%H:%M:%SZ",
+        tz = "UTC"
+    )
+    padding <- morpher__recipe_time_padding_seconds(recipe)
+    window <- window + c(-padding, padding)
+    format(window, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+}
+
 shift_time_window <- function(time) {
     if (is.null(time)) {
         return(NULL)
@@ -2091,6 +2104,62 @@ arima_temperature <- function(
     )
 }
 
+#' Hourly kernel QDM future-weather method
+#'
+#' @description
+#' `hourly_kernel_qdm()` creates a complete multi-year future-weather method
+#' from matching three-hourly historical and future model data plus an hourly
+#' observed reference. It requires `tas`, `ps`, `hurs`, `sfcWind`, `rsds`, and
+#' `rsdsdiff` in every climate role.
+#'
+#' Continuous state variables and scalar wind speed are interpolated to an
+#' hourly lattice. Shortwave variables are allocated with solar geometry before
+#' the centered three-month kernel-density Quantile Delta Mapping calculation.
+#' Every corrected future-model year is then mapped to the 365-day EPW calendar
+#' and passed through the common `absolute_model_fields` physical policy.
+#'
+#' The method returns one addressable output member per complete future-model
+#' year. Numerical kernel, bandwidth, grid, tail, and zero-denominator settings
+#' not reported by the source publication remain explicit experimental defaults.
+#' The high-level workflow expands historical and future extraction windows by
+#' one source timestep so bounded interpolation can retain every requested year.
+#' Pre-extracted `ShiftClimate` inputs must retain equivalent edge support.
+#'
+#' @param reference A required [historical_reference()],
+#'   [shift_reference_plan()], or extracted `ShiftClimate` stage containing
+#'   matching three-hourly historical model output.
+#' @param observed_reference A required [shift_reference_plan()] or extracted
+#'   `ShiftClimate` stage containing hourly observed weather.
+#' @param signal_overrides Optional named list of variable-specific kernel-QDM
+#'   settings passed to the signal component.
+#'
+#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
+#'
+#' @references
+#' Wang, Z. et al. (2023). Climate data for building simulations in
+#' EnergyPlus. \doi{10.1038/s41467-023-41458-5}
+#'
+#' @seealso [shift_cmip6()], [shift_future_epw()], [epw_morph_recipes()]
+#' @export
+hourly_kernel_qdm <- function(
+    reference = NULL,
+    observed_reference = NULL,
+    signal_overrides = list()
+) {
+    options <- hourly_kqdm__options(list(
+        signal_overrides = signal_overrides
+    ))
+    shift_morph_method(
+        epw_morph_recipe(
+            name = "hourly_kernel_qdm",
+            options = options,
+            policy = "harmonized"
+        ),
+        reference = reference,
+        observed_reference = observed_reference
+    )
+}
+
 #' Sobie-Curry daily morphing method
 #'
 #' @description
@@ -2191,7 +2260,7 @@ shift__request_from_cmip6 <- function(climate, periods, method) {
     tables <- shift__cmip6_variable_tables(
         variables, climate@frequency, climate@table
     )
-    shift_cmip6_scenario(
+    request <- shift_cmip6_scenario(
         source = climate@model,
         scenario = climate@scenarios,
         member = climate@member,
@@ -2208,6 +2277,13 @@ shift__request_from_cmip6 <- function(climate, periods, method) {
         # completed from DRS filenames before records enter the store.
         options = list(time_filter_method = "auto")
     )
+    request_meta <- request@meta
+    request_meta$time <- shift__method_time_window(
+        periods,
+        method@recipe
+    )
+    request@meta <- request_meta
+    request
 }
 
 #' @rdname shift_api
@@ -2349,6 +2425,28 @@ shift__validate_method_frequency <- function(method, frequency) {
     invisible(TRUE)
 }
 
+# Reject a single-year case before store or network work when the selected
+# recipe promises an explicitly addressable multi-year result.
+shift__validate_method_periods <- function(method, periods) {
+    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
+        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}.")
+    }
+    specification <- morpher__recipe_spec(method@recipe)
+    if (is.null(specification) ||
+        !identical(specification@output_type, "multi_year")) {
+        return(invisible(TRUE))
+    }
+    counts <- table(as.character(periods[["period"]]))
+    incomplete <- names(counts)[counts < 2L]
+    if (length(incomplete)) {
+        cli::cli_abort(c(
+            "Morphing method {.val {method@name}} requires at least two weather years in every period.",
+            "x" = "Period(s) with fewer than two years: {.val {incomplete}}."
+        ))
+    }
+    invisible(TRUE)
+}
+
 #' @rdname shift_api
 #' @param request A [shift_request()] object, commonly from
 #'   `shift_cmip6_scenario()`.
@@ -2373,6 +2471,7 @@ shift_plan <- function(request, site, periods, store, method,
     }
     shift__validate_method_frequency(method, request@meta$frequency)
     periods <- shift__periods_from_input(periods)
+    shift__validate_method_periods(method, periods)
     store_path <- shift__store_path_value(store, create = FALSE)
     if (shift_is_epw_object(site@epw)) {
         # Object-backed inputs may originate from unsaved external state or a
@@ -4910,7 +5009,7 @@ shift_reference_resolve_historical <- function(x, recipe, site, spec,
         site = site,
         periods = periods,
         variables = variables,
-        time = shift_periods_time(periods),
+        time = shift__method_time_window(periods, recipe),
         filters = extract_filters,
         method = "nearest",
         fallback = "auto",
@@ -7624,7 +7723,10 @@ shift__historical_request <- function(plan, node) {
         options = utils::modifyList(reference@options, list(
             index_node = node,
             time_filter_method = "auto",
-            file_time = shift_periods_time(reference@periods)
+            file_time = shift__method_time_window(
+                reference@periods,
+                meta$method@recipe
+            )
         ))
     )
 }
@@ -8938,7 +9040,10 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             site = meta$site,
             periods = meta$periods,
             role = "future",
-            time = NULL,
+            time = shift__method_time_window(
+                meta$periods,
+                meta$method@recipe
+            ),
             method = control@extraction_method,
             fallback = fallback,
             overwrite = overwrite,
@@ -8976,7 +9081,10 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
                 site = meta$site,
                 periods = reference_spec@periods,
                 role = "reference",
-                time = shift_periods_time(reference_spec@periods),
+                time = shift__method_time_window(
+                    reference_spec@periods,
+                    meta$method@recipe
+                ),
                 method = control@extraction_method,
                 fallback = fallback,
                 overwrite = overwrite,

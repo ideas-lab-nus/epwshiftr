@@ -377,3 +377,78 @@ test_that("the registered physics component follows the hourly contract", {
         epwphys_test__inputs()
     ))
 })
+
+test_that("direct-model output retains every physically closed weather year", {
+    values <- list(
+        tas = 293.15,
+        ps = 101325,
+        hurs = 50,
+        sfcWind = 3,
+        rsds = 500,
+        rsdsdiff = 100
+    )
+    units <- list(
+        tas = "K",
+        ps = "Pa",
+        hurs = "%",
+        sfcWind = "m s-1",
+        rsds = "W m-2",
+        rsdsdiff = "W m-2"
+    )
+    first <- epwphys_test__apply(values, units, year = 2061L)
+    second <- epwphys_test__apply(values, units, year = 2062L)
+    closed <- EpwHourlyWeatherSequence(
+        members = list(first@members[[1L]], second@members[[1L]]),
+        target_calendar = first@target_calendar,
+        constructed_fields = first@constructed_fields,
+        provenance = first@provenance
+    )
+    input <- epwphys_test__inputs()
+    context <- morpher__context(
+        epw = weather__get_input(input, "weather_template")@source,
+        climate = data.table::data.table(
+            time = as.POSIXct("2061-01-01", tz = "UTC"),
+            variable_id = "tas",
+            period = "future",
+            year = 2061L,
+            lon = 104,
+            lat = 1,
+            units = "K",
+            value = 300
+        ),
+        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+    )
+    result <- sequence__epw_output_write(
+        closed,
+        input,
+        context,
+        list(),
+        list()
+    )
+
+    expect_s7_class(result, WeatherSequenceResult)
+    expect_identical(result@output_type, "multi_year")
+    expect_identical(
+        vapply(result@members, function(member) member@weather_year, integer(1L)),
+        c(2061L, 2062L)
+    )
+    expect_identical(result@provenance$method, "direct_model_epw_result")
+    expect_identical(nrow(result@diagnostics), 2L)
+    expect_true(all(result@diagnostics$physical_policy ==
+        "absolute_model_fields"))
+    expect_true("dew_point_temperature" %in% result@parts$constructed_fields)
+    expect_true(component__compatible(
+        direct_epw__component(),
+        sequence__epw_output_component()
+    ))
+    expect_error(
+        sequence__epw_output_write(
+            first,
+            input,
+            context,
+            list(),
+            list()
+        ),
+        "at least two complete weather years"
+    )
+})

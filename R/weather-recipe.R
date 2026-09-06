@@ -35,7 +35,8 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "eames_monthly_temperature",
     "ek_daily_factors",
     "monthly_percentile_temperature",
-    "sobie_curry_daily"
+    "sobie_curry_daily",
+    "hourly_kernel_qdm"
 )
 
 # Recipe definitions contain only stable metadata. Executable functions remain
@@ -436,6 +437,7 @@ recipe__default_specs <- function() {
     ek_pipeline <- ek__pipeline()
     arima_pipeline <- arima__pipeline()
     sobie_pipeline <- sobie__pipeline()
+    hourly_kqdm_pipeline <- hourly_kqdm__pipeline()
     daily_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -492,6 +494,35 @@ recipe__default_specs <- function() {
             representations = "series",
             frequencies = "day",
             variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
+        )
+    )
+    hourly_kqdm_inputs <- list(
+        weather_template = component__input_requirement(
+            "weather_template",
+            representations = "epw",
+            frequencies = "hour",
+            calendars = "gregorian"
+        ),
+        observed_reference = component__input_requirement(
+            "observed_reference",
+            representations = "series",
+            frequencies = "hour",
+            calendars = CF_TIME_CALENDARS,
+            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
+        ),
+        model_historical = component__input_requirement(
+            "model_historical",
+            representations = "series",
+            frequencies = "3hr",
+            calendars = CF_TIME_CALENDARS,
+            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
+        ),
+        model_future = component__input_requirement(
+            "model_future",
+            representations = "series",
+            frequencies = "3hr",
+            calendars = CF_TIME_CALENDARS,
+            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
         )
     )
 
@@ -829,6 +860,54 @@ recipe__default_specs <- function() {
                 "physical_policy"
             ),
             status = "comparison"
+        ),
+        hourly_kernel_qdm = recipe__spec(
+            name = "hourly_kernel_qdm",
+            label = "Hourly kernel QDM multi-year future weather",
+            backend = "hourly_kernel_qdm",
+            implementation = "pipeline",
+            source = list(
+                type = "adapted_publication",
+                citation = paste(
+                    "Wang et al. (2023), Climate data for building",
+                    "simulations in EnergyPlus"
+                ),
+                references = c(
+                    "https://doi.org/10.1038/s41467-023-41458-5",
+                    "https://doi.org/10.1175/JCLI-D-14-00754.1"
+                ),
+                implementation_note = paste(
+                    "Three-hourly model variables are reconstructed to an",
+                    "hourly lattice before kernel-density QDM. Numerical KDE",
+                    "and tail defaults not stated by the publication remain",
+                    "explicit experimental settings."
+                )
+            ),
+            required_inputs = hourly_kqdm_inputs,
+            calendar_policy = "native_cf_hourly_to_epw_365",
+            components = pipeline__records(hourly_kqdm_pipeline),
+            policy_profiles = c(harmonized = "default"),
+            default_policy = "harmonized",
+            output_type = "multi_year",
+            diagnostics = c(
+                "hourly_interpolation",
+                "calendar_completeness",
+                "kernel_qdm_distribution",
+                "physical_bounds",
+                "humidity_closure",
+                "radiation_closure"
+            ),
+            provenance = c(
+                "source_method",
+                "input_periods",
+                "temporal_interpolation",
+                "calendar_mapping",
+                "signal_settings",
+                "component_names",
+                "physical_policies",
+                "source_weather_years"
+            ),
+            status = "experimental"
         ),
         sobie_curry_daily = recipe__spec(
             name = "sobie_curry_daily",

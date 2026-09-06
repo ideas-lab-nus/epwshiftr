@@ -26,7 +26,17 @@ temporal_test__series <- function(
         period = rep.int("2060s", length(offsets)),
         variable_id = rep.int(variable, length(offsets)),
         value = value_offset + offsets / 3600,
-        units = rep.int(if (identical(variable, "tas")) "K" else "1", length(offsets)),
+        units = rep.int(
+            switch(
+                variable,
+                tas = "K",
+                hurs = "%",
+                ps = "Pa",
+                sfcWind = "m s-1",
+                "1"
+            ),
+            length(offsets)
+        ),
         frequency = rep.int(frequency, length(offsets)),
         time = as.POSIXct("2061-01-01", tz = "UTC") + offsets,
         year = as.integer(fields$year),
@@ -241,6 +251,25 @@ test_that("linear temporal interpolation supports mixed source frequencies", {
         "source_frequency" %in%
             result@value@model_future@metadata$group_columns
     )
+})
+
+test_that("linear temporal interpolation supports scalar wind speed", {
+    historical <- temporal_test__series(variable = "sfcWind")
+    future <- temporal_test__series(
+        variable = "sfcWind",
+        value_offset = 10
+    )
+    result <- temporal__linear_apply(
+        temporal_test__inputs(historical, future),
+        NULL,
+        list()
+    )
+    data <- result@value@model_future@source
+
+    expect_identical(data$variable_id, rep.int("sfcWind", 7L))
+    expect_identical(data$units, rep.int("m s-1", 7L))
+    expect_identical(data$value, 10 + 0:6)
+    expect_true("sfcWind" %in% temporal__linear_component()@metadata$supported_variables)
 })
 
 test_that("linear temporal interpolation rejects unsafe source semantics", {

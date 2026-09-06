@@ -1,4 +1,4 @@
-#' @include weather-pipeline.R
+#' @include backend-hourly-kernel-qdm.R weather-pipeline.R
 NULL
 
 # EPW morphing backend registry {{{
@@ -398,6 +398,15 @@ morpher__default_backend_specs <- function() {
             rules = EPW_MORPH_SOBIE_CURRY_RULES,
             requires_reference = TRUE,
             pipeline = sobie__pipeline()
+        ),
+        hourly_kernel_qdm = EpwMorphBackend$new(
+            name = "hourly_kernel_qdm",
+            label = "Hourly kernel QDM multi-year future weather",
+            methods = EPW_MORPH_HOURLY_KQDM_METHODS,
+            method_choices = "kernel_quantile_delta_mapping",
+            rules = EPW_MORPH_HOURLY_KQDM_RULES,
+            requires_reference = TRUE,
+            pipeline = hourly_kqdm__pipeline()
         )
     )
 }

@@ -319,6 +319,7 @@ epwphys__recipe_policy <- function(recipe) {
         epwshiftr_daily_power = "preserve_specific_humidity",
         epwshiftr_daily_btws = "preserve_specific_humidity",
         eames_monthly_temperature = "preserve_specific_humidity",
+        hourly_kernel_qdm = "absolute_model_fields",
         ek_daily_factors = if (identical(recipe$policy, "harmonized")) {
             "preserve_specific_humidity"
         } else {

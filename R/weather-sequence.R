@@ -414,7 +414,10 @@ sequence__slice_adjusted <- function(adjusted, year) {
     data <- data.table::as.data.table(
         data.table::copy(adjusted@data)
     )
-    data <- data[data[["cf_year"]] == year]
+    # Keep the requested scalar outside data.table evaluation so a compatibility
+    # alias column named `year` cannot shadow the function argument.
+    target_year <- as.integer(year)
+    data <- data[get("cf_year") == target_year]
     data.table::setorderv(
         data,
         c("cf_day_of_year", "annual_phase", "variable_id")
@@ -821,6 +824,99 @@ sequence__result <- function(
         factors = factors,
         provenance = provenance
     )
+}
+
+# Convert physically closed direct-model years into the package's persistent
+# multi-year result contract. File creation remains owned by EpwMorpher.
+sequence__epw_output_write <- function(
+    data,
+    inputs,
+    context,
+    options,
+    stages
+) {
+    if (!S7::S7_inherits(data, EpwHourlyWeatherSequence)) {
+        cli::cli_abort(
+            "Direct-model EPW output requires an EpwHourlyWeatherSequence object."
+        )
+    }
+    if (length(data@members) < 2L) {
+        cli::cli_abort(
+            "Direct-model multi-year output requires at least two complete weather years."
+        )
+    }
+
+    # Preserve every source-model year as an independently addressable member
+    # while retaining physical and calendar provenance from the earlier stages.
+    members <- lapply(data@members, function(member) {
+        sequence__member(
+            data = member@data,
+            weather_year = member@weather_year,
+            sequence_id = member@sequence_id,
+            calendar = data@target_calendar,
+            provenance = member@provenance
+        )
+    })
+    diagnostics <- data.table::rbindlist(
+        lapply(data@members, function(member) {
+            data.table::as.data.table(member@diagnostics)
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
+
+    sequence__result(
+        context,
+        members,
+        output_type = "multi_year",
+        parts = list(
+            physical_diagnostics = diagnostics,
+            constructed_fields = data@constructed_fields
+        ),
+        diagnostics = diagnostics,
+        provenance = list(
+            method = "direct_model_epw_result",
+            target_calendar = data@target_calendar,
+            constructed_fields = data@constructed_fields,
+            physical = data@provenance
+        )
+    )
+}
+
+# Describe the common output boundary for direct-model future-weather recipes
+# that retain every complete corrected model year.
+sequence__epw_output_component <- function() {
+    component__spec(
+        name = "direct_model_epw_result",
+        stage = "output",
+        label = "Direct-model multi-year EPW result",
+        required_inputs = list(
+            weather_template = component__input_requirement(
+                "weather_template",
+                representations = "epw",
+                frequencies = "hour",
+                calendars = "gregorian"
+            )
+        ),
+        input_kinds = "epw_hourly_weather_sequence",
+        output_kinds = "weather_sequence_result",
+        scopes = "multivariate",
+        stochastic = FALSE,
+        operations = list(write = sequence__epw_output_write),
+        metadata = list(
+            output_type = "multi_year",
+            member_policy = "one_member_per_complete_model_year",
+            file_writer = "EpwMorpher",
+            output_contract = "weather_sequence_result"
+        )
+    )
+}
+
+# Register the direct-model output implementation once so complete recipes can
+# close the seven-stage component sequence without embedding executable code.
+sequence__register_epw_output_component <- function() {
+    component__register_builtin(sequence__epw_output_component())
+    invisible(NULL)
 }
 
 # Normalize both legacy single-year and typed sequence backend results into

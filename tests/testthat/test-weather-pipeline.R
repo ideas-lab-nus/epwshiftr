@@ -97,6 +97,22 @@ test_that("pipeline signal options reach the selected component", {
         pipeline__signal_overrides(list(signal_overrides = "invalid")),
         "list"
     )
+
+    preprocess_args <- pipeline__operation_args(
+        component = plan@components$preprocess,
+        plan = plan,
+        previous = NULL,
+        context = NULL,
+        options = list(
+            signal_overrides = overrides,
+            preprocess_setting = TRUE
+        ),
+        stages = list()
+    )
+    expect_identical(
+        preprocess_args$options,
+        list(preprocess_setting = TRUE)
+    )
 })
 
 test_that("daily hourly projection ignores signal-owned options", {
