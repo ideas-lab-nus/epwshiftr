@@ -45,6 +45,58 @@ test_that("parse_cf_time() returns POSIXct for common CF calendars", {
     }
 })
 
+test_that("parse_cf_time() preserves fixed-calendar boundaries and aliases", {
+    cases <- list(
+        list(
+            calendars = c("365_day", "noleap"),
+            year_days = 365L,
+            offsets = c(-366L, -365L, -1L, 0L, 30L, 31L, 58L, 59L, 364L, 365L),
+            year = c(1999L, 2000L, 2000L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2002L),
+            month = c(12L, 1L, 12L, 1L, 1L, 2L, 2L, 3L, 12L, 1L),
+            day = c(31L, 1L, 31L, 1L, 31L, 1L, 28L, 1L, 31L, 1L),
+            day_of_year = c(365L, 1L, 365L, 1L, 31L, 32L, 59L, 60L, 365L, 1L)
+        ),
+        list(
+            calendars = c("366_day", "all_leap"),
+            year_days = 366L,
+            offsets = c(-367L, -366L, -1L, 0L, 30L, 31L, 58L, 59L, 60L, 365L, 366L),
+            year = c(1999L, 2000L, 2000L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2002L),
+            month = c(12L, 1L, 12L, 1L, 1L, 2L, 2L, 2L, 3L, 12L, 1L),
+            day = c(31L, 1L, 31L, 1L, 31L, 1L, 28L, 29L, 1L, 31L, 1L),
+            day_of_year = c(366L, 1L, 366L, 1L, 31L, 32L, 59L, 60L, 61L, 366L, 1L)
+        )
+    )
+
+    for (case in cases) {
+        alias_coordinates <- lapply(case$calendars, function(calendar) {
+            time <- parse_cf_time(
+                case$offsets,
+                "days since 2001-01-01 00:00:00",
+                calendar
+            )
+            coordinates <- attr(time, "cf_coordinates", exact = TRUE)
+
+            expect_identical(coordinates$cf_year, case$year, info = calendar)
+            expect_identical(coordinates$cf_month, case$month, info = calendar)
+            expect_identical(coordinates$cf_day, case$day, info = calendar)
+            expect_identical(
+                coordinates$cf_day_of_year,
+                case$day_of_year,
+                info = calendar
+            )
+            expect_identical(
+                coordinates$cf_year_days,
+                rep.int(case$year_days, length(case$offsets)),
+                info = calendar
+            )
+
+            coordinates[c("cf_year", "cf_month", "cf_day", "cf_day_of_year")]
+        })
+
+        expect_identical(alias_coordinates[[1L]], alias_coordinates[[2L]])
+    }
+})
+
 test_that("parse_cf_time() retains calendar-native coordinates and annual phase", {
     year_lengths <- c(
         standard = 366L,
