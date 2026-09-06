@@ -19,7 +19,8 @@ epwphys_test__series <- function(
     value,
     unit,
     year = 2064L,
-    calendar = "noleap"
+    calendar = "noleap",
+    wind_direction = NULL
 ) {
     target <- hourmap__target_grid(
         weather__get_input(
@@ -53,6 +54,12 @@ epwphys_test__series <- function(
         source_hour_phase_seconds = rep.int(0, HOURMAP_TARGET_HOURS),
         stringsAsFactors = FALSE
     )
+    if (!is.null(wind_direction)) {
+        if (length(wind_direction) == 1L) {
+            wind_direction <- rep.int(wind_direction, HOURMAP_TARGET_HOURS)
+        }
+        data$wind_direction <- as.numeric(wind_direction)
+    }
     MappedHourlyClimateSeries(
         group_id = gsub("_", "-", tolower(variable)),
         key = list(variable_id = variable),
@@ -72,7 +79,8 @@ epwphys_test__sequence <- function(
     values,
     units,
     year = 2064L,
-    calendar = "noleap"
+    calendar = "noleap",
+    wind_direction = NULL
 ) {
     stopifnot(identical(names(values), names(units)))
     series <- Map(
@@ -82,7 +90,12 @@ epwphys_test__sequence <- function(
                 value,
                 unit,
                 year,
-                calendar
+                calendar,
+                wind_direction = if (identical(variable, "sfcWind")) {
+                    wind_direction
+                } else {
+                    NULL
+                }
             )
         },
         names(values),
@@ -248,6 +261,42 @@ test_that("specific humidity and vector wind derive dependent EPW fields", {
         "horizontal_infrared_radiation_intensity_from_sky" %in%
             result@constructed_fields
     )
+})
+
+test_that("scalar wind retains model direction through physical closure", {
+    input <- epwphys_test__inputs()
+    result <- direct_epw__apply(
+        epwphys_test__sequence(
+            list(
+                tas = 293.15,
+                ps = 101325,
+                hurs = 50,
+                sfcWind = 3,
+                rsds = 500,
+                rsdsdiff = 100
+            ),
+            list(
+                tas = "K",
+                ps = "Pa",
+                hurs = "%",
+                sfcWind = "m/s",
+                rsds = "W/m^2",
+                rsdsdiff = "W/m^2"
+            ),
+            wind_direction = 225
+        ),
+        input,
+        NULL,
+        list()
+    )
+
+    member <- result@members[[1L]]
+    expect_equal(member@data$wind_direction, rep.int(225, 8760))
+    expect_identical(
+        member@diagnostics$wind_direction_policy,
+        "supplied_wind_direction"
+    )
+    expect_true("wind_direction" %in% result@constructed_fields)
 })
 
 test_that("physical bounds and radiation closure report every correction", {

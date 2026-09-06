@@ -27,14 +27,18 @@ A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_futu
 \description{
 \code{hourly_kernel_qdm()} creates a complete multi-year future-weather method
 from matching three-hourly historical and future model data plus an hourly
-observed reference. It requires \code{tas}, \code{ps}, \code{hurs}, \code{sfcWind}, \code{rsds}, and
-\code{rsdsdiff} in every climate role.
+observed reference. Model roles require raw \code{tas}, \code{ps}, \code{huss}, \code{uas},
+\code{vas}, \code{rsds}, and \code{rsdsdiff}; the observed role requires \code{tas}, \code{ps},
+\code{hurs}, \code{sfcWind}, \code{rsds}, and \code{rsdsdiff}.
 
-Continuous state variables and scalar wind speed are interpolated to an
-hourly lattice. Shortwave variables are allocated with solar geometry before
-the centered three-month kernel-density Quantile Delta Mapping calculation.
+Continuous model state variables and wind-vector components are interpolated
+to an hourly lattice. Relative humidity is derived from \code{huss}, \code{tas}, and
+\code{ps}; scalar speed and meteorological direction are derived from \code{uas} and
+\code{vas}. Shortwave variables are allocated with solar geometry before the
+centered three-month kernel-density Quantile Delta Mapping calculation.
 Every corrected future-model year is then mapped to the 365-day EPW calendar
-and passed through the common \code{absolute_model_fields} physical policy.
+and passed through the common \code{absolute_model_fields} physical policy, with
+the future model's wind direction retained alongside the corrected speed.
 
 The method returns one addressable output member per complete future-model
 year. Numerical kernel, bandwidth, grid, tail, and zero-denominator settings

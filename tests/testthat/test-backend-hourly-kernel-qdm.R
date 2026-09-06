@@ -11,7 +11,10 @@ hourly_kqdm_test__series <- function(
         variable,
         tas = "K",
         ps = "Pa",
+        huss = "kg kg-1",
         hurs = "%",
+        uas = "m s-1",
+        vas = "m s-1",
         sfcWind = "m s-1",
         rsds = "W m-2",
         rsdsdiff = "W m-2"
@@ -36,8 +39,14 @@ hourly_kqdm_test__series <- function(
             tas = 288 + 8 * sin(2 * pi * annual) +
                 3 * sin(2 * pi * fields$hour / 24),
             ps = 101325 + 500 * sin(2 * pi * annual),
+            huss = 0.008 + 0.001 * sin(2 * pi * annual) +
+                0.0002 * cos(2 * pi * fields$hour / 24),
             hurs = 55 + 12 * sin(2 * pi * annual) +
                 3 * cos(2 * pi * fields$hour / 24),
+            uas = 2 + 0.4 * sin(2 * pi * annual) +
+                0.1 * cos(2 * pi * fields$hour / 24),
+            vas = -3 + 0.3 * sin(2 * pi * annual) -
+                0.1 * sin(2 * pi * fields$hour / 24),
             sfcWind = 3 + 0.6 * sin(2 * pi * annual) +
                 0.2 * cos(2 * pi * fields$hour / 24),
             rsds = 1 + daylight * (450 + 80 * sin(2 * pi * annual)),
@@ -121,7 +130,7 @@ hourly_kqdm_test__model_role <- function(
 ) {
     role <- match.arg(role)
     point_variables <- setdiff(
-        EPW_MORPH_HOURLY_KQDM_VARIABLES,
+        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
         SOLAR_RADIATION_VARIABLES
     )
     point <- lapply(point_variables, function(variable) {
@@ -233,9 +242,17 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         epw_morph_variables(recipe),
         EPW_MORPH_HOURLY_KQDM_VARIABLES
     )
+    expect_identical(
+        morpher__input_variables(recipe),
+        c("tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff")
+    )
     expect_true(plan@meta$method@requires_reference)
     expect_true(plan@meta$method@requires_observed_reference)
     expect_identical(plan@meta$climate@frequency, "3hr")
+    expect_identical(
+        plan@meta$request@meta$variables,
+        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
+    )
     expect_identical(
         plan@meta$request@meta$time,
         c(
@@ -254,6 +271,10 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     historical_request <- shift__historical_request(
         plan,
         "https://example.org"
+    )
+    expect_identical(
+        historical_request@meta$variables,
+        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
     )
     expect_identical(
         historical_request@meta$options$file_time,
@@ -340,6 +361,8 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     )))
     expect_true(all(result@diagnostics$physical_policy ==
         "absolute_model_fields"))
+    expect_true(all(result@diagnostics$wind_direction_policy ==
+        "supplied_wind_direction"))
     expect_identical(
         result@parts$component_pipeline$component,
         unname(unlist(hourly_kqdm__pipeline()@components))
@@ -349,6 +372,15 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
         all(weather$dew_point_temperature <= weather$dry_bulb_temperature) &&
             all(weather$relative_humidity >= 0) &&
             all(weather$relative_humidity <= 100) &&
-            all(weather$wind_speed >= 0)
+            all(weather$wind_speed >= 0) &&
+            all(weather$wind_direction >= 0) &&
+            all(weather$wind_direction < 360)
     }, logical(1L))))
+    expect_true(all(vapply(
+        result@members,
+        function(member) {
+            "wind_direction" %in% member@provenance$constructed_fields
+        },
+        logical(1L)
+    )))
 })

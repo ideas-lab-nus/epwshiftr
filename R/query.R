@@ -49,6 +49,19 @@ FIELDS_FACETS_COMMON <- c(
     "variant_label"
 )
 
+# Normalize optional Solr response fields that ESGF nodes omit or return as
+# JSON null for an otherwise valid empty result.
+query__normalize_solr_response <- function(response) {
+    if (!is.list(response) || is.null(response$response)) {
+        return(response)
+    }
+    if (identical(response$response$numFound, 0L) &&
+        is.null(response$response$maxScore)) {
+        response$response$maxScore <- 0
+    }
+    response
+}
+
 # Read an ESGF JSON response through curl, honoring cache mode while exposing a
 # throttled callback boundary for long-running workflow queries.
 cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", TRUE),
@@ -133,7 +146,11 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
         }
         warning(msg, call. = FALSE)
         return(NULL)
-    } else if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
+    }
+    # Apply normalization before schema-backed query objects or the disk cache
+    # observe the response, so online and cached behavior remain identical.
+    res <- query__normalize_solr_response(res)
+    if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
         cache__verbose(warning(
             "No matched data. ",
             "Please examine your query and the actual response."

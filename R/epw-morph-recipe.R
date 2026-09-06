@@ -103,6 +103,13 @@ morpher__variable_requirements <- function(recipe) {
         identical(recipe$options$snow_depth, "required")) {
         requirements[["snd"]] <- list("snd")
     }
+    if (inherits(recipe, "epw_morph_recipe") &&
+        identical(recipe$backend, "hourly_kernel_qdm")) {
+        # The statistical method exposes canonical HURS and scalar wind, while
+        # the model adapter reconstructs them from the published raw inputs.
+        requirements[["hurs"]] <- list(c("huss", "tas", "ps"))
+        requirements[["sfcWind"]] <- list(c("uas", "vas"))
+    }
     requirements
 }
 
@@ -112,6 +119,10 @@ morpher__variable_requirements <- function(recipe) {
 morpher__input_variables <- function(recipe) {
     requirements <- morpher__variable_requirements(recipe)
     required_inputs <- unique(unlist(requirements, recursive = TRUE, use.names = FALSE))
+    if (inherits(recipe, "epw_morph_recipe") &&
+        identical(recipe$backend, "hourly_kernel_qdm")) {
+        return(required_inputs)
+    }
     optional <- epw_morph_variables(recipe, include_optional = TRUE)
     if (inherits(recipe, "epw_morph_recipe") &&
         recipe$backend %in% c("belcher", "belcher_absolute")) {
@@ -389,7 +400,10 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
     }
     preprocess <- recipe$components$preprocess
     frequency <- morpher__recipe_required_frequency(recipe)
-    if (!identical(preprocess, "hourly_weather_interpolation") ||
+    if (!preprocess %in% c(
+        "hourly_weather_interpolation",
+        "hourly_kernel_qdm_input_preparation"
+    ) ||
         is.null(frequency) ||
         !frequency %in% names(TEMPORAL_SOURCE_STEPS)) {
         return(0)
