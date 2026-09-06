@@ -1135,7 +1135,7 @@ EsgResult <- R6::R6Class(
 
             cli::cat_line(c(rbind(brief, size)))
 
-            query_result__trunc(self$id, n)
+            print__truncation_footer(self$id, n)
         }
         # }}}
     )
@@ -1143,18 +1143,6 @@ EsgResult <- R6::R6Class(
 # }}}
 
 # result collection helpers {{{
-query_result__trunc <- function(x, n, newline_before = is.data.frame(x)) {
-    d <- cli::cli_div(theme = list(body = list(`padding-left` = 0L, `margin-left` = 0L)))
-    total <- if (is.data.frame(x)) nrow(x) else length(x)
-    if (n < total) {
-        if (newline_before) {
-            cli::cli_text()
-        }
-        cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
-    }
-    cli::cli_end(d)
-}
-
 query_result__context <- function(context = NULL) {
     if (is.null(context) || !length(context)) {
         return(list())

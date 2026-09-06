@@ -550,6 +550,10 @@
 
 ## Internal changes
 
+* Consolidated dictionary and ESGF query-result truncation footer rendering
+  while preserving their public print output, spacing, pluralization, and
+  ordering (#234).
+
 * Consolidated selection-context updates across `EsgDataset` and `EsgResult`
   while preserving their class-specific initial state, original source totals,
   and source-index order across consecutive slices (#228).
