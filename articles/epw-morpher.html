@@ -363,14 +363,36 @@ persisted with the workflow:</p>
 <span>    <span class="st">"sobie_curry_daily"</span>,</span>
 <span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>The complete hourly workflow requires hourly observations plus
-matching three-hourly historical and future <code>tas</code>,
-<code>ps</code>, <code>hurs</code>, <code>sfcWind</code>,
-<code>rsds</code>, and <code>rsdsdiff</code>. It preserves every
-complete future model year as a separate output member instead of
-collapsing the corrected sequence into a representative year:</p>
+<p>The complete hourly workflow requires hourly observed
+<code>tas</code>, <code>ps</code>, <code>hurs</code>,
+<code>sfcWind</code>, <code>rsds</code>, and <code>rsdsdiff</code>.
+Historical and future model roles use the published raw inputs
+<code>tas</code>, <code>ps</code>, <code>huss</code>, <code>uas</code>,
+<code>vas</code>, <code>rsds</code>, and <code>rsdsdiff</code>. After
+hourly reconstruction, the input adapter derives relative humidity,
+scalar wind speed, and meteorological direction before KQDM. It
+preserves every complete future model year as a separate output member
+instead of collapsing the corrected sequence into a representative
+year.</p>
+<p>Check the live Dataset catalogue before selecting a model. A query
+returning no complete rows is a valid result: the public catalogue may
+not contain the exact seven-variable combination for both experiments,
+even though the published workflow used model-specific additions and
+fallbacks documented in its supplementary methods.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hourly_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/hourly_kernel_qdm.html">hourly_kernel_qdm</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">hourly_availability</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_cmip6_avail.html">shift_cmip6_avail</a></span><span class="op">(</span></span>
+<span>    variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>        <span class="st">"tas"</span>, <span class="st">"ps"</span>, <span class="st">"huss"</span>, <span class="st">"uas"</span>, <span class="st">"vas"</span>, <span class="st">"rsds"</span>, <span class="st">"rsdsdiff"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
+<span>    member <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>    frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>    table <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>    index_node <span class="op">=</span> <span class="st">"ORNL"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">available_hourly</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">hourly_availability</span>, <span class="va">complete</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">hourly_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/hourly_kernel_qdm.html">hourly_kernel_qdm</a></span><span class="op">(</span></span>
 <span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
 <span>    observed_reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
 <span>        plan_id <span class="op">=</span> <span class="va">observed_hourly_plan_ids</span>,</span>
@@ -378,21 +400,26 @@ collapsing the corrected sequence into a representative year:</p>
 <span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">hourly_climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
-<span>    model <span class="op">=</span> <span class="st">"EC-Earth3"</span>,</span>
-<span>    scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
-<span>    frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
-<span>    table <span class="op">=</span> <span class="st">"3hr"</span></span>
-<span><span class="op">)</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">available_hourly</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">selected</span> <span class="op">&lt;-</span> <span class="va">available_hourly</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span></span>
+<span>    <span class="va">hourly_climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
+<span>        model <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">source_id</span>,</span>
+<span>        scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
+<span>        member <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">variant_label</span>,</span>
+<span>        grid <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">grid_label</span>,</span>
+<span>        frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>        table <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">table_id</span></span>
+<span>    <span class="op">)</span></span>
 <span></span>
-<span><span class="va">hourly_plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    climate <span class="op">=</span> <span class="va">hourly_climate</span>,</span>
-<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2061</span><span class="op">:</span><span class="fl">2070</span><span class="op">)</span>,</span>
-<span>    method <span class="op">=</span> <span class="va">hourly_method</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span>,</span>
-<span>    dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span></code></pre></div>
+<span>    <span class="va">hourly_plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>        epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>        climate <span class="op">=</span> <span class="va">hourly_climate</span>,</span>
+<span>        periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2061</span><span class="op">:</span><span class="fl">2070</span><span class="op">)</span>,</span>
+<span>        method <span class="op">=</span> <span class="va">hourly_method</span>,</span>
+<span>        dir <span class="op">=</span> <span class="st">"future-epw"</span>,</span>
+<span>        dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>    <span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
 <p>The planner expands historical and future extraction windows by one
 source timestep. This supplies the edge samples needed by bounded linear
 interpolation; only complete native-calendar years shared by every
@@ -1203,8 +1230,9 @@ complete recipe. The direct-model hourly adapter is:</p>
 <td align="left">Convert climate variables into one
 <code>EpwPhysicalRequest</code> and apply
 <code>absolute_model_fields</code>; derive vector wind speed and
-direction or retain template direction for scalar wind speed, while
-preserving unrelated template fields</td>
+direction, use direction supplied with scalar speed, or inherit template
+direction when scalar inputs contain no direction, while preserving
+unrelated template fields</td>
 <td align="left">One typed <code>EpwHourlyWeatherSequence</code> of kind
 <code>epw_hourly_weather_sequence</code>, containing one 8760-row
 EPW-shaped member per future year, constructed/inherited field
