@@ -166,30 +166,24 @@ epwshiftr_cli_morph_retry <- function(store, args, json = FALSE,
         options = c("--morph", "--status")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    status <- epwshiftr_cli_csv(parsed$options[["--status"]])
-    if (is.null(status)) {
-        status <- "failed"
-    }
     status_choices <- c("planned", "running", "blocked", "failed", "result_done", "epw_written")
-    if (any(!status %in% status_choices)) {
-        epwshiftr_cli_usage_abort(sprintf(
-            "--status must be one of: %s.",
-            paste(status_choices, collapse = ", ")
-        ))
-    }
+    statuses <- cli_retry__resolve_statuses(
+        parsed$options[["--status"]],
+        status_choices
+    )
     candidates <- epwshiftr_cli_morph_status_rows(
         store,
         epwshiftr_cli_ids(parsed$options[["--morph"]], "--morph", required = FALSE)
     )
-    if (nrow(candidates)) {
-        candidates <- candidates[candidates[["status"]] %in% status]
+    retry <- cli_retry__prepare_candidates(
+        candidates,
+        statuses,
+        parsed$flags[["--run"]]
+    )
+    if (!retry$execute) {
+        return(retry$candidates)
     }
-    if (!isTRUE(parsed$flags[["--run"]]) || !nrow(candidates)) {
-        if (nrow(candidates)) {
-            candidates[, dry_run := TRUE]
-        }
-        return(candidates)
-    }
+    candidates <- retry$candidates
     results <- vector("list", nrow(candidates))
     for (i in seq_len(nrow(candidates))) {
         morph_id <- candidates$morph_id[[i]]

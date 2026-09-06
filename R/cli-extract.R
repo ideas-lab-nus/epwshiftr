@@ -73,28 +73,22 @@ epwshiftr_cli_extract_retry <- function(store, args, json = FALSE,
         options = c("--plan", "--status", "--fallback")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    status <- epwshiftr_cli_csv(parsed$options[["--status"]])
-    if (is.null(status)) {
-        status <- "failed"
-    }
     status_choices <- c("pending", "failed", "empty", "done")
-    if (any(!status %in% status_choices)) {
-        epwshiftr_cli_usage_abort(sprintf(
-            "--status must be one of: %s.",
-            paste(status_choices, collapse = ", ")
-        ))
-    }
+    statuses <- cli_retry__resolve_statuses(
+        parsed$options[["--status"]],
+        status_choices
+    )
     fallback <- epwshiftr_cli_choice(parsed$options[["--fallback"]], c("auto", "error"), "--fallback", default = "auto")
     candidates <- store$coverage(plan_id = epwshiftr_cli_ids(parsed$options[["--plan"]], "--plan", required = FALSE))
-    if (nrow(candidates)) {
-        candidates <- candidates[candidates[["status"]] %in% status]
+    retry <- cli_retry__prepare_candidates(
+        candidates,
+        statuses,
+        parsed$flags[["--run"]]
+    )
+    if (!retry$execute) {
+        return(retry$candidates)
     }
-    if (!isTRUE(parsed$flags[["--run"]]) || !nrow(candidates)) {
-        if (nrow(candidates)) {
-            candidates[, dry_run := TRUE]
-        }
-        return(candidates)
-    }
+    candidates <- retry$candidates
     climate <- shift__extract_plans_task(
         store,
         plan_id = unique(candidates$plan_id),

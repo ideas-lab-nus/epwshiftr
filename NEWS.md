@@ -452,6 +452,11 @@
 
 ## Bug fixes
 
+* `extract retry` and `morph retry` now filter candidates by the requested
+  status instead of resolving the selector as the candidate table's `status`
+  column. Their shared status validation and preview preparation retain each
+  command's separate candidate source and retry execution (#232).
+
 * Point extraction now retains canonical CF calendar coordinates and annual
   phase, uses them for non-Gregorian range selection and yearly Parquet
   partitions, and prefers them in morphing summaries with legacy artifact

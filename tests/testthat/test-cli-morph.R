@@ -58,6 +58,15 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     expect_equal(retry_preview$result$status, "failed")
     expect_true(retry_preview$result$dry_run)
 
+    retry_other_status <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir,
+        "morph", "retry",
+        "--morph", run$result$morph_id,
+        "--status", "result_done"
+    ))
+    expect_equal(retry_other_status$status, 0L)
+    expect_equal(nrow(retry_other_status$result), 0L)
+
     retry_bad_status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "retry", "--status", "bogus"))
     expect_equal(retry_bad_status$status, 2L)
     expect_match(retry_bad_status$error, "--status")

@@ -54,6 +54,15 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
     expect_equal(retry_preview$result$status, "failed")
     expect_true(retry_preview$result$dry_run)
 
+    retry_other_status <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir,
+        "extract", "retry",
+        "--plan", plan$result$plan_id[[1L]],
+        "--status", "done"
+    ))
+    expect_equal(retry_other_status$status, 0L)
+    expect_equal(nrow(retry_other_status$result), 0L)
+
     retry_bad_status <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "extract", "retry", "--status", "bogus"))
     expect_equal(retry_bad_status$status, 2L)
     expect_match(retry_bad_status$error, "--status")

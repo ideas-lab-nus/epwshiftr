@@ -74,6 +74,7 @@ Collate:
     'cli-parse.R'
     'cli-query.R'
     'cli-render.R'
+    'cli-retry.R'
     'cli-shift-config.R'
     'cli-shift-watch.R'
     'cli-shift.R'
