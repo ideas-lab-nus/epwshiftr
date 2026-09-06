@@ -284,6 +284,12 @@ pipeline__signal_overrides <- function(options) {
     overrides
 }
 
+# Remove signal-owned profile overrides from the option list seen by every
+# other component while retaining any backend settings those stages declare.
+pipeline__component_options <- function(options) {
+    options[setdiff(names(options), "signal_overrides")]
+}
+
 # Build the stage-specific operation arguments while retaining one generic
 # executor. Signal components receive their shared group lifecycle contract;
 # every other stage receives the previous typed value.
@@ -298,7 +304,7 @@ pipeline__operation_args <- function(
     common <- list(
         inputs = plan@inputs,
         context = context,
-        options = options
+        options = pipeline__component_options(options)
     )
     switch(
         component@stage,

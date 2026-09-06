@@ -44,11 +44,19 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
             "eames_monthly_temperature",
             "ek_daily_factors",
             "monthly_percentile_temperature",
+            "hourly_kernel_qdm",
             "sobie_curry_daily"
         )
     )
     expect_true(all(lengths(recipes$components) == 7L))
-    expect_true(all(recipes$output_type == "representative_year"))
+    expect_true(all(
+        recipes$output_type[recipes$name != "hourly_kernel_qdm"] ==
+            "representative_year"
+    ))
+    expect_identical(
+        recipes$output_type[recipes$name == "hourly_kernel_qdm"],
+        "multi_year"
+    )
     expect_false(any(recipes$stochastic))
 
     daily <- epw_morph_recipe_spec("epwshiftr_daily_power")

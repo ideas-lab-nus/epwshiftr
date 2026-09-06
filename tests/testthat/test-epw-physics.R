@@ -47,6 +47,7 @@ test_that("all registered complete recipes resolve a physical policy", {
         epwshiftr_daily_btws = "preserve_specific_humidity",
         epwshiftr_daily_power = "preserve_specific_humidity",
         epwshiftr_monthly = "monthly_harmonized",
+        hourly_kernel_qdm = "absolute_model_fields",
         monthly_percentile_temperature = "preserve_humidity_fields",
         sobie_curry_daily = "independent_thermodynamic_fields"
     )

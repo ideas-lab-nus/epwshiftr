@@ -9,6 +9,7 @@ TEMPORAL_LINEAR_VARIABLES <- c(
     "hurs",
     "ps",
     "psl",
+    "sfcWind",
     "uas",
     "vas"
 )

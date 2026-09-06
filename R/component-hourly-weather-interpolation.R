@@ -508,6 +508,69 @@ weather_interp__state_role <- function(
     )
 }
 
+# Identify the complete native-calendar years shared by every reconstructed
+# variable group, treating partial edge years only as interpolation support.
+weather_interp__complete_years <- function(data, group_columns, role) {
+    groups <- base::split(
+        data,
+        by = group_columns,
+        keep.by = TRUE,
+        drop = TRUE
+    )
+    diagnostics <- list()
+    complete_sets <- lapply(groups, function(group) {
+        label <- temporal__group_label(group, group_columns)
+        years <- sort(unique(as.integer(group[["cf_year"]])))
+        complete <- vapply(years, function(year) {
+            target_year <- as.integer(year)
+            rows <- group[get("cf_year") == target_year]
+            year_days <- unique(as.integer(rows[["cf_year_days"]]))
+            if (length(year_days) != 1L) {
+                return(FALSE)
+            }
+            days <- sort(unique(as.integer(rows[["cf_day_of_year"]])))
+            samples_per_day <- table(rows[["cf_day_of_year"]])
+            lattice <- temporal__daily_lattice(
+                as.numeric(rows[["cf_second_of_day"]])
+            )
+            nrow(rows) == year_days * 24L &&
+                identical(days, seq_len(year_days)) &&
+                all(samples_per_day == 24L) &&
+                isTRUE(lattice$regular)
+        }, logical(1L))
+        diagnostics[[length(diagnostics) + 1L]] <<- data.table::data.table(
+            role = role,
+            group = label,
+            variable_id = as.character(group[["variable_id"]][[1L]]),
+            cf_calendar = as.character(group[["cf_calendar"]][[1L]]),
+            cf_year = years,
+            complete = complete
+        )
+        years[complete]
+    })
+    retained <- sort(Reduce(intersect, complete_sets))
+    diagnostics <- data.table::rbindlist(
+        diagnostics,
+        use.names = TRUE,
+        fill = TRUE
+    )
+    data.table::set(
+        diagnostics,
+        j = "retained",
+        value = diagnostics[["complete"]] &
+            diagnostics[["cf_year"]] %in% retained
+    )
+    list(
+        data = if (length(retained)) {
+            data[get("cf_year") %in% retained]
+        } else {
+            data
+        },
+        years = as.integer(retained),
+        diagnostics = diagnostics
+    )
+}
+
 # Merge hourly variable families back into one role descriptor without
 # discarding their family-specific row provenance or interval columns.
 weather_interp__combine_role <- function(input, role, pieces) {
@@ -534,6 +597,12 @@ weather_interp__combine_role <- function(input, role, pieces) {
     } else {
         character()
     }
+    completeness <- weather_interp__complete_years(
+        data,
+        unique(c(common_groups, "variable_id", "units", "cf_calendar")),
+        role
+    )
+    data <- completeness$data
     weather__new_input(
         role,
         as.data.frame(data, stringsAsFactors = FALSE),
@@ -543,17 +612,24 @@ weather_interp__combine_role <- function(input, role, pieces) {
         calendars = unique(as.character(data[["cf_calendar"]])),
         provenance = utils::modifyList(
             input@provenance,
-            list(hourly_weather_interpolation = lapply(
-                pieces,
-                function(piece) piece$provenance
-            ))
+            list(
+                hourly_weather_interpolation = lapply(
+                    pieces,
+                    function(piece) piece$provenance
+                ),
+                hourly_weather_years = list(
+                    policy = "shared_complete_native_years",
+                    retained = completeness$years
+                )
+            )
         ),
         metadata = utils::modifyList(
             input@metadata,
             list(
                 group_columns = common_groups,
                 time_step_seconds = 3600,
-                variable_specific_temporal_semantics = TRUE
+                variable_specific_temporal_semantics = TRUE,
+                hourly_weather_years = completeness$diagnostics
             )
         )
     )
@@ -743,6 +819,13 @@ weather_interp__apply <- function(inputs, context, options) {
         use.names = TRUE,
         fill = TRUE
     )
+    year_diagnostics <- data.table::rbindlist(
+        lapply(roles, function(role) {
+            weather__get_input(output, role)@metadata$hourly_weather_years
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
     WeatherStageResult(
         stage = "preprocess",
         component = "hourly_weather_interpolation",
@@ -750,7 +833,8 @@ weather_interp__apply <- function(inputs, context, options) {
         value = output,
         diagnostics = list(
             hourly_weather_interpolation = diagnostic_table,
-            hourly_weather_coordinates = coordinate_diagnostics
+            hourly_weather_coordinates = coordinate_diagnostics,
+            hourly_weather_years = year_diagnostics
         ),
         provenance = list(
             method = "hourly_weather_interpolation",
@@ -763,6 +847,7 @@ weather_interp__apply <- function(inputs, context, options) {
             observed_extreme_hour_policy = "site_month_mode",
             coordinate_policy = "regular_hourly_native_calendar_per_series",
             cross_variable_phase_policy = "retain_temporal_semantics",
+            complete_year_policy = "shared_complete_native_years",
             target_frequency = "hour"
         ),
         metadata = list(
@@ -816,7 +901,8 @@ weather_interp__component <- function() {
             daily_extrema_policy = "hourly_anchor",
             observed_extreme_hour_policy = "site_month_mode",
             coordinate_policy = "regular_hourly_native_calendar_per_series",
-            cross_variable_phase_policy = "retain_temporal_semantics"
+            cross_variable_phase_policy = "retain_temporal_semantics",
+            complete_year_policy = "shared_complete_native_years"
         )
     )
 }

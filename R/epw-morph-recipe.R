@@ -245,6 +245,7 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
     is_ek_temperature <- identical(backend, "ek_daily_temperature")
     is_arima_temperature <- identical(backend, "arima_temperature")
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
+    is_hourly_kernel_qdm <- identical(backend, "hourly_kernel_qdm")
     if (is_belcher) {
         if (is.null(profile)) {
             profile <- "enhanced"
@@ -299,6 +300,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- sobie__backend_options(options)
+    } else if (is_hourly_kernel_qdm) {
+        if (!is.null(profile) && !identical(profile, "default")) {
+            cli::cli_abort(
+                "Hourly kernel QDM recipes only support {.val default} profile metadata."
+            )
+        }
+        profile <- "default"
+        options <- hourly_kqdm__options(options)
     } else {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort("Custom EPW morphing backends only support {.val default} profile metadata.")
@@ -370,6 +379,22 @@ morpher__recipe_rules <- function(recipe) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     data.table::as.data.table(recipe$rules)
+}
+
+# Return the source-timestep padding required around extraction windows when a
+# preprocessing component reconstructs bounded sub-daily values to hourly data.
+morpher__recipe_time_padding_seconds <- function(recipe) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
+    }
+    preprocess <- recipe$components$preprocess
+    frequency <- morpher__recipe_required_frequency(recipe)
+    if (!identical(preprocess, "hourly_weather_interpolation") ||
+        is.null(frequency) ||
+        !frequency %in% names(TEMPORAL_SOURCE_STEPS)) {
+        return(0)
+    }
+    as.numeric(TEMPORAL_SOURCE_STEPS[[frequency]])
 }
 
 morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend("belcher")) {
