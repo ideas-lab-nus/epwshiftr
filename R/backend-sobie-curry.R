@@ -867,13 +867,11 @@ sobie__physics_apply <- function(data, inputs, context, options) {
             )
         )
     }
-    for (name in names(diagnostic_values)) {
-        data.table::set(
-            weather,
-            j = name,
-            value = diagnostic_values[[name]]
-        )
-    }
+    data.table::set(
+        weather,
+        j = names(diagnostic_values),
+        value = diagnostic_values
+    )
 
     diagnostics <- list()
     fallback <- factors[["temperature_dtr_status"]] ==

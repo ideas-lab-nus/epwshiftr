@@ -120,6 +120,39 @@ test_that("paper-faithful preservation diagnoses without changing humidity", {
     )
 })
 
+test_that("temperature candidates share one physical-policy entry point", {
+    template <- epwphys_test__weather()
+    projected <- c(5, 25)
+    preserved <- epwphys__apply_temperature(
+        template = template,
+        temperature = projected,
+        policy = epwphys__policy("preserve_humidity_fields"),
+        adapter = "paper_temperature"
+    )
+    harmonized <- epwphys__apply_temperature(
+        template = template,
+        temperature = projected,
+        policy = epwphys__policy("preserve_specific_humidity"),
+        adapter = "harmonized_temperature"
+    )
+
+    expect_true(S7::S7_inherits(preserved, EpwPhysicalResult))
+    expect_true(S7::S7_inherits(harmonized, EpwPhysicalResult))
+    expect_identical(preserved@weather$dry_bulb_temperature, projected)
+    expect_identical(harmonized@weather$dry_bulb_temperature, projected)
+    expect_identical(
+        preserved@weather$relative_humidity,
+        template$relative_humidity
+    )
+    expect_null(preserved@state$humidity)
+    expect_named(harmonized@state$humidity)
+    expect_identical(preserved@provenance$adapter, "paper_temperature")
+    expect_identical(
+        harmonized@provenance$adapter,
+        "harmonized_temperature"
+    )
+})
+
 test_that("paper-faithful diagnostics retain pressure and union row masks", {
     template <- epwphys_test__weather(3L)
     template$relative_humidity[[1L]] <- 120

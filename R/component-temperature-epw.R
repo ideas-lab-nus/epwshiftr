@@ -4,31 +4,6 @@
 # EPW-header options remain owned by their corresponding stages.
 EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
 
-# Preserve baseline specific humidity after changing dry-bulb temperature and
-# expose the common physical result for method-specific diagnostics.
-temperature__moisture <- function(weather, temperature) {
-    physical <- epwphys__apply(
-        EpwPhysicalRequest(
-            template = weather,
-            fields = list(
-                dry_bulb_temperature = as.numeric(temperature)
-            ),
-            provenance = list(adapter = "daily_temperature")
-        ),
-        epwphys__policy("preserve_specific_humidity")
-    )
-    humidity <- physical@state$humidity
-    list(
-        weather = physical@weather,
-        relative_humidity = physical@weather[["relative_humidity"]],
-        dew_point_temperature = physical@weather[["dew_point_temperature"]],
-        baseline_specific_humidity = humidity$baseline_specific_humidity,
-        specific_humidity = humidity$specific_humidity,
-        status = humidity$status,
-        physical = physical
-    )
-}
-
 # Reduce one hourly projection to auditable daily targets and numerical closure
 # values shared by POWER, BTWS, and Eames temperature workflows.
 temperature__factor_rows <- function(targets, projected) {
@@ -178,12 +153,14 @@ temperature__physics_apply <- function(
     baseline <- data$baseline
     hourly <- data$hourly
     factors <- data$factors
-    moisture <- temperature__moisture(
-        baseline$weather,
-        hourly[["temperature_projected"]]
+    physical <- epwphys__apply_temperature(
+        template = baseline$weather,
+        temperature = hourly[["temperature_projected"]],
+        policy = epwphys__policy("preserve_specific_humidity"),
+        adapter = "daily_temperature"
     )
-
-    weather <- data.table::copy(moisture$weather)
+    humidity <- physical@state$humidity
+    weather <- data.table::copy(physical@weather)
 
     method_diagnostic_values <- if ("shape_exponent" %in% names(hourly)) {
         list(
@@ -219,13 +196,15 @@ temperature__physics_apply <- function(
         daily_temperature_boundary_jump_change =
             hourly[["boundary_jump_change"]],
         daily_temperature_baseline_specific_humidity =
-            moisture$baseline_specific_humidity,
-        daily_temperature_specific_humidity = moisture$specific_humidity,
-        daily_temperature_moisture_status = moisture$status
+            humidity$baseline_specific_humidity,
+        daily_temperature_specific_humidity = humidity$specific_humidity,
+        daily_temperature_moisture_status = humidity$status
     ))
-    for (name in names(diagnostic_values)) {
-        data.table::set(weather, j = name, value = diagnostic_values[[name]])
-    }
+    data.table::set(
+        weather,
+        j = names(diagnostic_values),
+        value = diagnostic_values
+    )
 
     diagnostics <- list()
     if (any(factors[["dtr_status"]] == "inherited_missing_extremes")) {
@@ -276,7 +255,7 @@ temperature__physics_apply <- function(
     }
     # Use the correction count produced by the shared physical executor so this
     # component does not independently reinterpret a closure status.
-    clipped <- moisture$physical@corrections$humidity_saturation_clipped
+    clipped <- physical@corrections$humidity_saturation_clipped
     if (clipped > 0L) {
         diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
             stage = "runtime",
