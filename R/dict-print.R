@@ -1,13 +1,3 @@
-dict__trunc <- function(x, n, newline_before = is.data.frame(x)) {
-    d <- cli::cli_div(theme = list(body = list(`padding-left` = 0L, `margin-left` = 0L)))
-    total <- if (is.data.frame(x)) nrow(x) else length(x)
-    if (n < total) {
-        if (newline_before) cli::cli_text()
-        cli::cli_text(cli::col_grey("# ... with {total - n} more item{?s}"))
-    }
-    cli::cli_end(d)
-}
-
 dict__list <- function(x, elem = "") {
     if (!length(x)) return()
 
@@ -51,7 +41,7 @@ dict__cv_vec <- function(cv, n = 5L) {
     txt <- cli::cli_vec(unclass(cv), list(vec_trunc = n))
     cli::cli_text("{.val {txt}}")
 
-    dict__trunc(cv, n)
+    print__truncation_footer(cv, n)
     invisible(cv)
 }
 
@@ -73,7 +63,7 @@ dict__cv_list <- function(cv, n = 5L, to_title = FALSE) {
     cli::cli_end(ul)
     cli::cli_end(d)
 
-    dict__trunc(cv, n)
+    print__truncation_footer(cv, n)
     invisible(cv)
 }
 
@@ -101,7 +91,7 @@ dict__cv_table <- function(cv, n = 3L) {
         cli::cli_end(d)
     }
 
-    dict__trunc(cv, n)
+    print__truncation_footer(cv, n)
     invisible(cv)
 }
 

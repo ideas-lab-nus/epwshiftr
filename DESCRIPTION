@@ -121,6 +121,7 @@ Collate:
     'method-quantile-mapping.R'
     'method-scaled-distribution-mapping.R'
     'netcdf.R'
+    'print-truncation.R'
     'solr-date.R'
     'query-param.R'
     'query-result.R'

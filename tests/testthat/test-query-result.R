@@ -2746,6 +2746,16 @@ test_that("EsgResultDataset$print() snapshots offline fixtures", {
     priv(datasets)$response$response$docs$number_of_aggregations <- c(2L, 0L)
 
     expect_snapshot(datasets$print(), transform = transform_print)
+
+    truncated <- capture.output(
+        datasets$print(n = 1L),
+        type = "message"
+    )
+    expect_match(
+        paste(cli::ansi_strip(truncated), collapse = "\n"),
+        "# ... with 1 more item",
+        fixed = TRUE
+    )
 })
 
 test_that("EsgResult$print_contents() batches content output", {
