@@ -549,6 +549,11 @@
   while preserving their class-specific initial state, original source totals,
   and source-index order across consecutive slices (#228).
 
+* Consolidated fixed 365- and 366-day CF calendar date/offset conversion while
+  preserving the `365_day`/`noleap` and `366_day`/`all_leap` aliases, negative
+  offsets, month and year boundaries, and the separate Gregorian and `360_day`
+  algorithms (#230).
+
 * Consolidated ordered NetCDF variable and dimension name enumeration inside
   `EsgDataset` while preserving its public methods, file-index behavior,
   metadata order, return types, and closed-dataset errors (#226).

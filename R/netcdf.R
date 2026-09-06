@@ -178,6 +178,15 @@ CF_TIME_UNIT_SECONDS <- c(
     days = 86400
 )
 
+# Map fixed-length CF calendar aliases to the year length used by their shared
+# date and offset conversion algorithm.
+CF_TIME_FIXED_YEAR_DAYS <- list(
+    `365_day` = 365L,
+    noleap = 365L,
+    `366_day` = 366L,
+    all_leap = 366L
+)
+
 # Canonical CF coordinates remain valid after non-Gregorian timestamps are
 # represented by surrogate POSIXct values for compatibility with existing APIs.
 CF_TIME_COORDINATE_COLUMNS <- c(
@@ -348,52 +357,76 @@ cf_time_gregorian_offset2date <- function (offsets) {
     data.frame(year = year, month = month, day = day)
 }
 
-cf_time_365_date2offset <- function (parts) {
-    corr <- ifelse(parts$month <= 2L, 0L, -2L)
-    365L * (parts$year - 1L) + (367L * parts$month - 362L) %/% 12L + corr + parts$day
+# Convert calendar-native dates to absolute offsets on a fixed 365- or 366-day
+# CF calendar.
+cf_time__fixed_date2offset <- function(parts, year_days) {
+    checkmate::assert_choice(year_days, c(365L, 366L))
+
+    # February is the only month whose length differs between the two fixed
+    # calendars, so it determines the correction applied from March onward.
+    february_days <- year_days - 337L
+    post_february_correction <- 30L - february_days
+    correction <- ifelse(
+        parts$month <= 2L,
+        0L,
+        -post_february_correction
+    )
+
+    year_days * (parts$year - 1L) +
+        (367L * parts$month - 362L) %/% 12L +
+        correction + parts$day
 }
 
-cf_time_365_offset2date <- function (offsets) {
+# Convert absolute offsets back to calendar-native dates on a fixed 365- or
+# 366-day CF calendar.
+cf_time__fixed_offset2date <- function(offsets, year_days) {
+    checkmate::assert_choice(year_days, c(365L, 366L))
+
     d0 <- offsets - 1L
-    year <- d0 %/% 365L + 1L
-    d1 <- d0 %% 365L
-    corr <- ifelse(d1 < 59L, 0L, 2L)
-    month <- (12L * (d1 + corr) + 373L) %/% 367L
-    day <- d1 - (367L * month - 362L) %/% 12L + corr + 1L
+    year <- d0 %/% year_days + 1L
+    day_index <- d0 %% year_days
 
-    data.frame(year = year, month = month, day = day)
-}
-
-cf_time_366_date2offset <- function (parts) {
-    corr <- ifelse(parts$month <= 2L, 0L, -1L)
-    366L * (parts$year - 1L) + (367L * parts$month - 362L) %/% 12L + corr + parts$day
-}
-
-cf_time_366_offset2date <- function (offsets) {
-    d0 <- offsets - 1L
-    year <- d0 %/% 366L + 1L
-    d1 <- d0 %% 366L
-    corr <- ifelse(d1 < 60L, 0L, 1L)
-    month <- (12L * (d1 + corr) + 373L) %/% 367L
-    day <- d1 - (367L * month - 362L) %/% 12L + corr + 1L
+    # Shift post-February day indices onto the common integer month formula.
+    february_days <- year_days - 337L
+    days_before_march <- 31L + february_days
+    post_february_correction <- 30L - february_days
+    correction <- ifelse(
+        day_index < days_before_march,
+        0L,
+        post_february_correction
+    )
+    month <- (12L * (day_index + correction) + 373L) %/% 367L
+    day <- day_index - (367L * month - 362L) %/% 12L + correction + 1L
 
     data.frame(year = year, month = month, day = day)
 }
 
 cf_time_date2offset <- function (parts, origin, calendar) {
+    fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
+    if (!is.null(fixed_year_days)) {
+        return(
+            cf_time__fixed_date2offset(parts, fixed_year_days) -
+                cf_time__fixed_date2offset(origin, fixed_year_days)
+        )
+    }
+
     switch(
         calendar,
         "360_day" = (parts$year - origin$year) * 360L +
             (parts$month - origin$month) * 30L + parts$day - origin$day,
-        "365_day" = cf_time_365_date2offset(parts) - cf_time_365_date2offset(origin),
-        "noleap" = cf_time_365_date2offset(parts) - cf_time_365_date2offset(origin),
-        "366_day" = cf_time_366_date2offset(parts) - cf_time_366_date2offset(origin),
-        "all_leap" = cf_time_366_date2offset(parts) - cf_time_366_date2offset(origin),
         cf_time_gregorian_date2offset(parts) - cf_time_gregorian_date2offset(origin)
     )
 }
 
 cf_time_offset2date <- function (offsets, origin, calendar) {
+    fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
+    if (!is.null(fixed_year_days)) {
+        return(cf_time__fixed_offset2date(
+            offsets + cf_time__fixed_date2offset(origin, fixed_year_days),
+            fixed_year_days
+        ))
+    }
+
     switch(
         calendar,
         "360_day" = {
@@ -410,10 +443,6 @@ cf_time_offset2date <- function (offsets, origin, calendar) {
 
             data.frame(year = year, month = month, day = day)
         },
-        "365_day" = cf_time_365_offset2date(offsets + cf_time_365_date2offset(origin)),
-        "noleap" = cf_time_365_offset2date(offsets + cf_time_365_date2offset(origin)),
-        "366_day" = cf_time_366_offset2date(offsets + cf_time_366_date2offset(origin)),
-        "all_leap" = cf_time_366_offset2date(offsets + cf_time_366_date2offset(origin)),
         cf_time_gregorian_offset2date(offsets + cf_time_gregorian_date2offset(origin))
     )
 }
