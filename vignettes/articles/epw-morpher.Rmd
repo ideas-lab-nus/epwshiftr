@@ -206,6 +206,13 @@ seven-variable combination for both experiments, even though the published
 workflow used model-specific additions and fallbacks documented in its
 supplementary methods.
 
+Leaving `table = NULL` searches every CMIP6 table at the requested frequency.
+The availability reduction selects one table per variable within each
+model/member/grid identity and returns that named mapping in the `table`
+list-column. Pass the mapping to `shift_cmip6()` so the download request uses
+the same variable-specific selection; `table_id` is only its compact display
+value.
+
 ```r
 hourly_availability <- shift_cmip6_avail(
     variables = c(
@@ -214,7 +221,6 @@ hourly_availability <- shift_cmip6_avail(
     scenarios = "ssp585",
     member = NULL,
     frequency = "3hr",
-    table = "3hr",
     index_node = "ORNL"
 )
 available_hourly <- subset(hourly_availability, complete)
@@ -235,7 +241,7 @@ if (nrow(available_hourly)) {
         member = selected$variant_label,
         grid = selected$grid_label,
         frequency = "3hr",
-        table = selected$table_id
+        table = selected$table[[1L]]
     )
 
     hourly_plan <- shift_future_epw(

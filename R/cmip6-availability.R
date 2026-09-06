@@ -34,11 +34,10 @@ availability__coalesce_character <- function(...) {
 # Normalize provider Dataset records to the identity fields used by the
 # availability reduction and reapply requested filters defensively.
 availability__normalize_datasets <- function(datasets, experiments, variables,
-                                             frequency, table) {
+                                             frequency, tables = NULL) {
     checkmate::assert_data_frame(datasets)
     catalog <- data.table::as.data.table(data.table::copy(datasets))
     wanted_frequency <- frequency[[1L]]
-    wanted_table <- table[[1L]]
 
     catalog[["source_id"]] <- availability__character_column(
         catalog, "source_id")
@@ -71,10 +70,53 @@ availability__normalize_datasets <- function(datasets, experiments, variables,
         complete_identity &
             experiment_id %in% experiments &
             variable_id %in% variables &
-            frequency == wanted_frequency &
-            table_id == wanted_table
+            frequency == wanted_frequency
     ]
-    unique(catalog[, ..identity_fields])
+    if (!is.null(tables) && nrow(catalog)) {
+        # An explicit table specification is variable-specific. Compare each
+        # row with its variable's resolved table instead of accepting any of
+        # the tables used elsewhere in the request.
+        selected_tables <- unname(tables[catalog$variable_id])
+        catalog <- catalog[catalog$table_id == selected_tables]
+    }
+    unique(catalog[, identity_fields, with = FALSE])
+}
+
+# Choose one table for every variable within a stable model/member/grid
+# identity. Coverage across requested experiments is preferred, followed by
+# the frequency's conventional table and then a lexical tie-break.
+availability__select_tables <- function(catalog, variables, frequency,
+                                        tables = NULL) {
+    if (!is.null(tables)) {
+        return(tables)
+    }
+
+    selected <- stats::setNames(rep(NA_character_, length(variables)), variables)
+    preferred_table <- shift__cmip6_table_id(frequency)
+    for (target_variable in variables) {
+        data <- catalog[variable_id == target_variable]
+        if (!nrow(data)) {
+            next
+        }
+        scores <- unique(data[, .(experiment_id, table_id)])[
+            , .(coverage = data.table::uniqueN(experiment_id)), by = table_id
+        ]
+        if (is.null(preferred_table)) {
+            scores[["preferred"]] <- 1L
+        } else {
+            scores[["preferred"]] <- as.integer(
+                scores$table_id != preferred_table
+            )
+        }
+        data.table::setorderv(
+            scores,
+            c("coverage", "preferred", "table_id"),
+            c(-1L, 1L, 1L),
+            na.last = TRUE
+        )
+        selected[[target_variable]] <- scores$table_id[[1L]]
+    }
+    selected
 }
 
 # Return a typed empty availability table with the public column contract.
@@ -85,6 +127,7 @@ availability__empty <- function() {
         grid_label = character(),
         frequency = character(),
         table_id = character(),
+        table = I(vector("list", 0L)),
         complete = logical(),
         complete_experiments = integer(),
         required_experiments = integer(),
@@ -99,59 +142,80 @@ availability__empty <- function() {
 # Reduce variable-specific Dataset records to one row per stable CMIP6 identity.
 availability__summarize <- function(datasets, experiments, variables,
                                     frequency, table, index_node) {
+    table <- shift__cmip6_table_spec(table)
+    tables <- if (is.null(table)) {
+        NULL
+    } else {
+        shift__cmip6_variable_tables(variables, frequency, table)
+    }
     catalog <- availability__normalize_datasets(
         datasets,
         experiments = experiments,
         variables = variables,
         frequency = frequency,
-        table = table
+        tables = tables
     )
     if (!nrow(catalog)) {
         return(availability__empty())
     }
 
     identity_fields <- c(
-        "source_id", "variant_label", "grid_label", "frequency", "table_id"
+        "source_id", "variant_label", "grid_label", "frequency"
     )
-    identities <- unique(catalog[, ..identity_fields])
-    identities[, availability_join_key := 1L]
+    identities <- unique(catalog[, identity_fields, with = FALSE])
     required <- data.table::CJ(
         experiment_id = as.character(experiments),
         variable_id = as.character(variables),
         unique = TRUE
     )
-    required[, availability_join_key := 1L]
-    targets <- merge(
-        identities,
-        required,
-        by = "availability_join_key",
-        allow.cartesian = TRUE,
-        sort = FALSE
-    )
-    targets[, availability_join_key := NULL]
 
-    observed <- unique(catalog[
-        ,
-        c(identity_fields, "experiment_id", "variable_id"),
-        with = FALSE
-    ])
-    observed[, present := TRUE]
-    coverage <- observed[
-        targets,
-        on = c(identity_fields, "experiment_id", "variable_id")
-    ]
-    coverage[is.na(present), present := FALSE]
-
-    summary <- coverage[, {
-        missing_rows <- .SD[!present]
-        experiment_status <- .SD[, .(complete = all(present)),
+    rows <- vector("list", nrow(identities))
+    for (identity_index in seq_len(nrow(identities))) {
+        identity <- identities[identity_index]
+        identity_catalog <- catalog[
+            source_id == identity$source_id[[1L]] &
+                variant_label == identity$variant_label[[1L]] &
+                grid_label == identity$grid_label[[1L]] &
+                frequency == identity$frequency[[1L]]
+        ]
+        selected_tables <- availability__select_tables(
+            identity_catalog,
+            variables = variables,
+            frequency = frequency,
+            tables = tables
+        )
+        # A variable must use the same selected table in every experiment;
+        # records split across tables cannot be combined into false coverage.
+        wanted_tables <- unname(selected_tables[identity_catalog$variable_id])
+        observed <- unique(identity_catalog[
+            table_id == wanted_tables,
+            .(experiment_id, variable_id)
+        ])
+        observed[, present := TRUE]
+        coverage <- observed[required, on = c("experiment_id", "variable_id")]
+        coverage[is.na(present), present := FALSE]
+        missing_rows <- coverage[present == FALSE]
+        experiment_status <- coverage[, .(complete = all(present)),
             by = experiment_id]
-        list(
-            complete = all(present),
+        display_tables <- sort(unique(unname(selected_tables)))
+        display_tables <- display_tables[
+            !is.na(display_tables) & nzchar(display_tables)
+        ]
+
+        rows[[identity_index]] <- data.table::data.table(
+            source_id = identity$source_id[[1L]],
+            variant_label = identity$variant_label[[1L]],
+            grid_label = identity$grid_label[[1L]],
+            frequency = identity$frequency[[1L]],
+            table_id = paste(display_tables, collapse = "+"),
+            table = list(selected_tables),
+            complete = all(coverage$present),
             complete_experiments = sum(experiment_status$complete),
-            required_experiments = data.table::uniqueN(experiment_id),
-            available_pairs = sum(present),
-            required_pairs = .N,
+            required_experiments = data.table::uniqueN(
+                coverage$experiment_id
+            ),
+            available_pairs = sum(coverage$present),
+            required_pairs = nrow(coverage),
             missing = if (nrow(missing_rows)) {
                 paste(
                     sprintf(
@@ -165,7 +229,8 @@ availability__summarize <- function(datasets, experiments, variables,
                 NA_character_
             }
         )
-    }, by = identity_fields]
+    }
+    summary <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
     summary[, index_node := rep(index_node, .N)]
     data.table::setorderv(
         summary,
@@ -217,12 +282,14 @@ availability__index_node <- function(index_node) {
 #'   requested variables for the `"historical"` experiment.
 #' @param source Optional CMIP6 source/model IDs. `NULL` leaves the source
 #'   unconstrained and discovers all matching models.
-#' @param member Optional CMIP6 variant labels. The default limits discovery to
-#'   the first realization; use `NULL` to inspect every returned member.
+#' @param member Optional CMIP6 variant labels. `NULL`, the default, discovers
+#'   every returned member and evaluates each identity independently.
 #' @param grid Optional single CMIP6 grid label.
 #' @param frequency CMIP6 frequency. Defaults to daily data.
-#' @param table Optional single CMIP6 table ID. `NULL` infers the usual table
-#'   from `frequency`, for example `"day"` for daily data.
+#' @param table Optional CMIP6 table selection. `NULL` discovers a table for
+#'   each variable at the requested frequency. An unnamed scalar pins every
+#'   variable to one table. A named character vector or list overrides the
+#'   named variables and leaves the remainder on their frequency defaults.
 #' @param activity Future CMIP6 activity ID.
 #' @param historical_activity Historical CMIP6 activity ID.
 #' @param index_node ESGF index-node name or URL. Names are matched
@@ -234,9 +301,12 @@ availability__index_node <- function(index_node) {
 #' @param store Optional [EsgStore] or store path used by [shift_datasets()].
 #' @param ui Optional shift UI configuration forwarded to [shift_datasets()].
 #'
-#' @return A data frame with one row per model/member/grid/table identity.
+#' @return A data frame with one row per model/member/grid identity.
 #'   `complete` is `TRUE` only when every requested experiment-variable pair is
-#'   present. `missing` lists absent pairs as `experiment:variable`.
+#'   present. For complete rows, `table` is a list-column containing the named
+#'   per-variable table selection accepted by [shift_cmip6()]. Incomplete rows
+#'   use `NA` for variables with no available table. `table_id` is the compact
+#'   display value, and `missing` lists absent pairs as `experiment:variable`.
 #'
 #' @details
 #' This function reports Dataset metadata availability. It does not download
@@ -259,7 +329,7 @@ shift_cmip6_avail <- function(
     scenarios = c("ssp245", "ssp585"),
     include_historical = TRUE,
     source = NULL,
-    member = "r1i1p1f1",
+    member = NULL,
     grid = NULL,
     frequency = "day",
     table = NULL,
@@ -284,20 +354,17 @@ shift_cmip6_avail <- function(
         null.ok = TRUE)
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(frequency, min.chars = 1L)
-    checkmate::assert_string(table, min.chars = 1L, null.ok = TRUE)
+    table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_string(historical_activity, min.chars = 1L)
     checkmate::assert_string(index_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_list(filters, names = "unique")
 
-    if (is.null(table)) {
-        table <- shift__cmip6_table_id(frequency)
-        if (is.null(table)) {
-            cli::cli_abort(
-                "Cannot infer a CMIP6 table for frequency {.val {frequency}}; set `table` explicitly."
-            )
-        }
+    tables <- if (is.null(table)) {
+        NULL
+    } else {
+        shift__cmip6_variable_tables(variables, frequency, table)
     }
     index_node <- availability__index_node(index_node)
     experiments <- unique(c(
@@ -309,11 +376,14 @@ shift_cmip6_avail <- function(
         if (isTRUE(include_historical)) historical_activity
     ))
 
+    # `table = NULL` is the public all-table discovery form, so an additional
+    # filter cannot silently restore the former single-table behaviour.
+    filters$table_id <- NULL
     # Reapply these core constraints after user filters so the returned table
     # always describes the function arguments printed in its rows.
     query_filters <- utils::modifyList(filters, shift__compact_list(list(
         activity_id = activities,
-        table_id = table,
+        table_id = if (is.null(tables)) NULL else unique(unname(tables)),
         grid_label = grid,
         data_node = data_node,
         latest = TRUE,

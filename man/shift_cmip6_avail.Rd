@@ -9,7 +9,7 @@ shift_cmip6_avail(
   scenarios = c("ssp245", "ssp585"),
   include_historical = TRUE,
   source = NULL,
-  member = "r1i1p1f1",
+  member = NULL,
   grid = NULL,
   frequency = "day",
   table = NULL,
@@ -33,15 +33,17 @@ requested variables for the \code{"historical"} experiment.}
 \item{source}{Optional CMIP6 source/model IDs. \code{NULL} leaves the source
 unconstrained and discovers all matching models.}
 
-\item{member}{Optional CMIP6 variant labels. The default limits discovery to
-the first realization; use \code{NULL} to inspect every returned member.}
+\item{member}{Optional CMIP6 variant labels. \code{NULL}, the default, discovers
+every returned member and evaluates each identity independently.}
 
 \item{grid}{Optional single CMIP6 grid label.}
 
 \item{frequency}{CMIP6 frequency. Defaults to daily data.}
 
-\item{table}{Optional single CMIP6 table ID. \code{NULL} infers the usual table
-from \code{frequency}, for example \code{"day"} for daily data.}
+\item{table}{Optional CMIP6 table selection. \code{NULL} discovers a table for
+each variable at the requested frequency. An unnamed scalar pins every
+variable to one table. A named character vector or list overrides the
+named variables and leaves the remainder on their frequency defaults.}
 
 \item{activity}{Future CMIP6 activity ID.}
 
@@ -61,9 +63,12 @@ precedence when names overlap.}
 \item{ui}{Optional shift UI configuration forwarded to \code{\link[=shift_datasets]{shift_datasets()}}.}
 }
 \value{
-A data frame with one row per model/member/grid/table identity.
+A data frame with one row per model/member/grid identity.
 \code{complete} is \code{TRUE} only when every requested experiment-variable pair is
-present. \code{missing} lists absent pairs as \code{experiment:variable}.
+present. For complete rows, \code{table} is a list-column containing the named
+per-variable table selection accepted by \code{\link[=shift_cmip6]{shift_cmip6()}}. Incomplete rows
+use \code{NA} for variables with no available table. \code{table_id} is the compact
+display value, and \code{missing} lists absent pairs as \code{experiment:variable}.
 }
 \description{
 Query CMIP6 Dataset metadata and identify model/member/grid identities that

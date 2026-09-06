@@ -470,6 +470,14 @@
 
 ## Bug fixes
 
+* `shift_cmip6_avail(table = NULL)` now discovers one CMIP6 table per variable
+  at the requested frequency instead of constraining every variable to the
+  frequency-default table. Complete rows return a named `table` mapping that
+  can be passed directly to `shift_cmip6()`, while the reduction keeps each
+  variable on one table across all requested experiments. `member = NULL` is
+  now the default, so every returned member is evaluated independently without
+  a preferred variant label (#242).
+
 * `extract retry` and `morph retry` now filter candidates by the requested
   status instead of resolving the selector as the candidate table's `status`
   column. Their shared status validation and preview preparation retain each
