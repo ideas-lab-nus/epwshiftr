@@ -545,6 +545,10 @@
 
 ## Internal changes
 
+* Consolidated selection-context updates across `EsgDataset` and `EsgResult`
+  while preserving their class-specific initial state, original source totals,
+  and source-index order across consecutive slices (#228).
+
 * Consolidated ordered NetCDF variable and dimension name enumeration inside
   `EsgDataset` while preserving its public methods, file-index behavior,
   metadata order, return types, and closed-dataset errors (#226).
