@@ -2109,14 +2109,18 @@ arima_temperature <- function(
 #' @description
 #' `hourly_kernel_qdm()` creates a complete multi-year future-weather method
 #' from matching three-hourly historical and future model data plus an hourly
-#' observed reference. It requires `tas`, `ps`, `hurs`, `sfcWind`, `rsds`, and
-#' `rsdsdiff` in every climate role.
+#' observed reference. Model roles require raw `tas`, `ps`, `huss`, `uas`,
+#' `vas`, `rsds`, and `rsdsdiff`; the observed role requires `tas`, `ps`,
+#' `hurs`, `sfcWind`, `rsds`, and `rsdsdiff`.
 #'
-#' Continuous state variables and scalar wind speed are interpolated to an
-#' hourly lattice. Shortwave variables are allocated with solar geometry before
-#' the centered three-month kernel-density Quantile Delta Mapping calculation.
+#' Continuous model state variables and wind-vector components are interpolated
+#' to an hourly lattice. Relative humidity is derived from `huss`, `tas`, and
+#' `ps`; scalar speed and meteorological direction are derived from `uas` and
+#' `vas`. Shortwave variables are allocated with solar geometry before the
+#' centered three-month kernel-density Quantile Delta Mapping calculation.
 #' Every corrected future-model year is then mapped to the 365-day EPW calendar
-#' and passed through the common `absolute_model_fields` physical policy.
+#' and passed through the common `absolute_model_fields` physical policy, with
+#' the future model's wind direction retained alongside the corrected speed.
 #'
 #' The method returns one addressable output member per complete future-model
 #' year. Numerical kernel, bandwidth, grid, tail, and zero-denominator settings
@@ -8457,6 +8461,12 @@ shift__derive_hurs_climate <- function(climate, recipe, overwrite = FALSE,
     }
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
+    if (inherits(recipe, "epw_morph_recipe") &&
+        identical(recipe$backend, "hourly_kernel_qdm")) {
+        # This workflow must derive HURS after HUSS, TAS, and PS have been
+        # reconstructed to the common hourly lattice.
+        return(climate)
+    }
     requirements <- morpher__variable_requirements(recipe)
     humidity_alternatives <- requirements[["hurs"]]
     if (is.null(humidity_alternatives) ||

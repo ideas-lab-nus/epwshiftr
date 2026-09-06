@@ -46,11 +46,21 @@
 
 ## New features
 
+* Aligned the experimental `hourly_kernel_qdm()` workflow with the published
+  raw-model input boundary: model roles now request `tas`, `ps`, `huss`, `uas`,
+  `vas`, `rsds`, and `rsdsdiff`, then derive hourly relative humidity, scalar
+  wind speed, and meteorological direction before kernel QDM. Model direction
+  follows the corrected future speed through calendar mapping and EPW physical
+  closure, while scalar inputs without direction retain template compatibility.
+  Empty ESGF Dataset searches with `maxScore: null` now return a valid empty
+  availability result (#240).
+
 * Added the experimental `hourly_kernel_qdm()` complete workflow for matching
-  hourly observations and three-hourly historical/future `tas`, `ps`, `hurs`,
-  `sfcWind`, `rsds`, and `rsdsdiff`. The seven-stage recipe reconstructs hourly
-  model inputs with boundary support, applies variable-specific kernel QDM,
-  maps each complete future year to the EPW calendar, executes the shared
+  hourly observed `tas`, `ps`, `hurs`, `sfcWind`, `rsds`, and `rsdsdiff` with
+  three-hourly historical/future model `tas`, `ps`, `huss`, `uas`, `vas`,
+  `rsds`, and `rsdsdiff`. The seven-stage recipe reconstructs hourly model
+  inputs with boundary support, applies variable-specific kernel QDM, maps each
+  complete future year to the EPW calendar, executes the shared
   `absolute_model_fields` physical policy, and returns one persistent EPW
   member per source-model year (#238).
 

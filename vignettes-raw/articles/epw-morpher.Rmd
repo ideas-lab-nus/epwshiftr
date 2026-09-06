@@ -184,13 +184,33 @@ sobie_curry_harmonized <- epw_morph_recipe(
 )
 ```
 
-The complete hourly workflow requires hourly observations plus matching
-three-hourly historical and future `tas`, `ps`, `hurs`, `sfcWind`, `rsds`, and
-`rsdsdiff`. It preserves every complete future model year as a separate output
-member instead of collapsing the corrected sequence into a representative
-year:
+The complete hourly workflow requires hourly observed `tas`, `ps`, `hurs`,
+`sfcWind`, `rsds`, and `rsdsdiff`. Historical and future model roles use the
+published raw inputs `tas`, `ps`, `huss`, `uas`, `vas`, `rsds`, and
+`rsdsdiff`. After hourly reconstruction, the input adapter derives relative
+humidity, scalar wind speed, and meteorological direction before KQDM. It
+preserves every complete future model year as a separate output member instead
+of collapsing the corrected sequence into a representative year.
+
+Check the live Dataset catalogue before selecting a model. A query returning no
+complete rows is a valid result: the public catalogue may not contain the exact
+seven-variable combination for both experiments, even though the published
+workflow used model-specific additions and fallbacks documented in its
+supplementary methods.
 
 ```r
+hourly_availability <- shift_cmip6_avail(
+    variables = c(
+        "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff"
+    ),
+    scenarios = "ssp585",
+    member = NULL,
+    frequency = "3hr",
+    table = "3hr",
+    index_node = "ORNL"
+)
+available_hourly <- subset(hourly_availability, complete)
+
 hourly_method <- hourly_kernel_qdm(
     reference = historical_reference(1995:2014),
     observed_reference = shift_reference_plan(
@@ -199,21 +219,26 @@ hourly_method <- hourly_kernel_qdm(
     )
 )
 
-hourly_climate <- shift_cmip6(
-    model = "EC-Earth3",
-    scenarios = "ssp585",
-    frequency = "3hr",
-    table = "3hr"
-)
+if (nrow(available_hourly)) {
+    selected <- available_hourly[1, ]
+    hourly_climate <- shift_cmip6(
+        model = selected$source_id,
+        scenarios = "ssp585",
+        member = selected$variant_label,
+        grid = selected$grid_label,
+        frequency = "3hr",
+        table = selected$table_id
+    )
 
-hourly_plan <- shift_future_epw(
-    epw = epw,
-    climate = hourly_climate,
-    periods = list(`2060s` = 2061:2070),
-    method = hourly_method,
-    dir = "future-epw",
-    dry_run = TRUE
-)
+    hourly_plan <- shift_future_epw(
+        epw = epw,
+        climate = hourly_climate,
+        periods = list(`2060s` = 2061:2070),
+        method = hourly_method,
+        dir = "future-epw",
+        dry_run = TRUE
+    )
+}
 ```
 
 The planner expands historical and future extraction windows by one source
@@ -678,7 +703,7 @@ recipe. The direct-model hourly adapter is:
 
 | Registry name | Accepted hourly input | Behavior | Output contract |
 |:--------------|:----------------------|:---------|:----------------|
-| `epw_hourly_physical_closure` | One `MappedHourlyClimateSequence` plus a 365-day `weather_template`; every future year must contain `tas`, `ps`, `rsds`, and `rsdsdiff`, exactly one of `hurs` or `huss`, exactly one of `sfcWind` or paired `uas` and `vas`, and may contain `rlds` | Convert climate variables into one `EpwPhysicalRequest` and apply `absolute_model_fields`; derive vector wind speed and direction or retain template direction for scalar wind speed, while preserving unrelated template fields | One typed `EpwHourlyWeatherSequence` of kind `epw_hourly_weather_sequence`, containing one 8760-row EPW-shaped member per future year, constructed/inherited field provenance, input-path choices, bound counts, radiation corrections, and closure errors |
+| `epw_hourly_physical_closure` | One `MappedHourlyClimateSequence` plus a 365-day `weather_template`; every future year must contain `tas`, `ps`, `rsds`, and `rsdsdiff`, exactly one of `hurs` or `huss`, exactly one of `sfcWind` or paired `uas` and `vas`, and may contain `rlds` | Convert climate variables into one `EpwPhysicalRequest` and apply `absolute_model_fields`; derive vector wind speed and direction, use direction supplied with scalar speed, or inherit template direction when scalar inputs contain no direction, while preserving unrelated template fields | One typed `EpwHourlyWeatherSequence` of kind `epw_hourly_weather_sequence`, containing one 8760-row EPW-shaped member per future year, constructed/inherited field provenance, input-path choices, bound counts, radiation corrections, and closure errors |
 
 `epw_hourly_physical_closure` operates after climate calendar mapping, so its
 rows already have an unambiguous position on the fixed EPW lattice. A leap

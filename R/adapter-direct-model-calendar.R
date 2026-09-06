@@ -449,7 +449,10 @@ hourmap__conservative_interval_values <- function(data, target_days) {
 # numerical diagnostics required by later physical and output stages.
 hourmap__variable <- function(data, variable, member, target) {
     data <- data.table::as.data.table(data.table::copy(data))
-    data <- data[get("variable_id") == variable]
+    # Capture the function argument outside data.table evaluation because
+    # source provenance may legitimately include a column named `variable`.
+    target_variable <- variable
+    data <- data[variable_id == target_variable]
     data.table::setorderv(
         data,
         c("cf_day_of_year", "cf_second_of_day")
@@ -460,7 +463,11 @@ hourmap__variable <- function(data, variable, member, target) {
     )[[1L]] * 24L
     if (nrow(data) != expected_samples) {
         cli::cli_abort(
-            "Variable {.val {variable}} in weather year {member@weather_year} does not contain one complete hourly native-calendar year."
+            paste(
+                "Variable {.val {variable}} in weather year",
+                "{member@weather_year} has {nrow(data)} samples; expected",
+                "{expected_samples} for one complete hourly native-calendar year."
+            )
         )
     }
     units <- unique(as.character(data[["units"]]))
@@ -500,6 +507,45 @@ hourmap__variable <- function(data, variable, member, target) {
         ))
     }
 
+    mapped_wind_direction <- NULL
+    wind_direction_mapping <- NA_character_
+    if (identical(variable, "sfcWind") &&
+        "wind_direction" %in% names(data)) {
+        direction <- as.numeric(data[["wind_direction"]])
+        if (any(!is.finite(direction))) {
+            cli::cli_abort(
+                "Hourly `sfcWind` direction metadata must contain finite values."
+            )
+        }
+        # Interpolate direction as unit-vector components so the circular
+        # 0/360-degree boundary cannot create an artificial reversal.
+        eastward <- data.table::copy(data)
+        northward <- data.table::copy(data)
+        data.table::set(
+            eastward,
+            j = "value",
+            value = -sin(direction * pi / 180)
+        )
+        data.table::set(
+            northward,
+            j = "value",
+            value = -cos(direction * pi / 180)
+        )
+        mapped_eastward <- hourmap__circular_point_values(
+            eastward,
+            HOURMAP_TARGET_DAYS
+        )$value
+        mapped_northward <- hourmap__circular_point_values(
+            northward,
+            HOURMAP_TARGET_DAYS
+        )$value
+        mapped_wind_direction <- epwphys__wind_from_components(
+            mapped_eastward,
+            mapped_northward
+        )$direction
+        wind_direction_mapping <- "circular_vector_interpolation"
+    }
+
     output <- data.table::copy(target)
     data.table::set(
         output,
@@ -517,6 +563,13 @@ hourmap__variable <- function(data, variable, member, target) {
         value = rep.int(variable, nrow(output))
     )
     data.table::set(output, j = "value", value = mapped$value)
+    if (!is.null(mapped_wind_direction)) {
+        data.table::set(
+            output,
+            j = "wind_direction",
+            value = mapped_wind_direction
+        )
+    }
     data.table::set(output, j = "units", value = rep.int(units, nrow(output)))
     data.table::set(
         output,
@@ -557,6 +610,7 @@ hourmap__variable <- function(data, variable, member, target) {
         target_minimum = min(mapped$value),
         target_maximum = max(mapped$value),
         annual_mean_error = annual_mean_error,
+        wind_direction_mapping = wind_direction_mapping,
         stringsAsFactors = FALSE
     )
     list(data = output[], diagnostic = diagnostic)

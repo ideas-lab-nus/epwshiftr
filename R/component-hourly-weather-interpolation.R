@@ -703,19 +703,47 @@ weather_interp__hourly_coordinates <- function(input, role) {
     data.table::rbindlist(diagnostics, use.names = TRUE, fill = TRUE)
 }
 
-# Apply variable-specific temporal algorithms through one preprocess stage and
-# return the common hourly role-input contract required by calendar grouping.
-weather_interp__apply <- function(inputs, context, options) {
+# Apply the shared variable-specific interpolation and optionally transform
+# reconstructed model roles before observed-variable compatibility is checked.
+weather_interp__apply_core <- function(
+    inputs,
+    context,
+    options,
+    model_transform = NULL,
+    observed_transform = NULL,
+    component_name = "hourly_weather_interpolation",
+    method = "hourly_weather_interpolation",
+    extra_provenance = list(),
+    extra_metadata = list()
+) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
     }
     checkmate::assert_list(options, names = "unique")
     if (length(options)) {
         cli::cli_abort(
-            "`hourly_weather_interpolation` does not accept component options."
+            "Component {.val {component_name}} does not accept component options."
         )
     }
+    checkmate::assert_function(model_transform, null.ok = TRUE)
+    checkmate::assert_function(observed_transform, null.ok = TRUE)
+    checkmate::assert_string(component_name, min.chars = 1L)
+    checkmate::assert_string(method, min.chars = 1L)
+    checkmate::assert_list(extra_provenance, names = "unique")
+    checkmate::assert_list(extra_metadata, names = "unique")
     observed <- weather__get_input(inputs, "observed_reference")
+    transformations <- list()
+    if (!is.null(observed_transform)) {
+        transformed <- observed_transform(observed, "observed_reference")
+        if (!is.list(transformed) ||
+            !S7::S7_inherits(transformed$input, WeatherInput)) {
+            cli::cli_abort(
+                "Observed transformation must return a WeatherInput in `input`."
+            )
+        }
+        observed <- transformed$input
+        transformations$observed_reference <- transformed
+    }
     modes <- weather_interp__observed_modes(observed)
     roles <- c("model_historical", "model_future")
     sources <- lapply(roles, function(role) {
@@ -737,24 +765,6 @@ weather_interp__apply <- function(inputs, context, options) {
             "Historical and future model roles must provide daily extrema anchors consistently."
         )
     }
-    observed_variables <- unique(as.character(
-        observed@source[["variable_id"]]
-    ))
-    missing_observed <- setdiff(
-        sources$model_future$targets,
-        observed_variables
-    )
-    if (length(missing_observed)) {
-        cli::cli_abort(
-            "Role `observed_reference` is missing hourly target variable(s): {.val {missing_observed}}."
-        )
-    }
-    observed_output <- weather_interp__subset_input(
-        observed,
-        "observed_reference",
-        sources$model_future$targets
-    )
-
     results <- lapply(roles, function(role) {
         input <- weather__get_input(inputs, role)
         source <- sources[[role]]
@@ -785,6 +795,44 @@ weather_interp__apply <- function(inputs, context, options) {
         )
     })
     names(results) <- roles
+
+    if (!is.null(model_transform)) {
+        for (role in roles) {
+            transformed <- model_transform(results[[role]]$input, role)
+            if (!is.list(transformed) ||
+                !S7::S7_inherits(transformed$input, WeatherInput)) {
+                cli::cli_abort(
+                    "Model transformation for role {.val {role}} must return a WeatherInput in `input`."
+                )
+            }
+            results[[role]]$input <- transformed$input
+            transformations[[role]] <- transformed
+        }
+    }
+    target_sets <- lapply(results, function(result) {
+        sort(unique(as.character(result$input@source[["variable_id"]])))
+    })
+    if (!identical(target_sets$model_historical, target_sets$model_future)) {
+        cli::cli_abort(
+            "Historical and future model transformations must produce identical hourly target variable sets."
+        )
+    }
+    target_variables <- target_sets$model_future
+    observed_variables <- unique(as.character(
+        observed@source[["variable_id"]]
+    ))
+    missing_observed <- setdiff(target_variables, observed_variables)
+    if (length(missing_observed)) {
+        cli::cli_abort(
+            "Role `observed_reference` is missing hourly target variable(s): {.val {missing_observed}}."
+        )
+    }
+    observed_output <- weather_interp__subset_input(
+        observed,
+        "observed_reference",
+        target_variables
+    )
+
     diagnostics <- list()
     for (role in roles) {
         for (family in names(results[[role]]$pieces)) {
@@ -800,6 +848,13 @@ weather_interp__apply <- function(inputs, context, options) {
         use.names = TRUE,
         fill = TRUE
     )
+    transformation_diagnostics <- lapply(
+        transformations,
+        function(result) result$diagnostics
+    )
+    transformation_diagnostics <- transformation_diagnostics[
+        lengths(transformation_diagnostics) > 0L
+    ]
     output <- weather__new_inputs(
         weather_template = weather__get_input(inputs, "weather_template"),
         observed_reference = observed_output,
@@ -826,21 +881,30 @@ weather_interp__apply <- function(inputs, context, options) {
         use.names = TRUE,
         fill = TRUE
     )
+    stage_diagnostics <- list(
+        hourly_weather_interpolation = diagnostic_table,
+        hourly_weather_coordinates = coordinate_diagnostics,
+        hourly_weather_years = year_diagnostics
+    )
+    if (length(transformation_diagnostics)) {
+        stage_diagnostics$model_transformation <- data.table::rbindlist(
+            transformation_diagnostics,
+            use.names = TRUE,
+            fill = TRUE
+        )
+    }
     WeatherStageResult(
         stage = "preprocess",
-        component = "hourly_weather_interpolation",
+        component = component_name,
         kind = "hourly_role_inputs",
         value = output,
-        diagnostics = list(
-            hourly_weather_interpolation = diagnostic_table,
-            hourly_weather_coordinates = coordinate_diagnostics,
-            hourly_weather_years = year_diagnostics
-        ),
-        provenance = list(
-            method = "hourly_weather_interpolation",
+        diagnostics = stage_diagnostics,
+        provenance = c(list(
+            method = method,
             references = HOURLY_WEATHER_REFERENCES,
             roles = roles,
-            variables = sources$model_future$targets,
+            variables = target_variables,
+            source_variables = sources$model_future$targets,
             point_state_method = "linear_temporal_interpolation",
             radiation_method = "solar_radiation_interpolation",
             daily_extrema_anchors = sources$model_future$has_extrema,
@@ -849,12 +913,18 @@ weather_interp__apply <- function(inputs, context, options) {
             cross_variable_phase_policy = "retain_temporal_semantics",
             complete_year_policy = "shared_complete_native_years",
             target_frequency = "hour"
-        ),
-        metadata = list(
+        ), extra_provenance),
+        metadata = c(list(
             variable_dispatch = TRUE,
             daily_extrema_are_auxiliary = TRUE
-        )
+        ), extra_metadata)
     )
+}
+
+# Apply the reusable interpolation component without a method-specific model
+# transformation, preserving its established public component contract.
+weather_interp__apply <- function(inputs, context, options) {
+    weather_interp__apply_core(inputs, context, options)
 }
 
 # Describe the composite hourly-weather preprocessing boundary used when one

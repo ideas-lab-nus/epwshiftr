@@ -199,7 +199,7 @@ epwphys__request_error <- function(self) {
         ),
         epwphys__candidate_error(
             self@wind,
-            c("speed", "eastward", "northward"),
+            c("speed", "direction", "eastward", "northward"),
             rows,
             "wind"
         ),
@@ -763,6 +763,25 @@ epwphys__humidity_inconsistent <- function(weather) {
     as.integer(sum(state$humidity))
 }
 
+# Convert eastward and northward wind components to scalar speed and the
+# meteorological direction from which the wind originates.
+epwphys__wind_from_components <- function(eastward, northward) {
+    eastward <- as.numeric(eastward)
+    northward <- as.numeric(northward)
+    if (length(eastward) != length(northward) ||
+        any(!is.finite(eastward)) || any(!is.finite(northward))) {
+        cli::cli_abort(
+            "Wind components must contain matching finite numeric values."
+        )
+    }
+    speed <- sqrt(eastward^2 + northward^2)
+    direction <- (atan2(-eastward, -northward) * 180 / pi) %% 360
+    # Direction is conventionally set to zero for calm conditions, where an
+    # angle would otherwise be undefined.
+    direction[speed <= sqrt(.Machine$double.eps)] <- 0
+    list(speed = speed, direction = direction)
+}
+
 # Apply one temperature-only candidate through the shared physical boundary.
 # Method adapters retain policy selection and all method-specific diagnostics.
 epwphys__apply_temperature <- function(
@@ -929,22 +948,41 @@ epwphys__apply <- function(request, policy) {
 
     if (identical(policy@wind, "absolute")) {
         has_speed <- identical(names(request@wind), "speed")
+        has_directed_speed <- setequal(
+            names(request@wind),
+            c("speed", "direction")
+        )
         has_vector <- setequal(names(request@wind), c("eastward", "northward"))
-        if (identical(has_speed, has_vector)) {
+        if (sum(c(has_speed, has_directed_speed, has_vector)) != 1L) {
             cli::cli_abort(
-                "Absolute EPW physics requires scalar speed or paired vector wind."
+                paste(
+                    "Absolute EPW physics requires scalar speed, directed",
+                    "scalar speed, or paired vector wind."
+                )
             )
         }
-        if (has_speed) {
+        if (has_speed || has_directed_speed) {
             speed_raw <- request@wind$speed
-            direction <- as.numeric(request@template[["wind_direction"]])
-            direction_policy <- "inherit_epw_template"
+            if (has_directed_speed) {
+                direction <- as.numeric(request@wind$direction)
+                if (any(!is.finite(direction))) {
+                    cli::cli_abort(
+                        "Supplied wind direction must contain finite values."
+                    )
+                }
+                direction <- direction %% 360
+                direction_policy <- "supplied_wind_direction"
+            } else {
+                direction <- as.numeric(request@template[["wind_direction"]])
+                direction_policy <- "inherit_epw_template"
+            }
         } else {
-            eastward <- as.numeric(request@wind$eastward)
-            northward <- as.numeric(request@wind$northward)
-            speed_raw <- sqrt(eastward^2 + northward^2)
-            direction <- (atan2(-eastward, -northward) * 180 / pi) %% 360
-            direction[speed_raw <= sqrt(.Machine$double.eps)] <- 0
+            vector <- epwphys__wind_from_components(
+                request@wind$eastward,
+                request@wind$northward
+            )
+            speed_raw <- vector$speed
+            direction <- vector$direction
             direction_policy <- "derive_from_uas_vas"
         }
         speed <- epwphys__bound_field(speed_raw, "wind_speed")

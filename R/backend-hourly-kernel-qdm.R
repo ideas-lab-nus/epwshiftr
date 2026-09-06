@@ -1,4 +1,4 @@
-#' @include weather-pipeline.R
+#' @include component-hourly-kqdm-input.R weather-pipeline.R
 NULL
 
 # Hourly kernel-QDM backend {{{
@@ -7,13 +7,12 @@ NULL
 # published hourly KDE-QDM weather generation path. Dew point and direct-normal
 # radiation are derived later by the common EPW physical policy.
 EPW_MORPH_HOURLY_KQDM_VARIABLES <- c(
-    "tas",
-    "ps",
-    "hurs",
-    "sfcWind",
-    "rsds",
-    "rsdsdiff"
+    HOURLY_KQDM_SIGNAL_VARIABLES
 )
+
+# Model extraction resolves the raw CMIP variables separately from the
+# canonical signal variables exposed by the backend rules.
+EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES <- HOURLY_KQDM_MODEL_VARIABLES
 
 EPW_MORPH_HOURLY_KQDM_METHODS <- c(
     tdb = "kernel_quantile_delta_mapping",
@@ -88,7 +87,7 @@ hourly_kqdm__options <- function(options = NULL) {
 # Register every already-independent component needed by the complete hourly
 # workflow while preserving process-local replacements under the same keys.
 hourly_kqdm__register_components <- function() {
-    weather_interp__register_component()
+    hourly_kqdm_input__register_component()
     hourly_calendar__register_component()
     kqdm__register_component()
     sequence__register_direct_model_component()
@@ -103,7 +102,7 @@ hourly_kqdm__register_components <- function() {
 hourly_kqdm__pipeline <- function() {
     hourly_kqdm__register_components()
     pipeline__spec(list(
-        preprocess = "hourly_weather_interpolation",
+        preprocess = "hourly_kernel_qdm_input_preparation",
         calendar = "hourly_calendar_grouping",
         signal = "kernel_quantile_delta_mapping_hourly",
         sequence = "direct_model_realization",

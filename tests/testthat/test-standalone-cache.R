@@ -776,6 +776,21 @@ test_that("cache__read_json() honors explicit cache mode", {
     )
 })
 
+test_that("cache__read_json() normalizes an empty Solr score", {
+    local_cache_mode("off")
+    response <- cache__read_json(
+        paste0(
+            '{"response":{"numFound":0,"start":0,',
+            '"docs":[],"maxScore":null}}'
+        ),
+        cache = FALSE,
+        simplifyVector = FALSE
+    )
+
+    expect_identical(response$response$numFound, 0L)
+    expect_identical(response$response$maxScore, 0)
+})
+
 test_that("cache__read_json() parses long HTTP URLs through curl", {
     cache <- local_test_cache()
     local_cache_mode("normal")

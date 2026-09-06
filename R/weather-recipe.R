@@ -515,14 +515,14 @@ recipe__default_specs <- function() {
             representations = "series",
             frequencies = "3hr",
             calendars = CF_TIME_CALENDARS,
-            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
+            variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
         ),
         model_future = component__input_requirement(
             "model_future",
             representations = "series",
             frequencies = "3hr",
             calendars = CF_TIME_CALENDARS,
-            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
+            variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
         )
     )
 

@@ -343,7 +343,16 @@ direct_epw__member <- function(member, epw, template, geometry) {
             direct_epw__values(variables, "huss"))
     }
     wind <- if (identical(contract$wind, "sfcWind")) {
-        list(speed = direct_epw__values(variables, "sfcWind"))
+        speed <- direct_epw__values(variables, "sfcWind")
+        rows <- variables[["sfcWind"]]
+        if ("wind_direction" %in% names(rows)) {
+            list(
+                speed = speed,
+                direction = as.numeric(rows[["wind_direction"]])
+            )
+        } else {
+            list(speed = speed)
+        }
     } else {
         list(
             eastward = direct_epw__values(variables, "uas"),
@@ -351,7 +360,8 @@ direct_epw__member <- function(member, epw, template, geometry) {
         )
     }
     constructed_fields <- DIRECT_EPW_CONSTRUCTED_FIELDS
-    if (identical(contract$wind, "uas_vas")) {
+    if (identical(contract$wind, "uas_vas") ||
+        "direction" %in% names(wind)) {
         constructed_fields <- c(constructed_fields, "wind_direction")
     }
     if (contract$has_rlds) {

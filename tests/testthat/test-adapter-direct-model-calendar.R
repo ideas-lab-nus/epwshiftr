@@ -5,7 +5,8 @@ hourmap_test__adjusted <- function(
     year,
     calendar = "noleap",
     value = function(phase) phase,
-    units = NULL
+    units = NULL,
+    wind_direction = NULL
 ) {
     year_days <- cf_time__year_days(year, calendar)[[1L]]
     offsets <- seq.int(0, year_days * 86400 - 3600, by = 3600)
@@ -39,6 +40,11 @@ hourmap_test__adjusted <- function(
         coordinates,
         stringsAsFactors = FALSE
     )
+    if (!is.null(wind_direction)) {
+        data$wind_direction <- as.numeric(wind_direction(
+            coordinates$annual_phase
+        ))
+    }
     bias__subdaily_adjusted_series(
         data,
         frequency = "hour",
@@ -275,6 +281,44 @@ test_that("point variables use circular annual-phase interpolation", {
         )
         expect_identical(nrow(series@data), HOURMAP_TARGET_HOURS)
     }
+})
+
+test_that("scalar wind direction uses circular vector interpolation", {
+    adjusted <- hourmap_test__adjusted(
+        "sfcWind",
+        2061L,
+        "360_day",
+        value = function(phase) rep.int(3, length(phase)),
+        units = "m/s",
+        wind_direction = function(phase) {
+            (350 + 20 * sin(2 * pi * phase)) %% 360
+        }
+    )
+    sequence <- sequence__direct_model_generate(
+        hourmap_test__execution(list(adjusted)),
+        NULL,
+        NULL,
+        list()
+    )
+    result <- hourmap__reconstruct(
+        sequence,
+        hourmap_test__inputs(),
+        NULL,
+        list()
+    )
+    series <- result@members[[1L]]@series[[1L]]
+    expected <- (350 + 20 * sin(
+        2 * pi * series@data$target_annual_phase
+    )) %% 360
+    angular_error <- abs(
+        ((series@data$wind_direction - expected + 180) %% 360) - 180
+    )
+
+    expect_lt(max(angular_error), 1e-3)
+    expect_identical(
+        series@diagnostics$wind_direction_mapping,
+        "circular_vector_interpolation"
+    )
 })
 
 test_that("calendar mapping preserves every source time-of-day position", {

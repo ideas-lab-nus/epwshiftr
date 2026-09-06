@@ -262,6 +262,33 @@ test_that("absolute policy derives vector wind and closes shortwave fields", {
     expect_identical(result@corrections$temperature_clipped, 1L)
 })
 
+test_that("absolute policy accepts method-supplied wind direction", {
+    template <- epwphys_test__weather()
+    result <- epwphys__apply(
+        EpwPhysicalRequest(
+            template = template,
+            fields = list(
+                dry_bulb_temperature = c(20, 25),
+                atmospheric_pressure = c(101325, 101325)
+            ),
+            humidity = list(relative_humidity = c(50, 55)),
+            wind = list(speed = c(2, 3), direction = c(-10, 370)),
+            shortwave = list(
+                global_horizontal = c(100, 800),
+                diffuse_horizontal = c(50, 100)
+            ),
+            geometry = epwphys_test__geometry()
+        ),
+        epwphys__policy("absolute_model_fields")
+    )
+
+    expect_identical(
+        result@state$wind$direction_policy,
+        "supplied_wind_direction"
+    )
+    expect_equal(result@weather$wind_direction, c(350, 10))
+})
+
 test_that("grouped physical execution preserves case and row order", {
     weather <- data.table::rbindlist(list(
         data.table::data.table(case = "b", epwphys_test__weather()),
