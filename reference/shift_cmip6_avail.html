@@ -150,7 +150,9 @@ every returned member and evaluates each identity independently.</p></dd>
 
 
 <dt id="arg-frequency">frequency<a class="anchor" aria-label="anchor" href="#arg-frequency"></a></dt>
-<dd><p>CMIP6 frequency. Defaults to daily data.</p></dd>
+<dd><p>CMIP6 frequency. An unnamed scalar applies to every
+requested variable. A named character vector assigns one frequency to
+every variable, for example <code>tas = "3hrPt"</code> and <code>rsds = "3hr"</code>.</p></dd>
 
 
 <dt id="arg-table">table<a class="anchor" aria-label="anchor" href="#arg-table"></a></dt>
@@ -195,10 +197,11 @@ precedence when names overlap.</p></dd>
     <h2>Value</h2>
     <p>A data frame with one row per model/member/grid identity.
 <code>complete</code> is <code>TRUE</code> only when every requested experiment-variable pair is
-present. For complete rows, <code>table</code> is a list-column containing the named
-per-variable table selection accepted by <code><a href="shift_api.html">shift_cmip6()</a></code>. Incomplete rows
-use <code>NA</code> for variables with no available table. <code>table_id</code> is the compact
-display value, and <code>missing</code> lists absent pairs as <code>experiment:variable</code>.</p>
+present. <code>frequency_spec</code> and <code>table</code> are list-columns containing named
+per-variable selections accepted by <code><a href="shift_api.html">shift_cmip6()</a></code>. Incomplete rows use
+<code>NA</code> for variables with no available table. <code>frequency</code> and <code>table_id</code> are
+compact display values, and <code>missing</code> lists absent pairs as
+<code>experiment:variable</code>.</p>
     </div>
     <div id="details">
     <h2>Details</h2>

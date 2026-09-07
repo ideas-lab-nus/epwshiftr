@@ -374,6 +374,9 @@ next step without manually passing manifest IDs.</p>
 <dt id="arg-source-experiment-variant-frequency">source, experiment, variant, frequency<a class="anchor" aria-label="anchor" href="#arg-source-experiment-variant-frequency"></a></dt>
 <dd><p>Provider-neutral request fields.
 Values must use the selected provider's controlled vocabulary.
+In <code>shift_cmip6()</code>, an unnamed scalar <code>frequency</code> applies to every recipe
+input, while a named character vector assigns one frequency to every
+source variable so <code>3hrPt</code>, <code>3hr</code>, and <code>day</code> data can be collected together.
 In <code>shift_reference_historical()</code>, <code>experiment</code> is the historical
 reference experiment filter. Values are not translated; for ESGF, use
 exact facet values such as <code>project = "CMIP6"</code> and <code>frequency = "mon"</code>.</p></dd>
@@ -530,8 +533,8 @@ morphing results, or EPW outputs.</p></dd>
 
 
 <dt id="arg-table-id">table_id<a class="anchor" aria-label="anchor" href="#arg-table-id"></a></dt>
-<dd><p>One or more CMIP6 table IDs. If <code>NULL</code>, a common atmospheric
-table is inferred from <code>frequency</code>.</p></dd>
+<dd><p>One or more CMIP6 table IDs. If <code>NULL</code>, the native table is
+inferred for each variable's <code>frequency</code>.</p></dd>
 
 
 <dt id="arg-grid-label">grid_label<a class="anchor" aria-label="anchor" href="#arg-grid-label"></a></dt>

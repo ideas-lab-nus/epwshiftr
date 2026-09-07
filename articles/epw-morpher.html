@@ -366,34 +366,51 @@ persisted with the workflow:</p>
 <p>The complete hourly workflow requires hourly observed
 <code>tas</code>, <code>ps</code>, <code>hurs</code>,
 <code>sfcWind</code>, <code>rsds</code>, and <code>rsdsdiff</code>.
-Historical and future model roles use the published raw inputs
+Historical and future model roles use point-sampled <code>3hrPt</code>
 <code>tas</code>, <code>ps</code>, <code>huss</code>, <code>uas</code>,
-<code>vas</code>, <code>rsds</code>, and <code>rsdsdiff</code>. After
-hourly reconstruction, the input adapter derives relative humidity,
-scalar wind speed, and meteorological direction before KQDM. It
-preserves every complete future model year as a separate output member
-instead of collapsing the corrected sequence into a representative
-year.</p>
-<p>Check the live Dataset catalogue before selecting a model. A query
-returning no complete rows is a valid result: the public catalogue may
-not contain the exact seven-variable combination for both experiments,
-even though the published workflow used model-specific additions and
-fallbacks documented in its supplementary methods.</p>
+and <code>vas</code>, together with interval-mean <code>3hr</code>
+<code>rsds</code> and <code>rsdsdiff</code>. Daily <code>tasmin</code>
+and <code>tasmax</code> are optional interpolation anchors. After hourly
+reconstruction, the input adapter derives relative humidity, scalar wind
+speed, and meteorological direction before KQDM. It preserves every
+complete future model year as a separate output member instead of
+collapsing the corrected sequence into a representative year.</p>
+<p>Check the live Dataset catalogue before selecting a model. CMIP6
+stores the required state variables and radiation fluxes under different
+<code>frequency</code> facets even though they share the
+<code>3hr</code> table. A scalar <code>frequency = "3hr"</code>
+therefore excludes the point-sampled fields and creates a false
+incomplete result. Some models in the publication still require the
+pressure, wind, or radiation treatments documented in its supplementary
+methods.</p>
 <p>Leaving <code>table = NULL</code> searches every CMIP6 table at the
-requested frequency. The availability reduction selects one table per
+requested frequencies. The availability reduction selects one table per
 variable within each model/member/grid identity and returns that named
 mapping in the <code>table</code> list-column. Pass the mapping to
 <code><a href="../reference/shift_api.html">shift_cmip6()</a></code> so the download request uses the same
 variable-specific selection; <code>table_id</code> is only its compact
 display value.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hourly_availability</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_cmip6_avail.html">shift_cmip6_avail</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">hourly_frequencies</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>    tas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
+<span>    ps <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
+<span>    huss <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
+<span>    uas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
+<span>    vas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
+<span>    rsds <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>    rsdsdiff <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>    tasmin <span class="op">=</span> <span class="st">"day"</span>,</span>
+<span>    tasmax <span class="op">=</span> <span class="st">"day"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">hourly_availability</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_cmip6_avail.html">shift_cmip6_avail</a></span><span class="op">(</span></span>
 <span>    variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>        <span class="st">"tas"</span>, <span class="st">"ps"</span>, <span class="st">"huss"</span>, <span class="st">"uas"</span>, <span class="st">"vas"</span>, <span class="st">"rsds"</span>, <span class="st">"rsdsdiff"</span></span>
 <span>    <span class="op">)</span>,</span>
 <span>    scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
 <span>    member <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>    frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>    frequency <span class="op">=</span> <span class="va">hourly_frequencies</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>        <span class="st">"tas"</span>, <span class="st">"ps"</span>, <span class="st">"huss"</span>, <span class="st">"uas"</span>, <span class="st">"vas"</span>, <span class="st">"rsds"</span>, <span class="st">"rsdsdiff"</span></span>
+<span>    <span class="op">)</span><span class="op">]</span>,</span>
 <span>    index_node <span class="op">=</span> <span class="st">"ORNL"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">available_hourly</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">hourly_availability</span>, <span class="va">complete</span><span class="op">)</span></span>
@@ -413,7 +430,7 @@ display value.</p>
 <span>        scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
 <span>        member <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">variant_label</span>,</span>
 <span>        grid <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">grid_label</span>,</span>
-<span>        frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
+<span>        frequency <span class="op">=</span> <span class="va">hourly_frequencies</span>,</span>
 <span>        table <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">table</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span>    <span class="op">)</span></span>
 <span></span>
